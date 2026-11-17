@@ -11,7 +11,7 @@ Part of epic [FIX-2369](../../epics/FIX-2369/SPEC.md) (the workforce apps as a d
 |---|---|---|
 | **asks error-reporter "did you report the two aborted coder runs?"** | It has no way to read its own reports. In Jake's run it read the task board and answered from that | It reads its reports and answers with each one's status: drafting, waiting in Inbox, filed as FIX-N (with the URL), dismissed, or not reported at all ([D2](DECISIONS.md#d2)) |
 | **asks the Shift Coordinator what has been reported** | The coordinator can't read reports. It messages error-reporter and relays the answer | It reads the reports itself, read-only, and answers in the same turn ([D2](DECISIONS.md#d2)) |
-| **sees one failure come back a sixth time** | The report's count goes up, but it keeps the ids of only the newest 5 occurrences. The first one's time, request and task are gone | Every occurrence is in that day's history, with its time, ids and a short message ([D1](DECISIONS.md#d1)) |
+| **sees one failure come back a sixth time** | The report's count goes up, but it keeps the ids of only the newest 5 occurrences. The first one's time, request and task are gone | Every occurrence is in that hour's history, with its time, ids and a short message ([D1](DECISIONS.md#d1)) |
 | **wants to know when a report was filed or dismissed** | Only the current status is kept, and a filed report's `filedAt` | Each change of status is in the history with its time; *filed* carries the Linear ID and URL ([D1](DECISIONS.md#d1)) |
 | **is one of several users in the org and asks the coordinator** | Can't read reports at all | **Open to the owner** ([Open](DECISIONS.md#open)). Recommended: reads every report's summary, and the occurrence ids only of their own failures |
 
@@ -27,7 +27,7 @@ board or from each other.**
 | **The real need** | Jake (2026-11-17): "every error the Error Reporter detects should be logged automatically the moment it's detected, with its status (filed or not filed), so there's a history of our errors that both error-reporter and the Shift Coordinator can read" |
 | **Smaller, and rejected** | "Give error-reporter a read tool over the reports as they are." It answers "is it filed?" but keeps losing every occurrence after the fifth, and no status change has a time. Or "raise `KEPT_OCCURRENCES`": the report record grows with every repeat, forever |
 | **Bigger, and not this issue's** | Errors that never reach the Error Reporter: an aborted run today ([FIX-2790](https://linear.app/fixpoint-labs/issue/FIX-2790), in development). What the replies say and the Inbox shows ([FIX-2791](../FIX-2791/SPEC.md)). A history screen in Shift Manager |
-| **Not done if** | An occurrence past the fifth of one fingerprint is missing from the history · a status change made by any writer has no entry · the Shift Coordinator answers by messaging error-reporter or reading the task board · the read tool writes anything · the restart path (`listReports`, the outbox at bind) reads history entries · one day's history has no upper size |
+| **Not done if** | An occurrence past the fifth of one fingerprint is missing from the history while its hour is under the cap, or past the cap is not counted · a held occurrence (a failed request inside a task) has no entry · a status change made by any writer has no entry · the Shift Coordinator answers by messaging error-reporter or reading the task board · the read tool writes anything · the restart path (`listReports`, the outbox at bind) reads history entries · one hour's history has no upper size |
 
 ```mermaid
 flowchart LR
@@ -61,7 +61,7 @@ flowchart LR
   end
   subgraph After
     O2["occurrence"] --> R2["fp-… report · count · newest 5 ids"]
-    O2 --> L2["log-YYYY-MM-DD · every occurrence"]
+    O2 --> L2["log-YYYY-MM-DD-HH · every occurrence"]
     S2["status change"] --> R2
     S2 --> L2
     T2["listErrorReports · read-only"] --> R2
@@ -72,13 +72,13 @@ flowchart LR
 ```
 
 Left, the reports keep a count and the newest five ids, and nobody in a conversation can read
-them. Right, one day's history beside them takes every occurrence and status change, and one
+them. Right, one hour's history beside them takes every occurrence and status change, and one
 read tool serves both workers.
 
 ```diff
   // @flow-state-dev/workforce · the error-reports/* collection, one key per record
   fp-<fingerprint> · storm-<window> · cap · held-<task> · task-<task>
-+ log-<YYYY-MM-DD>    // that UTC day's history: append-only, capped per day
++ log-<YYYY-MM-DD>-<HH>    // that UTC hour's history: append-only, capped at 250 entries
 
   // the Error Reporter's conversation turn
 - extraTools: [reportProblem]
@@ -113,10 +113,10 @@ own lines to the same page.
 flowchart LR
   A["capture · board drain · reportProblem"] --> IN["intakeOccurrence · the one door"]
   IN --> REP["fp-… / storm-… report"]
-  IN --> LOG["log-day · occurrence entry"]
+  IN --> LOG["log-hour · occurrence entry"]
   F["flow handlers · draft · preview · dismiss · approve · file · comment"] --> UR["updateReport · the one status writer"]
   UR --> REP
-  UR --> LOG2["log-day · status entry, when status changed"]
+  UR --> LOG2["log-hour · status entry, when status or issue changed"]
   T["listErrorReports"] --> REP
   T --> LOG
 ```
@@ -141,18 +141,18 @@ Two writers converge every write the history needs: `intakeOccurrence` for occur
 | **The job: keep what the Error Reporter saw.** One way: the report records in `error-reports/*` ([FIX-1983](../FIX-1983/SPEC.md)), with a count and the newest 5 occurrences. Mechanism entry `error-reporter`. Searched `log`, `history`, `ledger`, `append` across `packages/*/src` and `docs/mechanisms/mechanisms.yaml`: the closest are orchestration's observation ledger (`task-flow-policy`, tool calls of a board run) and event-actors' entry log (a pattern's session log), neither about reports | **Extended**: the history is new keys in the same collection, written by the same intake. This would otherwise be the second store of error reports |
 | **The job: read the reports.** One way: the intake flow's internal `reports` entry (`op: "all" \| "get"`), which only the reporter's bind calls | **Kept** for the outbox. The tool reads through the same `readReport`/`listReports` helpers, never through that entry |
 | **The job: read what happened to a task from a conversation.** `listTasks`/`getTask` on the coordinator's board | **Kept**. They answer what a task did; the new tool answers what was reported about it |
-| `links` on `ErrorReporterOptions`, which the devteam host fills with a Shift Manager path | **Reused** by FIX-2791 for the Inbox link, not here |
+| `links` on `ErrorReporterOptions`, which the devteam host fills with a Shift Manager path | **Kept**. FIX-2791 adds `inboxLink` beside it for the Inbox link; nothing here |
 | [FIX-1983](../FIX-1983/SPEC.md)'s report lifecycle | **Kept**. The history records it; it changes nothing in it |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| `log-<day>` records in `error-reports/*` | Raising `KEPT_OCCURRENCES`; a second collection | **Composes** the existing collection and its CAS helper (`updateStateWith`). A larger keep grows each report forever; a second store is what the issue rules out |
+| `log-<day>-<hour>` records in `error-reports/*` | Raising `KEPT_OCCURRENCES`; a second collection | **Composes** the existing collection and its CAS helper (`updateStateWith`). A larger keep grows each report forever; a second store is what the issue rules out |
 | `listErrorReports` tool, exported as `errorReportTools()` | The intake's `reports` entry; messaging error-reporter (`sendMessage`) | **Composes** `readReport`/`listReports`. The entry is internal and returns raw records with dossier fields; a message makes the coordinator depend on another worker's turn for a read |
 
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | One more key family in the collection, and a daily record every intake writes to: permanent by design. A second read path over reports beside the internal entry: permanent by design, one for the outbox and one for a model, both through the same helpers |
+| **Adds** | One more key family in the collection, and an hourly record every intake writes to: permanent by design. A second read path over reports beside the internal entry: permanent by design, one for the outbox and one for a model, both through the same helpers |
 | **Leaves** | `listReports` lists the whole collection and drops what doesn't parse; with the history beside it, it must list only report keys (BP-033). That is part of this change, not left. Pruning history older than the retention is done at the intake ([Decided, not asked](DECISIONS.md#decided-not-asked)), so nothing is left without an owner |
 
 **Net: up, a little.** One key family and one read tool, both inside the Error Reporter's own
@@ -175,14 +175,15 @@ coordinator didn't know.
 **[The debt](#whats-already-here-and-the-debt), net up a little:** one key family, one read tool,
 no second store. If wrong: a history nobody reads, written on every failure.
 
-1. **[D1](DECISIONS.md#d1) · The history is one record per UTC day, in the same collection,
-   capped per day and kept 90 days, not one growing record.** If wrong: a read over a long range
-   reads many small records instead of one large one.
+1. **[D1](DECISIONS.md#d1) · The history is one record per UTC hour, in the same collection,
+   capped at 250 entries an hour and kept 90 days, not one growing record.** If wrong: a read
+   over a long range reads many small records instead of one large one.
 2. **[D2](DECISIONS.md#d2) · One read tool, `listErrorReports`, a Workforce built-in: always on
    error-reporter's turn, and named in the Shift Coordinator's `tools:`.** If wrong: a public tool
    name to keep stable.
 3. **[Open](DECISIONS.md#open) · Who in an org reads the history.** Recommended: everyone reads
-   summaries; occurrence ids only for the operator and for one's own failures. The one to weigh.
+   summaries; occurrence ids only for the operator and for one's own failures, the caller known
+   only from the turn's server-set identity. The narrower option is operator only. The one to weigh.
 
 Improvement · `workforce`, `shift-manager` · S–M (one key family and two writers in
 `reports.ts`, one tool, one catalog entry and one WORKER.md line) · depends on nothing ·

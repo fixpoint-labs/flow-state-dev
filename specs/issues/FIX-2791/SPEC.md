@@ -19,15 +19,15 @@ whose `listErrorReports` tool and history this spec reads; it does not restate t
 
 **Whenever error-reporter or the Shift Coordinator speaks about a report, the person can tell
 whether it is waiting in Inbox or filed, and can open it in one click: the Inbox item while it
-waits, the Linear issue once it is filed. No reply shows a fingerprint, and Inbox shows waiting
-reports together, each with its title, source and count.**
+waits, the Linear issue once it is filed. No reply shows a fingerprint in the text a person
+reads, and Inbox shows waiting reports together, each with its title, source and count.**
 
 | Is it the right goal? | |
 |---|---|
 | **The real need** | The issue: the replies "didn't say that or give a way to open them", and "the queue and the replies were unclear". Jake (2026-11-17): Inbox review stays for every report, no auto-file |
 | **Smaller, and rejected** | "Tell the model in `WORKER.md` not to say fingerprints." The tool still hands it one, and the model has no link to give, so the reply can say *Inbox* but can't open anything |
 | **Bigger, and not this issue's** | Filing without review (Jake decided against). The history and the read tool (FIX-2793). Inbox's read path (FIX-2774, in development). Reports that never reach the reporter (FIX-2790) |
-| **Not done if** | A tool output, line or reply about a report holds `fp-` · a *waiting* reply has no link, or its link opens nothing while the report waits · a filed report's line or tool entry lacks the Linear ID or URL · the Shift Coordinator's answer drops the link the tool gave it · Inbox shows the reports with no source or count |
+| **Not done if** | A tool output, line or reply about a report holds `fp-` outside a link's address · a *waiting* reply has no link, or its link opens nothing while the report waits · a filed report's line or tool entry lacks the Linear ID or URL · the Shift Coordinator's answer drops the link the tool gave it · Inbox shows the reports with no source or count |
 
 ```mermaid
 flowchart LR
@@ -43,7 +43,7 @@ says *Inbox* without a working link still fails.
 | How we verify | |
 |---|---|
 | **Goal check** | A new **leg Q** in [`goals/error-reporter/files-a-reproducible-issue`](../../../goals/error-reporter/files-a-reproducible-issue/goal.md), after leg M and leg R (FIX-2793) |
-| **Signal** | **a** After leg M's `reportProblem`, the reporter's reply and every item in its conversation hold no match for `/fp-[0-9a-f]{8,}/`. **b** When leg M's preview opens, a line in the reporter's conversation says it waits in Inbox and links to it; that link, opened in Shift Manager, shows that report's ask. **c** After leg 1 files, the line and `listErrorReports`' entry carry the tracker's identifier and URL. **d** The Shift Coordinator, asked what is waiting, answers with the report's title and its link, no fingerprint. **e** Inbox, read as Shift Manager reads it, shows the waiting reports together with each one's title, source and count |
+| **Signal** | **a** After leg M's `reportProblem`, the reporter's reply and every item in its conversation hold no match for `/fp-[0-9a-f]{8,}/` once link addresses (a Markdown link's target, an `href`) are removed; a bare URL counts as text and fails. **b** When leg M's preview opens, a line in the reporter's conversation says it waits in Inbox and links to it; that link, opened in Shift Manager, shows that report's ask. **c** After leg 1 files, the line and `listErrorReports`' entry carry the tracker's identifier and URL. **d** The Shift Coordinator, asked what is waiting, answers with the report's title and its link, no fingerprint. **e** Inbox, read as Shift Manager reads it, shows the waiting reports together with each one's title, source and count |
 | **Input** | The goal's Lab and plants; the coordinator's question is held out of every prompt |
 | **Anti-game** | Grade the stored items and the page the link opens, not the reporter's prompt. A link that opens Inbox's list, not the item, fails **b** |
 | **Control that must fail** | `GOAL_CONTROL=fingerprint-reply`: `reportProblem` returns today's `{ decision, reportId }`, and no *waiting* line is written. FAILS **a** and **b** |
@@ -73,7 +73,7 @@ line with a link, and every tool answer names a report by title, status and link
 ```diff
   // @flow-state-dev/workforce · ErrorReporterOptions
   links?: (ids: OccurrenceIds) => Record<string, string>;
-+ inboxLink?: (report: { reportId: string; sessionId: string }) => string;  // where the host opens a waiting report
++ inboxLink?: (report: { sessionId: string }) => string;  // the report's own session, error-report~<id>, for every source
 
   // reportProblem's answer
 - { decision: "new", reportId: "fp-ba3661df…" }
@@ -166,7 +166,8 @@ fingerprint out. If wrong: a host with no `inboxLink` gets words without a link.
    Manager opens the waiting ask in that session.** If wrong: a link that resolves to nothing
    when the report isn't waiting, shown as *not waiting now*.
 3. **[Open](DECISIONS.md#open) · How Inbox groups waiting reports.** Recommended: group every
-   lone ask by the worker that raised it. The one to weigh.
+   lone ask by the worker that raised it. The narrower option is a group for error reports only.
+   The one to weigh.
 
 Improvement · `workforce`, `shift-manager` · S (one option, one line, the tool's and ask's
 fields, one Inbox lookup and a grouping) · blocked by FIX-2793 (this PR) and, for the Inbox part,

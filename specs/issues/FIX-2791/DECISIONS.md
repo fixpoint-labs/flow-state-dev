@@ -47,8 +47,8 @@ the line goes only to the report's own session, and the coordinator's tool carri
 | | |
 |---|---|
 | **Instead of** | Linking by the ask's suspension id (Inbox's item id today); or workforce writing a Shift Manager path |
-| **Because** | A report's session (`error-report~<id>`) is fixed at intake, before its ask exists, and one report has at most one waiting ask in it. So one address serves every reply, from *drafting* to *waiting*, and Shift Manager finds the item by it. The suspension id appears only inside `ctx.suspend`, too late for the first reply. The host already builds a Shift Manager path for an occurrence's task (`links`), so the Inbox path is built the same way (`inboxLink`), and workforce names no app route (L2 over the app) |
-| **Locks in** | Shift Manager's `/inbox/<item>` accepts a session id as well as an item id. A report that is not waiting opens Inbox with a *not waiting now* note and the report's status, not an error. A host without `inboxLink` gets the words with no link |
+| **Because** | A report's session (`error-report~<id>`) is fixed at intake, before its ask exists, and one report has at most one waiting ask in it: the preview is the flow's only `ctx.suspend`, and a report's runs take turns under its claim, so a later preview replaces an answered one, never sits beside it. Shift Manager finds the ask by the `sessionId` every loaded ask already carries, a search of the Inbox it has read, not of the store. So one address serves every reply, from *drafting* to *waiting*, and Shift Manager finds the item by it. The suspension id appears only inside `ctx.suspend`, too late for the first reply. The host already builds a Shift Manager path for an occurrence's task (`links`), so the Inbox path is built the same way (`inboxLink`), and workforce names no app route (L2 over the app) |
+| **Locks in** | Shift Manager's `/inbox/<item>` accepts a session id as well as an item id. The address holds the report's key, so the fingerprint can appear inside a link's address, never in the text a person reads. A report that is not waiting opens Inbox with a *not waiting now* note and the report's status, not an error. A host without `inboxLink` gets the words with no link |
 
 | Trade-off | Report's session, host-built (chosen) | Suspension id |
 |---|---|---|
@@ -75,6 +75,13 @@ uses the item id and Inbox needs no second lookup.
   operator") stays and gains: never quote a report's id.
 - **The ask's message carries source and count** so Inbox shows them with no error-report
   knowledge in the app; `data.source` is added for a reader that wants it.
+- **`inboxLink` gets the report's own session** (`error-report~<id>`), for every source. For a
+  manual report that is not the conversation it was made in (`ctx.session`), which holds no ask.
+- **The old `reportProblem` answer needs no dual-read (BP-030).** No code reads its `decision` or
+  `reportId`: the goal's `run.mts` reads the preview's answer, which is a different `decision`;
+  no `WORKER.md` names either field; one test in `packages/workforce/test` asserts the old shape
+  and changes with it. Old answers stay in stored conversations as text a model reads, and no
+  tool takes a report id back, so hiding it leaves no follow-up call without its input.
 - **The convergence point for "no fingerprint in a conversation"** is every model-facing output
   and every line about a report: `reportProblem`'s answer, `listErrorReports`' answer,
   `sayInConversation`'s lines (`keepFiled`, `keepComment`, the new *waiting* line) and
@@ -104,7 +111,8 @@ group the same way. One rule, no error-report code in Shift Manager, but other w
 change look too. Or a group for error reports only: exactly what was asked, and nothing else
 moves, but Shift Manager learns to recognize the reporter's asks, a special case in the app.
 
-**My recommendation.** Group every lone ask by its worker. The reporter's asks then carry title,
+**My recommendation.** Group every lone ask by its worker. The narrower option, a group for
+error reports only, is the safer first version if other workers' asks should not move yet. The reporter's asks then carry title,
 source and count in their own words (D1's ask message), and Inbox stays one rule.
 
 **What would change my mind.** If the coordinator's approvals must stay as single items at the
@@ -112,6 +120,19 @@ top, because they block a turn that a person is watching, then group error repor
 
 **What being wrong costs.** A layout change in one Inbox list, inside FIX-2774's view: undone in
 a day, with no stored data to move.
+
+## Notes from review
+
+For the implementer; none of these changes the direction.
+
+- **Second look:** "Pass only `reportId`, or pass nothing and let the host receive the final link
+  target." Taken as `{ sessionId }`, the report's own session, so a host can't build a link from
+  the wrong session.
+- **Second look:** the Inbox grouping lands on FIX-2774's unfinished view; ship the reply and
+  line parts first, and the grouping when that view is in.
+- **Second look:** an opaque address (a short hash, the suspension id once known) would keep the
+  key out of the address too. Not taken: it needs a second mapping for a value the person never
+  reads.
 
 ## Analysis
 
@@ -135,3 +156,6 @@ Factual base: no counted set; no checker is built.
   the *waiting* line when the preview opens, links are host-built from the report's session, and
   "did you report X" is FIX-2793's tool. Trade-offs are drawn as tables, not SVG, to keep the
   set lean.
+- **Review round 1** — the fingerprint may sit in a link's address, never in text a person
+  reads, because the report's session holds it (Greptile, second look); the check now strips
+  link addresses.
