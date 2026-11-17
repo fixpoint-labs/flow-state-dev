@@ -1,6 +1,6 @@
 /**
- * End-to-end roundtrip — wires the adapter into the real
- * `createFlowApiRouter`, dispatches a schedule, and asserts the action
+ * End-to-end roundtrip — builds the real `createFlowApiRouter` with no
+ * adapters (the scheduled endpoint is built in), dispatches a schedule, and asserts the action
  * ran with `source: 'scheduled'` stamped on the resulting RequestRecord.
  */
 import { describe, it, expect } from "vitest";
@@ -11,11 +11,10 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   disposeFlowApiRouter
-} from "@flow-state-dev/engine";
+} from "../../../src";
 import {
   createInMemoryStores
-} from "@flow-state-dev/engine/host";
-import { createScheduledTransportAdapter } from "../src";
+} from "../../../src/host";
 import { recentTimes } from "./recent-times";
 
 /** The latest time of the monthly cron below already due. */
@@ -100,8 +99,7 @@ function buildRouter() {
 
   const router = createFlowApiRouter({
     registry,
-    stores,
-    adapters: [createScheduledTransportAdapter()]
+    stores
   });
 
   return { router, stores, registry };

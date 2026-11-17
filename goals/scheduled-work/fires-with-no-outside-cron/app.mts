@@ -10,7 +10,8 @@
  * ticked when, read from a store, never from a log.
  *
  * `scheduler` is passed through: omitted, the engine's local cron (the claim
- * under test).
+ * under test). The app passes no `adapters`: the scheduled endpoint the tick
+ * sends to is the router's own. A second flow, `plain`, declares no schedules.
  */
 import Database from "better-sqlite3";
 import { z } from "zod";
@@ -25,7 +26,6 @@ import {
 import type { JobQueueAdapter, SchedulerAdapter } from "@flow-state-dev/engine/host";
 import {
   createResourceCollectionScheduleResolver,
-  createScheduledTransportAdapter,
   defineScheduleCollection,
   type ScheduleIndex
 } from "@flow-state-dev/scheduled";
@@ -38,6 +38,8 @@ export const ORG = "acme";
 export const USER = "alice";
 export const SCHEDULE_KEY = "minutely";
 export const EVERY_MINUTE = "* * * * *";
+/** A flow the app registers with no `schedules`. */
+export const PLAIN_FLOW = "plain";
 /** The bearer the tick sends and the scheduled endpoint admits. */
 export const CRON_SECRET = "fires-with-no-outside-cron";
 
@@ -161,10 +163,19 @@ export function goalApp(options: GoalAppOptions): { app: FlowState; seed(): Prom
     }
   })() as unknown as FlowInstance;
 
+  // A registered flow with no schedules: its schedule routes must answer as an unknown flow's.
+  const plain = defineFlow({
+    kind: PLAIN_FLOW,
+    authentication: {
+      resolvePrincipal: createBearerSecretPrincipalResolver({ secret: CRON_SECRET, principal: { userId: "scheduler", orgId: ORG } })
+    },
+    actions: { wait: { inputSchema: z.object({ ms: z.number() }), block: wait } }
+  })() as unknown as FlowInstance;
+
+  // No `adapters`: the scheduled endpoint is the router's own.
   const app = createFlowState({
-    flows: [flow],
+    flows: [flow, plain],
     stores,
-    adapters: [createScheduledTransportAdapter()],
     ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
     ...(options.jobQueue === undefined ? {} : { jobQueue: options.jobQueue })
   });

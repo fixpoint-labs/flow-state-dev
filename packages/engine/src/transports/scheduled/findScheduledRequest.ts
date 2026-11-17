@@ -5,8 +5,8 @@
  * singleton its kind implies — so two copies of one definition never skip
  * each other's ticks.
  */
-import type { ActiveRequestEntry, ActiveRequestRegistry } from "@flow-state-dev/engine/host";
-import { SCHEDULED_TRANSPORT_SOURCE } from "./createScheduledTransportAdapter";
+import type { ActiveRequestEntry, ActiveRequestRegistry } from "../../stores";
+import { SCHEDULED_SOURCE } from "../../execution/transport-sources";
 
 export async function findScheduledRequest(
   registry: ActiveRequestRegistry,
@@ -16,7 +16,7 @@ export async function findScheduledRequest(
   const entries = await registry.listAll();
   for (const entry of entries) {
     if ((entry.flowId ?? entry.flowKind) !== flowId) continue;
-    if (entry.source !== SCHEDULED_TRANSPORT_SOURCE) continue;
+    if (entry.source !== SCHEDULED_SOURCE) continue;
     // Coordinate lives under the namespaced `metadata.schedule` slot (FIX-838),
     // matching what the dispatch handler stamps.
     const meta = entry.metadata as

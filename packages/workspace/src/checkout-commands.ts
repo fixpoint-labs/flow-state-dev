@@ -18,6 +18,7 @@
  * Every process goes through `./exec`, the package's one door for them.
  */
 import { runToEnd } from "./exec";
+import type { WorkspaceSetup } from "./setup";
 
 /** The most of a command's output a result keeps: its last characters. */
 export const CHECK_OUTPUT_TAIL_CHARS = 4_000;
@@ -113,6 +114,24 @@ export function checkCommandsFrom(value: string | undefined, setting: string): s
     if (problem !== undefined) throw new Error(`${setting}: ${problem}`);
   }
   return commands;
+}
+
+/**
+ * The setup command a setting names (`pnpm install --frozen-lockfile`): one
+ * command, trimmed and checked with {@link parseCheckoutCommand}, as a
+ * workspace host's `setup` takes it. It runs with no shell. For a host reading
+ * its setup from the environment, beside {@link checkCommandsFrom}.
+ *
+ * @param value The setting's value, as read.
+ * @param setting The setting's name, which a refusal starts with.
+ * @returns The setup, or `undefined` when the value is unset or blank.
+ * @throws `${setting}: <problem>` when the line can't be one command.
+ */
+export function setupCommandFrom(value: string | undefined, setting: string): WorkspaceSetup | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  const parsed = parseCheckoutCommand(value.trim());
+  if ("problem" in parsed) throw new Error(`${setting}: ${parsed.problem}`);
+  return { command: parsed.words };
 }
 
 /**

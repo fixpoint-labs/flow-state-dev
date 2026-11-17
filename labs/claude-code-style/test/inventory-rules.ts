@@ -15,8 +15,6 @@ import { fileURLToPath } from "node:url";
 /** The lab's own folder. */
 export const LAB = fileURLToPath(new URL("..", import.meta.url));
 
-/** The one module the screen reads and writes through. */
-export const READS = "src/lab.ts";
 /** The entry: it builds the one client. */
 const ENTRY = "src/main.tsx";
 

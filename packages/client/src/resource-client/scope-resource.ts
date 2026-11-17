@@ -14,6 +14,7 @@
 import type { JsonValue } from "@flow-state-dev/core/types";
 import type { RequestResult } from "../client";
 import { clientError, requireValue, seg, type Transport } from "../internal/http";
+import { followEveryPage } from "./read-every-page";
 
 /** What `client.resource` takes: a defined user or org resource (its `ref` is its key) or collection (its `pattern`). */
 export type ScopeResourceDef<TValue = JsonValue> = {
@@ -83,6 +84,12 @@ export interface ScopeCollectionHandle<TValue = JsonValue> extends ResourceSends
   readonly key: string;
   /** One page of the caller's entries, in storage-key order. */
   list(options?: { limit?: number; cursor?: string; topicPrefix?: string }): Promise<ScopeEntryPage<TValue>>;
+  /**
+   * Every one of the caller's entries, page after page to the last. Rejects
+   * with `CollectionReadStoppedError`, returning none, when the server hands
+   * back a cursor it already sent or keeps paging past 1,000 pages.
+   */
+  listAll(options?: { limit?: number; topicPrefix?: string }): Promise<ScopeEntry<TValue>[]>;
   /** One entry, by its topic or storage key. Reads nothing until a method is called. */
   entry(entry: string): ScopeEntryHandle<TValue>;
 }
@@ -172,16 +179,18 @@ export function scopeResourceHandle<TDef extends ScopeResourceDef>(
           send<{ version: number }>("delete", { entry, version: deleteOptions?.version ?? (await read()).version })
       };
     };
+    const list: ScopeCollectionHandle<TValue>["list"] = (listOptions = {}) =>
+      t.json<ScopeEntryPage<TValue>>(`${base}/entries`, undefined, {
+        userId,
+        ...(listOptions.limit !== undefined ? { limit: String(listOptions.limit) } : {}),
+        ...(listOptions.cursor !== undefined ? { cursor: listOptions.cursor } : {}),
+        ...(listOptions.topicPrefix !== undefined ? { topicPrefix: listOptions.topicPrefix } : {})
+      });
     const collection: ScopeCollectionHandle<TValue> = {
       scope,
       key,
-      list: (listOptions = {}) =>
-        t.json<ScopeEntryPage<TValue>>(`${base}/entries`, undefined, {
-          userId,
-          ...(listOptions.limit !== undefined ? { limit: String(listOptions.limit) } : {}),
-          ...(listOptions.cursor !== undefined ? { cursor: listOptions.cursor } : {}),
-          ...(listOptions.topicPrefix !== undefined ? { topicPrefix: listOptions.topicPrefix } : {})
-        }),
+      list,
+      listAll: (listOptions = {}) => followEveryPage((cursor) => list({ ...listOptions, ...(cursor === undefined ? {} : { cursor }) })),
       entry: entryHandle,
       send
     };

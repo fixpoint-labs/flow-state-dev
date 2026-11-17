@@ -57,6 +57,7 @@ export {
   checkoutCommandProblem,
   parseCheckoutCommand,
   runCheckoutCommands,
+  setupCommandFrom,
   splitCheckoutCommand,
 } from "./checkout-commands";
 export type { CheckoutCommandResult, RunCheckoutCommandsOptions } from "./checkout-commands";
@@ -105,6 +106,7 @@ export type {
 } from "./local-host";
 export { SOURCE_READ_FRESH_MS, SOURCE_READ_LIMITS } from "./source-read";
 export type { GrepDialect, SourceReadAt, SourceReadCut, SourceReadRequest, SourceReadResult } from "./source-read";
+export { listedRepository, sessionRepositorySource, type SessionRepositorySourceOptions } from "./session-repository";
 export type {
   FilesRunSource,
   RepoRunSource,

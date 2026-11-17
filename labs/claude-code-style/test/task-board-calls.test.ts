@@ -19,13 +19,13 @@ type Sent = { flow: string; action: string; input: Record<string, unknown>; sess
  * (`flow.request(id).result`) can read its answer, by the request's id, so a
  * send through any other path fails. An answer to a run's stop is recorded in `answered`.
  */
-function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Record<string, unknown> = () => ({ ok: true })) {
+function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Record<string, unknown> = () => ({ ok: true }), flowId = "agent") {
   const sent: Sent[] = [];
   const answered: { flow: string; requestId: string; body: Record<string, unknown> }[] = [];
   const outputs = new Map<string, Record<string, unknown>>();
   const client = {
     sessions: {
-      get: async (id: string) => ({ id, flowKind: "agent", flowId: "agent", state: {} }),
+      get: async (id: string) => ({ id, flowKind: "agent", flowId, state: {} }),
     },
     view: async () => ({ value: rows }),
     flow: (flow: string) => ({
@@ -122,6 +122,12 @@ describe("the lab's task actions", () => {
     ]);
   });
 
+  it("reads the board on the instance of its flow that owns the session, not the base flow", async () => {
+    const lab = fakeClient([RUNNING], undefined, "agent:desk");
+    await labCalls(lab.client).taskActions("s1").steer("t1", "Faster, please.");
+    expect(lab.sent.map((s) => s.flow)).toEqual(["agent:desk"]);
+  });
+
   it("rejects with the board's own words when it refuses", async () => {
     const lab = fakeClient([RUNNING], () => ({ ok: false, error: "Task t1 is already cancelled." }));
     await expect(labCalls(lab.client).taskActions("s1").retry("t1")).rejects.toThrow("Task t1 is already cancelled.");
@@ -141,6 +147,7 @@ const boardRow = (row: Partial<CodingBoardTask>): CodingBoardTask => ({
   landed: null,
   error: null,
   pullRequests: [],
+  runFlow: null,
   ...row,
 });
 
@@ -167,6 +174,9 @@ describe("a coding board row, as the screen draws it", () => {
   it("names the run its work is read from, once a run has started", () => {
     const run = { sessionId: "run-1", requestId: "req-1", startedAt: 5 } as CodingBoardTask["run"];
     expect(labTaskOf(boardRow({ run }), "s1")).toMatchObject({ runLink: { sessionId: "run-1", requestId: "req-1" }, run: { startedAt: 5 }, startedAt: 5 });
+    expect(labTaskOf(boardRow({ run }), "s1").runLink?.flow).toBeUndefined();
+    // The flow its run's session runs on, where the run's own stream is read.
+    expect(labTaskOf(boardRow({ run, runFlow: "coder" }), "s1").runLink).toEqual({ sessionId: "run-1", requestId: "req-1", flow: "coder" });
     expect(labTaskOf(boardRow({}), "s1").runLink).toBeUndefined();
   });
 });

@@ -11,13 +11,14 @@
  * scripted coder: a test never starts a real harness.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createElement, type ReactNode } from "react";
 import { createClient, type Client, type ClientFetch } from "@flow-state-dev/client";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import { createInProcessFetch } from "@flow-state-dev/engine";
+import { GOAL_JUDGE_QUESTION, GOAL_JUDGE_WHY_QUESTION } from "@flow-state-dev/harness-manager";
 import { pluggable, scriptedModels, waitFor, type Script } from "../../test-support/contract";
 import { openLab, type LabOptions } from "../host.mts";
 import { LabProvider, labCalls, type LabCalls, type LabProject } from "../src/lab";
@@ -52,6 +53,28 @@ export interface TestLabOptions extends Partial<Omit<LabOptions, "modelResolver"
   intercept?: (inner: ClientFetch) => ClientFetch;
   /** Make no project. */
   noProject?: boolean;
+  /** The lab may cut worktrees from the project's repository, as `CLAUDE_CODE_STYLE_REPOSITORIES` names it; unset, a run clones it. */
+  cutFromProject?: boolean;
+  /** The goal judge's answer for every coding run, read through the resolver's evaluation model; unset, no judge reads a run. */
+  judge?: { choice: "done" | "not-done" | "ask"; confidence: number };
+}
+
+/** An evaluation model that gives harness-manager's goal judge one verdict, with its confidence. */
+function judgeModel(judge: { choice: string; confidence: number }) {
+  return {
+    specificationVersion: "v4",
+    provider: "test",
+    modelId: "test/judge",
+    supportedQuestionTypes: ["choice", "score", "boolean"],
+    async doEvaluate() {
+      return {
+        answers: { [GOAL_JUDGE_QUESTION]: { type: "choice", choice: judge.choice }, [GOAL_JUDGE_WHY_QUESTION]: { type: "choice", choice: "off-target" } },
+        usage: { inputTokens: 1, outputTokens: 1 },
+        warnings: [],
+        providerMetadata: { typesafe: { confidence: { [GOAL_JUDGE_QUESTION]: judge.confidence } } },
+      };
+    },
+  };
 }
 
 /** The lab on its own host, in process. */
@@ -91,14 +114,15 @@ export async function closeLabs(): Promise<void> {
 
 /** The lab's host, in process, with its models scripted. */
 export async function openTestLab(options: TestLabOptions = {}): Promise<TestLab> {
-  const { scripts = {}, intercept, noProject, ...host } = options;
+  const { scripts = {}, intercept, noProject, cutFromProject, judge, ...host } = options;
   const data = mkdtempSync(join(tmpdir(), "ccs-lab-"));
   const repo = repository(join(data, "repo"));
   const resolver = scriptedModels(
     { "auto-title:generate": ({ said }) => ({ output: { title: firstLineOf(said) } }), ...scripts },
     () => ({ text: "Noted." }),
   ) as ModelResolver;
-  const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: [], modelResolver: resolver, scriptedStepMs: 20, ...host });
+  if (judge !== undefined) Object.assign(resolver, { resolveEvaluationModel: () => judgeModel(judge) });
+  const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: cutFromProject ? [realpathSync(repo)] : [], modelResolver: resolver, scriptedStepMs: 20, ...host });
   const inProcess = createInProcessFetch(flowState as never) as unknown as ClientFetch;
   const asked: string[] = [];
   const held = new Map<string, Promise<void>>();

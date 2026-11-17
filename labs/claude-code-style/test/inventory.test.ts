@@ -27,7 +27,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { filesUnder, hostWiring, LAB, overCaps, reachingTheServer, READS, unlistedTypes, unclassified } from "./inventory-rules";
+import { filesUnder, hostWiring, LAB, overCaps, reachingTheServer, unlistedTypes, unclassified } from "./inventory-rules";
 
 const read = (rel: string) => readFileSync(join(LAB, rel), "utf8");
 const code = (rel: string) => /\.(m?ts|tsx)$/.test(rel);
@@ -54,17 +54,11 @@ describe("the lab's inventory", () => {
     expect(unclassified()).toEqual([]);
   });
 
-  // FIX-2629 closure finding: the host and config are 367 lines before the WORKER.md tree, cap 300.
-  it.fails("keeps its flows and configuration within ER-1's caps", () => {
+  it("keeps its flows and configuration within ER-1's caps", () => {
     expect(overCaps()).toEqual([]);
   });
 
-  it("reaches the server from src/lab.ts alone: no other file imports a client value, subscribes or names a flow", () => {
-    expect(reachingTheServer(LAB, [READS])).toEqual([]);
-  });
-
-  // FIX-2629 closure finding: src/lab.ts builds the session feed and request stream, and sends, from the client itself.
-  it.fails("reaches the server from no screen file at all: src/lab.ts reads and sends through package hooks", () => {
+  it("reaches the server from no screen file at all: src/lab.ts reads and sends through package hooks", () => {
     expect(reachingTheServer()).toEqual([]);
   });
 
@@ -84,8 +78,7 @@ describe("the lab's inventory", () => {
     }
   });
 
-  // FIX-2629 closure finding: createFlowState's config is cast `as never`.
-  it.fails("keeps no host wiring a kit replaces: no workerFlows callback, no installation or hire call, no as never", () => {
+  it("keeps no host wiring a kit replaces: no workerFlows callback, no installation or hire call, no as never", () => {
     expect(hostWiring(join(LAB, "host.mts"))).toEqual([]);
   });
 

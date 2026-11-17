@@ -1,11 +1,12 @@
 /** What this run proves is `goal.md` beside this file. */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { REPO_ROOT, goalTmpDir, runGoal, stopProcessGroup } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
-import { CRON_SECRET, readLedger, type ClaimRow, type FireRow } from "./app.mts";
+import { CRON_SECRET, PLAIN_FLOW, SCHEDULE_KEY, readLedger, type ClaimRow, type FireRow } from "./app.mts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOST = join(HERE, "host.mts");
@@ -33,6 +34,10 @@ const CONTROLS: Record<string, ModulePatch[]> = {
   // The tick skips static schedules and claims indexes only, as serve()'s tick did.
   "index-only": [
     { module: "packages/engine/src/execution/schedule-tick.ts", from: String.raw`if \(schedule\.enabled === false\) continue;`, to: "continue;" }
+  ],
+  // The router leaves its built-in scheduled endpoint out: an app with no adapter line has no schedule route.
+  "no-builtin-mount": [
+    { module: "packages/engine/src/routes/createFlowApiRouter.ts", from: String.raw`createScheduledEndpointAdapter\(\),`, to: "" }
   ],
   // The local cron starts when the runtime resolves, so `fsdev run` ticks too.
   "cli-ticks": [
@@ -139,7 +144,9 @@ async function twoServers(label: string, store: Record<string, string>, failures
   const ledger = join(dir, "ledger.sqlite");
   spawnSync("mkdir", ["-p", dir]);
   const shared = { GOAL_ROLE: "serve", GOAL_LEDGER: ledger, ...store };
-  const p1 = await startHost("p1", { ...shared, GOAL_PORT: String(await freePort()), GOAL_SEED: "1" });
+  const p1Port = await freePort();
+  const p1 = await startHost("p1", { ...shared, GOAL_PORT: String(p1Port), GOAL_SEED: "1" });
+  const noLine = await scheduleRoutes(label, p1Port, failures);
   await sleep(5_000);
   const p2 = await startHost("p2", { ...shared, GOAL_PORT: String(await freePort()) });
   const children: Record<string, ChildProcess> = { p1, p2 };
@@ -204,11 +211,58 @@ async function twoServers(label: string, store: Record<string, string>, failures
 
     // a: each time some process's tick stood at fired exactly once, static and dynamic; none twice.
     gradeFiresOnce(label, fires, [...new Set(claims.map((c) => minuteOf(c.at)))], failures);
-    return `${label}: ${ticker} ticked ${before.length}, killed; ${survivor} ticked ${afterKill.length} from ${survivorFirst === undefined ? "never" : `${Math.round((survivorFirst - killAt) / 1000)} s`} later; ${fires.length} fires over ${new Set(fires.map((f) => f.nominal)).size} times`;
+    return `${label}: ${noLine}; ${ticker} ticked ${before.length}, killed; ${survivor} ticked ${afterKill.length} from ${survivorFirst === undefined ? "never" : `${Math.round((survivorFirst - killAt) / 1000)} s`} later; ${fires.length} fires over ${new Set(fires.map((f) => f.nominal)).size} times`;
   } finally {
     stopProcessGroup(p1, "SIGKILL");
     stopProcessGroup(p2, "SIGKILL");
   }
+}
+
+// ---------------------------------------------------------------------------
+// f · the schedule routes answer on a served app with no adapter line
+// ---------------------------------------------------------------------------
+/**
+ * `f`: the scheduled flow lists its static schedule; a registered flow with no
+ * schedules answers both schedule routes, with and without the secret, exactly
+ * as a flow id nobody registered does. Nothing here writes a fire.
+ */
+async function scheduleRoutes(label: string, port: number, failures: string[]): Promise<string> {
+  const base = `http://127.0.0.1:${port}/api/flows`;
+  const send = async (method: "GET" | "POST", path: string, secret: boolean) => {
+    const response = await fetch(`${base}${path}`, {
+      method,
+      headers: { "Content-Type": "application/json", ...(secret ? { Authorization: `Bearer ${CRON_SECRET}` } : {}) },
+      ...(method === "POST" ? { body: "{}" } : {})
+    });
+    return { status: response.status, body: await response.text() };
+  };
+  const listed = await send("GET", "/digest/schedules", true);
+  let ids: string[] = [];
+  try {
+    ids = ((JSON.parse(listed.body) as { static?: Array<{ id: string }> }).static ?? []).map((entry) => entry.id);
+  } catch {
+    // not JSON: graded below
+  }
+  if (listed.status !== 200 || !ids.includes(SCHEDULE_KEY)) {
+    failures.push(`f:no-line — ${label}: GET /api/flows/digest/schedules answered ${listed.status} ${listed.body.slice(0, 200)}, not 200 listing "${SCHEDULE_KEY}"`);
+  }
+  const unused = `never-registered-${process.pid}`;
+  let compared = 0;
+  for (const [method, rest] of [["GET", "/schedules"], ["POST", `/schedules/${SCHEDULE_KEY}/dispatch`]] as const) {
+    for (const secret of [true, false]) {
+      const plain = await send(method, `/${PLAIN_FLOW}${rest}`, secret);
+      const unknown = await send(method, `/${unused}${rest}`, secret);
+      compared += 1;
+      const wanted = JSON.stringify({ error: "flow_not_found" });
+      if (plain.status !== 404 || plain.body !== wanted || plain.status !== unknown.status || plain.body !== unknown.body) {
+        failures.push(
+          `f:no-line — ${label}: ${method} ${PLAIN_FLOW}${rest} ${secret ? "with" : "without"} the secret answered ${plain.status} ${plain.body.slice(0, 200)}; ` +
+            `an unused flow id answered ${unknown.status} ${unknown.body.slice(0, 200)}; both must be 404 ${wanted}`
+        );
+      }
+    }
+  }
+  return `schedules listed ${listed.status} [${ids.join(", ")}], ${compared} no-schedule probes matched an unused id`;
 }
 
 // ---------------------------------------------------------------------------
@@ -341,6 +395,64 @@ async function onePath(failures: string[]) {
   return `${Object.values(REMOVED).flat().length + REMOVED_ENTRIES.length} removed names and entries checked`;
 }
 
+// ---------------------------------------------------------------------------
+// g · one way to mount: no package exports the adapter factory, the engine imports no scheduled
+// ---------------------------------------------------------------------------
+const GONE = "createScheduledTransportAdapter";
+/** The packages the factory could be published from: where it was, and where its code went. */
+const MOUNT_PACKAGES = ["packages/scheduled", "packages/engine"];
+/** The subpaths that import vitest, so they load only under a test runner. */
+const TEST_RUNNER_ENTRIES = new Set(["./testing"]);
+
+/** Every `.ts`/`.tsx`/`.mts` file under `dir`. */
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) return name === "node_modules" || name === "dist" ? [] : sourceFiles(path);
+    return /\.(ts|tsx|mts)$/.test(name) ? [path] : [];
+  });
+}
+
+async function oneWay(failures: string[]) {
+  const found: string[] = [];
+  let entries = 0;
+  // Import each published entry of the two packages and look for the name.
+  for (const pkg of MOUNT_PACKAGES) {
+    const manifest = JSON.parse(readFileSync(join(REPO_ROOT, pkg, "package.json"), "utf8")) as { name: string; exports: Record<string, unknown> };
+    for (const sub of Object.keys(manifest.exports)) {
+      if (sub.includes("*") || sub.endsWith(".json")) continue;
+      const entry = sub === "." ? manifest.name : `${manifest.name}/${sub.slice(2)}`;
+      entries += 1;
+      try {
+        const mod = (await import(entry)) as Record<string, unknown>;
+        if (mod[GONE] !== undefined) found.push(`${entry} exports ${GONE}`);
+      } catch (error) {
+        // Only an entry that loads under a test runner alone (`./testing` imports vitest) is read
+        // from source instead; any other entry that fails to load fails the goal.
+        if (!TEST_RUNNER_ENTRIES.has(sub)) {
+          found.push(`${entry} fails to load: ${error instanceof Error ? error.message : String(error)}`);
+          continue;
+        }
+        const target = manifest.exports[sub] as string | { default?: string };
+        const source = typeof target === "string" ? target : target.default;
+        if (source === undefined) throw new Error(`setup: ${entry} neither imports nor names a source file`);
+        if (readFileSync(join(REPO_ROOT, pkg, source), "utf8").includes(GONE)) found.push(`${entry} (${source}) names ${GONE}`);
+      }
+    }
+  }
+  // Every other package: no source file under src names it at all.
+  const packages = readdirSync(join(REPO_ROOT, "packages")).filter((name) => statSync(join(REPO_ROOT, "packages", name, "src"), { throwIfNoEntry: false })?.isDirectory());
+  for (const name of packages) {
+    for (const file of sourceFiles(join(REPO_ROOT, "packages", name, "src"))) {
+      if (readFileSync(file, "utf8").includes(GONE)) found.push(`${file.slice(REPO_ROOT.length + 1)} names ${GONE}`);
+    }
+  }
+  const engineImports = sourceFiles(join(REPO_ROOT, "packages/engine/src")).filter((file) => /["']@flow-state-dev\/scheduled(\/[^"']*)?["']/.test(readFileSync(file, "utf8")));
+  for (const file of engineImports) found.push(`${file.slice(REPO_ROOT.length + 1)} imports @flow-state-dev/scheduled`);
+  if (found.length > 0) failures.push(`g:one-way — ${found.join("; ")}`);
+  return `${entries} entries imported, ${packages.length} packages' sources read for ${GONE}`;
+}
+
 await runGoal(async (failures, tell) => {
   const pgUrl = process.env.GOAL_PG_URL;
   const legs: Array<Promise<string | undefined>> = [
@@ -348,7 +460,8 @@ await runGoal(async (failures, tell) => {
       fsdevRun(failures),
       vercelRoute(failures, tell),
       jobQueue(failures, tell),
-      onePath(failures)
+      onePath(failures),
+      oneWay(failures)
     ];
   if (pgUrl !== undefined && pgUrl !== "") legs.push(twoServers("postgres", { GOAL_PG_URL: pgUrl }, failures, tell));
   const evidence = await Promise.all(legs);

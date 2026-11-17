@@ -1,6 +1,6 @@
 /**
- * Postgres-backed `ScheduleIndex` implementation for the
- * `@flow-state-dev/scheduled` polling tick.
+ * Postgres-backed `ScheduleIndex` implementation (`@flow-state-dev/scheduled`'s
+ * contract) for the engine's schedule tick.
  *
  * The factory requires a `QueryExecutor` that implements `beginTx()`
  * — `claimDue` runs `SELECT ... FOR UPDATE SKIP LOCKED` followed by a

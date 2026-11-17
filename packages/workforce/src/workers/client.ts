@@ -31,13 +31,18 @@ import {
   type WorkerSessionCriteria
 } from "./derive-session-id";
 import { ownerSegment } from "@flow-state-dev/core/types";
+import type { FileContent } from "@flow-state-dev/core/items";
 import { WORKSTREAMS_PATTERN, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
 import {
   FILING_SESSION_STATE_KEY,
   ROSTER_FLOW,
+  SET_SESSION_FIELDS_ACTION,
   SET_WORK_PROJECT_ACTION,
+  WORKER_ID_STATE_KEY,
   WORKERS_PATTERN
 } from "./keys";
+import { RESPOND_ACTION } from "../worker-door";
+import { TURN_ACTIONS } from "./turn-actions";
 import { watchView } from "@flow-state-dev/client/internal";
 import { rosterView } from "./roster-view-ref";
 import { STANDING_RULES_ACTION } from "../standing-rules/keys";
@@ -187,6 +192,37 @@ export interface WorkforceClient {
     options?: { sessionId?: string }
   ): Promise<SetWorkProjectOutput>;
   /**
+   * Open a new session with `worker` on its flow, at a fresh id: another
+   * conversation beside the user's others, where {@link ensureWorkerSession}
+   * finds or makes the one at the derived address. With `fields`, the server
+   * writes the app's session fields (the installation's `sessionFields`) once,
+   * through the worker flow's `setSessionFields`, before this resolves; a
+   * refused field rejects, naming it, and the session stays without it.
+   * Throws when the worker isn't on the user's roster.
+   */
+  startSession(worker: string, options?: { fields?: Record<string, unknown> }): Promise<SessionSummary>;
+  /**
+   * Send `message` to the user's session `sessionId` through the worker
+   * flow's door (`respond`), with any uploaded `attachments`. Resolves once
+   * the server took the send. With `{ stream: true }` it resolves to the
+   * send's streamed `Response` instead, for a screen showing the answer as it
+   * is written (a session feed's `followResponse`), and rejects, naming the
+   * status, when the server refused it.
+   */
+  send(sessionId: string, message: string, options?: { attachments?: readonly FileContent[] }): Promise<void>;
+  send(sessionId: string, message: string, options: { attachments?: readonly FileContent[]; stream: true }): Promise<Response>;
+  /**
+   * Stop every turn of session `sessionId` running now (its in-progress
+   * requests of `TURN_ACTIONS`, oldest first), not one started after. A turn
+   * that ended meanwhile is no failure; one that went on past the stop (an
+   * answer resumed it first) rejects, asking for another stop. Resolves to
+   * the ids of the turns it stopped, for a screen that shows the stop until
+   * each has ended.
+   */
+  stopTurns(sessionId: string): Promise<string[]>;
+  /** Run the turn `requestId` of session `sessionId` again, through its retry route. */
+  retryTurn(sessionId: string, requestId: string): Promise<void>;
+  /**
    * Hire a worker of the user's own, through the roster flow's `hire`. It is
    * on {@link roster} at once, and its first turn runs on its row: nothing is
    * registered and nothing restarts. Rejects, writing nothing, for a standard
@@ -230,6 +266,9 @@ function stateOf(session: SessionSummary): Record<string, unknown> {
 function mostRecent<T extends { updatedAt: number; createdAt: number }>(rows: readonly T[]): T | undefined {
   return [...rows].sort(byRecent)[0];
 }
+
+/** How many of a session's requests a stop reads: its running turns, and a turn's record after a 409. */
+const RUNNING_TURNS = 50;
 
 /** How often an action run through the client checks whether its request ended, and how long it waits. */
 const ACTION_POLL_MS = 100;
@@ -355,6 +394,15 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
     return leadSession === null ? undefined : matching.find((row) => row.id === leadSession);
   };
 
+  /**
+   * The flow session `sessionId` runs on, as the server records it: the instance that owns it, or its
+   * base flow for a session written before instance ownership.
+   */
+  const flowOfSession = async (sessionId: string): Promise<string> => {
+    const session = await sessions.get(sessionId);
+    return session.flowId ?? session.flowKind;
+  };
+
   /** Run one action in `sessionId` on `flow` and return its output, or reject with the reason it failed. */
   const runIn = async (flow: string, sessionId: string, action: string, input: unknown): Promise<unknown> => {
     const started = await fsd.flow(flow).send(action, input, { sessionId });
@@ -434,6 +482,47 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
       const sessionId = setOptions?.sessionId ?? (await client.ensureWorkerSession({ worker })).id;
       const flow = flowOf(await readRoster(), worker);
       return (await runIn(flow, sessionId, SET_WORK_PROJECT_ACTION, { project, worker })) as SetWorkProjectOutput;
+    },
+    startSession: async (worker, startOptions) => {
+      const flow = flowOf(await readRoster(), worker);
+      const created = await fsd.flow(flow).createSession({ state: { [WORKER_ID_STATE_KEY]: worker } });
+      const fields = startOptions?.fields;
+      if (fields !== undefined && Object.keys(fields).length > 0) await runIn(flow, created.id, SET_SESSION_FIELDS_ACTION, { worker, fields });
+      return created;
+    },
+    send: (async (sessionId: string, message: string, sendOptions: { attachments?: readonly FileContent[]; stream?: true } = {}) => {
+      const flow = fsd.flow(await flowOfSession(sessionId));
+      const attachments = [...(sendOptions.attachments ?? [])];
+      if (sendOptions.stream !== true) {
+        await flow.send(RESPOND_ACTION, { message }, { sessionId, attachments });
+        return;
+      }
+      const response = await flow.send(RESPOND_ACTION, { message }, { sessionId, stream: true, attachments });
+      if (!response.ok) throw new Error(`The send was refused (${response.status}).`);
+      return response;
+    }) as WorkforceClient["send"],
+    stopTurns: async (sessionId) => {
+      // The running requests, not a turns view: a view lists a session's newest turns only, and a turn
+      // still running behind them is stopped all the same.
+      const turns = (await sessions.requests(sessionId, { status: "in_progress", limit: RUNNING_TURNS }))
+        .filter((request) => TURN_ACTIONS.includes(request.actionName))
+        .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
+      const flow = fsd.flow(await flowOfSession(sessionId));
+      for (const turn of turns) {
+        await flow
+          .request(turn.id)
+          .abort()
+          .catch(async (error: unknown) => {
+            // A 409 is a turn that ended meanwhile, or one an answer resumed first: the record decides.
+            if ((error as { status?: number }).status !== 409) throw error;
+            const now = (await sessions.requests(sessionId, { limit: RUNNING_TURNS })).find((request) => request.id === turn.id);
+            if (now?.status === "in_progress") throw new Error("The turn went on before the stop reached it. Stop it again.");
+          });
+      }
+      return turns.map((turn) => turn.id);
+    },
+    retryTurn: async (sessionId, requestId) => {
+      await fsd.flow(await flowOfSession(sessionId)).request(requestId).retry();
     },
     hire: (input) => rosterWrite<{ id: string; flow: string }>("hire", input),
     fork: (from, id) => rosterWrite<{ id: string; flow: string }>("fork", { from, id }),

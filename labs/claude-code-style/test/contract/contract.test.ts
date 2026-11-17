@@ -427,7 +427,7 @@ describe("the lab's screen reads", () => {
       await screen.calls().send(id, ASK.long);
       await view.until((v) => v.running);
       target.refuseNextAbort();
-      await expect(screen.calls().interrupt(id)).rejects.toThrow(/Press Stop again/);
+      await expect(screen.calls().interrupt(id)).rejects.toThrow(/went on before the stop reached it\. Stop it again/);
       // The record still reads running: no stopped line, and Stop is offered again.
       await waitFor(300);
       const after = view.latest()!;

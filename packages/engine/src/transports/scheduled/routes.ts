@@ -15,20 +15,17 @@
  * claimed in between. A body `idempotencyKey` is refused with 400.
  */
 import {
-  ConcurrencyRejectedError,
-  resolveSharedUserCellKey,
-  type InboundRequestEnvelope,
-  type InboundTransportHost
-} from "@flow-state-dev/engine/host";
-import { PrincipalResolutionError } from "@flow-state-dev/engine";
-import { type ResolvedPrincipal } from "@flow-state-dev/core/types";
-import {
   validateScheduleConfig,
+  type FlowInstance,
+  type ResolvedPrincipal,
   type ScheduleConfig,
   type ScheduleResolutionStores,
   type SchedulesConfig
 } from "@flow-state-dev/core/types";
-import { SCHEDULED_TRANSPORT_SOURCE } from "./createScheduledTransportAdapter";
+import { SCHEDULED_SOURCE as SCHEDULED_TRANSPORT_SOURCE } from "../../execution/transport-sources";
+import { resolveSharedUserCellKey } from "../../stores";
+import { ConcurrencyRejectedError, PrincipalResolutionError } from "../errors";
+import type { InboundRequestEnvelope, InboundTransportHost } from "../types";
 import { findScheduledRequest } from "./findScheduledRequest";
 import { claimScheduledTime, firedRecordAddress, scheduledTimeOf } from "./scheduledTime";
 
@@ -60,7 +57,7 @@ export async function handleDispatch(
     return jsonResponse(400, { error: "invalid_schedule_id" });
   }
 
-  const flow = host.registry.get(flowKind);
+  const flow = registeredScheduledFlow(host, flowKind);
   if (!flow) {
     return jsonResponse(404, { error: "flow_not_found" });
   }
@@ -115,11 +112,11 @@ export async function handleDispatch(
   // the row it guards.
   const userStorageKey = (userId: string, orgId: string) => resolveSharedUserCellKey(userId, orgId, flowKind);
 
-  const schedules = (flow as { schedules?: SchedulesConfig }).schedules;
-  let schedule: ScheduleConfig | null = schedules?.static?.[scheduleId] ?? null;
+  const schedules = flow.schedules;
+  let schedule: ScheduleConfig | null = schedules.static?.[scheduleId] ?? null;
   let origin: "static" | "dynamic" = "static";
 
-  if (!schedule && schedules?.resolve) {
+  if (!schedule && schedules.resolve) {
     try {
       const resolved = await schedules.resolve(scheduleId, {
         flowKind,
@@ -351,7 +348,7 @@ export async function handleList(
   host: InboundTransportHost
 ): Promise<Response> {
   const flowKind = ctx.params.flowKind ?? "";
-  const flow = host.registry.get(flowKind);
+  const flow = registeredScheduledFlow(host, flowKind);
   if (!flow) {
     return jsonResponse(404, { error: "flow_not_found" });
   }
@@ -381,9 +378,9 @@ export async function handleList(
     throw err;
   }
 
-  const schedules = (flow as { schedules?: SchedulesConfig }).schedules;
+  const schedules = flow.schedules;
   const staticEntries: ListedStaticSchedule[] = [];
-  if (schedules?.static) {
+  if (schedules.static) {
     for (const [id, schedule] of Object.entries(schedules.static)) {
       staticEntries.push({
         id,
@@ -398,10 +395,31 @@ export async function handleList(
 
   const body: ListResponseBody = {
     static: staticEntries,
-    dynamic: { provided: typeof schedules?.resolve === "function" }
+    dynamic: { provided: typeof schedules.resolve === "function" }
   };
 
   return jsonResponse(200, body);
+}
+
+// FIX-2753.
+/**
+ * The registered flow `flowKind` names, only when it declares `schedules`. The
+ * endpoint is mounted on every app, so a flow with none answers as an unknown
+ * flow does, the same bytes, before the body is read or any principal
+ * resolver runs: an app with no schedules never sees a `scheduled` call, and
+ * the route can't confirm an instance a caller can't see.
+ */
+function registeredScheduledFlow(
+  host: InboundTransportHost,
+  flowKind: string
+): (FlowInstance & { schedules: SchedulesConfig }) | undefined {
+  const flow = host.registry.get(flowKind);
+  return hasSchedules(flow) ? flow : undefined;
+}
+
+/** Whether `flow` is registered and declares `schedules`. */
+function hasSchedules(flow: FlowInstance | undefined): flow is FlowInstance & { schedules: SchedulesConfig } {
+  return flow?.schedules !== undefined;
 }
 
 function parseDispatchBody(raw: Uint8Array): DispatchBody {

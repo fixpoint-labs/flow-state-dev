@@ -3,7 +3,6 @@ import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { formatScheduleId } from "@flow-state-dev/core";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
@@ -92,7 +91,6 @@ function boot(declared: Declared[], stores: ReturnType<typeof inMemoryStores>, h
   return bootSubscriptionsHost({
     // The harness types its stores from the engine source; this file imports the built package.
     stores: stores as never,
-    adapters: [createScheduledTransportAdapter()],
     hire: { routines: { providers: [github], declared: declared as never } },
     ...(hold === undefined ? {} : { hold })
   });

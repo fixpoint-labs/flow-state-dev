@@ -107,19 +107,16 @@ export default support();
 
 `authentication` lets the clock in: it accepts calls bearing your `CRON_SECRET` as `system`, as in [Run on a schedule with Vercel Cron](./vercel-cron.md). The handler itself runs as the schedule's owner. `resolveUser` is your own auth, returning a verified `userId` and `orgId` ([Auth and tenancy](../../concepts/auth-and-tenancy.md)).
 
-The clock needs no code of yours. With no `scheduler` option, `createFlowState` runs one in any process that serves the app. Each minute it fires every due schedule of every flow, static and dynamic. Across servers sharing a store, one process ticks and each scheduled time fires once. It does not run under `fsdev run`, so a schedule made in a one-off run fires once a server is up. The scheduled adapter mounts the route the clock calls:
+The clock needs no code of yours. With no `scheduler` option, `createFlowState` runs one in any process that serves the app. Each minute it fires every due schedule of every flow, static and dynamic. Across servers sharing a store, one process ticks and each scheduled time fires once. It does not run under `fsdev run`, so a schedule made in a one-off run fires once a server is up. The route the clock calls is always there, so the app is only its flows and stores:
 
 ```ts title="fsdev.config.ts"
 import { createFlowState } from "@flow-state-dev/engine";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import support from "./src/flows/support/flow";
 
 export default createFlowState({
   flows: [support],
   stores: sqliteStores({ filename: "data/support.sqlite" }),
-  // Required: createFlowState throws on startup without it.
-  adapters: [createScheduledTransportAdapter()],
 });
 ```
 

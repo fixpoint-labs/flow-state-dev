@@ -1102,9 +1102,6 @@ importers:
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../../packages/react
-      '@flow-state-dev/scheduled':
-        specifier: workspace:*
-        version: link:../../packages/scheduled
       '@flow-state-dev/store-sqlite':
         specifier: workspace:*
         version: link:../../packages/store-sqlite
@@ -1135,9 +1132,6 @@ importers:
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@types/better-sqlite3':
-        specifier: ^7.6.0
-        version: 7.6.13
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13
@@ -1150,9 +1144,6 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^5.0.0
         version: 5.1.4(supports-color@8.1.1)(vite@7.3.1(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0))
-      better-sqlite3:
-        specifier: ^11.0.0
-        version: 11.10.0
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1321,9 +1312,6 @@ importers:
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../../packages/react
-      '@flow-state-dev/scheduled':
-        specifier: workspace:*
-        version: link:../../packages/scheduled
       '@flow-state-dev/store-sqlite':
         specifier: workspace:*
         version: link:../../packages/store-sqlite
@@ -2037,9 +2025,6 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
-      '@flow-state-dev/engine':
-        specifier: workspace:*
-        version: link:../engine
       cron-parser:
         specifier: ^5.5.0
         version: 5.5.0
@@ -2047,9 +2032,6 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
-      '@flow-state-dev/testing':
-        specifier: workspace:*
-        version: link:../testing
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13
@@ -2108,9 +2090,6 @@ importers:
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../react
-      '@flow-state-dev/scheduled':
-        specifier: workspace:*
-        version: link:../scheduled
       '@flow-state-dev/store-sqlite':
         specifier: workspace:*
         version: link:../store-sqlite

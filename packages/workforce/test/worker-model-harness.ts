@@ -120,6 +120,12 @@ function workerFlow(flow: string, installation: WorkerInstallation) {
     resources: { ...installation.resources, teamNotes },
     execute: async (input, ctx): Promise<TurnAnswer> => {
       const worker = await installation.resolveWorker(ctx, flow);
+      // "wait" holds the turn until it is stopped, for a test of a running turn.
+      if (input.message === "wait") {
+        await new Promise((resolve) => (ctx.signal.aborted ? resolve(undefined) : ctx.signal.addEventListener("abort", resolve, { once: true })));
+        throw new DOMException("The turn was stopped.", "AbortError");
+      }
+      if (input.message === "fail") throw new Error("The turn failed.");
       if (input.message.startsWith("share:")) {
         await writeShared(ctx as never, "teamNotes", input.message.slice("share:".length), { text: input.message });
       }

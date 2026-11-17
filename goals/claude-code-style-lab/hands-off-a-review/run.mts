@@ -123,7 +123,12 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     const cardFor = (taskId: string) => main.locator(`[data-entry="thread"][data-task-id="${taskId}"]`);
     // A thread's view is a sheet over the main thread.
     const threadView = () => page.locator('[role="dialog"][aria-label^="Task: "]');
-    const back = () => page.getByRole("button", { name: "Back to tasks" }).click().catch(() => undefined);
+    // Back to the main thread: close the thread's sheet with its Close button, as a person does. The sheet covers the
+    // main thread, its cards included, so a step that clicks a card waits for the sheet to go.
+    const back = async () => {
+      await threadView().getByRole("button", { name: "Close", exact: true }).click();
+      await threadView().waitFor({ state: "hidden" });
+    };
 
     await box.fill(fixture.ask);
     await box.press("Enter");

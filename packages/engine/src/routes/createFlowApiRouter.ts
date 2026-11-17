@@ -2,7 +2,7 @@
  * Catch-all route adapter for framework-owned `/api/flows/[...path]` endpoints.
  *
  * The router is the host: it builds an `InboundTransportHost`, mounts the
- * built-in `HttpTransportAdapter`, plus any additional adapters supplied
+ * built-in `HttpTransportAdapter` and scheduled endpoint, plus any additional adapters supplied
  * via the `adapters` option, and exposes the merged route table as the
  * canonical `{ GET, POST, PATCH, DELETE }` dispatcher. The public API
  * shape and behavior is unchanged for callers that don't pass `adapters`.
@@ -33,6 +33,7 @@ import {
   createHttpTransportAdapter,
   HTTP_TRANSPORT_SOURCE
 } from "../transports/http/createHttpTransportAdapter";
+import { createScheduledEndpointAdapter } from "../transports/scheduled/createScheduledEndpointAdapter";
 import { TransportRouteCollisionError } from "../transports/errors";
 import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
 import { internalEntriesFrom } from "../execution/request-recovery";
@@ -138,7 +139,7 @@ export type CreateFlowApiRouterOptions = {
   // FIX-438.
   /**
    * Additional inbound transport adapters mounted alongside the built-in
-   * HTTP adapter. Routes from every adapter merge into the returned
+   * HTTP adapter and scheduled endpoint. Routes from every adapter merge into the returned
    * `{ GET, POST, PATCH, DELETE }` dispatcher; path collisions throw a
    * `TransportRouteCollisionError` at construction time.
    */
@@ -600,8 +601,11 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   const httpAdapter = createHttpTransportAdapter({
     handle: handlers.handle
   });
+  // FIX-2753: the scheduled endpoint is built in too, on every app, so a flow
+  // with `schedules` (registered now or later) needs no adapter line.
   const allAdapters: InboundTransportAdapter[] = [
     httpAdapter,
+    createScheduledEndpointAdapter(),
     ...(options.adapters ?? [])
   ];
   const allBindings: AdapterBindings[] = allAdapters.map((adapter) => ({

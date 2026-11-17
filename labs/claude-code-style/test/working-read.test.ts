@@ -94,7 +94,7 @@ const until = async (check: () => boolean) => {
 afterEach(cleanup);
 
 /** A coding task the board names as running in `run1`, as request `requestId`. */
-const running = (requestId: string): LabTask => ({ id: "t1", title: "Fix it", goal: "Fix it", status: "in_progress", harness: "claude-code", runLink: { sessionId: "run1", requestId } });
+const running = (requestId: string): LabTask => ({ id: "t1", title: "Fix it", goal: "Fix it", status: "in_progress", harness: "claude-code", runLink: { sessionId: "run1", requestId, flow: "f" } });
 
 /** Every work value the hook hands back, in order, deduped by identity. */
 function watch(h: ReturnType<typeof host>, task: LabTask) {

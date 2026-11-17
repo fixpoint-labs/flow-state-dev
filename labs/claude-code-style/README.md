@@ -114,6 +114,7 @@ are read from the environment, all optional:
 | Setting | Default | What it is |
 |---|---|---|
 | `CLAUDE_CODE_STYLE_MODEL` | `openai/gpt-5.4` | The model every worker answers with |
+| `CLAUDE_CODE_STYLE_UTILITY_MODEL` | `openai/gpt-6-luna` | The smaller model for background work: session titles, and a consult of another conversation (`intent/utility`) |
 | `CLAUDE_CODE_STYLE_DATA` | `.fsdev/claude-code-style` | The SQLite file, and each coding run's worktree under `runs/` |
 | `CLAUDE_CODE_STYLE_REPOSITORIES` | the repository the lab starts in | The repositories coding runs work in a worktree of, as paths separated by `:` |
 | `CLAUDE_CODE_STYLE_USER` | `u_lab` | The person the pages are served for |
@@ -121,7 +122,38 @@ are read from the environment, all optional:
 | `CLAUDE_CODE_STYLE_SETUP` | none | One command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`, with no shell |
 | `CLAUDE_CODE_STYLE_HARNESS` | the harness each coder names | `stub` runs every coding task on harness-manager's scripted coder, with no model, for a goal check |
 | `CLAUDE_CODE_STYLE_HARNESS_STEP_MS` | `2000` | With `stub`, the pause before each of the scripted coder's five steps |
+| `CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS` | one minute | With `stub`, how long a silent request waits before the server takes it as interrupted, so a goal can read a dead run's row before the board takes it back |
+| `CLAUDE_CODE_STYLE_CHECKS` | none | The commands a coding run that changed files must pass in its worktree, `;`-separated, each one command with no shell; a shell operator stops the lab at start |
 | `GITHUB_TOKEN` | what `gh auth token` answers at start | The token a routine that follows a GitHub pull request reads GitHub with, for `CLAUDE_CODE_STYLE_USER` alone; with none, GitHub routines are refused |
+| `GOAL_CONTROL`, `GOAL_FLOWS` | unset | A goal check's alone: `no-repository-check` leaves the project repository check off, `first-repository` answers every run the first listed repository, and `GOAL_FLOWS` names a module whose default export lists the goal's own flows |
+
+### The host
+
+`fsdev.config.mts` reads the settings above and calls `openLab` in `host.mts`, which puts the
+server together from package pieces; the screen tests call `openLab` too, with a scripted model
+(`test/lab-host.ts`), so `src/lab.ts`'s hooks run over the same host the page does.
+
+- `desk.main`, the session-mode main worker, is on the built-in `agent` flow with
+  `answerAgain: true`: a background result that settles while its turn runs is taken into that
+  turn. `desk.researcher` and `desk.thread` are on `agent` too; `desk.lead` is on the built-in
+  `coordinator` flow.
+- A session works in a repository: the workforce kit's one session field, `repository`
+  (`flows/session-repository.mts`), which the server writes when the session opens and every
+  hand-over carries down to the tasks it files. The run source is the workspace's
+  `sessionRepositorySource` over that field: a repository the lab lists runs in a worktree of it,
+  any other `file://` one in a clone once the workspace host's `checkRepository` passes, and a
+  session with none is refused.
+- The `agent` flow carries `projectSourceCapability` over the same host the coding runs use, so
+  a worker whose file names its `read` preset reads the session's repository itself.
+- `desk.coder` and `desk.thread-coder` are on the harness kit's coding worker flow, `coder`; only
+  `desk.thread-coder` waits for your review. The harness kit's `harnesses` flow serves which
+  coding harnesses can run on this machine.
+- `projects` (`flows/projects.mts`, the lab's own) lists and creates the projects the picker
+  offers and declares your pins and dismissals (`flows/user-marks.mts`). A project's repository
+  is checked when it is made, by the same `checkRepository`.
+- Routines: the routine tools ride on every worker, polls and clock routines tick from
+  `sqliteScheduleIndex` files of their own in the data folder, and GitHub is workforce's
+  `operatorGitHub` on the operator's token, for the operator alone.
 
 **Routines.** Every conversation worker (the main worker, the researcher, a thread and its lead)
 can follow a GitHub pull request for you, or run something on a clock. Ask in words: *"Follow
@@ -177,38 +209,42 @@ through scenarios (a result that lands mid-turn, a failed turn, a held question 
 stop, a lapsed connection). A component's own test that draws one screen from data it names stands
 in for the server at the client's fetch (`test/stub-server.ts`); the screen still reads through
 `src/lab.ts`. The inventory test (`test/inventory.test.ts`) holds the app to configuration, screens
-and small flows: no adapter, nothing of the app's in `workforce/`, every file classed and within
-FIX-2152 ER-1's caps, no screen file that reaches the server itself, no hand-written type for a row
-a view returns, and no host wiring a kit replaces. Its rules live in `test/inventory-rules.ts`, which
-the epic's closure goal (`goals/kits/an-app-is-config-ui-and-small-flows/`) grades too. A rule the
-lab doesn't meet yet is an `it.fails`.
+and small flows: no adapter, nothing of the app's in `workforce/`, every file classed, at most three
+flows of under 200 lines each, at most 300 lines of configuration (the `WORKER.md` tree included), no screen file
+that reaches the server itself (`src/lab.ts` included: it imports no client value and calls no
+`.subscribe(` or `.flow(`), no hand-written type for a row a view returns, and no host wiring a kit
+replaces. Its rules live in `test/inventory-rules.ts`, which the epic's closure goal
+(`goals/kits/an-app-is-config-ui-and-small-flows/`) grades too. A rule the lab doesn't meet yet is
+an `it.fails`.
 
 ## How the screen reaches the package
 
-Everything the screen reads and writes goes through `src/lab.ts`: hooks over the kit packages'
-views and direct reads, and the calls the screen makes, each a package call. `LabProvider` holds the
-one client, which `src/main.tsx` builds.
+Everything the screen reads and writes goes through `src/lab.ts`: thin wrappers over
+`@flow-state-dev/react`'s hooks (`useView`, `useSessionFeed`, `useRequestStream`, `useResource`)
+on the kit packages' views and direct reads, and the calls the screen makes, each a package call
+(workforce's client, orchestration's inbox client). `LabProvider` holds the one client, which
+`src/main.tsx` builds.
 
 | The screen | Package piece |
 |---|---|
 | The sessions list (`useSessions`) | workforce's worker sessions view, `workerSessionsViewRef()`, per mode's worker: each row's title, whether a turn runs, its project from `state.workProjectId`, and the tasks that wait on you, less the failures you dismissed |
-| *New session* and a session's project | a session of `desk.main`'s flow, then `setWorkProject`, then workforce's `setSessionFields` with the project's repository: the session's `repository` (`flows/session-repository.mts`), which the host's run source reads |
+| *New session* and a session's project | workforce's client: `startSession(worker, { fields })` with the project's repository, the session's `repository` (`flows/session-repository.mts`) that the host's run source reads, then `setWorkProject` |
 | The project picker and *New project* | the projects collection, read by scope, and its `createProject` and `checkRepository` (`flows/projects.mts`) |
 | The picker's harness chips | the harness kit's `harnesses` flow's `readiness` view, read with no session |
-| Sending and the thread (`useThread`) | the `respond` action; the session's message, tool and error items on the client's `sessionFeed`; its turns (running, stopped, failed, and which a Retry may run again) from workforce's session turns view, `sessionTurnsViewRef()` |
+| Sending and the thread (`useThread`) | workforce's client `send`, streamed into the open thread; the session's message, tool and error items on react's `useSessionFeed`; its turns (running, stopped, failed, and which a Retry may run again) from workforce's session turns view, `sessionTurnsViewRef()` |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the repository's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host and its run source, the session's repository; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
-| Interrupting | aborting the turns running when you press Stop; the thread then shows the registry's `request-recovery` stopped line after that turn, with the count of background work still running from the session stream's runs |
-| A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery` (installed in `src/components/flow-state/`); Retry is the client's `request(id).retry()`, on the newest turn only |
+| Interrupting | workforce's client `stopTurns`: the turns running when you press Stop; the thread then shows the registry's `request-recovery` stopped line after that turn, with the count of background work still running from the session stream's runs |
+| A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery` (installed in `src/components/flow-state/`); Retry is workforce's client `retryTurn`, on the newest turn only |
 | The tasks pane and the board (`useTasks`) | harness-manager's coding board view, `codingBoardViewRef()`, at user scope: each row with its open holds and where their answers go, its harness, how its review ended, where its work landed, why it failed, and the pull requests it waits on |
-| A task's work (`useTaskWork`) | the items of the task's run session on `sessionFeed`; while it runs, the call in flight from the run request's own stream, and the plan its harness recorded, from harness-manager's recorded work view, `recordedWorkViewRef()`, which also gives each pull request's link |
+| A task's work (`useTaskWork`) | the items of the task's run session on `useSessionFeed`; while it runs, the call in flight from the run request's own stream (react's `useRequestStream`, reconnecting, on the flow the board's row names in `runFlow`), and the plan its harness recorded, from harness-manager's recorded work view, `recordedWorkViewRef()`, which also gives each pull request's link |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
 | A thread card, and *Sent to a task* | the lead's `createTask` call in the session's items |
 | The board's columns | each row's status and its first open hold, plus your pins and dismissals |
 | A coding thread's review card | the `data` of the review stop (`suspension` item) in the thread's run session: branch, commits, subjects and the judge's verdict |
 | Answering in a thread | the Inbox client's `answerOne` on its open question, from the row's holds; with none, the board's `steer` |
 | *Resolve*, *Open a PR*, *Merge locally* and *Request changes* | the Inbox client's `answerOne` on its review: `{ verdict: "accepted" }`, naming the `land` an accept takes, or `{ verdict: "revise", words }` |
-| *Pin* and *Unpin* (`usePins`) | your `lab-pins` user resource (`flows/user-marks.mts`), read by scope and written through the default write flow |
+| *Pin* and *Unpin* (`usePins`) | your `lab-pins` user resource (`flows/user-marks.mts`), read by scope with react's `useResource` and written through the default write flow |
 | *Dismiss* (`useDismissed`) | your `lab-dismissals` user resource, the same way, kept per task attempt |
 
 The thread and a task's work follow their session's stream. Every view reads again when a change

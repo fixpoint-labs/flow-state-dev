@@ -1,7 +1,7 @@
 // FIX-2752.
 /**
  * The app fires its own schedules, end to end: the engine's schedule tick
- * against the real scheduled endpoint (`createScheduledTransportAdapter`) and
+ * against the real scheduled endpoint (the router's built-in, no adapter line) and
  * real SQLite stores.
  *
  * Why these matter:
@@ -23,7 +23,6 @@ import type { ScheduleDueEntry, SchedulesConfig } from "@flow-state-dev/core/typ
 import { latestScheduledTime } from "@flow-state-dev/core/internal";
 import { createBearerSecretPrincipalResolver, createFlowState, type FlowState } from "@flow-state-dev/engine";
 import type { ScheduleTicker } from "@flow-state-dev/engine/host";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 
@@ -70,7 +69,6 @@ function app(filename: string, flow: ReturnType<typeof scheduledFlow>, scheduler
   return createFlowState({
     flows: [flow],
     stores: sqliteStores({ filename }),
-    adapters: [createScheduledTransportAdapter()],
     modelResolver: createMockModelResolver({}),
     resolvePrincipal: createBearerSecretPrincipalResolver({ secret: SECRET, principal: { userId: "system", orgId: "acme" } }),
     ...(scheduler === undefined ? {} : { scheduler })
