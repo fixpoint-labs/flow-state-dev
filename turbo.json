@@ -24,6 +24,21 @@
       "dependsOn": ["^build"],
       "env": ["CI", "REDIS_URL", "FSD_TEST_POSTGRES_URL"]
     },
+    "@flow-state-dev/claude-code-style#test": {
+      "dependsOn": ["^build"],
+      "env": ["CI", "REDIS_URL", "FSD_TEST_POSTGRES_URL", "INVENTORY_BASE"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/labs/test-support/**"]
+    },
+    "@flow-state-dev/teammates#test": {
+      "dependsOn": ["^build"],
+      "env": ["CI", "REDIS_URL", "FSD_TEST_POSTGRES_URL", "INVENTORY_BASE"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/labs/test-support/**"]
+    },
+    "@flow-state-dev/shift-manager#test": {
+      "dependsOn": ["^build"],
+      "env": ["CI", "REDIS_URL", "FSD_TEST_POSTGRES_URL", "INVENTORY_BASE"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/labs/test-support/**"]
+    },
     "dev": {
       "cache": false,
       "persistent": true

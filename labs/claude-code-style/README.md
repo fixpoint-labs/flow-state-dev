@@ -213,9 +213,11 @@ and small flows: no adapter, nothing of the app's in `workforce/`, every file cl
 flows of under 200 lines each, at most 300 lines of configuration (the `WORKER.md` tree included), no screen file
 that reaches the server itself (`src/app/` included: it imports no client value and calls no
 `.subscribe(` or `.flow(`), no hand-written type for a row a view returns, and no host wiring a kit
-replaces. Its rules live in `test/inventory-rules.ts`, which the epic's closure goal
-(`goals/kits/an-app-is-config-ui-and-small-flows/`) grades too. A rule the lab doesn't meet yet is
-an `it.fails`.
+replaces. Its rules live in the shared module `labs/test-support/inventory.mts`, which Teammates and
+Shift Manager run too; the lab's settings are in `test/inventory-settings.ts` and its allowlist,
+`test/inventory-allowlist.json`, is empty. The epic's closure goal
+(`goals/kits/an-app-is-config-ui-and-small-flows/`) grades the same rules and settings. A rule the
+lab doesn't meet yet is an `it.fails`.
 
 ## How the screen reaches the package
 

@@ -134,3 +134,11 @@ Run inline by the author, who had no sub-agent tool; the epic's analysis covered
   the test never guesses it; the merge-queue trigger is named as a dependency; a local run says it
   is not CI's answer, and fails closed. Gitar: the baseline POC now fails on a file a rule skips
   by accident.
+- **Amendment (implementation review, 2026-11-17)** — the module imports `typescript`, not only
+  Node's built-ins (*Decided, not asked → Home*). An L3 call is keyed by its innermost holder (a
+  function, method, class, or function bound to a const; `(module)` outside them all), which
+  takes the real lexical scope: a line scanner kept the last declaration it saw, so a call moved
+  out of an allowlisted function kept that function's entry (Codex). Scope can't be tracked by
+  hand here: JSX text holds apostrophes a scanner reads as strings. `typescript` is the repo's
+  own dev dependency, and the module runs only in tests and goals. Engineering call, recorded; not
+  a re-gate. The module is `inventory.mts`, so the closure's `tsx` run loads it as ESM.
