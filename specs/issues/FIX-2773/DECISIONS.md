@@ -11,43 +11,53 @@ direction decided the row type.
 
 ```mermaid
 flowchart TD
-  E["FIX-2773"] --> D1["D1 · answer and brief on the coding board row"]
-  D1 -.->|"rejected"| X1["a one-task read when a popup opens"]
+  E["FIX-2773"] --> D1["D1 · answer and brief by a one-task read on the board view"]
+  D1 -.->|"rejected"| X1["on every row · unbounded board"]
+  D1 -.->|"rejected"| X2["a getTask action · records a request"]
   E --> K["decided, not asked · the row type, the hooks, the answers, the tests"]
   E --> B["boundaries · B1 to B5, decided by the coordinator"]
 ```
 
 <a name="d1"></a>
-## D1 · A task's answer and its brief come on the coding board view's row
+## D1 · A task's answer and its brief come by a one-task read on the coding board view, never on every row
 
 | | |
 |---|---|
-| **Instead of** | A one-task read when the page needs one: a `get(id)` on the Inbox client's board, sent when a popup opens on an ended task and when a re-run is filed |
-| **Because** | Teammates shows a teammate's whole answer in a task's popup, and a re-run copies the task's brief. The coding board row carries neither today. Teammates gets the answer from row copies in the conversation's items, and the brief by sending `getTask` from the page (`withBrief`, an L3 finding). A one-task read is an action on the conversation, so each popup open records a request there, and a running task's popup must read again when it ends. On the row, the answer arrives with the status that ends the task, and nothing is sent. The view already reads the whole row on the server; it drops these fields today. The epic's seam says a row Teammates needs extends this view. [Tenet 2](../../../docs/philosophy.md): the view a second app needs grows, not a second path beside it |
-| **Locks in** | Four nullable fields on harness-manager's published `CodingBoardTask`: `answer` (a teammate's text, or a coding run's `answer`, cut as `getTask` cuts output), `context`, `labels` and `priority`. Its `error` also carries a cancelled task's reason. A changeset (minor). Claude-code-style may read them; it is not changed here |
+| **Instead of** | (a) The answer and brief on every row of the coding board, as the first draft had it. (b) A `get(id)` on the Inbox client's board, which sends `getTask` as an action |
+| **Because** | Teammates shows a teammate's whole answer in a task's popup, and a re-run copies the task's brief; the card shows neither. The board row carries neither today. Codex measured the first draft's cost (P1 on #5363): each answer is cut at 20,000 characters, but nothing bounds the board, and claude-code-style reads the whole board on every load and resync without using the fields. Measured below, a realistic board passes 100 KB with answers on the rows, and the bound is about 10 MB. An Inbox action records a request in the conversation on every popup open. A view input reads that one task, live, and records nothing: when the task ends, the answer arrives with it. The epic's seam says a row Teammates needs extends this view, not a second one. [Tenet 2](../../../docs/philosophy.md): the view grows one input, not a second path |
+| **Locks in** | On harness-manager's published coding board view: an optional `taskId` input that narrows the answer to that task, and a nullable `detail` on the row (`answer`, `answerCut`, `context`, `labels`, `priority`), filled only when the input names the task, each cut at `getTask`'s 20,000-character limit. `error` also carries a cancelled task's reason. A changeset (minor). The board read without `taskId` is unchanged for every app |
+
+**The measurement** (`poc/board-size/`). A real coding board on claude-code-style's own host, only
+the model scripted, two settled research tasks, read through the view today: **530 bytes a row**
+(531 and 525), 1,059 for the board.
+
+| Board read | Today | Answer and brief on every row (rejected) | This D1 |
+|---|---|---|---|
+| 50 tasks, answers about 3 KB | 26 KB | about 180 KB | 26 KB, and 3.5 KB for an open popup |
+| 500 tasks (the board's lifetime cap), answers at the 20,000 cut | 265 KB | about 10.3 MB, more with briefs, which have no limit | 265 KB, and at most about 40 KB for an open popup (answer and brief, each cut) |
 
 **The ask, in six parts**
 
 - **The fork.** Does a finished task's answer, and its brief, travel with every read of the
-  board, or does the page ask for one task when it needs it?
+  board, or only with a read of that one task while its popup is open?
 - **In plain terms.** Today Teammates finds a teammate's answer in its own copies of the
   conversation, and asks the server for a task's brief before a re-run. Both must come from a
-  package now. Either every board read carries them, or the page sends one request per task when a
-  popup opens or a re-run is filed.
-- **The trade-off.** On the row: each board read is larger, by every ended task's answer, for
-  every app on harness-manager. A one-task read: the board stays small, but each popup open adds a
-  request to the conversation's record, and a popup open while the task runs must read again when
-  it ends.
-- **My recommendation.** On the row. A popup should cost nothing, and the size is bounded by the
-  same cut `getTask` already applies.
-- **What would change my mind.** A real conversation whose board read with answers passes about
-  100 KB; or knowing that teammates' answers are routinely tens of KB.
-- **What being wrong costs.** Little. The fields are nullable; moving the answer to a one-task
-  read later changes one hook per app and one pre-1.0 view.
+  package now. The card never shows them; only an open popup and a re-run need them.
+- **The trade-off.** On every row: no extra read, but the board read grows from about 26 KB to
+  about 180 KB for a 50-task conversation, and to about 10 MB at the cap, for every app on
+  harness-manager on every load and resync. A one-task read: the board stays as it is, and an open
+  popup holds one more live read, of at most about 40 KB. An Inbox action instead would also record
+  a request in the conversation on each open.
+- **My recommendation.** The one-task read, as an input on the same view. It keeps the board at
+  today's size for every app, records nothing, and stays live.
+- **What would change my mind.** A screen that needs the answer for many tasks at once, such
+  as a card that previews it. Then a short preview on the row, capped, beside this read.
+- **What being wrong costs.** Little. It is one optional input and one nullable field on a
+  pre-1.0 view, and Teammates reads them through one hook.
 
-![D1: the answer and brief on the coding board row, chosen, beside a one-task read when needed. Decides it: what a popup open costs, nothing against a recorded request. Price: every board read carries each ended task's answer. A tie: both change one published package. Locks in four nullable fields; flips if a real board read passes about 100 KB](figures/d1-answer-on-the-row.svg)
+![D1: the answer and brief by a one-task read on the coding board view, chosen, beside the answer and brief on every row. Decides it: the board read's size, unchanged against about 180 KB for 50 tasks and about 10 MB at the cap. Price: an open popup holds one more live read. A tie: one change to a published view either way. Flips if a screen needs many tasks' answers at once](figures/d1-one-task-read.svg)
 
-It comes down to what opening a popup costs: on the row it costs nothing.
+It comes down to the board read's size: on the rows it grows with every answer, for every app.
 
 <a name="decided-not-asked"></a>
 ## Decided, not asked
@@ -73,8 +83,11 @@ It comes down to what opening a popup costs: on the row it costs nothing.
   `useRequestStream` (`reconnect: true`, `tool_output` only) and the feed; the plan from the
   recorded work view, live. This replaces the hand-built request-stream store and the topic read.
 - **A PR's link** stays `readSessionPullRequests`, the package direct read the popup uses today.
-- **The answer's cut has one convergence point:** the view takes it from the same helper
-  `getTask`'s read uses, so the two never cut differently.
+- **The detail's cut has one convergence point:** the view takes it from the same helper
+  `getTask`'s read uses (`READ_OUTPUT_LIMIT`), so the two never cut differently. `context` is cut
+  there too, since it has no limit of its own.
+- **The popup's one-task read** is a hook beside `useTasks` in `tasks.ts`; a re-run takes the brief
+  from it, so a re-run sends nothing before `refile`.
 - **`error` on a cancelled task.** Claude-code-style's checks that read `error` as a failure must
   check `status` too; the implementer runs its suite and its `acts-on-an-opened-task` goal.
 - **Tests.** The four task tests that use the fake (`popup-holds`, `task-actions`, `task-spend`,
@@ -87,6 +100,9 @@ It comes down to what opening a popup costs: on the row it costs nothing.
 
 ## Considered and dropped
 
+- **The answer and brief on every row** (the first draft's D1). Unbounded board, measured in D1.
+- **A short answer preview on every row, with the full answer read on open.** The card never
+  shows the answer, so a preview serves no screen.
 - **Keep `BoardTask` as a screen type, with a reason.** The allowlist empties and the translation
   layer stays: what FIX-2766 rules out, and what FIX-2769 D1 exists to catch.
 - **Read the answer from the conversation's items with `useSessionFeed`.** It is today's
@@ -137,6 +153,7 @@ seams with siblings.
 | Finding | Objective | Changes the approach? | Disposition |
 |---|---|---|---|
 | The coding board row lacks the answer, the brief and a cancel's reason | 1 | Yes | Folded: D1 |
+| (Codex, review round 1) On every row, the answer and brief leave the board read unbounded | 7 | Yes | Folded: D1 is a one-task read, measured |
 | The fake implements every job's calls, so it can't go in one child unless that child lands last | 7 | No | B1, decided by the coordinator: each child cuts its own scenarios; the last to merge deletes the file |
 | `src/app/` may not gain a file | 7 | No | Decided: hooks join `tasks.ts` |
 
@@ -162,3 +179,7 @@ doesn't touch the review stop's data or either app's review card.
   plumbing types, after each child removes its own fields; FIX-2772 owns `steps.ts` and moves it to
   `src/lib/`; the first child to merge adds the client to `main.tsx` and `AppProvider`; FIX-2771
   owns `workers.ts`. This issue's count stays 12.
+- **Review round 1 (2026-11-17)** — Codex P1: with the answer and brief on every row, nothing
+  bounds the board, and claude-code-style reads it whole on every load. Measured a real board (530
+  bytes a row) and the bound (about 10 MB at the 500-task cap). D1 is now a one-task read on the same
+  view, through an optional `taskId` input; the board read is unchanged.
