@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionConnectionStatus, SessionSummary } from "@flow-state-dev/client";
-import { COORDINATOR_FLOW, deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
+import { COORDINATOR_FLOW, deriveWorkerSessionId, type ProjectAddressRef } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
 import { useReportFeedState } from "./feed-health";
 import { describeFailure, workerOf, type Failure, type Worker } from "./reads";
@@ -120,11 +120,21 @@ export interface WorkerConversation {
   ensure(): Promise<string>;
 }
 
-/** `pinned` is the session the view found: that one, whatever the snapshot lists. */
-export function useWorkerConversation(worker: Worker, sessions: readonly SessionSummary[], pinned?: string): WorkerConversation {
+/**
+ * `pinned` is the session the view found: that one, whatever the snapshot lists.
+ * `project`, with nothing pinned, is the project a view's conversation is linked to (a
+ * project's Stream): it has no session until the first line opens one linked to it,
+ * and the worker's own conversation is never read in its place.
+ */
+export function useWorkerConversation(
+  worker: Worker,
+  sessions: readonly SessionSummary[],
+  pinned?: string,
+  project?: ProjectAddressRef
+): WorkerConversation {
   const { client } = useLab();
   const workforce = useWorkforce();
-  const { id: derived, failure: underived } = useDerivedId(pinned === undefined ? worker : undefined);
+  const { id: derived, failure: underived } = useDerivedId(pinned === undefined && project === undefined ? worker : undefined);
   const [opened, setOpened] = useState<string | null>(null);
   const sessionId = pinned ?? conversationAt(sessions, derived ?? null, opened);
   const resolving = pinned === undefined && opened === null && derived === undefined;
@@ -172,10 +182,10 @@ export function useWorkerConversation(worker: Worker, sessions: readonly Session
   }, []);
   const ensure = useCallback(async () => {
     if (sessionId !== null) return sessionId;
-    const session = await workforce.ensureWorkerSession({ worker: worker.id });
+    const session = await workforce.ensureWorkerSession(project === undefined ? { worker: worker.id } : { worker: worker.id, projectId: project });
     setOpened(session.id);
     return session.id;
-  }, [sessionId, workforce, worker.id]);
+  }, [sessionId, workforce, worker.id, project]);
 
   const read = sessionId !== null && stored?.sessionId === sessionId ? stored.read : undefined;
   return {

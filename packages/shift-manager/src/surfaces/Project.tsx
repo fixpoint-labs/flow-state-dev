@@ -5,7 +5,8 @@
  *
  * - **Stream** is the user's conversation with their project coordinator:
  *   a session of the standard coordinator worker the Lab's project setup
- *   names, linked to this project, found or started when the tab opens. It
+ *   names, linked to this project, found when the tab opens and started by
+ *   the user's first line there, so opening the tab starts nothing. It
  *   hands a line to the user's own workstreams in the project. A finished
  *   turn reads the Lab again, as every conversation does.
  * - **Board** draws the tasks of the user's own workstream sessions in the
@@ -257,9 +258,10 @@ function ProjectBody({
 }
 
 /**
- * The user's conversation with their project coordinator (S5): found or
- * started for this project when the tab opens, then the shared conversation
- * component pinned to it.
+ * The user's conversation with their project coordinator (S5): found for this
+ * project when the tab opens, then the shared conversation component pinned to
+ * it. Found none, the conversation is empty and its first line starts the
+ * session, linked to the project: reading the tab starts no session.
  */
 function CoordinatorStream({
   snapshot,
@@ -278,15 +280,16 @@ function CoordinatorStream({
 }) {
   const workforce = useWorkforce();
   const coordinatorId = setup !== undefined && "value" in setup ? (setup.value?.projectCoordinator ?? null) : undefined;
-  const [session, setSession] = useState<Read<string>>(undefined);
+  // `null`: the user has no session with it for this project yet.
+  const [session, setSession] = useState<Read<string | null>>(undefined);
   const [tries, setTries] = useState(0);
   useEffect(() => {
     if (coordinatorId == null) return;
     let closed = false;
     setSession(undefined);
     workforce
-      .ensureWorkerSession({ worker: coordinatorId, projectId: address })
-      .then((found) => !closed && setSession({ value: found.id }))
+      .findWorkerSession({ worker: coordinatorId, projectId: address })
+      .then((found) => !closed && setSession({ value: found?.id ?? null }))
       .catch((error: unknown) => !closed && setSession({ failure: describeFailure(error) }));
     return () => {
       closed = true;
@@ -321,10 +324,11 @@ function CoordinatorStream({
   }
   return (
     <Conversation
-      key={session.value}
+      key={session.value ?? "unopened"}
       testId="project-stream"
       worker={worker}
-      session={session.value}
+      session={session.value ?? undefined}
+      project={address}
       sessions={snapshot.sessions}
       gaps={gaps}
       name="Project coordinator"

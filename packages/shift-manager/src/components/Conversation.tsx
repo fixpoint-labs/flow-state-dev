@@ -8,7 +8,8 @@
  * tool calls as quiet lines), the jump to the latest turn, the working line, the
  * composer, and the one send path. A view varies it by props, never by a fork:
  * the session it is (`session`, for one a view found itself: a project
- * coordinator's, a workstream's lead's; otherwise the user's conversation
+ * coordinator's, a workstream's lead's; `project`, for a project's conversation
+ * no line has opened yet; otherwise the user's conversation
  * with the worker, at its derived address), the name over the worker's messages, the text for an empty conversation, what
  * sits above the feed (`lead`), a line to hand in (`autoSend`), the
  * composer's `scale`, and `renderItem` to draw an item its own way (read
@@ -20,7 +21,7 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { RECEIVED_MESSAGE_DATA_TYPE } from "@flow-state-dev/workforce/browser";
+import { RECEIVED_MESSAGE_DATA_TYPE, type ProjectAddressRef } from "@flow-state-dev/workforce/browser";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
@@ -81,6 +82,7 @@ export function ConversationFrame({
 export function Conversation({
   worker,
   session,
+  project,
   sessions,
   gaps,
   name,
@@ -100,6 +102,8 @@ export function Conversation({
   worker: Worker;
   /** The session this conversation is, when the view found it: every line goes there. Absent, the user's conversation with the worker, at its derived address. */
   session?: string;
+  /** With no `session`, the project this conversation is linked to: the first line opens its session, linked to it. */
+  project?: ProjectAddressRef;
   sessions: readonly SessionSummary[];
   gaps: Gaps;
   /** What the shell calls the worker: over its messages, and in the composer. */
@@ -132,7 +136,7 @@ export function Conversation({
   readOnly?: string;
 }) {
   const { client, refresh, answered, snapshot, stale } = useLab();
-  const conversation = useWorkerConversation(worker, sessions, session);
+  const conversation = useWorkerConversation(worker, sessions, session, project);
   const inventory = snapshot !== undefined && "inventory" in snapshot && snapshot.inventory?.ok ? snapshot.inventory.value.workers : undefined;
   const known = useMemo(() => knownWorkers(inventory ?? [], sessions), [inventory, sessions]);
   // The feed opens where it starts; with `startAtEnd`, on the latest turn, and again on each
@@ -180,8 +184,15 @@ export function Conversation({
   const composer = (
     <TurnComposer
       testId={`${testId}-composer`}
-      // A session the view names (a project's, a workstream's) keeps its own draft; otherwise the worker's conversation does.
-      draftKey={session !== undefined ? `session:${session}` : `conversation:${worker.id}`}
+      // A session the view names (a project's, a workstream's) keeps its own draft, as does a project's conversation
+      // before its first line; otherwise the worker's conversation does.
+      draftKey={
+        session !== undefined
+          ? `session:${session}`
+          : project !== undefined
+            ? `project:${project.visibility}/${project.id}`
+            : `conversation:${worker.id}`
+      }
       scale={scale}
       label={`Message ${name}`}
       placeholder={`Message ${name}…`}
@@ -195,7 +206,7 @@ export function Conversation({
         const settled = startWork?.();
         feed.sent();
         try {
-          // A first line opens the conversation at the worker's derived address before the door's request runs in it.
+          // A first line opens the conversation (at the worker's derived address, or linked to `project`) before the door's request runs in it.
           const target = await conversation.ensure();
           return await sendTurn(client, { sessionId: target, flowId: worker.kind!, door: worker.door! }, message, {
             onHeld: () => {
