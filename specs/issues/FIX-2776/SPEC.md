@@ -151,7 +151,7 @@ flowchart LR
 |---|---|
 | **Removes** | `run.ts` (296 lines), `send.ts` (288), `action.ts` (90), `delegates.ts` (36), and the copies of nine package types; 14 of the 32 files that import `reads.ts` stop doing so; three ways to follow a session become one |
 | **Adds** | Five client calls, a view, a hook field and two exported types: permanent by design. A second read of a delegate list beside the `listDelegates` action: permanent by design, one per reader (a live screen, a one-off host or model read), both through the one per-delegate check. A screen-side *delivered* check the starters don't have ([D2](DECISIONS.md#d2)), which FIX-2756 weighs when it shares the composer |
-| **Leaves** | `reads.ts`, the snapshot, the Inbox's and the directory's entries (38) to FIX-2774, FIX-2775 and FIX-2777. The ui registry's own `task-plan-state.ts` keeps its inlined types, since the registry ships without orchestration |
+| **Leaves** | The other 38 entries: 22 to FIX-2777 (`reads.ts`, `lab-data.tsx`, `snapshot-subscribe.ts`, `derive.ts`) and 16 to FIX-2775 (messages, projects, routines, usage, MCP keys). FIX-2774 removes none. The ui registry's own `task-plan-state.ts` keeps its inlined types, since the registry ships without orchestration |
 
 **Net: down.** Four app modules and three duplicate read paths go; the packages gain the calls
 an app needs to do without them.

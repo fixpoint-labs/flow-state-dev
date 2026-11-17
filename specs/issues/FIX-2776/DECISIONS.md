@@ -125,7 +125,7 @@ returns it); the task row reads the task-list view.
 
 - **The 32 entries are exactly this issue's, and all 70 have an owner** — **CONFIRMED** by
   `poc/allowlist-split/check.mjs` on `e9078619`: 70 entries, 32 · 22 · 16 by owner; PASS. Its
-  control (`--control`) plants an unclassified entry and FAILS with exit 1. Run:
+  controls FAIL with exit 1: `--control` plants an unclassified entry, `--duplicate` repeats one. Run:
   `node specs/issues/FIX-2776/poc/allowlist-split/check.mjs`.
 
 ## Analysis

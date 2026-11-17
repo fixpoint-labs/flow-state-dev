@@ -4,22 +4,28 @@
 // Re-derives the spec's factual base from the real allowlist: which of Shift
 // Manager's inventory entries this issue removes, and that every other entry
 // is named as another child's. Totality: every entry on the allowlist is
-// classified exactly once, so an entry nobody listed fails the check.
+// classified exactly once, so an entry nobody listed fails the check. An
+// owner is set by file, or by `file#symbol` where one file's entries split
+// between children (an override wins over its file's owner).
 //
-//   node specs/issues/FIX-2776/poc/allowlist-split/check.mjs            # check
-//   node specs/issues/FIX-2776/poc/allowlist-split/check.mjs --control  # plant an unclassified entry, expect FAIL
+//   node specs/issues/FIX-2776/poc/allowlist-split/check.mjs                # check
+//   node specs/issues/FIX-2776/poc/allowlist-split/check.mjs --control      # plant an unclassified entry, expect FAIL
+//   node specs/issues/FIX-2776/poc/allowlist-split/check.mjs --duplicate    # plant a repeated entry, expect FAIL
 //
-// Exit 0: every entry classified once, and this issue's count is 32.
-// Exit 1: an entry unclassified, classified twice, or classified but absent.
+// Exit 0: every entry classified once, no entry repeated, every classification
+// names an entry that exists, and this issue's count is 32.
+// Exit 1: an entry unclassified or repeated, a classification with no entry,
+// or a count other than 32.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
 const allowlist = JSON.parse(readFileSync(`${ROOT}packages/shift-manager/test/inventory-allowlist.json`, "utf8"));
 if (process.argv.includes("--control")) allowlist.push({ file: "src/lib/planted.ts", symbol: "Planted", kind: "type" });
+if (process.argv.includes("--duplicate")) allowlist.push({ ...allowlist.find((entry) => entry.file === "src/lib/run.ts") });
 
 const THIS = "FIX-2776";
-/** Owner by file, then by `file#symbol` where one file is split. */
+/** Owner by file. */
 const byFile = {
   // This issue: conversations and runs (run, task, send, conversation and ask reads; delegates).
   "src/lib/action.ts": THIS,
@@ -45,12 +51,19 @@ const byFile = {
   "src/lib/usage.ts": "FIX-2775",
   "src/lib/mcp-credentials.ts": "FIX-2775",
 };
+/** Owner by `file#symbol`, for a file whose entries split between children. None today: each file has one owner. */
+const bySymbol = {};
 
+const keyOf = (entry) => `${entry.file}#${entry.symbol}#${entry.kind}`;
 const failures = [];
 const mine = [];
 const counts = {};
+const seen = new Set();
 for (const entry of allowlist) {
-  const owner = byFile[entry.file];
+  const key = keyOf(entry);
+  if (seen.has(key)) failures.push(`repeated: ${entry.file} ${entry.symbol} (${entry.kind})`);
+  seen.add(key);
+  const owner = bySymbol[`${entry.file}#${entry.symbol}`] ?? byFile[entry.file];
   if (owner === undefined) {
     failures.push(`unclassified: ${entry.file} ${entry.symbol} (${entry.kind})`);
     continue;
@@ -60,6 +73,9 @@ for (const entry of allowlist) {
 }
 for (const file of Object.keys(byFile)) {
   if (!allowlist.some((entry) => entry.file === file)) failures.push(`classified but not on the allowlist: ${file}`);
+}
+for (const fileSymbol of Object.keys(bySymbol)) {
+  if (!allowlist.some((entry) => `${entry.file}#${entry.symbol}` === fileSymbol)) failures.push(`override names no entry: ${fileSymbol}`);
 }
 if (mine.length !== 32) failures.push(`this issue's count is ${mine.length}, the spec says 32`);
 
