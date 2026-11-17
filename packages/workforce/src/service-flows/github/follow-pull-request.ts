@@ -9,7 +9,7 @@
  * own user, hearing its reviews, comments and CI. So a check that completes
  * before the opening turn ends is heard, and the agent never has to subscribe
  * itself. A merge or close reaches the session too, whoever made it, so a task
- * waiting on its pull request wakes (FIX-2535 D3), and then ends the
+ * waiting on its pull request wakes, and then ends the
  * subscription (ER-7 as amended); the session's other subscriptions stay.
  *
  * A pull request on a host other than `github.com` is not followed, nor one

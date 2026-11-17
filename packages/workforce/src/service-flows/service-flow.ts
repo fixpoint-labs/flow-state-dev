@@ -30,7 +30,7 @@
  *   kinds, screens or cap: routing names an end-only owner run for each one
  *   the event doesn't reach, and delivery ends the rest once delivered. A
  *   subscription that hears its close (`hearsClose`, a coding session
- *   following its pull request; FIX-2535 D3) is sent the close first, past
+ *   following its pull request) is sent the close first, past
  *   its kinds, screens and cap, on push and on poll.
  *
  * A dispatch the recipient's host lost, or accepted and never took, is left
@@ -440,7 +440,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
 
   /**
    * Deliver `event` on `row`, past its kinds, its private thread's read check, its cursor and its cap.
-   * `closeHeard`: the close of a subscription that hears its close (FIX-2535 D3), past its kinds and cap.
+   * `closeHeard`: the close of a subscription that hears its close, past its kinds and cap.
    */
   const deliverToRow = async (
     ctx: BlockContext,
