@@ -1,0 +1,169 @@
+# FIX-2770 · Decisions
+
+[Spec](SPEC.md) · **Decisions**
+
+Three decisions are the sign-off. The epic already fixes the rules
+([ER-6](../../epics/FIX-2683/DECISIONS.md#who-owns-what)): one store query joined to the request,
+every scope predicate inside it, a projection without `stepInput` or `resumeData`, heard only on
+suspension changes. What is left is what "heard" is made of, who names the flows, and whether a
+store may skip the read.
+
+## The tree
+
+```mermaid
+flowchart TD
+  I["FIX-2770 · a user's pending asks, read at the source"] --> M["sessions.userSuspensions over SuspensionStore.listPendingForUser · ER-6 as written"]
+  I --> D1["D1 · a new suspension notice on the user topic"]
+  D1 -.->|"rejected · heard on every request write, deaf to a sessionless ask"| X1["hear run on the user topic"]
+  I --> D2["D2 · the caller names the flow kinds · required, at most 50"]
+  D2 -.->|"rejected · the engine would depend on workforce"| X2["the engine works out the worker flows"]
+  I --> D3["D3 · a required store method"]
+  D3 -.->|"rejected · a host on a store without it gets an empty Inbox and no error"| X3["optional, the verb absent without it"]
+```
+
+Solid edges are what you're signing. Dashed edges lost, and the label says why.
+
+<a name="d1"></a>
+## D1 · The read wakes on a new `suspension` notice on the user's topic, not on `run`
+
+| | |
+|---|---|
+| **Instead of** | Hearing the `run` notice that every request write already publishes on its owner's user topic |
+| **Because** | ER-6 says the read is heard only on suspension changes. `run` on the user topic fires on every request write of the user, in every session: each turn's start, each status move, each finish. A sessionless request publishes no notice at all (`requestNotices` returns none without a session), so a sessionless ask would never wake the view. The suspension store gets the wrapper the request and session stores have (`withChangeBus`): `set` and `deleteForRequest` publish `suspension` on the owner's user topic once the write lands, under the request's tenant. `pruneTerminalBefore` deletes only resolved rows, which the read never returns, so it publishes nothing. Tenet 5: one publish point |
+| **Locks in** | `"suspension"` is a public `ChangeKind` (contracts), accepted by the view route's `changed` body and the client's kind order. A client that switches over every kind gets a new case; the changeset says so. The notice names nothing, like every user-topic notice, since that topic spans the user's organizations |
+
+![D1, what wakes the read. Chosen: a new suspension notice on the user topic. Instead of: the run notice every request write publishes. It comes down to a turn starting or finishing in any session: with suspension it is not heard; with run the Inbox view re-runs. Also: a sessionless ask is heard only with suspension. Price: a new public notice kind. Locks in suspension as a change kind. Flips if the Inbox re-running on every request write stays under a second and sessionless asks can wait for a refresh](figures/d1-suspension-notice.svg)
+
+It comes down to a turn starting anywhere: on `run`, every one re-runs the Inbox view.
+
+**What would change my mind:** the Inbox view staying under a second when re-run on every request
+write of a user with dozens of worker sessions, and no sessionless ask that has to show without a
+refresh. Then `run` would do and the kind could go.
+
+<a name="d2"></a>
+## D2 · The caller names the flow kinds, required and at most 50; the engine never reads every flow
+
+| | |
+|---|---|
+| **Instead of** | The engine working out the worker flows itself, or an optional list that reads every flow on the host when absent |
+| **Because** | ER-6 limits the read to the worker flows the Inbox walks today and forbids widening it to every flow. Which flows are workers' is the worker inventory's answer, one layer up: the engine never depends on workforce. FIX-2774's view already reads that inventory on the server, so it passes the kinds, as `workerFlowNames` does in the browser now. A required, non-empty, bounded list with no wildcard is how "never widened" holds at the verb. The kinds come from server code, never from a caller's body; the identity is closed over as on every session read |
+| **Locks in** | `userSuspensions({ flowKinds })` with 1 to 50 kinds; an empty list answers no rows. Matched on the request's `flow_kind` column, which every store indexes. Which kinds a block passes is that block's review, at FIX-2774 |
+
+![D2, who names the flows the read covers. Chosen: the caller, required and at most 50 kinds. Instead of: the engine works out the worker flows. It comes down to layering: the engine stays below workforce, which knows what a worker is. Price: a block can pass more kinds than the Inbox walks. Tie: the Inbox's flows today are the same either way. Locks in a required flowKinds list. Flips if a second kit needs the worker flows as a host fact](figures/d2-caller-names-flows.svg)
+
+It comes down to layering: only workforce knows which flows are workers'.
+
+**What would change my mind:** a second kit needing "the worker flows" too. Then the set becomes a
+fact the host is given once, and the verb reads it instead of taking it.
+
+<a name="d3"></a>
+## D3 · Every suspension store must implement the joined read
+
+| | |
+|---|---|
+| **Instead of** | An optional store method, with `sessions.userSuspensions` absent on a store without it, as `wakes` is |
+| **Because** | ER-6 rules out the only fallback a missing method could have (list, then filter). Optional, a host on a custom store would serve an Inbox that is always empty and says nothing. Required, the adapter's author gets a type error naming the method. The four stores in the repository implement it either way: memory and filesystem join to the request store their registry factory hands them, SQLite and Postgres in one SQL statement. Pre-1.0, a `minor` changeset |
+| **Locks in** | `SuspensionStore.listPendingForUser` is required. `createInMemorySuspensionStore` and `createFilesystemSuspensionStore` take the request store they join to; built bare, the method throws a config error naming the option rather than answering nothing |
+
+![D3, whether a store may skip the joined read. Chosen: a required store method. Instead of: optional, with the verb absent without it. It comes down to a host on a custom store: required, its author gets a type error naming the method; optional, its Inbox is silently empty. Price: every custom adapter must implement it on upgrade. Tie: the four stores in the repository implement it either way. Locks in a sixth required SuspensionStore method. Flips if a published store exists that cannot reach the request table](figures/d3-required-method.svg)
+
+It comes down to a custom store: optional means an Inbox that is empty and says nothing.
+
+**What would change my mind:** a published third-party suspension store that keeps suspensions
+where it cannot reach the request records. Then the method is optional and the verb names its
+absence.
+
+## Decided, not asked
+
+- **Where the read lives.** `RequestSessions.userSuspensions(query)` beside `read`, `history`,
+  `list` and `turns`, under the same identity (`RequestSessionsInputs.identity`), so the user,
+  tenant and organization are never the caller's. It answers `{ suspensions, more }`, oldest first,
+  at most 200, with `more` set past that. A user view may call it; an org view may not, as for
+  the other session reads.
+- **The query, and its convergence point.** `SuspensionStore.listPendingForUser({ userId,
+  tenantId, orgId, flowKinds, now, limit })` is the one place the scope is applied, and nothing
+  else lists asks. Every predicate sits in the store's own query: suspension joined to its request
+  by `request_id` (an inner join, so a row with no request drops); the request's `user_id` and the
+  suspension's `userId` both the caller's; `tenant_id` and `org_id` exact, NULL-safe, key always
+  present (`IS ?` in SQLite, `IS NOT DISTINCT FROM` in Postgres, `matchesTenantFilter` and
+  `matchesOrgFilter` in memory and on disk), so a request with a null `orgId` never matches a
+  caller with one; `flow_kind` in the list; `status = 'pending'`; `expiresAt` absent or after
+  `now`, the engine's clock; reason in `USER_SUSPENSION_REASONS`, which carries the old `human_*`
+  names as `isUserSuspension` does.
+- **The projection.** The store selects only these: `suspensionId`, `requestId`, `flowKind`,
+  `flowId` (the suspension's, else the request's), `sessionId` (the request's), `kind` (by
+  `suspendForUserKindOf`), `shape` (by the moved `suspensionShape`), `title`, `message`, `allow`,
+  `resumeSchema`, `render`, `createdAt`, `expiresAt`. These are what today's Inbox list and card
+  draw. Never `stepInput`, `resumeData`, `data`, `resolvedBy`, `blockInstanceId` or `stepIndex`.
+  `data` is the author's payload, unbounded, and the card draws the prompt, not it. A field
+  FIX-2774 finds missing is an additive change to this type in its PR, never a second read.
+- **The worker link.** The engine has no notion of a worker. The projection carries the flow
+  instance and session an answer goes through; FIX-2774's view maps a session to its worker from
+  the sessions it already lists (`sessions.list({ ids })`), on the server.
+- **A view's admission still applies.** In a view, a row whose flow instance has its own resolver
+  that refuses this caller is left out, as the session list leaves out such a session
+  (`admitListedSession`). That is a credential check per instance, after the query, not a scope
+  filter: scope is all in the query.
+- **The ask predicate moves.** `suspensionShape`, `SuspensionShape` and the schema classification
+  they read move to `contracts/src/types/suspension.ts`, beside `isUserSuspension` and
+  `suspendForUserKindOf`, re-exported by core. `@flow-state-dev/react` keeps exporting both
+  (ER-3's no-alias rule covers app read paths, not this public surface), and its form builds
+  fields from the moved classifier. The ui registry's card is unchanged.
+- **The name avoids the retired word.** The glossary's `ask-symbol` retirement bars `*Ask*`
+  identifiers outside Shift Manager and orchestration's Inbox, so the code says "user
+  suspension": the term `isUserSuspension` already uses. No glossary entry changes.
+- **What the read hears.** One recorded read, `{ scope: "user", what: "suspensions" }`, hears
+  `suspension` on the user topic, and nothing else. An ask that passes its `expiresAt` unanswered
+  is dropped by the next read; what wakes the view is the sweep's write that expires it.
+- **Tests, each shown failing first.** A store conformance suite
+  (`engine/src/stores/testing/`, run by memory, filesystem, SQLite, and Postgres when
+  `FSD_TEST_POSTGRES_URL` is set) answers nothing for: the same user in another tenant; in another
+  organization; a second user in the same organization; a request with a null `orgId`; the same
+  user's ask in another flow; a suspension whose request is missing; an expired ask; a wait gate;
+  a raw `ctx.suspend` for an event. It lists a sessionless ask only through its request's scope,
+  and a row's keys never include `stepInput` or `resumeData`. Engine tests: the identity comes
+  from the request, never the query; an ask answered in a dispatch run's session is gone in the
+  update the answer's notice causes (the ghost ask); a chunk, a turn start and a turn finish wake
+  no view that read only this.
+
+## Considered and dropped
+
+- **List, then filter in the engine.** The simpler shape, and the one ER-6 forbids: every scope
+  check but the user's would run after the store returned other people's rows.
+- **Stamp tenant and organization on the suspension record.** It would let the stores drop the
+  join, but needs a backfill for every record already written, and the request stays the source
+  of truth either way.
+- **An HTTP route for the read.** Not needed: FIX-2774's view calls it on the server, and a route
+  would be a second place to keep the scope rules.
+- **`principalOwnsRequest` as the ownership rule.** It treats a request with no organization as
+  every organization's; ER-6 names it as the rule not to use.
+
+## Open
+
+None.
+
+## Settled
+
+None. No POC: the parts this composes exist and behave as cited. The request host's session reads
+and their view admission (`request-sessions.ts`, `view-routes.ts`), the store wrapper that
+publishes (`publish-writes.ts`), the NULL-safe tenant and org clauses in both SQL adapters, and
+the `request_id` key on `suspension_records` in both schemas.
+
+## Analysis
+
+2026-11-17 · watermark 2026-11-17 · **build as scoped.** Run by the author in this dispatch, which
+had no sub-agent to hand it to; the reviewer should weigh it as such.
+- Reuse: every Adds item extends a piece named in *Builds on*; `list` and `principalOwnsRequest`
+  are the rejected reuses ER-6 names.
+- Prior art: not researched outside the repository in this dispatch; the epic's D2 already
+  settled that the answer is a server read.
+- Other shapes: a suspension-stamped scope and a route are weighed above.
+- New factors: FIX-2754 added `sessions.list({ ids })`, which the worker link uses.
+- Necessity: the epic's D2 needs it; nothing does it on the server today.
+- Major concerns: D1 adds a public kind; D3 breaks custom adapters. Both are on the sign-off.
+
+## How it got here
+
+- **Draft** — ER-6 built as a fifth request-host session read over one required, joined store
+  query, woken by a new `suspension` notice; the flow kinds named by the caller; the ask
+  predicate moved beside `isUserSuspension`.
