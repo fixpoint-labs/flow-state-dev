@@ -66,7 +66,7 @@ import {
   type ModulePatch,
   workforceTree
 } from "../../lib/index.mts";
-import { createLabAdapter as teammatesLab } from "../../../labs/teammates/src/adapter.ts";
+import { createAppCalls as teammatesLab } from "../../../labs/teammates/src/app/index.ts";
 import { watchMergedBoard } from "./merged-view.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -83,7 +83,7 @@ const STEP_MS = 1_500;
 const PACE = { teammates: 1_500, "merged-view": 2_000, "board-list": 3_000 } as const;
 type ViewName = keyof typeof PACE;
 
-const TEAMMATES = "labs/teammates/src/adapter.ts";
+const TEAMMATES = "labs/teammates/src/app/tasks.ts";
 const MERGED_VIEW = "goals/task-board/a-settled-task-reaches-the-board/merged-view.mts";
 const PATCHES: Record<string, ModulePatch[]> = {
   // Publish on the session that wrote, not the one that filed.

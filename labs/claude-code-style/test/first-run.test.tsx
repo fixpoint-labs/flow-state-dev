@@ -11,14 +11,14 @@ import { join } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ClientFetch } from "@flow-state-dev/client";
-import { App } from "../src/App";
+import { App } from "../src/components/App";
 import { PICKER_COPY, STARTER_LINES } from "../src/lib/first-run";
-import { closeLabs, openTestLab, repository } from "./lab-host";
+import { closeApps, openTestApp, repository } from "./app-host";
 
 afterEach(async () => {
   cleanup();
   window.history.replaceState(null, "", "/");
-  await closeLabs();
+  await closeApps();
 });
 
 /** Which harnesses this machine can run, as the readiness view answers here: a test can't rely on the machine's own. */
@@ -35,10 +35,10 @@ const pathOf = (input: RequestInfo | URL) => new URL(String(input instanceof Req
  * view answered with {@link READINESS}. `hold(path)` keeps that call's answer
  * until the returned release is called.
  */
-async function countingLab() {
+async function countingApp() {
   const asked: string[] = [];
   const held = new Map<string, Promise<void>>();
-  const lab = await openTestLab({
+  const lab = await openTestApp({
     noProject: true,
     intercept: (inner) =>
       (async (input, init) => {
@@ -66,7 +66,7 @@ const CREATE = "createProject";
 
 describe("the first run", () => {
   it("says what the view does, and shows each harness's readiness with its remedy", async () => {
-    const { lab } = await countingLab();
+    const { lab } = await countingApp();
     render(lab.wrap(<App />));
     const picker = await screen.findByRole("region", { name: "Choose a project" });
     expect(within(picker).getByTestId("picker-copy").textContent).toContain(PICKER_COPY.session);
@@ -77,7 +77,7 @@ describe("the first run", () => {
   });
 
   it("shows the server's problem before Create, and keeps Create off for that repository", async () => {
-    const { lab, count } = await countingLab();
+    const { lab, count } = await countingApp();
     const notARepo = join(lab.data, "not-a-repo");
     mkdirSync(notARepo);
     const notes = repository(join(lab.data, "notes"));
@@ -101,7 +101,7 @@ describe("the first run", () => {
   });
 
   it("asks again when the field is left after a refusal, so a fixed repository can be made", async () => {
-    const { lab, count } = await countingLab();
+    const { lab, count } = await countingApp();
     const notes = join(lab.data, "notes");
     mkdirSync(notes);
     render(lab.wrap(<App />));
@@ -127,7 +127,7 @@ describe("the first run", () => {
   });
 
   it("lets Create through while the check its own click started is still out", async () => {
-    const { lab, count, hold } = await countingLab();
+    const { lab, count, hold } = await countingApp();
     const notes = repository(join(lab.data, "notes"));
     const release = hold("/api/flows/projects/views/checkRepository");
     render(lab.wrap(<App />));
@@ -145,7 +145,7 @@ describe("the first run", () => {
   });
 
   it("offers starter lines in an empty session; a click fills the composer and sends nothing", async () => {
-    const { lab, count } = await countingLab();
+    const { lab, count } = await countingApp();
     await lab.calls.createProject("vendor-notes", `file://${lab.repo}`);
     render(lab.wrap(<App />));
     const picker = await screen.findByRole("region", { name: "Choose a project" });

@@ -11,14 +11,14 @@ import type { FileContent } from "@flow-state-dev/core/items";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ClientFetch } from "@flow-state-dev/client";
-import { App } from "../src/App";
-import { closeLabs, openTestLab, type TestLab } from "./lab-host";
+import { App } from "../src/components/App";
+import { closeApps, openTestApp, type TestApp } from "./app-host";
 
 afterEach(async () => {
   cleanup();
   window.history.replaceState(null, "", "/");
   window.localStorage.clear();
-  await closeLabs();
+  await closeApps();
 });
 
 /** A real one-page PDF with `text` in its text layer: the host opens an upload to read it. */
@@ -49,10 +49,10 @@ const png = (name: string) => new File([new Uint8Array([137, 80, 78, 71, 1, 2, 3
  * The lab's host, with every line the main session's door took, as the page
  * sent it. `refuse.on` drops each send on the way, as a lost network does.
  */
-async function recording(): Promise<{ lab: TestLab; sends: Array<{ text: string; attachments: readonly FileContent[] }>; refuse: { on: boolean } }> {
+async function recording(): Promise<{ lab: TestApp; sends: Array<{ text: string; attachments: readonly FileContent[] }>; refuse: { on: boolean } }> {
   const sends: Array<{ text: string; attachments: readonly FileContent[] }> = [];
   const refuse = { on: false };
-  const lab = await openTestLab({
+  const lab = await openTestApp({
     intercept: (inner) =>
       (async (input, init) => {
         const url = String(input instanceof Request ? input.url : input);

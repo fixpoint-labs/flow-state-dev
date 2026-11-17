@@ -8,7 +8,7 @@
  * log), or it is idle. Nothing is guessed: with no request, no running task
  * and no open message, it is idle.
  */
-import type { Activity, BoardTask, ConversationEntry, LabAdapter, LabTalk, LabWorker } from "../adapter";
+import type { Activity, BoardTask, ConversationEntry, AppCalls, AppTalk, AppWorker } from "../app";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom } from "./talk";
@@ -18,7 +18,7 @@ import { age, useNow, useWatch } from "./use-watch";
 export interface StatusInputs {
   activity: Activity | undefined;
   entries: readonly ConversationEntry[];
-  talk: readonly LabTalk[];
+  talk: readonly AppTalk[];
   tasks: readonly BoardTask[];
   now: number;
 }
@@ -130,7 +130,7 @@ export function answeringStep(entries: readonly ConversationEntry[]): Status | u
 }
 
 /** A teammate's status line, its words alone, live. Its age holds while `stale`. */
-export function useStatusLine(adapter: LabAdapter, worker: LabWorker, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): string {
+export function useStatusLine(adapter: AppCalls, worker: AppWorker, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): string {
   const now = useNow(undefined, !stale);
   const activity = useWatch(adapter.watchActivity, worker.id);
   const talk = useWatch(adapter.watchTalk, worker.id) ?? [];

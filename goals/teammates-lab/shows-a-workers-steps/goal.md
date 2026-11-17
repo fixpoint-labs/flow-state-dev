@@ -15,7 +15,7 @@ read gets it. **Held out**: another folder, path and wording pass a correct lab.
 
 **Signal:** `fsdev dev --app @flow-state-dev/teammates` on a fresh store over the seeded checkout.
 The check opens the worker's conversation and sends the question through the lab's own adapter
-(`labs/teammates/src/adapter.ts`), and grades every view its `watchConversation` hands the screen.
+(`labs/teammates/src/app/`), and grades every view its `watchConversation` hands the screen.
 That watch reads the session through the client's `sessionFeed`, so it is what the conversation
 draws.
 
@@ -40,7 +40,7 @@ and the lab's pages built: `pnpm --filter @flow-state-dev/teammates build`).
 **Controls:** on the same command:
 
 - `GOAL_CONTROL=popup-only`: the adapter's conversation draws no tool steps, as before this change
-  (a scratch patch to `labs/teammates/src/adapter.ts`, applied as this check's own process loads
+  (a scratch patch to `labs/teammates/src/app/conversations.ts`, applied as this check's own process loads
   it); the popup still does. *steps during the turn* must FAIL in every run.
 
 ## Verdict log

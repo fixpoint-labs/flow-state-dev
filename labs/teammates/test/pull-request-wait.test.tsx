@@ -8,7 +8,7 @@
  */
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { toBoardTask, type LabAdapter } from "../src/adapter";
+import { toBoardTask, type AppCalls } from "../src/app";
 import { PULL_REQUEST_HINT, PullRequestOpen } from "../src/components/Popups";
 
 afterEach(cleanup);
@@ -47,7 +47,7 @@ describe("a coding task waiting on its pull request", () => {
   });
 
   it("shows PR open · #7, linked from the run session's record, and how to wake it", async () => {
-    const adapter = { readPullRequests: async () => [{ number: 7, url: URL_7, title: "Add a welcome line" }] } as unknown as LabAdapter;
+    const adapter = { readPullRequests: async () => [{ number: 7, url: URL_7, title: "Add a welcome line" }] } as unknown as AppCalls;
     render(<PullRequestOpen adapter={adapter} task={toBoardTask(waitingRow)} />);
     await waitFor(() => expect(screen.getByRole("link", { name: "#7" }).getAttribute("href")).toBe(URL_7));
     expect(screen.getByTestId("pull-request-wait").textContent).toBe("PR open · #7");

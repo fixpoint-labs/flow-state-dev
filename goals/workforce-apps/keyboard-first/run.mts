@@ -71,8 +71,8 @@ type AppPatch = Patch & { app: "claude-code-style" | "teammates" | "shift-manage
 const CONTROLS: Record<string, { patches: AppPatch[]; fails: StepId[] }> = {
   "no-composer-focus": {
     patches: [
-      { app: "claude-code-style", file: "src/App.tsx", from: "else focusComposer(id);", to: "else void id;", why: "a pick no longer focuses the session's composer" },
-      { app: "teammates", file: "src/App.tsx", from: "if (sessionId !== undefined) focusComposer(sessionId);", to: "void sessionId;", why: "a pick no longer focuses the teammate's composer" },
+      { app: "claude-code-style", file: "src/components/App.tsx", from: "else focusComposer(id);", to: "else void id;", why: "a pick no longer focuses the session's composer" },
+      { app: "teammates", file: "src/components/App.tsx", from: "if (sessionId !== undefined) focusComposer(sessionId);", to: "void sessionId;", why: "a pick no longer focuses the teammate's composer" },
     ],
     fails: ["a1", "a2", "b1"],
   },

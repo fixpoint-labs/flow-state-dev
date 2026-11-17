@@ -2,7 +2,7 @@ import type { FileContent } from "@flow-state-dev/core/items";
 import type { SentLineMark } from "@flow-state-dev/react";
 import { useState } from "react";
 import { defaultRehypePlugins } from "streamdown";
-import type { LabTask, TaskStatus, ThreadEntry } from "../lab";
+import type { AppTask, TaskStatus, ThreadEntry } from "../app";
 import { TASK_STATUS } from "../lib/task-status";
 import type { ToolRun, ToolStep } from "../lib/tool-steps";
 import { cn } from "../lib/utils";
@@ -130,7 +130,7 @@ export function Entry({
 
 /** The session's task rows (`undefined` until read) and how to open one, as the main thread hands them to its lines. */
 export interface FeedTasks {
-  rows: readonly LabTask[] | undefined;
+  rows: readonly AppTask[] | undefined;
   open: (taskId: string) => void;
 }
 
@@ -141,7 +141,7 @@ export interface FeedTasks {
  * the board doesn't list keeps what the line reported. (A start line reports
  * no status, so its dot is the row's.)
  */
-function lineStatus(reported: TaskStatus, row: LabTask | undefined): { dot: TaskStatus; now: TaskStatus | undefined } {
+function lineStatus(reported: TaskStatus, row: AppTask | undefined): { dot: TaskStatus; now: TaskStatus | undefined } {
   const dot = row?.status ?? reported;
   return { dot, now: row !== undefined && row.status !== reported ? row.status : undefined };
 }

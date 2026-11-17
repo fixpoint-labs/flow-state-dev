@@ -1,4 +1,4 @@
-import type { TaskStatus } from "../lab";
+import type { TaskStatus } from "../app";
 import type { TaskSignalKind } from "../components/flow-state/task-signals";
 
 /** The endings a task stays in: its row moves to the tasks pane's *Done* group, and its progress note no longer says anything. */

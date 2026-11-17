@@ -9,10 +9,10 @@ import { StrictMode } from "react";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import type { ClientFetch } from "@flow-state-dev/client";
-import { App } from "../src/App";
+import { App } from "../src/components/App";
 import { modeById } from "../src/modes";
 import { layOutFeeds } from "./feed-layout";
-import { closeLabs, openTestLab, repository, seedSession, vendorScripts, type TestLab, type TestLabOptions, type VendorControl, type VendorOptions } from "./lab-host";
+import { closeApps, openTestApp, repository, seedSession, vendorScripts, type TestApp, type TestAppOptions, type VendorControl, type VendorOptions } from "./app-host";
 
 // The app keeps what is open in the page's address, and drafts in storage across a reload;
 // each test starts on a bare address with no one else's drafts.
@@ -20,13 +20,13 @@ afterEach(async () => {
   cleanup();
   window.history.replaceState(null, "", "/");
   window.localStorage.clear();
-  await closeLabs();
+  await closeApps();
 });
 
 /** Long enough for a read of the in-process host, which hears no push and reads on its timer. */
 const SLOW = { timeout: 15_000 };
 
-let lab: TestLab;
+let lab: TestApp;
 let control: VendorControl;
 
 /**
@@ -34,10 +34,10 @@ let control: VendorControl;
  * `seeded`, with the sessions someone who used the lab before has: "Draft the launch note" in the
  * Sessions view, "Billing triage" in the Projects view, and "Fix the onboarding copy", opened on no project.
  */
-async function openLabHost(options: { seeded?: boolean; vendor?: VendorOptions; host?: TestLabOptions } = {}): Promise<TestLab> {
+async function openAppHost(options: { seeded?: boolean; vendor?: VendorOptions; host?: TestAppOptions } = {}): Promise<TestApp> {
   const vendor = vendorScripts(options.vendor);
   control = vendor.control;
-  lab = await openTestLab({ scripts: vendor.scripts, ...options.host });
+  lab = await openTestApp({ scripts: vendor.scripts, ...options.host });
   await lab.calls.createProject("onboarding-app", `file://${repository(join(lab.data, "onboarding"))}`);
   if (options.seeded) {
     await seedSession(lab, "session", "Draft the launch note");
@@ -51,9 +51,9 @@ async function openLabHost(options: { seeded?: boolean; vendor?: VendorOptions; 
   return lab;
 }
 
-/** The app on {@link openLabHost}'s host. */
-async function renderApp(options: Parameters<typeof openLabHost>[0] = {}) {
-  await openLabHost(options);
+/** The app on {@link openAppHost}'s host. */
+async function renderApp(options: Parameters<typeof openAppHost>[0] = {}) {
+  await openAppHost(options);
   render(lab.wrap(<App />));
 }
 
@@ -98,7 +98,7 @@ describe("the session-mode screen", () => {
   });
 
   it("opens no session until a project is picked, even when StrictMode replays the mount", async () => {
-    await openLabHost();
+    await openAppHost();
     render(
       <StrictMode>
         {lab.wrap(<App />)}
@@ -227,7 +227,7 @@ describe("the session-mode screen", () => {
   });
 
   it("keeps a draft revised after a reload when the send from before the reload lands", async () => {
-    await openLabHost({ seeded: true });
+    await openAppHost({ seeded: true });
     const open = async () => {
       await pick();
       fireEvent.click(await within(screen.getByRole("navigation", { name: "Sessions" })).findByRole("button", { name: /Draft the launch note/ }, SLOW));
@@ -261,7 +261,7 @@ describe("the session-mode screen", () => {
   });
 
   it("brings an unsent draft back after a reload, for its own session only", async () => {
-    await openLabHost({ seeded: true });
+    await openAppHost({ seeded: true });
     const open = async (title: RegExp, heading: string) => {
       fireEvent.click(await within(screen.getByRole("navigation", { name: "Sessions" })).findByRole("button", { name: title }, SLOW));
       await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe(heading), SLOW);

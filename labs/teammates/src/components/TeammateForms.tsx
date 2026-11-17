@@ -1,6 +1,6 @@
 import { isSendKey, useSubmit } from "@flow-state-dev/react";
 import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
-import type { NewTeammate, TeammateEdit } from "../adapter";
+import type { NewTeammate, TeammateEdit } from "../app";
 
 function Shell({ label, error, children, onSubmit }: { label: string; error?: string; children: ReactNode; onSubmit: (e: FormEvent) => void }) {
   return (

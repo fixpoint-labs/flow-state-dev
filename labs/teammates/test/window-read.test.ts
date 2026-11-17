@@ -6,7 +6,7 @@
  */
 import type { SessionRequestSummary } from "@flow-state-dev/client";
 import { describe, expect, it } from "vitest";
-import { windowReadOf } from "../src/adapter";
+import { windowReadOf } from "../src/app";
 
 const request = (id: string, startedAtMs: number, historyStart?: string, actionName = "chat"): SessionRequestSummary =>
   ({ id, actionName, status: "completed", startedAtMs, ...(historyStart === undefined ? {} : { historyStart: { requestId: historyStart } }) }) as SessionRequestSummary;

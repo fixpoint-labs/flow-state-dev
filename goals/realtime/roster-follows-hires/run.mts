@@ -62,7 +62,7 @@ import { ROUTE_MODEL } from "../../../apps/kitchen-sink/lib/models.ts";
 import * as generated from "../../../apps/kitchen-sink/workforce/workforce.gen.ts";
 import { LabProvider } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { useRoster } from "../../../packages/shift-manager/src/lib/roster.ts";
-import { createLabAdapter, type LabWorker } from "../../../labs/teammates/src/adapter.ts";
+import { createAppCalls, type AppWorker } from "../../../labs/teammates/src/app/index.ts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("realtime-roster-follows");
@@ -237,7 +237,7 @@ function mountViews(on: Host, user: "alice" | "bob"): Views {
   smRoot.render(createElement(LabProvider, { connection: { userId: user, bearerToken: tokens.sm, baseUrl: on.base }, children: createElement(Probe) }));
 
   // Teammates: the adapter's watch, read off the rows it reports.
-  const stopTm = createLabAdapter(clientOf(on, tokens.tm)).watchWorkers((rows: LabWorker[]) =>
+  const stopTm = createAppCalls(clientOf(on, tokens.tm)).watchWorkers((rows: AppWorker[]) =>
     record(tm, new Map(rows.map((row) => [row.id, row.role === "" ? null : row.role]))),
   );
 

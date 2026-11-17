@@ -9,10 +9,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "@flow-state-dev/client";
-import { App } from "../src/App";
-import { createLabAdapter, type ConversationEntry, type LabTalk } from "../src/adapter";
+import { App } from "../src/components/App";
+import { AppProvider } from "../src/app";
+import { createAppCalls, type ConversationEntry, type AppTalk } from "../src/app";
 import { pendingFor } from "../src/lib/talk";
-import { createFixtureLab } from "./fake-lab";
+import { createFixtureApp } from "./fake-app";
 import { liveOver } from "./live-over";
 
 const LEAD = "teammates.chief-of-staff";
@@ -32,8 +33,8 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-const ask: LabTalk = { id: "msg_question", from: LEAD, to: RESEARCHER, text: "Launch date?", replyRequested: true, at: 1 };
-const reply: LabTalk = { id: "msg_reply", from: RESEARCHER, to: LEAD, text: "Nov 12.", inReplyTo: "msg_question", at: 2 };
+const ask: AppTalk = { id: "msg_question", from: LEAD, to: RESEARCHER, text: "Launch date?", replyRequested: true, at: 1 };
+const reply: AppTalk = { id: "msg_reply", from: RESEARCHER, to: LEAD, text: "Nov 12.", inReplyTo: "msg_question", at: 2 };
 
 describe("which messages to a worker are still pending", () => {
   it("leaves out a waited send's answer: it was the tool's result, and no received line will ever land for it", () => {
@@ -62,8 +63,8 @@ describe("the message log the screen reads", () => {
         return liveOver(this as never);
       },
     } as unknown as Client;
-    let rows: LabTalk[] | undefined;
-    const stop = createLabAdapter(client).watchTalk(LEAD, (next) => (rows = next));
+    let rows: AppTalk[] | undefined;
+    const stop = createAppCalls(client).watchTalk(LEAD, (next) => (rows = next));
     await waitFor(() => expect(rows).toBeDefined());
     stop();
     expect(rows!.map((m) => [m.id, m.delivered === true])).toEqual([
@@ -75,11 +76,11 @@ describe("the message log the screen reads", () => {
 
 describe("a waited send's answer, on the screen", () => {
   it("draws no pending line under your newer message, during or after Lead's turn", async () => {
-    const lab = createFixtureLab({ speed: 0.05 });
+    const lab = createFixtureApp({ speed: 0.05 });
     // What Jake saw: researcher's answers to Lead's waited sends, delivered as the sends' results.
-    const waited = [1, 2, 3, 4].map((n): LabTalk => ({ ...reply, id: `msg_waited_${n}`, inReplyTo: `msg_ask_${n}`, at: n, delivered: true }));
-    const adapter = { ...lab, watchTalk: (worker: string, onChange: (rows: LabTalk[]) => void) => lab.watchTalk(worker, (rows) => onChange(worker === LEAD ? [...waited, ...rows] : rows)) };
-    render(<App adapter={adapter} />);
+    const waited = [1, 2, 3, 4].map((n): AppTalk => ({ ...reply, id: `msg_waited_${n}`, inReplyTo: `msg_ask_${n}`, at: n, delivered: true }));
+    const adapter = { ...lab, watchTalk: (worker: string, onChange: (rows: AppTalk[]) => void) => lab.watchTalk(worker, (rows) => onChange(worker === LEAD ? [...waited, ...rows] : rows)) };
+    render(<AppProvider calls={adapter}><App /></AppProvider>);
     const conversation = () => screen.getByRole("main", { name: "Conversation" });
     const box = await screen.findByLabelText("Message Lead");
     await act(async () => {

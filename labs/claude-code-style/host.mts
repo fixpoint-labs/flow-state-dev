@@ -1,4 +1,4 @@
-// fallow-ignore-file duplicate-export -- each lab is its own app, and its host exposes the same openLab as the others on purpose.
+// fallow-ignore-file duplicate-export -- each starter is its own app, and its host exposes the same checkCommands as the others on purpose.
 /** The lab's server, from package pieces: the README's "The host" says what each piece is for and what each option sets. */
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -17,8 +17,8 @@ import { checkCommandsFrom, listedRepository, localWorkspaceHost, sessionReposit
 import { defineProjectsFlow, PROJECTS_FLOW } from "./flows/projects.mts";
 import { REPOSITORY_FIELD, sessionFields } from "./flows/session-repository.mts";
 
-/** What {@link openLab} builds the host from; the README's "The host" says what each sets. */
-export interface LabOptions {
+/** What {@link openClaudeCodeStyle} builds the host from; the README's "The host" says what each sets. */
+export interface ClaudeCodeStyleOptions {
   data: string;
   userId: string;
   model: string;
@@ -41,7 +41,7 @@ export interface LabOptions {
 export const checkCommands = (value: string | undefined): string[] | undefined => checkCommandsFrom(value, "CLAUDE_CODE_STYLE_CHECKS");
 
 /** The lab's host. */
-export async function openLab(options: LabOptions): Promise<{ flowState: ReturnType<typeof createFlowState> }> {
+export async function openClaudeCodeStyle(options: ClaudeCodeStyleOptions): Promise<{ flowState: ReturnType<typeof createFlowState> }> {
   const { data, model, repositories, scriptedStepMs: scripted } = options;
   // The host and its run source need each other: the source checks a repository through the host, so the
   // host is made first and asks the source, built just below, once a run starts.

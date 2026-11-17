@@ -9,7 +9,7 @@ import { useEffect, useRef } from "react";
  * text field, so all four stay text when typed there. Inside an
  * open dialog only ⌘K acts; the dialog owns the rest.
  */
-export function useLabKeys(on: { palette: () => void; step: (by: -1 | 1) => void; help: () => void; nav: () => void; pane: () => void }) {
+export function useAppKeys(on: { palette: () => void; step: (by: -1 | 1) => void; help: () => void; nav: () => void; pane: () => void }) {
   const latest = useRef(on);
   latest.current = on;
   useEffect(() => {

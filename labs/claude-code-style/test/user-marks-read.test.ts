@@ -8,17 +8,17 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import { useDismissed, usePins } from "../src/lab";
-import { closeLabs, openTestLab } from "./lab-host";
+import { useDismissed, usePins } from "../src/app";
+import { closeApps, openTestApp } from "./app-host";
 
 afterEach(async () => {
   cleanup();
-  await closeLabs();
+  await closeApps();
 });
 
 describe("your marks", () => {
   it("read with no session found or made, and again when another tab pins or dismisses", async () => {
-    const lab = await openTestLab({ noProject: true });
+    const lab = await openTestApp({ noProject: true });
     const sessions = async () => (await lab.client.sessions.list()).length;
     const before = await sessions();
     const marks = renderHook(() => ({ pins: usePins(), dismissed: useDismissed() }), { wrapper: ({ children }: { children: ReactNode }) => lab.wrap(children) });

@@ -9,23 +9,23 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { App } from "../src/App";
-import { closeLabs, openTestLab, readUntil, vendorScripts, type TestLab, type VendorControl } from "./lab-host";
+import { App } from "../src/components/App";
+import { closeApps, openTestApp, readUntil, vendorScripts, type TestApp, type VendorControl } from "./app-host";
 
 afterEach(async () => {
   cleanup();
   window.history.replaceState(null, "", "/");
   window.localStorage.clear();
-  await closeLabs();
+  await closeApps();
 });
 
 const SLOW = { timeout: 15_000 };
 
 /** The app on the lab's own host with the vendor scripts; their control. */
-let lab: TestLab;
-async function vendorLab(): Promise<VendorControl> {
+let lab: TestApp;
+async function vendorApp(): Promise<VendorControl> {
   const { scripts, control } = vendorScripts();
-  lab = await openTestLab({ scripts });
+  lab = await openTestApp({ scripts });
   render(lab.wrap(<App />));
   return control;
 }
@@ -52,7 +52,7 @@ async function ask(text: string) {
 
 // A session-mode session on a project with the vendor script's two tasks, one done and one running.
 async function vendorSession(): Promise<VendorControl> {
-  const control = await vendorLab();
+  const control = await vendorApp();
   const picker = await screen.findByRole("region", { name: "Choose a project" });
   fireEvent.click(await within(picker).findByRole("button", { name: "vendor-notes" }, SLOW));
   await ask("Compare Acme and Globex for us.");
@@ -129,7 +129,7 @@ describe("the tasks pane's sheet", () => {
 describe("a thread's view", () => {
   // A threads-mode session with a running thread and a failed one.
   async function billingTriage(title: string) {
-    const control = await vendorLab();
+    const control = await vendorApp();
     fireEvent.click(within(screen.getByRole("tablist", { name: "View" })).getByRole("tab", { name: "Projects" }));
     const picker = await screen.findByRole("region", { name: "Choose a project" });
     fireEvent.click(await within(picker).findByRole("button", { name: "vendor-notes" }, SLOW));

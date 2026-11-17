@@ -1,5 +1,5 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useLab, useTaskWork, withPullRequestLinks, type LabTask, type TaskStatus } from "../lab";
+import { useApp, useTaskWork, withPullRequestLinks, type AppTask, type TaskStatus } from "../app";
 import { FINISHED, TASK_STATUS } from "../lib/task-status";
 import { useMissing, useNow } from "../lib/use-watch";
 import { Clamp } from "./Clamp";
@@ -42,7 +42,7 @@ export function TasksPane({
 }: {
   sessionId: string;
   /** The session's task rows, as the app reads them; `undefined` until read. */
-  tasks: LabTask[] | undefined;
+  tasks: AppTask[] | undefined;
   /** The app's last read of the rows failed: they may be old. */
   stale?: boolean;
   /** The task whose sheet is open, kept by the app so the page's address can name it. */
@@ -121,9 +121,9 @@ export function TasksPane({
  * the link, and that a line in the Steer box wakes it. A failed task's error
  * shows as an error.
  */
-function TaskSheet({ sessionId, task, onClose }: { sessionId: string; task: LabTask; onClose: () => void }) {
+function TaskSheet({ sessionId, task, onClose }: { sessionId: string; task: AppTask; onClose: () => void }) {
   const labels = useContext(HarnessLabels);
-  const lab = useLab();
+  const lab = useApp();
   const actions = useMemo(() => lab.taskActions(sessionId), [lab, sessionId]);
   const work = useTaskWork(task);
   const status = TASK_STATUS[task.status];

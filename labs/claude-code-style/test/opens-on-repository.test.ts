@@ -2,7 +2,7 @@
  * A session the lab opens works in a repository: the one the picked project
  * names, written by the server when the session opens (workforce's
  * `setSessionFields`), and read back off the session as the client reads it.
- * On the lab's own host, in process, through `src/lab.ts`'s calls.
+ * On the lab's own host, in process, through `src/app/`'s calls.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -11,8 +11,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient } from "@flow-state-dev/client";
 import { createInProcessFetch } from "@flow-state-dev/engine";
-import { openLab } from "../host.mts";
-import { labCalls } from "../src/lab";
+import { openClaudeCodeStyle } from "../host.mts";
+import { appCalls } from "../src/app";
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -34,14 +34,14 @@ describe("a session the lab opens", () => {
     const data = mkdtempSync(join(tmpdir(), "ccs-opens-"));
     const first = repository(join(data, "first"));
     const second = repository(join(data, "second"));
-    const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: [first, second] });
+    const { flowState } = await openClaudeCodeStyle({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: [first, second] });
     cleanup.push(async () => {
       await (flowState as unknown as { dispose?: () => Promise<void> }).dispose?.();
       rmSync(data, { recursive: true, force: true });
     });
     const fetcher = createInProcessFetch(flowState as never) as never;
     const client = createClient({ userId: "u_lab", baseUrl: "", fetcher });
-    const lab = labCalls(client, { fetcher });
+    const lab = appCalls(client, { fetcher });
     await lab.createProject("first", `file://${first}`);
     const picked = await lab.createProject("second", `file://${second}`);
 

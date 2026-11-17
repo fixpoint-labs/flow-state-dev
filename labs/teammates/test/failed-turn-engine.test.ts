@@ -10,7 +10,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { createFlowState, createInProcessFetch, inMemoryStores } from "@flow-state-dev/engine";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createLabAdapter, type ConversationEntry, type ConversationView } from "../src/adapter";
+import { createAppCalls, type ConversationEntry, type ConversationView } from "../src/app";
 
 describe("on a real engine", () => {
   it("a turn that throws shows its reason, and Retry runs it again as a new request", async () => {
@@ -33,7 +33,7 @@ describe("on a real engine", () => {
       const sent = await client.flow("lab-turn").send("respond", { message: "hi" }, { sessionId });
       expect((await sent.wait()).status).toBe("failed");
 
-      const lab = createLabAdapter(client);
+      const lab = createAppCalls(client);
       const view = await new Promise<ConversationView>((resolve) => {
         const stop = lab.watchConversation(sessionId, (next) => {
           if (next.entries.some((e) => e.kind === "failed")) {

@@ -5,27 +5,27 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { LabTask } from "../src/lab";
+import type { AppTask } from "../src/app";
 import { ThreadView } from "../src/components/ThreadView";
 import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import { RUN, reviewStop, stubServer, underReview, verdictOf } from "./stub-server";
 
 afterEach(cleanup);
 
-const workingTask: LabTask = {
+const workingTask: AppTask = {
   id: "t-1",
   title: "Add a CHANGELOG line",
   goal: "Add a line",
   status: "in_progress",
   harness: "claude-code",
   statusNote: "Editing CHANGELOG.md",
-} as LabTask;
+} as AppTask;
 
 /** The steers the board took: each `updateTask` send with a message. */
 const steersIn = (posts: ReturnType<typeof stubServer>["posts"]) =>
   posts.flatMap((posted) => (posted.path.endsWith("/actions/updateTask_tasks") && typeof (posted.body.input as { message?: unknown }).message === "string" ? [(posted.body.input as { message: string }).message] : []));
 
-const reviewTask: LabTask = underReview(workingTask);
+const reviewTask: AppTask = underReview(workingTask);
 
 const REVIEW = {
   branch: "conductor/t0/ha62-h01/t-1--code",
@@ -40,7 +40,7 @@ describe("a coding thread's composer after it accepts a review", () => {
   it("frees the composer once a landing moves the task on to its pull request, so you can say a merge", async () => {
     const server = stubServer({ items: { [RUN.sessionId]: [reviewStop("stop-1", REVIEW)] } });
     // The board holds the task as the view draws it.
-    const view = (task: LabTask) => {
+    const view = (task: AppTask) => {
       server.board["s-1"] = [task];
       return server.wrap(
         <SessionOverlayProvider>

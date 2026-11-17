@@ -1,6 +1,6 @@
 import type { FileContent } from "@flow-state-dev/core/items";
 import { memo } from "react";
-import type { ConversationEntry } from "../adapter";
+import type { ConversationEntry } from "../app";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import type { AnswerStatus } from "./Popups";

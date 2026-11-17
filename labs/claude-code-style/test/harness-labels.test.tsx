@@ -7,7 +7,7 @@
  */
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { LabTask } from "../src/lab";
+import type { AppTask } from "../src/app";
 import { ThreadCard } from "../src/components/ThreadCard";
 import { harnessLabelOf } from "../src/components/ThreadStatus";
 import { HarnessLabels } from "../src/lib/harness-labels";
@@ -23,7 +23,7 @@ const planTask = {
   harness: "claude-code-plan",
   assignee: "desk.thread-coder-plan",
   spend: { harness: "claude-code-plan" },
-} as unknown as LabTask;
+} as unknown as AppTask;
 
 const LABELS = { "claude-code": "Claude Code", "claude-code-plan": "Claude Code (plan)" };
 
@@ -47,7 +47,7 @@ describe("a plan task's harness name", () => {
 
 describe("a coding run nobody reviewed by its deadline", () => {
   it("is marked Not reviewed on its card, so it never reads as approved, and an accepted one is not", () => {
-    const done: LabTask = { ...planTask, harness: "claude-code", assignee: "desk.thread-coder" };
+    const done: AppTask = { ...planTask, harness: "claude-code", assignee: "desk.thread-coder" };
     render(stubServer().wrap(<ThreadCard sessionId="s-1" task={{ ...done, review: "deadline" }} onOpen={() => {}} />));
     expect(screen.getByText("Not reviewed")).toBeTruthy();
     cleanup();

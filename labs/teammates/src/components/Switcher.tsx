@@ -1,4 +1,4 @@
-import type { LabWorker } from "../adapter";
+import type { AppWorker } from "../app";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ownEscape, useFocusReturn } from "../lib/keys";
@@ -20,7 +20,7 @@ export function Switcher({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  teammates: LabWorker[];
+  teammates: AppWorker[];
   onPick: (worker: string) => void;
   onHire: () => void;
 }) {

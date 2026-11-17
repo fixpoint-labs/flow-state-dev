@@ -10,9 +10,10 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { BoardTask } from "../src/adapter";
-import { App } from "../src/App";
-import { createFixtureLab, type FixtureLab } from "./fake-lab";
+import type { BoardTask } from "../src/app";
+import { App } from "../src/components/App";
+import { AppProvider } from "../src/app";
+import { createFixtureApp, type FixtureApp } from "./fake-app";
 
 afterEach(() => {
   cleanup();
@@ -39,7 +40,7 @@ const buttons = (popup: HTMLElement) =>
   [...popup.querySelectorAll<HTMLElement>('[data-testid="task-action-row"] button')].map((b) => b.textContent ?? "");
 
 /** Lead's conversation's rows, as the adapter reads them. */
-function rowsOf(lab: FixtureLab): BoardTask[] {
+function rowsOf(lab: FixtureApp): BoardTask[] {
   let rows: BoardTask[] = [];
   lab.watchTasks(LEAD_CONVERSATION, (tasks) => (rows = tasks))();
   return rows;
@@ -47,7 +48,7 @@ function rowsOf(lab: FixtureLab): BoardTask[] {
 
 describe("a coding task's popup has its buttons", () => {
   it("while it runs: Cancel and Steer; once cancelled: Retry and a Re-run on each other harness, never its own", async () => {
-    render(<App adapter={createFixtureLab({ speed: 0.3, asks: true })} />);
+    render(<AppProvider calls={createFixtureApp({ speed: 0.3, asks: true })}><App /></AppProvider>);
     const popup = await openCodingTask("Cursor");
     await waitFor(() => expect(buttons(popup)).toEqual(["Cancel", "Steer"]), { timeout: 2000 });
 
@@ -65,7 +66,7 @@ describe("a coding task's popup has its buttons", () => {
   });
 
   it("starts the row afresh when the popup moves to another task, so a draft never carries to it", async () => {
-    render(<App adapter={createFixtureLab({ speed: 0.3, asks: true })} />);
+    render(<AppProvider calls={createFixtureApp({ speed: 0.3, asks: true })}><App /></AppProvider>);
     const cursor = await openCodingTask("Cursor");
     fireEvent.click(within(cursor).getByRole("button", { name: "Close" }));
     const codex = await openCodingTask("Codex");
@@ -81,7 +82,7 @@ describe("a coding task's popup has its buttons", () => {
   });
 
   it("a failed task shows its reason as an error, not as its result", async () => {
-    render(<App adapter={createFixtureLab({ speed: 0.05, notSetUp: ["cursor"] })} />);
+    render(<AppProvider calls={createFixtureApp({ speed: 0.05, notSetUp: ["cursor"] })}><App /></AppProvider>);
     const popup = await openCodingTask("Cursor");
     const error = await within(popup).findByRole("alert", { name: "Error" }, { timeout: 2000 });
     expect(error.textContent).toMatch(/Cursor isn't set up on this machine/);
@@ -90,8 +91,8 @@ describe("a coding task's popup has its buttons", () => {
   });
 
   it("Re-run files one new task on that harness's worker, the old one unchanged; pressed again, the board's refusal shows", async () => {
-    const lab = createFixtureLab({ speed: 0.5, notSetUp: ["codex"] });
-    render(<App adapter={lab} />);
+    const lab = createFixtureApp({ speed: 0.5, notSetUp: ["codex"] });
+    render(<AppProvider calls={lab}><App /></AppProvider>);
     const popup = await openCodingTask("Codex");
     await within(popup).findByRole("alert", { name: "Error" }, { timeout: 2000 });
     const [old] = rowsOf(lab);

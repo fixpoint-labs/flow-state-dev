@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { LabAdapter, Unsubscribe } from "../adapter";
+import type { AppCalls, Unsubscribe } from "../app";
 import { isFeedStale } from "../components/flow-state/connection-banner";
 
 /**
@@ -17,7 +17,7 @@ export function useWatch<T>(watch: (key: string, onChange: (value: T) => void) =
 }
 
 /** Whether a conversation's feed has lost the server, so what it last said may be out of date. */
-export function useStale(adapter: LabAdapter, sessionId: string | undefined): boolean {
+export function useStale(adapter: AppCalls, sessionId: string | undefined): boolean {
   const connection = useWatch(adapter.watchConnection, sessionId);
   return connection !== undefined && isFeedStale(connection);
 }

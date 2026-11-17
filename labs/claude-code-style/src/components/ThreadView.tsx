@@ -1,6 +1,6 @@
 import { isSendKey, useDraftSend, useJumpToLatest, useSubmit } from "@flow-state-dev/react";
 import { useMemo, type FormEvent, type KeyboardEvent } from "react";
-import { useLab, useTaskWork, withPullRequestLinks, type LabTask } from "../lab";
+import { useApp, useTaskWork, withPullRequestLinks, type AppTask } from "../app";
 import { Entry } from "./Entry";
 import { LoadEarlier } from "./LoadEarlier";
 import { ReviewCard } from "./ReviewCard";
@@ -39,13 +39,13 @@ export function ThreadView({
   onClose,
 }: {
   sessionId: string;
-  task: LabTask;
+  task: AppTask;
   pinned: boolean;
   /** You dismissed this failed attempt: it no longer waits on you. */
   dismissed?: boolean;
   onClose: () => void;
 }) {
-  const lab = useLab();
+  const lab = useApp();
   const work = useTaskWork(task);
   const { text, setText, sending, failure, submit } = useDraftSend("claude-code-style:task-draft", task.id);
   // The board keys this view by task, so a change of task remounts it and the feed starts over.

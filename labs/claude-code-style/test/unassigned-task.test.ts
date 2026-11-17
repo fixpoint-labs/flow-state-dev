@@ -8,14 +8,14 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { codingBoardViewRef } from "@flow-state-dev/harness-manager/browser";
-import { closeLabs, openTestLab, waitFor, type TestLab } from "./lab-host";
+import { closeApps, openTestApp, waitFor, type TestApp } from "./app-host";
 
 const ASK = "Rename the greeting in src/hello.ts.";
 
-afterEach(closeLabs);
+afterEach(closeApps);
 
 /** The session's tasks on the coding board, read once the turn has taken its createTask result. */
-async function tasksAfterTurn(lab: TestLab, session: string, results: string[]) {
+async function tasksAfterTurn(lab: TestApp, session: string, results: string[]) {
   const end = Date.now() + 20_000;
   while (results.length === 0) {
     if (Date.now() > end) throw new Error("the main turn never took its createTask result");
@@ -33,7 +33,7 @@ describe("desk.main files a code change with no assignee", () => {
   it("is refused with the delegates it can name, and nothing waits on the board unowned", async () => {
     // The tool results `desk.main` was handed, one per step after its first.
     const results: string[] = [];
-    const lab = await openTestLab({
+    const lab = await openTestApp({
       scripts: {
         "agent-answer": ({ said, step }) => {
           if (!/You are main/.test(said)) return { text: "done" };

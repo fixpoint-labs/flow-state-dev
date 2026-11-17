@@ -1,7 +1,7 @@
 /**
  * A thread's entries, from a session's stored items: what the main thread and
  * a task's work draw. Pure: the items come from the session feed
- * (`src/lab.ts`), and nothing here reaches the server.
+ * (`src/app/`), and nothing here reaches the server.
  *
  * `entriesOf` reads the items in order; `withStopped` places a line after each
  * turn you stopped; `reviewStopOf` and `reviewStopIdOf` read a coding run's

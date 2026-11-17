@@ -43,7 +43,7 @@ fails rather than infers; nothing graded waits on it.
 
 **Controls:**
 - `GOAL_CONTROL=wrong-board`: the lab's action row bound to board `"plan"` instead of `"tasks"`
-  (`src/lab.ts`, planted and put back; pages rebuilt). Must FAIL steer, cancel and retry, with
+  (`src/app/calls.ts`, planted and put back; pages rebuilt). Must FAIL steer, cancel and retry, with
   the refusal on the page.
 - `GOAL_CONTROL=no-error`: the sheet's error drawn with nothing (`src/components/TasksPane.tsx`).
   Must FAIL error.

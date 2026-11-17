@@ -11,7 +11,7 @@
  */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LabTask } from "../src/lab";
+import type { AppTask } from "../src/app";
 import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import { TasksPane } from "../src/components/TasksPane";
 import { ThreadView } from "../src/components/ThreadView";
@@ -24,7 +24,7 @@ afterEach(() => {
 
 const STARTED = Date.UTC(2026, 10, 4, 9, 0, 0);
 
-const RUNNING: LabTask = { id: "t-1", title: "Fix session log ordering", goal: "Fix it", status: "in_progress", harness: "claude-code", startedAt: STARTED, runLink: { ...RUN } };
+const RUNNING: AppTask = { id: "t-1", title: "Fix session log ordering", goal: "Fix it", status: "in_progress", harness: "claude-code", startedAt: STARTED, runLink: { ...RUN } };
 
 /** A tool call of the run, as its session stores it: `in_progress` while it runs. */
 const call = (id: string, name: string, args: unknown, status: "completed" | "in_progress") => ({
@@ -56,10 +56,10 @@ function server(now: Now = {}) {
   });
 }
 
-function open(task: LabTask, now: Now = {}) {
+function open(task: AppTask, now: Now = {}) {
   const { wrap } = server(now);
   // The view is a sheet, which draws into the area a provider hosts.
-  const shown = (current: LabTask) =>
+  const shown = (current: AppTask) =>
     wrap(
       <SessionOverlayProvider>
         <SessionOverlayArea>
@@ -72,7 +72,7 @@ function open(task: LabTask, now: Now = {}) {
   return {
     pane,
     line: () => within(pane).queryByTestId("streaming-indicator"),
-    setTask: (next: Partial<LabTask>) => view.rerender(shown({ ...task, ...next })),
+    setTask: (next: Partial<AppTask>) => view.rerender(shown({ ...task, ...next })),
   };
 }
 
@@ -124,10 +124,10 @@ describe("a running task's view ends in a live working line", () => {
 });
 
 /** Session mode's opened background task: the same line, in the sheet the tasks pane opens. */
-function openInPane(task: LabTask, now: Now = {}) {
+function openInPane(task: AppTask, now: Now = {}) {
   const { wrap } = server(now);
   // The app reads the rows and hands them to the pane (FIX-2399 E1): a row change is a new `tasks` prop.
-  const pane = (rows: LabTask[]) =>
+  const pane = (rows: AppTask[]) =>
     wrap(
       <SessionOverlayProvider>
         <SessionOverlayArea>
@@ -136,11 +136,11 @@ function openInPane(task: LabTask, now: Now = {}) {
       </SessionOverlayProvider>,
     );
   const { rerender } = render(pane([task]));
-  const showTasks = (rows: LabTask[]) => rerender(pane(rows));
+  const showTasks = (rows: AppTask[]) => rerender(pane(rows));
   const sheet = () => screen.getByRole("dialog", { name: `Work: ${task.title}` });
   return {
     line: () => within(sheet()).queryByTestId("streaming-indicator"),
-    setTask: (next: Partial<LabTask>) => act(() => showTasks([{ ...task, ...next }])),
+    setTask: (next: Partial<AppTask>) => act(() => showTasks([{ ...task, ...next }])),
   };
 }
 

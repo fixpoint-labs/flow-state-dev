@@ -14,8 +14,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createClient } from "@flow-state-dev/client";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { scriptedModels } from "../../test-support/contract";
-import { openLab } from "../host.mts";
-import { labCalls } from "../src/lab";
+import { openClaudeCodeStyle } from "../host.mts";
+import { appCalls } from "../src/app";
 import { PROJECTS_FLOW } from "../flows/projects.mts";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -38,7 +38,7 @@ describe("the project picker", () => {
   it("asks the projects flow's view, with no session found or made", async () => {
     const data = mkdtempSync(join(tmpdir(), "claude-code-style-projects-"));
     cleanups.push(() => rmSync(data, { recursive: true, force: true }));
-    const { flowState } = await openLab({
+    const { flowState } = await openClaudeCodeStyle({
       data,
       userId: "u_lab",
       model: "test/scripted",
@@ -54,7 +54,7 @@ describe("the project picker", () => {
       return inProcess(input, init);
     }) as typeof fetch;
     const client = createClient({ userId: "u_lab", baseUrl: "", fetcher });
-    const lab = labCalls(client, { fetcher });
+    const lab = appCalls(client, { fetcher });
 
     expect(await lab.checkRepository(join(data, "not-listed"))).toMatchObject({ usable: false });
     expect(asked.filter((line) => /\/sessions\b|\/actions\//.test(line))).toEqual([]);
@@ -65,7 +65,7 @@ describe("the project picker", () => {
     const data = mkdtempSync(join(tmpdir(), "claude-code-style-projects-"));
     cleanups.push(() => rmSync(data, { recursive: true, force: true }));
     const repository = makeRepository(join(data, "repo"));
-    const { flowState } = await openLab({
+    const { flowState } = await openClaudeCodeStyle({
       data,
       userId: "u_lab",
       model: "test/scripted",
@@ -81,7 +81,7 @@ describe("the project picker", () => {
       return inProcess(input, init);
     }) as typeof fetch;
     const client = createClient({ userId: "u_lab", baseUrl: "", fetcher });
-    const lab = labCalls(client, { fetcher });
+    const lab = appCalls(client, { fetcher });
 
     const made = await lab.createProject("Acme Web", `file://${repository}`);
     expect(made).toEqual({ id: "private/acme-web", name: "Acme Web" });
@@ -106,7 +106,7 @@ describe("the project picker", () => {
       const page = { items: [{ topic: "p", storageKey: "projects/p", value: { id: "p", title: "P", members: ["u_lab"], repository: null }, version: 1 }], nextCursor: "again" };
       return new Response(JSON.stringify(page), { status: 200, headers: { "content-type": "application/json" } });
     }) as typeof fetch;
-    const lab = labCalls(createClient({ userId: "u_lab", baseUrl: "", fetcher }), { fetcher });
+    const lab = appCalls(createClient({ userId: "u_lab", baseUrl: "", fetcher }), { fetcher });
     await expect(lab.listProjects()).rejects.toThrow(/same page cursor twice/);
     expect(pages).toBeLessThanOrEqual(4);
   });

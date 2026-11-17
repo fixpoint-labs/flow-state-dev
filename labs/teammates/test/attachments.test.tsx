@@ -10,9 +10,10 @@
 import type { FileContent } from "@flow-state-dev/core/items";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { LabAdapter } from "../src/adapter";
-import { App } from "../src/App";
-import { createFixtureLab } from "./fake-lab";
+import type { AppCalls } from "../src/app";
+import { App } from "../src/components/App";
+import { AppProvider } from "../src/app";
+import { createFixtureApp } from "./fake-app";
 
 afterEach(() => {
   cleanup();
@@ -23,10 +24,10 @@ afterEach(() => {
 const png = (name: string) => new File([new Uint8Array([137, 80, 78, 71, 1, 2, 3])], name, { type: "image/png" });
 
 /** The fake lab, with every send it took. */
-function recording(overrides: Partial<LabAdapter> = {}) {
-  const lab = createFixtureLab({ speed: 0.05 });
+function recording(overrides: Partial<AppCalls> = {}) {
+  const lab = createFixtureApp({ speed: 0.05 });
   const sends: Array<{ text: string; attachments: readonly FileContent[] }> = [];
-  const adapter: LabAdapter = {
+  const adapter: AppCalls = {
     ...lab,
     send: async (sessionId, text, attachments = []) => {
       sends.push({ text, attachments });
@@ -61,7 +62,7 @@ async function attached(...names: string[]) {
 describe("files in a teammate's composer", () => {
   it("shows a pasted and a picked image before Send, sends their references, and draws them on your line", async () => {
     const { adapter, sends } = recording();
-    render(<App adapter={adapter} />);
+    render(<AppProvider calls={adapter}><App /></AppProvider>);
     const box = await open();
     paste(box, png("bug.png"));
     pick(png("trace.png"));
@@ -88,7 +89,7 @@ describe("files in a teammate's composer", () => {
 
   it("sends files with no words, and refuses a type it can't take by name without sending it", async () => {
     const { adapter, sends } = recording();
-    render(<App adapter={adapter} />);
+    render(<AppProvider calls={adapter}><App /></AppProvider>);
     const box = await open();
     paste(box, new File([new Uint8Array([1])], "photo.heic", { type: "image/heic" }));
     expect((await within(composer()).findByRole("status", { name: "Attachment notices" })).textContent).toBe("photo.heic isn't supported");
@@ -108,14 +109,14 @@ describe("files in a teammate's composer", () => {
   it("keeps the files with the line when a send fails, and Retry sends them", async () => {
     let refuse = true;
     const { adapter, sends } = recording();
-    const failing: LabAdapter = {
+    const failing: AppCalls = {
       ...adapter,
       send: async (...args) => {
         if (refuse) throw new Error("network down");
         await adapter.send(...args);
       },
     };
-    render(<App adapter={failing} />);
+    render(<AppProvider calls={failing}><App /></AppProvider>);
     const box = await open();
     paste(box, png("bug.png"));
     await attached("bug.png");
@@ -139,7 +140,7 @@ describe("files in a teammate's composer", () => {
   it("still sends a line pressed while its upload ran after you open another teammate, with no error in the new box", async () => {
     let finish: () => void = () => {};
     const { adapter, sends } = recording();
-    const held: LabAdapter = {
+    const held: AppCalls = {
       ...adapter,
       upload: async (request) => {
         await new Promise<void>((resolve) => {
@@ -148,7 +149,7 @@ describe("files in a teammate's composer", () => {
         return adapter.upload(request);
       },
     };
-    render(<App adapter={held} />);
+    render(<AppProvider calls={held}><App /></AppProvider>);
     const box = await open();
     paste(box, png("bug.png"));
     fireEvent.change(box, { target: { value: "Look at this" } });
@@ -168,7 +169,7 @@ describe("files in a teammate's composer", () => {
 
   it("takes a PDF beside the text, and sends it by reference as a document", async () => {
     const { adapter, sends } = recording();
-    render(<App adapter={adapter} />);
+    render(<AppProvider calls={adapter}><App /></AppProvider>);
     const box = await open();
     pick(new File([new TextEncoder().encode("%PDF-1.4\n")], "spec.pdf", { type: "application/pdf" }));
     await within(composer()).findByText("spec.pdf");
@@ -185,7 +186,7 @@ describe("files in a teammate's composer", () => {
   });
 
   it("puts + in the Tab order, and Backspace in an empty box takes the last file off", async () => {
-    render(<App adapter={recording().adapter} />);
+    render(<AppProvider calls={recording().adapter}><App /></AppProvider>);
     const box = await open();
     const plus = within(composer()).getByRole("button", { name: "Attach files" });
     expect(plus.tabIndex).toBe(0);

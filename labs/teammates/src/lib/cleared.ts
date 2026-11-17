@@ -4,7 +4,7 @@
  * are, and the popup, the conversation and the heading's counts still show it.
  */
 import { useCallback, useState } from "react";
-import type { BoardTask } from "../adapter";
+import type { BoardTask } from "../app";
 
 const KEY = "teammates.cleared";
 

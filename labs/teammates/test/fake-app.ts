@@ -1,5 +1,5 @@
 /**
- * A test double for the screen tests: an in-memory `LabAdapter` that plays the
+ * A test double for the screen tests: an in-memory `AppCalls` that plays the
  * script on a timer. It proves the UI only, including the divider G1 will
  * place; the goal check (`goals/teammates-lab/`) proves the package. Nothing
  * in `src/` imports it.
@@ -32,14 +32,14 @@ import {
   type ConversationEntry,
   type ReviewDetail,
   type TaskAnswer,
-  type LabAdapter,
+  type AppCalls,
   type SessionStep,
-  type LabTalk,
+  type AppTalk,
   type BoardTask,
   type Unsubscribe,
   type WindowMark,
-  type LabWorker,
-} from "../src/adapter";
+  type AppWorker,
+} from "../src/app";
 
 /** How the double keeps time, and what it plays. */
 export interface FixtureOptions {
@@ -70,7 +70,7 @@ export interface FixtureOptions {
 }
 
 /** The fixture, plus what a test does to its server. */
-export interface FixtureLab extends LabAdapter {
+export interface FixtureApp extends AppCalls {
   /** Every conversation's feed reports `state` from now on. */
   setConnection(state: SessionConnectionStatus): void;
   /** The newest turn of conversation `sessionId` failed with `reason`: a reply under way is left incomplete. */
@@ -122,7 +122,7 @@ const RUN_TOOLS: Record<string, Record<"read" | "edit" | "check", [string, Recor
 const WINDOW_TURNS = 50;
 const MINUTE = 60_000;
 
-const ROSTER: LabWorker[] = [
+const ROSTER: AppWorker[] = [
   { id: "teammates.chief-of-staff", name: "Lead", icon: "★", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
   { id: "teammates.researcher", name: "researcher", icon: "🔎", color: "teal", role: "Finds facts for the team, and replies to whoever asked." },
   { id: "teammates.writer", name: "writer", icon: "✎", color: "violet", role: "Drafts and tightens copy when you or another worker asks." },
@@ -136,7 +136,7 @@ const WRITER = "teammates.writer";
 /** The coding worker a task that names no harness goes to: Lead's default. */
 const DEFAULT_CODER = "teammates.cursor";
 
-type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: LabTalk } | { kind: "result"; task: BoardTask };
+type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: AppTalk } | { kind: "result"; task: BoardTask };
 
 /** A board row, and the conversation that filed it. `attempt` counts its runs, so a run a cancel or retry left behind stops. */
 /** A fixture's row: the task, and the times the board keeps for it (its view reads them, as the adapter's does). */
@@ -153,7 +153,7 @@ interface FixtureTurn {
 }
 
 interface FixtureWorker {
-  row: LabWorker;
+  row: AppWorker;
   sessionId: string;
   entries: ConversationEntry[];
   /** The turns running now: a line you send starts one beside the others. */
@@ -179,11 +179,11 @@ const OLDER_TURNS: [string, string][] = [
 ];
 
 /** The double. */
-export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
+export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
   const speed = options.speed ?? 1;
   const now = options.now ?? (() => Date.now());
   const listeners = new Set<() => void>();
-  const log: LabTalk[] = [];
+  const log: AppTalk[] = [];
   let seq = 0;
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
   /** Files the composer uploaded, by id: what `readFile` serves. */
@@ -255,7 +255,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
    * `receive` deferred for the recipient. A send that isn't an answer asks for one.
    */
   const sendMessage = (w: FixtureWorker, to: string, text: string, inReplyTo?: string): Step[1] => () => {
-    const message: LabTalk = { id: nextId("m"), from: w.row.id, to, text, inReplyTo, ...(inReplyTo ? {} : { replyRequested: true }), at: now() };
+    const message: AppTalk = { id: nextId("m"), from: w.row.id, to, text, inReplyTo, ...(inReplyTo ? {} : { replyRequested: true }), at: now() };
     push(w, { kind: "sent", id: nextId("s"), messageId: message.id, to, text });
     log.push(message);
     const recipient = worker(to);
@@ -503,15 +503,15 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     w.entries = entries;
     w.lastActiveAt = lastActiveAt;
   };
-  const exchange = (from: string, to: string, text: string, ago: number, inReplyTo?: string): LabTalk => {
+  const exchange = (from: string, to: string, text: string, ago: number, inReplyTo?: string): AppTalk => {
     const message = { id: nextId("m"), from, to, text, inReplyTo, at: now() - ago };
     log.push(message);
     return message;
   };
   const user = (text: string): ConversationEntry => ({ kind: "user", id: nextId("u"), text });
   const assistant = (text: string): ConversationEntry => ({ kind: "assistant", id: nextId("a"), text });
-  const sent = (m: LabTalk): ConversationEntry => ({ kind: "sent", id: nextId("s"), messageId: m.id, to: m.to, text: m.text });
-  const received = (m: LabTalk): ConversationEntry => ({
+  const sent = (m: AppTalk): ConversationEntry => ({ kind: "sent", id: nextId("s"), messageId: m.id, to: m.to, text: m.text });
+  const received = (m: AppTalk): ConversationEntry => ({
     kind: "received",
     id: nextId("r"),
     messageId: m.id,
@@ -562,7 +562,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
 
   const retries: { sessionId: string; requestId: string }[] = [];
 
-  const fake: FixtureLab = {
+  const fake: FixtureApp = {
     refuseNextStop() {
       refuseStop = true;
     },
@@ -730,7 +730,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
 
     async hire({ name, role }) {
       if (workers.has(name) && !fired.has(name)) throw new Error(`"${name}" is already on your roster`);
-      const row: LabWorker = { id: name, name, role, own: true };
+      const row: AppWorker = { id: name, name, role, own: true };
       workers.set(name, { row, sessionId: `conversation:${name}`, entries: [], turns: [], lastActiveAt: now(), deferred: [] });
       notify();
       return row;

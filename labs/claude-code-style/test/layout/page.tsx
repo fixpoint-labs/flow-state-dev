@@ -8,14 +8,14 @@
  */
 import { createRoot } from "react-dom/client";
 import { taskView } from "@flow-state-dev/orchestration/inbox";
-import type { LabTask } from "../../src/lab";
+import type { AppTask } from "../../src/app";
 import { TasksPane } from "../../src/components/TasksPane";
 import "../../src/styles.css";
 
 const width = Number(new URLSearchParams(location.search).get("width") ?? "304");
 const ended = Date.now() - 12 * 60_000;
 
-function done(id: string, title: string, assignee: string, spend: { model: string; costUsd: number | null } | null): LabTask {
+function done(id: string, title: string, assignee: string, spend: { model: string; costUsd: number | null } | null): AppTask {
   return {
     id,
     title,

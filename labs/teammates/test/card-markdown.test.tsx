@@ -8,7 +8,7 @@
  */
 import { cleanup, render, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { BoardTask, LabAdapter } from "../src/adapter";
+import type { BoardTask, AppCalls } from "../src/app";
 import { PopupView } from "../src/components/Popups";
 import { lookOf } from "../src/lib/looks";
 
@@ -18,7 +18,7 @@ afterEach(cleanup);
 const STRONG = '[data-streamdown="strong"]';
 
 /** An adapter that reports one task and an empty run: all the popup reads. Its action row is never pressed. */
-function adapterWith(task: BoardTask): LabAdapter {
+function adapterWith(task: BoardTask): AppCalls {
   return {
     taskActions: () => ({}),
     watchTasks: (_sessionId: string, onChange: (tasks: BoardTask[]) => void) => {
@@ -26,7 +26,7 @@ function adapterWith(task: BoardTask): LabAdapter {
       return () => {};
     },
     watchRun: () => () => {},
-  } as unknown as LabAdapter;
+  } as unknown as AppCalls;
 }
 
 function drawTask(task: BoardTask) {

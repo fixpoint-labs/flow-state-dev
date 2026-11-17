@@ -9,7 +9,7 @@
  */
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { toBoardTask, type BoardTask, type LabAdapter, type SessionStep, type WorkingNow } from "../src/adapter";
+import { toBoardTask, type BoardTask, type AppCalls, type SessionStep, type WorkingNow } from "../src/app";
 import { PopupView } from "../src/components/Popups";
 
 afterEach(() => {
@@ -50,7 +50,7 @@ function stub(task: BoardTask) {
       onChange({});
       return () => {};
     },
-  } as unknown as LabAdapter;
+  } as unknown as AppCalls;
   return {
     adapter,
     watched,

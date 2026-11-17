@@ -9,7 +9,7 @@
  */
 import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { BoardTask, LabAdapter, SessionStep } from "../src/adapter";
+import type { BoardTask, AppCalls, SessionStep } from "../src/app";
 import { PopupView, type Popup } from "../src/components/Popups";
 import { lookOf } from "../src/lib/looks";
 
@@ -52,7 +52,7 @@ function liveAdapter(initial: { tasks: BoardTask[]; runs: Record<string, Session
     watchWorking: (_run: unknown, onChange: (now: object) => void) => (onChange({}), () => {}),
     answerOpenHold: async () => {},
     taskActions: () => ({}),
-  } as unknown as LabAdapter;
+  } as unknown as AppCalls;
   return {
     adapter,
     setTasks: (next: BoardTask[]) => act(() => ((tasks = next), onTasks.forEach((f) => f(next)))),
@@ -60,7 +60,7 @@ function liveAdapter(initial: { tasks: BoardTask[]; runs: Record<string, Session
   };
 }
 
-const view = (adapter: LabAdapter, taskId: string) => {
+const view = (adapter: AppCalls, taskId: string) => {
   const popup: Popup = { kind: "task", sessionId: SESSION, taskId };
   return (
     <PopupView adapter={adapter} popup={popup} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => true} coders={[]} onClose={() => {}} />

@@ -9,13 +9,13 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ClientFetch } from "@flow-state-dev/client";
-import { App } from "../src/App";
-import { closeLabs, openTestLab, vendorScripts, type TestLab } from "./lab-host";
+import { App } from "../src/components/App";
+import { closeApps, openTestApp, vendorScripts, type TestApp } from "./app-host";
 
 afterEach(async () => {
   cleanup();
   window.history.replaceState(null, "", "/");
-  await closeLabs();
+  await closeApps();
 });
 
 const SLOW = { timeout: 15_000 };
@@ -47,7 +47,7 @@ function held(matches: (method: string, path: string, body: string) => boolean) 
 }
 
 /** The lab's host with the vendor scripts, and `call`'s calls held. */
-const labHolding = (call: ReturnType<typeof held>): Promise<TestLab> => openTestLab({ scripts: vendorScripts().scripts, intercept: call.intercept });
+const appHolding = (call: ReturnType<typeof held>): Promise<TestApp> => openTestApp({ scripts: vendorScripts().scripts, intercept: call.intercept });
 
 const thread = () => screen.getByRole("main", { name: "Main thread" });
 const card = (title: string) => within(thread()).getByRole("region", { name: `Task: ${title}` });
@@ -62,7 +62,7 @@ async function ask(text: string) {
 }
 
 // A threads-mode session on a project, its lead filing three threads, one of them ready for review.
-async function reviewReady(lab: TestLab) {
+async function reviewReady(lab: TestApp) {
   render(lab.wrap(<App />));
   fireEvent.click(within(screen.getByRole("tablist", { name: "View" })).getByRole("tab", { name: "Projects" }));
   fireEvent.click(screen.getByRole("button", { name: "+ New session" }));
@@ -80,7 +80,7 @@ const answersReview = (method: string, _path: string, body: string) => method ==
 describe("buttons that change something", () => {
   it("sends one review answer for a double click on a card's Resolve, and says so when it's refused", async () => {
     const resolve = held((method, path, body) => answersReview(method, path, body) && body.includes('"accepted"'));
-    await reviewReady(await labHolding(resolve));
+    await reviewReady(await appHolding(resolve));
     const resolveButton = () => within(card("Vendor C · summary")).getByRole("button", { name: /^Resolv/ }) as HTMLButtonElement;
     fireEvent.click(resolveButton());
     fireEvent.click(resolveButton());
@@ -100,7 +100,7 @@ describe("buttons that change something", () => {
 
   it("holds the review buttons in a task's view while one is on its way, and keeps your words when Request changes is refused", async () => {
     const requestChanges = held((method, path, body) => answersReview(method, path, body) && body.includes('"revise"'));
-    await reviewReady(await labHolding(requestChanges));
+    await reviewReady(await appHolding(requestChanges));
     fireEvent.click(button(card("Vendor C · summary"), "Request changes"));
     const view = screen.getByRole("dialog", { name: "Task: Vendor C · summary" });
     const box = within(view).getByLabelText("Message this task") as HTMLTextAreaElement;
@@ -121,7 +121,7 @@ describe("buttons that change something", () => {
   it("clears your line once a steer is taken, and keeps it with the refusal when it isn't", async () => {
     // A line in a thread with no open question is a steer on its task, through the board's own call.
     const sayInThread = held((method, path, body) => method === "POST" && path.endsWith("/actions/updateTask_tasks") && body.includes("Check the annual plan too."));
-    await reviewReady(await labHolding(sayInThread));
+    await reviewReady(await appHolding(sayInThread));
     fireEvent.click(button(card("Vendor A · pricing and uptime"), "View task"));
     const view = screen.getByRole("dialog", { name: "Task: Vendor A · pricing and uptime" });
     const box = within(view).getByLabelText("Message this task") as HTMLTextAreaElement;
@@ -144,7 +144,7 @@ describe("buttons that change something", () => {
 
   it("says when a pin is refused, and leaves the task unpinned", async () => {
     const pin = held((method, path) => method !== "GET" && path.includes("lab-pins"));
-    await reviewReady(await labHolding(pin));
+    await reviewReady(await appHolding(pin));
     fireEvent.click(button(card("Vendor C · summary"), "View task"));
     const view = screen.getByRole("dialog", { name: "Task: Vendor C · summary" });
     fireEvent.click(button(view, "Pin"));
@@ -159,7 +159,7 @@ describe("buttons that change something", () => {
   it("opens one session for a double click on a project, and stays on the picker saying why when it can't open", async () => {
     // Opening a session makes it on its worker's flow.
     const open = held((method, path) => method === "POST" && path.endsWith("/sessions"));
-    const lab = await labHolding(open);
+    const lab = await appHolding(open);
     render(lab.wrap(<App />));
     const picker = await screen.findByRole("region", { name: "Choose a project" });
     const project = await within(picker).findByRole("button", { name: "vendor-notes" }, SLOW);
@@ -176,7 +176,7 @@ describe("buttons that change something", () => {
   it("creates one project for a double submit, and keeps the form filled with the refusal when it can't", async () => {
     // The project is made by a send to the projects collection.
     const createProject = held((method, path, body) => method === "POST" && path.endsWith("/actions/createProject") && body.includes('"billing"'));
-    const lab = await labHolding(createProject);
+    const lab = await appHolding(createProject);
     render(lab.wrap(<App />));
     const form = await screen.findByRole("form", { name: "New project" });
     fireEvent.change(within(form).getByLabelText("Project name"), { target: { value: "billing" } });

@@ -7,8 +7,9 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { App } from "../src/App";
-import { createFixtureLab } from "./fake-lab";
+import { App } from "../src/components/App";
+import { AppProvider } from "../src/app";
+import { createFixtureApp } from "./fake-app";
 
 afterEach(() => {
   cleanup();
@@ -22,7 +23,7 @@ const press = (key: string, init: KeyboardEventInit = {}, on: Element = document
   act(() => void fireEvent.keyDown(on, { key, ...init }));
 
 async function openApp() {
-  render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
+  render(<AppProvider calls={createFixtureApp({ speed: 0.05 })}><App /></AppProvider>);
   await screen.findByLabelText("Message Lead");
   // Start every step from the list, not a text field.
   within(workers()).getAllByRole("button")[0]!.focus();

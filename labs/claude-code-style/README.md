@@ -129,9 +129,9 @@ are read from the environment, all optional:
 
 ### The host
 
-`fsdev.config.mts` reads the settings above and calls `openLab` in `host.mts`, which puts the
-server together from package pieces; the screen tests call `openLab` too, with a scripted model
-(`test/lab-host.ts`), so `src/lab.ts`'s hooks run over the same host the page does.
+`fsdev.config.mts` reads the settings above and calls `openClaudeCodeStyle` in `host.mts`, which puts the
+server together from package pieces; the screen tests call `openClaudeCodeStyle` too, with a scripted model
+(`test/app-host.ts`), so `src/app/`'s hooks run over the same host the page does.
 
 - `desk.main`, the session-mode main worker, is on the built-in `agent` flow with
   `answerAgain: true`: a background result that settles while its turn runs is taken into that
@@ -204,14 +204,14 @@ and done.
 
 Both modes are wired. The screen tests run on the lab's own server (`host.mts`), in process, with
 only the models scripted and every coding run on harness-manager's scripted coder
-(`test/lab-host.ts`). The contract tests in `test/contract/` hold what the hooks hand the screen
+(`test/app-host.ts`). The contract tests in `test/contract/` hold what the hooks hand the screen
 through scenarios (a result that lands mid-turn, a failed turn, a held question and its answer, a
 stop, a lapsed connection). A component's own test that draws one screen from data it names stands
 in for the server at the client's fetch (`test/stub-server.ts`); the screen still reads through
-`src/lab.ts`. The inventory test (`test/inventory.test.ts`) holds the app to configuration, screens
+`src/app/`. The inventory test (`test/inventory.test.ts`) holds the app to configuration, screens
 and small flows: no adapter, nothing of the app's in `workforce/`, every file classed, at most three
 flows of under 200 lines each, at most 300 lines of configuration (the `WORKER.md` tree included), no screen file
-that reaches the server itself (`src/lab.ts` included: it imports no client value and calls no
+that reaches the server itself (`src/app/` included: it imports no client value and calls no
 `.subscribe(` or `.flow(`), no hand-written type for a row a view returns, and no host wiring a kit
 replaces. Its rules live in `test/inventory-rules.ts`, which the epic's closure goal
 (`goals/kits/an-app-is-config-ui-and-small-flows/`) grades too. A rule the lab doesn't meet yet is
@@ -219,10 +219,10 @@ an `it.fails`.
 
 ## How the screen reaches the package
 
-Everything the screen reads and writes goes through `src/lab.ts`: thin wrappers over
+Everything the screen reads and writes goes through `src/app/`: thin wrappers over
 `@flow-state-dev/react`'s hooks (`useView`, `useSessionFeed`, `useRequestStream`, `useResource`)
 on the kit packages' views and direct reads, and the calls the screen makes, each a package call
-(workforce's client, orchestration's inbox client). `LabProvider` holds the one client, which
+(workforce's client, orchestration's inbox client). `AppProvider` holds the one client, which
 `src/main.tsx` builds.
 
 | The screen | Package piece |

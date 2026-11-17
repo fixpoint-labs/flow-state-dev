@@ -1,4 +1,4 @@
-// fallow-ignore-file duplicate-export -- each lab is its own app, and its host exposes the same openLab and operatorGitHubToken as the others on purpose.
+// fallow-ignore-file duplicate-export -- each starter is its own app, and its host exposes the same checkCommands and operatorGitHubToken as the others on purpose.
 /**
  * The lab's server, put together from package pieces: the workers in
  * `workforce/`, the built-in agent flow with memory composed in, the lab's one
@@ -138,11 +138,11 @@ const CHECKS_TIMEOUT_MS = 10 * 60_000;
 /** The model a Cursor run uses: a local Cursor run must name one. */
 const CURSOR_MODEL = "composer-2.5";
 
-/** The flow whose `context` view answers what the lab works on and with (`labContextSchema`). */
+/** The flow whose `context` view answers what the lab works on and with (`appContextSchema`). */
 const LAB_CONTEXT_FLOW = "lab-context";
 
 /** What the page's context strip and first run read: the lab's settings and the declared delegates. */
-const labContextSchema = z.object({
+const appContextSchema = z.object({
   /** The working folder, as an absolute path. */
   folder: z.string(),
   /** Why a coding run's checkout of the folder would be refused, or `null` when it wouldn't. */
@@ -163,21 +163,21 @@ const labContextSchema = z.object({
  *
  * @param read The lab's settings, as the host holds them.
  */
-export function labContextView(read: () => Promise<z.infer<typeof labContextSchema>>) {
+export function appContextView(read: () => Promise<z.infer<typeof appContextSchema>>) {
   return defineView({
     scope: "user",
     block: handler({
       name: "lab-context",
       description: "What the lab works on and with: the working folder and its problem if any, the model, the default harness, and each worker's delegates.",
       inputSchema: z.object({}),
-      outputSchema: labContextSchema,
+      outputSchema: appContextSchema,
       execute: read,
     }),
   });
 }
 
 /** The lab-context view, for the page's `viewRef` (a type import: the page holds no block). */
-export type LabContextView = ReturnType<typeof labContextView>;
+export type AppContextView = ReturnType<typeof appContextView>;
 
 /**
  * The working folder, checked: an existing git checkout, as an absolute path.
@@ -329,7 +329,7 @@ export async function openTeammates(options: TeammatesOptions) {
     kind: LAB_CONTEXT_FLOW,
     actions: {},
     views: {
-      context: labContextView(async () => ({
+      context: appContextView(async () => ({
         folder: workdir,
         folderProblem: await folderProblem,
         model: options.model,

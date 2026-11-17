@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { LabAdapter, NewTeammate, LabWorker } from "../adapter";
+import type { AppCalls, NewTeammate, AppWorker } from "../app";
 import type { Look } from "../lib/looks";
 import { teammateAttention, supported, useAttention, useNotifyToggle, type TeammateAttention } from "../lib/attention";
 import { useStable } from "../lib/stable";
@@ -39,9 +39,9 @@ export function WorkersList({
   hiring,
   onHiring,
 }: {
-  adapter: LabAdapter;
+  adapter: AppCalls;
   /** The teammates: the workers you can talk to. */
-  workers: LabWorker[];
+  workers: AppWorker[];
   sessions: Record<string, string>;
   selected: string | undefined;
   nameOf: (id: string) => string;
@@ -123,8 +123,8 @@ function WorkerItem({
   onSeen,
   onReport,
 }: {
-  adapter: LabAdapter;
-  worker: LabWorker;
+  adapter: AppCalls;
+  worker: AppWorker;
   nameOf: (id: string) => string;
   look: Look;
   isCoding: (id: string) => boolean;

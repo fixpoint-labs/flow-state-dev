@@ -4,7 +4,7 @@
  * lists is still stopped.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { closeLabs, openTestLab, readUntil, waitFor, type Script } from "./lab-host";
+import { closeApps, openTestApp, readUntil, waitFor, type Script } from "./app-host";
 
 /** A turn on "Keep working" runs until it is stopped; any other line is noted at once. */
 const scripts: Record<string, Script> = {
@@ -18,12 +18,12 @@ const scripts: Record<string, Script> = {
 };
 
 afterEach(async () => {
-  await closeLabs();
+  await closeApps();
 });
 
 describe("Stop", () => {
   it("stops a running turn that has more than 50 newer turns after it", async () => {
-    const lab = await openTestLab({ scripts });
+    const lab = await openTestApp({ scripts });
     const { id } = await lab.calls.openSession("session", lab.project!.id);
     // The first turn works on until it is stopped.
     void lab.calls.send(id, "Keep working on the outline.").catch(() => undefined);

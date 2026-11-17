@@ -8,22 +8,22 @@
 import { execFileSync } from "node:child_process";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
-import { App } from "../src/App";
+import { App } from "../src/components/App";
 import { shortBranch } from "../src/components/flow-state/review-hold";
 import { layOutFeeds } from "./feed-layout";
-import { closeLabs, openTestLab, vendorScripts, type TestLab } from "./lab-host";
+import { closeApps, openTestApp, vendorScripts, type TestApp } from "./app-host";
 
 // The app keeps what is open in the page's address; each test starts on a bare one.
 afterEach(async () => {
   cleanup();
   window.history.replaceState(null, "", "/");
-  await closeLabs();
+  await closeApps();
 });
 
 /** Long enough for a read of the in-process host, which hears no push and reads on its timer. */
 const SLOW = { timeout: 15_000 };
 
-let lab: TestLab;
+let lab: TestApp;
 
 const thread = () => screen.getByRole("main", { name: "Main thread" });
 const board = () => screen.getByRole("complementary", { name: "Tasks" });
@@ -41,7 +41,7 @@ async function ask(text: string) {
 
 // Open the Projects view and start a session there, on a project, on a host of its own (`reuse`: the same one, as a reload).
 async function startThreadsSession(reuse = false) {
-  if (!reuse) lab = await openTestLab({ scripts: vendorScripts().scripts });
+  if (!reuse) lab = await openTestApp({ scripts: vendorScripts().scripts });
   render(lab.wrap(<App />));
   fireEvent.click(within(screen.getByRole("tablist", { name: "View" })).getByRole("tab", { name: "Projects" }));
   fireEvent.click(screen.getByRole("button", { name: "+ New session" }));
@@ -238,7 +238,7 @@ describe("the threads-mode screen", () => {
   // there, so its accept is Merge locally, never a bare Resolve (FIX-2543); the judge's line is on the review
   // card in its view (FIX-2380), while the card's one status line is the review's headline.
   it("offers a coding run in the project's repository Merge locally, with the judge's line in its view, and merges it there", async () => {
-    lab = await openTestLab({ scripts: vendorScripts().scripts, cutFromProject: true, judge: { choice: "done", confidence: 0.93 } });
+    lab = await openTestApp({ scripts: vendorScripts().scripts, cutFromProject: true, judge: { choice: "done", confidence: 0.93 } });
     await startThreadsSession(true);
     const git = (...args: string[]) => execFileSync("git", ["-C", lab.repo, ...args], { encoding: "utf8" }).trim();
     const head = git("rev-parse", "HEAD");

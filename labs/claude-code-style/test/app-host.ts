@@ -2,8 +2,8 @@
  * The lab's own host, in process, for the screen's tests: `host.mts` with
  * only the model scripted (and, where a test asks, harness-manager's scripted
  * coder), a client over the in-process fetch with a plug a test can pull, a
- * project on a fresh repository, and `src/lab.ts`'s calls over that client.
- * `wrap` puts a tree under `LabProvider` on the same client, so a screen
+ * project on a fresh repository, and `src/app/`'s calls over that client.
+ * `wrap` puts a tree under `AppProvider` on the same client, so a screen
  * reads exactly what the page would.
  *
  * In process there is no push socket, so every live read reads on its timer;
@@ -20,8 +20,8 @@ import type { ModelResolver } from "@flow-state-dev/core/types";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { GOAL_JUDGE_QUESTION, GOAL_JUDGE_WHY_QUESTION } from "@flow-state-dev/harness-manager";
 import { pluggable, scriptedModels, waitFor, type Script } from "../../test-support/contract";
-import { openLab, type LabOptions } from "../host.mts";
-import { LabProvider, labCalls, type LabCalls, type LabProject } from "../src/lab";
+import { openClaudeCodeStyle, type ClaudeCodeStyleOptions } from "../host.mts";
+import { AppProvider, appCalls, type AppCalls, type AppProject } from "../src/app";
 import type { ModeId } from "../src/modes";
 
 export { waitFor } from "../../test-support/contract";
@@ -46,8 +46,8 @@ function firstLineOf(said: string): string {
   return typeof first?.content === "string" ? first.content.split("\n")[0]!.trim() : "Untitled";
 }
 
-/** What a test's host is made from: the scripts by block name, and any of `openLab`'s options. */
-export interface TestLabOptions extends Partial<Omit<LabOptions, "modelResolver">> {
+/** What a test's host is made from: the scripts by block name, and any of `openClaudeCodeStyle`'s options. */
+export interface TestAppOptions extends Partial<Omit<ClaudeCodeStyleOptions, "modelResolver">> {
   scripts?: Record<string, Script>;
   /** Wraps the in-process fetch, to watch or answer a call before the host does. */
   intercept?: (inner: ClientFetch) => ClientFetch;
@@ -78,12 +78,12 @@ function judgeModel(judge: { choice: string; confidence: number }) {
 }
 
 /** The lab on its own host, in process. */
-export interface TestLab {
+export interface TestApp {
   client: Client;
   fetcher: ClientFetch;
-  calls: LabCalls;
+  calls: AppCalls;
   /** The project made on a fresh repository, `vendor-notes`, unless `noProject`. */
-  project?: LabProject;
+  project?: AppProject;
   /** The repository the project names. */
   repo: string;
   data: string;
@@ -100,20 +100,20 @@ export interface TestLab {
   close(): Promise<void>;
 }
 
-const opened = new Set<TestLab>();
+const opened = new Set<TestApp>();
 
 /** What a script holds until released: each is let go before the labs close, so no held turn outlives its test. */
 const holds = new Set<() => void>();
 
 /** Close every lab a test opened. Call from `afterEach`. */
-export async function closeLabs(): Promise<void> {
+export async function closeApps(): Promise<void> {
   for (const release of [...holds]) release();
   holds.clear();
   for (const lab of [...opened]) await lab.close();
 }
 
 /** The lab's host, in process, with its models scripted. */
-export async function openTestLab(options: TestLabOptions = {}): Promise<TestLab> {
+export async function openTestApp(options: TestAppOptions = {}): Promise<TestApp> {
   const { scripts = {}, intercept, noProject, cutFromProject, judge, ...host } = options;
   const data = mkdtempSync(join(tmpdir(), "ccs-lab-"));
   const repo = repository(join(data, "repo"));
@@ -122,7 +122,7 @@ export async function openTestLab(options: TestLabOptions = {}): Promise<TestLab
     () => ({ text: "Noted." }),
   ) as ModelResolver;
   if (judge !== undefined) Object.assign(resolver, { resolveEvaluationModel: () => judgeModel(judge) });
-  const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: cutFromProject ? [realpathSync(repo)] : [], modelResolver: resolver, scriptedStepMs: 20, ...host });
+  const { flowState } = await openClaudeCodeStyle({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: cutFromProject ? [realpathSync(repo)] : [], modelResolver: resolver, scriptedStepMs: 20, ...host });
   const inProcess = createInProcessFetch(flowState as never) as unknown as ClientFetch;
   const asked: string[] = [];
   const held = new Map<string, Promise<void>>();
@@ -135,9 +135,9 @@ export async function openTestLab(options: TestLabOptions = {}): Promise<TestLab
   const plug = pluggable((intercept === undefined ? watched : intercept(watched)) as never);
   const fetcher = plug.fetcher as unknown as ClientFetch;
   const client = createClient({ userId: "u_lab", baseUrl: "", fetcher });
-  const calls = labCalls(client, { fetcher });
+  const calls = appCalls(client, { fetcher });
   const project = noProject ? undefined : await calls.createProject("vendor-notes", `file://${repo}`);
-  const lab: TestLab = {
+  const lab: TestApp = {
     client,
     fetcher,
     calls,
@@ -157,7 +157,7 @@ export async function openTestLab(options: TestLabOptions = {}): Promise<TestLab
     },
     pull: () => plug.pull(),
     restore: () => plug.restore(),
-    wrap: (children) => createElement(LabProvider, { client, connection: { fetcher }, pollIntervalMs: TEST_POLL_MS }, children),
+    wrap: (children) => createElement(AppProvider, { client, connection: { fetcher }, pollIntervalMs: TEST_POLL_MS }, children),
     close: async () => {
       opened.delete(lab);
       plug.restore();
@@ -179,7 +179,7 @@ export async function openTestLab(options: TestLabOptions = {}): Promise<TestLab
  * A session in `mode` with one line sent and its turn ended, titled after the
  * line: what a person who used the lab before has in the sidebar.
  */
-export async function seedSession(lab: TestLab, mode: ModeId, line: string): Promise<string> {
+export async function seedSession(lab: TestApp, mode: ModeId, line: string): Promise<string> {
   const { id } = await lab.calls.openSession(mode, lab.project!.id);
   await lab.calls.send(id, line);
   await readUntil(() => lab.client.sessions.get(id), (session) => session.title === line.split("\n")[0]);

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * The lab's contract: what the screen reads, through `src/lab.ts`'s hooks
+ * The lab's contract: what the screen reads, through `src/app/`'s hooks
  * and calls, over the lab's own host (`host.mts`, in process, with only the
  * model scripted). A package change that alters what the hooks hand the
  * screen fails here. The Teammates lab runs the same scenarios on its own
@@ -16,14 +16,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ClientFetch } from "@flow-state-dev/client";
 import { waitFor } from "../../../test-support/contract";
-import { useLab, useTasks, useThread, type LabCalls, type LabTask, type ThreadEntry, type ThreadView } from "../../src/lab";
+import { useApp, useTasks, useThread, type AppCalls, type AppTask, type ThreadEntry, type ThreadView } from "../../src/app";
 import { Entry } from "../../src/components/Entry";
 import type { ModeId } from "../../src/modes";
-import { closeLabs, openTestLab, type Script, type TestLab } from "../lab-host";
+import { closeApps, openTestApp, type Script, type TestApp } from "../app-host";
 
 /** The lab on its own host, and what a scenario does to the server behind it. */
 interface Target {
-  lab: TestLab;
+  lab: TestApp;
   /** A new session in `mode`, in a project you may work in. */
   open(mode: ModeId): Promise<string>;
   /** The next turn's model call fails. */
@@ -75,7 +75,7 @@ const HELD = "[held]";
 const lastUserLine = (said: string) => said.slice(said.lastIndexOf('"role":"user"'));
 
 /** The workers' turns, by the worker a step is for. Only the model is scripted; every tool runs for real. */
-function labScript(failing: { next: boolean }, held: Promise<void>): Record<string, Script> {
+function appScript(failing: { next: boolean }, held: Promise<void>): Record<string, Script> {
   let researched: () => void = () => {};
   const research = new Promise<void>((resolve) => (researched = resolve));
   const worker = (said: string) => /You are ([\w-]+)/.exec(said)?.[1];
@@ -152,7 +152,7 @@ async function realTarget(): Promise<Target> {
       }
       return inner(input, init);
     }) as ClientFetch;
-  const lab = await openTestLab({ scripts: labScript(failing, held), intercept: noting });
+  const lab = await openTestApp({ scripts: appScript(failing, held), intercept: noting });
   return {
     lab,
     open: async (mode) => (await lab.calls.openSession(mode, lab.project!.id)).id,
@@ -166,7 +166,7 @@ async function realTarget(): Promise<Target> {
       (await lab.client.sessions.requests(sessionId, { limit: 20 })).filter((r) => r.actionName === "respond" && r.status === "in_progress").length,
     close: async () => {
       releaseResearch();
-      await closeLabs();
+      await closeApps();
     },
   };
 }
@@ -191,7 +191,7 @@ interface Followed<T> {
 /** What a screen watching session `sessionId` reads: its thread and its tasks, and the calls under the same provider. */
 function watch(sessionId: string, threads = false) {
   const thread = followed<ThreadView>();
-  const tasks = followed<LabTask[]>();
+  const tasks = followed<AppTask[]>();
   const drawn: ThreadView[] = [];
   const hook = renderHook(
     () => {
@@ -205,12 +205,12 @@ function watch(sessionId: string, threads = false) {
       useEffect(() => {
         if (board !== undefined) tasks.tell(board);
       }, [board]);
-      return useLab();
+      return useApp();
     },
     { wrapper: ({ children }: { children: ReactNode }) => target!.lab.wrap(children) as never },
   );
   stops.push(hook.unmount);
-  return { thread, tasks, drawn, calls: (): LabCalls => hook.result.current };
+  return { thread, tasks, drawn, calls: (): AppCalls => hook.result.current };
 }
 
 function followed<T>(): Followed<T> & { tell(value: T): void } {

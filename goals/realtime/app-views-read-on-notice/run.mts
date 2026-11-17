@@ -57,10 +57,10 @@ import {
 } from "@flow-state-dev/workforce";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFlows, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
-import { labPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
+import { appPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 import { PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
-import { LabProvider as CcLabProvider, usePins as useCcPins, useThread as useCcThread, type ThreadView } from "../../../labs/claude-code-style/src/lab.ts";
-import { createLabAdapter, type ConversationView, type LabTalk } from "../../../labs/teammates/src/adapter.ts";
+import { AppProvider as CcAppProvider, usePins as useCcPins, useThread as useCcThread, type ThreadView } from "../../../labs/claude-code-style/src/app/index.ts";
+import { createAppCalls, type ConversationView, type AppTalk } from "../../../labs/teammates/src/app/index.ts";
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { followSessionItems, type SessionItems } from "../../../packages/shift-manager/src/lib/run.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
@@ -219,7 +219,7 @@ async function host(bus: "default" | "not-crossing"): Promise<Host> {
   for (const copy of await kitFlows([kitchenSinkWorkforce()])) registry.register(copy);
   registry.register(deskFlow());
   // The lab's pins: a user resource the host declares, written through the default write flow.
-  registry.register(defineFlow({ kind: PROJECTS_FLOW, resources: { labPins }, actions: {} } as never)() as unknown as FlowInstance);
+  registry.register(defineFlow({ kind: PROJECTS_FLOW, resources: { appPins }, actions: {} } as never)() as unknown as FlowInstance);
   const memory = createInMemoryStores();
   const notCrossing = crossingBus();
   notCrossing.setCrossing(false);
@@ -329,8 +329,8 @@ function mountViews(on: Host, sessionId: string) {
   const ccRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
   ccRoot.render(
     createElement(React.Fragment, null, [
-      createElement(CcLabProvider, { key: "thread", client: cc.client, children: createElement(CcThreadProbe) }),
-      createElement(CcLabProvider, { key: "pins", client: pinsClient.client, children: createElement(CcPinsProbe) }),
+      createElement(CcAppProvider, { key: "thread", client: cc.client, children: createElement(CcThreadProbe) }),
+      createElement(CcAppProvider, { key: "pins", client: pinsClient.client, children: createElement(CcPinsProbe) }),
     ]),
   );
   const tm = clientOf(on);
@@ -339,7 +339,7 @@ function mountViews(on: Host, sessionId: string) {
   const sm = clientOf(on);
   const smItems = record<SessionItems>();
   const talk = clientOf(on);
-  const tmTalk = record<LabTalk[]>();
+  const tmTalk = record<AppTalk[]>();
   // Shift Manager under its real provider: a project's entries, as its view reads them.
   const smToken = `tok-sm-${(mounts += 1)}`;
   const smReads: Read[] = [];
@@ -375,10 +375,10 @@ function mountViews(on: Host, sessionId: string) {
   smRoot.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: smToken, baseUrl: on.base }, children: createElement(ProjectProbe) }));
   const stops = [
     () => ccRoot.unmount(),
-    createLabAdapter(tm.client).watchConversation(sessionId, (value) => tmConversation.push({ at: Date.now(), value })),
-    createLabAdapter(tmWindowReads.client).watchWindow(sessionId, () => {}),
+    createAppCalls(tm.client).watchConversation(sessionId, (value) => tmConversation.push({ at: Date.now(), value })),
+    createAppCalls(tmWindowReads.client).watchWindow(sessionId, () => {}),
     followSessionItems(sm.client, sessionId, { onRead: (value) => smItems.push({ at: Date.now(), value }), onFailure: () => {} }),
-    createLabAdapter(talk.client).watchTalk(TALK_WORKER, (value) => tmTalk.push({ at: Date.now(), value })),
+    createAppCalls(talk.client).watchTalk(TALK_WORKER, (value) => tmTalk.push({ at: Date.now(), value })),
     () => smRoot.unmount(),
   ];
   const requestReads = (reads: Read[]) => reads.filter((r) => r.url.includes("/requests"));
@@ -532,7 +532,7 @@ await runGoal(async (failures, tell) => {
       const answering = await firstAt(views.shown.tmConversation, (v) => v.running, startedAt - 50, 3_000);
       const doneAt = await requestDone(on, sent.id);
       const reply = await firstAt(views.shown.smItems, (v) => v.items.some((i) => JSON.stringify(i).includes("slow 0")), doneAt - 50, 3_000);
-      await writer.resource(labPins).update((s) => ({ pinned: [...s.pinned, "t1"] }));
+      await writer.resource(appPins).update((s) => ({ pinned: [...s.pinned, "t1"] }));
       const pinnedAt = Date.now();
       const pin = await firstAt(views.shown.ccPins, (v) => v.includes("t1"), pinnedAt - 200, 3_000);
       const loggedAt = await writeIn(writer, sessionId, "logMessage", { id: "msg_a" });
@@ -647,7 +647,7 @@ await runGoal(async (failures, tell) => {
       const fallback = mountViews(plain, s);
       closers.push(fallback.close);
       await mounted(fallback);
-      await w.resource(labPins).update((s) => ({ pinned: [...s.pinned, "t9"] }));
+      await w.resource(appPins).update((s) => ({ pinned: [...s.pinned, "t9"] }));
       const pinnedAt = Date.now();
       const pin = await firstAt(fallback.shown.ccPins, (v) => v.includes("t9"), 0, 3_000 + BOUND_MS + 500);
       const sent = await w.flow("desk").send("respond", { message: "slow", holdMs: 3_000 }, { sessionId: s });

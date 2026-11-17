@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { HarnessLabels, harnessLabels } from "./lib/harness-labels";
-import { useLab, useSessions, useTasks, type LabHarness, type LabProject, type LabSession } from "./lab";
-import { PaneHeader } from "./components/PaneHeader";
-import { PaneResizer } from "./components/PaneResizer";
-import { PanelToggle } from "./components/PanelToggle";
-import { ProjectPicker } from "./components/ProjectPicker";
-import { SessionOverlayArea, SessionOverlayProvider } from "./components/flow-state/session-overlay";
-import { KeysSheet } from "./components/KeysSheet";
-import { SessionsList } from "./components/SessionsList";
-import { Switcher } from "./components/Switcher";
-import { TasksPane } from "./components/TasksPane";
-import { ThreadsBoard } from "./components/ThreadsBoard";
-import { Thread } from "./components/Thread";
-import { readAddress, writeAddress, type Address, type AddressWrite } from "./lib/address";
-import { cn } from "./lib/utils";
-import { paneColumn, sidebarColumn, usePaneWidth, useSidebarWidth } from "./lib/pane-width";
-import { focusComposer, focusWhenDrawn, useLabKeys } from "./lib/keys";
-import { usePanels } from "./lib/panels";
-import { EMPTY_PANE } from "./lib/first-run";
-import { modeById, modeOfWorker, PANE_TITLE, type ModeId } from "./modes";
+import { HarnessLabels, harnessLabels } from "../lib/harness-labels";
+import { useApp, useSessions, useTasks, type AppHarness, type AppProject, type AppSession } from "../app";
+import { PaneHeader } from "./PaneHeader";
+import { PaneResizer } from "./PaneResizer";
+import { PanelToggle } from "./PanelToggle";
+import { ProjectPicker } from "./ProjectPicker";
+import { SessionOverlayArea, SessionOverlayProvider } from "./flow-state/session-overlay";
+import { KeysSheet } from "./KeysSheet";
+import { SessionsList } from "./SessionsList";
+import { Switcher } from "./Switcher";
+import { TasksPane } from "./TasksPane";
+import { ThreadsBoard } from "./ThreadsBoard";
+import { Thread } from "./Thread";
+import { readAddress, writeAddress, type Address, type AddressWrite } from "../lib/address";
+import { cn } from "../lib/utils";
+import { paneColumn, sidebarColumn, usePaneWidth, useSidebarWidth } from "../lib/pane-width";
+import { focusComposer, focusWhenDrawn, useAppKeys } from "../lib/keys";
+import { usePanels } from "../lib/panels";
+import { EMPTY_PANE } from "../lib/first-run";
+import { modeById, modeOfWorker, PANE_TITLE, type ModeId } from "../modes";
 
 /**
  * The screen: the view's sessions on the left, the open session's main thread
@@ -32,7 +32,7 @@ import { modeById, modeOfWorker, PANE_TITLE, type ModeId } from "./modes";
  * the main thread that names a task opens it too, the same way: one open task
  * per session, whichever side it was opened from.
  *
- * Keys (`useLabKeys`): ⌘K switches to any session, Alt+↑/↓ steps through the
+ * Keys (`useAppKeys`): ⌘K switches to any session, Alt+↑/↓ steps through the
  * view's sessions, `/` puts the cursor in the composer, `?` lists the keys.
  * Opening a session, however it is opened, puts the cursor in its composer;
  * *New session* puts it on the first project to choose.
@@ -50,7 +50,7 @@ const KEYS = [
 ] as const;
 
 export function App() {
-  const lab = useLab();
+  const lab = useApp();
   const listed = useSessions();
   const sessions = listed ?? [];
   // What the page's address named when it loaded, or on Back, until the sessions are read.
@@ -76,7 +76,7 @@ export function App() {
     how.current = write;
     setOpenTask((open) => ({ ...open, [sessionId]: taskId }));
   };
-  const [projects, setProjects] = useState<LabProject[]>([]);
+  const [projects, setProjects] = useState<AppProject[]>([]);
   const [paneWidth, setPaneWidth] = usePaneWidth();
   const paneRef = useRef<HTMLDivElement>(null);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
@@ -92,7 +92,7 @@ export function App() {
   };
   useEffect(() => () => clearTimeout(slide.current), []);
   // Which coding harnesses can run here: read once for the picker, again on its Re-check.
-  const [harnesses, setHarnesses] = useState<LabHarness[]>();
+  const [harnesses, setHarnesses] = useState<AppHarness[]>();
   useEffect(() => {
     let live = true;
     void lab.listProjects().then((rows) => live && setProjects(rows));
@@ -112,7 +112,7 @@ export function App() {
   // Open what the address names, once the sessions are read. A session that is gone leaves the default.
   const rows = useRef(listed);
   rows.current = listed;
-  const open = useCallback((address: Address, listing: LabSession[]) => {
+  const open = useCallback((address: Address, listing: AppSession[]) => {
     pending.current = null;
     const row = listing.find((s) => s.id === address.session);
     const mode = row ? modeOfWorker(row.worker)?.id : undefined;
@@ -173,7 +173,7 @@ export function App() {
   };
 
   // ProjectPicker holds its buttons while this runs and shows a refusal.
-  const openNew = (mode: ModeId, project: LabProject) =>
+  const openNew = (mode: ModeId, project: AppProject) =>
     lab.openSession(mode, project.id).then((row) => pick(mode, row.id));
   const inView = sessions.filter((s) => modeOfWorker(s.worker)?.id === view);
 
@@ -183,7 +183,7 @@ export function App() {
   // The open session's tasks, read once for the main thread and its pane (FIX-2399 E1): the coding board view.
   // `stale` while the last read failed: the rows are the last ones read, and a task's quiet can't be told from them.
   const { value: taskRows, stale: tasksStale } = useTasks(selected?.id);
-  useLabKeys({
+  useAppKeys({
     palette: () => setSwitching((open) => !open),
     step: (by) => {
       // The view's sessions in the order the list draws them; the ends hold.

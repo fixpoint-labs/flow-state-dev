@@ -16,7 +16,7 @@ import { createClient } from "@flow-state-dev/client";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { SET_SESSION_FIELDS_ACTION } from "@flow-state-dev/workforce/browser";
 import { scriptedModels } from "../../test-support/contract";
-import { checkCommands, openLab } from "../host.mts";
+import { checkCommands, openClaudeCodeStyle } from "../host.mts";
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -55,7 +55,7 @@ function runEntries(dbFile: string): RunEntry[] {
 async function fileWithChecks(value: string): Promise<string> {
   const data = mkdtempSync(join(tmpdir(), "ccs-checks-"));
   const repo = repository(join(data, "repo"));
-  const { flowState } = await openLab({
+  const { flowState } = await openClaudeCodeStyle({
     data,
     userId: "u_lab",
     model: "test/scripted",

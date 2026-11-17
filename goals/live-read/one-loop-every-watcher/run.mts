@@ -51,10 +51,10 @@ import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFlows, modulePatchEnv, type ModulePatch } from "../../lib/index.mts";
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
-import { createLabAdapter, type LabWorker } from "../../../labs/teammates/src/adapter.ts";
-import { LabProvider as CcLabProvider, usePins as useCcPins } from "../../../labs/claude-code-style/src/lab.ts";
+import { createAppCalls, type AppWorker } from "../../../labs/teammates/src/app/index.ts";
+import { AppProvider as CcAppProvider, usePins as useCcPins } from "../../../labs/claude-code-style/src/app/index.ts";
 import { defineFlow } from "@flow-state-dev/core";
-import { labPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
+import { appPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("live-read-one-loop");
@@ -188,7 +188,7 @@ async function host(): Promise<Host> {
   const registry = createFlowRegistry();
   for (const copy of copies) registry.register(copy);
   // The lab's pins: a user resource the host declares, written through the default write flow.
-  registry.register(defineFlow({ kind: PROJECTS_FLOW, resources: { labPins }, actions: {} } as never)() as never);
+  registry.register(defineFlow({ kind: PROJECTS_FLOW, resources: { appPins }, actions: {} } as never)() as never);
   const stores: StoreRegistry = { ...createInMemoryStores(), bus: crossingBus() };
   const router = createFlowApiRouter({
     registry,
@@ -260,7 +260,7 @@ function mount(on: Host, rosterSession: string): () => void {
   smRoot.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: tokenOf("sm"), baseUrl: on.base }, children: createElement(Probe) }));
 
   // Teammates: its roster screen's watch.
-  const stopTm = createLabAdapter(clientOf(on, tokenOf("tm"))).watchWorkers((rows: LabWorker[]) => show("tm", rows.filter((row) => row.own === true).map((row) => row.id)));
+  const stopTm = createAppCalls(clientOf(on, tokenOf("tm"))).watchWorkers((rows: AppWorker[]) => show("tm", rows.filter((row) => row.own === true).map((row) => row.id)));
 
   // claude-code-style: your pins, as its screen's `usePins` reads them.
   function CcPins() {
@@ -271,7 +271,7 @@ function mount(on: Host, rosterSession: string): () => void {
     return null;
   }
   const ccRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
-  ccRoot.render(createElement(CcLabProvider, { client: clientOf(on, tokenOf("cc")), children: createElement(CcPins) }));
+  ccRoot.render(createElement(CcAppProvider, { client: clientOf(on, tokenOf("cc")), children: createElement(CcPins) }));
   const stopCc = () => ccRoot.unmount();
 
   return () => {
@@ -327,7 +327,7 @@ const rosterSession = await tab.flow(ROSTER_FLOW).createSession();
 // A hire as an app writes one: through the workforce client, on the roster flow the workers'
 // `runBy` names, in alice's write session.
 const hire = (id: string) => tabWorkforce.hire({ id, flow: "agent", description: id });
-const pin = (id: string) => tab.resource(labPins).update((s) => ({ pinned: [...s.pinned, id] }));
+const pin = (id: string) => tab.resource(appPins).update((s) => ({ pinned: [...s.pinned, id] }));
 
 const unmount = mount(on, rosterSession.id);
 try {
@@ -371,7 +371,7 @@ try {
   }
 
   const storeRoster = (await tabWorkforce.roster()).filter((e) => !e.standard).map((e) => e.id).sort();
-  const storePins = [...(await tab.resource(labPins).state()).pinned].sort();
+  const storePins = [...(await tab.resource(appPins).state()).pinned].sort();
   check("a:equals-store rp", rpCount === storeRoster.length, `drew ${rpCount} rows for ${storeRoster.length} workers`);
   for (const w of ["rw", "tm"] as const) {
     const ids = shown.get(w)!.ids;

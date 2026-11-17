@@ -5,7 +5,7 @@
  *   Host:   each lab's own host (`labs/claude-code-style/host.mts`,
  *           `labs/teammates/host.mts`), in this process, on a SQLite store in
  *           a scratch folder, driven through the calls each lab's page makes
- *           (the Claude Code-style lab's `src/lab.ts` calls, the Teammates
+ *           (the Claude Code-style lab's `src/app/` calls, the Teammates
  *           adapter): `upload` for each file, then `send` with the
  *           references beside the line.
  *   Input:  two fresh PNGs, a random word drawn on each. The line names
@@ -29,11 +29,11 @@ import { createClient, sessionFeed, type Client } from "@flow-state-dev/client";
 import { sessionTurnsViewRef } from "@flow-state-dev/workforce/browser";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { createInProcessFetch } from "@flow-state-dev/engine";
-import { openLab } from "../../../labs/claude-code-style/host.mts";
-import { labCalls } from "../../../labs/claude-code-style/src/lab.ts";
+import { openClaudeCodeStyle } from "../../../labs/claude-code-style/host.mts";
+import { appCalls } from "../../../labs/claude-code-style/src/app/index.ts";
 import { entriesOf as ccsEntriesOf, THREAD_ITEMS, type Item as CcsItem, type ThreadEntry } from "../../../labs/claude-code-style/src/lib/thread-entries.ts";
 import { openTeammates } from "../../../labs/teammates/host.mts";
-import { createLabAdapter, type ConversationView } from "../../../labs/teammates/src/adapter.ts";
+import { createAppCalls, type ConversationView } from "../../../labs/teammates/src/app/index.ts";
 import {
   REPO_ROOT,
   RUN_STAMP,
@@ -65,7 +65,7 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS: Record<string, { patches: ModulePatch[] }> = {
   // Each adapter's send carries the line alone, as on main before this change.
   "drop-attachments": {
-    patches: ["labs/claude-code-style/src/lab.ts", "labs/teammates/src/adapter.ts"].flatMap((module) => [
+    patches: ["labs/claude-code-style/src/app/calls.ts", "labs/teammates/src/app/conversations.ts"].flatMap((module) => [
       { module, from: String.raw`attachments: \[\.\.\.attachments\] \}\);`, to: "attachments: [] });" },
     ]),
   },
@@ -211,12 +211,12 @@ await runGoal(async (failures, tell) => {
 
   // --- The Claude Code-style lab: the main session --------------------------
   const repo = checkout(join(SCRATCH, "ccs-repo"));
-  const { flowState: ccsHost } = await openLab({ data: join(SCRATCH, "ccs"), userId: USER_ID, model: MODEL, utilityModel: MODEL, repositories: [repo] });
+  const { flowState: ccsHost } = await openClaudeCodeStyle({ data: join(SCRATCH, "ccs"), userId: USER_ID, model: MODEL, utilityModel: MODEL, repositories: [repo] });
   const ccsFetch = createInProcessFetch(ccsHost as never) as never;
   const ccsClient = () => createClient({ userId: USER_ID, baseUrl: "", fetcher: ccsFetch });
   const ccsLab = () => {
     const client = ccsClient();
-    return { client, ...labCalls(client, { fetcher: ccsFetch }) };
+    return { client, ...appCalls(client, { fetcher: ccsFetch }) };
   };
   const ccs = ccsLab();
   const project = await ccs.createProject("lab-composers", `file://${repo}`);
@@ -235,7 +235,7 @@ await runGoal(async (failures, tell) => {
   // --- The Teammates lab: Lead, a generator teammate ------------------------
   const tmHost = await openTeammates({ store: join(SCRATCH, "teammates.sqlite"), model: MODEL, userId: USER_ID, workdir: checkout(join(SCRATCH, "tm-repo")), runsRoot: join(SCRATCH, "tm-runs") });
   const tmFetch = createInProcessFetch(tmHost as never) as never;
-  const tmAdapter = () => createLabAdapter(createClient({ userId: USER_ID, baseUrl: "", fetcher: tmFetch }), { fetcher: tmFetch });
+  const tmAdapter = () => createAppCalls(createClient({ userId: USER_ID, baseUrl: "", fetcher: tmFetch }), { fetcher: tmFetch });
   const tm = tmAdapter();
   await tm.listWorkers();
   const leadSession = await tm.openConversation(LEAD);

@@ -7,7 +7,7 @@
  * sends the answer somewhere that refuses it, and the task waits forever.
  */
 import { describe, expect, it } from "vitest";
-import { holdsOfTasks, inboxAnswerOf, reviewOf, toBoardTask } from "../src/adapter";
+import { holdsOfTasks, inboxAnswerOf, reviewOf, toBoardTask } from "../src/app";
 
 const CONVERSATION = "sess-lead";
 const RUN = "sess-run";

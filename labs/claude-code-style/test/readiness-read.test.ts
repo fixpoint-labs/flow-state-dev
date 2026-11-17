@@ -11,8 +11,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createClient } from "@flow-state-dev/client";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { scriptedModels } from "../../test-support/contract";
-import { openLab } from "../host.mts";
-import { labCalls } from "../src/lab";
+import { openClaudeCodeStyle } from "../host.mts";
+import { appCalls } from "../src/app";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -23,7 +23,7 @@ describe("the readiness chips", () => {
   it("read and re-check the harnesses with no session found or made", async () => {
     const data = mkdtempSync(join(tmpdir(), "claude-code-style-readiness-"));
     cleanups.push(() => rmSync(data, { recursive: true, force: true }));
-    const { flowState } = await openLab({
+    const { flowState } = await openClaudeCodeStyle({
       data,
       userId: "u_lab",
       model: "test/scripted",
@@ -34,7 +34,7 @@ describe("the readiness chips", () => {
     cleanups.push(async () => (flowState as unknown as { dispose?: () => Promise<void> }).dispose?.());
     const fetcher = createInProcessFetch(flowState as never) as unknown as typeof fetch;
     const client = createClient({ userId: "u_lab", baseUrl: "", fetcher });
-    const lab = labCalls(client, { fetcher });
+    const lab = appCalls(client, { fetcher });
 
     expect((await lab.readHarnesses()).map((harness) => harness.harness)).toEqual(["claude-code", "claude-code-plan", "codex", "cursor"]);
     expect((await lab.readHarnesses(true)).map((harness) => harness.harness)).toEqual(["claude-code", "claude-code-plan", "codex", "cursor"]);
