@@ -64,9 +64,9 @@ if (CONTROL !== "" && control === undefined) throw new Error(`unknown GOAL_CONTR
 const CHIEF = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
 /** The file's name for Chief of Staff, and a line of its file's instructions. */
-const FILE_NAME = "Lead";
+const FILE_NAME = "Chief of Staff";
 const FILE_LINE = "You run the team's work with the user";
-const NEW_NAME = "Chief of Staff";
+const NEW_NAME = "Head of Operations";
 const NEW_LINE = `Answer in haiku. Marker ${randomInt(10_000, 99_999)}.`;
 const EARLIER = `Remember the code word heron-${randomInt(10_000, 99_999)}.`;
 const say = (s: string) => console.error(`[tm-edits ${new Date().toISOString().slice(11, 19)}] ${s}`);

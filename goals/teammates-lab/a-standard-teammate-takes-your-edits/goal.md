@@ -8,10 +8,10 @@
 
 **Signal:** the lab's host (`labs/teammates/host.mts`) in a child process (`host.mts` here), driven over HTTP through the public client and the workforce client. Only the model is scripted: it logs the prompt each turn's first step was handed.
 
-- **a:** after Alice's edit, Chief of Staff's next turn says *"You are Chief of Staff"*, holds the new instructions and not the file's; researcher's next turn lists `teammates.chief-of-staff` as Chief of Staff.
+- **a:** after Alice's edit, Chief of Staff's next turn says *"You are Head of Operations"*, holds the new instructions and not the file's; researcher's next turn lists `teammates.chief-of-staff` as Head of Operations.
 - **b:** a fresh roster read lists it once, under the same id, with the new name, `standard` and `edited`; the conversation is the same session, and the turn after the edit still reads the line said before it.
-- **c:** Bob's roster names it *Lead*, unedited, and his turn says *"You are Lead"* with the file's instructions.
-- **d:** after Alice's Reset, her next turn says *"You are Lead"* with the file's instructions, in the same session; the roster shows it unedited.
+- **c:** Bob's roster names it *Chief of Staff*, unedited, and his turn says *"You are Chief of Staff"* with the file's instructions.
+- **d:** after Alice's Reset, her next turn says *"You are Chief of Staff"* with the file's instructions, in the same session; the roster shows it unedited.
 - **e:** Alice hires `tester` and renames it *QA Bot*: its next turn says *"You are QA Bot"*, in the same session, and the roster keeps the id `tester`.
 
 **Anti-game:** graded on the prompts the model received and the roster the server returns, never on the calls the adapter made.
