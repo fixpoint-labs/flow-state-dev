@@ -4,7 +4,7 @@ import { topic } from "@flow-state-dev/client";
 type Calls = { flow(name: string): unknown; subscribe(topics: unknown[], on: unknown): unknown };
 
 /** A row typed by hand. */
-export interface BoardRow {
+export interface BoardTask {
   id: string;
 }
 

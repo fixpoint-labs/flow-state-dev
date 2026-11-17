@@ -130,12 +130,12 @@ describe("the inventory module, on its fixture app", () => {
 
     it("a type moved from the allowlist to the screen-type list with no reason, an empty one, or a blank one; with one, it passes", () => {
       const app = copy();
-      writeAllowlist(app, allowlistOf(app).filter((k) => k.symbol !== "BoardRow"));
+      writeAllowlist(app, allowlistOf(app).filter((k) => k.symbol !== "BoardTask"));
       const moved = (entry: AppInventory["screenTypes"][string][number]): AppInventory => ({ ...app, screenTypes: { ...app.screenTypes, "src/app/reads.ts": [entry] } });
-      for (const entry of ["BoardRow", { name: "BoardRow", reason: "" }, { name: "BoardRow", reason: "   " }]) {
-        expect(checkInventory(moved(entry), AT_HEAD)).toEqual(["src/app/reads.ts: BoardRow moved from the merge-base's allowlist to the screen-type list with no reason"]);
+      for (const entry of ["BoardTask", { name: "BoardTask", reason: "" }, { name: "BoardTask", reason: "   " }]) {
+        expect(checkInventory(moved(entry), AT_HEAD)).toEqual(["src/app/reads.ts: BoardTask moved from the merge-base's allowlist to the screen-type list with no reason"]);
       }
-      expect(checkInventory(moved({ name: "BoardRow", reason: "the screen adds its own fields to the view's row" }), AT_HEAD)).toEqual([]);
+      expect(checkInventory(moved({ name: "BoardTask", reason: "the screen adds its own fields to the view's row" }), AT_HEAD)).toEqual([]);
     });
 
     it("a snapshot type on the screen-type list, reason or not: it stays a finding", () => {

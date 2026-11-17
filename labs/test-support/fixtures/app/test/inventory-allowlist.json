@@ -4,5 +4,5 @@
   {"file":"src/app/reads.ts","symbol":"load","kind":"flow call"},
   {"file":"src/app/reads.ts","symbol":"load","kind":"flow call"},
   {"file":"src/app/reads.ts","symbol":"watch","kind":"subscribe call"},
-  {"file":"src/app/reads.ts","symbol":"BoardRow","kind":"type"}
+  {"file":"src/app/reads.ts","symbol":"BoardTask","kind":"type"}
 ]
