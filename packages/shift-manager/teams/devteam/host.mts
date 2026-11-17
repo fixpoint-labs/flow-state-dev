@@ -572,6 +572,13 @@ export interface OpenLabOptions {
    * still run.
    */
   githubToken?: string;
+  /**
+   * The GitHub logins whose reviews and comments on a coder's pull request
+   * reach its run, which acts on them with the coder's tools
+   * ({@link githubReviewersFromEnv}). Absent or empty: a coder follows no
+   * pull request, so nobody on GitHub can steer it.
+   */
+  githubReviewers?: readonly string[];
   /** GitHub's REST API root. Absent: GitHub's own. A goal check names its stub. */
   githubApiUrl?: string;
   /**
@@ -681,6 +688,14 @@ export function operatorGitHubToken(env: NodeJS.ProcessEnv = process.env): strin
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The GitHub logins trusted to steer a coder through its pull requests:
+ * `GITHUB_REVIEWERS`, comma- or space-separated. Empty when unset.
+ */
+export function githubReviewersFromEnv(env: NodeJS.ProcessEnv = process.env): string[] {
+  return (env.GITHUB_REVIEWERS ?? "").split(/[\s,]+/).filter((login) => login !== "");
 }
 
 /**
@@ -1123,7 +1138,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
     ...(options.approveTools === true ? { approveTools: true } : {}),
     // A run's session follows the pull request it opens, polled: a Lab on a laptop has no public URL for GitHub to push to.
-    onPullRequestRecorded: followPullRequest({ providers: [github], installation }),
+    // Only the listed reviewers are heard: what a run hears it acts on, with Bash and a push.
+    ...(options.githubReviewers === undefined || options.githubReviewers.length === 0
+      ? {}
+      : { onPullRequestRecorded: followPullRequest({ providers: [github], installation, allow: options.githubReviewers }) }),
     harness: labSlot(options.harness),
     ...(options.harnessName === undefined ? {} : { harnessName: options.harnessName }),
     ...(options.harnesses === undefined

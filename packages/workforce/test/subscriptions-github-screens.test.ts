@@ -7,7 +7,7 @@
  * in the subscriber's conversation.
  */
 import { describe, expect, it } from "vitest";
-import { githubSubscriptionProvider } from "../src/service-flows";
+import { followPullRequest, githubSubscriptionProvider } from "../src/service-flows";
 import { subscriptionInputRefusal } from "../src/subscriptions/subscribe";
 
 const judged = { provider: "github", thread: "github:acme/api", kinds: ["review", "comment"], screens: [{ screen: "interest" as const }] };
@@ -29,5 +29,13 @@ describe("githubSubscriptionProvider's screens", () => {
       screens: { custom: { bots: { describe: "only bots", screen: () => undefined } } }
     });
     expect(subscriptionInputRefusal([github], { ...judged, screens: [{ screen: "custom", name: "bots" }] })).toBeUndefined();
+  });
+
+});
+
+describe("followPullRequest's allow list", () => {
+  // A host whose coding run acts on what it hears names who may steer it; an empty list would hear no one by accident.
+  it("refuses an empty list", () => {
+    expect(() => followPullRequest({ providers: [githubSubscriptionProvider({ token: () => "t" })], allow: [] })).toThrow(/lists no GitHub login/);
   });
 });

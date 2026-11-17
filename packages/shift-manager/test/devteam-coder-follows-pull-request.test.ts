@@ -27,11 +27,20 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
+import type {
+  FlowInstance,
+  GeneratorModel,
+  ModelResolver,
+} from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
-import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
+import {
+  LAB_ORG_ID,
+  LAB_USER_ID,
+  openLab,
+  type Lab,
+} from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
 
 const SHIFT_COORDINATOR = "shift-coordinator";
@@ -63,8 +72,15 @@ process.stdout.write(JSON.stringify(path.includes("/pulls?") ? [pr] : pr));
   // GitHub's REST API, as the routines' provider reads it with the operator's token: the repository is readable.
   api = createServer((req, res) => {
     const path = (req.url ?? "").split("?")[0];
-    const body = path === "/repos/acme/storefront" ? { full_name: "acme/storefront" } : path === "/user" ? { login: "jake" } : undefined;
-    res.writeHead(body === undefined ? 404 : 200, { "content-type": "application/json" });
+    const body =
+      path === "/repos/acme/storefront"
+        ? { full_name: "acme/storefront" }
+        : path === "/user"
+          ? { login: "jake" }
+          : undefined;
+    res.writeHead(body === undefined ? 404 : 200, {
+      "content-type": "application/json",
+    });
     res.end(JSON.stringify(body ?? { message: "Not Found" }));
   });
   await new Promise<void>((resolve) => api.listen(0, "127.0.0.1", resolve));
@@ -93,11 +109,18 @@ const route = {
     const judging = "verdict" in call.questions;
     return {
       answers: judging
-        ? { verdict: { type: "choice", choice: "done" }, why: { type: "choice", choice: "off-target" } }
+        ? {
+            verdict: { type: "choice", choice: "done" },
+            why: { type: "choice", choice: "off-target" },
+          }
         : { worker: { type: "choice", choice: CODER } },
       usage: { inputTokens: 1, outputTokens: 1 },
       warnings: [],
-      providerMetadata: { typesafe: { confidence: judging ? { verdict: 0.95 } : { worker: 0.95 } } },
+      providerMetadata: {
+        typesafe: {
+          confidence: judging ? { verdict: 0.95 } : { worker: 0.95 },
+        },
+      },
     };
   },
 };
@@ -110,7 +133,13 @@ const models = Object.assign(
   { resolveId: (id: string) => id, resolveEvaluationModel: () => route },
 ) as unknown as ModelResolver;
 
-async function act(lab: Lab, flow: string, sessionId: string, actionName: string, input: unknown) {
+async function act(
+  lab: Lab,
+  flow: string,
+  sessionId: string,
+  actionName: string,
+  input: unknown,
+) {
   const runtime = await lab.state.getRuntime();
   return (await runAction({
     orgId: LAB_ORG_ID,
@@ -125,7 +154,11 @@ async function act(lab: Lab, flow: string, sessionId: string, actionName: string
 }
 
 /** Polls `check` until it returns a value. */
-async function eventually<T>(check: () => Promise<T | undefined>, what: string, ms = 30_000): Promise<T> {
+async function eventually<T>(
+  check: () => Promise<T | undefined>,
+  what: string,
+  ms = 30_000,
+): Promise<T> {
   for (const until = Date.now() + ms; ; ) {
     const value = await check();
     if (value !== undefined) return value;
@@ -134,8 +167,13 @@ async function eventually<T>(check: () => Promise<T | undefined>, what: string, 
   }
 }
 
-async function openFollowingLab(name: string): Promise<Lab> {
-  const remote = createBareRemote(name, { seed: { "README.md": "storefront\n" } });
+async function openFollowingLab(
+  name: string,
+  githubReviewers: readonly string[] = ["Octo-Reviewer"],
+): Promise<Lab> {
+  const remote = createBareRemote(name, {
+    seed: { "README.md": "storefront\n" },
+  });
   const root = mkdtempSync(join(tmpdir(), `${name}-`));
   dirs.push(root);
   opened = await openLab({
@@ -146,43 +184,99 @@ async function openFollowingLab(name: string): Promise<Lab> {
     workspace: { root, remotes: { allow: ["file"] } },
     coderWorkerId: CODER,
     inventory: true,
-    projects: [{ id: STOREFRONT.id, title: "Storefront", repository: remote.url }],
+    projects: [
+      { id: STOREFRONT.id, title: "Storefront", repository: remote.url },
+    ],
     githubToken: "operator-token",
     githubApiUrl: apiUrl,
+    githubReviewers,
   });
   return opened;
 }
 
 type Entry = Record<string, any>;
-const storedUnder = async (lab: Lab, prefix: string) => Object.values(await lab.stored("user", prefix)) as Entry[];
+const storedUnder = async (lab: Lab, prefix: string) =>
+  Object.values(await lab.stored("user", prefix)) as Entry[];
+
+/** Route "open a PR" to the coder, and wait for its task to hold on the pull request its run opened. */
+async function coderOpensPullRequest(lab: Lab) {
+  const conversation = `s-shift-coordinator-${globalThis.crypto.randomUUID()}`;
+  const created = await lab.door("POST", "coordinator/sessions", {
+    body: {
+      userId: LAB_USER_ID,
+      sessionId: conversation,
+      state: { workerId: SHIFT_COORDINATOR },
+    },
+  });
+  expect(created.status).toBe(201);
+  expect(
+    (
+      await act(lab, "coordinator", conversation, "setWorkProject", {
+        project: STOREFRONT,
+      })
+    ).error,
+  ).toBeUndefined();
+  expect(
+    (
+      await act(lab, "coordinator", conversation, "respond", {
+        message: "Fix the cart badge and open a PR.",
+      })
+    ).error,
+  ).toBeUndefined();
+
+  // The run opened #7: its task waits on it (`awaitPullRequests`), so it neither completes nor fails.
+  const task = await eventually(async () => {
+    const found = (await storedUnder(lab, "tasks/")).find(
+      (r) => r.assignee === CODER,
+    );
+    const waiting = found?.holds?.some((h: Entry) =>
+      h.source?.closedBy?.some(
+        (c: Entry) => c.key === "github.com/acme/storefront/7",
+      ),
+    );
+    return waiting === true ? found : undefined;
+  }, "the coder's task to wait on pull request #7");
+  return { task, conversation };
+}
 
 describe("the coder follows the pull request its run opens", () => {
   it("subscribes the run's session to the pull request, and polls it", async () => {
     const lab = await openFollowingLab("coder-follows-pr");
-    const conversation = `s-shift-coordinator-${globalThis.crypto.randomUUID()}`;
-    const created = await lab.door("POST", "coordinator/sessions", {
-      body: { userId: LAB_USER_ID, sessionId: conversation, state: { workerId: SHIFT_COORDINATOR } },
-    });
-    expect(created.status).toBe(201);
-    expect((await act(lab, "coordinator", conversation, "setWorkProject", { project: STOREFRONT })).error).toBeUndefined();
-    expect((await act(lab, "coordinator", conversation, "respond", { message: "Fix the cart badge and open a PR." })).error).toBeUndefined();
-
-    // The run opened #7: its task waits on it (`awaitPullRequests`), so it neither completes nor fails.
-    const task = await eventually(async () => {
-      const found = (await storedUnder(lab, "tasks/")).find((r) => r.assignee === CODER);
-      const waiting = found?.holds?.some((h: Entry) => h.source?.closedBy?.some((c: Entry) => c.key === "github.com/acme/storefront/7"));
-      return waiting === true ? found : undefined;
-    }, "the coder's task to wait on pull request #7");
-
+    const { task, conversation } = await coderOpensPullRequest(lab);
     const subscriptions = await storedUnder(lab, "workforce/subscriptions/");
     // Exactly one: the run's own session on #7. Never the coordinator's conversation, never the whole repository.
-    expect(subscriptions.map((s) => ({ session: s.sessionId, thread: s.thread, kinds: s.kinds, enabled: s.enabled }))).toEqual([
-      { session: task.run.sessionId, thread: PR_THREAD, kinds: ["review", "comment", "check"], enabled: true },
+    // Only the listed reviewers are heard: the run acts on what it hears, with Bash and a push.
+    expect(
+      subscriptions.map((s) => ({
+        session: s.sessionId,
+        thread: s.thread,
+        kinds: s.kinds,
+        screens: s.screens,
+        enabled: s.enabled,
+      })),
+    ).toEqual([
+      {
+        session: task.run.sessionId,
+        thread: PR_THREAD,
+        kinds: ["review", "comment", "check"],
+        screens: [{ screen: "allow", ids: ["octo-reviewer"] }],
+        enabled: true,
+      },
     ]);
-    expect(subscriptions.some((s) => s.sessionId === conversation || s.thread === REPO_THREAD)).toBe(false);
+    expect(
+      subscriptions.some(
+        (s) => s.sessionId === conversation || s.thread === REPO_THREAD,
+      ),
+    ).toBe(false);
     // Polled: on a laptop no webhook reaches the Lab, so the poll is the only way a review arrives.
     const polls = await storedUnder(lab, "workforce/subscription-polls/");
     expect(polls.map((p) => p.input?.thread)).toEqual([PR_THREAD]);
+  }, 120_000);
+
+  it("follows nothing when the Lab lists no reviewers, so no comment on GitHub can steer the run", async () => {
+    const lab = await openFollowingLab("coder-follows-no-one", []);
+    await coderOpensPullRequest(lab);
+    expect(await storedUnder(lab, "workforce/subscriptions/")).toEqual([]);
   }, 120_000);
 });
 
@@ -203,8 +297,12 @@ describe("a GitHub routine that asks for a judged interest", () => {
       },
     });
     expect(saved.error).toBeUndefined();
-    expect(saved.output, JSON.stringify(saved.output)).toMatchObject({ ok: true });
+    expect(saved.output, JSON.stringify(saved.output)).toMatchObject({
+      ok: true,
+    });
     const routines = await storedUnder(lab, "workforce/subscriptions/");
-    expect(routines.map((r) => ({ thread: r.thread, screens: r.screens }))).toEqual([{ thread: REPO_THREAD, screens: [{ screen: "interest" }] }]);
+    expect(
+      routines.map((r) => ({ thread: r.thread, screens: r.screens })),
+    ).toEqual([{ thread: REPO_THREAD, screens: [{ screen: "interest" }] }]);
   }, 120_000);
 });
