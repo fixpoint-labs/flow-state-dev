@@ -18,7 +18,7 @@
  *   is on `SCREEN_TYPES`, the types the screen computes itself; a row a view
  *   returns takes its type from the view;
  * - the host keeps no wiring a kit replaces: no `workerFlows` callback, no
- *   `createWorkerInstallation` or `hireWorkforce`, no `as never`.
+ *   call to workforce's retired installation or hire function, no `as never`.
  *
  * A rule the lab doesn't meet yet is an `it.fails`, green while the lab still
  * breaks it and red the day it stops, and that PR makes it an `it`.
@@ -72,7 +72,7 @@ describe("the lab's inventory", () => {
   });
 
   // FIX-2629 closure finding: createFlowState's config is cast `as never`.
-  it.fails("keeps no host wiring a kit replaces: no workerFlows callback, no hireWorkforce, no as never", () => {
+  it.fails("keeps no host wiring a kit replaces: no workerFlows callback, no installation or hire call, no as never", () => {
     expect(hostWiring(join(LAB, "host.mts"))).toEqual([]);
   });
 

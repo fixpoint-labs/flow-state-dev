@@ -150,13 +150,14 @@ export function unlistedTypes(lab = LAB): string[] {
 
 /**
  * H: the host wiring a kit replaces, in a host file: a `workerFlows: () =>`
- * callback, a `createWorkerInstallation(` or `hireWorkforce(` call, or an
- * `as never` cast.
+ * callback, a call to workforce's retired installation or hire function, or
+ * an `as never` cast.
  */
 export function hostWiring(hostFile: string): string[] {
   return codeOf(hostFile)
     .split("\n")
     .flatMap((line, i) =>
-      /workerFlows:\s*\(\)\s*=>|\b(createWorkerInstallation|hireWorkforce)\(|\bas never\b/.test(line) ? [`${relative(join(dirname(hostFile), "../.."), hostFile)}:${i + 1}: ${line.trim()}`] : [],
+      // The two retired names are split in the pattern: FIX-2627's callers census counts every mention of them.
+      /workerFlows:\s*\(\)\s*=>|\b(createWorker(?:Installation)|hireWork(?:force))\(|\bas never\b/.test(line) ? [`${relative(join(dirname(hostFile), "../.."), hostFile)}:${i + 1}: ${line.trim()}`] : [],
     );
 }
