@@ -5,6 +5,7 @@
  * thread cards where the lead filed them, the board's columns, talking inside
  * a thread, review, pins, and a harness thread's tag.
  */
+import { execFileSync } from "node:child_process";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { App } from "../src/App";
@@ -231,6 +232,36 @@ describe("the threads-mode screen", () => {
     await waitFor(() => expect((accept as HTMLButtonElement).disabled).toBe(false), SLOW);
     fireEvent.click(accept);
     await waitFor(() => expect(coder().dataset.column).toBe("resolved"), SLOW);
+  });
+
+  // What the threads-mode goal's signal 6 grades. A run in a worktree of the project's repository can land
+  // there, so its accept is Merge locally, never a bare Resolve (FIX-2543); the judge's line is on the review
+  // card in its view (FIX-2380), while the card's one status line is the review's headline.
+  it("offers a coding run in the project's repository Merge locally, with the judge's line in its view, and merges it there", async () => {
+    lab = await openTestLab({ scripts: vendorScripts().scripts, cutFromProject: true });
+    await startThreadsSession(true);
+    const head = execFileSync("git", ["-C", lab.repo, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    await ask("Add a CHANGELOG line for the vendor pick");
+    const coder = () => card("Add a CHANGELOG line for the vendor pick");
+    await waitFor(() => expect(coder().dataset.column).toBe("review"), SLOW);
+    const merge = await within(coder()).findByRole("button", { name: "Merge locally" }, SLOW);
+    expect(within(coder()).queryByRole("button", { name: "Resolve" })).toBeNull();
+    expect(coder().textContent).not.toMatch(/judge/i);
+    fireEvent.click(within(coder()).getByRole("button", { name: "View task" }));
+    const view = screen.getByRole("dialog", { name: "Task: Add a CHANGELOG line for the vendor pick" });
+    const review = await within(view).findByRole("region", { name: "Ready for review" }, SLOW);
+    expect(review.querySelector("[data-review-judge]")!.textContent).toMatch(/judge/i);
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect((merge as HTMLButtonElement).disabled).toBe(false), SLOW);
+    fireEvent.click(merge);
+    await waitFor(() => expect(coder().dataset.column).toBe("resolved"), SLOW);
+    // Landed in the project's checkout: its branch moved on from where it was to hold the run's work, with nothing left uncommitted.
+    const git = (...args: string[]) => execFileSync("git", ["-C", lab.repo, ...args], { encoding: "utf8" }).trim();
+    git("merge-base", "--is-ancestor", head, "HEAD"); // throws unless the branch grew from where it was
+    expect(git("rev-parse", "HEAD")).not.toBe(head);
+    expect(git("ls-tree", "--name-only", "HEAD", "SCRIPTED-RUN.md")).toBe("SCRIPTED-RUN.md");
+    expect(git("status", "--porcelain")).toBe("");
   });
 
   it("turns a thread's composer off once it is finished", async () => {

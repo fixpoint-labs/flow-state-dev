@@ -11,7 +11,7 @@
  * scripted coder: a test never starts a real harness.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createElement, type ReactNode } from "react";
@@ -52,6 +52,8 @@ export interface TestLabOptions extends Partial<Omit<LabOptions, "modelResolver"
   intercept?: (inner: ClientFetch) => ClientFetch;
   /** Make no project. */
   noProject?: boolean;
+  /** The lab may cut worktrees from the project's repository, as `CLAUDE_CODE_STYLE_REPOSITORIES` names it; unset, a run clones it. */
+  cutFromProject?: boolean;
 }
 
 /** The lab on its own host, in process. */
@@ -91,14 +93,14 @@ export async function closeLabs(): Promise<void> {
 
 /** The lab's host, in process, with its models scripted. */
 export async function openTestLab(options: TestLabOptions = {}): Promise<TestLab> {
-  const { scripts = {}, intercept, noProject, ...host } = options;
+  const { scripts = {}, intercept, noProject, cutFromProject, ...host } = options;
   const data = mkdtempSync(join(tmpdir(), "ccs-lab-"));
   const repo = repository(join(data, "repo"));
   const resolver = scriptedModels(
     { "auto-title:generate": ({ said }) => ({ output: { title: firstLineOf(said) } }), ...scripts },
     () => ({ text: "Noted." }),
   ) as ModelResolver;
-  const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: [], modelResolver: resolver, scriptedStepMs: 20, ...host });
+  const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: cutFromProject ? [realpathSync(repo)] : [], modelResolver: resolver, scriptedStepMs: 20, ...host });
   const inProcess = createInProcessFetch(flowState as never) as unknown as ClientFetch;
   const asked: string[] = [];
   const held = new Map<string, Promise<void>>();
