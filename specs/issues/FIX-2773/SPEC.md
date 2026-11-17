@@ -8,7 +8,7 @@
 |---|---|---|
 | **starts an app from Teammates and copies its task cards** | Copies 709 lines of watchers in `src/app/tasks.ts` and `runs.ts`, seven hand-written types, and a 900-line fake | Copies thin hooks over harness-manager's coding board and recorded work views and the `react` session hooks. A task's type is the view's `CodingBoardTask` |
 | **opens a teammate's finished task** | Sees its answer, read from copies of the row in the conversation's items, which a long conversation may not have loaded | Sees the same answer, read for that one task while its popup is open ([D1](DECISIONS.md#d1)) |
-| **re-runs a failed task on another harness** | The page sends a `getTask` action for the brief, then files the re-run | The brief comes with the same one-task read; the re-run is filed the same way, with nothing sent first |
+| **re-runs a failed task on another harness** | The page sends a `getTask` action for the brief, then files the re-run | The re-run reads the brief whole through the Inbox client's `get`, the same `getTask` read the page sends today, now in the package; then files it the same way ([D1](DECISIONS.md#d1)) |
 | **answers a run's question or review from a card** | Answers the hold the app cached at its last read | Answers the hold the board holds now, as claude-code-style does |
 | **maintains harness-manager's views** | Has one consumer of the coding board view | Has two. A field Teammates needs goes on the view, not into the app |
 
@@ -63,22 +63,34 @@ A card's read, and the view's new fields (illustrative; the implementer names th
 + const tasks = useTasks(sessionId).value ?? [];        // useView(codingBoardViewRef(), { sessionId })
 - {task.waiting?.prompt}
 + {task.asks[0]?.ask.prompt}
+```
+
+```diff
+  // labs/teammates/src/components/Popups.tsx (a task's popup: where `task.result` is drawn today)
+- const tasks = useWatch(adapter.watchTasks, popup.sessionId);
++ // useView(codingBoardViewRef(), { sessionId, taskId }): the full CodingBoardTask[], `detail` filled only on this task's row.
++ // It replaces the popup's own board watch; a card never calls it.
++ const tasks = useTaskDetail(popup.sessionId, popup.taskId).value;
+  const task = tasks?.find((t) => t.id === popup.taskId);
 - {task.result ? <MarkdownText text={task.result} /> : null}
-+ const detail = useTaskDetail(sessionId, task.id);   // useView(codingBoardViewRef(), { sessionId, taskId })
-+ {detail?.answer ? <MarkdownText text={detail.answer} /> : null}
++ {task.detail?.answer ? <MarkdownText text={task.detail.answer} /> : null}
+```
+
+```diff
+  // packages/orchestration/src/inbox/client.ts (D1): the board's existing `getTask`, for a re-run's whole brief
+  export type BoardActions = {
++   /** The task as the board's `getTask` reads it: its brief (context, labels, priority) whole. */
++   get(id: string): Promise<BoardTaskRead>;
 ```
 
 ```diff
   // packages/harness-manager/src/kit/coding-board.ts (D1)
 - const codingBoardInputSchema = z.object({ sessionId: z.string().min(1) });
-+ /** `taskId` narrows the answer to that one task, with its detail; without it, every row and no detail. */
++ /** With `taskId`, the view still returns the full CodingBoardTask[], with `detail` filled only on the named row. Without it, `detail` is null on every row. */
 + const codingBoardInputSchema = z.object({ sessionId: z.string().min(1), taskId: z.string().min(1).optional() });
   const codingTaskSchema = listedTaskSchema.extend({
-+   /** Only when the input names this task: what it came back with and its brief, each cut as `getTask` cuts output. */
-+   detail: z.object({
-+     answer: z.string().nullable(), answerCut: z.boolean(),
-+     context: z.string().nullable(), labels: z.array(z.string()).nullable(), priority: z.number().nullable(),
-+   }).nullable(),
++   /** Only on the row the input's `taskId` names: what it came back with, cut as `getTask` cuts output. */
++   detail: z.object({ answer: z.string().nullable(), answerCut: z.boolean() }).nullable(),
 -   /** Why its last attempt failed; only on a failed task. */
 +   /** Why its last attempt failed, or the reason it was cancelled with; `null` otherwise. */
     error: z.string().nullable(),
@@ -90,18 +102,18 @@ hooks move into `tasks.ts`, since `src/app/` may not gain a file), `TaskCalls` a
 each listed in the implementation PR's ledger ([B1](#boundaries-with-siblings)).
 
 **Docs:** no user docs; Teammates is private. A changeset for `@flow-state-dev/harness-manager`
-names the coding board view's `taskId` input, the row's `detail` and the wider `error` (D1). Teammates' README is the last Teammates
+names the coding board view's `taskId` input, the row's `detail` and the wider `error`; one for `@flow-state-dev/orchestration` names `BoardActions.get` (D1). Teammates' README is the last Teammates
 child's (the epic's docs line).
 
 ```mermaid
 flowchart LR
   B["coding board view · the rows and their asks"] --> CARD["task card"]
   B --> POP["task popup"]
-  BT["coding board view · one task · its answer and brief"] --> POP
+  BT["coding board view with taskId · every row, detail on one"] --> POP
   F["useSessionFeed · the run's session"] --> POP
   S["useRequestStream · the call in flight"] --> POP
   R["recorded work view · plan and pull requests"] --> POP
-  POP -->|"cancel · steer · release · retry · refile"| IB["Inbox client · board at the conversation"]
+  POP -->|"cancel · steer · release · retry · get and refile"| IB["Inbox client · board at the conversation"]
   POP -->|"answer"| IA["Inbox client · answerOne on the board's hold now"]
 ```
 
@@ -128,16 +140,17 @@ flowchart LR
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| A `taskId` input on the coding board view, a `detail` on its row (answer and brief) only when named, and `error` on a cancelled task | The answer and brief on every row (Codex: unbounded board); the board's `getTask` action, which Teammates sends from the page today and which records a request | **Extends** the view (D1). Composed from `answerTextOf`, `getTask`'s cut, and the row the view already reads |
+| A `taskId` input on the coding board view, a `detail` (the answer) on the named row only, and `error` on a cancelled task | The answer on every row (Codex: unbounded board); the board's `getTask` action, which records a request | **Extends** the view (D1). Composed from `answerTextOf`, `getTask`'s cut, and the row the view already reads |
+| `BoardActions.get(id)` on orchestration's Inbox client, for a re-run's whole brief | A server-side copy by source task: `createTask` has none, and `followUpOf` runs in the old task's session with its worker, the opposite of a re-run on another worker; the brief on the view's `detail`, which is cut | **Extends** the client with the board's existing `getTask` action, which returns `context` whole. The page sends this read today (`withBrief`); it moves into the package |
 | Hooks `useTasks`, `useTaskWork` in Teammates' `tasks.ts` | Claude-code-style's same hooks | **Copies** them, by the epic's ER-7: FIX-2756 shares them |
 
 | The debt | |
 |---|---|
 | **Removes** | Teammates' `taskCalls` and `runCalls` (about 600 of 709 lines); seven types; the row-copy merge across three sources; a hand-built request stream; the fake's task and run scenarios |
-| **Adds** | An optional input and a nullable `detail` on a published view. A second copy of claude-code-style's task hooks, which FIX-2756 pulls into one place (ER-7) |
+| **Adds** | An optional input and a nullable `detail` on a published view; one read method on a published client. A second copy of claude-code-style's task hooks, which FIX-2756 pulls into one place (ER-7) |
 | **Leaves** | The fake's file and its `gone` entry, unless this issue merges last of the three ([B1](#boundaries-with-siblings)). `steps.ts`'s types (FIX-2772's) and the shared plumbing (the last child's) ([B2, B3](#boundaries-with-siblings)). `cleared.ts`'s and `attention.ts`'s "needs you", computed on the screen (the epic keeps it) |
 
-**Net: down.** One of two ways to show a task goes; the view gains an optional input and a `detail`.
+**Net: down.** One of two ways to show a task goes; the view gains an optional input and a `detail`, and the Inbox client a `get`.
 
 ## Boundaries with siblings
 
@@ -175,13 +188,13 @@ passing. If wrong: Teammates keeps a
 second way to show a task, and the epic's allowlist can't empty.
 
 **[The debt](#whats-already-here-and-the-debt), net down:** one of two task read paths goes; the
-view gains a one-task input. If wrong: the published view grows for one app's needs.
+view gains a one-task input and the Inbox client a `get`. If wrong: the published view grows for one app's needs.
 
-1. **[D1](DECISIONS.md#d1) · A task's answer and brief come by a one-task read on the coding
-   board view, never on every row.** The one to weigh. If wrong: an open popup holds a second live
-   read for its task.
+1. **[D1](DECISIONS.md#d1) · A task's answer comes on the open popup's board read, by `taskId`,
+   never on every row; a re-run reads the brief whole through the Inbox client.** The one to weigh.
+   If wrong: an open popup's board read carries one answer, and a re-run sends one read first.
 
 Improvement · `labs/teammates` (src/app, components, tests), `packages/harness-manager` (the coding
-board view), two goals' Teammates legs · M (about 600 lines out, one view input in) · after FIX-2755 and
+board view), `packages/orchestration` (the Inbox client), two goals' Teammates legs · M (about 600 lines out, one view input in) · after FIX-2755 and
 FIX-2769 (merged) · parallel with FIX-2771 and FIX-2772 (B1 to B4) ·
 [Linear](https://linear.app/fixpoint-labs/issue/FIX-2773) · epic [FIX-2683](../../epics/FIX-2683/SPEC.md)
