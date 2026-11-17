@@ -39,7 +39,7 @@ Each control plants into a copy of the real app folder, against a real git base.
 |---|---|
 | **Goal check** | The three apps' inventory tests (`pnpm test` in `labs/claude-code-style`, `labs/teammates`, `packages/shift-manager`), and `goals/kits/an-app-is-config-ui-and-small-flows/` with `GOAL_LEGS=a`. Run by the implementer at completion; verdict on the implementation PR |
 | **Signal** | All three tests green; `a:inventory` PASS. Each control below fails with a message that names its file |
-| **Input** | The apps as they are on the PR head; the merge-base read from git |
+| **Input** | The apps as they are on the PR head; the base CI passes in for the event ([Decided, not asked](DECISIONS.md#decided-not-asked)) |
 | **Anti-game** | Don't assert on the module's return for a hand-made folder: plant into a copy of the app's own folder, as FIX-2629's `planted-adapter` does. Don't stub the git read |
 | **Control that must fail** | (1) `src/app/glue.ts` in Teammates, `src/lib/glue.ts` in Shift Manager: a client import, a `.subscribe(` and a row type. (2) One entry added to the allowlist. (3) One entry whose finding is gone. (4) One line appended to `src/app/tasks.ts`, and to `reads.ts`. (5) A type moved from the allowlist to the screen list with no reason. (6) Each allowlist emptied on today's `main`: Teammates fails L2, L3, L4 and the fake app; Shift Manager fails L3, L4 and `reads.ts` (the epic's control). And FIX-2629's own `todays-main` and `planted-adapter` still FAIL |
 
@@ -115,7 +115,7 @@ flowchart LR
 |---|---|
 | **The job: grade an app's files against the inventory rules.** One way: `labs/claude-code-style/test/inventory-rules.ts`, wired to that lab's entry, type list and folder. Searched `inventory`, `reachingTheServer`, `unlistedTypes` in `labs/`, `packages/`, `goals/`, `scripts/` | **Moves** to one module, parameterized by app ([epic D3](../../epics/FIX-2683/DECISIONS.md#d3)). Its importers in FIX-2629's goal move with it |
 | `labs/test-support/contract.ts`, shared by both labs and the goals by relative path | **Precedent** for the module's home |
-| The export check's base read (`scripts/check-root-exports.mjs`, `gitReader`), and its CI job at depth 2 | **Reused** for the merge-base read. CI's test job moves from depth 1 to 2 |
+| The export check's base read (`scripts/check-root-exports.mjs`, `gitReader`), and its CI job at depth 2 | **Reused** for the merge-base read. CI's test job moves from depth 1 to 2 and passes the base per event. The merge queue needs a `merge_group` trigger, a separate change |
 | [FIX-2629 D1](../FIX-2629/DECISIONS.md#d1), [FIX-2152 ER-1](../../epics/FIX-2152/DECISIONS.md#who-owns-what), [FIX-2618 ER-8](../../epics/FIX-2618/DECISIONS.md#who-owns-what) | **Kept** as the epic amended them: its ER-2 and ER-4 |
 | Claude Code-style's screen-type list | **Kept** per app. Applied to Teammates it hides 2 types by file name |
 
@@ -148,5 +148,5 @@ which end empty. If wrong: the allowlists outlive the epic.
 
 Improvement · `labs/test-support`, `labs/claude-code-style`, `labs/teammates`, `packages/shift-manager`
 tests, the FIX-2629 goal, CI's test checkout · M (one module moved, two allowlists seeded, about
-180 types classified) · after FIX-2629 and FIX-2755 (both merged) · blocks FIX-2771 to FIX-2778 ·
+180 types classified) · after FIX-2629 and FIX-2755 (both merged) · the merge queue enforces it once CI runs on merge groups (a separate change) · blocks FIX-2771 to FIX-2778 ·
 [Linear](https://linear.app/fixpoint-labs/issue/FIX-2769) · epic [FIX-2683](../../epics/FIX-2683/SPEC.md)

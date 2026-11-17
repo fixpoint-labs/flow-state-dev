@@ -15,8 +15,9 @@
  * and counts the keys that repeat (two `.flow(` calls in one declaration), which is why
  * the allowlist is compared as a multiset.
  *
- * Totality: it prints how many code files under each app's `src/` it read, and fails if a
- * file the rules skip is not one they skip on purpose (the entry, or a component for L4).
+ * Totality: each rule's reader is the file list below it, and the script fails if a code
+ * file under an app's `src/` is missing from a rule's list without being a skip on purpose:
+ * the entry or a component, for L4 only. L3 reads every code file, the entry included.
  *
  * Run: node specs/issues/FIX-2769/poc/baseline/count.mts   (Node 22.18+, type stripping)
  */
@@ -38,9 +39,14 @@ const code = (rel: string) => /\.(m?ts|tsx)$/.test(rel);
 const strip = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, "")).replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
 const TOP = /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function\*?|const|let|class)\s+(\w+)/;
 
+/** The files L3 reads: every code file under `src/`. */
+const l3Files = (lab: string) => filesUnder("src", lab).filter(code);
+/** The files L4 reads: `.ts`/`.tsx` under `src/`, not the entry, not an app's skipped components. */
+const l4Files = (lab: string, app: App) => filesUnder("src", lab).filter((rel) => /\.tsx?$/.test(rel) && rel !== app.entry && !app.typesSkip(rel));
+
 /** L3 findings keyed `{file, symbol, kind}`: an import by its name, a call by the top-level declaration that holds it. */
 function l3Keys(lab: string, entry: string): string[] {
-  return filesUnder("src", lab).filter(code).flatMap((rel) => {
+  return l3Files(lab).flatMap((rel) => {
     const lines = strip(readFileSync(join(lab, rel), "utf8")).split("\n");
     const keys: string[] = [];
     let holder = "<module>";
@@ -63,8 +69,7 @@ function l3Keys(lab: string, entry: string): string[] {
 
 /** L4 with no screen list: every exported object type in the app's type scope. */
 function l4All(lab: string, app: App): string[] {
-  return filesUnder("src", lab)
-    .filter((rel) => /\.tsx?$/.test(rel) && rel !== app.entry && !app.typesSkip(rel))
+  return l4Files(lab, app)
     .flatMap((rel) =>
       [...readFileSync(join(lab, rel), "utf8").matchAll(/^export\s+(?:interface\s+(\w+)\b[^=\n]*|type\s+(\w+)(?:<[^>]*>)?\s*=\s*(.*))$/gm)]
         .filter((m) => m[1] !== undefined || !/^("[^"]*"\s*\|?\s*)+;?$/.test(m[3]!.trim()))
@@ -98,7 +103,20 @@ for (const app of APPS) {
   console.log(`  gone files still there: ${app.gone.filter((rel) => existsSync(join(lab, rel))).join(", ") || "none"}`);
   console.log(`  read-model files (ER-4): ${readModel.join(", ") || "none"}`);
   if (process.argv.includes("--keys")) for (const k of [...l3, ...l4]) console.log(`    ${k}`);
-  // Totality: the rules read every code file under src/ but the entry (L3's createClient only) and the skipped components (L4 only).
+  // Totality: a code file a rule doesn't read must be a skip on purpose.
+  const l3Read = new Set(l3Files(lab));
+  const l4Read = new Set(l4Files(lab, app));
+  const missed = src.flatMap((rel) => [
+    ...(l3Read.has(rel) ? [] : [`L3 skips ${rel}`]),
+    ...(l4Read.has(rel) || rel === app.entry || app.typesSkip(rel) ? [] : [`L4 skips ${rel}`]),
+  ]);
+  const skipped = src.filter((rel) => !l4Read.has(rel)).length;
+  console.log(`  totality: L3 reads ${l3Read.size}/${src.length}; L4 reads ${l4Read.size}, skips ${skipped} on purpose (entry or components)`);
   if (src.length === 0) { console.log("  FAIL: read no files"); bad++; }
+  for (const m of missed) { console.log(`  FAIL: ${m}, not the entry or an intended skip`); bad++; }
+  // Claude Code-style is graded with its own screen-type list; the other two have none yet.
+  const types = app.name === "claude-code-style" ? unlistedTypes(lab).length : l4.length;
+  const total = l3.length + types + overCaps(lab).length + app.gone.filter((rel) => existsSync(join(lab, rel))).length;
+  console.log(`  findings (L2 + L3 keys + L4 + gone files, CCS with its screen list): ${total}`);
 }
 process.exit(bad === 0 ? 0 : 1);

@@ -45,10 +45,21 @@ It comes down to the empty allowlist: if a one-line move empties it, the closure
   an import names what it imports; a type names itself; a gone file and a cap name the file or
   `configuration`. Teammates has 5 keys that repeat today (two `.flow(` calls in one function),
   so a set would let a third call through.
-- **The base is `git merge-base HEAD origin/main`, else `HEAD^1`; the test fails when neither
-  resolves, and never skips.** The same order as the export check. CI's test job checks out at
-  depth 2, as that job does: on a pull request `HEAD^1` is the base branch's tip. An allowlist
-  absent at the base (this PR) is a subset trivially; its seed is what review reads.
+- **CI picks the base for each event and passes it in; the test never guesses it.** CI's run is
+  the only authoritative one. On `pull_request`, the base is `HEAD^1` of the merge commit, which
+  is the branch the PR merges into. On `merge_group`, it is `github.event.merge_group.base_sha`.
+  On a push to `main`, it is `HEAD^1`. CI's test job checks out at depth 2, as the export-check
+  job does, so that commit is there.
+- **A local run with no base passed uses `git merge-base HEAD origin/main`, and says a local PASS
+  is not CI's answer.** A stale `origin/main` can give an older base, as
+  `check-root-exports.mjs` already warns. Local runs don't fetch `origin`: a test that reaches the
+  network is slower and fails offline, and CI is the answer that counts.
+- **The test fails closed when no base resolves, and never skips.** An allowlist absent at the
+  base (this PR) is a subset trivially; its seed is what review reads.
+- **Depends on CI running on merge groups.** `ci.yml` has no `merge_group` trigger today, so the
+  merge queue never runs the ratchet on its merge commit. A PR can pass on a base that the queue
+  then changes. Adding the trigger is a separate change, outside this issue, because it changes
+  how fast the queue merges. Until it lands, the ratchet holds on each PR's own base only.
 - **Where the line limit applies.** Teammates: every file under `src/app/` (15 files, 2,090
   lines today), so a new file there fails too. Shift Manager: `src/lib/reads.ts` (1,014). And
   while Teammates' L2 entry stands, its configuration total can't pass its merge-base (608): a
@@ -111,7 +122,7 @@ Run inline by the author, who had no sub-agent tool; the epic's analysis covered
 | Finding | Objective | Changes the approach? | Disposition |
 |---|---|---|---|
 | A one-line move to the screen-type list empties the allowlist with no work | 7 | Yes | Folded: D1 |
-| The CI test job has no base commit | 7 | No | Decided: depth 2 |
+| The CI test job has no base commit | 7 | No | Decided: depth 2, and a base passed in per event |
 | Teammates repeats keys; a set lets a third call through | 1 | No | Decided: a multiset |
 
 ## How it got here
@@ -119,3 +130,7 @@ Run inline by the author, who had no sub-agent tool; the epic's analysis covered
 - **Draft** — one module moves claude-code-style's rules and takes each app's settings; each app
   gets an allowlist compared with the merge-base, and the epic's line limit; built on the epic's
   D3 and the export check's base read, with the screen types settled here (D1).
+- **Review round 1** — Codex: CI passes the base per event (pull request, merge group, push) and
+  the test never guesses it; the merge-queue trigger is named as a dependency; a local run says it
+  is not CI's answer, and fails closed. Gitar: the baseline POC now fails on a file a rule skips
+  by accident.
