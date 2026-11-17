@@ -28,7 +28,6 @@ import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelScheduler } from "@flow-state-dev/vercel";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { setScheduleIndexImpl } from "@/lib/schedule-index";
 import { resolveKitchenSinkPrincipal } from "@/lib/kitchen-sink-principal";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
@@ -234,7 +233,6 @@ const flowstate = createFlowState({
   // wires the runner and the colocated job processor against the same resolved
   // runtime the router uses.
   jobQueue: bullmqDispatch ? bullmq : undefined,
-  adapters: [createScheduledTransportAdapter()],
   scheduler: process.env.VERCEL ? scheduler : undefined,
   // Who every caller is, for every flow that brings no resolver of its own:
   // the assistant's flow and the workforce's copies. One

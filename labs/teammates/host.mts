@@ -62,7 +62,6 @@ import { ASK_MARKER_IGNORED, assertPositiveInt, scriptedHarness, type Harness } 
 import { codingDrainBudgetMs, harnesses } from "@flow-state-dev/harness-manager/kit";
 import { createFlowState } from "@flow-state-dev/engine";
 import { system } from "@flow-state-dev/memory";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { createSQLiteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
 import Database from "better-sqlite3";
@@ -378,8 +377,6 @@ export async function openTeammates(options: TeammatesOptions) {
     },
     flows: [contextFlow],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
-    // The route `serve()`'s tick dispatches each due clock routine and poll to.
-    adapters: [createScheduledTransportAdapter()],
     durable: true,
     // A shutdown waits for a coding run still going, its checks and judge included, rather than the engine's 30 s default.
     dispatchDrainTimeoutMs: codingDrainBudgetMs({ runTimeoutMs, checks }),

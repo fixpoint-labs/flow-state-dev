@@ -6,7 +6,6 @@ import {
   defaultParseScheduleId
 } from "../src";
 import type { ScheduleResolutionContext } from "@flow-state-dev/core/types";
-import { resolveUserStorageKey } from "@flow-state-dev/engine";
 
 // Handler blocks keyed by the persisted `kind` discriminator. A serialized
 // schedule entry can't carry a block, so it stores `kind` and the resolver maps
@@ -35,9 +34,10 @@ function buildCtx(
     flowKind: "reminders",
     gatewayPrincipal: { userId: "system", orgId: "org_sys" },
     request: new Request("https://example.com/dispatch"),
-    // The engine's derivation, as the dispatch endpoint hands it in.
-    userStorageKey: (userId, orgId) =>
-      resolveUserStorageKey(userId, orgId, { id: "reminders", isolateUserState: false }),
+    // The shared user cell's shape, as the dispatch endpoint hands it in. The
+    // engine's real derivation is exercised end to end in the integration
+    // suite (schedule-cell.test.ts), so this package needs no engine.
+    userStorageKey: (userId, orgId) => `${userId}:~org:${orgId}`,
     stores: {
       resourceState: {
         async get(scopeType, scopeId, resourceKey) {

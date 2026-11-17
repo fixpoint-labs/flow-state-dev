@@ -145,6 +145,8 @@ export type {
 
 export {
   defineScheduleBinding,
+  FIRED_RECORDS_PATTERN,
+  firedRecordCollectionKey,
   formatScheduleId,
   isKnownTimeZone,
   validateScheduleConfig,

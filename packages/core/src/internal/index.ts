@@ -167,7 +167,7 @@ export type { InstalledSdkVersion, InstalledSdkVersionReader, TestedSdk } from "
 export { resolveActiveStatusMessage } from "../blocks/internal/resolve-active-status-message";
 export { resolveAllowedActions } from "../errors/resolve-allowed-actions";
 export { cacheTokensOf } from "../helpers/cache-tokens";
-export { isFiveFieldCron, latestScheduledTime } from "../types/schedules";
+export { firedRecordKey, isFiveFieldCron, latestScheduledTime, nextScheduledTime } from "../types/schedules";
 /** A once-per-process warning that, unlike `warnOnceDev`, still prints in production. */
 export { warnOnce } from "../helpers/deprecation";
 
