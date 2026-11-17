@@ -65,6 +65,7 @@ export { BRANCH_PULL_REQUESTS_TIMEOUT_MS, pullRequestHead, readPullRequest, reco
 export type {
   BranchPullRequestsContext,
   BranchPullRequestsResult,
+  OpenBranchPullRequest,
   PullRequestHead,
   PullRequestHeadOptions,
   PullRequestRead,

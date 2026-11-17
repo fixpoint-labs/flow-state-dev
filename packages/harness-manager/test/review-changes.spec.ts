@@ -37,6 +37,7 @@ import {
   harnessRunChangesView,
   HarnessRunChangesRefused,
   harnessTaskInputSchema,
+  pullRequestWait,
   runOwnerClaimOrder,
   type HarnessFeeds,
   type HarnessJudgeVerdict,
@@ -123,6 +124,7 @@ function host(options: {
   remote?: boolean;
   clone?: boolean;
   landAttempts?: number;
+  awaitPullRequests?: boolean;
 }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-review-"));
   dirs.push(dir);
@@ -160,6 +162,7 @@ function host(options: {
     harness: stubHarness(options.script, seen),
     ...(options.reviewChanges === false ? {} : { reviewChanges: true }),
     ...(options.landAttempts === undefined ? {} : { landAttempts: options.landAttempts }),
+    ...(options.awaitPullRequests === true ? { awaitPullRequests: true } : {}),
   });
   const board = taskBoard({
     name: "review-board",
@@ -319,6 +322,12 @@ function host(options: {
       .filter((item) => item.type === "message")
       .map((item) => ({ role: item.role, text: (item.content ?? []).map((part: { text?: string }) => part.text ?? "").join("") }));
   };
+  /** Every item of the run's session, as JSON: what its feed shows, status notes included. */
+  const runFeed = async (): Promise<string> => {
+    const sessionId = (await row()).run!.sessionId;
+    const requests = await (await runtime()).stores.request.list({ sessionId, withItems: true });
+    return JSON.stringify((requests as Array<{ items?: unknown[] }>).flatMap((request) => request.items ?? []));
+  };
   return {
     act,
     row,
@@ -336,6 +345,7 @@ function host(options: {
     remote,
     pullRequests,
     runMessages,
+    runFeed,
     dispose: () => state.dispose(),
   };
 }
@@ -854,4 +864,93 @@ process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify
       await h.dispose();
     }
   }, 90_000);
+});
+
+// FIX-2781: a coder addressing review feedback pushed to the branch of an open
+// pull request, and a review card then asked to "Open a PR" or "Merge locally".
+describe("a run on a branch that already has an open pull request puts its work on that pull request", () => {
+  const PR_URL = "https://github.com/acme/widgets/pull/42";
+  const PATH = process.env.PATH;
+  let ghLog: string;
+  /** The commit the stub says is at the pull request's head. */
+  let headSha: string;
+  const ghCalls = () => (existsSync(ghLog) ? readFileSync(ghLog, "utf8").trim().split("\n") : []);
+  const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+
+  // `gh` is a stub on PATH: every branch it is asked about has pull request 42 open, opened before the run,
+  // its head at the commit the test writes.
+  beforeAll(() => {
+    const bin = mkdtempSync(join(tmpdir(), "harness-manager-open-pr-gh-"));
+    dirs.push(bin);
+    ghLog = join(bin, "calls.log");
+    headSha = join(bin, "head-sha");
+    writeFileSync(
+      join(bin, "gh"),
+      `#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(ghLog)}, args.join(" ") + "\\n");
+const url = ${JSON.stringify(PR_URL)};
+const sha = fs.existsSync(${JSON.stringify(headSha)}) ? fs.readFileSync(${JSON.stringify(headSha)}, "utf8").trim() : null;
+const joined = args.join(" ");
+const head = /head=[^:&]*:([^&]+)/.exec(joined);
+if (args[0] === "api" && head !== null) {
+  process.stdout.write(JSON.stringify([{ number: 42, html_url: url, title: "Earlier work", state: "open", draft: false,
+    merged_at: null, created_at: "2026-01-01T00:00:00Z", head: { ref: decodeURIComponent(head[1]), sha } }]));
+} else if (args[0] === "api" && /pulls\\/42/.test(joined)) {
+  process.stdout.write(JSON.stringify({ number: 42, html_url: url, title: "Earlier work", state: "open", merged: false, merged_at: null,
+    head: { ref: "b", sha: "abc", repo: { full_name: "acme/widgets" } }, base: { repo: { full_name: "acme/widgets" } } }));
+} else if (args[0] === "pr" && args[1] === "list") {
+  process.stdout.write(JSON.stringify([{ number: 42, url }]));
+} else if (args[0] === "pr" && args[1] === "create") {
+  process.stdout.write("https://github.com/acme/widgets/pull/43\\n");
+} else {
+  process.stdout.write("[]");
+}
+`,
+    );
+    chmodSync(join(bin, "gh"), 0o755);
+    process.env.PATH = `${bin}${delimiter}${PATH ?? ""}`;
+  });
+  afterAll(() => {
+    process.env.PATH = PATH;
+  });
+
+  it("raises no review offering Open a PR or Merge locally: it pushes the commit to the open pull request and waits on it", async () => {
+    const h = host({ script: ["commits"], remote: true, awaitPullRequests: true });
+    // The pull request's head is where the run starts: the run's one commit is what this round adds.
+    writeFileSync(headSha, git(h.sourceRepo, "rev-parse", "main"));
+    try {
+      await h.start();
+      const waiting = await h.until((t) => pullRequestWait(t) !== null || h.waiting(t), "the task to wait on its pull request or a review");
+
+      // No review was ever asked: nothing to choose, the work already has a pull request.
+      expect(h.review(waiting)).toBeUndefined();
+      expect(pullRequestWait(waiting)?.pullRequests.map((pr) => pr.number)).toEqual([42]);
+      // Pushed: the run's commit is on the remote's copy of the pull request's branch.
+      const branch = git(h.seen[0]!.cwd, "rev-parse", "--abbrev-ref", "HEAD");
+      expect(git(h.remote, "rev-parse", `refs/heads/${branch}`)).toBe(git(h.seen[0]!.cwd, "rev-parse", "HEAD"));
+      // No second pull request.
+      expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
+      // The stream says where the work went.
+      expect(await h.runFeed()).toContain(`Pushed 1 commit to pull request #42 (${branch}): ${PR_URL}`);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("when the push to it fails, asks the review with the error, offering that pull request alone and never a local merge", async () => {
+    const h = host({ script: ["commits"], remote: true, awaitPullRequests: true, landAttempts: 1 });
+    writeFileSync(headSha, git(h.sourceRepo, "rev-parse", "main"));
+    rmSync(h.remote, { recursive: true, force: true });
+    try {
+      await h.start();
+      const held = await h.until(h.waiting, "the review");
+      const detail = reviewDetail((await h.stop(h.review(held)!))?.data);
+      expect(detail).toMatchObject({ lands: ["pull-request"], landFailed: { land: "pull-request" } });
+      expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
 });

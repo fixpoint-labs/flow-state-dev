@@ -945,6 +945,15 @@ const landedSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("merge"), branch: z.string(), commit: z.string(), checkout: z.string(), from: z.string() }),
 ]);
 
+// FIX-2781.
+/** A pull request open on the run's branch, opened by this run or before it, and the commit GitHub has at its head. */
+const openPullRequestSchema = z.object({
+  url: z.string(),
+  number: z.number().int(),
+  branch: z.string(),
+  headCommit: z.string().nullable(),
+});
+
 /** How an accept asks a run's work to land. */
 type LandHow = "pull-request" | "merge";
 
@@ -1153,6 +1162,13 @@ const managerStateSchema = z.object({
       landed: landedSchema.nullable().default(null),
       /** The checks the phase's `isDone` ran (`commandCheck`), for the review's `data`. `null` when it ran none. */
       checks: z.array(commandCheckResultSchema).nullable().default(null),
+      // FIX-2781; BP-030.
+      /**
+       * The pull requests open on the run's branch when it stopped. The work
+       * goes on the first of them, with no review asking how to land it.
+       * `null` on a decision kept before this was read.
+       */
+      openPullRequests: z.array(openPullRequestSchema).nullable().default(null),
     })
     .nullable()
     .default(null),
@@ -1442,6 +1458,19 @@ function landedLine(landed: Landed): string {
   return landed.kind === "pull-request"
     ? `Opened pull request #${landed.number} from ${landed.branch} into ${landed.base}: ${landed.url}. Next: review and merge it.`
     : `Merged ${landed.from} into ${landed.branch} in ${landed.checkout}, now at ${landed.commit.slice(0, 12)}. Next: push ${landed.branch} when you're ready.`;
+}
+
+// FIX-2781.
+/**
+ * What the feed says when a run's work went onto the pull request already open
+ * on its branch: how many commits that pull request gained (`null` when its
+ * head couldn't be read against the checkout), and where it is.
+ */
+function pushedLine(landed: Extract<Landed, { kind: "pull-request" }>, newCommits: number | null): string {
+  const where = `pull request #${landed.number} (${landed.branch}): ${landed.url}`;
+  if (newCommits === null) return `Pushed ${landed.branch} to ${where}.`;
+  if (newCommits === 0) return `The run's commits were already on ${where}.`;
+  return `Pushed ${newCommits} commit${newCommits === 1 ? "" : "s"} to ${where}.`;
 }
 
 // FIX-2658.
@@ -1819,10 +1848,10 @@ function createManagerCapability(options: {
  * other way. A run with no repository, or with no checkout yet, has no branch
  * to check. Never throws: a missing or signed-out `gh` is a status note.
  */
-async function checkBranchPullRequests(ctx: BlockContext, worktree?: string | null): Promise<void> {
+async function checkBranchPullRequests(ctx: BlockContext, worktree?: string | null): Promise<OpenPullRequest[]> {
   // Read raw, not through `managerState`: a run that failed before its checkout has none, and that is not an error here.
   const state = harnessCtxState(ctx);
-  if (state?.workspacePath == null || state.branch == null || !existsSync(state.workspacePath)) return;
+  if (state?.workspacePath == null || state.branch == null || !existsSync(state.workspacePath)) return [];
   const worktrees = worktreesOf(ctx);
   const result = await recordBranchPullRequests(ctx, {
     cwd: state.workspacePath,
@@ -1834,8 +1863,14 @@ async function checkBranchPullRequests(ctx: BlockContext, worktree?: string | nu
   });
   if (result.status === "unavailable") {
     ctx.emit.status(`Pull requests on the run's branch were not checked: ${result.reason}`, { transient: false });
+    return [];
   }
+  // FIX-2781: the ones still open, whenever they were opened, for the review step.
+  return result.open.flatMap((pr) => (pr.branch == null ? [] : [{ url: pr.url, number: pr.number, branch: pr.branch, headCommit: pr.headCommit }]));
 }
+
+/** A pull request open on the run's branch when it stopped, as the branch check found it. */
+type OpenPullRequest = z.infer<typeof openPullRequestSchema>;
 
 /** The user's worktree rows off a block's context, when the capability is installed. */
 function worktreesOf(ctx: BlockContext): WorktreeCollection | undefined {
@@ -3053,7 +3088,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const identity = identityOf(ctx, harnessCtxState(ctx));
       const succeeded = handle.status === "completed";
       followRecordedPullRequests(ctx, onPullRequestRecorded);
-      await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
+      const openPullRequests = await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
       /**
        * What this attempt hands back, kept on state for `settle`: the run's
@@ -3087,7 +3122,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           reviewChanges && settle === "complete" && state.filesOnly !== true && commits.verified && commits.count > 0
             ? (read ?? (await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)))
             : null;
-        await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, diff, reviewed: null, landed: null, checks } });
+        await ctx.sequencer!.patchState({
+          decided: { settle, output, changes: commits, diff, reviewed: null, landed: null, checks, openPullRequests },
+        });
         return judgeInput;
       };
       // A run of kept files alone has no branch, so nothing on one to review: a verified none.
@@ -3847,15 +3884,43 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         landing: ManagerState["landing"] = null,
       ) => ctx.sequencer!.patchState({ decided: { ...decision, reviewed: outcome, landed }, landing });
 
+      // FIX-2781: **work on a branch with a pull request open goes on that pull
+      // request**, with no review asking how to land it: there is no second one
+      // to open, and no local merge of work under review there. Pushed once per
+      // step, so a resume doesn't push twice; a push that fails asks the review,
+      // offering that pull request alone.
+      const open = (decision.openPullRequests ?? [])[0];
+      let failed: { land: LandHow; message: string } | null = null;
+      if (open !== undefined && host.land !== undefined && (state.landing ?? null) === null) {
+        // Counted before the push, against the head GitHub had: what this push adds to it.
+        const counted = async () =>
+          open.headCommit === null ? null : await readRunCommits(state.workspacePath!, "HEAD", open.headCommit);
+        const before = ctx.runOnce === undefined ? await counted() : await ctx.runOnce(`review:open-commits:${state.steerSteps ?? 0}`, counted);
+        const outcome = await landOnce(ctx, state, decision, read, "pull-request", `land:open:${state.steerSteps ?? 0}`, open.branch);
+        if (!("error" in outcome) && outcome.landed.kind === "pull-request") {
+          await ctx.sequencer!.patchState({ decided: { ...decision, landed: outcome.landed } });
+          ctx.emit.status(pushedLine(outcome.landed, before?.verified === true ? before.count : null), { transient: false });
+          followRecordedPullRequests(ctx, onPullRequestRecorded);
+          await recordLandedPullRequest(ctx, outcome.landed);
+          return input;
+        }
+        if ("error" in outcome) {
+          failed = { land: "pull-request", message: outcome.error };
+          ctx.emit.status(landFailedLine(failed), { transient: false });
+        }
+      }
+      const landBranch = open?.branch ?? state.branch!;
+
       // The ways this host can land this run, as the host says (`landWays`): none where landing
       // can't work, and then the review offers the plain accept. Asked once, so a replay offers the same.
       const probe = async (): Promise<LandHow[]> =>
         host.land === undefined || host.landWays === undefined || decision.output.branch === null || state.workspacePath == null || state.branch == null
           ? []
           : await host.landWays({ cwd: state.workspacePath, branch: state.branch, baseRef: state.baseRef }).catch(() => []);
-      const lands: LandHow[] = ctx.runOnce === undefined ? await probe() : await ctx.runOnce(`review:lands:${state.steerSteps ?? 0}`, probe);
+      const probed: LandHow[] = ctx.runOnce === undefined ? await probe() : await ctx.runOnce(`review:lands:${state.steerSteps ?? 0}`, probe);
+      // Never a local merge, nor a new pull request, beside one already open (FIX-2781).
+      const lands = open === undefined ? probed : probed.filter((how) => how === "pull-request");
       // The last landing that failed, shown on the review asked again, with a retry.
-      let failed: { land: LandHow; message: string } | null = null;
       // A landing the coding session was handed is tried again first, as the
       // person asked it the first time (FIX-2658).
       const pending = state.landing ?? null;
@@ -3914,7 +3979,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         }
         if (answer.verdict === "accepted") {
           // Once per round, so a resume that runs this again doesn't push or merge twice.
-          const outcome = await landOnce(ctx, state, decision, read, answer.land!, `land:${state.steerSteps ?? 0}:${round}`);
+          const outcome = await landOnce(ctx, state, decision, read, answer.land!, `land:${state.steerSteps ?? 0}:${round}`, landBranch);
           if ("error" in outcome) {
             failed = { land: answer.land!, message: outcome.error };
             attempts = [...attempts, failed];
@@ -4028,13 +4093,15 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     read: HarnessJudgeVerdict | null,
     how: LandHow,
     key: string,
+    // FIX-2781: the branch of the pull request already open, when the work goes there.
+    branch: string = state.branch!,
   ): Promise<{ landed: Landed } | { error: string; reason?: string }> => {
     const attempt = async (): Promise<{ landed: Landed } | { error: string; reason?: string }> => {
       try {
         if (host.land === undefined) throw new WorkspaceRefusedError("land-unsupported", "this host can't push or merge a run's branch");
         // The base commit lets the host land the branch the checkout is on when
         // the run moved its work off its own (FIX-2658).
-        const target = { cwd: state.workspacePath!, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit };
+        const target = { cwd: state.workspacePath!, branch, baseRef: state.baseRef, baseCommit: state.baseCommit };
         const landed =
           how === "merge"
             ? await host.land(target, { kind: "merge" })

@@ -74,9 +74,25 @@ export interface RecordBranchPullRequestsOptions {
   readonly worktree?: { readonly collection: WorktreeCollection; readonly key: string; readonly startedOn?: number };
 }
 
+/** A pull request still open on one of the checked branches, whenever it was opened, with the commit at its head. */
+export interface OpenBranchPullRequest extends PullRequestRef {
+  /** The commit GitHub has at its head, `null` when it named none. */
+  readonly headCommit: string | null;
+}
+
 /** How a {@link recordBranchPullRequests} call ended. */
 export type BranchPullRequestsResult =
-  | { readonly status: "recorded"; readonly branches: readonly string[]; readonly pullRequests: readonly PullRequestRef[] }
+  | {
+      readonly status: "recorded";
+      readonly branches: readonly string[];
+      /** The ones written: opened since `openedSince`, when it is set. */
+      readonly pullRequests: readonly PullRequestRef[];
+      /**
+       * Every pull request still open (or draft) on the branches, `openedSince`
+       * or not: work on the branch goes on the one already open.
+       */
+      readonly open: readonly OpenBranchPullRequest[];
+    }
   | { readonly status: "unavailable"; readonly reason: string };
 
 /** What the check reads off a block's context. */
@@ -96,7 +112,7 @@ interface ListedPullRequest {
   draft?: unknown;
   created_at?: unknown;
   merged_at?: unknown;
-  head?: { ref?: unknown };
+  head?: { ref?: unknown; sha?: unknown };
 }
 
 /** How far GitHub's clock may run behind this host's before a pull request opened in the turn reads as older. */
@@ -161,7 +177,7 @@ export async function recordBranchPullRequests(
     return { status: "unavailable", reason: `the checkout's branch can't be read: ${reasonOf(err)}` };
   }
   for (const branch of options.branches ?? []) if (branch !== "") branches.add(branch);
-  if (branches.size === 0) return { status: "recorded", branches: [], pullRequests: [] };
+  if (branches.size === 0) return { status: "recorded", branches: [], pullRequests: [], open: [] };
 
   const asked = await Promise.all(
     [...branches].map(async (branch) => {
@@ -182,6 +198,7 @@ export async function recordBranchPullRequests(
   // Every pull request GitHub listed, before the turn cutoff: the row's known
   // ones are refreshed from it, so a merge or close a later turn sees lands.
   const listed: PullRequestRef[] = [];
+  const open: OpenBranchPullRequest[] = [];
   for (const answer of asked) {
     if ("error" in answer) {
       return { status: "unavailable", reason: `GitHub could not be asked about branch ${answer.branch}: ${answer.error}` };
@@ -191,6 +208,9 @@ export async function recordBranchPullRequests(
       const ref = refOf(entry);
       if (ref === null) continue;
       listed.push(ref);
+      if ((ref.state === "open" || ref.state === "draft") && !open.some((o) => o.url === ref.url)) {
+        open.push({ ...ref, headCommit: typeof entry.head?.sha === "string" ? entry.head.sha : null });
+      }
       const created = typeof entry.created_at === "string" ? Date.parse(entry.created_at) : Number.NaN;
       if (options.openedSince !== undefined && !(created >= options.openedSince - CLOCK_SLACK_MS)) continue;
       found.push(ref);
@@ -213,7 +233,7 @@ export async function recordBranchPullRequests(
   } catch (err) {
     return { status: "unavailable", reason: `the pull requests could not be recorded: ${reasonOf(err)}` };
   }
-  return { status: "recorded", branches: [...branches], pullRequests: found };
+  return { status: "recorded", branches: [...branches], pullRequests: found, open };
 }
 
 /** Options for {@link readPullRequest}. */
