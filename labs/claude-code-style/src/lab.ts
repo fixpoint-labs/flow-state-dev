@@ -488,7 +488,11 @@ function fileReader({ basePath = "", fetcher = (input, init) => fetch(input, ini
 export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Stops = new Stops(), threadFeeds: ThreadFeeds = new Map()): LabCalls {
   const workforce = createWorkforceClient(fsd);
   const inbox = createInboxClient(fsd);
-  const flowOfSession = async (sessionId: string) => (await fsd.sessions.get(sessionId)).flowKind;
+  // The instance of its flow that owns the session; its base flow for a session from before instance ownership.
+  const flowOfSession = async (sessionId: string) => {
+    const session = await fsd.sessions.get(sessionId);
+    return session.flowId ?? session.flowKind;
+  };
   const boardAt = async (sessionId: string): Promise<BoardActions> => inbox.board({ flowId: await flowOfSession(sessionId), sessionId, board: TASKS_BOARD });
   /** Every project of yours at `scope`, by scope with no session, a page at a time. */
   const everyProject = async (scope: "org" | "user") => {

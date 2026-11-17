@@ -19,13 +19,13 @@ type Sent = { flow: string; action: string; input: Record<string, unknown>; sess
  * (`flow.request(id).result`) can read its answer, by the request's id, so a
  * send through any other path fails. An answer to a run's stop is recorded in `answered`.
  */
-function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Record<string, unknown> = () => ({ ok: true })) {
+function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Record<string, unknown> = () => ({ ok: true }), flowId = "agent") {
   const sent: Sent[] = [];
   const answered: { flow: string; requestId: string; body: Record<string, unknown> }[] = [];
   const outputs = new Map<string, Record<string, unknown>>();
   const client = {
     sessions: {
-      get: async (id: string) => ({ id, flowKind: "agent", flowId: "agent", state: {} }),
+      get: async (id: string) => ({ id, flowKind: "agent", flowId, state: {} }),
     },
     view: async () => ({ value: rows }),
     flow: (flow: string) => ({
@@ -120,6 +120,12 @@ describe("the lab's task actions", () => {
       ["agent", "s1", "retryTask_tasks", { id: "t1" }],
       ["agent", "s1", "updateTask_tasks", { id: "t1", message: "Faster, please." }],
     ]);
+  });
+
+  it("reads the board on the instance of its flow that owns the session, not the base flow", async () => {
+    const lab = fakeClient([RUNNING], undefined, "agent:desk");
+    await labCalls(lab.client).taskActions("s1").steer("t1", "Faster, please.");
+    expect(lab.sent.map((s) => s.flow)).toEqual(["agent:desk"]);
   });
 
   it("rejects with the board's own words when it refuses", async () => {
