@@ -251,6 +251,7 @@ export const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
   ...(row.outsiders === true ? { outsiders: true as const } : {}),
   ...(row.self === undefined ? {} : { self: row.self }),
   ...(row.unmatched === true ? { unmatched: true as const } : {}),
+  ...(row.hearsClose === true ? { hearsClose: true as const } : {}),
   userId: row.userId,
   orgId: row.orgId,
   ...(row.tenantId === undefined ? {} : { tenantId: row.tenantId }),

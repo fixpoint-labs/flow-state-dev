@@ -49,6 +49,22 @@ describe("a followed pull request's close, on push", () => {
     }
   });
 
+  it("counts the close as heard: a coordinator following the repo for what nobody heard isn't sent it too", async () => {
+    // The app forwards pull_request events, so a close nobody heard would reach the coordinator as inferred work.
+    const host = bootSubscriptionsHost({ service: { forwards: { kinds: ["pull_request"] } } });
+    try {
+      const session = await following(host);
+      const coordinator = await host.conversation("alice", "lead");
+      expect(await host.subscribe("alice", coordinator, { thread: "github:acme/api", unmatched: true, interest: "what nobody picked up" }, undefined, "coordinator")).toHaveProperty("id");
+      const routed = await host.route(merged({ sender: { id: "octocat", name: "The Octocat", role: "member" } }));
+      expect(routed.output).not.toHaveProperty("unmatched");
+      expect(await host.heard(session)).toHaveLength(1);
+      expect((await host.serviceRows("alice")).filter((message) => message.forward !== undefined)).toEqual([]);
+    } finally {
+      await host.dispose();
+    }
+  });
+
   it("leaves a routine on the same PR as signed: its own merge ends it unheard", async () => {
     const host = bootSubscriptionsHost();
     try {
@@ -90,6 +106,31 @@ describe("a followed pull request's close, on poll", () => {
       const heard = await host.heard(session);
       expect(heard).toHaveLength(1);
       expect(heard[0]).toContain("merged");
+      expect((await host.subscriptionRows("alice")).map((r) => [r.enabled, r.endedReason])).toEqual([[false, "thread_closed"]]);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("still sends the close when a comment before it can't be delivered and is given up", async () => {
+    const host = bootSubscriptionsHost({ poll: {} });
+    try {
+      const session = await following(host);
+      pollTimeline.events.push(
+        event({ kind: "comment", text: "before the merge", object: { id: "comment-7", version: 1 }, at: T0 + 20_000, received: T0 + 20_000 }),
+        merged({ object: { id: "pr-412-closed", version: 1 }, at: T0 + 40_000, received: T0 + 40_000 })
+      );
+      // Only the comment's sends are lost, every time: it is given up after three polls.
+      const lost = await host.loseDispatches("onMessageReceived", (record) => { return JSON.stringify(record).includes("comment-7"); });
+      for (let i = 0; i < 30; i += 1) {
+        now += MINUTE;
+        vi.setSystemTime(now);
+        await host.tick();
+      }
+      lost.restore();
+      expect(lost.lost()).toBeGreaterThan(0);
+      const heard = await host.heard(session);
+      expect(heard.filter((text) => text.includes("merged") && !text.includes("given up"))).toHaveLength(1);
       expect((await host.subscriptionRows("alice")).map((r) => [r.enabled, r.endedReason])).toEqual([[false, "thread_closed"]]);
     } finally {
       await host.dispose();

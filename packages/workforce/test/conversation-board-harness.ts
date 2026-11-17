@@ -504,14 +504,15 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   /**
    * Make every new request on `actionName` fail to be written, as a store
    * that is down when the dispatch records it: the dispatch is lost, the way
-   * a process dying before it would lose it. Returns the restore.
+   * a process dying before it would lose it; with `only`, just the requests
+   * it picks. Returns the restore.
    */
-  const loseDispatches = async (actionName: string) => {
+  const loseDispatches = async (actionName: string, only?: (record: unknown) => boolean) => {
     const store = (await state.getRuntime()).stores.request;
     const set = store.set.bind(store);
     let lost = 0;
     store.set = (async (id: string, record: { actionName?: string }, ...rest: unknown[]) => {
-      if (record.actionName === actionName && (await store.get(id)) === undefined) {
+      if (record.actionName === actionName && (only === undefined || only(record)) && (await store.get(id)) === undefined) {
         lost += 1;
         throw new Error(`the store is down: request ${id} was not recorded`);
       }

@@ -167,7 +167,13 @@ export const indexEntrySchema = screenSettingsSchema.extend({
    * `interest`. An entry without one reads as not listing it (an entry from
    * before the screen has none).
    */
-  interest: z.string().optional()
+  interest: z.string().optional(),
+  /**
+   * The subscription hears its thread's close (the subscription's own
+   * `hearsClose`), mirrored so routing counts a close it hears as heard: it
+   * isn't forwarded to a coordinator as well. An entry without one doesn't.
+   */
+  hearsClose: z.literal(true).optional()
 });
 
 export type IndexEntry = z.infer<typeof indexEntrySchema>;

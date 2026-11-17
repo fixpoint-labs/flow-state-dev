@@ -391,9 +391,10 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       const ordinary = nominated.filter((c) => c.entry.unmatched !== true);
       const unmatched = nominated.filter((c) => c.entry.unmatched === true);
       const ordinaryVerdicts = ordinary.map(verdictOf);
-      // Unheard: every ordinary verdict refused on content (none passed, none failed or held).
-      // Read before the owner-run cap, so an event the cap cut off still counts as heard.
-      const unheard = ordinaryVerdicts.every(refusedOnContent);
+      // Unheard: every ordinary verdict refused on content (none passed, none failed or held), and no
+      // subscription hears it as its thread's close. Read before the owner-run cap, so an event the cap
+      // cut off still counts as heard.
+      const unheard = ordinaryVerdicts.every(refusedOnContent) && !closing.some((c) => c.entry.hearsClose === true);
       const take = (candidate: Candidate, verdict: Routed["verdicts"][number], forward?: ForwardMark): boolean => {
         // Past the cap, a passing subscription is refused: the event reaches no more sessions.
         const capped = verdict.pass && delivered.size >= maxOwnerRuns;
@@ -772,6 +773,13 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
        * them, or gives it up after three polls and ends them all the same.
        */
       const closePending = new Set<string>();
+      /**
+       * Closes owed to a subscription that hears them, deferred unsent behind an
+       * earlier event it still owes: a fire that doesn't try one doesn't count
+       * toward giving it up, so it is sent once the earlier event lands or is
+       * given up. Keyed as the owed count is.
+       */
+      const deferredCloses = new Set<string>();
       for (const screening of screenings) {
         const { event } = screening;
         /** The subscriptions that still owe this event once this fire is done with it. */
@@ -787,10 +795,11 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         // As routing decides it: unheard when every ordinary verdict refused it on content (none passed, failed or was unjudged).
         const ordinary = screening.nominated.filter((c) => c.entry.unmatched !== true);
         const unmatched = screening.nominated.filter((c) => c.entry.unmatched === true);
-        const unheard = ordinary.every((c) => {
-          const verdict = verdictOf(c);
-          return verdict !== undefined && refusedOnContent(verdict);
-        });
+        const unheard =
+          ordinary.every((c) => {
+            const verdict = verdictOf(c);
+            return verdict !== undefined && refusedOnContent(verdict);
+          }) && !screening.closing.some((c) => c.entry.hearsClose === true);
         const undecided = ordinary.some((c) => {
           const verdict = verdictOf(c);
           return verdict === undefined || (!verdict.pass && !refusedOnContent(verdict));
@@ -836,10 +845,17 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         for (const candidate of screening.closing) {
           const id = idOf(candidate);
           // Owed the close itself, or anything before it in this fetch: the close waits (the close invariant).
-          if (stillOwed.has(id) || (unsettled.get(id)?.length ?? 0) > 0) closePending.add(id);
+          if (stillOwed.has(id) || (unsettled.get(id)?.length ?? 0) > 0) {
+            // One that hears its close owes it too, untried, so giving up the earlier event can't end it unsent.
+            if (!stillOwed.has(id) && subs.get(id)?.hearsClose === true && !closePending.has(id)) {
+              oweNow(id);
+              deferredCloses.add(`${id}\n${event.object.id}\n${event.object.version}`);
+            }
+            closePending.add(id);
+          }
           if (!subs.has(id) || closePending.has(id)) continue;
-          // FIX-2535 D3: one that hears its close is sent it first, whatever its kinds, screens and cap; a send
-          // not yet taken leaves the close owed, so a later poll lands it and then ends the subscription.
+          // One that hears its close is sent it first, whatever its kinds, screens and cap; a send not yet
+          // taken leaves the close owed, so a later poll lands it and then ends the subscription.
           const sub = subs.get(id)!;
           if (sub.hearsClose === true) {
             const delivered = await deliverToRow(ctx, id, sub, event, undefined, true);
@@ -864,7 +880,8 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         const sub = subs.get(subscription);
         if (sub === undefined) continue;
         for (const event of events) {
-          const polls = (previous.get(`${subscription}\n${event.object.id}\n${event.object.version}`) ?? 0) + 1;
+          const owedKey = `${subscription}\n${event.object.id}\n${event.object.version}`;
+          const polls = (previous.get(owedKey) ?? 0) + (deferredCloses.has(owedKey) ? 0 : 1);
           if (polls < POLL_GIVE_UP_AFTER) {
             owed.push([subscription, event.object.id, event.object.version, polls, event.at]);
             continue;
