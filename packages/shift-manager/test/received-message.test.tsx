@@ -3,6 +3,11 @@
  * A received message that asks for a reply is marked as one: its sender is
  * owed this worker's answer (FIX-2310, FIX-2318), so someone watching the
  * conversation has to tell it apart from a plain message, which wants nothing back.
+ *
+ * Its text is drawn as Markdown, as the worker's own replies are: a
+ * worker that answers with a table or a link wrote it for the user to read, and
+ * shown raw it reads as pipes, which pushed the Shift Coordinator to restate it.
+ * HTML in it stays text: another worker wrote it.
  */
 import { cleanup, render, screen } from "@testing-library/react";
 import type { DataItem } from "@flow-state-dev/core/items";
@@ -32,5 +37,33 @@ describe("a received message", () => {
     render(<ReceivedMessage item={received({})} />);
     expect(screen.getByTestId("received-message").dataset.replyRequested).toBe("false");
     expect(screen.queryByTestId("received-message-reply-requested")).toBeNull();
+  });
+});
+
+// FIX-2792.
+describe("a received message's text", () => {
+  /** The message's text, as drawn. */
+  const textOf = () => screen.getByTestId("received-message").querySelector('[data-look="received-message-text"]')!;
+  const TABLE = ["Here is what failed:", "", "| task | error |", "| --- | --- |", "| task_3f5e | timeout |"].join("\n");
+
+  it("draws a Markdown table as a table, not as pipes", () => {
+    render(<ReceivedMessage item={received({ text: TABLE })} />);
+    const text = textOf();
+    const cells = [...text.querySelectorAll("td")].map((cell) => cell.textContent);
+    expect(cells).toEqual(["task_3f5e", "timeout"]);
+    expect(text.textContent).not.toContain("| --- |");
+  });
+
+  it("makes a URL a link", () => {
+    render(<ReceivedMessage item={received({ text: "See https://github.com/acme/web/pull/12 for the fix." })} />);
+    // Streamdown draws a link as its own control, which asks before it opens the page.
+    const link = textOf().querySelector('[data-streamdown="link"]');
+    expect(link?.textContent).toBe("https://github.com/acme/web/pull/12");
+  });
+
+  it("shows HTML in the text as text, never as an element", () => {
+    render(<ReceivedMessage item={received({ text: "a <b>loud</b> b" })} />);
+    expect(textOf().querySelector("b")).toBeNull();
+    expect(textOf().textContent).toContain("<b>loud</b>");
   });
 });
