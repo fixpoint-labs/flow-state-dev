@@ -7,7 +7,7 @@
 "@flow-state-dev/cursor": patch
 ---
 
-A harness run that is still working is no longer stopped for how long it has run. Coding runs and harness session turns are stopped only once the harness has sent nothing for 20 minutes, and they fail with a message that names the harness, such as "No output from Claude Code for 20 mins; stopped."
+A harness run that is still working is no longer stopped for how long it has run. Coding runs and harness session turns are stopped only once the harness has sent nothing for 20 minutes, and they fail with a message that names the harness, such as "No output from Claude Code for 20 mins; stopped." (FIX-2794)
 
 - **Coding runs.** `harnessManager` and the harness kit take `idleTimeoutMs` (default 20 minutes). `runTimeoutMs` is now an optional cap on a run's total time, off by default; before, it was required, and the kit capped every run at 20 minutes. `harnessManager` also takes `harnessLabel`, the harness's name in the stop message, which the kit fills from each harness's `label`. `codingDrainBudgetMs` takes `idleTimeoutMs` too. When no cap is set, a shutdown waits 20 minutes for a run's harness before it cancels the run.
 - **Session turns.** `harnessSessionFlow` takes `idleTimeoutMs` (default 20 minutes) and `harnessLabel`. `turnTimeoutMs` is now an optional cap, off by default; before, every turn was capped at 60 minutes. A turn stopped for silence is recorded as `timedOut`, like one stopped at the cap.
