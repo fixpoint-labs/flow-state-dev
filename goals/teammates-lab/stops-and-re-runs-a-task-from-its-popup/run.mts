@@ -89,6 +89,14 @@ function buildPages(scratch: string, patches: readonly Patch[]): string {
   symlinkSync(join(LAB, "node_modules"), join(root, "node_modules"));
   const tsconfig = join(root, "tsconfig.json");
   writeFileSync(tsconfig, readFileSync(tsconfig, "utf8").replace('"../../tsconfig.base.json"', JSON.stringify(join(REPO_ROOT, "tsconfig.base.json"))));
+  // The build config reads its build-inputs plugin, and the repository it records, from two folders up: the checkout's.
+  const viteConfig = join(root, "vite.config.ts");
+  writeFileSync(
+    viteConfig,
+    readFileSync(viteConfig, "utf8")
+      .replace('"../../scripts/build-inputs.mjs"', JSON.stringify(join(REPO_ROOT, "scripts/build-inputs.mjs")))
+      .replace('fileURLToPath(new URL("../..", import.meta.url))', JSON.stringify(REPO_ROOT)),
+  );
   for (const patch of patches) {
     const path = join(root, patch.file);
     const before = readFileSync(path, "utf8");
@@ -248,8 +256,8 @@ await runGoal(async (failures, tell) => {
     const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
     page.setDefaultTimeout(30_000);
     await page.goto(lab.origin);
-    await page.locator(`nav[aria-label="Workers"] button[data-worker="Lead"]`).click();
-    const panel = page.locator(`aside[aria-label="Lead's panel"]`);
+    await page.locator(`nav[aria-label="Workers"] button[data-worker="Chief of Staff"]`).click();
+    const panel = page.locator(`aside[aria-label="Chief of Staff's panel"]`);
     await panel.locator(`button[aria-label^="Coding task: ${fixture.task.title}, on Cursor"]`).click();
     await page.locator('[role="dialog"] [data-testid="task-action-row"]').waitFor();
 

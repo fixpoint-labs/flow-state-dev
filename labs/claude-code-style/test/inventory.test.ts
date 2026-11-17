@@ -23,7 +23,8 @@
  * A rule the lab doesn't meet yet is an `it.fails`, green while the lab still
  * breaks it and red the day it stops, and that PR makes it an `it`.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { filesUnder, hostWiring, LAB, overCaps, reachingTheServer, unlistedTypes, unclassified } from "./inventory-rules";
@@ -63,6 +64,18 @@ describe("the lab's inventory", () => {
 
   it("types no row a view returns by hand: every exported object type outside the components is one the screen computes", () => {
     expect(unlistedTypes()).toEqual([]);
+  });
+
+  it("reads each exported interface on its own: an unlisted one after a listed one is still named", () => {
+    // A listed interface's body must not swallow the declarations after it.
+    const lab = mkdtempSync(join(tmpdir(), "inventory-l4-"));
+    mkdirSync(join(lab, "src"));
+    writeFileSync(join(lab, "src/modes.ts"), "export interface Mode {\n  id: string;\n}\n\nexport interface BoardRow {\n  id: string;\n}\n");
+    try {
+      expect(unlistedTypes(lab)).toEqual(["src/modes.ts: BoardRow"]);
+    } finally {
+      rmSync(lab, { recursive: true, force: true });
+    }
   });
 
   it("keeps no host wiring a kit replaces: no workerFlows callback, no installation or hire call, no as never", () => {
