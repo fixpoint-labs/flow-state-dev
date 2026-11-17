@@ -9,105 +9,56 @@
  * merge-base's list doesn't have, a type moved to the screen-type list with
  * no reason, and `src/lib/reads.ts` past its merge-base length.
  *
- * The controls plant into a copy of Shift Manager's own folder and read the
- * real merge-base: each must fail, naming its file. The ones that need an
- * allowlist at the base read it at `HEAD`, whose list is the checked-in one.
+ * The rules' own controls run on a fixed fixture app
+ * (`labs/claude-code-style/test/inventory-module.test.ts`). The ones here
+ * check only Shift Manager's settings, and plant only new files, so deleting
+ * its debt never means rewriting them.
  */
-import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { checkInventory, copyOf, type AppInventory, type Key } from "../../../labs/test-support/inventory.mts";
+import { checkInventory, copyOf, type AppInventory } from "../../../labs/test-support/inventory.mts";
 import { shiftManager } from "./inventory-settings.ts";
 
-const ALLOWLIST = "test/inventory-allowlist.json";
 const copies: string[] = [];
 afterEach(() => {
   for (const root of copies.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-/** A copy of Shift Manager to plant into. */
-function copy(): AppInventory {
+/** A copy of Shift Manager with `files` planted in it. */
+function planted(files: Record<string, string>): AppInventory {
   const app = copyOf(shiftManager);
   copies.push(app.root!);
+  for (const [rel, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(app.root!, rel)), { recursive: true });
+    writeFileSync(join(app.root!, rel), text);
+  }
   return app;
 }
-const at = (app: AppInventory, rel: string) => join(app.root!, rel);
-const allowlistOf = (app: AppInventory): Key[] => JSON.parse(readFileSync(at(app, ALLOWLIST), "utf8"));
-const writeAllowlist = (app: AppInventory, keys: Key[]) => writeFileSync(at(app, ALLOWLIST), JSON.stringify(keys));
-
-/** An adapter like the ones the epic removes: a client import, a `.subscribe(` and a hand-written row type. */
-const GLUE = 'import { createClient } from "@flow-state-dev/client";\nexport interface BoardRow { id: string; status: string }\nexport const watch = (c: any) => c.subscribe([], {});\n';
 
 describe("Shift Manager's inventory", () => {
   it("meets the content rules but for its allowlist, which only shrinks, and reads.ts doesn't grow", () => {
     expect(checkInventory(shiftManager)).toEqual([]);
   });
 
-  describe("fails, naming the file, on", () => {
-    it("an adapter planted in src/lib/: its client import, its .subscribe( and its row type", () => {
-      const app = copy();
-      writeFileSync(at(app, "src/lib/glue.ts"), GLUE);
-      expect(checkInventory(app)).toEqual([
-        expect.stringMatching(/^src\/lib\/glue\.ts: imports createClient from the client \(L3/),
-        expect.stringMatching(/^src\/lib\/glue\.ts:3: a \.subscribe\( call in watch \(L3/),
-        expect.stringMatching(/^src\/lib\/glue\.ts: BoardRow, a hand-written type .* \(L4/),
+  describe("its settings", () => {
+    it("read row types in src/components/ too", () => {
+      expect(checkInventory(planted({ "src/components/InventoryPlant.tsx": "export interface PlantRow {\n  id: string;\n}\n" }))).toEqual([
+        expect.stringMatching(/^src\/components\/InventoryPlant\.tsx: PlantRow, a hand-written type .* \(L4/),
       ]);
     });
 
-    it("a row type in a component: L4 reads src/components/ too", () => {
-      const app = copy();
-      writeFileSync(at(app, "src/components/Glue.tsx"), "export interface BoardRow { id: string }\n");
-      expect(checkInventory(app)).toEqual([expect.stringMatching(/^src\/components\/Glue\.tsx: BoardRow, a hand-written type .* \(L4/)]);
-    });
-
-    it("an entry added to the allowlist, even with its finding: the merge-base's list doesn't have it", () => {
-      const app = copy();
-      writeFileSync(at(app, "src/lib/glue.ts"), 'import { topic } from "@flow-state-dev/client";\nexport const t = topic;\n');
-      writeAllowlist(app, [...allowlistOf(app), { file: "src/lib/glue.ts", symbol: "topic", kind: "client import" }]);
-      expect(checkInventory(app, { base: "HEAD" })).toEqual(["src/lib/glue.ts · topic · client import: not on the merge-base's allowlist, which may only shrink"]);
-    });
-
-    it("an entry whose finding is gone: a type renamed, its entry left", () => {
-      const app = copy();
-      const file = at(app, "src/lib/usage.ts");
-      writeFileSync(file, readFileSync(file, "utf8").replace("export type UsageWindow =", "type UsageWindow ="));
-      expect(checkInventory(app)).toEqual(["src/lib/usage.ts · UsageWindow · type: on the allowlist, but the finding is gone: delete the entry"]);
-    });
-
-    it("a line appended to src/lib/reads.ts, past its merge-base length", () => {
-      const app = copy();
-      appendFileSync(at(app, "src/lib/reads.ts"), "// one more line\n");
-      expect(checkInventory(app)).toEqual([expect.stringMatching(/^src\/lib\/reads\.ts: \d+ lines, past its merge-base length of \d+$/)]);
-    });
-
-    it("a type moved from the allowlist to the screen-type list with no reason; with one, it passes", () => {
-      const app = copy();
-      writeAllowlist(app, allowlistOf(app).filter((k) => !(k.file === "src/lib/usage.ts" && k.symbol === "UsageWindow")));
-      const moved = (entry: AppInventory["screenTypes"][string][number]): AppInventory => ({ ...app, screenTypes: { ...app.screenTypes, "src/lib/usage.ts": [entry] } });
-      expect(checkInventory(moved("UsageWindow"), { base: "HEAD" })).toEqual(["src/lib/usage.ts: UsageWindow moved from the merge-base's allowlist to the screen-type list with no reason"]);
-      expect(checkInventory(moved({ name: "UsageWindow", reason: "the screen draws the view's window with its own label" }), { base: "HEAD" })).toEqual([]);
-    });
-
-    it("a snapshot type on the screen-type list, reason or not: it stays a finding", () => {
-      const app = copy();
-      writeAllowlist(app, allowlistOf(app).filter((k) => k.symbol !== "LoadedSnapshot"));
-      const listed: AppInventory = { ...app, screenTypes: { ...app.screenTypes, "src/lib/derive.ts": [...app.screenTypes["src/lib/derive.ts"]!, { name: "LoadedSnapshot", reason: "it is loaded" }] } };
-      expect(checkInventory(listed, { base: "HEAD" })).toEqual([
-        expect.stringMatching(/^src\/lib\/derive\.ts: LoadedSnapshot, a hand-written type .* \(L4: not on the allowlist\)$/),
-        "src/lib/derive.ts: LoadedSnapshot can never be a screen type",
+    it("never take a snapshot type as a screen type, reason or not", () => {
+      const app = planted({ "src/lib/inventory-plant.ts": "export interface PlantSnapshot {\n  rows: string[];\n}\n" });
+      const listed: AppInventory = { ...app, screenTypes: { ...app.screenTypes, "src/lib/inventory-plant.ts": [{ name: "PlantSnapshot", reason: "it is loaded" }] } };
+      expect(checkInventory(listed)).toEqual([
+        expect.stringMatching(/^src\/lib\/inventory-plant\.ts: PlantSnapshot, a hand-written type .* \(L4: not on the allowlist\)$/),
+        "src/lib/inventory-plant.ts: PlantSnapshot can never be a screen type",
       ]);
     });
 
-    it("an emptied allowlist: L3, L4 and reads.ts each fail", () => {
-      const app = copy();
-      writeAllowlist(app, []);
-      const failures = checkInventory(app).join("\n");
-      for (const rule of ["L3", "L4"]) expect(failures).toMatch(new RegExp(`\\(${rule}: not on the allowlist\\)`));
-      expect(failures).toMatch(/^src\/lib\/reads\.ts: still there \(gone: not on the allowlist\)$/m);
+    it("don't hold it to the path classes: a file no class names passes", () => {
+      expect(checkInventory(planted({ "inventory-plant.txt": "not configuration, UI or a flow\n" }))).toEqual([]);
     });
-  });
-
-  it("fails closed on a base that names no commit", () => {
-    expect(checkInventory(shiftManager, { base: "no-such-commit" })).toEqual(["packages/shift-manager: no merge-base: no-such-commit names no commit here"]);
   });
 });

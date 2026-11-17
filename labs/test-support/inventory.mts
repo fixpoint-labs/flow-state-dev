@@ -98,8 +98,13 @@ export interface Finding extends Key {
 /** ER-1's caps: at most this many flows, each under this many lines, and this many lines of configuration in all. */
 const CAPS = { flows: 3, flowLines: 200, configLines: 300 } as const;
 
-/** The own-session helpers the epic retires. Each name is split in the pattern, so the closure goal's repo-wide grep for them doesn't find this file. */
-const OWN_SESSION = /\b(own(?:Sessions?)|lab(?:Sessions?)|roster(?:Session)|reader(?:SessionId)|openReader(?:Session))\b/g;
+/**
+ * The own-session helpers the epic retires, as an extended regular expression
+ * both this module and the closure goal's `git grep -E` read; group 1 is the
+ * name. Each name is split by a group, so the grep doesn't find this file.
+ */
+export const OWN_SESSION_PATTERN = String.raw`\b(own(Sessions?)|lab(Sessions?)|roster(Session)|reader(SessionId)|openReader(Session))\b`;
+const OWN_SESSION = new RegExp(OWN_SESSION_PATTERN, "g");
 
 /** What an install or a build writes. */
 const BUILT = new Set(["node_modules", "dist", "dist-client"]);
@@ -283,9 +288,15 @@ const WIRING = /workerFlows:\s*\(\)\s*=>|\b(createWorker(?:Installation)|hireWor
  * an `as never` cast. Each line, by its path from two folders up.
  */
 export function hostWiring(hostFile: string): string[] {
-  return codeOf(hostFile)
+  const at = relative(join(dirname(hostFile), "../.."), hostFile);
+  return wiringLines(readFileSync(hostFile, "utf8")).map(({ index, line }) => `${at}:${index + 1}: ${line.trim()}`);
+}
+
+/** The lines of wiring in a host file's text, comments aside: each with its 0-based index. */
+function wiringLines(text: string): { index: number; line: string }[] {
+  return stripComments(text)
     .split("\n")
-    .flatMap((line, i) => (WIRING.test(line) ? [`${relative(join(dirname(hostFile), "../.."), hostFile)}:${i + 1}: ${line.trim()}`] : []));
+    .flatMap((line, index) => (WIRING.test(line) ? [{ index, line }] : []));
 }
 
 /** H, keyed: each line of wiring in `host.mts`, by the declaration that holds it. */
@@ -295,13 +306,10 @@ function hostFindings(root: string): Finding[] {
   const text = readFileSync(host, "utf8");
   const parsed = parse(text, "host.mts");
   const starts = parsed.source.getLineStarts();
-  return stripComments(text)
-    .split("\n")
-    .flatMap((line, i) => {
-      if (!WIRING.test(line)) return [];
-      const holder = parsed.holderAt(starts[i]! + (line.length - line.trimStart().length));
-      return [{ rule: "H" as const, file: "host.mts", symbol: holder, kind: "host wiring", detail: `host.mts:${i + 1}: ${line.trim()}` }];
-    });
+  return wiringLines(text).map(({ index, line }) => {
+    const holder = parsed.holderAt(starts[index]! + (line.length - line.trimStart().length));
+    return { rule: "H" as const, file: "host.mts", symbol: holder, kind: "host wiring", detail: `host.mts:${index + 1}: ${line.trim()}` };
+  });
 }
 
 /** Own sessions: each own-session helper named in the app's source code, by its name. */
@@ -356,12 +364,21 @@ function parseAllowlist(text: string, where: string): Key[] {
 }
 
 const git = (args: string[]) => execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8", maxBuffer: 1 << 26, stdio: ["ignore", "pipe", "ignore"] });
-/** A file's text at `rev`, or `undefined` when it isn't there. */
-function atBase(rev: string, path: string): string | undefined {
+
+/** What git says when the path is not in that commit: the only failure that means "not there". */
+const NOT_AT_REV = /does not exist in|exists on disk, but not in/;
+
+/**
+ * A file's text at `rev`, or `undefined` when the commit doesn't have it. Any
+ * other failure (a bad revision, git itself failing) throws: it must not read
+ * as an absent file, which the ratchet takes as a new or trivially-subset one.
+ */
+export function atBase(rev: string, path: string): string | undefined {
   try {
-    return git(["show", `${rev}:${path}`]);
-  } catch {
-    return undefined;
+    return execFileSync("git", ["show", `${rev}:${path}`], { cwd: REPO_ROOT, encoding: "utf8", maxBuffer: 1 << 26, stdio: ["ignore", "pipe", "pipe"] });
+  } catch (error) {
+    if (NOT_AT_REV.test(String((error as { stderr?: unknown }).stderr ?? ""))) return undefined;
+    throw error;
   }
 }
 
@@ -422,7 +439,7 @@ export function checkInventory(app: AppInventory, options: { base?: string } = {
     for (const entry of entries) {
       const name = typeof entry === "string" ? entry : entry.name;
       if (app.neverScreen?.test(name)) failures.push(`${rel}: ${name} can never be a screen type`);
-      else if (typeof entry === "string" && baseList.some((k) => k.kind === "type" && k.file === rel && k.symbol === name)) {
+      else if ((typeof entry === "string" || entry.reason.trim() === "") && baseList.some((k) => k.kind === "type" && k.file === rel && k.symbol === name)) {
         failures.push(`${rel}: ${name} moved from the merge-base's allowlist to the screen-type list with no reason`);
       }
     }

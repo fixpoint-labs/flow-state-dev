@@ -10,11 +10,8 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { REPO_ROOT } from "../../lib/index.mts";
-import { findings, type Rule } from "../../../labs/test-support/inventory.mts";
+import { findings, OWN_SESSION_PATTERN, type Rule } from "../../../labs/test-support/inventory.mts";
 import { claudeCodeStyle } from "../../../labs/claude-code-style/test/inventory-settings.ts";
-
-/** The own-session helpers the epic retires, named anywhere in product source. */
-const OWN_SESSION = String.raw`\b(ownSessions?|labSessions?|rosterSession|readerSessionId|openReaderSession)\b`;
 
 /** Where an own-session helper would live: product source, not the engine's or orchestration's internals, not tests. */
 const PRODUCT = ["packages/*/src/**", "labs/*/src/**", "labs/*/*.mts", "apps/*/src/**", ":!packages/engine/src/**", ":!packages/orchestration/src/**", ":!**/test/**", ":!**/*.test.*"];
@@ -41,7 +38,7 @@ export function inventoryOf(lab: string, rev?: string): Record<string, string[]>
     "L3 reaches the server": rule("L3"),
     "L4 types": rule("L4"),
     "H host wiring": rule("H"),
-    "S own sessions": grepRepo(OWN_SESSION, PRODUCT, rev),
+    "S own sessions": grepRepo(OWN_SESSION_PATTERN, PRODUCT, rev),
   };
 }
 
