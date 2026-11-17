@@ -316,4 +316,85 @@ describe("useRequestStream (react)", () => {
     expect(result.current.isStreaming).toBe(false);
     expect(connections[0]!.closed).toBe(true);
   });
+
+  it("opens nothing and asks for no flow while disabled", () => {
+    const { result } = renderHook(() => useRequestStream({ source: { requestId: "" }, enabled: false }));
+    expect(connections).toEqual([]);
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("streams through the client it is handed, not the provider's", async () => {
+    const { fakeClient } = await import("./support/fake-client");
+    const own: Array<{ url: string }> = [];
+    const client = fakeClient({
+      requestStream: ((options: { url: string }) => {
+        own.push(options);
+        return { close() {}, lastEventId: undefined };
+      }) as never,
+    });
+    renderHook(() => useRequestStream({ client, flowKind: "demo", source: { requestId: "r1" }, flush: "immediate" }));
+    expect(own).toHaveLength(1);
+    expect(own[0]!.url).toContain("/demo/requests/r1/stream");
+    expect(connections).toEqual([]);
+  });
+
+  describe("with reconnect", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    const open = () =>
+      renderHook(() => useRequestStream({ flowKind: "demo", source: { requestId: "r1" }, flush: "immediate", reconnect: true }));
+    const drop = (status?: number) => act(() => connections[connections.length - 1]!.callbacks.onError?.(Object.assign(new Error("dropped"), status === undefined ? {} : { status })));
+
+    it("opens a dropped stream again after a backoff, resuming after the last event it heard, keeping what it showed", () => {
+      const { result } = open();
+      act(() => {
+        feed(requestCreated());
+        feed(itemAdded(makeMessage("m", "hi")));
+      });
+      const heard = seq;
+      drop();
+      expect(connections[0]!.closed).toBe(true);
+      expect(result.current.isStreaming).toBe(true);
+      act(() => { vi.advanceTimersByTime(999); });
+      expect(connections).toHaveLength(1);
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(connections).toHaveLength(2);
+      expect(connections[1]!.callbacks.startingAfter).toBe(heard);
+      expect(result.current.items).toHaveLength(1);
+    });
+
+    it("waits twice as long after each drop that heard nothing", () => {
+      open();
+      drop();
+      act(() => { vi.advanceTimersByTime(1_000); });
+      drop();
+      act(() => { vi.advanceTimersByTime(1_999); });
+      expect(connections).toHaveLength(2);
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(connections).toHaveLength(3);
+    });
+
+    it("ends on an answer that says the request is not there for this caller", () => {
+      const { result } = open();
+      drop(404);
+      act(() => { vi.advanceTimersByTime(60_000); });
+      expect(connections).toHaveLength(1);
+      expect(result.current.isStreaming).toBe(false);
+    });
+
+    it("ends once the request has ended, and opens nothing after unmount", () => {
+      const first = open();
+      act(() => { feed(requestStatus("request.completed", "completed")); });
+      drop();
+      act(() => { vi.advanceTimersByTime(60_000); });
+      expect(connections).toHaveLength(1);
+      first.unmount();
+      const second = open();
+      drop();
+      second.unmount();
+      act(() => { vi.advanceTimersByTime(60_000); });
+      expect(connections).toHaveLength(2);
+    });
+  });
 });

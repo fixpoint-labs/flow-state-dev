@@ -145,7 +145,7 @@ describe("the coding board view", () => {
     for (let i = 0; i < 100 && (await stores.request.get(filed.body.request.id))?.status === "in_progress"; i += 1) await new Promise((r) => setTimeout(r, 10));
 
     const [task] = (await board("alice", conversation)).output;
-    expect(task).toMatchObject({ goal: "Fix the build", assignee: "core.codex", harness: "codex", review: null, landed: null, error: null, pullRequests: [], asks: [] });
+    expect(task).toMatchObject({ goal: "Fix the build", assignee: "core.codex", harness: "codex", review: null, landed: null, error: null, pullRequests: [], asks: [], runFlow: null });
 
     // Bob asking for alice's conversation: nothing, and no topic of hers.
     const bobs = await board("bob", conversation);
@@ -164,5 +164,13 @@ describe("the coding board view", () => {
     await stores.resourceState.set("user", userKey, key, { ...(record.state as object), assignee: "core.gone", status: "completed", output: { review: "deadline" }, spend: ranOn("claude") } as never, "any");
     const [gone] = (await board("alice", conversation)).output;
     expect(gone).toMatchObject({ harness: "claude", review: "deadline" });
+
+    // A task with a run names the flow its run's session runs on, so a screen reads that run's own
+    // stream without looking the session up; a run whose session is gone names none.
+    const runIn = (sessionId: string) => ({ ...(record.state as object), status: "in_progress", run: { sessionId, requestId: "req_now", attempt: 1 } });
+    await stores.resourceState.set("user", userKey, key, runIn(conversation) as never, "any");
+    expect((await board("alice", conversation)).output[0]).toMatchObject({ runFlow: "agent" });
+    await stores.resourceState.set("user", userKey, key, runIn("sess_gone") as never, "any");
+    expect((await board("alice", conversation)).output[0]).toMatchObject({ runFlow: null });
   });
 });

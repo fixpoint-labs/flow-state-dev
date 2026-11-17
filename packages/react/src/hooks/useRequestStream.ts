@@ -14,12 +14,19 @@
  * synchronously with `flush: "immediate"` for low-volume or deterministic-test
  * use; `"raf"` auto-falls back to immediate when `requestAnimationFrame` is
  * unavailable (SSR / Node).
+ *
+ * With `reconnect`, a `{ requestId }` stream that drops while the request is
+ * still in progress opens again after a backoff (1 s, doubling to 30 s),
+ * resuming after the last event it heard; an answer that says the request is
+ * not there for this caller (401, 403, 404) ends it. `client` streams through
+ * a host's own client instead of the provider's.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   bindStoreToCallbacks,
   createRequestStreamStore,
   createSSEClientFromResponse,
+  type Client,
   type RequestStreamHandle,
   type RequestStreamStore
 } from "@flow-state-dev/client";
@@ -63,7 +70,20 @@ export type UseRequestStreamOptions = {
   reconnectToken?: number;
   /** Snapshot flush policy. `"raf"` (default) coalesces; `"immediate"` flushes synchronously. */
   flush?: "raf" | "immediate";
+  /** `false` opens nothing, and a `{ requestId }` source needs no flow or id. Default `true`. */
   enabled?: boolean;
+  /**
+   * Open a `{ requestId }` stream again when it drops while the request is in
+   * progress: after 1 s, doubling to 30 s, resuming after the last event
+   * heard. A 401, 403 or 404 ends it. Default `false`.
+   */
+  reconnect?: boolean;
+  /**
+   * The client to stream through, for a host that holds its own (its user,
+   * origin and `fetcher`). Pass a stable reference. Default: the provider's
+   * client.
+   */
+  client?: Pick<Client, "flow">;
   onSessionMetadataChanged?: () => void;
 };
 
@@ -91,6 +111,12 @@ function passesTypeFilter(
   return filter.itemTypes.includes(item.type);
 }
 
+/** A request stream's answers that mean it is not there for this caller: a reconnect stops on them. */
+const STREAM_GONE: ReadonlySet<number> = new Set([401, 403, 404]);
+/** A reconnect's first wait, and the most any later one waits, in ms. */
+const FIRST_BACKOFF_MS = 1_000;
+const MAX_BACKOFF_MS = 30_000;
+
 /**
  * Low-level escape-hatch hook for subscribing to one request stream.
  */
@@ -99,20 +125,22 @@ export function useRequestStream(
 ): UseRequestStreamResult {
   const context = useFlowContext();
   const flowKind = options.flowKind ?? context.flowKind;
-  // The request stream goes through the provider's transport (its fetcher).
-  const fsd = useClient({ baseUrl: options.baseUrl });
+  // The request stream goes through the provider's transport (its fetcher), or the host's own client.
+  const built = useClient({ baseUrl: options.baseUrl });
+  const fsd = options.client ?? built;
   const {
     source,
     filter,
     includeTrace,
     reconnectToken,
     enabled = true,
+    reconnect = false,
     onSessionMetadataChanged
   } = options;
 
   const isResponseSource = "response" in source;
 
-  if (!isResponseSource) {
+  if (enabled && !isResponseSource) {
     if (!flowKind?.trim()) {
       throw new Error(
         "useRequestStream requires flowKind (option or FlowProvider) for a { requestId } source"
@@ -187,30 +215,50 @@ export function useRequestStream(
     setStatus("in_progress");
     setEnded(false);
 
+    let live = true;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let failures = 0;
     const callbacks = {
       ...bindStoreToCallbacks(store, {
-        onChange: scheduleFlush,
+        onChange: () => {
+          failures = 0;
+          scheduleFlush();
+        },
         itemFilter: filter ? (item) => passesTypeFilter(item, filter) : undefined
       }),
       onSessionMetadataChanged: () => onSessionMetadataChangedRef.current?.(),
-      onError: () => {
+      onError: (error: unknown) => {
+        const status = (error as { status?: number } | null)?.status ?? 0;
+        if (reconnect && !responseObj && live && store.status === "in_progress" && !STREAM_GONE.has(status)) {
+          handleRef.current?.close();
+          handleRef.current = null;
+          retry = setTimeout(open, Math.min(MAX_BACKOFF_MS, FIRST_BACKOFF_MS * 2 ** failures));
+          failures += 1;
+          return;
+        }
         setEnded(true);
       }
     };
 
-    const handle = responseObj
-      ? createSSEClientFromResponse({ response: responseObj, ...callbacks })
-      : fsd.flow(flowKind!).request(reqId!).stream({
-          includeTrace,
-          lastEventId: sourceLastEventId,
-          startingAfter,
-          ...callbacks
-        });
+    /** Open the stream, resuming after the last event heard on a reconnect. */
+    function open(): void {
+      if (!live) return;
+      const heard = store.lastSequenceNumber;
+      handleRef.current = fsd.flow(flowKind!).request(reqId!).stream({
+        includeTrace,
+        lastEventId: sourceLastEventId,
+        ...(heard > 0 ? { startingAfter: heard } : startingAfter === undefined ? {} : { startingAfter }),
+        ...callbacks
+      });
+    }
 
-    handleRef.current = handle;
+    if (responseObj) handleRef.current = createSSEClientFromResponse({ response: responseObj, ...callbacks });
+    else open();
 
     return () => {
-      handle.close();
+      live = false;
+      if (retry !== undefined) clearTimeout(retry);
+      handleRef.current?.close();
       handleRef.current = null;
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
@@ -228,7 +276,8 @@ export function useRequestStream(
     startingAfter,
     sourceLastEventId,
     responseObj,
-    scheduleFlush
+    scheduleFlush,
+    reconnect
   ]);
 
   const messages = useMemo(
