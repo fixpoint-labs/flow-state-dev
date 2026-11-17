@@ -85,9 +85,14 @@ boards, directory, conversations, and the snapshot's deletion.
 | ER-3 | No legacy path. A child that moves a job deletes what it replaces in the same PR: no alias, no dual read, no flag, no fallback to the old module | The coordinator · every job child uses | Each child's spec review; the closure |
 | ER-4 | Neither read model grows: no new verb in Teammates' `src/app/`, no new section in Shift Manager's `reads.ts`, and each such file's line count never passes its merge-base's. A screen's new need is a package view or hook. Carries [FIX-2618 ER-8](../FIX-2618/DECISIONS.md#who-owns-what), and ends when each file goes | inv builds the ratchet · FIX-2369's children use | Each PR's checks; sibling epics' spec reviews |
 | ER-5 | An answer across sessions is one read on the server, never stitched in the client from per-session reads. Shift Manager's Inbox and boards are one workforce user view ([D2](#d2)) | s1 builds · asks, s2, s4 use | s1's spec review; leg s |
-| ER-6 | Pending asks are read at the source for the verified user, filtered in the store (BP-033), never past `expiresAt`, and heard only on suspension changes. A suspension record carries no tenant or organization, and its `sessionId` is optional, but every record has a `requestId`, and the request record carries `tenantId` and `orgId` (`RequestRecord`, `engine/stores/types.ts`). So the read joins on the request and compares its tenant and organization with the verified principal's, as the session's request scope does; or the suspension gains those fields with a dual read of old rows (BP-030). Never from the caller. A record the read can't scope is not listed. Tests: same user in another tenant is never listed; same user in another organization is never listed; an expired ask is gone; an ask resolved in a dispatch-run session is gone in the same update; a sessionless ask is listed only through its request's scope | asks builds · s1 uses | asks' spec review; leg s |
+| ER-6 | Pending asks are read for the verified user in **one store query** that joins each suspension to its request and predicates, inside the query: the user; the tenant and the organization, exact-matched as `matchesTenantFilter` and `matchesOrgFilter` match them when the key is present; the flow, limited to the worker flows Shift Manager's Inbox walks today (`workerFlowNames` in `reads.ts`), never widened to every flow on the host; pending status and `expiresAt`; and `isUserSuspension`, so a wait gate or a raw `ctx.suspend` row never comes back (BP-033). Never a filter run after `SuspensionStore.list`, which filters only on the user in Postgres, and never `principalOwnsRequest`, which treats a request with no organization as every organization's. A row with no request drops inside the query. Scope never comes from the caller. **It returns a projection, never the `SuspensionRecord`:** ids, the suspension address, kind, title, message or prompt, `expiresAt`, and the session and worker link, the fields today's Inbox shows; `stepInput` and `resumeData` never leave the server. It is heard only on suspension changes. **Tests where the read returns nothing:** the same user in another tenant; the same user in another organization; a second user in the same organization; a request with a null `orgId`; the same user's ask in another flow; a suspension whose request is missing; an expired ask; an ask resolved in a dispatch-run session, gone in the same update; a wait gate. Also: a sessionless ask is listed only through its request's scope, and a user ask's projection has no `stepInput` or `resumeData` key | asks builds · s1 uses | asks' spec review; leg s |
 | ER-7 | Nothing here pulls code the starters share into a new package or kit. A copy both keep stays a copy; the child names it for FIX-2756 | The coordinator · every job child uses | The cross-spec review |
 | ER-8 | Deletion lands file by file. The coordinator maps each `src/app/` file to one Teammates child once FIX-2755 merges. Shift Manager's three jobs each move their screens off the snapshot; s4 alone deletes `lab-data.tsx`'s snapshot, its re-read, `reads.ts` and the snapshot types | The coordinator · every job child uses | Each wake after FIX-2755 merges; the closure |
+
+**How the checks divide the work.** The allowlist tracks findings: each child deletes its own
+entries, and the test fails on a new or stale one. The ER-4 line limit tracks files: a read-model
+file can't grow past its merge-base length until it is deleted. "No new verb or section" is one
+case of ER-4.
 
 ## Coordination seams
 
@@ -115,10 +120,16 @@ boards, directory, conversations, and the snapshot's deletion.
   its scenarios (14 test files use it) to a view test, or to "dropped, because …".
 - **A size ratchet on the read models is worth its cost** ([ER-4](#who-owns-what)): the allowlist
   stops new findings, but not logic growing inside an allowlisted function.
+- **Defaults for the division.** Teammates' people and conversations children stay separate unless
+  their allowlist entries share files once FIX-2755 lands. The snapshot child stays separate.
+- **Delegates:** the conversations child's spec settles the shape before code: a workforce view if
+  the list is read across sessions, a package hook if it is read per session.
 - **`readEveryScopeEntry` goes**; its callers use the scope client's `listAll()` (s2).
 - **Teammates' `App.tsx` imports `ClientHttpError`** (an L3 finding): t2's.
 - **The dropped-attachments edge** (a project Stream's files lost when its session opens) is s3's
   acceptance, not a separate bug.
+- **Parented here but related to the set, not a gate of it:** [FIX-2766](https://linear.app/fixpoint-labs/issue/FIX-2766)
+  (claude-code-style's task screens read the coding board row directly).
 - **Related, not parented:** FIX-2764 (claude-code-style), FIX-2743, FIX-2684, FIX-2633,
   FIX-2592, FIX-2616, FIX-2369.
 - **FIX-2756 stays parented but outside the set.** The coordinator decides at the gate whether to
@@ -193,5 +204,9 @@ inventory is a ratchet.
 - **Review round 2 (2026-11-17)** — Gitar: `react` keeps exporting `suspensionShape` while the
   predicate moves to core; ER-6 scopes through the request record, which carries tenant and
   organization, since a suspension's session is optional.
+- **Security review (2026-11-17)** — Cursor: ER-6 became one store query that joins the request
+  and exact-matches user, tenant, organization and today's worker flows, never
+  `principalOwnsRequest`; the read returns a projection, never the record. Wording: the measured
+  baseline, the delegate shape, how the checks divide the work, the division's defaults.
 
 **Open:** none.
