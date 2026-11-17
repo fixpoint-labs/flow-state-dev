@@ -98,19 +98,19 @@ describe("a worker session an app opens and talks to", () => {
   });
 });
 
-describe("a worker session owned by a named flow instance", () => {
+describe("a worker session owned by a named instance of its flow", () => {
   /**
    * A session whose row names an instance (`flowId`) apart from its base flow (`flowKind`):
    * every call the client makes in it must address the instance, or it lands on the base flow.
    */
   function instanceSession() {
     const addressed: string[] = [];
-    const row = { id: "s1", flowKind: "agent", flowId: "agent:desk", userId: "alice", createdAt: 0, updatedAt: 0 };
+    const session = { id: "s1", flowKind: "agent", flowId: "agent:desk", userId: "alice", createdAt: 0, updatedAt: 0 };
     const request = { id: "r1", actionName: "respond", status: "in_progress", startedAtMs: 1 };
     const handle = { abort: async () => undefined, retry: async () => undefined };
     const fsd = {
       userId: "alice",
-      sessions: { get: async () => row, requests: async () => [request] },
+      sessions: { get: async () => session, requests: async () => [request] },
       flow: (id: string) => {
         addressed.push(id);
         return { send: async () => ({ ok: true }), request: () => handle };
