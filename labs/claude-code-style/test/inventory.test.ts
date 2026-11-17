@@ -26,7 +26,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { filesUnder, hostWiring, LAB, overCaps, reachingTheServer, READS, rowTypesNotOnTheList, unclassified } from "./inventory-rules";
+import { filesUnder, hostWiring, LAB, overCaps, reachingTheServer, READS, unlistedTypes, unclassified } from "./inventory-rules";
 
 const read = (rel: string) => readFileSync(join(LAB, rel), "utf8");
 const code = (rel: string) => /\.(m?ts|tsx)$/.test(rel);
@@ -68,7 +68,7 @@ describe("the lab's inventory", () => {
   });
 
   it("types no row a view returns by hand: every exported object type outside the components is one the screen computes", () => {
-    expect(rowTypesNotOnTheList()).toEqual([]);
+    expect(unlistedTypes()).toEqual([]);
   });
 
   // FIX-2629 closure finding: createFlowState's config is cast `as never`.

@@ -136,7 +136,7 @@ export function reachingTheServer(lab = LAB, exempt: readonly string[] = []): st
 }
 
 /** L4: exported object types outside the components that aren't on {@link SCREEN_TYPES}. */
-export function rowTypesNotOnTheList(lab = LAB): string[] {
+export function unlistedTypes(lab = LAB): string[] {
   const modules = filesUnder("src", lab).filter((rel) => /\.tsx?$/.test(rel) && !rel.startsWith("src/components/") && rel !== ENTRY && rel !== "src/App.tsx");
   return modules.flatMap((rel) =>
     [...readFileSync(join(lab, rel), "utf8").matchAll(/^export\s+(?:interface\s+(\w+)\b[^=]*|type\s+(\w+)(?:<[^>]*>)?\s*=\s*(.*))$/gm)]

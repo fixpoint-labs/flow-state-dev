@@ -10,9 +10,9 @@
  */
 import { DatabaseSync } from "node:sqlite";
 
-export type SessionRow = { id: string; flow_kind: string; user_id: string; org_id: string | null; created_at: number; parent_session_id: string | null };
-export type RequestRow = { id: string; flow_kind: string; user_id: string; session_id: string | null; status: string; created_at: number; updated_at: number };
-export type ResourceRow = { scope_type: string; scope_id: string; resource_key: string; version: number; state: string };
+export type StoredSession = { id: string; flow_kind: string; user_id: string; org_id: string | null; created_at: number; parent_session_id: string | null };
+export type StoredRequest = { id: string; flow_kind: string; user_id: string; session_id: string | null; status: string; created_at: number; updated_at: number };
+export type StoredResource = { scope_type: string; scope_id: string; resource_key: string; version: number; state: string };
 /** One version of a user or org resource, and when the watcher first saw it. */
 export type Version = { scope: string; cell: string; key: string; version: number; state: any; seenAt: number; previousSeenAt: number };
 
@@ -27,10 +27,10 @@ export function storeAt(file: string) {
     }
   };
   return {
-    sessions: (since = 0) => query<SessionRow>("select id, flow_kind, user_id, org_id, created_at, parent_session_id from sessions where created_at >= ?", since),
-    requests: (since = 0) => query<RequestRow>("select id, flow_kind, user_id, session_id, status, created_at, updated_at from requests where created_at >= ? or updated_at >= ?", since, since),
+    sessions: (since = 0) => query<StoredSession>("select id, flow_kind, user_id, org_id, created_at, parent_session_id from sessions where created_at >= ?", since),
+    requests: (since = 0) => query<StoredRequest>("select id, flow_kind, user_id, session_id, status, created_at, updated_at from requests where created_at >= ? or updated_at >= ?", since, since),
     /** Every user and org resource now. */
-    resources: () => query<ResourceRow>("select scope_type, scope_id, resource_key, version, state from resource_state where scope_type in ('user', 'org')"),
+    resources: () => query<StoredResource>("select scope_type, scope_id, resource_key, version, state from resource_state where scope_type in ('user', 'org')"),
   };
 }
 
@@ -49,7 +49,7 @@ export function watchVersions(store: Store, everyMs = 100) {
   // What is stored before the watch starts is the baseline, not a write of this run.
   let starting = true;
   const look = () => {
-    let rows: ResourceRow[];
+    let rows: StoredResource[];
     try {
       rows = store.resources();
     } catch {

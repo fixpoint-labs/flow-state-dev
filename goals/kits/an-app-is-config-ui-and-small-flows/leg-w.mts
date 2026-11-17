@@ -58,7 +58,7 @@ function contentWrites(api: string, sessionId: string, ref: string) {
 
 /** `w:routes` and `w:no-runby`, on the lab at `origin` as `user`. */
 export async function probeWrites(origin: string, user: string, store: Store, failures: string[], notes: string[], tell: Tell): Promise<void> {
-  const api = `${origin}/api`;
+  const api = `${origin}/api/flows`;
   const fsd = createClient({ userId: user, baseUrl: origin });
   const sessionId = (await fsd.flow(PROBE_FLOW).createSession()).id;
   const stored = () => store.resources().filter((r) => /closure-/.test(r.resource_key)).map((r) => `${r.scope_type}:${r.resource_key}@${r.version}`);

@@ -90,7 +90,7 @@ async function journeyFive(origin: string | undefined, user: string, failures: s
   const sessionId = (await fsd.flow(PROBE_FLOW).createSession()).id;
   const answers = tell.over("j5:no-model · model-calling views", await Promise.all(
     (Object.entries(MODEL_VIEWS) as [string, string][]).map(async ([scope, view]) => {
-      const res = await fetch(`${origin}/api/${PROBE_FLOW}/${scope === "session" ? `${encodeURIComponent(sessionId)}/` : ""}views/${view}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ input: {} }) });
+      const res = await fetch(`${origin}/api/flows/${PROBE_FLOW}/${scope === "session" ? `${encodeURIComponent(sessionId)}/` : ""}views/${view}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ input: {} }) });
       return { scope, status: res.status, body: await res.json().catch(() => ({})) };
     }),
   ));

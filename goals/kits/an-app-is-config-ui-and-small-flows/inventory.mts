@@ -8,7 +8,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { REPO_ROOT } from "../../lib/index.mts";
-import { hostWiring, overCaps, reachingTheServer, rowTypesNotOnTheList, unclassified } from "../../../labs/claude-code-style/test/inventory-rules.ts";
+import { hostWiring, overCaps, reachingTheServer, unlistedTypes, unclassified } from "../../../labs/claude-code-style/test/inventory-rules.ts";
 
 /** The own-session helpers the epic retires, named anywhere in product source. */
 const OWN_SESSION = String.raw`\b(ownSessions?|labSessions?|rosterSession|readerSessionId|openReaderSession)\b`;
@@ -34,7 +34,7 @@ export function inventoryOf(lab: string, rev?: string): Record<string, string[]>
     "L1 classes": unclassified(lab),
     "L2 caps": overCaps(lab),
     "L3 reaches the server": reachingTheServer(lab),
-    "L4 row types": rowTypesNotOnTheList(lab),
+    "L4 types": unlistedTypes(lab),
     "H host wiring": existsSync(join(lab, "host.mts")) ? hostWiring(join(lab, "host.mts")) : [],
     "S own sessions": grepRepo(OWN_SESSION, PRODUCT, rev),
   };

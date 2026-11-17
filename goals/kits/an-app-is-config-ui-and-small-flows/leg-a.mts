@@ -218,8 +218,12 @@ export async function legA(n: number, ask: string, failures: string[], notes: st
     }
     await sleep(3_000);
     const pageRows = (await page.evaluate(() => (window as any).__closureRows as { id: string; status: string; column: string; at: number }[])).filter((r) => r.id === filed.id);
+    // Each change in turn, matched to the first time the row showed it after the change before it showed:
+    // the watcher looks every 100 ms, so a row may show a change a little before the watcher sees it.
+    let shownBefore = 0;
     for (const change of changes) {
-      change.pageAt = pageRows.find((r) => r.status === change.status && r.column === change.column && r.at >= change.storeAt - 150)?.at;
+      change.pageAt = pageRows.find((r) => r.status === change.status && r.column === change.column && r.at >= shownBefore)?.at;
+      if (change.pageAt !== undefined) shownBefore = change.pageAt;
     }
     tell.over("a:row-changes · the task's changes in the store", changes);
     const statuses = new Set(changes.map((c) => c.status));
