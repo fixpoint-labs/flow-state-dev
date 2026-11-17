@@ -46,8 +46,8 @@ refresh. Then `run` would do and the kind could go.
 | | |
 |---|---|
 | **Instead of** | The engine working out the worker flows itself, or an optional list that reads every flow on the host when absent |
-| **Because** | ER-6 limits the read to the worker flows the Inbox walks today and forbids widening it to every flow. Which flows are workers' is the worker inventory's answer, one layer up: the engine never depends on workforce. FIX-2774's view already reads that inventory on the server, so it passes the kinds, as `workerFlowNames` does in the browser now. A required, non-empty, bounded list with no wildcard is how "never widened" holds at the verb. The kinds come from server code, never from a caller's body; the identity is closed over as on every session read |
-| **Locks in** | `userSuspensions({ flowKinds })` with 1 to 50 kinds; an empty list answers no rows. Matched on the request's `flow_kind` column, which every store indexes. Which kinds a block passes is that block's review, at FIX-2774 |
+| **Because** | ER-6 limits the read to the worker flows the Inbox walks today and forbids widening it to every flow. Which flows are workers' is the worker inventory's answer, one layer up: the engine never depends on workforce. FIX-2774's view already reads that inventory on the server, so it passes the kinds, as `workerFlowNames` does in the browser now. A required, bounded list with no wildcard is how "never widened" holds at the verb. The kinds come from server code, never from a caller's body; the identity is closed over as on every session read |
+| **Locks in** | `userSuspensions({ flowKinds })` takes 0 to 50 kinds. An empty list answers `{ suspensions: [], more: false }` without a query; more than 50 throws a `FlowStateConfigError` naming the limit. Matched on the request's `flow_kind` column, which every store indexes. Which kinds a block passes is that block's review, at FIX-2774 |
 
 ![D2, who names the flows the read covers. Chosen: the caller, required and at most 50 kinds. Instead of: the engine works out the worker flows. It comes down to layering: the engine stays below workforce, which knows what a worker is. Price: a block can pass more kinds than the Inbox walks. Tie: the Inbox's flows today are the same either way. Locks in a required flowKinds list. Flips if a second kit needs the worker flows as a host fact](figures/d2-caller-names-flows.svg)
 
@@ -77,24 +77,31 @@ absence.
 
 - **Where the read lives.** `RequestSessions.userSuspensions(query)` beside `read`, `history`,
   `list` and `turns`, under the same identity (`RequestSessionsInputs.identity`), so the user,
-  tenant and organization are never the caller's. It answers `{ suspensions, more }`, oldest first,
-  at most 200, with `more` set past that. A user view may call it; an org view may not, as for
-  the other session reads.
+  tenant and organization are never the caller's. It answers `{ suspensions, more, next? }`,
+  oldest first by `(createdAt, suspensionId)`, at most 200 a page. When `more` is true, `next` is
+  the last row's `{ createdAt, suspensionId }`; passing it back as `after` reads on from strictly
+  after that pair, so a tie on `createdAt` neither repeats nor skips a row. A user view may call
+  it; an org view may not, as for the other session reads.
 - **The query, and its convergence point.** `SuspensionStore.listPendingForUser({ userId,
-  tenantId, orgId, flowKinds, now, limit })` is the one place the scope is applied, and nothing
+  tenantId, orgId, flowKinds, now, limit, after? })` is the one place the scope is applied, and nothing
   else lists asks. Every predicate sits in the store's own query: suspension joined to its request
   by `request_id` (an inner join, so a row with no request drops); the request's `user_id` and the
-  suspension's `userId` both the caller's; `tenant_id` and `org_id` exact, NULL-safe, key always
-  present (`IS ?` in SQLite, `IS NOT DISTINCT FROM` in Postgres, `matchesTenantFilter` and
+  suspension's `userId` both the caller's; `tenant_id` and `org_id` exact and NULL-safe. The
+  query object always owns the `tenantId` and `orgId` keys, `undefined` included, so absence can
+  never widen the read as it does for `matchesTenantFilter`'s list-everything callers; a
+  principal with no tenant matches only requests with none (`IS ?` in SQLite, `IS NOT DISTINCT FROM` in Postgres, `matchesTenantFilter` and
   `matchesOrgFilter` in memory and on disk), so a request with a null `orgId` never matches a
   caller with one; `flow_kind` in the list; `status = 'pending'`; `expiresAt` absent or after
   `now`, the engine's clock; reason in `USER_SUSPENSION_REASONS`, which carries the old `human_*`
-  names as `isUserSuspension` does.
+  names as `isUserSuspension` does. In SQLite and Postgres the join and every predicate are one
+  statement; nothing is read back and filtered.
 - **The projection.** The store selects only these: `suspensionId`, `requestId`, `flowKind`,
   `flowId` (the suspension's, else the request's), `sessionId` (the request's), `kind` (by
   `suspendForUserKindOf`), `shape` (by the moved `suspensionShape`), `title`, `message`, `allow`,
   `resumeSchema`, `render`, `createdAt`, `expiresAt`. These are what today's Inbox list and card
   draw. Never `stepInput`, `resumeData`, `data`, `resolvedBy`, `blockInstanceId` or `stepIndex`.
+  Each adapter builds the row field by field; spreading a record is the leak this rules out, and
+  structural typing would not catch it, so the tests check the keys at runtime.
   `data` is the author's payload, unbounded, and the card draws the prompt, not it. A field
   FIX-2774 finds missing is an additive change to this type in its PR, never a second read.
 - **The worker link.** The engine has no notion of a worker. The projection carries the flow
@@ -120,11 +127,26 @@ absence.
   `FSD_TEST_POSTGRES_URL` is set) answers nothing for: the same user in another tenant; in another
   organization; a second user in the same organization; a request with a null `orgId`; the same
   user's ask in another flow; a suspension whose request is missing; an expired ask; a wait gate;
-  a raw `ctx.suspend` for an event. It lists a sessionless ask only through its request's scope,
-  and a row's keys never include `stepInput` or `resumeData`. Engine tests: the identity comes
-  from the request, never the query; an ask answered in a dispatch run's session is gone in the
-  update the answer's notice causes (the ghost ask); a chunk, a turn start and a turn finish wake
-  no view that read only this.
+  a raw `ctx.suspend` for an event; a principal with no tenant against a tenant-bound request.
+  It lists a sessionless ask only through its request's scope. Beside those:
+  - **The projection's keys, at runtime.** A pending row is seeded with `stepInput`, `resumeData`
+    and `data` all set, and each returned row's key set must equal the projection's declared set
+    exactly, on all four stores. Type tests assert `stepInput`, `resumeData` and `data` are not
+    keys of the row type.
+  - **The scope keys are owned.** The query object the engine builds always has own `tenantId`
+    and `orgId` keys, on all four stores' calls.
+  - **One joined statement in SQL.** For SQLite and Postgres, the missing-request case also
+    asserts, by counting and inspecting the statements the adapter runs, that one statement ran
+    and that it joins `requests`, not only that the row is absent.
+  - **Paging.** Exactly 200 rows answer `more: false` and no `next`; 201 answer `more: true` and a
+    `next` that reads the last one; a `next` that falls inside a `createdAt` tie reads on with no
+    row repeated or skipped.
+
+  Engine tests: the identity comes from the request, never the query; zero flow kinds answer
+  `{ suspensions: [], more: false }` with no store call, and 51 throw `FlowStateConfigError`
+  naming the limit; an ask answered in a dispatch run's session is gone in the update the
+  answer's notice causes (the ghost ask); a chunk, a turn start and a turn finish wake no view
+  that read only this.
 
 ## Considered and dropped
 
@@ -162,8 +184,20 @@ had no sub-agent to hand it to; the reviewer should weigh it as such.
 - Necessity: the epic's D2 needs it; nothing does it on the server today.
 - Major concerns: D1 adds a public kind; D3 breaks custom adapters. Both are on the sign-off.
 
+## Notes from review
+
+Round 1 (#5348, 2026-11-17), all folded as implementation obligations; no decision changed:
+- Codex 4605209501: structural typing won't stop an adapter spreading a record, so the projection's keys are checked at runtime against a row seeded with all three payload fields.
+- Codex 4605209512: a principal with no tenant against a tenant-bound request; the query object always owns `tenantId` and `orgId`.
+- Codex 4605209537: a 200 cap with no way to read on was a dead end; the page now carries a `(createdAt, suspensionId)` cursor.
+- Codex 4605209524: the SQL adapters prove the missing-request row drops in the one joined statement, by statement shape and count.
+- Codex 4605209542 and Gitar 4605155408: one rule for the flow list's bounds; D2's *Because* no longer says "non-empty".
+
 ## How it got here
 
 - **Draft** — ER-6 built as a fifth request-host session read over one required, joined store
   query, woken by a new `suspension` notice; the flow kinds named by the caller; the ask
   predicate moved beside `isUserSuspension`.
+- **Review round 1** — five findings folded as obligations: runtime key checks on the projection,
+  the null-tenant case and owned scope keys, a paging cursor, one joined SQL statement proved by
+  shape, and one rule for the flow list's bounds. D1 to D3 unchanged.

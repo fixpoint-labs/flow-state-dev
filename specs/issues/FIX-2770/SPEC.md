@@ -28,7 +28,7 @@ when a suspension changes.**
 | **The real need** | The epic, D2: "an answer across sessions is one read on the server, never stitched in the client." The Inbox has no such read today. ER-6 adds that a suspension record carries no tenant, so the read must not leak an ask across tenants |
 | **Smaller, and rejected** | "A view that calls `SuspensionStore.list({ userId, status: 'pending' })` and filters the rest in code." ER-6 forbids it: Postgres filters that call on the user only, so every other user-scope check is a filter after the fact |
 | **Bigger, and not this issue's** | The Inbox view itself, composing these with task holds (FIX-2774). Answering an ask (FIX-2743). Teammates' "needs you" (FIX-2756) |
-| **Not done if** | Any of ER-6's nine cases lists a row · the read is built on `SuspensionStore.list` · a row carries `stepInput` or `resumeData` · a streamed chunk or a turn start with no suspension write re-runs it · SQLite or Postgres lacks it · `@flow-state-dev/react` stops exporting `suspensionShape` |
+| **Not done if** | Any of ER-6's nine cases lists a row · the read is built on `SuspensionStore.list` · a row carries `stepInput`, `resumeData` or `data` · a streamed chunk or a turn start with no suspension write re-runs it · SQLite or Postgres lacks it · `@flow-state-dev/react` stops exporting `suspensionShape` |
 
 ```mermaid
 flowchart LR
@@ -41,7 +41,7 @@ flowchart LR
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/user-suspensions/lists-only-what-waits-on-you/` (new) · model `n/a` · run by the implementer at completion · verdict on the implementation PR |
-| **Signal** | `a:scope`: a user view calling the read returns exactly the caller's pending, unexpired, user-waiting suspension ids on the named flows, and none of ER-6's nine other rows. `b:gone`: answering the caller's ask in a dispatch run's session makes the view's next pushed result lack it, with no refresh. `c:quiet`: a 20-chunk reply and a turn started and finished in another worker session, with no suspension write, add no view run. `d:projection`: every row's key set is the projection's declared set; `stepInput` and `resumeData` are on none |
+| **Signal** | `a:scope`: a user view calling the read returns exactly the caller's pending, unexpired, user-waiting suspension ids on the named flows, and none of ER-6's nine other rows. `b:gone`: answering the caller's ask in a dispatch run's session makes the view's next pushed result lack it, with no refresh. `c:quiet`: a 20-chunk reply and a turn started and finished in another worker session, with no suspension write, add no view run. `d:projection`: every row's key set is exactly the projection's declared set; `stepInput`, `resumeData` and `data` are on none |
 | **Input** | One `createFlowState` over a SQLite file (and over Postgres when `FSD_TEST_POSTGRES_URL` is set), flows that `suspendForUser`, park on a wait gate and `ctx.suspend` for an event, two users in two orgs and two tenants, and a request with no `orgId`; rows written by real runs, the missing-request row by deleting its request |
 | **Anti-game** | Real runs, a real store, the view called over HTTP and watched on the push socket. Don't call the store method from the goal, and don't seed suspensions with `set()` except for the missing-request row |
 | **Control that must fail** | `GOAL_CONTROL=owns-request` swaps the exact org match for `principalOwnsRequest`'s: FAILS `a:scope` (the null-org row is listed). `GOAL_CONTROL=hear-run` hears `run` on the user topic instead of `suspension`: FAILS `c:quiet` |
@@ -70,7 +70,7 @@ suspension to its request.
 ```diff
   // a user view's block, on the server (FIX-2774 writes it)
   const sessions = requireRequestHost(ctx).sessions!;
-+ const { suspensions, more } = await sessions.userSuspensions({ flowKinds: workerFlowKinds });
++ const page = await sessions.userSuspensions({ flowKinds: workerFlowKinds });  // { suspensions, more, next? }; pass next back as `after`
 + // each row: suspensionId, requestId, flowKind, flowId?, sessionId?, kind, shape,
 + //           title?, message, allow?, resumeSchema?, render?, createdAt, expiresAt?
 
