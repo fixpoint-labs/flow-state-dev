@@ -113,6 +113,8 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
   const data = join(scratch, "data");
   const repo = makeRepository(join(scratch, "repo"), { "CHANGELOG.md": "# Changelog\n\n- Started the status page project.\n" });
   const repoHead = git(repo, "rev-parse", "HEAD");
+  // The branch the project's checkout has checked out: a local merge lands on it and leaves it checked out.
+  const repoBranch = git(repo, "symbolic-ref", "--short", "HEAD");
   const labBefore = labCheckout();
   const marker = `Picked a status page vendor (${RUN_STAMP})`;
   // The lab cuts worktrees from the project's repository; `no-mapping` names none, so it clones.
@@ -370,17 +372,26 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     else if (committed.length === 0) failures.push(`6: no run worktree's branch holds the CHANGELOG line (${placed.join(", ")})`);
     else if (!git(repo, "log", "--all", "-p", "--", "CHANGELOG.md").includes(marker)) failures.push("6: the run's branch isn't in the project's repository");
     if (committed.some((path) => path.startsWith(LAB) || path.startsWith(REPO_ROOT + "/labs"))) failures.push("6: the run worked inside the lab's checkout");
-    // Merge locally moves the checked-out branch on from where it was to hold the line, with nothing left uncommitted; nothing else may move it.
+    // Merge locally moves the checked-out branch on from where it was to hold the line, leaves that same
+    // branch checked out (not another, not a detached HEAD), with nothing left uncommitted; nothing else may move it.
     if (merged) {
+      const checkedOut = (() => {
+        try {
+          return git(repo, "symbolic-ref", "--short", "HEAD");
+        } catch {
+          return undefined;
+        }
+      })();
+      if (checkedOut !== repoBranch) failures.push(`6: after the merge the project's checkout is on ${checkedOut ?? "a detached HEAD"}, not ${repoBranch}`);
       const grew = (() => {
         try {
-          git(repo, "merge-base", "--is-ancestor", repoHead, "HEAD");
-          return git(repo, "rev-parse", "HEAD") !== repoHead;
+          git(repo, "merge-base", "--is-ancestor", repoHead, `refs/heads/${repoBranch}`);
+          return git(repo, "rev-parse", `refs/heads/${repoBranch}`) !== repoHead;
         } catch {
           return false;
         }
       })();
-      if (!grew || !git(repo, "show", "HEAD:CHANGELOG.md").includes(marker)) failures.push("6: the merge didn't land the CHANGELOG line on the project's checked-out branch");
+      if (!grew || !git(repo, "show", `refs/heads/${repoBranch}:CHANGELOG.md`).includes(marker)) failures.push(`6: the merge didn't land the CHANGELOG line on ${repoBranch}`);
       if (git(repo, "status", "--porcelain") !== "") failures.push("6: the merge left the project's files changed");
     } else if (git(repo, "rev-parse", "HEAD") !== repoHead || git(repo, "status", "--porcelain") !== "") failures.push("6: the project's checked-out branch or files changed");
     if (labCheckout() !== labBefore) failures.push("6: the lab's own checkout changed");

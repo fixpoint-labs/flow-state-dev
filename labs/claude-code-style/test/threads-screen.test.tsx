@@ -238,9 +238,11 @@ describe("the threads-mode screen", () => {
   // there, so its accept is Merge locally, never a bare Resolve (FIX-2543); the judge's line is on the review
   // card in its view (FIX-2380), while the card's one status line is the review's headline.
   it("offers a coding run in the project's repository Merge locally, with the judge's line in its view, and merges it there", async () => {
-    lab = await openTestLab({ scripts: vendorScripts().scripts, cutFromProject: true });
+    lab = await openTestLab({ scripts: vendorScripts().scripts, cutFromProject: true, judge: { choice: "done", confidence: 0.93 } });
     await startThreadsSession(true);
-    const head = execFileSync("git", ["-C", lab.repo, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    const git = (...args: string[]) => execFileSync("git", ["-C", lab.repo, ...args], { encoding: "utf8" }).trim();
+    const head = git("rev-parse", "HEAD");
+    const branch = git("symbolic-ref", "--short", "HEAD");
     await ask("Add a CHANGELOG line for the vendor pick");
     const coder = () => card("Add a CHANGELOG line for the vendor pick");
     await waitFor(() => expect(coder().dataset.column).toBe("review"), SLOW);
@@ -250,17 +252,18 @@ describe("the threads-mode screen", () => {
     fireEvent.click(within(coder()).getByRole("button", { name: "View task" }));
     const view = screen.getByRole("dialog", { name: "Task: Add a CHANGELOG line for the vendor pick" });
     const review = await within(view).findByRole("region", { name: "Ready for review" }, SLOW);
-    expect(review.querySelector("[data-review-judge]")!.textContent).toMatch(/judge/i);
+    expect(review.querySelector("[data-review-judge]")!.textContent).toMatch(/^Judge: done, 0\.93/);
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await waitFor(() => expect((merge as HTMLButtonElement).disabled).toBe(false), SLOW);
     fireEvent.click(merge);
     await waitFor(() => expect(coder().dataset.column).toBe("resolved"), SLOW);
-    // Landed in the project's checkout: its branch moved on from where it was to hold the run's work, with nothing left uncommitted.
-    const git = (...args: string[]) => execFileSync("git", ["-C", lab.repo, ...args], { encoding: "utf8" }).trim();
-    git("merge-base", "--is-ancestor", head, "HEAD"); // throws unless the branch grew from where it was
-    expect(git("rev-parse", "HEAD")).not.toBe(head);
-    expect(git("ls-tree", "--name-only", "HEAD", "SCRIPTED-RUN.md")).toBe("SCRIPTED-RUN.md");
+    // Landed in the project's checkout: the branch it had checked out is still checked out (not another, not a
+    // detached HEAD), moved on from where it was to hold the run's work, with nothing left uncommitted.
+    expect(git("symbolic-ref", "-q", "--short", "HEAD")).toBe(branch);
+    git("merge-base", "--is-ancestor", head, `refs/heads/${branch}`); // throws unless the branch grew from where it was
+    expect(git("rev-parse", `refs/heads/${branch}`)).not.toBe(head);
+    expect(git("ls-tree", "--name-only", `refs/heads/${branch}`, "SCRIPTED-RUN.md")).toBe("SCRIPTED-RUN.md");
     expect(git("status", "--porcelain")).toBe("");
   });
 
