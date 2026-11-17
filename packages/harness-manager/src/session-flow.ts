@@ -108,7 +108,7 @@
  * found a gap in its own package. The flow writes no item of its own.
  */
 import { existsSync } from "node:fs";
-import { defineFlow, defineView, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, defineView, handler, sequencer, type StepOutcome } from "@flow-state-dev/core";
 import {
   OBSERVED_PULL_REQUESTS,
   harnessFailureKind,
@@ -841,7 +841,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   const deadlines = turnDeadlines(
     idleStops(
       assertPositiveInt("harnessSessionFlow's idleTimeoutMs", options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS),
-      options.harnessLabel ?? "the harness",
+      options.harnessLabel,
     ),
     options.turnTimeoutMs === undefined ? undefined : assertPositiveInt("harnessSessionFlow's turnTimeoutMs", options.turnTimeoutMs),
   );
@@ -1225,7 +1225,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         .step(turnFiles)
         .step(agent.rescue([{ block: recordFailure }]), {
           abortSignal: (ctx) => deadlines.arm(ctx),
-          onSettled: (ctx) => deadlines.clear(ctx),
+          onSettled: (ctx, outcome) => deadlines.clear(ctx, outcome),
         });
   const turn = harnessTurn
     .tap(recordFailedOutcome)
@@ -1340,10 +1340,11 @@ function turnDeadlines(idle: IdleStops, timeoutMs: number | undefined) {
     heard(ctx: BlockContext): void {
       idle.heard(ctx);
     },
-    /** The step settled: its timers go. */
-    clear(ctx: BlockContext): void {
-      idle.clear(ctx);
+    /** The step settled: its timers go, and what fired too unless the step threw, for the failure record to read. */
+    clear(ctx: BlockContext, outcome: StepOutcome): void {
+      idle.clear(ctx, outcome);
       const requestId = ctx.request.identity.id;
+      if (outcome !== "threw") fired.delete(requestId);
       clearTimeout(timers.get(requestId));
       timers.delete(requestId);
     },
@@ -1512,9 +1513,9 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
             stops.set(ctx.request.identity.id, controller);
             return AbortSignal.any([controller.signal, deadlines.arm(ctx)]);
           },
-          onSettled: (ctx) => {
+          onSettled: (ctx, outcome) => {
             stops.delete(ctx.request.identity.id);
-            deadlines.clear(ctx);
+            deadlines.clear(ctx, outcome);
           },
         })
         .rescue([

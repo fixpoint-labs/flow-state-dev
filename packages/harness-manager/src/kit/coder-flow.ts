@@ -70,7 +70,9 @@ export { CODER_FLOW };
 /**
  * How long a shutdown waits for a run's harness when the kit caps no run
  * time. A run with no cap has no length to wait out, so a shutdown gives it
- * this long and then cancels it, as it would at any cap.
+ * this long and then cancels it, as it would at any cap. Equal to
+ * `DEFAULT_IDLE_TIMEOUT_MS` by policy, not derived from it: a host's own
+ * silence window does not move it.
  */
 const SHUTDOWN_RUN_WAIT_MS = 20 * 60_000;
 

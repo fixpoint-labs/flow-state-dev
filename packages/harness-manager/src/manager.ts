@@ -1924,7 +1924,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     phase: callerPhase,
     workspace,
     runTimeoutMs,
-    harnessLabel = "the harness",
+    harnessLabel,
     harness,
     uses: hostUses,
     name = "harness-manager",
@@ -4324,8 +4324,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // suspended. The tree is only written by the agent, so releasing the
       // moment it stops is tighter than holding through the verdict; a step
       // the request runs next for a steer takes it again.
-      onSettled: (ctx) => {
-        silence.clear(ctx);
+      onSettled: (ctx, outcome) => {
+        silence.clear(ctx, outcome);
         lockRefreshedAt.delete(ctx.request.identity.id);
         stopWatching(ctx);
         stopProgressNotes(ctx);

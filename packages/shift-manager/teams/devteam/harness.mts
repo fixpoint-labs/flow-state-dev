@@ -116,12 +116,14 @@ export function cursorEnv(): Record<string, string> {
  * `workspace-write`: Codex's own default is read-only, and a coder that can't
  * write can't make the commit the phase waits for.
  */
-export function codexHarness({ cwd, resume, onSession, onActivity }: HarnessFeeds): HarnessBlock {
+export function codexHarness({ cwd, resume, onSession, onActivity, onEvent }: HarnessFeeds): HarnessBlock {
   return codexAgent({
     cwd,
     resume,
     onSession,
     onActivity,
+    // Every event the run sends keeps it from being stopped for silence.
+    onEvent,
     client: { env: codexEnv() },
     // A project with no repository runs in its files, outside git, which Codex refuses without `skipGitRepoCheck`.
     thread: { sandboxMode: "workspace-write", skipGitRepoCheck: true },
@@ -137,9 +139,9 @@ const CURSOR_MODEL = "default";
  * which also runs Cursor's runtime in a process of its own. Cursor's SDK
  * refuses a local agent with no model, so it names Cursor's own pick.
  */
-export function cursorHarness({ cwd, resume, onSession, onActivity, onSteerable }: HarnessFeeds): HarnessBlock {
+export function cursorHarness({ cwd, resume, onSession, onActivity, onSteerable, onEvent }: HarnessFeeds): HarnessBlock {
   // `onSteerable`: a user's steer reaches the running turn, since Cursor's stop doesn't wait for its process.
-  return cursorAgent({ cwd, resume, onSession, onActivity, onSteerable, env: cursorEnv(), model: CURSOR_MODEL, name: "cursor" } as never) as unknown as HarnessBlock;
+  return cursorAgent({ cwd, resume, onSession, onActivity, onSteerable, onEvent, env: cursorEnv(), model: CURSOR_MODEL, name: "cursor" } as never) as unknown as HarnessBlock;
 }
 
 /**

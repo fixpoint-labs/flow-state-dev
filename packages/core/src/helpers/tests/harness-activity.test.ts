@@ -54,4 +54,23 @@ describe("a harness run's activity", () => {
     expect(() => reportHarnessEvent(undefined, {} as never)).not.toThrow();
     warn.mockRestore();
   });
+
+  // An async event hook that rejects must not reach the host as an unhandled rejection, which can end a Node process.
+  it("never fails the run when the host's async event hook rejects: it logs, and the run goes on", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const hook = vi.fn(async () => {
+        throw new Error("lock write failed");
+      });
+      expect(() => reportHarnessEvent(hook, {} as never)).not.toThrow();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("lock write failed"));
+    } finally {
+      process.off("unhandledRejection", unhandled);
+      warn.mockRestore();
+    }
+  });
 });

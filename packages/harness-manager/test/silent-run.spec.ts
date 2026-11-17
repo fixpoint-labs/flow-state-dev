@@ -107,14 +107,14 @@ function host(options: { harness: (feeds: HarnessFeeds) => HarnessBlock; idleTim
       runtimeConfig: { ...rt.runtimeConfig },
     } as never);
   };
-  const row = async (): Promise<Task> =>
+  const taskNow = async (): Promise<Task> =>
     (await (await runtime()).stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`))?.state as Task;
   const until = async (predicate: (task: Task) => boolean, what: string): Promise<Task> => {
     const deadline = Date.now() + 15_000;
     for (;;) {
-      const current = await row();
+      const current = await taskNow();
       if (current !== undefined && predicate(current)) return current;
-      if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}; row is ${JSON.stringify(current)}`);
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}; the task is ${JSON.stringify(current)}`);
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
   };
