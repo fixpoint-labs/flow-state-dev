@@ -521,11 +521,56 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     ]);
   });
 
+  it("opening its Stream starts no session; her first line starts it, linked to the project", async () => {
+    // Reading makes no session: a project page opened and left would otherwise leave an empty
+    // coordinator session behind, listed as hers, with nothing ever said in it.
+    const { screen, fireEvent, act, waitFor } = dom!;
+    const { baseUrl, setup, as } = await open();
+    const alice = await as(ALICE);
+    const workforce = createWorkforceClient(alice.client);
+    const linked = () => workforce.findWorkerSession({ worker: setup.projectCoordinator!, projectId: APOLLO });
+    openApp(alice.connection, baseUrl, "/p/apollo/stream");
+    const conversation = await screen.findByTestId("project-stream-conversation", undefined, { timeout: 10_000 });
+    await screen.findByTestId("project-stream-conversation-empty");
+    // Longer than the page needs to settle: an open-on-read would have landed by now.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(await linked()).toBeUndefined();
+    expect(conversation.getAttribute("data-session-id")).toBe("");
+
+    const input = screen.getByTestId("project-stream-composer-input") as HTMLInputElement;
+    await waitFor(() => expect(input.disabled).toBe(false));
+    fireEvent.change(input, { target: { value: "What is open in Apollo?" } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("project-stream-composer-send"));
+    });
+    const started = await eventually(linked, "the session her first line starts", 10_000);
+    await waitFor(() => expect(screen.getByTestId("project-stream-conversation").getAttribute("data-session-id")).toBe(started.id), { timeout: 10_000 });
+    expect(await holds(alice, started.id, "What is open in Apollo?")).toBe(true);
+  });
+
+  it("an empty Stream follows the session another tab starts, once the Lab is read again", async () => {
+    // She has the empty Stream open and starts the conversation in another tab: this one must
+    // show it when the Lab is read again, not stay empty until a reload. Still nothing is
+    // started on read.
+    const { screen, act, fireEvent, waitFor } = dom!;
+    const { baseUrl, setup, as } = await open();
+    const alice = await as(ALICE);
+    openApp(alice.connection, baseUrl, "/p/apollo/stream");
+    await screen.findByTestId("project-stream-conversation-empty", undefined, { timeout: 10_000 });
+
+    const elsewhere = await projectCoordinator(alice, setup);
+    await runAction(alice.client, "coordinator", elsewhere, "respond", { message: "Started in another tab." });
+    act(() => void fireEvent.keyDown(window, { key: "r" }));
+    await waitFor(() => expect(screen.getByTestId("project-stream-conversation").getAttribute("data-session-id")).toBe(elsewhere), { timeout: 10_000 });
+  });
+
   it("its Stream is her project coordinator session, linked to the project", async () => {
     const { screen } = dom!;
     const { baseUrl, setup, as } = await open();
     const alice = await as(ALICE);
     await openAs(alice, setup, "checkout");
+    // A session she already started, by a line sent before.
+    await projectCoordinator(alice, setup);
     const seen = recordRequests();
     openApp(alice.connection, baseUrl, "/p/apollo/stream");
     const conversation = await screen.findByTestId("project-stream-conversation", undefined, { timeout: 10_000 });
