@@ -61,7 +61,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   // Today's main: the Postgres adapter backs no bus, so each process gets an in-memory one.
   "no-bus": [
     {
-      module: "packages/store-postgres/src/index.ts",
+      module: "packages/store-postgres/src/registry.ts",
       from: String.raw`capabilities: \["primary", "bus"\]`,
       to: 'capabilities: ["primary"]'
     }

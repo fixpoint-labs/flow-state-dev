@@ -24,6 +24,12 @@ export type RunningPostgres = {
   url: string;
   /** `"initdb"` for a cluster this started, `"FSD_DB_URL"` for the caller's. */
   source: "initdb" | "FSD_DB_URL";
+  /**
+   * The server's log file, for a cluster this started; `undefined` on
+   * `FSD_DB_URL`, whose log is the caller's. With `log_statement` in
+   * `settings`, it is where a goal reads what each process asked.
+   */
+  log?: string;
   /** Run one statement as the database's owner (setup, `pg_terminate_backend`). */
   query<R extends Record<string, unknown> = Record<string, unknown>>(text: string, values?: unknown[]): Promise<R[]>;
   /** Stop the cluster or drop the scratch database. Idempotent. */
@@ -148,6 +154,7 @@ async function startCluster(options: StartPostgresOptions): Promise<RunningPostg
   return {
     url,
     source: "initdb",
+    log: join(dir, "server.log"),
     query: async (text, values) => (await pool.query(text, values)).rows,
     async stop() {
       if (stopped) return;

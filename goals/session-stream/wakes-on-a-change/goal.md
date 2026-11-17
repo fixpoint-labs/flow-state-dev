@@ -13,7 +13,7 @@
 **Model:** n/a
 **Run:** `pnpm tsx goals/session-stream/wakes-on-a-change/run.mts`
 **Controls:**
-- `GOAL_CONTROL=no-publish` — the write wrapper publishes nothing (a scratch patch to `packages/engine/src/bus/publish-writes.ts`). Must FAIL `a:reply` and `a:run`; `b:no-read-between` and `c:fallback` still pass.
+- `GOAL_CONTROL=no-publish` — the write wrapper publishes nothing (a scratch patch to `packages/engine/src/bus/publish-writes.ts`: the request and session store wrappers' calls into the shared notice queue). Must FAIL `a:reply` and `a:run`; `b:no-read-between` and `c:fallback` still pass.
 - Today's `main` (the parent of this change) must FAIL `b:no-read-between`: the stream reads 4 statements a second per idle view. Measured by the retained POC (`specs/issues/FIX-2426/poc/stream-read-cost/`) rather than this runner, which uses the bus API that `main` lacks.
 
 ## Verdict log

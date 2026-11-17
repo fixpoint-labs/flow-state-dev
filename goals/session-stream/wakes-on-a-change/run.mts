@@ -49,12 +49,19 @@ const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("session-stream-wakes");
 const IDLE_WINDOW_MS = 10_000;
 
 const PATCHES: Record<string, ModulePatch[]> = {
-  // The write wrapper sends no notice: every write is unheard.
+  // The write wrapper sends no notice: every request and session write is unheard.
+  // (FIX-1506 folded the wrapper's own publish into the shared queue, `publishNotices`;
+  // the cut is at the wrapper's two calls into it.)
   "no-publish": [
     {
       module: "packages/engine/src/bus/publish-writes.ts",
-      from: String.raw`function publish\(buses(?:: readonly ChangeBus\[\])?, notices(?:: readonly ChangeNotice\[\])?\)(?:: void)? \{`,
-      to: "function publish(buses, notices) { return;"
+      from: String.raw`\.then\(\(notices\) => publishNotices\(bus, notices\)\)`,
+      to: ".then(() => undefined)"
+    },
+    {
+      module: "packages/engine/src/bus/publish-writes.ts",
+      from: String.raw`publishNotices\(bus, identities\.sessionNotices\(`,
+      to: "void (identities.sessionNotices("
     }
   ]
 };

@@ -26,6 +26,7 @@
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/harness-manager": "workspace:*",
     "@flow-state-dev/mcp": "workspace:*",
+    "@flow-state-dev/next": "workspace:*",
     "@flow-state-dev/node": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/patterns": "workspace:*",
