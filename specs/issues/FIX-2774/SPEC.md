@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md)
 
-## Six people, before and after
+## Seven people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
@@ -10,7 +10,8 @@
 | **answers an ask in the Inbox** | Waits for a whole-Lab read after the answer, and another when the resumed run stops | Sees the item leave when the server records the answer; nothing else is read |
 | **opens a task that waits on them** | Sees the task's asks and the Inbox's item for it from one snapshot, so they match | Sees them from one view, so they still match ([D2](DECISIONS.md#d2)) |
 | **reads Tasks while a reply streams in another conversation** | Gets no re-read per streamed item | The same: a streamed reply, and a turn in a session that holds no ask and no board, re-run nothing |
-| **has a worker ask from a run with no conversation** | Never sees it: the Inbox walks sessions | Sees it, answers it, and has no conversation to open |
+| **has a worker ask from a run with no conversation** | Never sees it: the Inbox walks listed sessions only | **Open to the owner** ([Open](DECISIONS.md#open)). Recommended: sees it, from no named worker, and answers it; there is no conversation to open or reply into |
+| **presses Retry on an Inbox that failed, or `R`** | Reads the whole Lab again | Re-runs the view on screen, and sees the server's reason when it fails again |
 | **builds another app on workforce** | Has no read of what waits on a user across their sessions | Has the roster flow's `inbox` view, typed by its output ([D1](DECISIONS.md#d1)) |
 
 ## The goal, and how we'll know it's met
@@ -26,7 +27,7 @@ task goals pass.**
 | **The real need** | The epic's leg s and [ER-5](../../epics/FIX-2683/DECISIONS.md#who-owns-what): "an answer across sessions is one read on the server, never stitched in the client"; "Shift Manager's Inbox and boards are one workforce user view". This issue's row: "the Inbox, its count and the boards move onto it". The rule the snapshot existed for is kept: a count and its list never disagree ([FIX-1662 PLAN S3](../FIX-1662/PLAN.md)) |
 | **Smaller, and rejected** | "The Inbox list and count only." The Tasks board's needs-you marks and the shift summary would then read a second answer, which can disagree with the first: the stitching ER-5 rules out. Or "the allowlist entry only": one entry, and every screen still on the snapshot |
 | **Bigger, and not this issue's** | The roster's on-shift status and the TEAMS counts (`workerStates`: FIX-2775, which reads this view). One task's row and its actions (FIX-2776). Deleting `reads.ts`, the snapshot and its types (FIX-2777). Teammates' "needs you" (FIX-2756) |
-| **Not done if** | A screen in the census's FIX-2774 rows still reads the snapshot's `inbox`, `asks` or `boards` · `lab-data.tsx`'s `settled` is on the allowlist · the view hears `run` on the user topic, or re-runs on a streamed reply · a task's asks on its screen differ from its Inbox item's · an ask is listed to another tenant's user, after it expired, or after it was answered · the count and the list disagree · a goal in the check fails, or a control in it doesn't |
+| **Not done if** | A screen in the census's FIX-2774 rows still reads the snapshot's `inbox`, `asks` or `boards` · `lab-data.tsx`'s `settled` is on the allowlist · the view hears `run` on the user topic, or re-runs on a streamed reply · a task's asks on its screen differ from its Inbox item's · an ask is listed to another tenant's user, after it expired, or after it was answered · the count and the list disagree · Retry or `R` reads the snapshot instead of the view · `answered` stops moving while `Conversation.tsx` still reads it · a goal in the check fails, or a control in it doesn't |
 
 ```mermaid
 flowchart LR
@@ -42,14 +43,16 @@ screen still draws the Inbox from the snapshot.
 | How we verify | |
 |---|---|
 | **Goal check** | `pnpm --filter @flow-state-dev/shift-manager test -- inventory` with `lab-data.tsx`'s `settled` entry deleted; `node specs/issues/FIX-2774/poc/inbox-split/check.mjs` with this issue's expected sites set to 0; then `goals/shift-manager/`: `every-stop-is-one-inbox-item`, `a-coding-runs-question-is-answered-in-the-inbox`, `its-summary-changes-on-its-own`, `a-pr-task-waits-for-its-merge`, `it-shows-and-stops-a-task-run`. Model as each goal names. Run by the implementer; verdicts on the implementation PR |
-| **Signal** | The inventory test and the census pass. Every goal passes. `its-summary-changes-on-its-own` grades the view's pushed value, not snapshot reads: **a** the count within 1 s of the ask; **b** no view run over a 10 s idle window; **c** a 200-item reply, and a turn started and finished in a worker session that holds no ask and no board, add no view run (FIX-2770's `c:quiet`, over this view's whole hearing); **d** the count within 31 s across processes. `every-stop-is-one-inbox-item` gains **task-equals-item**: for each of its six stops, the task screen's asks are its Inbox item's holds, before and after each answer |
+| **Signal** | The inventory test and the census pass. Every goal passes. `its-summary-changes-on-its-own` grades the view's pushed value, not snapshot reads: **a** the count within 1 s of the ask; **b** no view run over a 10 s idle window; **c** a 200-item reply, and a turn started and finished in a worker session that holds no ask and no board, add no view run (FIX-2770's `c:quiet`, over this view's whole hearing); **d** the count within 31 s across processes. `every-stop-is-one-inbox-item` gains **task-equals-item**: for each of its six stops, the task screen's asks are its Inbox item's holds, before and after each answer; and **no-conversation**: a worker-flow run started with no session (`runAction`, `source: "system"`) stops for an approval, and the Inbox follows the owner's answer to [Open](DECISIONS.md#open): recommended, it lists the ask once, from no named worker, with no reply box, and answering it resumes the run (the other answer: it lists nothing). `its-summary-changes-on-its-own` gains **retry**: with the view's read refused once, the Inbox shows the server's reason, and Retry re-runs the view and lists the ask |
 | **Input** | Each goal's own Lab and input. Leg c's quiet session is a worker conversation with no task and no ask |
 | **Anti-game** | Grade the view's pushed value and the page, never a hook's return or a view unit test. A screen that reads the view and then filters the snapshot passes the goals but fails the census |
-| **Control that must fail** | The census with expected sites 0 on today's main: FAILS, naming the 30 sites. `GOAL_CONTROL=hear-run`: the view finds an ask's worker through `sessions.list`, as `reads.ts` does in the browser: FAILS **c**. `GOAL_CONTROL=no-subscribe`, re-pointed at the view: FAILS **a** |
+| **Control that must fail** | The census with expected sites 0 on today's main: FAILS, naming the 30 sites. `GOAL_CONTROL=hear-run`: the view finds an ask's worker through `sessions.list`, as `reads.ts` does in the browser: FAILS **c**. `GOAL_CONTROL=no-subscribe`, re-pointed at the view: FAILS **a**. `GOAL_CONTROL=session-only`: the view drops every ask with no session: FAILS **no-conversation** under the recommended answer |
 
 The 30 sites and the one entry are re-derived by
 [`poc/inbox-split/check.mjs`](poc/inbox-split/check.mjs), which classifies every allowlist entry
 and every read of those sections in `src/`, and fails on one nobody named ([Settled](DECISIONS.md#settled)).
+**A site is one token on one line**: a line that reads two of them, such as `TaskSession.tsx:48`
+(`waitsOnYou` and `asksOfTask`), is two sites. The 30 sites are on 29 lines; the checker prints both.
 
 ## What changes
 
@@ -60,8 +63,8 @@ the per-session walk is struck through.
 
 | Census sites (30) | What replaces them |
 |---|---|
-| `Inbox.tsx`: the list, the item at the route, the empty sentence, `answerOne` (6) | The view's `items`; orchestration's `answerOne` through the Inbox client, with no refresh after it |
-| `AskCard.tsx`: `answer` (1) | The same answer call on the item's hold. `lab-data.tsx`'s `answer`, `settled` and the refreshes after an answer go |
+| `Inbox.tsx`: the list, the item at the route, the empty sentence, `answerOne` (6) | The view's `items`; orchestration's `answerOne` through the Inbox client, with no refresh after it. The section failure's Retry calls the view's `refresh()` and shows its `failure`, both new on `useView` (below), never `useLab().refresh` |
+| `AskCard.tsx`: `answer` (1) | The same answer call on the item's hold. `lab-data.tsx`'s `answer`, `settled` and the refreshes after an answer go. `bump` and `answered` stay, bumped once when the answer lands, until FIX-2776 removes their one reader, `Conversation.tsx` ([siblings](#where-this-meets-its-siblings)) |
 | `Sidebar.tsx`: the Inbox count and the Tasks count (3) | `items.length` and the open rows of the view's `tasks` |
 | `Tasks.tsx`, `tasks.ts`: open rows, board owner, the summary line, the empty sentence (11) | The view's `tasks`, each with its board owner's label; the summary's Inbox part from `items` |
 | `JumpTo.tsx`: every task (1) | The view's `tasks` |
@@ -83,6 +86,10 @@ the per-session walk is struck through.
 + inboxViewRef                                    // typed by the view's output
 + type InboxView, InboxAsk                        // an item's detail: the projection and its worker
 
+  // @flow-state-dev/react: UseViewResult
++ refresh(): void                                 // read again now: Retry, R, "as of · refresh"
++ failure?: { message: string; httpStatus?: number }  // why the last read failed, beside `stale`
+
   // @flow-state-dev/orchestration/inbox
 - InboxSuspension.sessionId: string
 + InboxSuspension.sessionId: string | null        // a run with no conversation
@@ -92,7 +99,8 @@ the per-session walk is struck through.
 **Docs:** at release, `packages/shift-manager/README.md`'s Inbox, Tasks and summary sections say
 each screen reads its own view, and what *as of · refresh* re-reads now;
 `apps/docs/docs/shift-manager/overview.md` the same. `packages/workforce/README.md`'s roster
-flow section names the `inbox` view. `apps/docs/docs/orchestration/task-board.md`'s Inbox part
+flow section names the `inbox` view. `packages/react/README.md`'s `useView` entry names
+`refresh()` and `failure`. `apps/docs/docs/orchestration/task-board.md`'s Inbox part
 names an ask with no conversation. No new page. This issue's changeset carries Shift Manager's
 story to `/release-docs` for FIX-2776, FIX-2775 and FIX-2777 too, as the epic's docs line says.
 
@@ -121,9 +129,11 @@ and in harness-manager's coding board view.
 
 ## What stays as it is
 
-- What each screen shows and every word it uses, apart from an ask with no conversation now
-  being listed. Which asks are listed, and whose worker they are, follow today's rule in
-  `reads.ts` (`readAsks`'s worker match), moved to the server.
+- What each screen shows and every word it uses. For an ask in a session, which asks are listed
+  and whose worker they are follow today's rule in `reads.ts` (`readAsks`'s worker match on each
+  listed session), moved to the server. An ask with **no** session is not covered by that rule:
+  today's walk never reaches one. Whether it is listed is new behaviour, and it is the
+  [Open](DECISIONS.md#open) question.
 - `reads.ts`, the snapshot's `inbox`, `asks` and `boards` sections and their types. This issue
   removes readers and adds no line ([ER-4](../../epics/FIX-2683/DECISIONS.md#who-owns-what));
   FIX-2775's roster still reads them, and FIX-2777 deletes them
@@ -150,7 +160,8 @@ and in harness-manager's coding board view.
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | The roster flow's `inbox` view, `inboxViewRef` | The coding board view (one conversation); orchestration's task-list view (a session view per board); FIX-2725's worker sessions view | **Composes** `userSuspensions`, the ledger, `readRosterEntries` and `inboxItems` in one user view. The others answer one session, or list sessions and hear `run` |
-| `InboxSuspension.sessionId: null`, `due` | `InboxSuspension` as it is | **Extends**: a projection row can have no session, and carries `expiresAt`, which the hold's `due` already names |
+| `InboxSuspension.sessionId: null`, `due` | `InboxSuspension` as it is | **Extends**: a projection row can have no session (only under the recommended answer to [Open](DECISIONS.md#open)), and carries `expiresAt`, which the hold's `due` already names |
+| `UseViewResult.refresh()` and `failure` | The `LiveRead.refresh()` the watch already holds; `stale`, which says a read failed but not why | **Extends** `useView` (ER-1: a missing hook goes into `react`). Retry and `R` need a re-read now and the reason to show; Shift Manager's other screens on views get the same |
 
 | The debt | |
 |---|---|
@@ -168,7 +179,7 @@ view over pieces it already has.
 | `Inbox.tsx` | FIX-2776 | FIX-2776 swaps `sendTurn`, `readSessionItems`, `flowUploader` and `askSessionOf`; this issue swaps what the list and the detail draw and the answer. Whichever merges second rebases (FIX-2776's spec, settled) |
 | `AskCard.tsx` | FIX-2776 | The `Ask` type and the answer call are this issue's: the card takes the view's item detail. FIX-2776 changes its review-hold types only |
 | A task's asks on `TaskInspector`, `TaskSession`, `TaskFrame`; the summary on `ShiftCoordinator` | FIX-2776 | Census rows marked D2, the summary's two and `TaskInspector`'s Inbox link: this issue's, read from the view. FIX-2776 moves the rest of those files. **This amends FIX-2776's merged spec**, whose *Decided, not asked* reads a task's asks per session: see [D2](DECISIONS.md#d2) |
-| `answered` in `lab-data.tsx`, read by `Conversation.tsx` | FIX-2776 | `settled` goes here. `answered` goes with whichever of the two merges second: FIX-2776's live feed is what makes it unneeded |
+| `answered` in `lab-data.tsx`, read by `Conversation.tsx` | FIX-2776 | `settled` goes here. `bump` and `answered` stay, bumped once when an answer lands, while `Conversation.tsx` reads them (its only reader). FIX-2776 deletes them with that read, since its live feed makes it unneeded. So neither merge order leaves a reader without a value |
 | `workerStates` and the roster's counts | FIX-2775 | FIX-2775's, reading this view's `tasks` and `items` (the epic: "s2's sidebar counts read the view") |
 | The allowlist split | FIX-2776's checker | Gives `lab-data.tsx` to FIX-2777 by file. Its one entry, `settled`, is this issue's. The checker needs a `bySymbol` override and FIX-2777's count 22 → 21; FIX-2776's own 32 is unchanged |
 
@@ -189,6 +200,10 @@ snapshot did.
    task's session read beside it.** The one to weigh: it re-opens a call FIX-2776's merged spec
    made. If wrong: a task screen waits on the whole Inbox to draw one task's asks.
 
-Improvement · `shift-manager`, `workforce`, `orchestration` · M (one view in, 30 screen sites
+**[Open](DECISIONS.md#open) · An ask from a worker run with no conversation: list it, or leave it
+out as today.** Recommended: list it. If wrong: the Inbox shows asks a person can answer but not
+trace to a worker, or a run waits forever on a person who can't see it.
+
+Improvement · `shift-manager`, `workforce`, `orchestration`, `react` · M (one view in, 30 screen sites
 moved, one allowlist entry out) · blocked by FIX-2770 (merged #5361), FIX-2769 (merged) · blocks
 FIX-2775, FIX-2777, FIX-2778 · [Linear](https://linear.app/fixpoint-labs/issue/FIX-2774)

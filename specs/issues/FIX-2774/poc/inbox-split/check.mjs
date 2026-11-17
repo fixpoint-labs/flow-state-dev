@@ -12,6 +12,12 @@
 //    them), and every use of the answer call, outside `reads.ts` and
 //    `derive.ts`, which FIX-2777 deletes. Each site is classified once.
 //
+//    The unit: a site is one token on one line. The same token twice on a
+//    line is one site; two different tokens on a line are two sites (so
+//    `TaskSession.tsx:48`, `waitsOnYou` and `asksOfTask`, is two). The
+//    expected counts are in sites; the run also prints how many lines they
+//    sit on.
+//
 // Totality on both: an entry or a site nobody classified fails the check, and
 // so does a classification that names nothing.
 //
@@ -153,7 +159,7 @@ for (const path of walk(join(APP, "src"))) {
 }
 if (CONTROL) found.push({ file: "src/surfaces/Planted.tsx", line: 1, token: "snapshot.inbox" });
 
-// One site per file, line and token: a line that reads a section twice is one site.
+// One site per file, line and token: the same token twice on a line is one site; two tokens are two.
 const distinct = [...new Map(found.map((s) => [`${s.file}:${s.line}:${s.token}`, s])).values()];
 const siteCounts = {};
 const seenKeys = new Set();
@@ -177,7 +183,9 @@ for (const [owner, n] of Object.entries(expectSites)) {
 
 console.log(`allowlist: ${allowlist.length} entries · ${JSON.stringify(entryCounts)}`);
 for (const e of mineEntries) console.log(`  FIX-2774  ${e.file}  ${e.symbol}  (${e.kind})`);
+const linesOf = (pick) => new Set(distinct.filter((s) => (sites[`${s.file}#${s.token}`] ?? "").startsWith(pick)).map((s) => `${s.file}:${s.line}`)).size;
 console.log(`census: ${distinct.length} sites · ${JSON.stringify(siteCounts)}`);
+console.log(`  FIX-2774 sites on ${linesOf("FIX-2774")} lines · its D2 sites on ${linesOf("FIX-2774 (D2)")} lines`);
 for (const s of mineSites) console.log(`  ${s}`);
 if (failures.length > 0) {
   for (const f of failures) console.error(`FAIL ${f}`);
