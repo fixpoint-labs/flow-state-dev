@@ -2533,6 +2533,9 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@flow-state-dev/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@flow-state-dev/memory':
         specifier: workspace:*
         version: link:../memory

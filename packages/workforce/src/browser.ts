@@ -33,6 +33,8 @@ export { sessionTurnsViewRef, workerSessionsViewRef } from "./workers/session-vi
 export type { ListedTurn, SessionTurnsView, ListedWorkerSession, WorkerSessionsView } from "./workers/session-views";
 export { workerMessagesViewRef } from "./messages/worker-messages-view-ref";
 export type { WorkerMessagesView } from "./messages/worker-messages-view";
+export { inboxViewRef } from "./workers/inbox-view-ref";
+export type { InboxAsk, InboxBoardTask, InboxView, InboxViewValue } from "./workers/inbox-view";
 export { TURN_ACTIONS } from "./workers/turn-actions";
 export {
   deriveWorkerSessionId,
