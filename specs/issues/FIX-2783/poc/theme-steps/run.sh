@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Compiles input.css with Tailwind 4.1.12 and prints how each sample class is sized.
-# Throwaway POC evidence; not production code. Needs a directory with tailwindcss@4.1.12
-# and @tailwindcss/cli@4.1.12 installed (npm i tailwindcss@4.1.12 @tailwindcss/cli@4.1.12):
+# Compiles input.css with Tailwind and prints how each sample class is sized.
+# Throwaway POC evidence; not production code. Run on 4.1.12 and 4.3.0 (the version the
+# lockfile resolves for the labs), same output. Needs a directory with both packages
+# installed (npm i tailwindcss@4.3.0 @tailwindcss/cli@4.3.0):
 #   TW_DIR=/path/to/that/dir ./run.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"

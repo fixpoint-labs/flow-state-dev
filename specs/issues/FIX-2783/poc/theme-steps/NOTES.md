@@ -6,8 +6,10 @@ Characterization POC for D1. Throwaway; not production code.
 sets `--radius-*` and `--font-*`), does every `text-sm` change size with no class edit? And
 what does a role name such as `text-meta` need before Tailwind makes a class for it?
 
-**Run.** `TW_DIR=<dir with tailwindcss@4.1.12 and @tailwindcss/cli@4.1.12> ./run.sh`
-(4.1.12 is the version the three labs pin). Output of the run is in `result.txt`.
+**Run.** `TW_DIR=<dir with tailwindcss and @tailwindcss/cli installed> ./run.sh`. First run on
+4.1.12, the floor of the three labs' `^4.1.12` range; re-run on 4.3.0, the version the lockfile
+resolves for all three, with byte-identical output. `result.txt` is that output (Kitchen Sink
+resolves 4.2.0; it is outside this POC's question).
 
 **Answer: CONFIRMED.**
 

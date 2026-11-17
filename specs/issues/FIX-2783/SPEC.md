@@ -118,7 +118,7 @@ flowchart LR
 |---|---|
 | **Removes** | 154 hard-coded sizes (204 counting the labs' registry copies). The Shift Coordinator's one-off body and composer sizes |
 | **Adds** | One stylesheet and one lint rule. Three reasoned lint exceptions for icon glyphs in fixed boxes, permanent by design |
-| **Leaves** | Kitchen Sink's own screens off the scale, 5 hard-coded sizes (filed as FIX-2797). Translucent muted icons, decorative |
+| **Leaves** | Kitchen Sink's own screens off the scale, 5 hard-coded sizes in 3 files, its registry copies excluded (census; filed as FIX-2797). Translucent muted icons, decorative |
 
 **Net: down.** 154 one-off sizes and two special cases go; one file and one rule arrive.
 

@@ -8,7 +8,10 @@
  * Facts: per tree, how many `text-xs` / `text-sm` / larger steps and arbitrary sizes (`text-[Npx]`)
  * the .tsx files carry; and that every registry copy in the labs and Kitchen Sink is byte-identical
  * to its source, so a registry edit reaches all of them. Totality: every .tsx file under a tree is
- * read, and the file count is printed so a shrinking scan shows.
+ * read, and the file count is printed so a shrinking scan shows. Also: how many of the four trees'
+ * sizes are unique sites (the total less those in the labs' registry copies), and how many hard-coded
+ * sizes Kitchen Sink's own screens carry (every .tsx under apps/kitchen-sink except its registry
+ * copies in components/flow-state, which follow the registry).
  */
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,11 +32,24 @@ const COPIES = [
 ];
 const ARBITRARY = /(?<![\w-])text-\[(\d+(?:\.\d+)?)(px|rem)\]/g;
 
-function walk(dir) {
+function walk(dir, skip = []) {
   return readdirSync(dir).flatMap((name) => {
     const p = join(dir, name);
-    return statSync(p).isDirectory() ? walk(p) : [p];
+    if (skip.includes(name) || skip.includes(p)) return [];
+    return statSync(p).isDirectory() ? walk(p, skip) : [p];
   });
+}
+
+function arbitraryIn(files) {
+  const sizes = {};
+  let n = 0;
+  for (const f of files) {
+    for (const m of readFileSync(f, "utf8").matchAll(ARBITRARY)) {
+      n += 1;
+      sizes[m[1] + m[2]] = (sizes[m[1] + m[2]] ?? 0) + 1;
+    }
+  }
+  return { n, sizes };
 }
 
 function census(root) {
@@ -79,12 +95,23 @@ if (process.argv.includes("--control")) {
   process.exit(after === before + 1 ? 0 : 1);
 }
 
+const fmt = (sizes) => Object.entries(sizes).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}×${v}`).join(" ");
 const c = census(ROOT);
 for (const [name, r] of Object.entries(c)) {
-  const sizes = Object.entries(r.sizes).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}×${v}`).join(" ");
-  console.log(`${name}: ${r.files} files · text-xs ${r.xs} · text-sm ${r.sm} · base+ ${r.larger} · arbitrary ${r.arbitrary} (${sizes})`);
+  console.log(`${name}: ${r.files} files · text-xs ${r.xs} · text-sm ${r.sm} · base+ ${r.larger} · arbitrary ${r.arbitrary} (${fmt(r.sizes)})`);
 }
 const total = Object.values(c).reduce((n, r) => n + r.arbitrary, 0);
 const below12 = Object.values(c).reduce((n, r) => n + Object.entries(r.sizes).filter(([k]) => parseFloat(k) < 12).reduce((m, [, v]) => m + v, 0), 0);
 console.log(`arbitrary sizes, all four trees: ${total} (below 12px: ${below12})`);
+const regSrc = join(ROOT, "packages/ui/registry/components");
+const labCopyFiles = COPIES.filter((d) => !d.startsWith("apps/")).flatMap((d) =>
+  walk(join(ROOT, d)).filter((f) => f.endsWith(".tsx") && existsSync(join(regSrc, relative(join(ROOT, d), f)))),
+);
+const inLabCopies = arbitraryIn(labCopyFiles).n;
+console.log(`unique sites: ${total - inLabCopies} (the other ${inLabCopies} are in the labs' registry copies)`);
+const ksRoot = join(ROOT, "apps/kitchen-sink");
+const ksFiles = walk(ksRoot, ["node_modules", ".next", join(ksRoot, "components/flow-state")]).filter((f) => f.endsWith(".tsx"));
+const ks = arbitraryIn(ksFiles);
+const ksHit = ksFiles.filter((f) => arbitraryIn([f]).n > 0).length;
+console.log(`Kitchen Sink own screens (registry copies excluded): ${ksFiles.length} files · arbitrary ${ks.n} in ${ksHit} files (${fmt(ks.sizes)})`);
 for (const d of copyDrift(ROOT)) console.log(`${d.dir}: ${d.copies} registry copies, ${d.differ.length} differ${d.differ.length ? ` (${d.differ.join(", ")})` : ""}`);

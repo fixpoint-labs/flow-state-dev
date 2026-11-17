@@ -89,7 +89,7 @@ It comes down to the dense panes: Roomy wraps and truncates more of the rail, In
 ## Settled
 
 - **A new value for a Tailwind step resizes every use, with no class edit** — **CONFIRMED** by `poc/theme-steps/` on Tailwind 4.1.12 (`result.txt`), and re-run unchanged on 4.3.0, the version the lockfile resolves for all three labs (4.1.12 is only the floor of their `^4.1.12` range): the output is byte-identical. `text-sm` compiles to `font-size: var(--text-sm)`, Tailwind's default sits in `@layer theme`, and an unlayered `:root` value wins. `text-meta` gets a class only if an `@theme` block defines it; `text-[11px]` compiles to a literal no token reaches. The premise held; D1 rests on it.
-- **The counts** — re-derived by `poc/census/census.mjs` on `c0bf4f40`: 204 hard-coded sizes, 190 below 12px, 154 unique sites; all 118 registry copies in the three labs and Kitchen Sink byte-identical. Its control plants one `text-[9px]` and the count rises by one. Every file and line the issue cites (read at `7b99800`) still holds; Shift Manager now has 113 hard-coded sizes, not 111.
+- **The counts** — re-derived by `poc/census/census.mjs` on `0a64fb96`: 204 hard-coded sizes, 190 below 12px, 154 unique sites (the other 50 sit in the labs' registry copies); Kitchen Sink's own screens 5, in 3 files, its registry copies excluded; all 118 registry copies in the three labs and Kitchen Sink byte-identical. Its control plants one `text-[9px]` and the count rises by one. Every file and line the issue cites (read at `7b99800`) still holds; Shift Manager now has 113 hard-coded sizes, not 111.
 
 ## Analysis
 
@@ -119,3 +119,12 @@ It comes down to the dense panes: Roomy wraps and truncates more of the rail, In
 ## How it got here
 
 - **Draft** — framed as one scale for three labs; Tailwind's steps given values in a new design-system type file, every hard-coded size cleared and a lint against new ones; builds on the design system's existing overrides of Tailwind's theme variables.
+
+## Notes from review
+
+- "Consider documenting an alternative in DECISIONS *if the gate feels too heavy at implementation*: one synthetic host (reuse skins’ install + Chromium pattern) that imports `type.css` and renders representative registry surfaces, plus manual or lighter lab smoke. Not insisting—only saying it’s the main place this spec adds operational complexity beyond “one CSS file + lint + class edits.”" — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5385#discussion_r4607316495))
+- "When implementing, prefer **copying the host harness** (`goals/design-system/skins-reused-components-from-one-token-set/run.mts` structure) over growing three lab-specific goal runners—unless you explicitly need lab-only chrome (sidebar/inspector tokens) in the oracle." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5385#discussion_r4607316501))
+- "Before a bespoke rule, worth a short spike on `eslint-plugin-tailwindcss` (or similar) for arbitrary `text-[…]`—if it can’t suggest the right step or doesn’t cover `cn()`/templates the way you need, the planned `fsd/*` rule aligned with `no-tracker-ids` is the right fallback." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5385#discussion_r4607316507))
+- "add `"./type.css": "./type.css"` to `labs/design-system/package.json` `exports` and `files` (today only `shift-manager.css` / `page.css` are exported)." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5385#discussion_r4607316520))
+
+These are inputs, not instructions. Adopt, adapt, or discard.
