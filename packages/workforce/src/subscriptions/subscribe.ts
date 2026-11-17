@@ -210,9 +210,13 @@ type Life = "fresh" | "keep" | "resume";
  * `undefined` leaves the subscription as it is.
  */
 function nextEntry(current: SubscriptionResourceState | undefined, asked: SubscriptionResourceState, life: Life): SubscriptionResourceState | undefined {
-  // A follow's close stays heard when its own session writes again on the same thread (a routine on the
-  // pull request it follows lands on the same subscription): only the server sets it, never a write clears it.
-  const wanted = current?.hearsClose === true && current.thread === asked.thread && asked.hearsClose !== true ? { ...asked, hearsClose: true as const } : asked;
+  // A follow stays a follow when its own session writes again on the same thread (a routine on the pull
+  // request it follows lands on the same subscription): its close stays heard and, when the write names no
+  // task, its run's task stays, so that task's failure or cancel still ends it. Only the server sets either.
+  const keepsFollow = current?.hearsClose === true && current.thread === asked.thread && asked.hearsClose !== true;
+  const wanted = keepsFollow
+    ? { ...asked, hearsClose: true as const, ...(asked.taskId === undefined && current.taskId !== undefined ? { taskId: current.taskId } : {}) }
+    : asked;
   if (life === "fresh") return wanted;
   if (life === "resume") {
     if (current === undefined || !isPaused(current) || current.provider !== wanted.provider || current.thread !== wanted.thread) return undefined;
