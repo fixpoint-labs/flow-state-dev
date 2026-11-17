@@ -13,7 +13,8 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient } from "@flow-state-dev/client";
-import { createScheduledTransportAdapter, formatScheduleId } from "@flow-state-dev/scheduled";
+import { formatScheduleId } from "@flow-state-dev/core";
+import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { CronExpressionParser } from "cron-parser";
 import { ORG } from "./conversation-board-harness";
 import { bootSubscriptionsHost, github, revoked, type SubscriptionsHost } from "./subscriptions-harness";

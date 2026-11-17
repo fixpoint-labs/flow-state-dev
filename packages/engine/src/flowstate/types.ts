@@ -25,6 +25,9 @@ import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { RuntimeConfig } from "../runtime-config";
+import type { ScheduleTickReport } from "../execution/schedule-tick";
+
+export type { ScheduleTickReport } from "../execution/schedule-tick";
 
 /** Model-resolver config, re-shaped for the FlowState surface. */
 export interface FlowStateModelsConfig {
@@ -111,6 +114,36 @@ export interface JobQueueAdapter {
    * refused `external-flow-runner`.
    */
   readonly leaseBackend?: ConcurrencyLeaseBackend;
+}
+
+// FIX-2752.
+/**
+ * Fires what is due: the app's one schedule tick, handed to a
+ * {@link SchedulerAdapter}. Every caller (the built-in local cron, a host's
+ * cron route) goes through it, and it is the one writer of the last-tick record.
+ */
+export interface ScheduleTicker {
+  /**
+   * Fire what is due now, static and dynamic, every flow, each for its latest
+   * due time. Builds the runtime when it hasn't been, so a cold function's
+   * first request can be the tick. `baseUrl`: dispatch over the network to
+   * this deployment (each fire its own request) instead of through the
+   * app's router in this process. `secret`: the bearer each fire carries
+   * (default `process.env.CRON_SECRET`), so an adapter that authenticates its
+   * own caller with a configured secret sends that same secret on. Rejects
+   * when a schedule index's claim does, after firing everything else.
+   */
+  tick(options?: { baseUrl?: string; secret?: string }): Promise<ScheduleTickReport>;
+}
+
+/**
+ * Decides when the app's schedule tick runs. `createFlowState` calls `start`
+ * once, at construction; `dispose()` calls the handle's `stop` before the
+ * stores close.
+ */
+export interface SchedulerAdapter {
+  /** Run `ticker.tick()` when the schedules should be checked. */
+  start(ticker: ScheduleTicker): { stop(): Promise<void> };
 }
 
 export interface CreateFlowStateOptions<
@@ -381,6 +414,18 @@ export interface CreateFlowStateOptions<
    * the queue from boot. Mutually exclusive with `runner`.
    */
   jobQueue?: JobQueueAdapter;
+
+  // FIX-2752.
+  /**
+   * When the app's schedules fire. Omitted: the built-in local cron, which
+   * ticks each minute in a process that builds the router (`ready()`,
+   * `getRouter()`, a server) or starts a job queue's processing, when a
+   * registered flow declares static schedules or a schedule index. A lease in
+   * `stores.leases` elects one process to tick across a deployment that
+   * shares its store. `false`: nothing fires the tick. An adapter (a host's
+   * cron route) fires it itself.
+   */
+  scheduler?: SchedulerAdapter | false;
 
   /**
    * Interactive-harness defaults. `chat.default` is the target `fsdev chat`

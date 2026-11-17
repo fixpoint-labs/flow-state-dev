@@ -8,10 +8,11 @@ import Database from "better-sqlite3";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, SubscriptionEvent } from "@flow-state-dev/core/types";
 import { createFlowState, runAction } from "@flow-state-dev/engine";
+import type { ScheduleTicker } from "@flow-state-dev/engine/host";
 import { routeServiceEvent } from "@flow-state-dev/engine/internal";
 import { type InboundTransportHost } from "@flow-state-dev/engine/host";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
-import { runScheduleTick, scheduleDispatchRequest } from "@flow-state-dev/scheduled/collection";
+import { defaultParseScheduleId } from "@flow-state-dev/scheduled/collection";
 import { createSQLiteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import {
@@ -41,6 +42,8 @@ const ORG = "acme";
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("webhook-routing-poll");
 const MINUTE = 60_000;
+// The bearer the app's schedule tick dispatches with, which the run's principal resolver admits as the scheduler.
+process.env.CRON_SECRET ??= "poll-goal-scheduler";
 const SF = "packages/workforce/src/service-flows/service-flow.ts";
 
 /** The controls: each degrades one behaviour in the code under test, as it loads. */
@@ -62,7 +65,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
     }
   ],
   // The tick fires every poll, due or not.
-  "walk-all": [{ module: "packages/scheduled/src/tick.ts", from: String.raw`options\.index\.claimDue\(options\.now \?\? Date\.now\(\)`, to: "options.index.claimDue(8.64e15" }],
+  "walk-all": [{ module: "packages/engine/src/execution/schedule-tick.ts", from: String.raw`index\.claimDue\(now,`, to: "index.claimDue(8.64e15," }],
   // A poll fires every minute: under the floor.
   "under-floor": [{ module: "packages/workforce/src/subscriptions/poll.ts", from: String.raw`return minutes === 60 \?`, to: 'return minutes !== 60 ? "* * * * *" : minutes === 60 ?' }],
   // A delivery never taken is owed forever: the poll refetches it every time.
@@ -240,7 +243,10 @@ async function boot(options: BootOptions) {
   ];
   // The index's table exists once the stores initialized; the kit builds the flows at start.
   let captured: InboundTransportHost | undefined;
+  // The app's own schedule tick, beaten by the run each minute.
+  let ticker: ScheduleTicker | undefined;
   const state = createFlowState({
+    scheduler: { start: (t: ScheduleTicker) => ((ticker = t), { stop: async () => undefined }) },
     kits: [workforce({ directory, routines })],
     fill: { [workforce.slots.workerFlows]: { follower }, [workforce.slots.flows]: { service } },
     stores: { default: { primary: stores } },
@@ -249,6 +255,8 @@ async function boot(options: BootOptions) {
     staleSweepIntervalMs: 0,
     adapters: [createScheduledTransportAdapter(), { source: "poll-goal", createBindings: (h: InboundTransportHost) => ((captured = h), {}) }],
     resolvePrincipal: (context: any) => {
+      // The tick's dispatch carries `CRON_SECRET` as its bearer.
+      if (context.request?.headers.get("authorization") === `Bearer ${process.env.CRON_SECRET}`) return { userId: "scheduler", orgId: ORG };
       const user = context.request?.headers.get("x-user");
       return typeof user === "string" ? { userId: user, orgId: ORG } : null;
     }
@@ -312,17 +320,12 @@ async function boot(options: BootOptions) {
   const fires: Array<{ user: string; key: string; at: number; status: number }> = [];
   // The tick claims from the same index the polls mirror into.
   const tick = async () => {
-    await runScheduleTick({
-      index,
-      dispatch: async (entry, scheduleId) => {
-        const { url, init } = scheduleDispatchRequest({ baseUrl: "http://localhost", flowKind: "github-service", entry, scheduleId });
-        const res = await router.POST(new Request(url, { ...init, headers: { ...init.headers, "x-user": "scheduler" } }), {
-          params: { path: ["github-service", "schedules", scheduleId, "dispatch"] }
-        });
-        fires.push({ user: entry.userId, key: entry.key, at: entry.nextFireAt, status: res.status });
-        return res.status;
-      }
-    });
+    const report = await ticker!.tick();
+    for (const fire of report.dispatched) {
+      if (fire.flowKind !== "github-service") continue;
+      const id = defaultParseScheduleId(fire.scheduleId)!;
+      fires.push({ user: id.userId, key: id.collectionKey, at: fire.nominalFireTime, status: fire.status });
+    }
     await settled();
   };
 

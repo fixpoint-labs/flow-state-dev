@@ -21,6 +21,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import type { FlowInstance, GeneratorModel } from "@flow-state-dev/core/types";
 import { createFlowState, createInProcessFetch, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import type { SchedulerAdapter } from "@flow-state-dev/engine/host";
 import { createClient } from "@flow-state-dev/client";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { askMidway } from "@flow-state-dev/orchestration/task-board";
@@ -227,6 +228,8 @@ export type BoardHostOptions = {
   errorCapture?: (event: any) => void;
   /** Inbound transport adapters for the router, such as the scheduled-dispatch one. */
   adapters?: unknown[];
+  /** The app's scheduler (`createFlowState({ scheduler })`); omitted, the local cron. */
+  scheduler?: SchedulerAdapter | false;
   /** The host's stale sweep: how often it runs and when a request with no heartbeat counts as dead. */
   staleSweep?: { intervalMs: number; thresholdMs: number };
 };
@@ -281,6 +284,9 @@ function withJudgmentModel(
 }
 
 /** One host of the app over `stores`. */
+/** The bearer the schedule tick's dispatches carry in these hosts (`CRON_SECRET` while a test ticks). */
+export const SCHEDULER_SECRET = "board-harness-scheduler";
+
 export function bootBoardHost(options: BoardHostOptions = {}) {
   const stores = options.stores ?? inMemoryStores();
   const runs: TaskRun[] = [];
@@ -341,6 +347,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     ...(options.waitDeadlines === undefined ? {} : { waitDeadlines: options.waitDeadlines }),
     ...(options.errorCapture === undefined ? {} : { errorCapture: options.errorCapture }),
     ...(options.adapters === undefined ? {} : { adapters: options.adapters }),
+    ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
     ...(options.staleSweep === undefined
       ? {}
       : { staleSweepIntervalMs: options.staleSweep.intervalMs, staleSweepThresholdMs: options.staleSweep.thresholdMs }),
@@ -352,6 +359,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
       options.agentModel
     ),
     resolvePrincipal: (context: any) => {
+      // The schedule tick's dispatch carries `CRON_SECRET` as its bearer: the scheduler, in the default org.
+      if (context.request?.headers.get("authorization") === `Bearer ${SCHEDULER_SECRET}`) return { userId: "scheduler", orgId: ORG };
       const user = context.request?.headers.get("x-user");
       // A second organization, for a check that one user's two orgs never meet.
       return typeof user === "string" ? { userId: user, orgId: context.request?.headers.get("x-org") ?? ORG } : null;

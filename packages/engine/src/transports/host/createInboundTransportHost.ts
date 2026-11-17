@@ -739,6 +739,14 @@ export function createInboundTransportHost(
       ...(envelope.attachments !== undefined ? { attachments: envelope.attachments } : {})
     };
 
+    // FIX-2752: a carried core (a dynamic schedule's fire) is a block made at
+    // dispatch time, which a queue job cannot carry: an external runner would
+    // drop it and run nothing. So it runs here, in this process, whatever
+    // runner is installed. Every other dispatch goes to the installed runner.
+    const runner: FlowRunner | InProcessRunner =
+      envelope.resolvedActionCore !== undefined ? inProcessRunner : effectiveRunner;
+    const runsExternally = !isInProcessRunner(runner);
+    const arbitratesThisDispatch = runsExternally && arbiter.arbitratesAcrossProcesses;
     // The config this dispatch runs under. Normally the host's own; a detached
     // child carries the LAUNCHING request's, because the caller may have derived
     // one the host was never built with — `fsdev run` does, so `--model` reaches
@@ -764,7 +772,7 @@ export function createInboundTransportHost(
     // flows never detach is unaffected. This fires only at the exact dispatch
     // that loses the override.
     if (
-      isExternalRunner &&
+      runsExternally &&
       envelope.runtimeConfig !== undefined &&
       envelope.runtimeConfig.modelResolver !== runtimeConfig.modelResolver
     ) {
@@ -809,7 +817,7 @@ export function createInboundTransportHost(
     // `hold` and `defer` cross the queue too (FIX-1836): the job carries how
     // it reaches its turn (`leaseTurn`), and its worker carries that out.
     const decision =
-      isExternalRunner && !arbitratesExternalDispatch
+      runsExternally && !arbitratesThisDispatch
         ? { policy: "allow" as const, key: undefined }
         : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
     const admitsAfterOwnership = decision.policy !== "allow" && decision.key !== undefined;
@@ -940,7 +948,7 @@ export function createInboundTransportHost(
       // instead of an inline SSE response, so creating a live stream here would
       // be an empty pipe that never receives events.
       liveStream =
-        envelope.responseEmitter === undefined && !isExternalRunner
+        envelope.responseEmitter === undefined && !runsExternally
           ? createLiveRequestStream({
               requestId,
               maxBufferSize: maxResponseBufferSize,
@@ -962,7 +970,7 @@ export function createInboundTransportHost(
       // Delegate to the runner. InProcessRunner uses dispatchLocal
       // (carries non-serializable context); external runners use the
       // generic dispatch interface.
-      if ("dispatchLocal" in effectiveRunner) {
+      if ("dispatchLocal" in runner) {
         // The in-process milestones, held here rather than read off the handle
         // because `gateStart` owns *when* the run is started and the handle does
         // not exist until it does (FIX-982). The `queue` branch below has its own,
@@ -996,7 +1004,7 @@ export function createInboundTransportHost(
           // A run holding its turn on a shared backend is stopped once its
           // place can no longer be kept: another process may take the key.
           const lost = held?.lost;
-          const handle = (effectiveRunner as InProcessRunner).dispatchLocal(
+          const handle = (runner as InProcessRunner).dispatchLocal(
             dispatchEnvelope,
             {
               signal:
@@ -1313,7 +1321,7 @@ export function createInboundTransportHost(
         // writes commit AND the runner accepts the job. The response path
         // awaits the exposed `accepted` view before acking, so the 202 means
         // "discoverable and enqueued" — not merely "record written". Crucially the
-        // enqueue (`effectiveRunner.dispatch`) is inside this promise, so an
+        // enqueue (`runner.dispatch`) is inside this promise, so an
         // enqueue failure rejects the ack (failing the POST / reverting the
         // resume) rather than landing in the detached `finished` chain after a 202
         // already went out.
@@ -1356,7 +1364,7 @@ export function createInboundTransportHost(
                   : decision.policy === "defer"
                     ? { kind: "when-free", key: decision.key }
                     : undefined;
-            const handle = await effectiveRunner.dispatch({
+            const handle = await runner.dispatch({
               ...dispatchEnvelope,
               ...(place !== undefined ? { leasePlace: place } : {}),
               ...(leaseTurn !== undefined ? { leaseTurn } : {})

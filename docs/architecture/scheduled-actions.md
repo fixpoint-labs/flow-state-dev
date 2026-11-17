@@ -1,17 +1,18 @@
 # Scheduled Actions Adapter
 
-`@flow-state-dev/scheduled` exposes a flow's actions to an external
-scheduler over HTTPS. It is a concrete `InboundTransportAdapter` —
+`@flow-state-dev/scheduled` mounts the endpoint a flow's schedules are
+fired through, over HTTPS. It is a concrete `InboundTransportAdapter` —
 see [Inbound Transports](./inbound-transports.md) for the contract.
 
 `host.dispatch` runs the action. `RequestRecord.source = "scheduled"`
 carries provenance. The framework owns the dispatch contract,
-validation, two-phase auth, and provenance metadata. The host owns
-the scheduler and any storage that backs dynamic schedules. The
-framework does not run a cron daemon, retry queue, or scheduler loop.
+validation, two-phase auth, provenance metadata, and the one tick that
+fires every schedule of every flow ([The tick](#the-tick)). The host
+owns the storage that backs dynamic schedules, and on a serverless host
+the one cron route that runs the tick. There is no retry queue.
 
-Install, mounting, static/dynamic examples, and host-scheduler
-walkthroughs live in
+Install, mounting, static/dynamic examples, and the Vercel walkthrough
+live in
 [Scheduled actions](../../apps/docs/docs/server/scheduled.md).
 
 ## Endpoint shape
@@ -167,7 +168,8 @@ No new store query primitives. The adapter uses
 `findScheduledRequest`), `resourceState.get` inside the resource-collection
 resolver, `resourceState.get`/`set`/`delete` on the one fired record per
 schedule (the only thing the adapter writes), and `host.dispatch`. It never lists resources across users
-— the host scheduler tracks which ids to fire.
+— the engine's tick finds due ids: static ones from the flow's config,
+dynamic ones from the flow's `ScheduleIndex`.
 
 `findScheduledRequest` lives in `@flow-state-dev/scheduled`, not on
 `ActiveRequestRegistry`. Promoting it to a registry method is a
@@ -250,25 +252,56 @@ and respects `requireUser`.
 
 ## The tick
 
-A flow's dynamic schedules fire only when something claims their due entries
-from a `ScheduleIndex` and posts each to the dispatch endpoint.
-`runScheduleTick` (from `@flow-state-dev/scheduled/collection`, engine-free)
-is that body: claim the entries due now, dispatch each under its
-`formatScheduleId` id with bounded concurrency, drop a schedule with no org, and
-throw only when the claim does. It runs two ways:
+One tick in the engine (`packages/engine/src/execution/schedule-tick.ts`)
+fires every schedule of every registered flow, through this endpoint:
 
-- **Once a beat**, from a host's own cron: `createScheduleTickHandler`
-  in `@flow-state-dev/vercel/schedules` runs it per Vercel Cron call.
-- **Each minute**, from a long-lived host: `serve()` in
-  `@flow-state-dev/node` (and so `fsdev dev`) starts `startScheduleTick`
-  for each registered flow whose `schedules.index` names an index, and
-  dispatches through its own app, bearing `CRON_SECRET` when set. The app
-  must mount `createScheduledTransportAdapter()`. One index serves one flow:
-  its entries name no flow, so an index two flows name is ticked once.
+- **Static** (`schedules.static`): each enabled schedule's latest scheduled
+  time, in its timezone, after the last tick and at or before now.
+- **Dynamic** (`schedules.index`): `claimDue` on each flow's index, one index
+  once (its entries name no flow, so an index two flows name is ticked once).
+  Each entry fires under its `formatScheduleId` id (from core) for its latest
+  due time, from the `cron` and `timezone` the entry carries. An entry with no
+  org is dropped and logged.
+
+So after downtime each schedule fires once, late, for the latest time it
+missed; earlier missed times are dropped. "The last tick" is one record in the
+app's resource state, written only by the tick; with none, a first tick looks
+back one interval, so a schedule added today never fires a time long past.
+The tick throws only when a claim does, after firing everything else. The
+endpoint's claim is still the at-most-once guarantee; the tick only finds what
+is due.
+
+**When it runs** is the `createFlowState({ scheduler })` option, and each
+scheduler only calls `ScheduleTicker.tick`:
+
+- **Omitted: the local cron** (`execution/local-scheduler.ts`). Each minute,
+  in a process that builds the router (`ready()`, `getRouter()`, `serve()`,
+  `fsdev dev`) or starts a job queue's processing, and only when a registered
+  flow declares a static schedule or an index. Never in a process that only
+  resolves the runtime (`fsdev run`, `chat`, `block`). It ticks only while it
+  holds a lease on `stores.leases` (its own sentinel key, two intervals long,
+  renewed every half lease on its own timer, released on dispose), so one
+  process ticks across a deployment that shares its store; a crash hands over
+  within three minutes. In production on in-memory or filesystem stores it
+  warns at start: their lease can't keep a second server from ticking. The
+  tick dispatches through the app's own router, bearing `CRON_SECRET` when
+  set; a `process-only` job-queue process gives that router the queue's
+  runner, so a static fire is enqueued like any action. A dynamic fire runs in
+  the ticking process whatever runner is installed: its carried core can't ride
+  a job (`InboundRequestEnvelope.resolvedActionCore`).
+- **`vercelScheduler()`** (`@flow-state-dev/vercel`): no process stays up, so
+  one Vercel Cron entry calls its `route`. The route checks the bearer
+  secret (constant-time; an empty secret refuses all), ticks with the
+  request's origin as `baseUrl` so each fire is its own request to the
+  deployment, and answers 500 when the tick throws so the next beat retries.
+  On Vercel with the local default, startup warns to pass it.
+- **`false`**: nothing fires the tick.
+
+A flow that declares a static schedule or an index with no scheduled
+transport mounted fails `ready()`, naming the line to add.
 
 `schedules.index` is a structural `{ claimDue(now, limit) }` in core, so a
-flow carries its index without core loading this package. The endpoint's
-claim is still the at-most-once guarantee; the tick only finds due entries.
+flow carries its index without core loading this package.
 
 Subscription polling (`defineSubscriptionServiceFlow({ poll })` in
 `@flow-state-dev/workforce`) is the first flow to carry one: one schedule resource
@@ -278,8 +311,8 @@ user's fastest subscription's cadence (5, 10, 15, 20, 30 or 60 minutes).
 ## v1 non-goals
 
 - No fan-out. One dispatch fires one action.
-- No scheduler loop in the engine: a host runs the tick (`serve()` does).
-- No durable missed-window handling.
+- No missed-window replay: after downtime a schedule fires once, for the
+  latest time it missed.
 - No `onOverlap: "queue"`.
 - No bundled `node-cron` integration.
 - No per-action authentication overrides for scheduled dispatch.
@@ -296,4 +329,4 @@ user's fastest subscription's cadence (5, 10, 15, 20, 30 or 60 minutes).
   adapter boundary.
 - [`@flow-state-dev/scheduled` README](../../packages/scheduled/README.md)
 - [Scheduled actions](../../apps/docs/docs/server/scheduled.md) —
-  install, mounting, examples, host-scheduler guides.
+  install, mounting, examples, the Vercel route.

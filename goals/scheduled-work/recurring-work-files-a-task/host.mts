@@ -21,9 +21,9 @@
  */
 import "./clock.mts";
 import { z } from "zod";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, formatScheduleId, handler } from "@flow-state-dev/core";
 import { createBearerSecretPrincipalResolver, createFlowState } from "@flow-state-dev/engine";
-import { createScheduledTransportAdapter, formatScheduleId } from "@flow-state-dev/scheduled";
+import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import {
   ROSTER_FLOW,

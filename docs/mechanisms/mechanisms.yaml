@@ -396,11 +396,12 @@ mechanisms:
     doc: docs/architecture/webhook-transport.md
 
   - id: schedule
-    job: Fire an event-addressed action on a cron. ScheduleIndex is the contract; SQLite, Postgres, Vercel and BullMQ are adapters, and BullMQ fires the job itself.
+    job: Fire an event-addressed action on a cron. One engine tick fires every static and dynamic schedule of every flow through the scheduled endpoint; ScheduleIndex is the dynamic schedules' contract (SQLite and Postgres are adapters). A scheduler only decides when the tick runs (the engine's local cron by default, one process elected by a lease in the store, or Vercel's one cron route).
     package: "@flow-state-dev/scheduled"
     anchor: ScheduleIndex
     file: packages/scheduled/src/scheduleIndex.ts
-    builtOn: [flow, inbound-transport]
+    adapters: ["@flow-state-dev/store-sqlite", "@flow-state-dev/store-postgres", "@flow-state-dev/vercel"]
+    builtOn: [flow, inbound-transport, store]
     overlaps: []
     status: canonical
     doc: docs/architecture/scheduled-actions.md
@@ -428,11 +429,11 @@ mechanisms:
     doc: docs/architecture/server-and-client.md
 
   - id: bullmq
-    job: A queue-backed host. Flows run as jobs; schedules are the schedule entry's BullMQ adapter.
+    job: A queue-backed host. Flows run as jobs. Schedules need nothing from it (the engine's local cron ticks in its processes, elected by the shared store's lease, and a fire is enqueued like any action).
     package: "@flow-state-dev/bullmq"
     anchor: createBullmqRuntime
     file: packages/bullmq/src/runtime.ts
-    builtOn: [host, schedule, lease]
+    builtOn: [host, lease]
     overlaps:
       - { id: dispatcher, relation: distinct-jobs, note: "The queue's worker dispatch, dispatcher() and task claim orders are three uses of one word." }
     status: canonical
