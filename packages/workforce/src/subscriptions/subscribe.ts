@@ -170,6 +170,11 @@ export interface SubscribeWrite {
   // FIX-2784; FIX-2535 D3.
   /** Its thread's close reaches it whatever its kinds, screens and cap, then it ends: `followPullRequest`'s. */
   readonly hearsClose?: true;
+  /**
+   * The task it is made for, when the session's own state names none (a coding run in a session
+   * that works many tasks): that task's failure or cancel ends it. Wins over the session's.
+   */
+  readonly taskId?: string;
   // FIX-2536.
   /** The app's polling, when it polls: an enabled subscription under no tenant makes, or speeds up, the user's poll for its thread. */
   readonly polling?: SubscriptionPolling;
@@ -422,7 +427,7 @@ async function writeSubscription(
     sessionId: hears.sessionId,
     flow: flowKind ?? "",
     worker: hears.worker,
-    ...(hears.taskId === undefined ? {} : { taskId: hears.taskId }),
+    ...((write.taskId ?? hears.taskId) === undefined ? {} : { taskId: write.taskId ?? hears.taskId }),
     ...(write.hearsClose === true ? { hearsClose: true as const } : {}),
     userId: identity.userId,
     orgId: identity.orgId,
