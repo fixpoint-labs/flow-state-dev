@@ -194,11 +194,12 @@ function endsRequestStream(event: RequestStreamEvent): boolean {
  * connections in a row that delivered nothing and carried no heartbeat. An error answer (a 404 for a request that is not there,
  * say) or a failed connection is reported with `onError` and not retried.
  *
- * With `reconnect: true` the stream keeps following until the request ends:
- * a failed connection and a run of empty ones open again after the client's
- * backoff (1 s, doubling, at most 30 s; reset once a connection delivers),
- * resuming after the last event, with nothing reported. A 401, 403 or 404 still
- * ends it with `onError`, and `close()` ends it, a pending reconnect included.
+ * With `reconnect: true` a failed connection opens again too, without limit,
+ * after the client's backoff (1 s, doubling, at most 30 s; reset once a
+ * connection delivers), resuming after the last event, with nothing reported.
+ * The give-up after empty answers still holds, so a request that already
+ * ended is not followed forever. A 401, 403 or 404 still ends the stream with
+ * `onError`, and `close()` ends it, a pending reconnect included.
  */
 export function openRequestStream(
   target: {
@@ -218,6 +219,8 @@ export function openRequestStream(
   let startingAfter = options.startingAfter;
   let ended = false;
   let emptyConnections = 0;
+  /** Connections in a row that delivered nothing, empty or failed: what the backoff waits on. */
+  let quietConnections = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const connect = async (): Promise<void> => {
@@ -296,13 +299,19 @@ export function openRequestStream(
     });
 
     if (closed || ended || (failed && !retrying)) return;
-    if (delivered || alive) emptyConnections = 0;
-    if (!failed && (delivered || alive)) {
-      void connect();
-      return;
+    if (delivered || alive) {
+      emptyConnections = 0;
+      quietConnections = 0;
+      if (!failed) {
+        void connect();
+        return;
+      }
     }
-    emptyConnections += 1;
-    if (options.reconnect !== true && emptyConnections >= REQUEST_STREAM_MAX_EMPTY_CONNECTIONS) {
+    // Every connection that brought nothing sets the backoff; only an empty answer counts toward giving
+    // up, under `reconnect` too: a settled request resumed past its end answers empty, every time.
+    quietConnections += 1;
+    if (!failed) emptyConnections += 1;
+    if (!failed && emptyConnections >= REQUEST_STREAM_MAX_EMPTY_CONNECTIONS) {
       options.onError?.(
         new Error(
           `Request stream ended ${emptyConnections} times in a row with no event before the request ended`
@@ -313,7 +322,7 @@ export function openRequestStream(
     timer = setTimeout(() => {
       timer = undefined;
       void connect();
-    }, backoffDelay(emptyConnections - 1));
+    }, backoffDelay(quietConnections - 1));
   };
 
   void connect();

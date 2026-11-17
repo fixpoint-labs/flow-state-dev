@@ -279,8 +279,9 @@ export type RequestStreamOptions = RequestSSECallbacks &
     /**
      * Keep following until the request ends: a failed connection opens again
      * after the client's backoff (1 s, doubling, at most 30 s), resuming after
-     * the last event, and is not reported. A 401, 403 or 404 still ends the
-     * stream with `onError`; `close()` ends it, a pending reconnect included.
+     * the last event, and is not reported. Five empty answers in a row (a
+     * request that already ended) or a 401, 403 or 404 still end the stream
+     * with `onError`; `close()` ends it, a pending reconnect included.
      */
     reconnect?: boolean;
   };
