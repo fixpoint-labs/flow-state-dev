@@ -46,7 +46,7 @@ The counts (13 and 26 goals, and the findings below) were measured on `origin/ma
 
 | How we verify | |
 |---|---|
-| **Goal check** | The closure's goal check (`FIX-XXX · closure`), on one `main` commit after every other child merges. Its clean run is the wrap condition |
+| **Goal check** | The closure's goal check (`FIX-2778 · closure`), on one `main` commit after every other child merges. Its clean run is the wrap condition |
 | **Signal** | Leg t: Teammates' allowlist is empty and its inventory test passes, and every goal in `goals/teammates-lab/` passes, the three of [FIX-2763](https://linear.app/fixpoint-labs/issue/FIX-2763) included. Leg s: the same for Shift Manager and `goals/shift-manager/`, and the pending-asks read's cross-tenant, expired and resolved-elsewhere tests pass. Both legs: claude-code-style's inventory still passes |
 | **Input** | Each goal's own held-out input; real models where the goal names one |
 | **Anti-game** | Don't assert on a hook's return or a view's unit test: both pass while a screen still reads through glue. The inventory reads the source; the goals read the page and the store. A stitcher moved outside the scanned folders is caught only by review ([ER-2](DECISIONS.md#who-owns-what)) |
@@ -62,32 +62,32 @@ a new one ([ER-3](DECISIONS.md#who-owns-what)).
 
 **Docs:** the shared story is "a screen reads a kit's views", already told by FIX-2618.
 Shift Manager is published, so the child that changes when its screens read
-(`FIX-XXX · Shift Manager's Inbox and boards`) carries that to `/release-docs` in its changeset.
+(`FIX-2774 · Shift Manager's Inbox and boards`) carries that to `/release-docs` in its changeset.
 Teammates is private: the last Teammates child rewrites its README.
 
 ## The set · as of 2026-11-17
 
 The reviewed snapshot. Live state is on [FIX-2683 in Linear](https://linear.app/fixpoint-labs/issue/FIX-2683).
-Unfiled rows are filed after the direction gate. Each job child's done-state is the allowlist
+The rows the gate approved were filed after it. Each job child's done-state is the allowlist
 entries it deletes, plus a green run of the goals its screens touch ([ER-2](DECISIONS.md#who-owns-what)).
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-2755](https://linear.app/fixpoint-labs/issue/FIX-2755) | Labs named starters; each starter's server module split into `src/app/` by job | The layout the Teammates children delete from, one file at a time | In development · owner-decided |
-| `FIX-XXX · one inventory for every app` | claude-code-style's rules as one module; each app's checked-in allowlist that may only shrink; a line-count ratchet on what is left of each read model | Every job child deletes its own entries; the closure runs the same rules ([D3](DECISIONS.md#d3)) | Not filed · blocked by [FIX-2629](https://linear.app/fixpoint-labs/issue/FIX-2629) (#5313: green, closure PASSED on `e792115`, waiting for the owner's merge) |
-| `FIX-XXX · a user's pending asks, read at the source` | A user-scoped read of pending asks beside `RequestSessions.read`/`history`, over the engine's `SuspensionStore`: filtered at the source, expired rows dropped, heard only on suspension changes, in one store query joined to each ask's request, exact-matching user, tenant, organization and today's worker flows, returning a projection that never carries `stepInput` or `resumeData` ([ER-6](DECISIONS.md#who-owns-what)). A changeset if it changes a published export | Shift Manager's Inbox has no server read across sessions today ([D2](DECISIONS.md#d2)) | Not filed |
-| `FIX-XXX · Teammates' people, context and talk` | Roster, hire and edits, the context strip, harness readiness, messages between workers; the host within the caps | One job of the adapter | Not filed |
-| `FIX-XXX · Teammates' conversations` | Feed, send, files, stop, approvals, retry, window, activity on the package's session hooks; `App.tsx`'s `ClientHttpError` import; `session-feed.ts` goes | One job | Not filed |
-| `FIX-XXX · Teammates' task cards` | Board, run, review, recorded work, holds, actions, working now on the coding board and recorded work views; a ledger of the fake's scenarios, then the fake goes | One job; the second consumer of claude-code-style's task views | Not filed |
-| `FIX-XXX · Shift Manager's Inbox and boards` | One workforce user view on the pending-asks read and `inboxItems`' task holds; the Inbox, its count and the boards move onto it | The cross-session answer [D2](DECISIONS.md#d2) decides | Not filed · after the pending-asks read |
-| `FIX-XXX · Shift Manager's directory` | Organization, inventory, roster, projects, documents, routines, usage, rules, messages by direct reads and existing views, through `listAll()` | One job | Not filed |
-| `FIX-XXX · Shift Manager's conversations and runs` | Run, task, send, conversation and ask reads on the session hooks; delegates through a typed workforce view if the list is read across sessions, a package hook if per session, settled in its spec before code; a project Stream's files survive its session opening | One job, the delegate list (Codex review), and the dropped-attachments edge (comment on this epic, 2026-11-17) | Not filed |
-| `FIX-XXX · Shift Manager's snapshot goes` | `lab-data.tsx`'s snapshot, its re-read, `reads.ts` and the snapshot types deleted once no screen reads them | 32 files import `reads.ts`; it can only go last | Not filed · after the three Shift Manager jobs |
+| [FIX-2755](https://linear.app/fixpoint-labs/issue/FIX-2755) | Labs named starters; each starter's server module split into `src/app/` by job | The layout the Teammates children delete from, one file at a time | **Done** · [#5332](https://github.com/fixpoint-labs/flow-state-dev/pull/5332) |
+| [FIX-2769](https://linear.app/fixpoint-labs/issue/FIX-2769) · one inventory for every app | claude-code-style's rules as one module; each app's checked-in allowlist that may only shrink; a line-count ratchet on what is left of each read model | Every job child deletes its own entries; the closure runs the same rules ([D3](DECISIONS.md#d3)) | Backlog · [FIX-2629](https://linear.app/fixpoint-labs/issue/FIX-2629) merged (#5313) |
+| [FIX-2770](https://linear.app/fixpoint-labs/issue/FIX-2770) · a user's pending asks, read at the source | A user-scoped read of pending asks beside `RequestSessions.read`/`history`, over the engine's `SuspensionStore`: filtered at the source, expired rows dropped, heard only on suspension changes, in one store query joined to each ask's request, exact-matching user, tenant, organization and today's worker flows, returning a projection that never carries `stepInput` or `resumeData` ([ER-6](DECISIONS.md#who-owns-what)). A changeset if it changes a published export | Shift Manager's Inbox has no server read across sessions today ([D2](DECISIONS.md#d2)) | Backlog |
+| [FIX-2771](https://linear.app/fixpoint-labs/issue/FIX-2771) · Teammates' people, context and talk | Roster, hire and edits, the context strip, harness readiness, messages between workers; the host within the caps | One job of the adapter | Backlog |
+| [FIX-2772](https://linear.app/fixpoint-labs/issue/FIX-2772) · Teammates' conversations | Feed, send, files, stop, approvals, retry, window, activity on the package's session hooks; `App.tsx`'s `ClientHttpError` import; `session-feed.ts` goes | One job | Backlog |
+| [FIX-2773](https://linear.app/fixpoint-labs/issue/FIX-2773) · Teammates' task cards | Board, run, review, recorded work, holds, actions, working now on the coding board and recorded work views; a ledger of the fake's scenarios, then the fake goes | One job; the second consumer of claude-code-style's task views | Backlog |
+| [FIX-2774](https://linear.app/fixpoint-labs/issue/FIX-2774) · Shift Manager's Inbox and boards | One workforce user view on the pending-asks read and `inboxItems`' task holds; the Inbox, its count and the boards move onto it | The cross-session answer [D2](DECISIONS.md#d2) decides | Backlog · after the pending-asks read |
+| [FIX-2775](https://linear.app/fixpoint-labs/issue/FIX-2775) · Shift Manager's directory | Organization, inventory, roster, projects, documents, routines, usage, rules, messages by direct reads and existing views, through `listAll()` | One job | Backlog |
+| [FIX-2776](https://linear.app/fixpoint-labs/issue/FIX-2776) · Shift Manager's conversations and runs | Run, task, send, conversation and ask reads on the session hooks; delegates through a typed workforce view if the list is read across sessions, a package hook if per session, settled in its spec before code; a project Stream's files survive its session opening | One job, the delegate list (Codex review), and the dropped-attachments edge (comment on this epic, 2026-11-17) | Backlog |
+| [FIX-2777](https://linear.app/fixpoint-labs/issue/FIX-2777) · Shift Manager's snapshot goes | `lab-data.tsx`'s snapshot, its re-read, `reads.ts` and the snapshot types deleted once no screen reads them | 32 files import `reads.ts`; it can only go last | Backlog · after the three Shift Manager jobs |
 | [FIX-2763](https://linear.app/fixpoint-labs/issue/FIX-2763) · bug | Three Teammates goals pass, or each is retired with a reason | Leg t runs every Teammates goal | Backlog · no spec PR, by design |
 | [FIX-2766](https://linear.app/fixpoint-labs/issue/FIX-2766) · related | Claude Code-style's task screens read the coding board row directly | Parented here; the same views t3 reads. Not a gate of either app | Backlog |
-| `FIX-XXX · closure` · **required** | The QA run on one `main` commit: both legs, every goal, the seams | The only child that proves both adapters are gone | Not filed · blocked by every other child |
+| [FIX-2778](https://linear.app/fixpoint-labs/issue/FIX-2778) · closure · **required** | The QA run on one `main` commit: both legs, every goal, the seams | The only child that proves both adapters are gone | Backlog · blocked by every other child |
 
-1 in development · 1 bug · 1 related · 10 to file. Six job children, one framework read, one final
+1 done · 1 bug · 1 related · 10 in backlog. Six job children, one framework read, one final
 deletion, one inventory. Whether twelve is really fewer: Teammates' people and conversation jobs
 could merge; they stay separate unless their allowlist entries share files once FIX-2755 lands. The snapshot child stays separate. [FIX-2756](https://linear.app/fixpoint-labs/issue/FIX-2756)
 is parented here but follows the epic and is not in the set ([D1](DECISIONS.md#d1)).
@@ -96,19 +96,17 @@ is parented here but follows the epic and is not in the set ([D1](DECISIONS.md#d
 
 ```mermaid
 flowchart LR
-  X["FIX-2629 · closure of FIX-2618 · consumed"] -.->|"the rules it grades"| R["FIX-XXX · one inventory"]
-  L["FIX-2755 · src/app by job"] -->|"one file per job"| T1["FIX-XXX · Teammates' people"]
-  L --> T2["FIX-XXX · Teammates' conversations"]
-  L --> T3["FIX-XXX · Teammates' task cards"]
+  X["FIX-2629 · closure of FIX-2618 · consumed"] -.->|"the rules it grades"| R["FIX-2769 · one inventory"]
+  L["FIX-2755 · src/app by job"] -->|"one file per job"| T1["FIX-2771 · Teammates' people"]
+  L --> T2["FIX-2772 · Teammates' conversations"]
+  L --> T3["FIX-2773 · Teammates' task cards"]
   R -->|"each app's allowlist"| T1
-  A["FIX-XXX · a user's pending asks"] -->|"one read across sessions"| S1["FIX-XXX · Shift Manager's Inbox and boards"]
+  A["FIX-2770 · a user's pending asks"] -->|"one read across sessions"| S1["FIX-2774 · Shift Manager's Inbox and boards"]
   R --> S1
-  S1 -->|"its screens off the snapshot"| S4["FIX-XXX · Shift Manager's snapshot goes"]
+  S1 -->|"its screens off the snapshot"| S4["FIX-2777 · Shift Manager's snapshot goes"]
   S1 -->|"the Inbox view, for the sidebar counts"| S2
-  S2["FIX-XXX · Shift Manager's directory"] --> S4
-  S3["FIX-XXX · Shift Manager's conversations"] --> S4
-  classDef proposed stroke-dasharray:4 3
-  class R,A,T1,T2,T3,S1,S2,S3,S4 proposed
+  S2["FIX-2775 · Shift Manager's directory"] --> S4
+  S3["FIX-2776 · Shift Manager's conversations"] --> S4
 ```
 
 An edge is what one issue hands the next. The inventory child also feeds T2, T3, S2 and S3, and
@@ -145,10 +143,10 @@ snapshot, and the snapshot child deletes it last ([ER-8](DECISIONS.md#who-owns-w
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| A user-scoped pending-asks read (`FIX-XXX · a user's pending asks`) | The server session list (`SessionListQuery`: no dispatch-runs option); `deriveSuspensions` (in `react`, per chat); `SuspensionStore.list` | **Extends** `SuspensionStore.list` into a user-scoped read beside `RequestSessions.read`/`history`. New as a read across sessions; no new store. The predicate behind `suspensionShape` moves to core beside `isUserSuspension` and `suspendForUserKindOf` (already in `contracts`); `react` keeps exporting `suspensionShape` and the ui registry card is unchanged |
-| The Inbox view (`FIX-XXX · Shift Manager's Inbox and boards`) | `inboxItems`; the coding board view (one conversation) | **Composes** the pending-asks read with `inboxItems`' task-hold composition for task-run asks |
-| A typed delegate view or hook (`FIX-XXX · Shift Manager's conversations and runs`) | The `listDelegates` action that `DelegatesPanel` reaches through app-local `readDelegates` | **Extends** workforce: the same data, typed by its output |
-| One inventory module with per-app allowlists (`FIX-XXX · one inventory`) | claude-code-style's `test/inventory-rules.ts` | **Extends**: the same rules, parameterized by app. No second inventory |
+| A user-scoped pending-asks read (`FIX-2770 · a user's pending asks`) | The server session list (`SessionListQuery`: no dispatch-runs option); `deriveSuspensions` (in `react`, per chat); `SuspensionStore.list` | **New**: a required `SuspensionStore.listPendingForUser` (`list` cannot see the request's tenant or organization), read through a user-scoped verb beside `RequestSessions.read`/`history`. No new store. The predicate behind `suspensionShape` moves to core beside `isUserSuspension` and `suspendForUserKindOf` (already in `contracts`); `react` keeps exporting `suspensionShape` and the ui registry card is unchanged |
+| The Inbox view (`FIX-2774 · Shift Manager's Inbox and boards`) | `inboxItems`; the coding board view (one conversation) | **Composes** the pending-asks read with `inboxItems`' task-hold composition for task-run asks |
+| A typed delegate view or hook (`FIX-2776 · Shift Manager's conversations and runs`) | The `listDelegates` action that `DelegatesPanel` reaches through app-local `readDelegates` | **Extends** workforce: the same data, typed by its output |
+| One inventory module with per-app allowlists (`FIX-2769 · one inventory`) | claude-code-style's `test/inventory-rules.ts` | **Extends**: the same rules, parameterized by app. No second inventory |
 | Hooks missing from `react` or a kit package | FIX-2757's `useSessionFeed`, `useRequestStream`, `useView`, `useResource` | **Extends** those packages; never an app-local copy |
 
 | The debt | |
