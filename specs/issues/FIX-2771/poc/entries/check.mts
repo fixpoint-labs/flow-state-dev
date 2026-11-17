@@ -17,14 +17,13 @@ import { join } from "node:path";
 const LAB = "labs/teammates";
 const CAP = 300;
 
-type Owner = "FIX-2771" | "FIX-2772" | "FIX-2773" | "shared";
+type Owner = "FIX-2771" | "FIX-2772" | "FIX-2773" | "last child";
 
 /**
- * The owner of each entry, by `file · symbol · kind`. FIX-2771's rows are the
- * spec's claim. The siblings' rows read the epic's set table (FIX-2772:
- * feed, send, files, stop, approvals, retry, window, activity; FIX-2773:
- * board, run, review, recorded work, holds, actions, working now, the fake).
- * "shared" is an entry no row names; the spec lists it as a boundary question.
+ * The owner of each entry, by `file · symbol · kind`, as the coordinator
+ * settled the Teammates seams (2026-11-17): the busy dot is FIX-2771's;
+ * `steps.ts` is FIX-2772's; the shared plumbing types and the fake app's
+ * `gone` entry go with whichever Teammates child merges last ("last child").
  */
 const OWNERS: Record<string, Owner> = {
   "configuration · (lines) · cap": "FIX-2771",
@@ -66,7 +65,6 @@ const OWNERS: Record<string, Owner> = {
   "src/lib/session-feed.ts · watchRuns · subscribe call": "FIX-2772",
   "src/lib/session-feed.ts · SessionFeed · type": "FIX-2772",
 
-  "test/fake-app.ts · (file) · gone": "FIX-2773",
   "src/app/runs.ts · bindStoreToCallbacks · client import": "FIX-2773",
   "src/app/runs.ts · createRequestStreamStore · client import": "FIX-2773",
   "src/app/runs.ts · topic · client import": "FIX-2773",
@@ -80,13 +78,15 @@ const OWNERS: Record<string, Owner> = {
   "src/app/tasks.ts · TaskAnswer · type": "FIX-2773",
   "src/app/tasks.ts · TaskCalls · type": "FIX-2773",
 
-  "src/app/calls.ts · AppCalls · type": "shared",
-  "src/app/items.ts · Item · type": "shared",
-  "src/app/reads.ts · Unsubscribe · type": "shared",
-  "src/app/state.ts · AppState · type": "shared",
-  "src/app/steps.ts · SessionStep · type": "shared",
-  "src/app/steps.ts · StepRun · type": "shared",
-  "src/app/steps.ts · RunSummary · type": "shared",
+  "src/app/steps.ts · SessionStep · type": "FIX-2772",
+  "src/app/steps.ts · StepRun · type": "FIX-2772",
+  "src/app/steps.ts · RunSummary · type": "FIX-2772",
+
+  "test/fake-app.ts · (file) · gone": "last child",
+  "src/app/calls.ts · AppCalls · type": "last child",
+  "src/app/items.ts · Item · type": "last child",
+  "src/app/reads.ts · Unsubscribe · type": "last child",
+  "src/app/state.ts · AppState · type": "last child",
 };
 
 type Entry = { file: string; symbol: string; kind: string };
@@ -106,7 +106,7 @@ for (const [key, n] of seen) if (n > 1) problems.push(`repeated ${n} times, owne
 for (const key of Object.keys(OWNERS)) if (!seen.has(key)) problems.push(`owned, but not on the allowlist: ${key}`);
 
 const by = (owner: Owner) => allowlist.filter((e) => OWNERS[keyOf(e)] === owner).map(keyOf);
-for (const owner of ["FIX-2771", "FIX-2772", "FIX-2773", "shared"] as const) {
+for (const owner of ["FIX-2771", "FIX-2772", "FIX-2773", "last child"] as const) {
   const keys = by(owner);
   console.log(`${owner}: ${keys.length}`);
   if (owner === "FIX-2771") for (const k of keys) console.log(`  ${k}`);

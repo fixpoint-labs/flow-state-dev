@@ -15,10 +15,9 @@ node specs/issues/FIX-2771/poc/entries/check.mts --control  # plants an entry no
 ```
 
 **What it showed (2026-11-17, `origin/main` at `e90786196b`).** 57 entries: 15 for FIX-2771,
-22 for FIX-2772, 13 for FIX-2773, 7 that no row of the epic names. Configuration 608 lines
+25 for FIX-2772, 12 for FIX-2773, 5 for the last Teammates child to merge. Configuration 608 lines
 (host 397, `fsdev.config.mts` 66, seven prompts 145), so the host must fit in 89. The control
 exits 1 with `no owner: src/app/planted.ts · Planted · type`. See
 [DECISIONS.md → Settled](../../DECISIONS.md#settled).
 
-The siblings' rows are this spec's reading of the epic's set table, for the totality check only.
-Their own specs decide them.
+Ownership follows the coordinator's settlement of the Teammates seams (2026-11-17).
