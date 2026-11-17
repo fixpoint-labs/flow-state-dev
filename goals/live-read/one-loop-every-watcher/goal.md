@@ -15,7 +15,7 @@
 **Run:** `cd goals && pnpm tsx live-read/one-loop-every-watcher/run.mts`
 **Controls:**
 - `GOAL_CONTROL=no-coalesce` — every notice heard reads at once (`coalesce.ts`). Must FAIL `a:burst`.
-- `GOAL_CONTROL=rule-says-no` — the path rule rules every path out (`paths.ts`). Must FAIL `a:equals-store` for the roster watchers (rp, rw, sm, tm). The pins watcher (cc) filters with its own `hear` and passes no paths; see "Not shown failing".
+- `GOAL_CONTROL=rule-says-no` — the path rule rules every path out (`mayHold`, `contracts/src/types/view-hearing.ts`). Must FAIL `a:equals-store` for the roster watchers (rp, rw, sm, tm). The pins watcher (cc) filters with its own `hear` and passes no paths; see "Not shown failing".
 - `GOAL_CONTROL=no-retry` — a failed read schedules nothing (`live-read.ts`). Must FAIL `b:recovers` for all five watchers.
 
 The totality half — exactly one coalescer and one path rule, both in the client — is `specs/issues/FIX-2551/poc/copy-count/check.mjs --after`, and structurally the `fsd/one-coalescer` lint.
