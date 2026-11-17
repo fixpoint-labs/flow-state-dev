@@ -4,8 +4,8 @@
  * accept pushes the run's branch and opens the pull request; the task then
  * waits on it. A line in the task's session (the composer's send, through the
  * coder's door) is one more run on the same attempt and session, whose commit
- * comes back for your review; Open a PR again pushes it to the same pull
- * request and the task waits again. Once GitHub says merged, a line completes
+ * is pushed to that same pull request with no review asked (FIX-2781), and the
+ * task waits again. Once GitHub says merged, a line completes
  * it with no run. What this run proves is `goal.md` beside it.
  *
  * In process: the DevTeam Lab (`openLab`) with `reviewChanges`, served over
@@ -207,6 +207,16 @@ await runGoal(async (failures, tell) => {
       await createInboxClient(client).answer(item, { value: { verdict: "accepted", land: "pull-request" } } as never);
       return await until(id!, (r) => moved(r) && reviewOf(r)?.id !== reviewId);
     };
+    /** The remote's tip of `branch`, or `""` when it has none. */
+    const remoteTip = (branch: string) => {
+      try {
+        return execFileSync("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: github.bare, encoding: "utf8" }).trim();
+      } catch {
+        return "";
+      }
+    };
+    const isAncestor = (older: string, newer: string) =>
+      older !== "" && spawnSync("git", ["merge-base", "--is-ancestor", older, newer], { cwd: github.bare }).status === 0;
     /** A line in the task's session, as its composer sends it: to the coder's door. */
     const line = (message: string) => sendTurn(client, { sessionId: runSession, flowId: runFlow, door: "respond" }, message);
 
@@ -229,29 +239,33 @@ await runGoal(async (failures, tell) => {
       notes.push(`a: Open a PR pushed the run's branch and opened #7; in_progress on attempt ${accepted.attempts}, hold ${wait.id}`);
     }
 
-    // ---- b: a line: one run on the same attempt and session, back to review; Open a PR again, waiting on #7 again.
+    // ---- b: a line: one run on the same attempt and session, its commit pushed onto #7 with no review asked (FIX-2781).
     if (waiting) {
       const runsBefore = coder.runs.length;
+      const branch = github.pullRequest(7)?.branch ?? "";
+      const tipBefore = remoteTip(branch);
       await line(fixture.line);
-      const reviewed = await until(id, (r) => r?.status !== "in_progress" || reviewOf(r) !== undefined || (externalOf(r) !== undefined && externalOf(r).id !== wait.id));
+      const again = await until(id, (r) => r?.status !== "in_progress" || reviewOf(r) !== undefined || (externalOf(r) !== undefined && externalOf(r).id !== wait.id));
       const runs = coder.runs.length - runsBefore;
-      if (reviewOf(reviewed) === undefined) {
-        failures.push(`b:line: after the line the row reads ${reviewed?.status} with holds ${show(reviewed?.holds ?? [])}, not back on your review of the run it made`);
+      const hold = externalOf(again);
+      const opened = Object.keys(github.pullRequests());
+      if (reviewOf(again) !== undefined) {
+        failures.push(`b:no-review: after the line the run's commit came back for a review offering ${show(again?.holds?.find((h: any) => h.ask?.kind === "review")?.ask?.title)}, though it is on open PR 7`);
+        waiting = false;
+      } else if (again?.status !== "in_progress" || hold === undefined || !(hold.source?.closedBy ?? []).some((r: any) => String(r.key).endsWith("/7"))) {
+        failures.push(`b:waits-again: after the line the row reads ${again?.status}${hold === undefined ? " with no external hold" : ""}, not waiting on PR 7`);
         waiting = false;
       } else {
         if (runs !== 1) failures.push(`b:one-run: ${runs} harness runs, not 1`);
-        if (reviewed!.attempts !== accepted!.attempts) failures.push(`b:same-attempt: attempt ${reviewed!.attempts}, was ${accepted!.attempts}`);
-        if (reviewed!.run?.sessionId !== runSession) failures.push(`b:same-session: the run moved to session ${reviewed!.run?.sessionId}`);
-        const again = await openAPr(reviewOf(reviewed).id);
-        const hold = externalOf(again);
-        const opened = Object.keys(github.pullRequests());
-        if (again?.status !== "in_progress" || hold === undefined || !(hold.source?.closedBy ?? []).some((r: any) => String(r.key).endsWith("/7"))) {
-          failures.push(`b:waits-again: after Open a PR again the row reads ${again?.status}${hold === undefined ? " with no external hold" : ""}, not waiting on PR 7`);
-          waiting = false;
-        } else {
-          if (opened.length !== 1) failures.push(`b:one-pr: the stub holds pull requests ${opened.join(", ")}, not PR 7 alone`);
-          notes.push(`b: ${runs} run, attempt ${again.attempts}, session kept, back to review; Open a PR again: waiting on #7 (${hold.id}), ${opened.length} PR`);
+        if (again!.attempts !== accepted!.attempts) failures.push(`b:same-attempt: attempt ${again!.attempts}, was ${accepted!.attempts}`);
+        if (again!.run?.sessionId !== runSession) failures.push(`b:same-session: the run moved to session ${again!.run?.sessionId}`);
+        const tipAfter = remoteTip(branch);
+        const runTip = execFileSync("git", ["rev-parse", `refs/heads/${branch}`], { cwd: checkout, encoding: "utf8" }).trim();
+        if (tipAfter !== runTip || !(tipBefore === tipAfter || isAncestor(tipBefore, tipAfter))) {
+          failures.push(`b:on-pr: PR 7's branch ${branch} on the remote is at ${tipAfter}, not the run's tip ${runTip} (was ${tipBefore})`);
         }
+        if (opened.length !== 1) failures.push(`b:one-pr: the stub holds pull requests ${opened.join(", ")}, not PR 7 alone`);
+        notes.push(`b: ${runs} run, attempt ${again!.attempts}, session kept, no review; pushed ${branch} ${tipBefore.slice(0, 8)} → ${tipAfter.slice(0, 8)}, waiting on #7 (${hold.id}), ${opened.length} PR`);
       }
     } else failures.push("b: not reached, the task never waited");
 

@@ -107,6 +107,7 @@ import {
   worktreeKey,
   worktreesCollection,
   type HeldWork,
+  type ExistingPullRequest,
   type Landed,
   type WorktreeCollection,
   type RecordedPlace,
@@ -941,6 +942,9 @@ const landedSchema = z.discriminatedUnion("kind", [
     branch: z.string(),
     base: z.string(),
     remote: z.string(),
+    // FIX-2781; BP-030.
+    /** `true` when the pull request was already open from the branch, which was pushed to it. Absent on one an accept opened. */
+    existing: z.boolean().optional(),
   }),
   z.object({ kind: z.literal("merge"), branch: z.string(), commit: z.string(), checkout: z.string(), from: z.string() }),
 ]);
@@ -1440,7 +1444,9 @@ function reviewPrompt(
 /** What the feed says once an accepted run's work landed: where it went, and what comes next. */
 function landedLine(landed: Landed): string {
   return landed.kind === "pull-request"
-    ? `Opened pull request #${landed.number} from ${landed.branch} into ${landed.base}: ${landed.url}. Next: review and merge it.`
+    ? landed.existing === true
+      ? `Pushed ${landed.branch} to pull request #${landed.number}, already open into ${landed.base}: ${landed.url}. Next: review and merge it.`
+      : `Opened pull request #${landed.number} from ${landed.branch} into ${landed.base}: ${landed.url}. Next: review and merge it.`
     : `Merged ${landed.from} into ${landed.branch} in ${landed.checkout}, now at ${landed.commit.slice(0, 12)}. Next: push ${landed.branch} when you're ready.`;
 }
 
@@ -1455,6 +1461,12 @@ const UNFIXABLE_LANDINGS = new Set(["land-unsupported", "no-push-remote", "no-pu
 function landFailedLine(failed: { land: LandHow; message: string }): string {
   const what = failed.land === "pull-request" ? "Opening the pull request" : "Merging locally";
   return `${what} failed: ${failed.message} Nothing was lost: try again, or choose the other way.`;
+}
+
+// FIX-2781.
+/** What a review asked again says about the pull request a run's work goes onto. */
+function onPullRequestLine(open: ExistingPullRequest): string {
+  return `The work goes onto pull request #${open.number}, already open from ${open.branch}: ${open.url}. No second pull request is opened.`;
 }
 
 /** The most characters a pull request's title keeps. */
@@ -3795,7 +3807,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     },
   });
 
-  // FIX-2163; FIX-2543.
+  // FIX-2163; FIX-2543; FIX-2781.
   /**
    * **The review of a run's changes**, between the judge and the
    * steer check before the settle; a pass-through unless `reviewChanges` is
@@ -3803,6 +3815,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * under its floor, or that no judge read) waits for a person's review when
    * its branch has commits over its base, or when they couldn't be read: only
    * a verified zero skips it. The manager's one suspension; questions hold.
+   *
+   * A run whose branch already has a pull request open from it is not asked
+   * about: its commits are pushed to that pull request, which is
+   * where a person reviews them, as an accept with `pull-request` lands it,
+   * with no review recorded. Only a push that fails asks, and then offers that
+   * pull request alone: never a second one, never a local merge.
    *
    * - **accepted**: the settle completes the task, with no harness run.
    *   An accept that names how the work lands (`land`) first
@@ -3842,7 +3860,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // Written only as the step ends, with the landing handed to the run (or
       // none), so a resume that runs this step again reads the state it started on.
       const reviewed = async (
-        outcome: "accepted" | "deadline" | "revise" | "cancelled",
+        outcome: "accepted" | "deadline" | "revise" | "cancelled" | null,
         landed: Landed | null = null,
         landing: ManagerState["landing"] = null,
       ) => ctx.sequencer!.patchState({ decided: { ...decision, reviewed: outcome, landed }, landing });
@@ -3853,7 +3871,21 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         host.land === undefined || host.landWays === undefined || decision.output.branch === null || state.workspacePath == null || state.branch == null
           ? []
           : await host.landWays({ cwd: state.workspacePath, branch: state.branch, baseRef: state.baseRef }).catch(() => []);
-      const lands: LandHow[] = ctx.runOnce === undefined ? await probe() : await ctx.runOnce(`review:lands:${state.steerSteps ?? 0}`, probe);
+      const ways: LandHow[] = ctx.runOnce === undefined ? await probe() : await ctx.runOnce(`review:lands:${state.steerSteps ?? 0}`, probe);
+      // **A branch with a pull request open from it lands there, unasked** (FIX-2781): its
+      // commits are pushed to that pull request, which is where a person reviews them, and
+      // neither a second pull request nor a local merge is offered. Asked once, as the ways are.
+      const probeOpen = async (): Promise<ExistingPullRequest | null> =>
+        host.existingPullRequest === undefined || !ways.includes("pull-request")
+          ? null
+          : await host
+              .existingPullRequest({ cwd: state.workspacePath!, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit })
+              .catch(() => null);
+      const onPullRequest =
+        ctx.runOnce === undefined ? await probeOpen() : await ctx.runOnce(`review:open-pull-request:${state.steerSteps ?? 0}`, probeOpen);
+      const lands: LandHow[] = onPullRequest === null ? ways : ["pull-request"];
+      // Whether a person answered this review: a landing nobody was asked about records no review.
+      let askedPerson = false;
       // The last landing that failed, shown on the review asked again, with a retry.
       let failed: { land: LandHow; message: string } | null = null;
       // A landing the coding session was handed is tried again first, as the
@@ -3861,7 +3893,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const pending = state.landing ?? null;
       let attempts: Array<{ land: LandHow; message: string }> = pending?.attempts ?? [];
       let again: HarnessReviewAnswer | null =
-        pending === null ? null : { verdict: "accepted", land: pending.land, ...(pending.words !== null ? { words: pending.words } : {}) };
+        pending !== null
+          ? { verdict: "accepted", land: pending.land, ...(pending.words !== null ? { words: pending.words } : {}) }
+          : onPullRequest !== null
+            ? { verdict: "accepted", land: "pull-request" }
+            : null;
       for (let round = 0; ; round++) {
         let answer: HarnessReviewAnswer;
         if (again !== null) {
@@ -3875,6 +3911,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             title: failed === null ? "Review the run's changes" : "The accepted changes didn't land",
             prompt:
               (failed === null ? "" : `${landFailedLine(failed)}\n\n`) +
+              (onPullRequest === null ? "" : `${onPullRequestLine(onPullRequest)}\n\n`) +
               reviewPrompt(changes, decision.output.branch, read, decision.diff ?? null, decision.checks ?? null),
             resumeSchema: harnessReviewAnswerSchema,
             data: {
@@ -3905,6 +3942,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           return input;
         }
         answer = harnessReviewAnswerSchema.parse((asked as { answer: unknown }).answer);
+        askedPerson = true;
         // A person's answer starts the landing's tries over.
         attempts = [];
         }
@@ -3933,7 +3971,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             // Asked again with the error and a retry; the feed says so through the review's prompt.
             continue;
           }
-          await reviewed("accepted", outcome.landed);
+          await reviewed(askedPerson || onPullRequest === null ? "accepted" : null, outcome.landed);
           ctx.emit.status(landedLine(outcome.landed), { transient: false });
           if (outcome.landed.kind === "pull-request") {
             followRecordedPullRequests(ctx, onPullRequestRecorded);

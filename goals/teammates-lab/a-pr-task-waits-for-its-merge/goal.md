@@ -1,11 +1,12 @@
 # teammates-lab › a PR task waits for its merge
 
-**Issue:** FIX-2578 (epic FIX-2369), PR 2 (the apps)
+**Issue:** FIX-2578 (epic FIX-2369), PR 2 (the apps); leg b reshaped by FIX-2781
 
 **Outcome:** In the Teammates lab, a coding task you accept with **Open a PR** does not complete
 when the pull request opens. It stays open, waiting on that pull request. A steer from its popup's
-box is one more run on the same attempt and coding session; that run's commit comes back for your
-review, and Open a PR again pushes it to the same pull request, so the task waits on it again. Once
+box is one more run on the same attempt and coding session; that run's commit is pushed to the
+same pull request with no review asked (a second pull request is never offered), so the task waits
+on it again. Once
 GitHub says the pull request merged, a steer completes the task with the pull request on its output
 and runs nothing.
 
@@ -25,10 +26,10 @@ PR (the GitHub-shaped origin was pinned).
   **a:open** after Accept with Open a PR (`{ verdict: "accepted", land: "pull-request" }`, as the
   popup answers it, through the Inbox client) the row is `in_progress` with an open `external` hold
   whose releaser names `…/7`.
-- **b:steer** a steer through the Inbox client's board `steer` (what the popup's Steer box calls)
-  brings the row back to a review; **b:one-run** exactly one harness run (the scripted coder's first
-  step, counted in the run session's items); **b:same-attempt**, **b:same-session**.
-  **b:waits-again** Open a PR again: `in_progress`, a new external hold on `…/7`; **b:one-pr** the
+- **b:no-review** a steer through the Inbox client's board `steer` (what the popup's Steer box
+  calls) does not bring the row back to a review; **b:waits-again** it is `in_progress` on a new
+  external hold on `…/7`; **b:one-run** exactly one harness run (the scripted coder's first step,
+  counted in the run session's items); **b:same-attempt**, **b:same-session**; **b:on-pr** PR 7's branch on the bare repository is at the run's branch tip; **b:one-pr** the
   stub still holds one pull request.
 - **c:completed** stub set to merged, a steer: `completed`, its output's `pullRequests` names PR 7
   merged at the stub's link; **c:no-run** no harness run after it.
@@ -36,7 +37,7 @@ PR (the GitHub-shaped origin was pinned).
 **Anti-game:** graded on the board's rows (`listTasks`, `getTask`), the run session's items, the
 stub's state and call logs, and the bare repository's branches; never on what the manager returned.
 Runs are counted from what the scripted coder narrates in the session. The steers go through the
-board, as the page sends them, so a board steer that left the wait open fails b:steer.
+board, as the page sends them, so a board steer that left the wait open fails b:waits-again.
 
 **Model:** n/a. The server gets no model credential.
 
@@ -51,3 +52,4 @@ completes the task); b and c are then not reached.
 |------|--------|-------|---------|-------|
 | 2026-11-07 | on 870b759f, this change pre-commit | n/a | PASS | a: Open a PR pushed the run's branch and opened #7; in_progress on attempt 1, one external hold. b: 1 run, attempt 1, same run session, back to review; Open a PR again: waiting on #7, still 1 PR. c: completed, output PR 7 merged, no run. 9 gh calls, 5 ssh calls |
 | 2026-11-07 | same | n/a | FAIL (expected, `no-wait`) | a:open: after Open a PR the row reads completed, no external hold; b and c not reached |
+| 2026-11-17 | on c0bf4f40, FIX-2781 pre-commit | n/a | PASS | a: Open a PR opened #7, waiting. b: 1 run, attempt 1, same session, no review; PR 7's branch on the remote at the run's tip, waiting on #7, 1 PR. c: completed, PR 7 merged, no run. 12 gh calls, 5 ssh calls |

@@ -96,6 +96,12 @@ export type Landed =
       readonly base: string;
       /** The remote pushed to, with any credential removed. */
       readonly remote: string;
+      /**
+       * `true` when the pull request was already open from the branch: the
+       * branch was pushed to it and no pull request was opened. Absent on a
+       * landing that opened one.
+       */
+      readonly existing?: boolean;
     }
   | {
       readonly kind: "merge";
@@ -141,6 +147,53 @@ export async function landWays(host: LandHost, target: LandTarget): Promise<Arra
     return repo === undefined ? ["merge"] : ["pull-request", "merge"];
   } catch {
     return [];
+  }
+}
+
+/** The pull request already open from a run's branch, as {@link existingPullRequest} finds it. */
+export interface ExistingPullRequest {
+  /** The pull request's web link. */
+  readonly url: string;
+  readonly number: number;
+  /** The branch it is open from: the run's own, or the one its checkout is on (see `LandTarget.baseCommit`). */
+  readonly branch: string;
+}
+
+// FIX-2781.
+/**
+ * The pull request already open from the branch {@link landRun} would land,
+ * asked before the review is, so a run whose work goes onto an open pull
+ * request is never offered a second one. The same checks `landRun` makes
+ * before it pushes (the branch, the pinned remote, the GitHub repository it
+ * names), then `gh pr list --head <branch> --state open`. Never throws:
+ * `null` when there is none, and when it can't be told.
+ */
+export async function existingPullRequest(
+  host: LandHost,
+  target: LandTarget,
+  options: { readonly gh?: string; readonly timeoutMs?: number } = {},
+): Promise<ExistingPullRequest | null> {
+  const deadline = Date.now() + (options.timeoutMs ?? RESTORE_TIMEOUT_MS);
+  const left = () => Math.max(1, deadline - Date.now());
+  const git = async (cwd: string, args: string[]) =>
+    (await run("git", [...NO_HOOKS, "-c", "core.fsmonitor=false", ...args], { cwd, timeoutMs: left(), env: host.env })).stdout.trim();
+  const ghDir = scratchDir();
+  try {
+    const branch = await branchToLand(git, target);
+    const base = await resolveBase(git, host.repo, host.pins, target.baseRef);
+    const remote = pushRemote(host.pins, base);
+    const repo = remote === undefined ? undefined : (host.pullRequestRepo ?? repoOf)(remote.url);
+    if (repo === undefined) return null;
+    const gh = { gh: options.gh ?? "gh", ghDir, ghEnv: { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) }, where: ["--repo", repo] };
+    const url = await openPullRequestOf(gh, branch, left());
+    const ref = url === undefined ? null : pullRequestRefFromUrl(url);
+    return url === undefined || ref === null ? null : { url, number: ref.number, branch };
+  } catch {
+    return null;
+  } finally {
+    try {
+      rmSync(ghDir, { recursive: true, force: true });
+    } catch {}
   }
 }
 
@@ -571,9 +624,17 @@ async function pushAndOpen(
   left: () => number,
   gh: { gh: string; ghDir: string; ghEnv: Record<string, string>; where: string[]; repo: string },
 ): Promise<Landed> {
-  const landedAt = (url: string): Landed => {
+  const landedAt = (url: string, existing = false): Landed => {
     const ref = pullRequestRefFromUrl(url)!;
-    return { kind: "pull-request", url, number: ref.number, branch: target.branch, base: remote.base, remote: redactRemote(remote.url) };
+    return {
+      kind: "pull-request",
+      url,
+      number: ref.number,
+      branch: target.branch,
+      base: remote.base,
+      remote: redactRemote(remote.url),
+      ...(existing ? { existing: true } : {}),
+    };
   };
   const failed = (step: string, error: unknown) =>
     new WorkspaceRefusedError(
@@ -594,7 +655,7 @@ async function pushAndOpen(
     } catch (error) {
       if (!(await remoteHolds(git, host, target, judged, left))) throw error;
     }
-    return landedAt(already);
+    return landedAt(already, true);
   }
   await push(git, host, target, remote, judged, left);
 

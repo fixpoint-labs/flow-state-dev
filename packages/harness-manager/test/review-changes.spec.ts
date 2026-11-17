@@ -26,6 +26,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
+  openHolds,
   resolveResourceCollection,
   type SuspensionHold,
   type Task,
@@ -123,6 +124,7 @@ function host(options: {
   remote?: boolean;
   clone?: boolean;
   landAttempts?: number;
+  awaitPullRequests?: boolean;
 }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-review-"));
   dirs.push(dir);
@@ -160,6 +162,7 @@ function host(options: {
     harness: stubHarness(options.script, seen),
     ...(options.reviewChanges === false ? {} : { reviewChanges: true }),
     ...(options.landAttempts === undefined ? {} : { landAttempts: options.landAttempts }),
+    ...(options.awaitPullRequests === true ? { awaitPullRequests: true } : {}),
   });
   const board = taskBoard({
     name: "review-board",
@@ -319,10 +322,19 @@ function host(options: {
       .filter((item) => item.type === "message")
       .map((item) => ({ role: item.role, text: (item.content ?? []).map((part: { text?: string }) => part.text ?? "").join("") }));
   };
+  /** Every status line any request wrote, oldest first. */
+  const statuses = async (): Promise<string[]> => {
+    const requests = (await (await runtime()).stores.request.list({ withItems: true })) as Array<{ items?: Array<Record<string, any>> }>;
+    return requests
+      .flatMap((request) => request.items ?? [])
+      .filter((item) => item.type === "status")
+      .map((item) => String(item.message ?? item.content ?? ""));
+  };
   return {
     act,
     row,
     until,
+    statuses,
     review,
     stop,
     reviewData,
@@ -854,4 +866,70 @@ process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify
       await h.dispose();
     }
   }, 90_000);
+});
+
+describe("a run on a branch with a pull request already open from it puts its work there, unasked (FIX-2781)", () => {
+  const PR_URL = "https://github.com/acme/widgets/pull/42";
+  const PATH = process.env.PATH;
+  let ghLog: string;
+  const ghCalls = () => (existsSync(ghLog) ? readFileSync(ghLog, "utf8").trim().split("\n") : []);
+  const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+
+  // `gh` is a stub on PATH: pull request #42 is open from whatever branch is asked about, and it is read back as open.
+  beforeAll(() => {
+    const bin = mkdtempSync(join(tmpdir(), "harness-manager-open-pr-gh-"));
+    dirs.push(bin);
+    ghLog = join(bin, "calls.log");
+    writeFileSync(
+      join(bin, "gh"),
+      `#!/usr/bin/env node
+const args = process.argv.slice(2);
+require("node:fs").appendFileSync(${JSON.stringify(ghLog)}, args.join(" ") + "\\n");
+const out =
+  args[0] === "pr" && args[1] === "list"
+    ? JSON.stringify([{ number: 42, url: ${JSON.stringify(PR_URL)} }])
+    : args[0] === "pr" && args[1] === "create"
+      ? "https://github.com/acme/widgets/pull/43\\n"
+      : args[0] === "api" && /pulls\\/42$/.test(args[args.length - 1])
+        ? JSON.stringify({ number: 42, html_url: ${JSON.stringify(PR_URL)}, state: "open", merged: false, head: { ref: "x", sha: "0" } })
+        : "[]";
+process.stdout.write(out);
+`,
+    );
+    chmodSync(join(bin, "gh"), 0o755);
+    process.env.PATH = `${bin}${delimiter}${PATH ?? ""}`;
+  });
+  afterAll(() => {
+    process.env.PATH = PATH;
+  });
+
+  // Jake's report: eng.coder pushed a fix for review feedback to the branch of the pull request it had opened, and
+  // was then asked "Open a PR / Merge locally" about it. The work already had its pull request; a second one is never offered.
+  it("pushes the run's commit to that pull request, asks no review offering Open a PR or Merge locally, and waits on it", async () => {
+    const h = host({ script: ["commits"], remote: true, awaitPullRequests: true });
+    const calls = ghCalls().length;
+    try {
+      await h.start();
+      const settled = await h.until(
+        (t) => h.waiting(t) || openHolds(t).some((hold) => hold.ask.kind === "external"),
+        "the review or the wait on its pull request",
+      );
+      // No review was asked: the pull request is where the person reviews the work.
+      expect(h.review(settled)).toBeUndefined();
+      expect(openHolds(settled).filter((hold) => hold.ask.kind === "external").map((hold) => hold.ask.prompt).join(" ")).toContain("#42");
+
+      // The commit is on the remote's copy of the branch, and no second pull request was opened.
+      const cwd = h.seen[0]!.cwd;
+      const branch = git(cwd, "rev-parse", "--abbrev-ref", "HEAD");
+      expect(git(h.remote, "rev-parse", `refs/heads/${branch}`)).toBe(git(cwd, "rev-parse", "HEAD"));
+      expect(ghCalls().slice(calls).filter((call) => call.startsWith("pr create"))).toEqual([]);
+
+      // The stream says where the work went, and the session's record holds the pull request the task waits on.
+      expect((await h.statuses()).some((line) => line.startsWith(`Pushed ${branch} to pull request #42`) && line.includes(PR_URL))).toBe(true);
+      expect(await h.pullRequests(settled.run!.sessionId!)).toEqual([`${OBSERVED_PULL_REQUESTS}/github.com/acme/widgets/42`]);
+      expect(h.seen).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
 });

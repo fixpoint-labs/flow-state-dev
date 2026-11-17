@@ -171,6 +171,47 @@ describe("the ways a run can land, asked before its review", () => {
   });
 });
 
+// FIX-2781.
+describe("the pull request already open from a run's branch, asked before its review", () => {
+  /** `gh` on PATH, as the host runs it, listing `listed` for any branch. */
+  const ghOnPath = (listed: string) => {
+    writeFileSync(gh, `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$2" = "list" ]; then echo '${listed}'; else echo '${PR_URL}'; fi\n`);
+    vi.stubEnv("PATH", `${join(gh, "..")}:${process.env.PATH ?? ""}`);
+  };
+
+  it("finds the one open from the branch the run's work is on, in the remote's GitHub repository", async () => {
+    const { h, place } = await runWithCommit();
+    git(place.cwd, "branch", "-m", "fsd/run-1", "teammates/tidy-task-list");
+    ghOnPath('[{"number":5027,"url":"https://github.com/acme/widgets/pull/5027"}]');
+
+    expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit })).toEqual({
+      url: "https://github.com/acme/widgets/pull/5027",
+      number: 5027,
+      branch: "teammates/tidy-task-list",
+    });
+    expect(ghCalls()).toEqual([`pr list --repo ${GITHUB_REPO} --head teammates/tidy-task-list --state open --json number,url --limit 1`]);
+  });
+
+  it("finds none when GitHub lists none open, and asks nothing when the remote names no GitHub repository", async () => {
+    const { h, place } = await runWithCommit();
+    ghOnPath("[]");
+    expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).toBeNull();
+
+    const before = ghCalls().length;
+    const bare = host(null);
+    const other = await bare.provision({ kind: "repo", repo }, { place: ["run-2"], branch: "fsd/run-2" });
+    expect(await bare.existingPullRequest!({ cwd: other.cwd, branch: "fsd/run-2" })).toBeNull();
+    expect(ghCalls()).toHaveLength(before);
+  });
+
+  it("finds none, rather than failing, when gh can't be asked", async () => {
+    const { h, place } = await runWithCommit();
+    writeFileSync(gh, "#!/bin/sh\necho 'gh: not logged in' >&2\nexit 1\n");
+    vi.stubEnv("PATH", `${join(gh, "..")}:${process.env.PATH ?? ""}`);
+    expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).toBeNull();
+  });
+});
+
 describe("accepting a run by merging it locally", () => {
   it("lands the run's commit on the base branch of the person's checkout", async () => {
     const { h, place, commit } = await runWithCommit();
@@ -451,7 +492,7 @@ describe("landing a run whose work moved off its branch", () => {
       { kind: "pull-request", title: "t", body: "b", gh },
     );
 
-    expect(landed).toMatchObject({ kind: "pull-request", number: 5027, branch: "teammates/tidy-task-list" });
+    expect(landed).toMatchObject({ kind: "pull-request", number: 5027, branch: "teammates/tidy-task-list", existing: true });
     expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
     // The branch is still pushed, so a commit made since reaches the pull request.
     expect(upstream.rev("refs/heads/teammates/tidy-task-list")).toBe(commit);
