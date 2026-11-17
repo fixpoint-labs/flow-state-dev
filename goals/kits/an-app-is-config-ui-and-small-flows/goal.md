@@ -24,16 +24,16 @@ harnesses kit's slot, coding flow and board view (spec D2).
 - `a:inventory` — the lab's inventory rules (`labs/claude-code-style/test/inventory-rules.ts`, which its `pnpm test` runs) with no file exempt: no adapter, no code in `workforce/`, every file classed (L1), ER-1's caps (L2), no UI file reaching the server itself, `src/lab.ts` included (L3), no hand-written row type (L4), no host wiring (H), no own-session helper anywhere in product source (S).
 - `b:installs` — the teammates host lists the workforce and harnesses kits and passes the host rule; it serves the kit's `coder` flow and no coding flow of its own; `goals/teammates-lab/a-coding-task-waits-for-your-review/` passes on it.
 - `b:folder` — `workforce/teams/teammates/notes.json`, planted, stops the host starting, and the refusal names it.
-- `b:one-home` — no app's `workforce/` holds code, and no flow an app keeps in `flows/` is defined by a package too.
+- `b:one-home` — no app's `workforce/` holds code, and no flow an app keeps in `flows/` is defined by a package too. Definitions are read whole, across lines; the leg checks its reader finds a multiline definition first.
 - `w:routes` — every route of the router's table that isn't a read is in a class; the content routes' create, update and delete answer 501 at user and org scope on a skills collection (exempt by name until FIX-2633).
 - `w:no-runby` — a write to a user resource with no `runBy` is refused by the action route, and to a user collection with no `runBy` by a content route; nothing is stored.
-- `w:recorded` — every user or org resource version written while leg a ran matches a request by the signed-in user, in a flow session, running when the version was seen.
+- `w:recorded` — every user or org resource write while leg a ran (its probes and the seam's pins included), and every write teammates' screen makes to the user's workers on leg b's host (hire, edit, reset, fire), matches a request by the signed-in user, in a session the store holds, running at the write, that touched that resource: it streamed a `resource_change` for that scope and key, or ran in the server's write session for that resource. Writes are read from a trigger log the goal installs on the store (`closure_write_log`), so a version written between two looks, or a delete, is never missed; a version gap in the log fails.
 - `seam:pin-reaches-view` — five pins written through the default write flow each reach `pinsSeen`, a user view on another flow (the goal's probe flow) that reads the lab's pins, within 1 s of the write landing, watched with no poll timer (O2's host-wide publish, FIX-2623 against FIX-2624).
 - `j2:renders` — Shift Manager over DevTeam opens Projects (`/p/storefront`), Usage and Schedules (`/routines`, titled *Routines*): each draws its title, with no failure and no page error.
 - `j2:no-read-session` — every session made while the page read has a request, a task or a run.
 - `j2:read-writes-nothing` — opening Schedules adds 0 requests; opening Usage adds only its one Re-check on the usage flow (FIX-2624 kept it: opening Usage asks for a fresh reading).
 - `j2:identity` — the project drawn is one the store holds under the identity read's org. DevTeam serves one org, so the spec's "one user in two orgs" isn't set up: that needs a host option DevTeam lacks.
-- `j4:one-row` — after the board's first read, a re-read on a task's change carries one row, not the board.
+- `j4:one-row` — the goal files a second task, so the board holds two. Every re-read the page sends on a notice that names board rows (`changed.ids`, each a row key) answers only those rows, flagged `partial`. First reads, reloads and notices that name other ids are counted apart.
 - `j4:no-rows` — no socket frame carries the task's title or goal.
 - `j5:one-hook` — the glossary's vocabulary sweep (`goals/vocabulary/one-word-per-thing/sweep.mjs`) passes the tree and fails a planted `reads: ReadConfig` (`flow-reads`).
 - `j5:no-model` — a model call in a view is refused (`view_model_call`) at session, user and org scope, on the lab's host.
@@ -58,6 +58,9 @@ window shows whether it fires while push is up.
 - `blind-recorder` — the view route answers the coding board's view and the seam's `pinsSeen` with no topics, so no change reaches their watchers. Must FAIL `a:row-changes` and `seam:pin-reaches-view`.
 - `direct-write` — the content routes write at user and org scope instead of answering 501. Must FAIL `w:routes` and `w:recorded`.
 - `schedules-write` — Shift Manager's pages built from a copy whose Schedules sends a write on each read. Must FAIL `j2:read-writes-nothing`.
+- `direct-write-busy` — `direct-write` made while the lead answers a line, so another request of the user's runs. Must FAIL `w:recorded`, which a match by time alone passes.
+- `half-partial` — every other change-driven re-read of the coding board drops its notice and answers the whole board. Must FAIL `j4:one-row`, which "some re-read was partial" passes.
+- `no-work-ask` — the lead is asked for no work, one attempt. Must FAIL `a:delegate`: running out of attempts is graded, never a pass.
 - `skip-unknown` — the kits' claim pass reports nothing unclaimed (FIX-2626's control). Must FAIL `b:folder`.
 
 ## Verdict log
@@ -74,3 +77,8 @@ window shows whether it fires while push is up.
 | 2026-11-17 | `3665d07a44` | openai/gpt-5.4 | FAIL (expected) | `blind-recorder`: `a:row-changes` and `seam:pin-reaches-view` (no pin reached `pinsSeen` in 3 s), with `a:delegate` and `a:pin` |
 | 2026-11-17 | `6cbddb493b` | — | FAIL | `j2`: renders, read-writes-nothing (Schedules 0, Usage 1 Re-check) and identity (devforce-lab, 3 projects) PASS; `j2:no-read-session` FAILS: opening a project (`Project.tsx`, `ensureWorkerSession` for its coordinator) makes session `wks_…` (coordinator) with no request |
 | 2026-11-17 | `6cbddb493b` | — | FAIL (expected) | `schedules-write`: `j2:read-writes-nothing`: opening Schedules added 1 request (`workforce-roster`) |
+| 2026-11-17 | `b79b3b9279` | openai/gpt-5.4, scripted coder | FAIL | Run 3, after the grader fixes. Only `a:inventory` (FIX-2757). `w:recorded` 48 of 48 writes tied to a request that touched the resource, 0 gaps in the trigger log; `j4:one-row` 8 re-reads on notices naming board rows, all partial with 1 row, the board at 2 tasks; 3 re-reads on run notices answered whole and are counted apart; seam, j5 as before |
+| 2026-11-17 | `f756a6a7a0` | openai/gpt-5.4 | FAIL (expected) | `direct-write-busy`: `w:recorded` fails 2 writes made while another request ran ("1 other request(s) were running"): a time-only match passed them. `w:routes`, `w:no-runby` too |
+| 2026-11-17 | `b79b3b9279` | openai/gpt-5.4 | FAIL (expected) | `half-partial`: `j4:one-row` fails 6 whole answers (2 rows) to notices naming 1 row; 5 others were partial, which "some re-read was partial" passed |
+| 2026-11-17 | `f756a6a7a0` | openai/gpt-5.4 | FAIL (expected) | `no-work-ask`: `a:delegate`: nothing to grade in 1 attempt. Before the fix, running out of attempts recorded no failure |
+| 2026-11-17 | `f756a6a7a0` | Cursor `composer-2.5` | PASS | Leg b after main brought FIX-2758: `b:installs` (host rule clean), `w:recorded` (teammates) 4 of 4 writes (hire, edit, reset, fire on `workforce-roster`), `b:folder`, `b:one-home` |
