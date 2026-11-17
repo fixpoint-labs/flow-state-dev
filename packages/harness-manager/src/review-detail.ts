@@ -4,8 +4,9 @@
  * With `reviewChanges` on, a run that made commits stops with
  * `suspendForUser({ kind: "review" })`, and the stop's `data` holds its
  * branch, commit count, commit subjects, the judge's verdict, the checks
- * the phase ran (`commandCheck`), and the ways an accept can land the work
- * (with the last landing that failed). This reads
+ * the phase ran (`commandCheck`), the ways an accept can land the work
+ * (with the last landing that failed), what the task asked, the run's own
+ * summary, the pull requests open on its branch and the files it changed. This reads
  * that data as {@link ReviewDetail}, the shape the registry's `review-hold`
  * card takes as plain props, so an app never spells this package's field
  * names itself. Browser-safe: it imports nothing.
@@ -42,6 +43,33 @@ export interface ReviewDetail {
    * none ran.
    */
   checks: ReviewCheck[] | null;
+  // FIX-2782. Optional, as `lands` is, so a review built by hand needn't set them; the reader always does.
+  /** What the task asked for: its goal. `null` when it had none. */
+  goal?: string | null;
+  /** The run's own summary: its final message, cut. `null` when it said nothing. */
+  answer?: string | null;
+  /** The pull requests open on the run's branch, to look at the work there. Empty when there are none. */
+  pullRequests?: ReviewPullRequest[];
+  /** Each file the commits changed and its lines, `null` when they couldn't be read. */
+  files?: ReviewFile[] | null;
+  /** How many files changed in all (the list may stop short of it); `null` when unread. */
+  fileCount?: number | null;
+  /** Lines added and removed in all; `null` when unread. */
+  added?: number | null;
+  removed?: number | null;
+}
+
+/** A pull request the review links to. */
+export interface ReviewPullRequest {
+  url: string;
+  number: number;
+}
+
+/** One changed file: its path, and its lines (`null` for a binary file). */
+export interface ReviewFile {
+  path: string;
+  added: number | null;
+  removed: number | null;
 }
 
 /** One check the phase ran: the shape of `commandCheck`'s result, spelled here so this file imports nothing. */
@@ -65,6 +93,24 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /** One landing's try, or `null` when the value isn't one. */
 function landAttemptOf(value: unknown): { land: ReviewLand; message: string } | null {
   return isRecord(value) && isLand(value.land) && typeof value.message === "string" ? { land: value.land, message: value.message } : null;
+}
+
+const isCount = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0;
+const countOrNull = (value: unknown): number | null => (isCount(value) ? value : null);
+const textOrNull = (value: unknown): string | null => (typeof value === "string" && value.trim() !== "" ? value : null);
+
+/** The pull requests, dropping any entry that isn't one. */
+function pullRequestsOf(value: unknown): ReviewPullRequest[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((pr) => (isRecord(pr) && typeof pr.url === "string" && isCount(pr.number) ? [{ url: pr.url, number: pr.number }] : []));
+}
+
+/** The changed files, or `null` when they weren't read. */
+function filesOf(value: unknown): ReviewFile[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.flatMap((file) =>
+    isRecord(file) && typeof file.path === "string" ? [{ path: file.path, added: countOrNull(file.added), removed: countOrNull(file.removed) }] : [],
+  );
 }
 
 /** The judge's verdict, or `null` when it isn't one. */
@@ -109,6 +155,13 @@ export function reviewDetail(data: unknown): ReviewDetail | null {
       ? data.landAttempts.map(landAttemptOf).filter((attempt): attempt is { land: ReviewLand; message: string } => attempt !== null)
       : [],
     checks: checksOf(data.checks),
+    goal: textOrNull(data.goal),
+    answer: textOrNull(data.answer),
+    pullRequests: pullRequestsOf(data.pullRequests),
+    files: filesOf(data.files),
+    fileCount: countOrNull(data.fileCount),
+    added: countOrNull(data.added),
+    removed: countOrNull(data.removed),
   };
   // Nothing readable is no review: the card then shows the stop's prompt instead.
   const readable = detail.branch !== null || detail.commits !== null || detail.subjects.length > 0 || detail.judge !== null || detail.checks !== null;

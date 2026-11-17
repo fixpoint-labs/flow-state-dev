@@ -3957,6 +3957,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               landFailed: failed,
               // Every try of the last landing, oldest first (FIX-2658).
               landAttempts: attempts,
+              // What was asked, what the run says it did, and where to look at it (FIX-2782).
+              goal: state.goal ?? null,
+              answer: decision.output.answer,
+              pullRequests: (decision.openPullRequests ?? []).map((pr) => ({ url: pr.url, number: pr.number })),
               // The review card reads these fields through reviewDetail: the type keeps writer and reader in step.
             } satisfies ReviewDetail & Record<string, unknown>,
           });

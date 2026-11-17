@@ -373,6 +373,14 @@ describe("a coding run that made changes waits for a person's review", () => {
         landFailed: null,
         landAttempts: [],
         checks: null,
+        // What was asked, the run's own summary, and its changed files (FIX-2782); no pull request is open.
+        goal: "the feature",
+        answer: "done",
+        pullRequests: [],
+        files: [{ path: "change-1.txt", added: 1, removed: 0 }],
+        fileCount: 1,
+        added: 1,
+        removed: 0,
       });
       expect(hold.ask.prompt).toContain(`1 commit on ${detail!.branch}`);
       expect(held.attempts).toBe(1);
@@ -397,6 +405,16 @@ describe("a coding run that made changes waits for a person's review", () => {
         fileCount: 1,
         added: 1,
         removed: 0,
+      });
+
+      // FIX-2782: what was asked and the run's own summary are on the stop, so the card can say them;
+      // the files are read for the card too, each with its lines.
+      expect(reviewDetail(await h.reviewData(held))).toMatchObject({
+        goal: "the feature",
+        answer: "done",
+        pullRequests: [],
+        files: [{ path: "change-1.txt", added: 1, removed: 0 }],
+        fileCount: 1,
       });
 
       const listed = await h.readChanges({});
@@ -948,6 +966,8 @@ if (args[0] === "api" && head !== null) {
       const held = await h.until(h.waiting, "the review");
       const detail = reviewDetail((await h.stop(h.review(held)!))?.data);
       expect(detail).toMatchObject({ lands: ["pull-request"], landFailed: { land: "pull-request" } });
+      // FIX-2782: the card has the pull request to link to, beside the ask and the run's own summary.
+      expect(detail).toMatchObject({ goal: "the feature", answer: "done", pullRequests: [{ url: PR_URL, number: 42 }] });
       expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
     } finally {
       await h.dispose();

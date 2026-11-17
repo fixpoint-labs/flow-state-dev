@@ -10,9 +10,10 @@ import { RunChecks, type RunCheck } from "./run-checks";
 
 /**
  * A review waiting on the user: **Accept** or **Ask for changes**. For a
- * coding run's review (harness-manager's `reviewChanges`) it shows the
- * commits the run made on its branch, the project's checks (`RunChecks`) and
- * the judge's verdict; for any other
+ * coding run's review (harness-manager's `reviewChanges`) it shows what the
+ * task asked, the run's own summary, the pull request open on its branch, the
+ * commits the run made on its branch, the files they changed, the project's
+ * checks (`RunChecks`) and the judge's verdict with its whole reason; for any other
  * review it shows the stop's prompt, which holds the work under review.
  *
  * The card sends only `{ verdict: "accepted" }` or `{ verdict: "revise",
@@ -53,6 +54,18 @@ export interface ReviewDetail {
   landAttempts?: Array<{ land: ReviewLand; message: string }>;
   /** The checks the run's phase ran (harness-manager's `commandCheck`), or `null`/absent when none ran. */
   checks?: RunCheck[] | null;
+  /** What the task asked for, or `null`/absent when it had no goal. */
+  goal?: string | null;
+  /** The run's own summary (its final message), or `null`/absent when it said nothing. */
+  answer?: string | null;
+  /** The pull requests open on the run's branch; absent or empty when none. */
+  pullRequests?: Array<{ url: string; number: number }>;
+  /** Each file the commits changed and its lines; `null`/absent when unread. */
+  files?: Array<{ path: string; added: number | null; removed: number | null }> | null;
+  /** How many files changed in all, and the lines added and removed; `null`/absent when unread. */
+  fileCount?: number | null;
+  added?: number | null;
+  removed?: number | null;
 }
 
 /** A way an accept lands the work: push and open a pull request, or merge into your checkout. */
@@ -159,6 +172,14 @@ export function commitCount(review: ReviewDetail): string {
   return `${review.commits} commit${review.commits === 1 ? "" : "s"}`;
 }
 
+/** "2 files changed (+13 −2)", or `null` when the files weren't read. */
+export function filesLine(review: ReviewDetail): string | null {
+  const count = review.fileCount ?? review.files?.length ?? null;
+  if (count === null || review.files == null) return null;
+  const lines = review.added != null && review.removed != null ? ` (+${review.added} −${review.removed})` : "";
+  return `${count} file${count === 1 ? "" : "s"} changed${lines}`;
+}
+
 /** "Judge: done, 0.91", or that no judge read the run. */
 export function judgeLine(review: ReviewDetail): string {
   if (review.judge === null) return "No judge read this run";
@@ -254,6 +275,27 @@ export function ReviewHold({
       ) : null}
       {review ? (
         <>
+          {review.goal ? (
+            <div className="mt-0.5 text-xs" data-review-goal>
+              <span className="font-semibold">Asked: </span>
+              <MarkdownText inline text={review.goal} />
+            </div>
+          ) : null}
+          {review.answer ? (
+            <div className="mt-1 text-xs" data-review-answer>
+              <div className="font-semibold">What the run says it did</div>
+              <MarkdownText text={review.answer} />
+            </div>
+          ) : null}
+          {(review.pullRequests?.length ?? 0) > 0 ? (
+            <div className="mt-1 text-xs" data-review-pull-requests>
+              {review.pullRequests!.map((pr) => (
+                <a key={pr.url} href={pr.url} target="_blank" rel="noreferrer" className="mr-2 font-semibold underline">
+                  Pull request #{pr.number}
+                </a>
+              ))}
+            </div>
+          ) : null}
           <div className="mt-0.5 flex min-w-0 flex-wrap gap-x-1 text-xs">
             <span className="shrink-0" data-review-commits>
               {commitCount(review)}
@@ -278,14 +320,13 @@ export function ReviewHold({
               {more > 0 ? <li>· and {more} more</li> : null}
             </ul>
           ) : null}
+          <ReviewFiles review={review} />
           {children}
           <RunChecks checks={review.checks ?? null} className="mt-1.5" />
           <div className="mt-1.5 text-xs" data-review-judge>
             <span className="font-semibold">{judgeLine(review)}</span>
             {review.judge && review.judge.reason !== "" ? (
-              <p title={review.judge.reason} className="mt-0.5 line-clamp-3 text-muted-foreground">
-                {review.judge.reason}
-              </p>
+              <p className="mt-0.5 whitespace-pre-wrap text-muted-foreground">{review.judge.reason}</p>
             ) : null}
           </div>
         </>
@@ -362,6 +403,38 @@ export function ReviewHold({
         </p>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * The files the run's commits changed, each with its lines. With one pull
+ * request open on the branch, a file opens that pull request's diff.
+ */
+function ReviewFiles({ review }: { review: ReviewDetail }) {
+  const line = filesLine(review);
+  if (line === null) return null;
+  const files = review.files ?? [];
+  const diff = review.pullRequests?.length === 1 ? `${review.pullRequests[0]!.url}/files` : null;
+  return (
+    <details open className="mt-1 text-xs" data-review-files>
+      <summary className="cursor-pointer">{line}</summary>
+      <ul className="mt-0.5 font-mono [overflow-wrap:anywhere]">
+        {files.map((file) => (
+          <li key={file.path} className="flex min-w-0 gap-2">
+            {diff === null ? (
+              <span className="min-w-0">{file.path}</span>
+            ) : (
+              <a href={diff} target="_blank" rel="noreferrer" className="min-w-0 underline">
+                {file.path}
+              </a>
+            )}
+            <span className="shrink-0 text-muted-foreground">
+              {file.added === null || file.removed === null ? "binary" : `+${file.added} −${file.removed}`}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
