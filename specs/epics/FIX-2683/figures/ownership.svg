@@ -1,0 +1,109 @@
+<svg viewBox="0 0 940 354" role="img" aria-label="Who owns what: eight rules across the children of FIX-2683. Columns: inv, the inventory child; asks, the pending-asks read; t1 to t3, Teammates' people, conversations and task cards; s1 to s4, Shift Manager's Inbox and boards, directory, conversations, and the snapshot's deletion; coord, the coordinator; and the closure. ER-1, screens read only views, direct reads and package hooks: owned by inv, used by every job child. ER-2, an allowlist per app that only shrinks: owned by inv, used by every job child. ER-3, no legacy path: owned by coord, used by every job child. ER-4, neither read model grows, a line ratchet: owned by inv. ER-5, an answer across sessions is one server read: owned by s1, used by asks, s2 and s4. ER-6, pending asks scoped to the user's tenant, expired and resolved ones gone: owned by asks, used by s1. ER-7, no new kit or shared package: owned by coord, used by every job child. ER-8, deletion file by file, the snapshot last in s4: owned by coord, used by every job child. The closure checks ER-1, 2, 3, 5, 6 and 8."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --ink:#191C21; --ink-3:#7A828B; --rule:#D5D4CB; --accent:#3E4E8C;
+            --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --ink:#E6E8E5; --ink-3:#737B81; --rule:#2B3135; --accent:#8B9BD8;
+              --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; } }
+    .bg    { fill:var(--surface); }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .o     { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .u     { fill:var(--accent-soft); }
+    .c     { fill:var(--surface); stroke:var(--accent); stroke-width:1; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.05em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; font-weight:600; }
+    .t-id  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-o   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; font-weight:600; }
+    .t-u   { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="354"/>
+  <g id="columns">
+    <text class="t-col" x="470" y="34" text-anchor="middle">inv</text>
+    <text class="t-col" x="514" y="34" text-anchor="middle">asks</text>
+    <text class="t-col" x="558" y="34" text-anchor="middle">t1</text>
+    <text class="t-col" x="602" y="34" text-anchor="middle">t2</text>
+    <text class="t-col" x="646" y="34" text-anchor="middle">t3</text>
+    <text class="t-col" x="690" y="34" text-anchor="middle">s1</text>
+    <text class="t-col" x="734" y="34" text-anchor="middle">s2</text>
+    <text class="t-col" x="778" y="34" text-anchor="middle">s3</text>
+    <text class="t-col" x="822" y="34" text-anchor="middle">s4</text>
+    <text class="t-col" x="866" y="34" text-anchor="middle">coord</text>
+    <text class="t-col" x="910" y="34" text-anchor="middle">close</text>
+    <text class="t-lbl" x="602" y="50" text-anchor="middle">TEAMMATES</text>
+    <text class="t-lbl" x="756" y="50" text-anchor="middle">SHIFT MANAGER</text>
+    <line class="row" x1="16" y1="60" x2="932" y2="60"/>
+  </g>
+  <g id="er-1">
+    <text class="t-id" x="16" y="80">ER-1</text>
+    <text class="t-b" x="64" y="80">Screens read only views, direct reads, hooks</text>
+    <rect class="o" x="450" y="64" width="40" height="22" rx="3"/><text class="t-o" x="470" y="79" text-anchor="middle">owns</text>
+    <rect class="u" x="538" y="64" width="304" height="22" rx="3"/><text class="t-u" x="690" y="79" text-anchor="middle">uses · every job child</text>
+    <rect class="c" x="890" y="64" width="40" height="22" rx="3"/><text class="t-u" x="910" y="79" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="90" x2="932" y2="90"/>
+  </g>
+  <g id="er-2">
+    <text class="t-id" x="16" y="110">ER-2</text>
+    <text class="t-b" x="64" y="110">An allowlist per app that only shrinks</text>
+    <rect class="o" x="450" y="94" width="40" height="22" rx="3"/><text class="t-o" x="470" y="109" text-anchor="middle">owns</text>
+    <rect class="u" x="538" y="94" width="304" height="22" rx="3"/><text class="t-u" x="690" y="109" text-anchor="middle">uses · every job child</text>
+    <rect class="c" x="890" y="94" width="40" height="22" rx="3"/><text class="t-u" x="910" y="109" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="120" x2="932" y2="120"/>
+  </g>
+  <g id="er-3">
+    <text class="t-id" x="16" y="140">ER-3</text>
+    <text class="t-b" x="64" y="140">No legacy path: the old one goes in the same PR</text>
+    <rect class="u" x="538" y="124" width="304" height="22" rx="3"/><text class="t-u" x="690" y="139" text-anchor="middle">uses · every job child</text>
+    <rect class="o" x="846" y="124" width="40" height="22" rx="3"/><text class="t-o" x="866" y="139" text-anchor="middle">owns</text>
+    <rect class="c" x="890" y="124" width="40" height="22" rx="3"/><text class="t-u" x="910" y="139" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="150" x2="932" y2="150"/>
+  </g>
+  <g id="er-4">
+    <text class="t-id" x="16" y="170">ER-4</text>
+    <text class="t-b" x="64" y="170">Neither read model grows: a line ratchet</text>
+    <rect class="o" x="450" y="154" width="40" height="22" rx="3"/><text class="t-o" x="470" y="169" text-anchor="middle">owns</text>
+    <line class="row" x1="16" y1="180" x2="932" y2="180"/>
+  </g>
+  <g id="er-5">
+    <text class="t-id" x="16" y="200">ER-5</text>
+    <text class="t-b" x="64" y="200">An answer across sessions is one server read</text>
+    <rect class="u" x="494" y="184" width="40" height="22" rx="3"/><text class="t-u" x="514" y="199" text-anchor="middle">uses</text>
+    <rect class="o" x="670" y="184" width="40" height="22" rx="3"/><text class="t-o" x="690" y="199" text-anchor="middle">owns</text>
+    <rect class="u" x="714" y="184" width="40" height="22" rx="3"/><text class="t-u" x="734" y="199" text-anchor="middle">uses</text>
+    <rect class="u" x="802" y="184" width="40" height="22" rx="3"/><text class="t-u" x="822" y="199" text-anchor="middle">uses</text>
+    <rect class="c" x="890" y="184" width="40" height="22" rx="3"/><text class="t-u" x="910" y="199" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="210" x2="932" y2="210"/>
+  </g>
+  <g id="er-6">
+    <text class="t-id" x="16" y="230">ER-6</text>
+    <text class="t-b" x="64" y="230">Pending asks: the user's tenant only, none stale</text>
+    <rect class="o" x="494" y="214" width="40" height="22" rx="3"/><text class="t-o" x="514" y="229" text-anchor="middle">owns</text>
+    <rect class="u" x="670" y="214" width="40" height="22" rx="3"/><text class="t-u" x="690" y="229" text-anchor="middle">uses</text>
+    <rect class="c" x="890" y="214" width="40" height="22" rx="3"/><text class="t-u" x="910" y="229" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="240" x2="932" y2="240"/>
+  </g>
+  <g id="er-7">
+    <text class="t-id" x="16" y="260">ER-7</text>
+    <text class="t-b" x="64" y="260">No new kit or shared package; copies stay copies</text>
+    <rect class="u" x="538" y="244" width="304" height="22" rx="3"/><text class="t-u" x="690" y="259" text-anchor="middle">uses · every job child</text>
+    <rect class="o" x="846" y="244" width="40" height="22" rx="3"/><text class="t-o" x="866" y="259" text-anchor="middle">owns</text>
+    <line class="row" x1="16" y1="270" x2="932" y2="270"/>
+  </g>
+  <g id="er-8">
+    <text class="t-id" x="16" y="290">ER-8</text>
+    <text class="t-b" x="64" y="290">Deletion file by file; the snapshot goes last, in s4</text>
+    <rect class="u" x="538" y="274" width="304" height="22" rx="3"/><text class="t-u" x="690" y="289" text-anchor="middle">uses · every job child</text>
+    <rect class="o" x="846" y="274" width="40" height="22" rx="3"/><text class="t-o" x="866" y="289" text-anchor="middle">owns</text>
+    <rect class="c" x="890" y="274" width="40" height="22" rx="3"/><text class="t-u" x="910" y="289" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="300" x2="932" y2="300"/>
+  </g>
+  <g id="legend">
+    <rect class="o" x="16" y="320" width="40" height="18" rx="3"/>
+    <text class="t-b" x="64" y="333">decides or builds it · exactly one per rule</text>
+    <rect class="u" x="360" y="320" width="40" height="18" rx="3"/>
+    <text class="t-b" x="408" y="333">uses it · must not decide again</text>
+    <rect class="c" x="640" y="320" width="40" height="18" rx="3"/>
+    <text class="t-b" x="688" y="333">the closure checks it</text>
+  </g>
+</svg>
