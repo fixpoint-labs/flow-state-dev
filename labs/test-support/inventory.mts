@@ -266,14 +266,17 @@ function reachingTheServer(root: string, entry: string): Finding[] {
 /** The names `app` lists as screen types in `rel`. */
 const screenNames = (app: AppInventory, rel: string) => (app.screenTypes[rel] ?? []).map((entry) => (typeof entry === "string" ? entry : entry.name));
 
+/** The object types a module's text exports, by name: a union of string literals names no row, so it isn't one. */
+const exportedTypes = (text: string) =>
+  [...text.matchAll(/^export\s+(?:interface\s+(\w+)\b[^=\n]*|type\s+(\w+)(?:<[^>]*>)?\s*=\s*(.*))$/gm)]
+    .filter((m) => m[1] !== undefined || !/^("[^"]*"\s*\|?\s*)+;?$/.test(m[3]!.trim()))
+    .map((m) => m[1] ?? m[2]!);
+
 /** L4: exported object types in `src/`, the entry and `typesSkip` aside, that aren't the app's screen types. */
 function unlistedTypes(app: AppInventory, root: string): Finding[] {
   const modules = filesUnder("src", root).filter((rel) => /\.tsx?$/.test(rel) && rel !== app.entry && !(app.typesSkip ?? []).some((dir) => rel.startsWith(dir)));
   return modules.flatMap((rel) =>
-    [...readFileSync(join(root, rel), "utf8").matchAll(/^export\s+(?:interface\s+(\w+)\b[^=\n]*|type\s+(\w+)(?:<[^>]*>)?\s*=\s*(.*))$/gm)]
-      // A union of string literals names no row: only an object type can be one.
-      .filter((m) => m[1] !== undefined || !/^("[^"]*"\s*\|?\s*)+;?$/.test(m[3]!.trim()))
-      .map((m) => m[1] ?? m[2]!)
+    exportedTypes(readFileSync(join(root, rel), "utf8"))
       .filter((name) => app.neverScreen?.test(name) || !screenNames(app, rel).includes(name))
       .map((name) => ({ rule: "L4", file: rel, symbol: name, kind: "type", detail: `${rel}: ${name}, a hand-written type the screen doesn't compute` })),
   );
@@ -380,7 +383,8 @@ export function atBase(rev: string, path: string): string | undefined {
   try {
     return execFileSync("git", ["show", `${rev}:${path}`], { cwd: REPO_ROOT, env: GIT_ENV, encoding: "utf8", maxBuffer: 1 << 26, stdio: ["ignore", "pipe", "pipe"] });
   } catch (error) {
-    if (NOT_AT_REV.test(String((error as { stderr?: unknown }).stderr ?? ""))) return undefined;
+    const { status, stderr } = error as { status?: unknown; stderr?: unknown };
+    if (status === 128 && NOT_AT_REV.test(String(stderr ?? ""))) return undefined;
     throw error;
   }
 }
@@ -441,11 +445,16 @@ export function checkInventory(app: AppInventory, options: { base?: string } = {
   // A type left the allowlist when a base entry of its name is gone from the current one, whatever
   // file the base keyed it by: a type moved with its file is still the one the base listed.
   const leftTypes = new Set(minus(baseList, allowlist).filter((k) => k.kind === "type").map((k) => k.symbol));
+  // A screen type the base already had moved nowhere. The base's screen-type list is code git can't
+  // run, so it is read as the ratchet left it: the base's file exports the type and its allowlist
+  // doesn't name it, which the base's own run passed only with the type on that list.
+  const screenAtBase = (rel: string, name: string) =>
+    !baseList.some((k) => k.kind === "type" && k.file === rel && k.symbol === name) && exportedTypes(atBase(base.sha, `${app.path}/${rel}`) ?? "").includes(name);
   for (const [rel, entries] of Object.entries(app.screenTypes)) {
     for (const entry of entries) {
       const name = typeof entry === "string" ? entry : entry.name;
       if (app.neverScreen?.test(name)) failures.push(`${rel}: ${name} can never be a screen type`);
-      else if ((typeof entry === "string" || entry.reason.trim() === "") && leftTypes.has(name)) {
+      else if ((typeof entry === "string" || entry.reason.trim() === "") && leftTypes.has(name) && !screenAtBase(rel, name)) {
         failures.push(`${rel}: ${name} moved from the merge-base's allowlist to the screen-type list with no reason`);
       }
     }
