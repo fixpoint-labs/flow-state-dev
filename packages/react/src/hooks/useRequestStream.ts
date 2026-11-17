@@ -167,6 +167,8 @@ export function useRequestStream(
   if (storeRef.current === null) storeRef.current = createRequestStreamStore();
   const handleRef = useRef<RequestStreamHandle | null>(null);
   const rafRef = useRef<number | null>(null);
+  // Ends the current subscription's reconnect loop, a pending retry included: what `close()` calls.
+  const stopReconnectRef = useRef<(() => void) | null>(null);
 
   // Latest-callback ref so an inline `onSessionMetadataChanged` doesn't force a
   // re-subscribe every render (it's intentionally absent from the effect deps).
@@ -218,6 +220,12 @@ export function useRequestStream(
     let live = true;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let failures = 0;
+    const stopReconnect = () => {
+      live = false;
+      if (retry !== undefined) clearTimeout(retry);
+      retry = undefined;
+    };
+    stopReconnectRef.current = stopReconnect;
     const callbacks = {
       ...bindStoreToCallbacks(store, {
         onChange: () => {
@@ -256,8 +264,8 @@ export function useRequestStream(
     else open();
 
     return () => {
-      live = false;
-      if (retry !== undefined) clearTimeout(retry);
+      stopReconnect();
+      if (stopReconnectRef.current === stopReconnect) stopReconnectRef.current = null;
       handleRef.current?.close();
       handleRef.current = null;
       if (rafRef.current !== null) {
@@ -334,6 +342,7 @@ export function useRequestStream(
     },
     close: () => {
       setEnded(true);
+      stopReconnectRef.current?.();
       handleRef.current?.close();
     }
   };

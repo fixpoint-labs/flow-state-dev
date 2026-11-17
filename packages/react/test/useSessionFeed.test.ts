@@ -25,7 +25,7 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
   return {
     ...actual,
     sessionFeed: (_client: unknown, sessionId: string, options: { itemTypes?: string[] }) => {
-      let snapshot: SessionFeedSnapshot = { items: [], hasEarlier: false, runs: null, state: "connecting", error: null };
+      let snapshot: SessionFeedSnapshot = { items: [], hasEarlier: false, historyLoaded: false, runs: null, state: "connecting", error: null };
       const listeners = new Set<() => void>();
       const fake: Fake = {
         sessionId,
@@ -77,14 +77,15 @@ describe("useSessionFeed", () => {
     const { result } = renderHook(() => useSessionFeed("s1", { client, itemTypes: ["message"] }));
     expect(feeds.map((feed) => [feed.sessionId, feed.options.itemTypes])).toEqual([["s1", ["message"]]]);
     expect(result.current).toMatchObject({ sessionId: "s1", items: undefined, state: "connecting" });
-    act(() => feeds[0]!.push({ items: [message("m1")], state: "live", runs: [] }));
+    act(() => feeds[0]!.push({ items: [message("m1")], historyLoaded: true, state: "live", runs: [] }));
     expect(result.current).toMatchObject({ items: [{ id: "m1" }], state: "live", runs: [] });
   });
 
-  it("shows an empty session as empty once it is live, not as unread", () => {
+  it("shows an empty session as empty once its history is read, while the stream is still connecting", () => {
     const { result } = renderHook(() => useSessionFeed("s1", { client }));
-    act(() => feeds[0]!.push({ state: "live" }));
-    expect(result.current?.items).toEqual([]);
+    expect(result.current?.items).toBeUndefined();
+    act(() => feeds[0]!.push({ historyLoaded: true }));
+    expect(result.current).toMatchObject({ items: [], state: "connecting" });
   });
 
   it("hands a send's streamed response to the feed", () => {

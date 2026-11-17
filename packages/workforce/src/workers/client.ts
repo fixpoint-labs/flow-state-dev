@@ -394,8 +394,14 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
     return leadSession === null ? undefined : matching.find((row) => row.id === leadSession);
   };
 
-  /** The flow session `sessionId` runs on, as the server records it. */
-  const flowOfSession = async (sessionId: string): Promise<string> => (await sessions.get(sessionId)).flowKind;
+  /**
+   * The flow session `sessionId` runs on, as the server records it: the instance that owns it, or its
+   * base flow for a session written before instance ownership.
+   */
+  const flowOfSession = async (sessionId: string): Promise<string> => {
+    const session = await sessions.get(sessionId);
+    return session.flowId ?? session.flowKind;
+  };
 
   /** Run one action in `sessionId` on `flow` and return its output, or reject with the reason it failed. */
   const runIn = async (flow: string, sessionId: string, action: string, input: unknown): Promise<unknown> => {

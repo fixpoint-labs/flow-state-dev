@@ -383,6 +383,16 @@ describe("useRequestStream (react)", () => {
       expect(result.current.isStreaming).toBe(false);
     });
 
+    it("opens nothing more once close() is called while it waits to reconnect", () => {
+      const { result } = open();
+      act(() => { feed(requestCreated()); });
+      drop();
+      act(() => { result.current.close(); });
+      act(() => { vi.advanceTimersByTime(60_000); });
+      expect(connections).toHaveLength(1);
+      expect(result.current.isStreaming).toBe(false);
+    });
+
     it("ends once the request has ended, and opens nothing after unmount", () => {
       const first = open();
       act(() => { feed(requestStatus("request.completed", "completed")); });

@@ -94,11 +94,10 @@ export function useSessionFeed(
     feed === undefined ? NO_SNAPSHOT : feed.getSnapshot
   );
   if (feed === undefined || snapshot === undefined || sessionId == null) return undefined;
-  // No items until the history lands: an empty feed still connecting has read nothing yet.
-  const landed = !(snapshot.items.length === 0 && snapshot.state === "connecting");
   return {
     sessionId,
-    items: landed ? snapshot.items : undefined,
+    // No items until the history lands, so an empty session reads as empty only once it has been read.
+    items: snapshot.historyLoaded ? snapshot.items : undefined,
     hasEarlier: snapshot.hasEarlier,
     runs: snapshot.runs,
     state: snapshot.state,

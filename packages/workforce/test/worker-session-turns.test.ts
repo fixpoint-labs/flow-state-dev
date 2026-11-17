@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { bootHost, FIXTURE } from "./worker-model-harness";
+import { createWorkforceClient } from "../src/workers/client";
 
 function host() {
   const stores = createInMemoryStores();
@@ -94,5 +95,36 @@ describe("a worker session an app opens and talks to", () => {
     expect(requests).toHaveLength(2);
     const again = requests.find((request) => request.id !== first!.id)!;
     expect(again).toMatchObject({ actionName: "respond", status: "failed", input: { message: "fail" } });
+  });
+});
+
+describe("a worker session owned by a named flow instance", () => {
+  /**
+   * A session whose row names an instance (`flowId`) apart from its base flow (`flowKind`):
+   * every call the client makes in it must address the instance, or it lands on the base flow.
+   */
+  function instanceSession() {
+    const addressed: string[] = [];
+    const row = { id: "s1", flowKind: "agent", flowId: "agent:desk", userId: "alice", createdAt: 0, updatedAt: 0 };
+    const request = { id: "r1", actionName: "respond", status: "in_progress", startedAtMs: 1 };
+    const handle = { abort: async () => undefined, retry: async () => undefined };
+    const fsd = {
+      userId: "alice",
+      sessions: { get: async () => row, requests: async () => [request] },
+      flow: (id: string) => {
+        addressed.push(id);
+        return { send: async () => ({ ok: true }), request: () => handle };
+      },
+    };
+    // A stand-in for the client: only the calls these three make.
+    return { client: createWorkforceClient(fsd as never), addressed };
+  }
+
+  it("sends, stops and retries on the instance that owns the session, not its base flow", async () => {
+    const { client, addressed } = instanceSession();
+    await client.send("s1", "hello");
+    await client.stopTurns("s1");
+    await client.retryTurn("s1", "r1");
+    expect(addressed).toEqual(["agent:desk", "agent:desk", "agent:desk"]);
   });
 });
