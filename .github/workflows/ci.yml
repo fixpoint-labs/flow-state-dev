@@ -21,6 +21,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Node versions. apps/* and labs/* require Node 24, so the jobs that run them
+# (typecheck, test, e2e, docs) use 24. Published packages keep their Node 22
+# floor: packed-install, and the release and adopter workflows, stay on 22.
+# Their Turborepo caches are keyed by Node major (`node24`) so a cache written
+# on 22 can't replay passing results in place of a run on 24.
 jobs:
   typecheck:
     name: Typecheck
@@ -33,7 +38,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24 # apps/* and labs/* require Node 24; packed-install keeps 22, the packages' floor
+          node-version: 24
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -45,9 +50,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .turbo
-          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          key: turbo-${{ runner.os }}-node24-${{ github.job }}-${{ github.sha }}
           restore-keys: |
-            turbo-${{ runner.os }}-${{ github.job }}-
+            turbo-${{ runner.os }}-node24-${{ github.job }}-
 
       - name: Build packages
         run: pnpm packages:build
@@ -289,7 +294,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24 # apps/* and labs/* require Node 24; packed-install keeps 22, the packages' floor
+          node-version: 24
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -300,9 +305,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .turbo
-          key: turbo-${{ runner.os }}-${{ github.job }}-${{ matrix.shard }}-${{ github.sha }}
+          key: turbo-${{ runner.os }}-node24-${{ github.job }}-${{ matrix.shard }}-${{ github.sha }}
           restore-keys: |
-            turbo-${{ runner.os }}-${{ github.job }}-${{ matrix.shard }}-
+            turbo-${{ runner.os }}-node24-${{ github.job }}-${{ matrix.shard }}-
 
       # Every package's own build, as the single job had before the split:
       # `test` depends only on `^build`, and some tests read their own
@@ -556,7 +561,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24 # apps/* and labs/* require Node 24; packed-install keeps 22, the packages' floor
+          node-version: 24
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -565,9 +570,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .turbo
-          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          key: turbo-${{ runner.os }}-node24-${{ github.job }}-${{ github.sha }}
           restore-keys: |
-            turbo-${{ runner.os }}-${{ github.job }}-
+            turbo-${{ runner.os }}-node24-${{ github.job }}-
 
       - name: Build packages
         run: pnpm packages:build
@@ -680,7 +685,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24 # apps/* and labs/* require Node 24; packed-install keeps 22, the packages' floor
+          node-version: 24
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -721,9 +726,9 @@ jobs:
           path: |
             .turbo
             apps/docs/node_modules/.cache/fsd-api-reference
-          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          key: turbo-${{ runner.os }}-node24-${{ github.job }}-${{ github.sha }}
           restore-keys: |
-            turbo-${{ runner.os }}-${{ github.job }}-
+            turbo-${{ runner.os }}-node24-${{ github.job }}-
 
       # The generated API reference (FIX-2698), built and never deployed: it builds every
       # published package's types, renders one section per package from the doc comments in
