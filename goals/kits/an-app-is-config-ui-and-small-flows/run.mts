@@ -50,7 +50,16 @@ const KITS = "packages/engine/src/flowstate/kits.ts";
 /** Each runtime control's patch to the engine the app loads; nothing is written to the checkout. */
 const PATCHES: Record<string, ModulePatch[]> = {
   "blind-recorder": [{ module: VIEW_ROUTES, from: String.raw`topics: answer\.topics,`, to: 'topics: route.viewName === "codingBoard" ? [] : answer.topics,' }],
-  "direct-write": [{ module: RESOURCE_ROUTES, from: String.raw`if \(scope !== "session"\) \{`, to: 'if (scope !== "session" && false) {' }],
+  // The content routes stop refusing user and org scope, and a create stores its entry in the
+  // caller's user cell (the lab's org), as a route that wrote by scope would: no flow, no request.
+  "direct-write": [
+    { module: RESOURCE_ROUTES, from: String.raw`if \(scope !== "session"\) \{`, to: 'if (scope !== "session" && false) {' },
+    {
+      module: RESOURCE_ROUTES,
+      from: String.raw`sessionStorageScope\(session, scopeId\),\s*scopeId,\s*storageKey,\s*initialState,`,
+      to: '"user",\n    `${session.userId}:~org:claude-code-style-lab`,\n    storageKey,\n    initialState,',
+    },
+  ],
   "skip-unknown": [{ module: KITS, from: String.raw`await opened\.unclaimed\(\)`, to: "await opened.unclaimed().then(() => [])" }],
 };
 const KNOWN = ["", "todays-main", "planted-adapter", ...Object.keys(PATCHES)];
