@@ -69,22 +69,25 @@ function gradeInventory(lab: string, failures: string[], notes: string[], rev?: 
   notes.push(`inventory: ${Object.entries(found).map(([rule, lines]) => `${rule} ${lines.length === 0 ? "clean" : lines.length}`).join(", ")}`);
 }
 
-/** j5: the retired read names, planted, fail the glossary's check; each scope's model-calling view is refused. */
+/** The glossary's vocabulary sweep, which reads its `check: "sweep"` retirements (`flow-reads`, `scope-derived`). */
+const SWEEP = "goals/vocabulary/one-word-per-thing/sweep.mjs";
+
+/** j5: the retired read names, planted, fail the glossary's sweep; each scope's model-calling view is refused. */
 async function journeyFive(origin: string | undefined, user: string, failures: string[], notes: string[], tell: Tell): Promise<void> {
-  const clean = spawnSync("node", ["scripts/check-retired-terms.mjs"], { cwd: REPO_ROOT, encoding: "utf8" });
-  if (clean.status !== 0) failures.push(`j5:one-hook: the retired-terms check fails on the clean tree: ${clean.stdout.slice(-300)}`);
+  const clean = spawnSync("node", [SWEEP], { cwd: REPO_ROOT, encoding: "utf8" });
+  if (clean.status !== 0) failures.push(`j5:one-hook: the vocabulary sweep fails on the clean tree: ${clean.stdout.slice(-300)}`);
   // A tracked file, so the check reads it; put back after.
   const planted = join(REPO_ROOT, "packages/core/src/index.ts");
   const before = readFileSync(planted, "utf8");
   writeFileSync(planted, `${before}\nexport type ClosurePlant = { reads: ReadConfig };\n`);
   let red: ReturnType<typeof spawnSync>;
   try {
-    red = spawnSync("node", ["scripts/check-retired-terms.mjs"], { cwd: REPO_ROOT, encoding: "utf8" });
+    red = spawnSync("node", [SWEEP], { cwd: REPO_ROOT, encoding: "utf8" });
   } finally {
     writeFileSync(planted, before);
   }
-  if (red.status === 0 || !/flow-reads/.test(`${red.stdout}${red.stderr}`)) failures.push("j5:one-hook: a planted `reads: ReadConfig` passed the glossary's retired-terms check");
-  else notes.push("j5:one-hook: the planted ReadConfig failed the retired-terms check (flow-reads)");
+  if (red.status === 0 || !/"flow-reads":[1-9]/.test(`${red.stdout}${red.stderr}`)) failures.push("j5:one-hook: a planted `reads: ReadConfig` passed the glossary's vocabulary sweep");
+  else notes.push("j5:one-hook: the sweep passed the tree and failed the planted ReadConfig (flow-reads 1)");
   if (origin === undefined) return;
   const fsd = createClient({ userId: user, baseUrl: origin });
   const sessionId = (await fsd.flow(PROBE_FLOW).createSession()).id;
@@ -102,7 +105,8 @@ async function journeyFive(origin: string | undefined, user: string, failures: s
 function journeyFour(a: LegA, failures: string[], notes: string[], tell: Tell): void {
   const reads = tell.over("j4:one-row · the board's reads", a.boardReads.filter((r) => r.body !== undefined));
   const rereads = reads.slice(1);
-  const partial = rereads.filter((r) => r.body.partial !== undefined || (Array.isArray(r.body.output) && r.body.output.length <= 1));
+  // A re-read that answers only the rows a change touched says so (`partial`, FIX-2625).
+  const partial = rereads.filter((r) => r.body.partial !== undefined && r.body.partial !== false);
   const whole = rereads.filter((r) => !partial.includes(r));
   if (rereads.length === 0) failures.push("j4:one-row: the board was never re-read after a change");
   else if (partial.length === 0) failures.push(`j4:one-row: every one of the board's ${rereads.length} re-reads answered the whole board`);

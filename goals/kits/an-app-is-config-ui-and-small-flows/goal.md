@@ -28,7 +28,7 @@ harnesses kit's slot, coding flow and board view (spec D2).
 - `w:recorded` — every user or org resource version written while leg a ran matches a request by the signed-in user, in a flow session, running when the version was seen.
 - `j4:one-row` — after the board's first read, a re-read on a task's change carries one row, not the board.
 - `j4:no-rows` — no socket frame carries the task's title or goal.
-- `j5:one-hook` — the retired-terms check passes the tree and fails a planted `reads: ReadConfig`.
+- `j5:one-hook` — the glossary's vocabulary sweep (`goals/vocabulary/one-word-per-thing/sweep.mjs`) passes the tree and fails a planted `reads: ReadConfig` (`flow-reads`).
 - `j5:no-model` — a model call in a view is refused (`view_model_call`) at session, user and org scope, on the lab's host.
 
 **Anti-game:** every grade reads the rendered page, the browser's own traffic, the store
