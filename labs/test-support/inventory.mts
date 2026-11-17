@@ -363,9 +363,12 @@ function parseAllowlist(text: string, where: string): Key[] {
   return parsed.map(({ file, symbol, kind }: Key) => ({ file, symbol, kind }));
 }
 
-const git = (args: string[]) => execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8", maxBuffer: 1 << 26, stdio: ["ignore", "pipe", "ignore"] });
+/** git in the C locale: {@link atBase} reads git's stderr, which git translates under any other. */
+const GIT_ENV = { ...process.env, LC_ALL: "C" };
 
-/** What git says when the path is not in that commit: the only failure that means "not there". */
+const git = (args: string[]) => execFileSync("git", args, { cwd: REPO_ROOT, env: GIT_ENV, encoding: "utf8", maxBuffer: 1 << 26, stdio: ["ignore", "pipe", "ignore"] });
+
+/** What git says, in the C locale, when the path is not in that commit: the only failure that means "not there". */
 const NOT_AT_REV = /does not exist in|exists on disk, but not in/;
 
 /**
@@ -375,7 +378,7 @@ const NOT_AT_REV = /does not exist in|exists on disk, but not in/;
  */
 export function atBase(rev: string, path: string): string | undefined {
   try {
-    return execFileSync("git", ["show", `${rev}:${path}`], { cwd: REPO_ROOT, encoding: "utf8", maxBuffer: 1 << 26, stdio: ["ignore", "pipe", "pipe"] });
+    return execFileSync("git", ["show", `${rev}:${path}`], { cwd: REPO_ROOT, env: GIT_ENV, encoding: "utf8", maxBuffer: 1 << 26, stdio: ["ignore", "pipe", "pipe"] });
   } catch (error) {
     if (NOT_AT_REV.test(String((error as { stderr?: unknown }).stderr ?? ""))) return undefined;
     throw error;
@@ -435,11 +438,14 @@ export function checkInventory(app: AppInventory, options: { base?: string } = {
     ...minus(allowlist, found).map((k) => `${keyOf(k)}: on the allowlist, but the finding is gone: delete the entry`),
     ...(baseText === undefined ? [] : minus(allowlist, baseList).map((k) => `${keyOf(k)}: not on the merge-base's allowlist, which may only shrink`)),
   ];
+  // A type left the allowlist when a base entry of its name is gone from the current one, whatever
+  // file the base keyed it by: a type moved with its file is still the one the base listed.
+  const leftTypes = new Set(minus(baseList, allowlist).filter((k) => k.kind === "type").map((k) => k.symbol));
   for (const [rel, entries] of Object.entries(app.screenTypes)) {
     for (const entry of entries) {
       const name = typeof entry === "string" ? entry : entry.name;
       if (app.neverScreen?.test(name)) failures.push(`${rel}: ${name} can never be a screen type`);
-      else if ((typeof entry === "string" || entry.reason.trim() === "") && baseList.some((k) => k.kind === "type" && k.file === rel && k.symbol === name)) {
+      else if ((typeof entry === "string" || entry.reason.trim() === "") && leftTypes.has(name)) {
         failures.push(`${rel}: ${name} moved from the merge-base's allowlist to the screen-type list with no reason`);
       }
     }
