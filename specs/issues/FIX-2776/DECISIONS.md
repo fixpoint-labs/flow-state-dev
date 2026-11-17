@@ -28,7 +28,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | The two shapes the epic named: a workforce user view across sessions (the shape for an answer read across sessions), or a package hook that runs the `listDelegates` action |
-| **Because** | The list is one conversation's: it lives in that session's state, and the panel reads one session at a time. So the epic's own test picks per session. A hook over the action would still be an action per look, which writes the list the first time it reads it and hears nothing afterwards: the panel misses an add the coordinator's own tool makes. A session view on the worker flow is what harness-manager's recorded work view already is: typed by its output, read with react's existing `useView`, kept live by the server. It needs no new hook. It computes the same records and the same per-delegate check as the action, without the first-read write a view can't make; what it shows is what the session would hold if pinned now, which is also what task routing reads (`taskDelegates`). Tenet 2: one existing hook, no new concept |
+| **Because** | The list is one conversation's: it lives in that session's state, and the panel reads one session at a time. So the epic's own test picks per session. A hook over the action would still be an action per look, which writes the list the first time it reads it and hears nothing afterwards: the panel misses an add the coordinator's own tool makes. A session view on the worker flow is what harness-manager's recorded work view already is: typed by its output, read with react's existing `useView`, kept live by the server. It needs no new hook. It computes the same records and the same per-delegate check as the action, without the first-read write a view can't make; what it shows is the list the session holds, or would copy in now if it never has, which is what a task filed now and the conversation's next post route to. Tenet 2: one existing hook, no new concept |
 | **Locks in** | A public view named `delegates` on every flow that carries a worker's delegates, and `delegatesViewRef(flow)` in `@flow-state-dev/workforce/browser`. A host app with its own worker flow gets the view with the actions. The `listDelegates` action and tool stay, for hosts, tests and models |
 
 ![D1, how a screen reads a conversation's delegates. Chosen: a view on the conversation's own session, read live. Instead of: a workforce view across sessions, or a hook over the listDelegates action. It comes down to an add the coordinator makes itself: the view shows it, the action-per-look misses it. Price: a public view beside the action. Tie: the records and the check are the same. Locks in a delegates view on every delegate flow. Flips if a screen needs delegates across conversations](figures/d1-delegates-view.svg)
@@ -78,8 +78,21 @@ with that reason.
   snapshot, `reads.ts`, `derive.ts`) and FIX-2775's (16: messages, projects, routines, usage,
   MCP keys), by file.
 - **The delegates view's convergence point.** One function computes each delegate's description
-  and what it takes, for the action, the tool and the view. The view never writes; the list is
-  still pinned at its first change, first model read or first task, as today.
+  and what it takes, for the action, the tool and the view. **The view never writes, and this
+  issue adds no write and moves none.** What pins the list stays as it is: its first change, its
+  first read through the `listDelegates` action or tool, or the coordinator's first post (which
+  reads the list when it opens). A task-board action reads it without writing (`taskDelegates`),
+  and `delegates: all` is never pinned by a read, only by a change (FIX-2081 D2). The
+  implementation PR tests that a view read leaves the session's list unwritten.
+- **A running post routes to the roster it started with; the panel shows the next one's.** For a
+  `delegates: all` coordinator, a post keeps the defaults it read when it opened
+  (`postStateOf` → `post.defaults`) for every delivery of that request, while the view re-runs
+  when the roster changes. So while one post is routing, the panel can show a worker hired
+  mid-post that this post won't reach; the next post will. That is FIX-2081 D2's rule ("the
+  roster as it stands, read per call") and today's behaviour: the panel's action read used the
+  roster at the moment of the look too. The view only shows it sooner. Engineering call: the
+  panel shows what the conversation routes to from now on; no extra wording, and no change to
+  routing.
 - **`send` decides the task id, not the screen.** It sends `taskId` only where the session's door
   takes one, reading that from the worker inventory, so no screen reads the inventory to send. The
   door is always `respond` (`workerDoorOf`), so the target names no door.
