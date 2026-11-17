@@ -28,6 +28,11 @@ harnesses kit's slot, coding flow and board view (spec D2).
 - `w:routes` — every route of the router's table that isn't a read is in a class; the content routes' create, update and delete answer 501 at user and org scope on a skills collection (exempt by name until FIX-2633).
 - `w:no-runby` — a write to a user resource with no `runBy` is refused by the action route, and to a user collection with no `runBy` by a content route; nothing is stored.
 - `w:recorded` — every user or org resource version written while leg a ran matches a request by the signed-in user, in a flow session, running when the version was seen.
+- `seam:pin-reaches-view` — five pins written through the default write flow each reach `pinsSeen`, a user view on another flow (the goal's probe flow) that reads the lab's pins, within 1 s of the write landing, watched with no poll timer (O2's host-wide publish, FIX-2623 against FIX-2624).
+- `j2:renders` — Shift Manager over DevTeam opens Projects (`/p/storefront`), Usage and Schedules (`/routines`, titled *Routines*): each draws its title, with no failure and no page error.
+- `j2:no-read-session` — every session made while the page read has a request, a task or a run.
+- `j2:read-writes-nothing` — opening Schedules adds 0 requests; opening Usage adds only its one Re-check on the usage flow (FIX-2624 kept it: opening Usage asks for a fresh reading).
+- `j2:identity` — the project drawn is one the store holds under the identity read's org. DevTeam serves one org, so the spec's "one user in two orgs" isn't set up: that needs a host option DevTeam lacks.
 - `j4:one-row` — after the board's first read, a re-read on a task's change carries one row, not the board.
 - `j4:no-rows` — no socket frame carries the task's title or goal.
 - `j5:one-hook` — the glossary's vocabulary sweep (`goals/vocabulary/one-word-per-thing/sweep.mjs`) passes the tree and fails a planted `reads: ReadConfig` (`flow-reads`).
@@ -43,13 +48,14 @@ window shows whether it fires while push is up.
 
 **Model:** real for the thread: the lab's default (`openai/gpt-5.4`) through the AI Gateway. The coding task runs on the scripted coder (no model). `b:installs`'s teammates goal runs Cursor for real (`CURSOR_API_KEY`).
 
-**Run:** `cd goals && pnpm tsx kits/an-app-is-config-ui-and-small-flows/run.mts` (`GOAL_LEGS=a,b,w,j4,j5`, the default, picks legs; w and j4 ride on a). The lab's pages built first: `pnpm --filter @flow-state-dev/claude-code-style build`.
+**Run:** `cd goals && pnpm tsx kits/an-app-is-config-ui-and-small-flows/run.mts` (`GOAL_LEGS=a,b,w,seam,j2,j4,j5`, the default, picks legs; w, seam and j4 ride on a). The lab's pages built first: `pnpm --filter @flow-state-dev/claude-code-style build`.
 
 **Controls** (`GOAL_CONTROL=<name>`, same command). Runtime ones patch the engine as the lab loads it (`goals/lib/module-patch`); nothing is written to the checkout's code.
 - `todays-main` — the inventory on the lab at `705c14017a`, the parent of the epic's first implementation merge (#5090). Must FAIL `a:inventory`.
 - `planted-adapter` — `src/glue.ts` planted in the lab: a client import, a `.subscribe(` and a row type. Must FAIL `a:inventory` on L3 and L4.
-- `blind-recorder` — the view route answers the coding board's view with no topics, so no change reaches its watcher. Must FAIL `a:row-changes`.
+- `blind-recorder` — the view route answers the coding board's view and the seam's `pinsSeen` with no topics, so no change reaches their watchers. Must FAIL `a:row-changes` and `seam:pin-reaches-view`.
 - `direct-write` — the content routes write at user and org scope instead of answering 501. Must FAIL `w:routes` and `w:recorded`.
+- `schedules-write` — Shift Manager's pages built from a copy whose Schedules sends a write on each read. Must FAIL `j2:read-writes-nothing`.
 - `skip-unknown` — the kits' claim pass reports nothing unclaimed (FIX-2626's control). Must FAIL `b:folder`.
 
 ## Verdict log
@@ -62,3 +68,7 @@ window shows whether it fires while push is up.
 | 2026-11-17 | `b413d969e6` | openai/gpt-5.4 | FAIL (expected) | `direct-write`: `w:routes` (content create 201, delete 200 at user and org) and `w:recorded` (3 user versions with no request), `w:no-runby` (noteBook create 201) |
 | 2026-11-17 | `d22c25aa9d` | Cursor `composer-2.5` (teammates' run) | FAIL | Leg b: only `b:installs` fails, on `labs/teammates/host.mts` lines 340, 375, 392 (`as never`). Kits listed; flows `agent, claude-code, coder, github-service, harnesses, lab-context, workforce-roster`; `a-coding-task-waits-for-your-review` PASS 1 of 1; `notes.json` refused by name; `b:one-home` clean |
 | 2026-11-17 | `d22c25aa9d` | — | FAIL (expected) | `skip-unknown`: `b:folder`: teammates started beside `workforce/teams/teammates/notes.json` |
+| 2026-11-17 | `3665d07a44` (main `c5c3b8d0f6` merged up) | openai/gpt-5.4, scripted coder | FAIL | Run 2: still only `a:inventory` (L2, L3, H: FIX-2757). `seam:pin-reaches-view` PASS, 5 pins seen −2 to 6 ms after each write landed; a, w, j4, j5 as run 1 |
+| 2026-11-17 | `3665d07a44` | openai/gpt-5.4 | FAIL (expected) | `blind-recorder`: `a:row-changes` and `seam:pin-reaches-view` (no pin reached `pinsSeen` in 3 s), with `a:delegate` and `a:pin` |
+| 2026-11-17 | `6cbddb493b` | — | FAIL | `j2`: renders, read-writes-nothing (Schedules 0, Usage 1 Re-check) and identity (devforce-lab, 3 projects) PASS; `j2:no-read-session` FAILS: opening a project (`Project.tsx`, `ensureWorkerSession` for its coordinator) makes session `wks_…` (coordinator) with no request |
+| 2026-11-17 | `6cbddb493b` | — | FAIL (expected) | `schedules-write`: `j2:read-writes-nothing`: opening Schedules added 1 request (`workforce-roster`) |

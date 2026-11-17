@@ -39,3 +39,4 @@ The totality half — exactly one coalescer and one path rule, both in the clien
 | 2026-11-13 | claude/fix-2625-impl-c (pre-push) | n/a | FAIL (expected) | `no-coalesce`: `a:burst` in all five (50 reads per 50 writes), and `a:equals-store sm` |
 | 2026-11-13 | claude/fix-2625-impl-c (pre-push) | n/a | FAIL (expected) | `rule-says-no`: `a:equals-store` for rp (drew 0 of 50), rw and tm (0 of 50), sm (its last read before the last hire); also `a:burst` 0 reads and `b:failed`/`b:recovers` in rp, rw, sm, tm. cc held |
 | 2026-11-13 | claude/fix-2625-impl-c (pre-push) | n/a | FAIL (expected) | `no-retry`: `b:recovers` in all five; everything in a held |
+| 2026-11-17 | FIX-2629 closure branch | n/a | PASS / FAIL (expected) | Closure re-run. PASS; `no-coalesce` a:burst in all five; `no-retry` b:recovers in all five; `rule-says-no`, now patching `mayHold` in contracts (FIX-2734 moved it): a:equals-store rp, rw, sm, tm |
