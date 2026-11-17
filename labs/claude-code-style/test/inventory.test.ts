@@ -3,7 +3,7 @@
  * is configuration, screens and a few small flows; what the server computes
  * reaches a screen only through a kit package's view or a direct read. Each
  * rule fails on the shape it forbids. The rules live in the shared module
- * (`labs/test-support/inventory.ts`), run with the lab's settings
+ * (`labs/test-support/inventory.mts`), run with the lab's settings
  * (`inventory-settings.ts`) against an empty allowlist; the epic's closure
  * goal grades the same rules and settings:
  *
@@ -30,7 +30,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { checkInventory, filesUnder, findings } from "../../test-support/inventory.ts";
+import { checkInventory, filesUnder, findings } from "../../test-support/inventory.mts";
 import { claudeCodeStyle } from "./inventory-settings.ts";
 
 const LAB = fileURLToPath(new URL("..", import.meta.url));
@@ -47,7 +47,7 @@ describe("the lab's inventory", () => {
   it("has no adapter, no fake lab and no LabAdapter seam", () => {
     expect(existsSync(join(LAB, "src/adapter.ts"))).toBe(false);
     expect(existsSync(join(LAB, "test/fake-lab.ts"))).toBe(false);
-    const seam = [...APP_CODE, ...filesUnder("test").filter(code)].filter((rel) => !rel.startsWith("test/inventory") && read(rel).includes("LabAdapter"));
+    const seam = [...APP_CODE, ...filesUnder("test", LAB).filter(code)].filter((rel) => !rel.startsWith("test/inventory") && read(rel).includes("LabAdapter"));
     expect(seam).toEqual([]);
   });
 

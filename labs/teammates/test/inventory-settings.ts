@@ -1,10 +1,10 @@
 /**
- * The lab's settings for the shared inventory (`labs/test-support/inventory.ts`):
+ * The lab's settings for the shared inventory (`labs/test-support/inventory.mts`):
  * every rule, the files that go, what is left of its read model, and the
  * types its screen computes itself. `inventory.test.ts` runs them against
  * `inventory-allowlist.json`, which only shrinks.
  */
-import type { AppInventory } from "../../test-support/inventory.ts";
+import type { AppInventory } from "../../test-support/inventory.mts";
 
 export const teammates: AppInventory = {
   path: "labs/teammates",

@@ -1,7 +1,7 @@
 /**
  * Shift Manager's inventory: the content rules (L3, L4 over all of `src/`,
  * own sessions), no `reads.ts` and no snapshot type, graded by the shared
- * module (`labs/test-support/inventory.ts`) with Shift Manager's settings
+ * module (`labs/test-support/inventory.mts`) with Shift Manager's settings
  * (`inventory-settings.ts`). What it doesn't meet yet is on
  * `inventory-allowlist.json`, one entry per finding, keyed by file, symbol
  * and kind: each job of the epic deletes its own entries. The test fails on
@@ -16,7 +16,7 @@
 import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { checkInventory, copyOf, type AppInventory, type Key } from "../../../labs/test-support/inventory.ts";
+import { checkInventory, copyOf, type AppInventory, type Key } from "../../../labs/test-support/inventory.mts";
 import { shiftManager } from "./inventory-settings.ts";
 
 const ALLOWLIST = "test/inventory-allowlist.json";

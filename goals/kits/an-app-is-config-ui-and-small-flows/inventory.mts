@@ -1,6 +1,6 @@
 /**
  * `a:inventory`, graded on a lab folder: the shared inventory rules
- * (`labs/test-support/inventory.ts`) with the lab's own settings
+ * (`labs/test-support/inventory.mts`) with the lab's own settings
  * (`labs/claude-code-style/test/inventory-settings.ts`), which its
  * `pnpm test` runs, held to the closure's D1 with no file exempt and no
  * allowlist, plus the repo-wide own-session rule. One inventory: this file
@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { REPO_ROOT } from "../../lib/index.mts";
-import { findings, type Rule } from "../../../labs/test-support/inventory.ts";
+import { findings, type Rule } from "../../../labs/test-support/inventory.mts";
 import { claudeCodeStyle } from "../../../labs/claude-code-style/test/inventory-settings.ts";
 
 /** The own-session helpers the epic retires, named anywhere in product source. */

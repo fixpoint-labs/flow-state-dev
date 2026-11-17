@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { randomInt } from "node:crypto";
 import { join } from "node:path";
 import { goalTmpDir, intentFreeEnv, REPO_ROOT, sleep, stopProcessGroup, type Tell } from "../../lib/index.mts";
-import { hostWiring } from "../../../labs/test-support/inventory.ts";
+import { hostWiring } from "../../../labs/test-support/inventory.mts";
 import { grepRepo } from "./inventory.mts";
 import { recordedWrites } from "./leg-w.mts";
 import { storeAt, watchVersions } from "./store.mts";

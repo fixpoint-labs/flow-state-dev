@@ -1,10 +1,10 @@
 /**
- * The lab's settings for the shared inventory (`labs/test-support/inventory.ts`):
+ * The lab's settings for the shared inventory (`labs/test-support/inventory.mts`):
  * which rules it meets and the types its screen computes itself. Its
  * `inventory.test.ts` runs them against an empty allowlist, and the epic's
  * closure goal grades the same settings.
  */
-import type { AppInventory } from "../../test-support/inventory.ts";
+import type { AppInventory } from "../../test-support/inventory.mts";
 
 export const claudeCodeStyle: AppInventory = {
   path: "labs/claude-code-style",

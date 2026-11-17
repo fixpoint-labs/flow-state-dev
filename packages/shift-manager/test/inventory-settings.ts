@@ -1,13 +1,13 @@
 /**
  * Shift Manager's settings for the shared inventory
- * (`labs/test-support/inventory.ts`): the content rules (L3, L4 over all of
+ * (`labs/test-support/inventory.mts`): the content rules (L3, L4 over all of
  * `src/`, own sessions), the read model that goes, and the types its screen
  * computes itself. `inventory.test.ts` runs them against
  * `inventory-allowlist.json`, which only shrinks. Shift Manager is a
  * published app over another host's Lab, so the path classes and caps (L1,
  * L2, H), which describe a starter, don't apply.
  */
-import type { AppInventory } from "../../../labs/test-support/inventory.ts";
+import type { AppInventory } from "../../../labs/test-support/inventory.mts";
 
 export const shiftManager: AppInventory = {
   path: "packages/shift-manager",

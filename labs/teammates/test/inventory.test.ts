@@ -1,6 +1,6 @@
 /**
  * The lab's inventory: every rule (L1 to L4, H, own sessions), no adapter and
- * no fake app, graded by the shared module (`labs/test-support/inventory.ts`)
+ * no fake app, graded by the shared module (`labs/test-support/inventory.mts`)
  * with the lab's settings (`inventory-settings.ts`). What the lab doesn't
  * meet yet is on `inventory-allowlist.json`, one entry per finding, keyed by
  * file, symbol and kind: each job of the epic deletes its own entries. The
@@ -16,7 +16,7 @@
 import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { checkInventory, copyOf, type AppInventory, type Key } from "../../test-support/inventory.ts";
+import { checkInventory, copyOf, type AppInventory, type Key } from "../../test-support/inventory.mts";
 import { teammates } from "./inventory-settings.ts";
 
 const ALLOWLIST = "test/inventory-allowlist.json";
@@ -63,6 +63,12 @@ describe("the lab's inventory", () => {
       expect(checkInventory(app)).toEqual(
         expect.arrayContaining([expect.stringMatching(/^src\/app\/conversations\.ts:\d+: a \.flow\( call in conversationCalls \(L3: not on the allowlist\)$/)]),
       );
+    });
+
+    it("an own-session helper planted in src/lib/", () => {
+      const app = copy();
+      writeFileSync(at(app, "src/lib/glue.ts"), "export const openReaderSession = () => undefined;\n");
+      expect(checkInventory(app)).toEqual(["src/lib/glue.ts:1: openReaderSession, an own-session helper (own sessions: not on the allowlist)"]);
     });
 
     it("an entry added to the allowlist, even with its finding: the merge-base's list doesn't have it", () => {
