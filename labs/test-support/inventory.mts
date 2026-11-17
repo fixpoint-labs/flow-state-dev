@@ -37,7 +37,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The repository's root, which the ratchet reads the merge-base from. */
-export const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
 /** A rule an app is held to. */
 export type Rule = "L1" | "L2" | "L3" | "L4" | "H" | "own sessions";
