@@ -74,7 +74,7 @@ It comes down to one inventory: three copies would let the closure and a test di
 
 Every rule has one owner; read a row to see where it is built and where it is only used. A
 *uses* cell is a place a child must not decide again. Short names: **inv** is
-`FIX-XXX · one inventory`; **asks** is `FIX-XXX · a user's pending asks`; **t1** to **t3** are
+`FIX-2769 · one inventory`; **asks** is `FIX-2770 · a user's pending asks`; **t1** to **t3** are
 Teammates' people, conversations and task cards; **s1** to **s4** are Shift Manager's Inbox and
 boards, directory, conversations, and the snapshot's deletion.
 
@@ -134,7 +134,7 @@ case of ER-4.
   FIX-2592, FIX-2616, FIX-2369.
 - **FIX-2756 stays parented but outside the set.** The coordinator decides at the gate whether to
   re-parent it to the project; it stays blocked by this epic.
-- **The closure is filed after the gate**, with the other placeholders, at the owner's word.
+- **The closure was filed after the gate** (FIX-2778), with the rest of the set, at the owner's word.
 
 ## Considered and dropped
 
