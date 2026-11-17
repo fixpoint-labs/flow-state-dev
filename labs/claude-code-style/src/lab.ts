@@ -435,7 +435,9 @@ export function useTaskWork(task: LabTask | undefined): TaskWork | undefined {
   const recorded = useView(recordedWorkViewRef(), { requestId: task?.runLink?.requestId ?? "" }, { client, pollIntervalMs, sessionId: runSession ?? undefined, enabled: coding }).value;
   const runFlow = task?.runLink?.flow;
   // The run request's own stream sends a call as it starts; a dropped one opens again, resuming where it was.
-  const streamed = useRequestStream({ client, flowKind: runFlow, source: { requestId: running ?? "" }, filter: TOOL_CALLS, reconnect: true, enabled: running !== null && runFlow !== undefined }).items as unknown as readonly Item[];
+  // Each call shows as it lands, not on the next frame: a call is a line, not a token.
+  const streamed = useRequestStream({ client, flowKind: runFlow, source: { requestId: running ?? "" }, filter: TOOL_CALLS, reconnect: true, flush: "immediate", enabled: running !== null && runFlow !== undefined })
+    .items as unknown as readonly Item[];
   return useMemo(() => {
     if (task === undefined) return undefined;
     if (runSession === null) return { entries: [] };
