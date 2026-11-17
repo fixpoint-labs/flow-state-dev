@@ -18,9 +18,11 @@ export class Stops {
     this.version += 1;
     for (const tell of [...this.listeners]) tell();
   }
+  // fallow-ignore-next-line unused-class-member -- read by `useThread` (`sessions.ts`) through `useSyncExternalStore`.
   subscribe = (tell: () => void) => {
     this.listeners.add(tell);
     return () => this.listeners.delete(tell);
   };
+  // fallow-ignore-next-line unused-class-member -- read by `useThread` (`sessions.ts`) through `useSyncExternalStore`.
   snapshot = () => this.version;
 }

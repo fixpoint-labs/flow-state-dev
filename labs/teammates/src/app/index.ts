@@ -63,12 +63,11 @@
 export { AppProvider, useApp } from "./provider";
 export { createAppCalls, type AppCalls } from "./calls";
 export type { Unsubscribe } from "./reads";
-export type { AppConnection } from "./files";
 export type { AppContext, AppHarness } from "./setup";
 export type { Activity, AppWorker, NewTeammate, TeammateEdit } from "./workers";
 export { answeringOf, RETRYABLE_SOURCES, toEntries, type ConversationEntry, type ConversationView } from "./conversations";
-export { commandsRun, runSteps, runSummaryLine, stepRun, toSteps, type RunSummary, type SessionStep, type StepRun } from "./steps";
-export { windowMarkOf, windowReadOf, type HistorySummaryFace, type WindowMark, type WindowRead } from "./window";
+export { commandsRun, runSteps, runSummaryLine, stepRun, toSteps, type SessionStep, type StepRun } from "./steps";
+export { windowMarkOf, windowReadOf, type WindowMark } from "./window";
 export { destinationOf, exchangeOf, type AppTalk } from "./talk";
-export { attemptDurationMs, holdsOfTasks, inboxAnswerOf, rerunOverrides, toBoardTask, type BoardTask, type TaskActions, type TaskAnswer, type TaskWaiting } from "./tasks";
+export { attemptDurationMs, holdsOfTasks, inboxAnswerOf, rerunOverrides, toBoardTask, type BoardTask, type TaskAnswer } from "./tasks";
 export { reviewOf, type ReviewDetail, type WorkingNow } from "./runs";

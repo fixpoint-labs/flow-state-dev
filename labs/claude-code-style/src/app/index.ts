@@ -20,8 +20,7 @@
 export type { ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 export type { TaskStatus, ThreadEntry } from "../lib/thread-entries";
 export { AppProvider, useApp } from "./provider";
-export type { ConnectionState } from "./feed";
 export { useSessions, useThread, type AppSession, type ThreadView } from "./sessions";
-export { appTaskOf, usePullRequestLinks, useTaskWork, useTasks, withPullRequestLinks, type AppTask, type TaskBoardCalls, type TaskWork, type WorkingNow } from "./tasks";
+export { appTaskOf, usePullRequestLinks, useTaskWork, useTasks, withPullRequestLinks, type AppTask, type TaskWork } from "./tasks";
 export { useDismissed, usePins } from "./marks";
-export { appCalls, type AppCalls, type AppConnection, type AppHarness, type AppProject, type RepositoryCheck } from "./calls";
+export { appCalls, type AppCalls, type AppHarness, type AppProject, type RepositoryCheck } from "./calls";
