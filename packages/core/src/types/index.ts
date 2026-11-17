@@ -383,12 +383,20 @@ export type {
   SuspensionRecord,
   SuspensionSkipped,
   SuspensionStatus,
-  SuspendForUserKind
+  SuspendForUserKind,
+  PendingUserSuspension,
+  PendingUserSuspensionCursor,
+  PendingUserSuspensionQuery,
+  SelectedUserSuspension,
+  SuspensionShape
 } from "./suspension";
 export {
   RESUME_ACTION_STATUS,
+  USER_SUSPENSION_REASONS,
   isUserSuspension,
+  projectUserSuspension,
   suspendForUserKindOf,
+  suspensionShape,
   SUSPENSION_SKIPPED,
   TERMINAL_SUSPENSION_STATUSES,
   isTerminalSuspensionStatus,

@@ -14,9 +14,19 @@
 // the item taxonomy, so their declarations live in the zero-dependency
 // `@flow-state-dev/contracts` layer. Re-exported here to preserve this path's
 // surface; the record/filter machinery below still references them locally.
-import type { ResumeAction, SuspensionReason, SuspensionStatus, SuspendForUserKind } from "@flow-state-dev/contracts";
-export type { ResumeAction, SuspensionReason, SuspensionStatus, SuspendForUserKind };
-export { isUserSuspension, suspendForUserKindOf } from "@flow-state-dev/contracts";
+// One entrypoint: the contracts module that defines them, which also carries
+// the stored reason set and the card shape the pending read projects.
+import {
+  suspendForUserKindOf,
+  suspensionShape,
+  type ResumeAction,
+  type SuspensionReason,
+  type SuspensionShape,
+  type SuspensionStatus,
+  type SuspendForUserKind
+} from "@flow-state-dev/contracts/types/suspension";
+export type { ResumeAction, SuspensionReason, SuspensionShape, SuspensionStatus, SuspendForUserKind };
+export { USER_SUSPENSION_REASONS, isUserSuspension, suspendForUserKindOf, suspensionShape } from "@flow-state-dev/contracts/types/suspension";
 
 /**
  * Returned by `ctx.suspend()` when a human skips an optional suspension (resumed
@@ -208,4 +218,113 @@ export interface SuspensionFilter {
    * timestamp (ms). Records with no `resolvedAt` never match.
    */
   resolvedBefore?: number;
+}
+
+// FIX-2770.
+/**
+ * One of a user's pending suspensions as the pending read answers it: what
+ * an Inbox lists and its card draws, and the flow instance and session an
+ * answer goes through. Never the run's payload: no `stepInput`,
+ * `resumeData` or `data`, and nothing of how it resolves.
+ */
+export type PendingUserSuspension = {
+  readonly suspensionId: string;
+  readonly requestId: string;
+  /** The request's flow kind. */
+  readonly flowKind: string;
+  /** The request's flow instance, else the suspension's; absent on a record written before instances had ids. */
+  readonly flowId?: string;
+  /** The request's session; absent for a sessionless request. */
+  readonly sessionId?: string;
+  /** What it asks for (`suspendForUserKindOf`). */
+  readonly kind: SuspendForUserKind;
+  /** The card it draws (`suspensionShape`). */
+  readonly shape: SuspensionShape;
+  readonly title?: string;
+  readonly message: string;
+  readonly allow?: readonly ResumeAction[];
+  readonly resumeSchema?: Record<string, unknown>;
+  readonly render?: { component: string; props?: Record<string, unknown> };
+  readonly createdAt: number;
+  readonly expiresAt?: number;
+};
+
+/**
+ * Where a read of pending suspensions starts: strictly after this
+ * `(createdAt, requestId, suspensionId)`. A suspension's id is unique only
+ * within its request, so the request is part of the order.
+ */
+export type PendingUserSuspensionCursor = {
+  readonly createdAt: number;
+  readonly requestId: string;
+  readonly suspensionId: string;
+};
+
+/**
+ * The scope of a read of one user's pending suspensions. Every key is the
+ * server's, never a caller's. `tenantId` and `orgId` are always present,
+ * `undefined` included: an unbound principal matches only unbound requests,
+ * so absence can never widen the read.
+ */
+export type PendingUserSuspensionQuery = {
+  readonly userId: string;
+  readonly tenantId: string | undefined;
+  readonly orgId: string | undefined;
+  /** The request's flow kind is one of these. Never empty when it reaches a store. */
+  readonly flowKinds: readonly string[];
+  /** The engine's clock: a suspension whose `expiresAt` is at or before it is left out. */
+  readonly now: number;
+  /** At most this many rows, oldest first by `(createdAt, requestId, suspensionId)`. */
+  readonly limit: number;
+  readonly after?: PendingUserSuspensionCursor;
+};
+
+/**
+ * The fields a store selects for one pending row: the suspension's own, and
+ * the request's flow and session. `null` reads as absent, as SQL hands it back.
+ */
+export type SelectedUserSuspension = {
+  suspensionId: string;
+  requestId: string;
+  flowKind: string;
+  flowId?: string | null;
+  sessionId?: string | null;
+  reason: string;
+  kind?: SuspendForUserKind | null;
+  title?: string | null;
+  message: string;
+  allow?: ResumeAction[] | null;
+  resumeSchema?: Record<string, unknown> | null;
+  render?: { component: string; props?: Record<string, unknown> } | null;
+  createdAt: number;
+  expiresAt?: number | null;
+};
+
+/**
+ * Build a {@link PendingUserSuspension} field by field from what a store
+ * selected, deriving `kind` and `shape`. The one projector every store uses,
+ * so the four can't drift. It reads only the fields it names: a whole record
+ * passed in still yields only the projection, with no payload.
+ */
+export function projectUserSuspension(selected: SelectedUserSuspension): PendingUserSuspension {
+  const reason = selected.reason;
+  const allow = selected.allow ?? undefined;
+  const resumeSchema = selected.resumeSchema ?? undefined;
+  return {
+    suspensionId: selected.suspensionId,
+    requestId: selected.requestId,
+    flowKind: selected.flowKind,
+    ...(selected.flowId != null ? { flowId: selected.flowId } : {}),
+    ...(selected.sessionId != null ? { sessionId: selected.sessionId } : {}),
+    // The read keeps only a user's suspensions, which always have a kind.
+    kind: suspendForUserKindOf({ reason, kind: selected.kind ?? undefined }) ?? "approval",
+    shape: suspensionShape({ reason, ...(allow !== undefined ? { allow } : {}), ...(resumeSchema !== undefined ? { resumeSchema } : {}) }),
+    ...(selected.title != null ? { title: selected.title } : {}),
+    message: selected.message,
+    ...(allow !== undefined ? { allow } : {}),
+    ...(resumeSchema !== undefined ? { resumeSchema } : {}),
+    ...(selected.render != null ? { render: selected.render } : {}),
+    createdAt: Number(selected.createdAt),
+    ...(selected.expiresAt != null ? { expiresAt: Number(selected.expiresAt) } : {})
+  };
 }

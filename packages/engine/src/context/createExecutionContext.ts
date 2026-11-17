@@ -1203,6 +1203,7 @@ export async function createExecutionContext<
           serviceRoute: options.requestHost.serviceRoute,
           resolveFlow: options.requestHost.resolveFlow,
           ...(options.requestHost.sessionAdmission !== undefined ? { sessionAdmission: options.requestHost.sessionAdmission } : {}),
+          ...(options.requestHost.suspensionAdmission !== undefined ? { suspensionAdmission: options.requestHost.suspensionAdmission } : {}),
           // FIX-2725 D1: a view's session reads record where each answers.
           ...(viewDependencies !== undefined ? { sessionReads: sessionReadObserver(viewDependencies) } : {}),
           parentTask: options.requestHost.parentTask,

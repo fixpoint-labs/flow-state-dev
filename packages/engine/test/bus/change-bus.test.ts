@@ -325,7 +325,8 @@ describe("withChangeBus · every request and session write publishes its session
     alice.length = 0;
     await stores.session.delete("s_new");
     await tick();
-    expect(alice.map((n) => n.kind)).toEqual(["run"]);
+    // FIX-2770: a delete also takes its pending suspensions out of the owner's pending read.
+    expect(alice.map((n) => n.kind)).toEqual(["run", "suspension"]);
     expect(bob).toEqual([]);
   });
 

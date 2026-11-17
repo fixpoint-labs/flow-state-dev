@@ -102,13 +102,16 @@ export {
 } from "./hooks/useApproval";
 export {
   useSuspensionForm,
-  suspensionShape,
   type UseSuspensionFormOptions,
-  type UseSuspensionFormResult,
+  type UseSuspensionFormResult
+} from "./hooks/useSuspensionForm";
+// Moved beside the user-suspension predicate (FIX-2770); still public here.
+export {
+  suspensionShape,
   type SchemaField,
   type SuspensionValueKind,
   type SuspensionShape
-} from "./hooks/useSuspensionForm";
+} from "@flow-state-dev/contracts/types/suspension";
 export { QuestionRenderer } from "./components/QuestionRenderer";
 export { SelectionRenderer } from "./components/SelectionRenderer";
 export { SchemaFormRenderer } from "./components/SchemaFormRenderer";

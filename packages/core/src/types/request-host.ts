@@ -47,6 +47,7 @@
 import type { WaitGateBinding, WaitOutcome, TaskAddress } from "./wait-gate";
 import type { HistoryTurn, MessageLimit } from "./scope";
 import type { RequestStatus } from "./request";
+import type { PendingUserSuspension, PendingUserSuspensionCursor } from "./suspension";
 import type { InternalBlockContext } from "./block";
 
 /** How a parent-board row is being settled. */
@@ -440,6 +441,32 @@ export type SessionHistory = {
   readonly running: boolean;
 };
 
+// FIX-2770.
+/** Which of the running principal's pending suspensions {@link RequestSessions.userSuspensions} reads. */
+export type UserSuspensionsQuery = {
+  /**
+   * Only suspensions of requests of these flow kinds: 0 to 50, never every
+   * flow. Pass the flows your screen covers, from server code, never from a
+   * caller's input. An empty list reads nothing; more than 50 throws.
+   */
+  readonly flowKinds: readonly string[];
+  /** Read on from a page's `next`. */
+  readonly after?: PendingUserSuspensionCursor;
+};
+
+/** One page of the running principal's pending suspensions, oldest first. */
+export type UserSuspensionPage = {
+  readonly suspensions: readonly PendingUserSuspension[];
+  /**
+   * Whether more matched than this page read. A page can hold fewer rows than
+   * the page size, even none, while `more` is set: rows the instance's own
+   * sign-in refuses are left out after the store read them.
+   */
+  readonly more: boolean;
+  /** When `more`: pass it back as `after` to read on. */
+  readonly next?: PendingUserSuspensionCursor;
+};
+
 // FIX-2160 D2; FIX-2173.
 /**
  * Sessions of the running principal: a check on a target session
@@ -487,6 +514,19 @@ export interface RequestSessions {
    * adds nothing.
    */
   turns(sessionIds: readonly string[], query?: SessionTurnsQuery): Promise<SessionTurn[]>;
+
+  // FIX-2770.
+  /**
+   * The running principal's pending suspensions that wait on them, across
+   * every session and none, on the flow kinds named: the same user, tenant
+   * and organization as the running request, read at the store in one query
+   * that joins each to its request. Oldest first, at most 200 a page. Each row
+   * is a projection, never the run's payload. A view that reads it hears only
+   * a suspension written or deleted, never a streamed reply or a turn.
+   *
+   * @throws FlowStateConfigError for more than 50 flow kinds.
+   */
+  userSuspensions(query: UserSuspensionsQuery): Promise<UserSuspensionPage>;
 }
 
 /**

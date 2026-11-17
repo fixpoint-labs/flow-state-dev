@@ -15,6 +15,9 @@ export * from "./items";
 
 // Pure leaf types not surfaced through the items barrel.
 export type { ResumeAction, SuspensionReason, SuspensionStatus, SuspendForUserKind } from "./types/suspension";
+// The stored reason set (`USER_SUSPENSION_REASONS`), the card shape and the
+// schema analysis (`suspensionShape`, `analyzeResumeSchema`) sit beside these
+// on the `./types/suspension` subpath, for core and react.
 export { isUserSuspension, suspendForUserKindOf } from "./types/suspension";
 
 // Agent discovery: the shared manifest-entry record and the per-domain source

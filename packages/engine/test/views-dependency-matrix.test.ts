@@ -173,6 +173,19 @@ views.host_list_ids = defineView({
     execute: async (_input, ctx) => ({ v: String((await requestHostOf(ctx)!.sessions!.list({ ids: ["c"] })).sessions.length) })
   })
 });
+// FIX-2770: the caller's pending suspensions.
+views.host_user_suspensions = defineView({
+  scope: "session",
+  block: handler({
+    name: "read-user-suspensions",
+    inputSchema: z.object({}),
+    outputSchema: out,
+    resources,
+    execute: async (_input, ctx) => ({
+      v: (await requestHostOf(ctx)!.sessions!.userSuspensions({ flowKinds: [flow.kind] })).suspensions.map((entry) => entry.suspensionId).join(",")
+    })
+  })
+});
 views.host_turns = defineView({
   scope: "session",
   block: handler({
@@ -410,6 +423,52 @@ describe("a view hears a change through every read path, at every scope", () => 
     const after = await run();
     expect(after.output).toEqual({ v: "absent" });
     expect(admitted(before, heard), `${JSON.stringify(before.hears)} heard ${JSON.stringify(heard)}`).not.toEqual([]);
+  });
+
+  it("request host user suspensions × user", async () => {
+    // FIX-2770 D1: a suspension made in any session of the caller's, or none, is
+    // heard on their user topic's `suspension` notice, which the suspension
+    // store's wrapper publishes.
+    const bus = createInMemoryBus();
+    const stores = { ...createInMemoryStores(), bus };
+    await seed(stores, "root");
+    await seed(stores, "a", "root");
+    const published = withChangeBus(stores);
+    const run = () => runView({ flow, viewName: "host_user_suspensions", input: {}, userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "a", stores });
+    const before = await run();
+    expect(before.output).toEqual({ v: "" });
+    const heard: ChangeNotice[] = [];
+    for (const t of before.topics) {
+      const busTopic: BusTopic =
+        t.scope === "session" ? { scope: "session", id: t.id, tenantId: "" } : { scope: t.scope, id: t.scope === "user" ? "u_1" : DEFAULT_ORG_ID, tenantId: "" };
+      bus.subscribe(busTopic, (notice) => heard.push(notice));
+    }
+    const ts = Date.now();
+    await published.request.set(
+      "r_stop",
+      { id: "r_stop", state: {}, version: 0, createdAt: ts, updatedAt: ts, flowKind: flow.kind, flowId: flow.id, actionName: "say", userId: "u_1", orgId: DEFAULT_ORG_ID, source: "http", status: "suspended", startedAtMs: ts },
+      "absent"
+    );
+    await published.suspensions.set({
+      suspensionId: "s_stop",
+      requestId: "r_stop",
+      flowKind: flow.kind,
+      flowId: flow.id,
+      actionName: "say",
+      userId: "u_1",
+      reason: "user_approval",
+      message: "ok?",
+      status: "pending",
+      blockInstanceId: "b",
+      stepIndex: 0,
+      createdAt: ts
+    });
+    await tick();
+    await tick();
+    const after = await run();
+    expect(after.output).toEqual({ v: "s_stop" });
+    expect(admitted(before, heard), `${JSON.stringify(before.hears)} heard ${JSON.stringify(heard)}`).not.toEqual([]);
+    expect(admitted(before, heard).every((notice) => notice.kind === "suspension")).toBe(true);
   });
 
   it("request host list × user", async () => {

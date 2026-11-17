@@ -24,7 +24,7 @@ import type { SuspendedStopDeps } from "../durability/stop-suspended";
 import type { DurabilityProvider } from "../durability/types";
 import type { RuntimeConfig } from "../runtime-config";
 import type { RecordedRead } from "./view-reads";
-import type { SessionAdmission } from "./request-sessions";
+import type { SessionAdmission, SuspensionAdmission } from "./request-sessions";
 
 export type RequestRuntime = {
   requestId: string;
@@ -243,6 +243,13 @@ export type RequestHostConstructionInputs = {
    * the view route only. Absent → the owner rule alone.
    */
   sessionAdmission?: SessionAdmission;
+  // FIX-2770.
+  /**
+   * A view run's credential check on each pending suspension
+   * `sessions.userSuspensions` reads: the instance's own resolver, judged on
+   * the row's request (`view-routes.ts`). Set by the view route only.
+   */
+  suspensionAdmission?: SuspensionAdmission;
   // FIX-2623 D1.
   /**
    * Whether any flow the host registers declares a view, read as each request
