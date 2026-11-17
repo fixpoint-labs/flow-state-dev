@@ -10,8 +10,9 @@
  * out of the file the Lab loads fails here.
  *
  * The judgment model (`coordinator-judgment`) is scripted: it answers with a
- * fixed line and records what it was handed. Every other block answers with a
- * fixed line.
+ * fixed line and records what it was handed. Best fit's question
+ * (`coordinator-route-ask`) goes unanswered, and any other block asking for a
+ * model fails the test.
  */
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,6 +22,7 @@ import type { FlowInstance, GeneratorModel, GeneratorModelCallOptions, ModelReso
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
+import { promptWithoutUser } from "./helpers/prompt";
 
 let opened: Lab | undefined;
 const handed: GeneratorModelCallOptions[] = [];
@@ -41,22 +43,19 @@ const judgment: GeneratorModel = {
   },
 };
 
-const helper: GeneratorModel = {
-  modelId: "test/helper",
-  async generate() {
-    return { text: "ok", finishReason: "stop" };
+/** A resolver that answers the judgment turn alone. */
+const model = Object.assign(
+  (id: string, block?: string) => {
+    if (block?.startsWith("coordinator-judgment")) return judgment;
+    // Best fit's question goes unanswered, so the message reaches the judgment turn.
+    if (block === "coordinator-route-ask") throw new Error("no route model in this test");
+    throw new Error(`no model in this test: ${block ?? id} asked for one`);
   },
-  async generateStep() {
-    return { text: "ok", finishReason: "stop" };
-  },
-};
-
-const model = Object.assign((_id: string, block?: string) => (block?.startsWith("coordinator-judgment") ? judgment : helper), {
-  resolveId: (id: string) => id,
-}) as unknown as ModelResolver;
+  { resolveId: (id: string) => id },
+) as unknown as ModelResolver;
 
 describe("the Shift Coordinator after a worker's message", () => {
-  it("is told the message is already on the user's screen, so it says what it means and what's next instead of restating it", async () => {
+  it("has the rule against restating a message that is already on the user's screen in its prompt", async () => {
     const harness = selectHarness();
     opened = await openLab({
       modelResolver: model,
@@ -86,7 +85,7 @@ describe("the Shift Coordinator after a worker's message", () => {
     expect(result.error).toBeUndefined();
 
     // The prompt without the user's own message: the rule came from the worker's file.
-    const prompt = JSON.stringify((handed.at(-1)!.messages as Array<{ role?: string }>).filter((m) => m.role !== "user"));
+    const prompt = promptWithoutUser(handed.at(-1));
     expect(prompt).toContain("A message another worker sends you (a line that starts `From <worker id>:`)");
     expect(prompt).toContain("never restate it");
     expect(prompt).toContain("what happens next");

