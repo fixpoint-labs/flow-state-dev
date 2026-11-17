@@ -1,7 +1,7 @@
 /**
- * GitHub for routines on one operator's own token: a host run by one person
+ * GitHub for routines on one operator's own token: a host run by one user
  * (a lab, a local app) follows GitHub with the token of whoever started it,
- * and for that person alone. `operatorGitHubToken` reads the token once at
+ * and for that user alone. `operatorGitHubToken` reads the token once at
  * start; `operatorGitHub` builds the routines' provider on it, which refuses a
  * GitHub routine asked for with no token, or by any other user, naming
  * `GITHUB_TOKEN`, so the token is never lent.
