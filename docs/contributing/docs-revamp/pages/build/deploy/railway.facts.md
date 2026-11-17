@@ -215,7 +215,7 @@ checkpoints, suspensions, leases, traces, wakes; all survive a restart. SQLITE-R
   option, default `0.0.0.0`). FSDEV-SERVE:97-102; SERVE:189, 51-55; NODE-README:134-143 reads it by hand.
 - `FSD_PUSH_SECRET` read by `serve()` when set. SERVE:114-119. Needed only across processes.
 - `FSD_ENV` picks a store profile. `createFlowState.ts:920`; runtime.md:88-93.
-- `CRON_SECRET` is read by scheduled-flow dispatch. SERVE:20-31 (doc of `serveScheduleTicks`).
+- `CRON_SECRET` is read by scheduled-flow dispatch: the app's schedule tick bears it to the dispatch endpoint when the environment sets it (`packages/engine/src/flowstate/createFlowState.ts:1340-1353`).
   Out of scope for this page.
 - `better-sqlite3` and `NODE_ENV`: `NODE_ENV=development` raises trace retention; do not set it on
   Railway. SQLITE-REG:29-32. (Reference row.)

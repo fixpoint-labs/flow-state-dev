@@ -76,6 +76,10 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 
 - Read 1, 3 readers, no tools. Missed per question: 0, 0, 0, 0, 0, 0. No gap. Guessed at: The page does not define how many passes a five-task plan with maxConcurrency 1 takes, so the exact evaluator call count is not stated., The page does not say what a bare "all of them" with no domains is rewritten to by synthesizeGoal., The page does not say how many tasks fit in one pass or exactly how the evaluator counts, beyond one judgment per pass. I took 'pass' to mean one run of the board through every runnable task., I assumed that with maxConcurrency 1 the evaluator timing stays per pass, since the page ties evaluation to passes and not to concurrency..
 
+## 10 · Owner read
+
+Read, 2026-11-16. The owner read the page and recorded no findings.
+
 ## Reference rows
 
 - Pattern state shape: `{ goal, status?, iteration }` (`planAndExecuteStateSchema`). The collection-lifetime and re-entry wording is implementation and is cut, not moved. → R-41

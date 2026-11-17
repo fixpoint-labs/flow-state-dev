@@ -79,6 +79,10 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 
 - Read 1, 3 readers, no tools. Missed per question: 0, 0, 0, 0, 0, 0. No gap. Guessed at: Q1: The question's criterion 'Under 80 words' differs from the page's example criteria; I assumed any string works as a criterion, which the page implies but does not state., Q4: The page does not explicitly say whether the overall digest run fails; I inferred it does not from 'the other tasks carry on' and the synthesizer receiving completed results., Q6: Same user versus different user is not addressed on the page; I inferred from request-scoped task lifetime that neither can resume the board., Q6: Whether feedback from multiple rejections accumulates is not stated; I answered that only the latest verdict's feedback is described., The page does not define whether feedback from multiple rejections accumulates across attempts; I did not assume it does., Whether the whole digest run is reported as failed when one task ends errored is not stated; I only reported what happens to the task and the synthesizer input., Whether different users share boards is not addressed; I relied only on the statement that tasks live for the request., The page does not define whether feedback from multiple earlier rejections accumulates; I inferred only that the latest verdict's feedback is passed., Whether a criterion such as 'Under 80 words' is mechanically enforced; I inferred the default model reviewer judges against the criteria text., Whether the same or a different user affects board access; the page does not mention users, so I answered only from the request-lifetime statement..
 
+## 10 · Owner read
+
+Read, 2026-11-16. The owner read the page and recorded no findings.
+
 ## Reference rows
 
 - Stages of a supervisor run: plan, drain, label failures, synthesize. Keep only the observable stages and the `failed-review` label. Step names and the seeding detail are framework internals and are cut, not moved. → R-41

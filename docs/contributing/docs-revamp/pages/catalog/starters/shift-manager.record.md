@@ -80,6 +80,10 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 b3d
 
 - Read 1, 3 readers, no tools. Missed per question: 0, 3, 1, 0, 0, 0. Gaps: "You run `shift-manager` from a folder that has no fsdev config in it. What happens?" missed by 3 of 3 readers; the key: It stops with "No fsdev config in <dir>. Pass --config <path to the Lab's fsdev config>." and exit code 3 (fact 1.9). A config that loads but doesn't default-export a FlowState also stops the command with the loader's message, exit 3 (1.11).. Guessed at: The page does not define what happens when no fsdev config is found, so I did not guess and answered that it does not say., I interpreted 'the user Shift Manager acts as' as the identity whose asks and sessions are shown, based on the page's wording., I interpreted 'Roster' as shown from the inventory, but the page does not explicitly say Roster reads the inventory., The page does not define whether the "user Shift Manager acts as" is a single configured user or varies per viewer, so the teammate answer in question 6 is inferred from the per-user Inbox and key wording., I read "your key" in Settings as per-user and not shared across the Lab. That is an inference., I read "Roster" as the sidebar screen listing the Lab's workers. The page only names it, and I assumed it draws on the inventory., The page does not say how a teammate's run picks its key. I inferred it from 'a run you ask for uses your key'., I assumed 'the same Shift Manager and Lab' means two different users acting against one server. The page's per-user wording (the user Shift Manager acts as) supports this but never describes a multi-user setup..
 
+## 10 · Owner read
+
+Read, 2026-11-16. The owner read the page and recorded no findings.
+
 ## Reference rows
 
 - Shift Manager command: default address and port 4300, loopback-only serving, Node 22 minimum → R-35

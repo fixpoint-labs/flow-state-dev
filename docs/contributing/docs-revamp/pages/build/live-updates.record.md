@@ -79,6 +79,10 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 
 - Read 1, 3 readers, no tools. Missed per question: 0, 0, 0, 0, 0, 0. No gap. Guessed at: The page does not define `SessionRequestSummary`, `FlowProvider`, `fetcher` or `createServerApp` in detail, so I took them at face value from how the page uses them., I treated the callback's second argument `signal` as an AbortSignal, based on the page's `load(signal)` usage., For question 5, the page does not describe the in-flight request's fate, so I answered only with what the example code shows., The page does not define what a 'view' or `useView` is beyond saying it listens for you; the answers do not depend on more than that., I did not have to guess at any term: `SessionRequestSummary`, `FlowProvider`, `fetcher` and `serve()` were used as the page uses them. For Q5 the page does not describe what happens to an in-flight `fsd.sessions.requests` read itself on unmount, so I answered only with what the example code does., The page does not define `SessionRequestSummary` or the exact shape of the signal passed to the callback beyond its use in the example. I assumed that `signal` is an AbortSignal that aborts when the subscription or component ends, which the page implies but does not state. I did not guess at what happens to the in-flight network request itself..
 
+## 10 · Owner read
+
+Read, 2026-11-16. The owner read the page and recorded no findings.
+
 ## Reference rows
 
 - Delivery timing and coalescing: on a push host the read runs when the change is readable, with no timer; a burst of changes runs the read once more after the one in flight; no read on mount; `client` option for an app-built client with its own `fetcher`. → R-14
