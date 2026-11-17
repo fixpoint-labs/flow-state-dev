@@ -33,12 +33,17 @@ export type LegA = {
   outcome: "graded" | "retry";
   /** What leg w and j4 read. */
   versions: Version[];
+  /** Keys whose versions skipped one in the write log. */
+  gaps: string[];
   store?: Store;
   startedAt: number;
   user: string;
-  boardReads: { at: number; body: any }[];
+  /** Each answer the page got from the coding board's view, with the change notice its request named (none for a first read or a reload). */
+  boardReads: { at: number; body: any; changed?: { ids?: string[] } }[];
   frames: string[];
   task?: { id: string; title: string; goal: string };
+  /** The second task the goal files on the board, for j4. */
+  secondTask?: string;
   stateChanges: { status: string; column: string; storeAt: number; pageAt?: number }[];
   /** The lab's server, for leg w's probes, still running. */
   stop: () => void;
@@ -115,7 +120,7 @@ export async function legA(n: number, ask: string, failures: string[], notes: st
     watch.stop();
     stopProcessGroup(lab.child);
   };
-  const result: LegA = { outcome: "graded", versions: watch.versions, store, startedAt, user, boardReads: [], frames: [], stateChanges: [], stop, origin: lab.origin };
+  const result: LegA = { outcome: "graded", versions: watch.versions, gaps: watch.gaps, store, startedAt, user, boardReads: [], frames: [], stateChanges: [], stop, origin: lab.origin };
   const fsd = createClient({ userId: user, baseUrl: lab.origin });
   let browser: Awaited<ReturnType<typeof launchChromium>> | undefined;
   try {
@@ -130,7 +135,8 @@ export async function legA(n: number, ask: string, failures: string[], notes: st
     page.on("response", async (r) => {
       if (r.request().method() === "POST" && /\/views\/codingBoard\b/.test(r.url())) {
         const body = await r.json().catch(() => undefined);
-        result.boardReads.push({ at: Date.now(), body });
+        const sent = (r.request().postDataJSON() ?? {}) as { changed?: { ids?: string[] } };
+        result.boardReads.push({ at: Date.now(), body, ...(sent.changed !== undefined ? { changed: sent.changed } : {}) });
       }
     });
     page.on("websocket", (ws) => ws.on("framereceived", (f) => result.frames.push(typeof f.payload === "string" ? f.payload : f.payload.toString("utf8"))));
@@ -178,6 +184,11 @@ export async function legA(n: number, ask: string, failures: string[], notes: st
       return result;
     }
     result.task = { id: filed.id, title: filed.title ?? "", goal: filed.goal ?? "" };
+    // A second task on the board, so a re-read that answers the whole board shows as more than one row (j4).
+    const second = await fsd.flow(LEAD.flow).send("createTask_tasks", { title: "Second closure note", goal: "Leave a second short note in the project's repository, as a new file, saying a second coding task ran here, and commit it.", assignee: LEAD.coder }, { sessionId });
+    const secondOut = (await second.result()).output as { taskId?: string } | undefined;
+    if (typeof secondOut?.taskId !== "string") notes.push("j4: the second task wasn't filed, so a whole-board answer is one row");
+    else result.secondTask = secondOut.taskId;
     const listed = await fsd.flow(LEAD.flow).send("listTasks_tasks", {}, { sessionId });
     const listOut = (await listed.result()).output as { tasks?: { id: string }[] } | undefined;
     if (!(listOut?.tasks ?? []).some((t) => t.id === filed.id)) failures.push(`a:delegate: the session's board (listTasks_tasks) doesn't list ${filed.id}`);

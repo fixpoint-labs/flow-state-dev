@@ -26,6 +26,11 @@
  *     their watchers. FAILS `a:row-changes` and `seam:pin-reaches-view`.
  *   - `direct-write`: the content routes write a user or org collection instead
  *     of answering 501. FAILS `w:routes` and `w:recorded`.
+ *   - `direct-write-busy`: `direct-write`, made while a request of the user's is running.
+ *     FAILS `w:recorded`, which a match by time alone would pass.
+ *   - `half-partial`: every other change-driven re-read of the coding board drops the notice
+ *     naming its rows and answers the whole board. FAILS `j4:one-row`.
+ *   - `no-work-ask`: the lead is asked for no work, one attempt. FAILS `a:delegate` (nothing to grade).
  *   - `skip-unknown`: the kits' claim pass reports nothing unclaimed. FAILS `b:folder`.
  *   - `schedules-write`: Shift Manager's Schedules sends a write each time it reads (pages built
  *     from a patched copy). FAILS `j2:read-writes-nothing`.
@@ -67,9 +72,19 @@ const PATCHES: Record<string, ModulePatch[]> = {
       to: '"user",\n    `${session.userId}:~org:claude-code-style-lab`,\n    storageKey,\n    initialState,',
     },
   ],
+  // Half of the board's change-driven re-reads drop the notice that names their rows, so they answer the whole board.
+  "half-partial": [
+    {
+      module: VIEW_ROUTES,
+      from: String.raw`const changed = changeOf\(body\.changed\);`,
+      to: 'const changed = route.viewName === "codingBoard" && ((globalThis.__closureHalf = ((globalThis.__closureHalf ?? 0) + 1) % 2) === 0) ? undefined : changeOf(body.changed);',
+    },
+  ],
   "skip-unknown": [{ module: KITS, from: String.raw`await opened\.unclaimed\(\)`, to: "await opened.unclaimed().then(() => [])" }],
 };
-const KNOWN = ["", "todays-main", "planted-adapter", "schedules-write", ...Object.keys(PATCHES)];
+// The same direct write, while another request of the user's runs: a match by time alone passes it.
+PATCHES["direct-write-busy"] = PATCHES["direct-write"]!;
+const KNOWN = ["", "todays-main", "planted-adapter", "schedules-write", "no-work-ask", ...Object.keys(PATCHES)];
 if (!KNOWN.includes(CONTROL)) throw new Error(`setup: unknown GOAL_CONTROL "${CONTROL}"; known: ${KNOWN.filter(Boolean).join(", ")}`);
 const scratch = goalTmpDir("closure-an-app-is-config");
 const MARK = join(scratch, "patched.txt");
@@ -117,16 +132,25 @@ async function journeyFive(origin: string | undefined, user: string, failures: s
   notes.push(`j5:no-model: ${answers.map((a) => `${a.scope} ${a.status} ${a.body.error ?? ""}`).join(", ")}`);
 }
 
-/** j4, from leg a's run: the board's re-reads carry one row, and no socket frame carries a row's values. */
+/**
+ * j4, from leg a's run. `j4:one-row`: every re-read the page sent on a change notice that named
+ * rows (`changed.ids`) answers only those rows, flagged `partial`, while the board holds more than
+ * one task (the goal files a second), so a whole-board answer shows as more rows than the notice
+ * named. First reads and reloads name no notice and are counted apart. `j4:no-rows`: no socket
+ * frame carries a task's title or goal.
+ */
 function journeyFour(a: LegA, failures: string[], notes: string[], tell: Tell): void {
-  const reads = tell.over("j4:one-row · the board's reads", a.boardReads.filter((r) => r.body !== undefined));
-  const rereads = reads.slice(1);
-  // A re-read that answers only the rows a change touched says so (`partial`, FIX-2625).
-  const partial = rereads.filter((r) => r.body.partial !== undefined && r.body.partial !== false);
-  const whole = rereads.filter((r) => !partial.includes(r));
-  if (rereads.length === 0) failures.push("j4:one-row: the board was never re-read after a change");
-  else if (partial.length === 0) failures.push(`j4:one-row: every one of the board's ${rereads.length} re-reads answered the whole board`);
-  notes.push(`j4:one-row: ${reads.length} board reads, ${partial.length} re-reads carried one row, ${whole.length} answered whole (${whole.map((r) => r.body.output?.length ?? "?").join(",")})`);
+  const reads = a.boardReads.filter((r) => r.body !== undefined);
+  const named = tell.over("j4:one-row · re-reads on a notice that named rows", reads.filter((r) => (r.changed?.ids?.length ?? 0) > 0));
+  const unnamed = reads.length - named.length;
+  const boardSize = Math.max(0, ...reads.filter((r) => r.body.partial === undefined && Array.isArray(r.body.output)).map((r) => r.body.output.length));
+  if (boardSize < 2) failures.push(`j4:one-row: the board never held two tasks in a whole answer (largest ${boardSize}), so a whole answer can't be told from one row`);
+  for (const r of named) {
+    const rows = Array.isArray(r.body.output) ? r.body.output.length : NaN;
+    if (r.body.partial === undefined || r.body.partial === false) failures.push(`j4:one-row: a re-read on a notice naming ${r.changed!.ids!.length} row(s) answered the whole board (${rows} rows)`);
+    else if (!(rows <= r.changed!.ids!.length)) failures.push(`j4:one-row: a partial re-read on a notice naming ${r.changed!.ids!.length} row(s) carried ${rows}`);
+  }
+  notes.push(`j4:one-row: ${reads.length} board reads: ${named.length} on a notice naming rows (${named.map((r) => `${r.body.partial === undefined ? "whole" : "partial"} ${Array.isArray(r.body.output) ? r.body.output.length : "?"}/${r.changed!.ids!.length}`).join(", ")}), ${unnamed} first reads, reloads or unnamed notices; the board held up to ${boardSize}`);
   const values = [a.task?.title, a.task?.goal].filter((v): v is string => typeof v === "string" && v.length >= 12);
   tell.over("j4:no-rows · socket frames", a.frames, { emptyIs: "no frame at all is no row in a frame; leg a's row-changes reads the push" });
   const carrying = a.frames.filter((f) => values.some((v) => f.includes(v.slice(0, 40))));
@@ -173,23 +197,34 @@ await runGoal(async (failures, tell) => {
   // ── leg a in the browser, then w, j4 and j5 on the same lab.
   let a: LegA | undefined;
   if (LEGS.has("a")) {
-    for (let n = 1; n <= goalAttempts(); n++) {
+    // The control `no-work-ask` asks for no work: the lead files nothing, and the leg must not pass on that.
+    const ask = CONTROL === "no-work-ask" ? "Thanks, that's everything for today." : fixture.ask.replace("{marker}", `Closure ${RUN_STAMP}`);
+    const attempts = CONTROL === "no-work-ask" ? 1 : goalAttempts();
+    for (let n = 1; n <= attempts; n++) {
       a?.stop();
-      a = await legA(n, fixture.ask.replace("{marker}", `Closure ${RUN_STAMP}`), failures, notes, tell, patchEnv);
+      a = await legA(n, ask, failures, notes, tell, patchEnv);
       if (a.outcome === "graded") break;
-      if (CONTROL !== "") break;
-      notes.push(`attempt ${n}: the model gave nothing to grade; retrying`);
+      if (CONTROL !== "" && CONTROL !== "no-work-ask") break;
+      notes.push(`attempt ${n}: the model gave nothing to grade${n < attempts ? "; retrying" : ""}`);
     }
+    if (a?.outcome === "retry") failures.push(`a:delegate: the model gave nothing to grade in ${attempts} attempt(s) (no coding task filed, or the judge sent every scripted run back), so legs a, w, seam and j4 graded nothing`);
   }
   try {
     if (a !== undefined && a.origin !== undefined && a.store !== undefined) {
       if (LEGS.has("w")) {
+        if (CONTROL === "direct-write-busy" && a.sessionId !== undefined) {
+          // Another request of the user's runs while the probes write: the lead answering a line.
+          await createClient({ userId: a.user, baseUrl: a.origin }).flow("coordinator").send("respond", { message: "Say only: ok." }, { sessionId: a.sessionId });
+          await new Promise((r) => setTimeout(r, 300));
+        }
         await probeWrites(a.origin, a.user, a.store, failures, notes, tell);
-        // The store sees the probes' writes (none, unless a route wrote) before they're matched.
-        await new Promise((r) => setTimeout(r, 1_000));
-        notes.push(`w:recorded: ${recordedWrites(a.versions, a.store, a.user, a.startedAt, failures, tell)}`);
       }
       if (LEGS.has("seam")) await pinSeam(a.origin, a.user, failures, notes, tell);
+      if (LEGS.has("w")) {
+        // The log sees the last writes (the probes', the seam's pins) before they're matched.
+        await new Promise((r) => setTimeout(r, 1_000));
+        notes.push(`w:recorded: ${recordedWrites(a.versions, a.gaps, a.store, a.user, a.startedAt, failures, tell)}`);
+      }
       if (LEGS.has("j4")) journeyFour(a, failures, notes, tell);
     }
     if (LEGS.has("j5")) await journeyFive(a?.origin, a?.user ?? "", failures, notes, tell);

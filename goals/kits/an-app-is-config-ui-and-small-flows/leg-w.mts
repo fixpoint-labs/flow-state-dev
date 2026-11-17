@@ -100,28 +100,59 @@ export async function probeWrites(origin: string, user: string, store: Store, fa
 }
 
 /**
- * `w:recorded`: each version matches a request by `user`, in a session the
- * store holds, that was running when the watcher saw the version (between the
- * look before it and the look that saw it).
+ * What a write session is for: the scope and the resource's pattern its id names
+ * (`fsd-write.<base64url JSON [scope, pattern, …]>.<signature>`), or undefined for any other session.
  */
-export function recordedWrites(versions: readonly Version[], store: Store, user: string, since: number, failures: string[], tell: Tell, slackMs = 250): string {
-  const graded = tell.over("w:recorded · user and org versions written", versions);
-  const requests = store.requests(since);
-  const sessions = new Map(store.sessions().map((s) => [s.id, s]));
+function writeSessionTarget(sessionId: string): { scope: string; pattern: string } | undefined {
+  const m = /(?:^|:)fsd-write\.([A-Za-z0-9_-]+)\./.exec(sessionId);
+  if (m === null) return undefined;
+  try {
+    const [scope, pattern] = JSON.parse(Buffer.from(m[1]!, "base64url").toString("utf8")) as [string, string];
+    return typeof scope === "string" && typeof pattern === "string" ? { scope, pattern } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether `key` is held by a resource whose pattern is `pattern` (a single resource's ref, or a collection's `prefix/**` or `prefix/*`). */
+const underPattern = (key: string, pattern: string) => key === pattern || (/\/\*\*?$/.test(pattern) && key.startsWith(pattern.replace(/\*\*?$/, "")));
+
+/**
+ * `w:recorded`: each write (a version, or a delete) matches a request that
+ * touched that very resource: by the signed-in user, in a session the store
+ * holds, running when it was written, and either streaming a
+ * `resource_change` for its scope and key or running in the write session
+ * the server keeps for that resource. Overlapping in time alone isn't
+ * enough: a direct write made while some other request runs would pass that.
+ * Writes the log missed (`gaps`) fail too, since the grade can't claim it saw them.
+ * Hands back the evidence, and how many writes a time-only match would have passed.
+ */
+export function recordedWrites(versions: readonly Version[], gaps: readonly string[], store: Store, user: string, since: number, failures: string[], tell: Tell, slackMs = 250): string {
+  const graded = tell.over("w:recorded · user and org writes", versions);
+  for (const gap of gaps) failures.push(`w:recorded: the write log skipped a version: ${gap}`);
+  const requests = store.requests(since).filter((r) => r.session_id !== null && r.user_id === user);
+  const sessions = new Set(store.sessions().map((s) => s.id));
+  const changes = store.changesByRequest();
   let matched = 0;
+  let byTimeAlone = 0;
   const flows = new Map<string, number>();
   for (const v of graded) {
-    const by = requests.find((r) => r.created_at <= v.seenAt + slackMs && r.updated_at >= v.previousSeenAt - slackMs && r.session_id !== null && sessions.has(r.session_id) && r.user_id === user);
+    const running = requests.filter((r) => sessions.has(r.session_id!) && r.created_at <= v.seenAt + slackMs && r.updated_at >= v.seenAt - slackMs);
+    if (running.length > 0) byTimeAlone += 1;
+    const by = running.find((r) => {
+      if (changes.get(r.id)?.has(`${v.scope}|${v.key}`)) return true;
+      const target = writeSessionTarget(r.session_id!);
+      return target !== undefined && target.scope === v.scope && underPattern(v.key, target.pattern);
+    });
     if (by === undefined) {
-      failures.push(`w:recorded: ${v.scope} ${v.key} v${v.version} (seen ${new Date(v.seenAt).toISOString()}) matches no request by ${user} in a flow session`);
+      failures.push(`w:recorded: ${v.scope} ${v.key} ${v.op === "delete" ? "deleted" : `v${v.version}`} (${new Date(v.seenAt).toISOString()}) matches no request by ${user} that touched it (${running.length} other request(s) were running)`);
       continue;
     }
     matched += 1;
     flows.set(by.flow_kind, (flows.get(by.flow_kind) ?? 0) + 1);
   }
-  return `${matched} of ${graded.length} versions matched a request (${[...flows].map(([f, n]) => `${f} ${n}`).join(", ")})`;
+  return `${matched} of ${graded.length} writes matched a request that touched the resource (${[...flows].map(([f, n]) => `${f} ${n}`).join(", ")}); by time alone ${byTimeAlone} would have; ${gaps.length} gap(s)`;
 }
-
 
 /**
  * The gap sweep's seam, O2's host-wide publish (FIX-2623 against FIX-2624): a pin written through

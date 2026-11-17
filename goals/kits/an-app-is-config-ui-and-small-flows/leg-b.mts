@@ -9,6 +9,8 @@
  *   `goals/teammates-lab/a-coding-task-waits-for-your-review/` passes on it.
  * - `b:folder`: a file no reader claims, planted in its `workforce/` tree,
  *   stops the host starting, and the refusal names it.
+ * - `w:recorded` (teammates): on that host, the writes teammates' screen makes to the user's own
+ *   workers (hire, edit, reset, fire) each match a request that touched the resource.
  * - `b:one-home`: no flow file sits in a kit's folder, and no flow an app
  *   keeps in its own folder is also defined by a package.
  */
@@ -19,6 +21,13 @@ import { join } from "node:path";
 import { goalTmpDir, intentFreeEnv, REPO_ROOT, sleep, stopProcessGroup, type Tell } from "../../lib/index.mts";
 import { hostWiring } from "../../../labs/claude-code-style/test/inventory-rules.ts";
 import { grepRepo } from "./inventory.mts";
+import { recordedWrites } from "./leg-w.mts";
+import { storeAt, watchVersions } from "./store.mts";
+import { createClient } from "@flow-state-dev/client";
+import { createWorkforceClient } from "../../../packages/workforce/src/workers/client.ts";
+
+/** Who teammates serves: it answers every request as its own user (FIX-2539). */
+const TEAMMATES_USER = "u_closure";
 
 const TEAMMATES = join(REPO_ROOT, "labs/teammates");
 const FSDEV = join(REPO_ROOT, "packages/fsdev/bin/fsdev.ts");
@@ -45,7 +54,7 @@ async function serveTeammates(dir: string, env: Record<string, string>): Promise
     cwd: TEAMMATES,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
-    env: intentFreeEnv(process.env, { GOAL_CONTROL: "", TEAMMATES_STORE: join(dir, "teammates.sqlite"), TEAMMATES_USER: "u_closure", TEAMMATES_WORKDIR: workdir, TEAMMATES_RUNS: join(dir, "runs"), GOAL_HARNESS: "stub", ...env }),
+    env: intentFreeEnv(process.env, { GOAL_CONTROL: "", TEAMMATES_STORE: join(dir, "teammates.sqlite"), TEAMMATES_USER, TEAMMATES_WORKDIR: workdir, TEAMMATES_RUNS: join(dir, "runs"), GOAL_HARNESS: "stub", ...env }),
   });
   const keep = (chunk: Buffer) => {
     log += chunk.toString();
@@ -80,6 +89,21 @@ export async function legB(failures: string[], notes: string[], tell: Tell, env:
         const own = flows.filter((f) => /coder|harness-readiness/.test(f) && f !== "coder");
         if (own.length > 0) failures.push(`b:installs: teammates serves a coding or readiness flow of its own: ${own.join(", ")}`);
         notes.push(`b:installs: flows ${flows.join(", ")}`);
+        // w:recorded on teammates: the writes its screen makes to the user's own workers, each graded as leg a's are.
+        const store = storeAt(join(tmp, "installs", "teammates.sqlite"));
+        const watch = watchVersions(store);
+        const from = Date.now();
+        try {
+          const workforce = createWorkforceClient(createClient({ userId: TEAMMATES_USER, baseUrl: served.origin }) as never);
+          const hired = await workforce.hire({ id: "closure-helper", description: "Helps with the closure's check.", instructions: "Answer in one line." });
+          await workforce.edit({ id: "teammates.chief-of-staff", name: "Closure Chief", instructions: "Answer in one line." });
+          await workforce.reset("teammates.chief-of-staff");
+          await workforce.fire(hired.id);
+          await sleep(1_000);
+        } finally {
+          watch.stop();
+        }
+        notes.push(`w:recorded (teammates): ${recordedWrites(watch.versions, watch.gaps, store, TEAMMATES_USER, from, failures, tell)}`);
       }
     } finally {
       stopProcessGroup(served.child);
@@ -112,15 +136,36 @@ export async function legB(failures: string[], notes: string[], tell: Tell, env:
       const code = walk(join(REPO_ROOT, app, "workforce")).filter((rel) => /\.(m?ts|tsx|js)$/.test(rel));
       if (code.length > 0) failures.push(`b:one-home: ${app}/workforce holds code: ${code.join(", ")}`);
     }
+    // The reader finds a definition laid out over several lines, as most are, or it proves nothing.
+    const sample = 'export const f = defineFlow(\n  {\n    // the kind\n    kind: "closure-sample",\n    actions: {},\n  },\n);\n/** defineFlow({ kind: "in-a-comment" }) */';
+    if (flowKindsOf(sample).join() !== '"closure-sample"') throw new Error(`setup: b:one-home's reader read ${JSON.stringify(flowKindsOf(sample))} from a multiline definition`);
     // A flow an app keeps in its own folder: its kind is defined by no package.
     const own = tell.over("b:one-home · flows the apps keep", APPS.flatMap((app) => walk(join(REPO_ROOT, app, "flows")).filter((rel) => rel.endsWith(".mts")).map((rel) => join(app, "flows", rel))));
     for (const file of own) {
       for (const kind of kindsIn(readFileSync(join(REPO_ROOT, file), "utf8"))) {
-        const elsewhere = grepRepo(`defineFlow\\(\\{\\s*kind:\\s*(${kind.name}\\b|"${kind.value}")`, ["packages/*/src/**", ":!**/test/**", ":!**/*.test.*"]).filter((line) => !/^\S+:\d+:\s*(\*|\/\/)/.test(line));
+        const elsewhere = packageFlowFiles().filter((f) => flowKindsOf(f.text).some((k) => k === kind.name || k === `"${kind.value}"`)).map((f) => f.path);
         if (elsewhere.length > 0) failures.push(`b:one-home: ${file} defines flow ${kind.value}, which a package defines too: ${elsewhere.join(" | ")}`);
       }
     }
   }
+}
+
+/** Every non-test source file of a package that calls `defineFlow(`, read whole. */
+function packageFlowFiles(): { path: string; text: string }[] {
+  return grepRepo("defineFlow\\(", ["packages/*/src/**", ":!**/test/**", ":!**/*.test.*"])
+    .map((line) => line.split(":")[0]!)
+    .filter((path, i, all) => all.indexOf(path) === i)
+    .map((path) => ({ path, text: readFileSync(join(REPO_ROOT, path), "utf8") }));
+}
+
+/**
+ * The `kind:` each `defineFlow({ … })` call in `text` names, however the call is laid out across
+ * lines: a quoted literal (with its quotes) or a constant's name. Comments are left out first, so
+ * an example in a doc comment isn't a definition.
+ */
+export function flowKindsOf(text: string): string[] {
+  const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+  return [...code.matchAll(/defineFlow\s*\(\s*\{[\s\S]*?\bkind\s*:\s*("[^"]+"|[A-Za-z_$][\w$]*)/g)].map((m) => m[1]!);
 }
 
 /** The flow kinds a flow file defines: a literal, or a constant a package exports. */

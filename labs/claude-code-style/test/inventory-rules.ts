@@ -139,7 +139,7 @@ export function reachingTheServer(lab = LAB, exempt: readonly string[] = []): st
 export function unlistedTypes(lab = LAB): string[] {
   const modules = filesUnder("src", lab).filter((rel) => /\.tsx?$/.test(rel) && !rel.startsWith("src/components/") && rel !== ENTRY && rel !== "src/App.tsx");
   return modules.flatMap((rel) =>
-    [...readFileSync(join(lab, rel), "utf8").matchAll(/^export\s+(?:interface\s+(\w+)\b[^=]*|type\s+(\w+)(?:<[^>]*>)?\s*=\s*(.*))$/gm)]
+    [...readFileSync(join(lab, rel), "utf8").matchAll(/^export\s+(?:interface\s+(\w+)\b[^=\n]*|type\s+(\w+)(?:<[^>]*>)?\s*=\s*(.*))$/gm)]
       // A union of string literals names no row: only an object type can be one.
       .filter((m) => m[1] !== undefined || !/^("[^"]*"\s*\|?\s*)+;?$/.test(m[3]!.trim()))
       .map((m) => m[1] ?? m[2]!)
