@@ -13,10 +13,12 @@
  *   ran matches a request, in a session of a flow, by the signed-in user,
  *   running when the version was written.
  */
-import { createClient } from "@flow-state-dev/client";
+import { createClient, viewRef } from "@flow-state-dev/client";
+import { watchView } from "@flow-state-dev/client/internal";
+import { labPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 import { listFlowRoutes } from "../../../packages/engine/src/routes/router.ts";
 import type { Tell } from "../../lib/index.mts";
-import { probeResources, PROBE_FLOW } from "./probe-flow.mts";
+import { PINS_SEEN_VIEW, probeResources, PROBE_FLOW } from "./probe-flow.mts";
 import type { Store, Version } from "./store.mts";
 
 /** Every route that isn't a read, by what it does to a user or org resource. */
@@ -118,4 +120,38 @@ export function recordedWrites(versions: readonly Version[], store: Store, user:
     flows.set(by.flow_kind, (flows.get(by.flow_kind) ?? 0) + 1);
   }
   return `${matched} of ${graded.length} versions matched a request (${[...flows].map(([f, n]) => `${f} ${n}`).join(", ")})`;
+}
+
+
+/**
+ * The gap sweep's seam, O2's host-wide publish (FIX-2623 against FIX-2624): a pin written through
+ * the default write flow reaches a view in another flow that reads it, within 1 s, five times, none
+ * retried. The view is watched with no poll timer, so only the change notice can wake it.
+ */
+export async function pinSeam(origin: string, user: string, failures: string[], notes: string[], tell: Tell): Promise<void> {
+  const fsd = createClient({ userId: user, baseUrl: origin });
+  const seen: { at: number; pinned: string[] }[] = [];
+  const stop = watchView<{ pinned: string[] }>(fsd as never, viewRef(PROBE_FLOW, PINS_SEEN_VIEW), {}, { onValue: (value) => seen.push({ at: Date.now(), pinned: value?.pinned ?? [] }) }, { pollIntervalMs: null });
+  try {
+    await new Promise((r) => setTimeout(r, 2_000));
+    const latencies: number[] = [];
+    for (let i = 1; i <= 5; i++) {
+      const id = `closure-seam-${i}-${Date.now()}`;
+      await fsd.resource(labPins).update((s) => ({ pinned: [...s.pinned, id] }));
+      const written = Date.now();
+      let reached: number | undefined;
+      for (const end = written + 3_000; Date.now() < end && reached === undefined; await new Promise((r) => setTimeout(r, 20))) {
+        reached = seen.find((v) => v.pinned.includes(id))?.at;
+      }
+      if (reached === undefined) failures.push(`seam:pin-reaches-view: pin ${i} never reached ${PROBE_FLOW}'s ${PINS_SEEN_VIEW} view within 3 s of its write`);
+      else {
+        latencies.push(reached - written);
+        if (reached - written > 1_000) failures.push(`seam:pin-reaches-view: pin ${i} reached the view ${reached - written} ms after its write landed, over 1000`);
+      }
+    }
+    tell.over("seam:pin-reaches-view · pins that reached the other flow's view", latencies);
+    notes.push(`seam: 5 pins through the default write flow; the other flow's view saw them ${latencies.map((l) => `${l} ms`).join(", ")} after each write landed`);
+  } finally {
+    stop();
+  }
 }

@@ -10,10 +10,11 @@
  *      (`w:routes`, `w:no-runby`, `w:recorded`), read from leg a's run
  *   j2 Shift Manager opens Projects, Usage and Schedules: each draws, none makes a session
  *      only to read, and reading writes nothing but Usage's one Re-check
+ *   seam a pin through the default write flow reaches a view in another flow within 1 s
  *   j4 a task's change re-reads its one row, and no socket frame carries a row
  *   j5 one hook: the retired read names stay gone, and a view calls no model
  *
- * `GOAL_LEGS=a,b,w,j2,j4,j5` (the default) picks legs; leg w and j4 ride on leg a.
+ * `GOAL_LEGS=a,b,w,seam,j2,j4,j5` (the default) picks legs; w, seam and j4 ride on leg a.
  *
  * Controls (`GOAL_CONTROL=<name>`, same command), each must FAIL what it names:
  *   - `todays-main`: the inventory on the lab as it was before the epic's first
@@ -21,7 +22,8 @@
  *   - `planted-adapter`: `src/glue.ts` planted in the lab: a client import, a
  *     subscribe and a row type. FAILS `a:inventory`.
  *   - `blind-recorder`: the view route answers the coding board's view with no
- *     topics, so no change reaches its watcher. FAILS `a:row-changes`.
+ *     topics, and the seam's `pinsSeen` view, so no change reaches
+ *     their watchers. FAILS `a:row-changes` and `seam:pin-reaches-view`.
  *   - `direct-write`: the content routes write a user or org collection instead
  *     of answering 501. FAILS `w:routes` and `w:recorded`.
  *   - `skip-unknown`: the kits' claim pass reports nothing unclaimed. FAILS `b:folder`.
@@ -39,12 +41,12 @@ import { inventoryOf } from "./inventory.mts";
 import { journeyTwo } from "./journey-j2.mts";
 import { legA, type LegA } from "./leg-a.mts";
 import { legB } from "./leg-b.mts";
-import { probeWrites, recordedWrites } from "./leg-w.mts";
+import { pinSeam, probeWrites, recordedWrites } from "./leg-w.mts";
 import { MODEL_VIEWS, PROBE_FLOW } from "./probe-flow.mts";
 
 const fixture = loadFixture<{ ask: string }>(import.meta.url);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const LEGS = new Set((process.env.GOAL_LEGS ?? "a,b,w,j2,j4,j5").split(",").map((s) => s.trim()));
+const LEGS = new Set((process.env.GOAL_LEGS ?? "a,b,w,seam,j2,j4,j5").split(",").map((s) => s.trim()));
 const LAB = join(REPO_ROOT, "labs/claude-code-style");
 /** The parent of the epic's first implementation merge (#5090): the lab before the epic built anything. */
 const TODAYS_MAIN = "705c14017a";
@@ -54,7 +56,7 @@ const RESOURCE_ROUTES = "packages/engine/src/routes/resource-routes.ts";
 const KITS = "packages/engine/src/flowstate/kits.ts";
 /** Each runtime control's patch to the engine the app loads; nothing is written to the checkout. */
 const PATCHES: Record<string, ModulePatch[]> = {
-  "blind-recorder": [{ module: VIEW_ROUTES, from: String.raw`topics: answer\.topics,`, to: 'topics: route.viewName === "codingBoard" ? [] : answer.topics,' }],
+  "blind-recorder": [{ module: VIEW_ROUTES, from: String.raw`topics: answer\.topics,`, to: 'topics: route.viewName === "codingBoard" || route.viewName === "pinsSeen" ? [] : answer.topics,' }],
   // The content routes stop refusing user and org scope, and a create stores its entry in the
   // caller's user cell (the lab's org), as a route that wrote by scope would: no flow, no request.
   "direct-write": [
@@ -187,6 +189,7 @@ await runGoal(async (failures, tell) => {
         await new Promise((r) => setTimeout(r, 1_000));
         notes.push(`w:recorded: ${recordedWrites(a.versions, a.store, a.user, a.startedAt, failures, tell)}`);
       }
+      if (LEGS.has("seam")) await pinSeam(a.origin, a.user, failures, notes, tell);
       if (LEGS.has("j4")) journeyFour(a, failures, notes, tell);
     }
     if (LEGS.has("j5")) await journeyFive(a?.origin, a?.user ?? "", failures, notes, tell);

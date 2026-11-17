@@ -9,10 +9,13 @@
  * - `notes`: a user resource with no `runBy`; `noteBook`: a user collection
  *   with no `runBy` whose content grants writes. A client write to either is
  *   refused, through the action route and through a content route.
+ * - `pinsSeen`, a user view reading the lab's pins from this other flow: the gap sweep's seam, a
+ *   pin through the default write flow reaching a view in another flow.
  * - three views that each call a model, at session, user and org scope:
  *   each must be refused (`view_model_call`).
  */
-import { defineFlow, defineResource, defineResourceCollection, defineView, generator } from "@flow-state-dev/core";
+import { defineFlow, defineResource, defineResourceCollection, defineView, generator, handler } from "@flow-state-dev/core";
+import { labPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 import { defineSkillsCollection } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 
@@ -36,6 +39,16 @@ export const probeResources = {
 const summarize = generator({ name: "closure-summarize", model: "openai/gpt-6-luna", prompt: "Summarize.", outputSchema: z.object({ text: z.string() }) });
 export const MODEL_VIEWS = { session: "summarizeSession", user: "summarizeUser", org: "summarizeOrg" } as const;
 
+/** The seam: a view on this flow that reads the lab's pins, which the lab's own flow declares and the default write flow writes. */
+export const PINS_SEEN_VIEW = "pinsSeen";
+const pinsSeen = handler({
+  name: "closure-pins-seen",
+  inputSchema: z.object({}),
+  outputSchema: z.object({ pinned: z.array(z.string()) }),
+  resources: { labPins },
+  execute: async (_input, ctx) => ({ pinned: [...((ctx.resources.labPins.state as { pinned?: string[] }).pinned ?? [])] }),
+});
+
 export default [
   defineFlow({
     kind: PROBE_FLOW,
@@ -44,6 +57,7 @@ export default [
       [MODEL_VIEWS.session]: defineView({ scope: "session", block: summarize }),
       [MODEL_VIEWS.user]: defineView({ scope: "user", block: summarize }),
       [MODEL_VIEWS.org]: defineView({ scope: "org", block: summarize }),
+      [PINS_SEEN_VIEW]: defineView({ scope: "user", block: pinsSeen }),
     },
   } as never)({ id: PROBE_FLOW } as never) as { id: string },
 ];
