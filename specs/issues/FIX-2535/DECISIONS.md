@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-Two decisions are the sign-off surface; inputs, not reopened: the epic's decisions and ER-1 to
+Two decisions were the sign-off surface, and D3 is an amendment (FIX-2784, from FIX-2779's review); inputs, not reopened: the epic's decisions and ER-1 to
 ER-8 (ER-7 as amended); FIX-2534's D1 and D2.
 
 ## The tree
@@ -12,6 +12,8 @@ flowchart TD
   I["FIX-2535"] --> D2["D2 · the task follows its PR when its record is written"]
   D2 -.->|"rejected · no session in the event"| X2["subscribe on GitHub's PR-opened event"]
   D2 -.->|"rejected · loses CI during the turn"| Z2["subscribe at the turn's end"]
+  I --> D3["D3 · the close reaches the session that follows the PR (amended Nov 17)"]
+  D3 -.->|"rejected · own screen drops your own merge"| K3["add pull_request to the follow's kinds"]
   I --> D1["D1 · a service route on the webhook transport"]
   D1 -.->|"rejected · a second verify and ack pipeline"| X1["a GitHub adapter with its own URL"]
 ```
@@ -25,7 +27,7 @@ Dashed edges lost, for the reason on the label.
 |---|---|
 | **Instead of** | Subscribing on GitHub's PR-opened event · at the turn's end · by the agent calling `saveRoutine` |
 | **Because** | Only the session knows it opened the PR. The event names a branch and a login, so the service would guess a session and write a user's row (ER-5, FIX-2534 D2), and a model's memory is no guarantee (D5). The record's one write path, `writePullRequests` (`core/src/types/pull-requests.ts:412`), has two writers: the tool recorder, mid-turn (`pull-request-recorder.ts:118`), and harness-manager's turn-end `branch-pull-requests` step (`session-flow.ts:868`, after `pullRequestWritesSettled`, `branch-pull-requests.ts:196`). A new row calls back into harness-manager's session flow, which owns the record, to `subscribe` as the session's user. Turn end would lose CI landing mid-turn; GitHub does not redeliver (owner second look, 2026-11-05) |
-| **Locks in** | Every coding session that opens a GitHub PR hears its reviews, comments and CI from the moment it is recorded until it closes. Workforce workers have no PR record; they use `saveRoutine` with an event trigger |
+| **Locks in** | Every coding session that opens a GitHub PR hears its reviews, comments and CI from the moment it is recorded until it closes, and hears it close ([D3](#d3), amended Nov 17). Workforce workers have no PR record; they use `saveRoutine` with an event trigger |
 
 **What would change my mind:** coding tasks that should not hear their PR's reviews; then opt-in.
 
@@ -45,6 +47,20 @@ It comes down to who knows the session: the event names a branch, never the sess
 ![D1: a service route on the transport, chosen, beside its own GitHub adapter. Decides it: one place verifies and acks. Flips if routing had to run before the signature check](figures/d1-service-route.svg)
 
 It comes down to one pipeline: an own adapter keeps a second verify-and-ack copy in step.
+
+<a name="d3"></a>
+## D3 · A followed PR's close reaches the session that follows it · amendment, Nov 17 (FIX-2784)
+
+| | |
+|---|---|
+| **Instead of** | Ending the follow on the close with nothing delivered (as signed: the follow hears `review`, `comment` and `check`; ER-7 as amended ends it on the close whether or not the close reached it) · adding `pull_request` to the follow's kinds · waking the task from `unsubscribe` |
+| **Because** | A task that opened a PR waits on it until it merges or closes (FIX-2578), and only a message delivered to its session wakes it. As signed, the close ends the follow silently, so a merged PR's task stays open until a person types in its session. Adding the kind alone isn't enough: the `own` screen drops the subscriber's own merge, and the person who merges is usually the subscriber. Waking from `unsubscribe` would tie workforce's subscriptions to harness-manager's holds |
+| **Locks in** | `followPullRequest` writes its subscription with `hearsClose: true`, a server-written flag no model sets. The closing event is delivered to such a subscription whatever its kinds, screens and hourly cap, on push and on poll, and then it ends. Its pinned kinds stay `review`, `comment`, `check`. Every other subscription is unchanged: a routine's close still ends it unheard unless its kinds and screens pass it |
+
+**What would change my mind:** a routine that wants the same. Then `hearsClose` becomes a
+routine setting instead of the follower's alone.
+
+It comes down to who waits on the close: the task does, and a routine doesn't.
 
 ## Decided, not asked
 
@@ -67,7 +83,7 @@ It comes down to one pipeline: an own adapter keeps a second verify-and-ack copy
 - **Thread keys (pinned).** `github:<owner>/<repo>`, then `#<n>`, lower-cased as `pullRequestKey` does.
 - **Kinds (pinned).** `review`, `comment`, `check` (a completed run), `pull_request` and `issue`
   (opened, closed, reopened, assigned, review requested); anything else normalizes to nothing.
-  The PR-open subscription hears the first three.
+  The PR-open subscription hears the first three, and its PR's close ([D3](#d3)).
 - **Asking the agent (owner, 2026-11-05).** An app-named handle in `agentHandles`, defaulting
   to the App's bot login when the provider is a GitHub App. A person's mention is never an ask.
 - **`addressed` (EM call, 2026-11-05).** An optional `true` on the `.strict()` event when it
