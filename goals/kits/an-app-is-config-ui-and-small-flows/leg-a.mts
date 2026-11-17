@@ -39,7 +39,7 @@ export type LegA = {
   startedAt: number;
   user: string;
   /** Each answer the page got from the coding board's view, with the change notice its request named (none for a first read or a reload). */
-  boardReads: { at: number; body: any; changed?: { ids?: string[] } }[];
+  boardReads: { at: number; body: any; changed?: { ids?: string[]; kind?: string; topic?: unknown } }[];
   frames: string[];
   task?: { id: string; title: string; goal: string };
   /** The second task the goal files on the board, for j4. */
@@ -135,7 +135,7 @@ export async function legA(n: number, ask: string, failures: string[], notes: st
     page.on("response", async (r) => {
       if (r.request().method() === "POST" && /\/views\/codingBoard\b/.test(r.url())) {
         const body = await r.json().catch(() => undefined);
-        const sent = (r.request().postDataJSON() ?? {}) as { changed?: { ids?: string[] } };
+        const sent = (r.request().postDataJSON() ?? {}) as { changed?: { ids?: string[]; kind?: string; topic?: unknown } };
         result.boardReads.push({ at: Date.now(), body, ...(sent.changed !== undefined ? { changed: sent.changed } : {}) });
       }
     });

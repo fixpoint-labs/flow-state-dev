@@ -141,8 +141,13 @@ async function journeyFive(origin: string | undefined, user: string, failures: s
  */
 function journeyFour(a: LegA, failures: string[], notes: string[], tell: Tell): void {
   const reads = a.boardReads.filter((r) => r.body !== undefined);
-  const named = tell.over("j4:one-row · re-reads on a notice that named rows", reads.filter((r) => (r.changed?.ids?.length ?? 0) > 0));
-  const unnamed = reads.length - named.length;
+  // The board's rows by key, from every answer: a notice whose ids are all rows of the board names rows. One whose
+  // ids are something else (a run, a session's items) can't be answered row by row, and is counted apart.
+  const boardKeys = new Set(reads.flatMap((r) => (Array.isArray(r.body.keys) ? (r.body.keys as string[]) : Array.isArray(r.body.output) ? (r.body.output as { id?: string }[]).map((row) => row.id ?? "") : [])));
+  const namesRows = (r: (typeof reads)[number]) => (r.changed?.ids?.length ?? 0) > 0 && r.changed!.ids!.every((id) => boardKeys.has(id));
+  const named = tell.over("j4:one-row · re-reads on a notice that named board rows", reads.filter(namesRows));
+  const other = reads.filter((r) => (r.changed?.ids?.length ?? 0) > 0 && !namesRows(r));
+  const unnamed = reads.length - named.length - other.length;
   const boardSize = Math.max(0, ...reads.filter((r) => r.body.partial === undefined && Array.isArray(r.body.output)).map((r) => r.body.output.length));
   if (boardSize < 2) failures.push(`j4:one-row: the board never held two tasks in a whole answer (largest ${boardSize}), so a whole answer can't be told from one row`);
   for (const r of named) {
@@ -150,7 +155,7 @@ function journeyFour(a: LegA, failures: string[], notes: string[], tell: Tell): 
     if (r.body.partial === undefined || r.body.partial === false) failures.push(`j4:one-row: a re-read on a notice naming ${r.changed!.ids!.length} row(s) answered the whole board (${rows} rows)`);
     else if (!(rows <= r.changed!.ids!.length)) failures.push(`j4:one-row: a partial re-read on a notice naming ${r.changed!.ids!.length} row(s) carried ${rows}`);
   }
-  notes.push(`j4:one-row: ${reads.length} board reads: ${named.length} on a notice naming rows (${named.map((r) => `${r.body.partial === undefined ? "whole" : "partial"} ${Array.isArray(r.body.output) ? r.body.output.length : "?"}/${r.changed!.ids!.length}`).join(", ")}), ${unnamed} first reads, reloads or unnamed notices; the board held up to ${boardSize}`);
+  notes.push(`j4:one-row: ${reads.length} board reads: ${named.length} on a notice naming rows (${named.map((r) => `${r.body.partial === undefined ? "whole" : "partial"} ${Array.isArray(r.body.output) ? r.body.output.length : "?"}/${r.changed!.ids!.length}`).join(", ")}), ${other.length} on a notice naming other ids (${other.map((r) => `${(r.changed as { kind?: string }).kind} ${r.body.partial === undefined ? "whole" : "partial"}`).join(", ")}), ${unnamed} first reads, reloads or notices naming nothing; the board held up to ${boardSize}`);
   const values = [a.task?.title, a.task?.goal].filter((v): v is string => typeof v === "string" && v.length >= 12);
   tell.over("j4:no-rows · socket frames", a.frames, { emptyIs: "no frame at all is no row in a frame; leg a's row-changes reads the push" });
   const carrying = a.frames.filter((f) => values.some((v) => f.includes(v.slice(0, 40))));
