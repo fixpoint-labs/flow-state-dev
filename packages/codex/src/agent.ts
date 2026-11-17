@@ -34,10 +34,12 @@ import {
   readHarnessTurnFiles,
   recordPullRequests as startPullRequestRecorder,
   reportHarnessActivity,
+  reportHarnessEvent,
   reportHarnessSpend,
 } from "@flow-state-dev/core/harness";
 import type {
   HarnessActivityHook,
+  HarnessEventHook,
   HarnessBilling,
   HarnessCallbackContext,
   HarnessResolver,
@@ -130,6 +132,13 @@ export interface CodexAgentOptions {
    * throw is logged and swallowed.
    */
   onActivity?: HarnessActivityHook;
+  // FIX-2794.
+  /**
+   * Called on every event the run sends, of any kind, so a host can tell a
+   * working run from a silent one. Not awaited, and a throw is logged and
+   * swallowed.
+   */
+  onEvent?: HarnessEventHook;
   /**
    * Which model the run uses: a fixed id, or a resolver called once per
    * invocation, like `cwd` and `resume`, so one block can run a different
@@ -236,6 +245,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
     resume: resolveResume,
     onSession,
     onActivity,
+    onEvent,
     model,
     thread: threadOptions,
     client: clientOptions,
@@ -400,6 +410,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
               pending.catch(() => {});
               const next = await Promise.race([pending, deadline.promise]);
               if (next.done === true) break;
+              reportHarnessEvent(onEvent, ctx);
               for (const event of translateCodexEvent(next.value)) {
                 if (event.kind === "thread_started") {
                   sessionId = event.threadId;

@@ -56,6 +56,7 @@ import { commandCheck, type CommandCheckCommands } from "../command-check";
 import { goalJudge } from "../goal-judge";
 import type { Harness } from "../harness";
 import { harnessDrainBudgetMs, harnessManager, resolveOwnership, type CompletionRunContext, type PhaseSpec } from "../manager";
+import { DEFAULT_IDLE_TIMEOUT_MS } from "../idle-stop";
 import { harnessSessionDoor, harnessTalkTurn } from "../session-door";
 import { taskIssueSegment } from "../workspace";
 
@@ -65,8 +66,13 @@ import { recordedWorkView } from "../recorded-work-view";
 
 export { CODER_FLOW };
 
-/** One run's wall-clock budget when the kit names none. */
-const DEFAULT_RUN_TIMEOUT_MS = 20 * 60_000;
+// FIX-2794.
+/**
+ * How long a shutdown waits for a run's harness when the kit caps no run
+ * time. A run with no cap has no length to wait out, so a shutdown gives it
+ * this long and then cancels it, as it would at any cap.
+ */
+const SHUTDOWN_RUN_WAIT_MS = 20 * 60_000;
 
 /** How long a run's checks may take together when the kit names no bound. */
 const CHECKS_TIMEOUT_MS = 10 * 60_000;
@@ -87,7 +93,9 @@ export interface CoderFlowOptions {
   checks?: { readonly commands: readonly string[]; readonly timeoutMs?: number };
   /** A task works in its session's project: it needs one, runs in its checkout, and runs the project's checks. Default false. */
   project?: boolean;
-  /** One run's wall-clock budget. Default 20 minutes. */
+  /** How long a run's harness may send nothing before the run is stopped and fails. Default 20 minutes. */
+  idleTimeoutMs?: number;
+  /** A cap on one run's wall-clock time, however busy its harness is. Off by default. */
   runTimeoutMs?: number;
 }
 
@@ -152,12 +160,14 @@ export function codingPhase(options: Pick<CoderFlowOptions, "checks" | "project"
  * `createFlowState` as `dispatchDrainTimeoutMs`, in place of the engine's
  * 30 s default, which would cancel the run.
  */
-export function codingDrainBudgetMs(options: Pick<CoderFlowOptions, "checks" | "project" | "judge" | "runTimeoutMs">): number {
-  const runTimeoutMs = options.runTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
+export function codingDrainBudgetMs(
+  options: Pick<CoderFlowOptions, "checks" | "project" | "judge" | "runTimeoutMs" | "idleTimeoutMs">,
+): number {
   const { doneTimeoutMs } = codingPhase(options);
   return harnessDrainBudgetMs({
-    runTimeoutMs,
-    ownershipWaitMs: resolveOwnership({ runTimeoutMs, doneTimeoutMs }).ownership.waitMs,
+    runTimeoutMs: options.runTimeoutMs ?? SHUTDOWN_RUN_WAIT_MS,
+    // The same term the manager prices its checkout lock with: its silence window.
+    ownershipWaitMs: resolveOwnership({ runTimeoutMs: options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS, doneTimeoutMs }).ownership.waitMs,
     judge: options.judge !== false,
     doneTimeoutMs,
   });
@@ -182,7 +192,6 @@ export function coderWorkerFlow(
     throw new Error(`${CODER_FLOW}: the default harness "${options.defaultHarness}" is not one of ${ids.join(", ")}.`);
   }
   const phase = codingPhase(options);
-  const runTimeoutMs = options.runTimeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
 
   return workerFlow(
     (installation: WorkerInstallation) => {
@@ -201,7 +210,9 @@ export function coderWorkerFlow(
           tenant: undefined,
           phase,
           workspace: options.workspace,
-          runTimeoutMs,
+          ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
+          ...(options.runTimeoutMs === undefined ? {} : { runTimeoutMs: options.runTimeoutMs }),
+          harnessLabel: harness.label ?? harness.id,
           harness: harness.agent,
           reviewChanges,
           ...(options.judge === false ? {} : { judge: goalJudge({ name: `${name}-judge` }) }),

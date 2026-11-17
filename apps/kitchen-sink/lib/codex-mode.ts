@@ -235,6 +235,8 @@ export function codexBlockOptions(feeds: HarnessSessionFeeds, seams: CodexSeams 
     cwd: feeds.cwd,
     resume: feeds.resume,
     onSession: feeds.onSession,
+    // Each event the run sends keeps a working turn from being stopped as silent.
+    ...(feeds.onEvent !== undefined ? { onEvent: feeds.onEvent } : {}),
     // A session stored before models could be picked names none; it runs
     // Codex's own default, never the model your Codex settings name.
     model: async (ctx) => (await feeds.model(ctx)) ?? (await codexDefaultModel(seams)),
@@ -277,7 +279,7 @@ async function codexDefaultModel(seams: CodexSeams): Promise<string> {
 /** Codex mode's session flow. `seams` is for tests. */
 export function codexSessionFlow(seams: CodexSeams = {}) {
   // No `defaultModel`: the block fills in Codex's own default (`codexBlockOptions`).
-  return kitchenSinkHarnessFlow({ kind: CODEX_SESSION, agent: (feeds) => codexBlock(feeds, seams) });
+  return kitchenSinkHarnessFlow({ kind: CODEX_SESSION, harnessLabel: "Codex", agent: (feeds) => codexBlock(feeds, seams) });
 }
 
 /** What the mode's check asks of the host. Each a seam for tests. */

@@ -105,6 +105,8 @@ export function cursorBlockOptions(feeds: HarnessSessionFeeds, seams: CursorSeam
     resume: feeds.resume,
     onSession: feeds.onSession,
     onSteerable: feeds.onSteerable,
+    // Each event the run sends keeps a working turn from being stopped as silent.
+    ...(feeds.onEvent !== undefined ? { onEvent: feeds.onEvent } : {}),
     model: async (ctx) => cursorModelSelection(await feeds.model(ctx)),
     // Declares no plan record, so goal leg **p** can be seen to fail.
     recordPlan: goalControl() !== "no-record",
@@ -138,6 +140,7 @@ function cursorBlock(feeds: HarnessSessionFeeds, seams: CursorSeams = {}): Harne
 export function cursorSessionFlow(seams: CursorSeams = {}) {
   return kitchenSinkHarnessFlow({
     kind: CURSOR_SESSION,
+    harnessLabel: "Cursor",
     agent: (feeds) => cursorBlock(feeds, seams),
     defaultModel: CURSOR_DEFAULT_MODEL,
   });

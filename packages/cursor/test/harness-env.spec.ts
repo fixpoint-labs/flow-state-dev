@@ -17,7 +17,7 @@ const { CURSOR_PASS } = await import("../src/env-pass");
 const { harnessEnv } = await import("@flow-state-dev/core/harness");
 
 const SECRET = "LAB_SERVER_ONLY_SECRET";
-const feeds = { cwd: () => "/tmp/run", resume: () => undefined, onSession: () => {}, onUsage: () => {}, onActivity: () => {} };
+const feeds = { cwd: () => "/tmp/run", resume: () => undefined, onSession: () => {}, onUsage: () => {}, onActivity: () => {}, onEvent: () => {} };
 
 beforeEach(() => {
   seen.options.length = 0;
@@ -37,5 +37,11 @@ describe("a Cursor run from cursorHarness()", () => {
   it("runs on the model the options name", () => {
     cursorHarness({ model: "composer-2.5" } as never).agent(feeds as never);
     expect(seen.options[0]!.model).toBe("composer-2.5");
+  });
+
+  // FIX-2794.
+  it("hands the run the manager's event feed, so a busy Cursor run is never taken for a silent one", () => {
+    cursorHarness().agent(feeds as never);
+    expect(seen.options[0]!.onEvent).toBe(feeds.onEvent);
   });
 });

@@ -94,12 +94,15 @@
  * doesn't wait for its process (`stopsOnAbort`) is never stopped for one: its
  * calls are denied, so nothing runs that nobody allowed.
  *
- * **A turn's deadline** (`turnTimeoutMs`, 60 minutes by default): the harness
- * step is stopped once it has run that long, through the same abort a stop
- * uses, so a harness wedged on a hung tool takes its process down with it.
- * The turn ends recorded as `timedOut`, with an error that says so. Time a
- * turn spends waiting on a user's answer about a tool call doesn't count:
- * each harness run the turn resumes gets the whole deadline again.
+ * **A silent turn is stopped** (`idleTimeoutMs`, 20 minutes by default): every
+ * event the harness sends (`onEvent`) starts the window again, and a harness
+ * that has sent nothing for the whole of it is stopped through the same abort
+ * a stop uses, so a harness wedged on a hung tool takes its process down with
+ * it. A turn still working is never stopped for how long it has run, unless
+ * the host sets a cap on that too (`turnTimeoutMs`, off by default). Either
+ * way the turn ends recorded as `timedOut`, with an error that says which.
+ * Time a turn spends waiting on a user's answer about a tool call doesn't
+ * count: each harness run the turn resumes starts both again.
  *
  * Nothing here names a harness. A harness that needs more than these feeds has
  * found a gap in its own package. The flow writes no item of its own.
@@ -126,6 +129,7 @@ import type {
   HarnessRunInput,
   HarnessSessionHook,
   HarnessSteerHook,
+  HarnessEventHook,
   HarnessUsageHook,
 } from "@flow-state-dev/core/harness";
 import { readRequestTotalSpend, requestHostOf } from "@flow-state-dev/core/internal";
@@ -154,6 +158,7 @@ import {
   type CommandCheckOptions,
 } from "./command-check";
 import { assertPositiveInt } from "./guards";
+import { DEFAULT_IDLE_TIMEOUT_MS, idleStops, type IdleStops } from "./idle-stop";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import {
   MAX_APPROVAL_STEPS,
@@ -467,6 +472,13 @@ export interface HarnessSessionFeeds {
    * ignores it.
    */
   readonly onToolApproval?: HarnessToolApprovalHook;
+  // FIX-2794.
+  /**
+   * Called by the harness on every event its run sends: each one starts the
+   * turn's silence window (`idleTimeoutMs`) again. A harness that never calls
+   * it is stopped once that window has passed, however busy it is.
+   */
+  readonly onEvent?: HarnessEventHook;
 }
 
 /** What the `changes` read takes: the turn, by its request id, and optionally one file. */
@@ -512,12 +524,25 @@ export interface HarnessSessionFlowOptions {
   readonly issueSpec?: IssueSpecOption;
   // FIX-2680.
   /**
-   * How long the harness may run in one turn, in ms, before it is stopped and
-   * the turn ends timed out. Time a turn waits on a user's answer about a
-   * tool call (`approveTools`) doesn't count: each run it resumes gets the
-   * whole of it. Default 60 minutes.
+   * A cap on how long the harness may run in one turn, in ms, however busy
+   * it is: past it, it is stopped and the turn ends timed out. Time a turn
+   * waits on a user's answer about a tool call (`approveTools`) doesn't count:
+   * each run it resumes gets the whole of it. Off by default.
    */
   readonly turnTimeoutMs?: number;
+  // FIX-2794.
+  /**
+   * How long the harness may send nothing, in ms, before it is stopped and the
+   * turn ends timed out. Every event it sends starts the window again.
+   * Default 20 minutes.
+   */
+  readonly idleTimeoutMs?: number;
+  /**
+   * What the harness is called in a person's words, for the error a silent
+   * turn ends with (`No output from Claude Code for 20 mins; stopped.`).
+   * Default `"the harness"`.
+   */
+  readonly harnessLabel?: string;
 }
 
 /** What a `verify` resolver is handed: whose session, and where it works. */
@@ -814,7 +839,11 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   const attachedHeads = new Map<string, string | null>();
   const approveTools = options.approveTools === true;
   const deadlines = turnDeadlines(
-    assertPositiveInt("harnessSessionFlow's turnTimeoutMs", options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS),
+    idleStops(
+      assertPositiveInt("harnessSessionFlow's idleTimeoutMs", options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS),
+      options.harnessLabel ?? "the harness",
+    ),
+    options.turnTimeoutMs === undefined ? undefined : assertPositiveInt("harnessSessionFlow's turnTimeoutMs", options.turnTimeoutMs),
   );
   const sessionFeeds = harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse, attachedHeads);
   // One working directory per turn, by request id: the turn's brief and its harness both ask
@@ -825,6 +854,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   const turnCwds = new Map<string, Promise<string>>();
   const feeds: HarnessSessionFeeds = {
     ...sessionFeeds,
+    onEvent: (ctx) => deadlines.heard(ctx),
     cwd: (ctx) => {
       const requestId = requestOf(ctx);
       const known = turnCwds.get(requestId);
@@ -853,11 +883,14 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // turn still fails with the harness's own error, rethrown here, and the
   // binding is left as it was. A harness stopped at the turn's deadline is
   // recorded as timed out, not stopped, and the turn fails saying so, with
-  // the harness's error as its cause.
+  // the harness's error as its cause. One stopped for silence fails with the
+  // silence's own words and no cause: the harness's error is an abort's, and
+  // a turn that went silent failed, it wasn't stopped by anyone.
   const recordTurnFailure = async (error: Error, ctx: BlockContext): Promise<never> => {
     const requestId = ctx.request.identity.id;
-    const timedOut = deadlines.takeFired(requestId);
-    const ended = timedOut ? new Error(turnTimedOutMessage(deadlines.timeoutMs), { cause: error }) : error;
+    const fired = deadlines.takeFired(requestId);
+    const timedOut = fired !== undefined;
+    const ended = fired === undefined ? error : fired.idle ? new Error(fired.message) : new Error(fired.message, { cause: error });
     await changeState(ctx as unknown as HarnessCallbackContext, (state) =>
       withTurn(state, requestId, (record) => ({
         ...record,
@@ -1270,31 +1303,30 @@ function turnEndOf(ctx: object, requestId: string): { spend: TaskSpendView | nul
 }
 
 
-/** The default bound on one harness run of a turn. */
-const DEFAULT_TURN_TIMEOUT_MS = 60 * 60_000;
-
-/** The error a turn whose harness ran past its deadline ends with. */
+/** The error a turn whose harness ran past its cap ends with. */
 function turnTimedOutMessage(timeoutMs: number): string {
   return `[harness-session] the turn's harness timed out after ${timeoutMs}ms and was stopped.`;
 }
 
 // FIX-2680.
 /**
- * Each running harness step's deadline, by request: an abort the step runs
- * under (composed with any other stop it has), whose timer is cleared when the
- * step settles, and a note of each request whose deadline fired, read once by
- * the turn's failure record.
+ * Each running harness step's stops, by request: its silence stop (`idle`),
+ * and its cap on run time when the host set one. The step runs under both,
+ * composed with any other stop it has; both timers go when the step settles,
+ * and whichever fired is read once by the turn's failure record.
  */
-function turnDeadlines(timeoutMs: number) {
+function turnDeadlines(idle: IdleStops, timeoutMs: number | undefined) {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const fired = new Set<string>();
   return {
-    timeoutMs,
-    /** The step's deadline signal: aborts `timeoutMs` from now unless the step settles first. */
+    /** The step's stops: silence, and its cap when there is one. */
     arm(ctx: BlockContext): AbortSignal {
+      const silence = idle.arm(ctx);
+      if (timeoutMs === undefined) return silence;
       const requestId = ctx.request.identity.id;
       const controller = new AbortController();
       clearTimeout(timers.get(requestId));
+      fired.delete(requestId);
       const timer = setTimeout(() => {
         fired.add(requestId);
         controller.abort(new Error(turnTimedOutMessage(timeoutMs)));
@@ -1302,17 +1334,25 @@ function turnDeadlines(timeoutMs: number) {
       // A deadline never holds a host's process open on its own.
       timer.unref?.();
       timers.set(requestId, timer);
-      return controller.signal;
+      return AbortSignal.any([silence, controller.signal]);
     },
-    /** The step settled: its deadline goes. */
+    /** The step's harness sent something. */
+    heard(ctx: BlockContext): void {
+      idle.heard(ctx);
+    },
+    /** The step settled: its timers go. */
     clear(ctx: BlockContext): void {
+      idle.clear(ctx);
       const requestId = ctx.request.identity.id;
       clearTimeout(timers.get(requestId));
       timers.delete(requestId);
     },
-    /** Whether the request's deadline fired, forgetting it: asked once per turn end. */
-    takeFired(requestId: string): boolean {
-      return fired.delete(requestId);
+    /** What stopped the request's step, forgetting it: asked once per turn end. `undefined` when neither fired. */
+    takeFired(requestId: string): { message: string; idle: boolean } | undefined {
+      const silence = idle.takeFired(requestId);
+      const capped = fired.delete(requestId);
+      if (silence !== undefined) return { message: silence, idle: true };
+      return capped && timeoutMs !== undefined ? { message: turnTimedOutMessage(timeoutMs), idle: false } : undefined;
     },
   };
 }

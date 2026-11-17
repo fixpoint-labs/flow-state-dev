@@ -5,10 +5,11 @@
  * Two kinds of holder use it. A workspace host holds one while it provisions a
  * place or touches a clone, and REFRESHES it while it works (`heartbeatMs`): a
  * provision has no fixed deadline, so its lock is stale once its holder stopped
- * refreshing it, which is what a process that died does. A caller that holds a
- * lock for a run with a known deadline (harness-manager's checkout lease) does
- * not refresh it, and sizes `staleAfterMs` past the longest a live holder could
- * keep it.
+ * refreshing it, which is what a process that died does. A caller whose work
+ * says when it is alive refreshes the lock itself, as that work goes
+ * (`refreshLock`; harness-manager's checkout lease does on its run's events),
+ * and sizes `staleAfterMs` past the longest a live holder goes between
+ * refreshes.
  *
  * - **Acquiring is atomic**: an `O_EXCL` create either wins or does not.
  * - **Contention waits rather than fails**, up to `waitMs`. Two provisions of
@@ -245,6 +246,16 @@ function stillHeld(bounds: LockBounds, what: string, path: string): Error {
 export function releaseLock(lease: LockLease): void {
   if (lease.timer !== undefined) clearInterval(lease.timer);
   if (holds(lease.path, lease.token)) rmSync(lease.path, { force: true });
+}
+
+// FIX-2794.
+/**
+ * Mark a held lock live now, for a holder that refreshes it as its own work
+ * goes rather than on a timer. Touches nothing that isn't this acquisition's
+ * (a lock released, or taken over since), and never throws.
+ */
+export function refreshLock(lease: Pick<LockLease, "path" | "token">): void {
+  refresh(lease.path, lease.token);
 }
 
 /** Mark the lock live, if it is still this acquisition's. */

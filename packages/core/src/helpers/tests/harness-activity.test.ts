@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { harnessActivityOf, reportHarnessActivity } from "../harness-activity";
+import { harnessActivityOf, reportHarnessActivity, reportHarnessEvent } from "../harness-activity";
 
 describe("a harness run's activity", () => {
   it("is a whole assistant message or a started tool call, in every harness's event names", () => {
@@ -40,5 +40,18 @@ describe("a harness run's activity", () => {
       process.off("unhandledRejection", unhandled);
       warn.mockRestore();
     }
+  });
+
+  // FIX-2794.
+  it("notes every event, and never fails the run when the host's event hook throws", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const hook = vi.fn(() => {
+      throw new Error("timer gone");
+    });
+    expect(() => reportHarnessEvent(hook, {} as never)).not.toThrow();
+    expect(hook).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("timer gone"));
+    expect(() => reportHarnessEvent(undefined, {} as never)).not.toThrow();
+    warn.mockRestore();
   });
 });
