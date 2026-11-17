@@ -32,6 +32,12 @@
  * merged, is cancelled once it closed unmerged, or runs the line on the same
  * coding session while it is still open.
  *
+ * **A run follows the pull request it opens** (`onPullRequestRecorded`, when
+ * the host passes workforce's `followPullRequest`): its session is subscribed
+ * to it the moment it is recorded, so the pull request's reviews, comments and
+ * CI reach that session and wake the task waiting on it. Nobody saves a
+ * routine for it.
+ *
  * **Jev reads the work** (D4). Both managers carry the judge, which reads a
  * task's goal against the run's answer and commits before it closes.
  *
@@ -82,7 +88,7 @@ import {
   type PhaseSpec,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import type { HarnessBlock, PullRequestFollower } from "@flow-state-dev/core/harness";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { assertDispatchEntrySupported } from "@flow-state-dev/orchestration/internal";
 import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
@@ -197,6 +203,12 @@ export interface CoderWorkerFlowOptions {
   answerPhase: PhaseSpec;
   /** The judge both managers run on a task. Absent, a task settles on its phase's check alone. */
   judge?: HarnessJudge;
+  /**
+   * What both managers do with each pull request a run records: workforce's
+   * `followPullRequest({ providers, installation })`, which subscribes the
+   * run's session to it. Absent: nothing follows a pull request.
+   */
+  onPullRequestRecorded?: PullRequestFollower;
   /** Both managers hold a run with commits for the user's review (`reviewChanges`). Absent: off. */
   reviewChanges?: boolean;
   /** Both managers ask the user before a run's tool calls (`approveTools`). Absent: off. */
@@ -231,6 +243,8 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     ...(options.approveTools === true ? { approveTools: true } : {}),
     // A task whose work is a pull request (its run's own, or an accept's Open a PR) is done when it merges.
     awaitPullRequests: true,
+    // And its session hears that pull request's reviews, comments and CI, which wake the task.
+    ...(options.onPullRequestRecorded === undefined ? {} : { onPullRequestRecorded: options.onPullRequestRecorded }),
   };
 
   /** How a task's run is keyed: its task id, in its payload's phase or the answer phase. */

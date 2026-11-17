@@ -7,6 +7,7 @@
  * subscriber before it is delivered, and a poll reads only what its user can.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
+import type { SubscriptionScreens } from "../../subscriptions/screens";
 import type { SubscriptionProvider } from "../../subscriptions/subscribe";
 import { GITHUB_PROVIDER, githubLoginId } from "./normalize";
 import { pollGitHubThread } from "./poll";
@@ -24,6 +25,12 @@ export interface GitHubSubscriptionProviderOptions {
   readonly appBotLogin?: string;
   /** The `fetch` it calls. Default the global one. */
   readonly fetch?: typeof fetch;
+  /**
+   * The app's own screens on GitHub: its custom functions, and the model the
+   * `interest` screen asks. Without an `interestModel`, a subscription that
+   * lists `interest` is refused.
+   */
+  readonly screens?: SubscriptionScreens;
 }
 
 /** GitHub's provider: a {@link SubscriptionProvider}, with the App's bot login when it has one. */
@@ -58,6 +65,7 @@ export function githubSubscriptionProvider(options: GitHubSubscriptionProviderOp
     // FIX-2536: as the polling user, since the poll schedule's mark.
     poll: (thread, cursor, ctx) => pollGitHubThread(call, thread, cursor, ctx, { agentHandles }),
     provider: GITHUB_PROVIDER,
+    ...(options.screens === undefined ? {} : { screens: options.screens }),
     ...(options.appBotLogin === undefined ? {} : { agentHandle: githubLoginId(options.appBotLogin) }),
     async canRead(thread, ctx) {
       const repository = githubRepositoryOf(thread);

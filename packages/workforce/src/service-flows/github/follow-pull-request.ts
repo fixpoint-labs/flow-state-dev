@@ -20,7 +20,7 @@ import type { WorkerInstallation } from "../../workers/installation";
 import { installationPolling, pollingOn } from "../../subscriptions/poll";
 import { subscriptionResources } from "../../subscriptions/rows";
 import { subscribe, type SubscribeOutcome, type SubscriptionProvider } from "../../subscriptions/subscribe";
-import { GITHUB_PROVIDER, githubThreadKey } from "./normalize";
+import { GITHUB_PROVIDER, githubLoginId, githubThreadKey } from "./normalize";
 
 /** The kinds a followed pull request is heard for. **Pinned.** */
 export const FOLLOWED_PULL_REQUEST_KINDS = ["review", "comment", "check"] as const;
@@ -36,6 +36,15 @@ export interface FollowPullRequestOptions {
    * the user's poll for it once `hireWorkforce` was given `routines.poll`.
    */
   readonly installation?: WorkerInstallation;
+  /**
+   * The GitHub logins whose events reach the session (the `allow` screen), for
+   * a host whose coding session acts on what it hears: anyone else's never
+   * reaches it. A check reports as the app that ran it (`github-actions`), so
+   * CI reaches the session only when that app is listed here and the service
+   * flow trusts it (`trustedBots`). Absent: every sender the sender screen
+   * passes. Empty is refused.
+   */
+  readonly allow?: readonly string[];
 }
 
 /** The thread a recorded pull request is followed on, or `undefined` when it isn't GitHub's. */
@@ -45,6 +54,8 @@ export function pullRequestThread(pr: Pick<RecordedPullRequest, "host" | "owner"
 
 /** Build the follower: each newly recorded GitHub pull request subscribes the session to it. */
 export function followPullRequest(options: FollowPullRequestOptions): PullRequestFollower {
+  if (options.allow !== undefined && options.allow.length === 0) throw new Error("followPullRequest: `allow` lists no GitHub login; omit it to hear every sender the sender screen passes.");
+  const screens = options.allow === undefined ? undefined : [{ screen: "allow" as const, ids: options.allow.map(githubLoginId) }];
   const follower = async (ctx: BlockContext, pr: RecordedPullRequest): Promise<void> => {
     const thread = pullRequestThread(pr);
     // Recorded already closed or merged (the branch check found it late): its closing event has
@@ -58,6 +69,7 @@ export function followPullRequest(options: FollowPullRequestOptions): PullReques
         provider: GITHUB_PROVIDER,
         thread,
         kinds: [...FOLLOWED_PULL_REQUEST_KINDS],
+        ...(screens === undefined ? {} : { screens }),
         interest: `Reviews, comments and CI on pull request #${pr.number}, which this session opened.`
       },
       undefined,
