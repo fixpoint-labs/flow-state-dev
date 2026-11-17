@@ -167,6 +167,9 @@ export interface SubscribeWrite {
   readonly id?: string;
   /** Who made it, kept with the subscription. */
   readonly madeBy?: RoutineMaker;
+  // FIX-2784; FIX-2535 D3.
+  /** Its thread's close reaches it whatever its kinds, screens and cap, then it ends: `followPullRequest`'s. */
+  readonly hearsClose?: true;
   // FIX-2536.
   /** The app's polling, when it polls: an enabled subscription under no tenant makes, or speeds up, the user's poll for its thread. */
   readonly polling?: SubscriptionPolling;
@@ -416,6 +419,7 @@ async function writeSubscription(
     flow: flowKind ?? "",
     worker: hears.worker,
     ...(hears.taskId === undefined ? {} : { taskId: hears.taskId }),
+    ...(write.hearsClose === true ? { hearsClose: true as const } : {}),
     userId: identity.userId,
     orgId: identity.orgId,
     // The tenant its session runs under, so its deliveries reach that session.

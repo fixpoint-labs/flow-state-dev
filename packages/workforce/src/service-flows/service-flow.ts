@@ -28,7 +28,10 @@
  *   subscription to that thread, and only to that thread: a subscription to
  *   the whole repo stays. It ends whether or not the closing event passed its
  *   kinds, screens or cap: routing names an end-only owner run for each one
- *   the event doesn't reach, and delivery ends the rest once delivered.
+ *   the event doesn't reach, and delivery ends the rest once delivered. A
+ *   subscription that hears its close (`hearsClose`, a coding session
+ *   following its pull request; FIX-2535 D3) is sent the close first, past
+ *   its kinds, screens and cap, on push and on poll.
  *
  * A dispatch the recipient's host lost, or accepted and never took, is left
  * unseen (an event is seen once its message is taken), so the event's next
@@ -435,15 +438,19 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
 
   // ---- delivery, as the subscriber -----------------------------------------
 
-  /** Deliver `event` on `row`, past its kinds, its private thread's read check, its cursor and its cap. */
+  /**
+   * Deliver `event` on `row`, past its kinds, its private thread's read check, its cursor and its cap.
+   * `closeHeard`: the close of a subscription that hears its close (FIX-2535 D3), past its kinds and cap.
+   */
   const deliverToRow = async (
     ctx: BlockContext,
     subscription: string,
     row: SubscriptionResourceState,
     event: SubscriptionEvent,
-    forward: ForwardMark | undefined
+    forward: ForwardMark | undefined,
+    closeHeard = false
   ): Promise<Delivered> => {
-    if (row.kinds !== undefined && !row.kinds.includes(event.kind)) return { act: "refused", reason: "not a kind it hears" };
+    if (!closeHeard && row.kinds !== undefined && !row.kinds.includes(event.kind)) return { act: "refused", reason: "not a kind it hears" };
     // A private thread is read again as this user before anything of it reaches them (ER-4).
     if (event.audience === "private" && !(await provider.canRead(row.thread, ctx))) {
       return { act: "refused", reason: "the thread is no longer readable" };
@@ -469,7 +476,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
           const now = Date.now();
           if (inFlightNow(c, event.object, now)) return { state: c, result: "inflight" };
           const window = now - c.window.start >= HOUR_MS ? { start: now, sent: 0 } : c.window;
-          if (window.sent >= cap) return { state: { ...c, seen: withSeen(c, event.object), window, held: c.held + 1 }, result: "held" };
+          if (window.sent >= cap && !closeHeard) return { state: { ...c, seen: withSeen(c, event.object), window, held: c.held + 1 }, result: "held" };
           const inFlight = [...liveInFlight(c, now), [event.object.id, event.object.version, now] as [string, number, number]];
           return {
             state: { ...c, window: { start: window.start, sent: window.sent + 1 }, held: 0, inFlight },
@@ -576,13 +583,16 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         await heal();
         return { act: "refused", reason: "not this subscription's thread" };
       }
+      const closes = closedThreadOf(event) === row.thread;
+      // FIX-2535 D3: a subscription that hears its close hears it whatever its kinds, screens and cap.
+      const closeHeard = closes && row.hearsClose === true;
       // A forward reaches only an unmatched subscription, and an unmatched one hears only forwards.
-      if (endOnly !== true && (forward !== undefined) !== (row.unmatched === true)) {
+      if (endOnly !== true && !closeHeard && (forward !== undefined) !== (row.unmatched === true)) {
         return { act: "refused", reason: row.unmatched === true ? "an unmatched subscription hears only what nobody else heard" : "not an unmatched subscription" };
       }
       // The code screens again, on the subscription's own settings: the index entry routing nominated by can be stale.
       // Config and custom screens only: `interest` was judged once, in routing, and isn't asked again per delivery.
-      if (endOnly !== true) {
+      if (endOnly !== true && !closeHeard) {
         const refusals = [
           ...SCREEN_KINDS.map((kind) => {
             const refused = screenRefusal(kind, event, row, { trustedBots: options.trustedBots ?? [] });
@@ -600,9 +610,8 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
           return { act: "refused", reason: refused };
         }
       }
-      const closes = closedThreadOf(event) === row.thread;
       if (endOnly === true && !closes) return { act: "refused", reason: "the event doesn't close this subscription's thread" };
-      const delivered = endOnly === true ? undefined : await deliverToRow(ctx, subscription, row, event, forward);
+      const delivered = endOnly === true && !closeHeard ? undefined : await deliverToRow(ctx, subscription, row, event, forward, closeHeard);
       // The thread closed: the subscription ends whatever became of the event,
       // except a send the host lost, which the event's next delivery sends
       // first, and a copy of one still sending, whose own delivery ends it.
@@ -829,6 +838,19 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
           // Owed the close itself, or anything before it in this fetch: the close waits (the close invariant).
           if (stillOwed.has(id) || (unsettled.get(id)?.length ?? 0) > 0) closePending.add(id);
           if (!subs.has(id) || closePending.has(id)) continue;
+          // FIX-2535 D3: one that hears its close is sent it first, whatever its kinds, screens and cap; a send
+          // not yet taken leaves the close owed, so a later poll lands it and then ends the subscription.
+          const sub = subs.get(id)!;
+          if (sub.hearsClose === true) {
+            const delivered = await deliverToRow(ctx, id, sub, event, undefined, true);
+            if (delivered.act === "sent") counts.delivered += 1;
+            const cursor = (await subscriptionCursorsOf(ctx).getOptional(id))?.state;
+            if (delivered.act === "unsent" || delivered.act === "inflight" || (delivered.act === "sent" && cursor !== undefined && !seenBefore(cursor, event.object))) {
+              oweNow(id);
+              closePending.add(id);
+              continue;
+            }
+          }
           await unsubscribe(ctx, id, "thread_closed");
           subs.delete(id);
           unsettled.delete(id);

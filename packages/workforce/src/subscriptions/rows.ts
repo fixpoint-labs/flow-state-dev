@@ -92,6 +92,14 @@ export const subscriptionResourceStateSchema = screenSettingsSchema.extend({
   worker: z.string().min(1),
   /** The task that session works, when it is a task's session: its failure or cancel ends this subscription. */
   taskId: z.string().min(1).optional(),
+  // FIX-2784; FIX-2535 D3.
+  /**
+   * Its thread's close reaches it whatever its kinds, screens and cap, and
+   * then it ends: a coding session following the pull request it opened
+   * (`followPullRequest`). Server-written, never a model's input. Absent,
+   * a close ends it unheard unless its kinds and screens pass the close.
+   */
+  hearsClose: z.literal(true).optional(),
   userId: z.string().min(1),
   /** The organization it was made in: the host's owner-run check reads it. */
   orgId: z.string().min(1),
