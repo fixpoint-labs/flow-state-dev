@@ -328,6 +328,7 @@ export async function openTeammates(options: TeammatesOptions) {
 
   const contextFlow = defineFlow({
     kind: LAB_CONTEXT_FLOW,
+    actions: {},
     views: {
       context: labContextView(async () => ({
         folder: workdir,
@@ -337,7 +338,7 @@ export async function openTeammates(options: TeammatesOptions) {
         delegates,
       })),
     },
-  } as never)({ id: LAB_CONTEXT_FLOW } as never) as { id: string };
+  })({ id: LAB_CONTEXT_FLOW });
 
   const state = createFlowState({
     kits: [
@@ -372,7 +373,7 @@ export async function openTeammates(options: TeammatesOptions) {
     fill: {
       [harnesses.slots.harnesses]:
         scripted === undefined
-          ? [codexHarness(), cursorHarness({ model: CURSOR_MODEL } as never)]
+          ? [codexHarness(), cursorHarness({ model: CURSOR_MODEL })]
           : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")],
     },
     flows: [contextFlow],
@@ -389,7 +390,7 @@ export async function openTeammates(options: TeammatesOptions) {
     // A consult reads on `intent/utility`: a smaller model than the workers answer on.
     models: { default: options.model, intents: { utility: [UTILITY_MODEL] } },
     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
-  } as never);
+  });
 
   return state;
 }
