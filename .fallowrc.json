@@ -99,6 +99,8 @@
     "scripts/packed-install/fixtures/**",
     // Files the docs brand lint reads to prove each rule can fail.
     "apps/docs/scripts/brand-lint-fixtures/**",
+    // The app the inventory module's controls grade as files, never import.
+    "labs/test-support/fixtures/**",
     "goals/_template/**",
     "goals/*/*/harness*.mts",
     "goals/*/*/host/**",
