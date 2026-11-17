@@ -37,10 +37,12 @@ export interface FollowPullRequestOptions {
    */
   readonly installation?: WorkerInstallation;
   /**
-   * The GitHub logins whose reviews, comments and checks reach the session
-   * (the `allow` screen), for a host whose coding session acts on what it
-   * hears: anyone else's never reaches it. Absent: every sender the sender
-   * screen passes (members and collaborators). Empty is refused.
+   * The GitHub logins whose events reach the session (the `allow` screen), for
+   * a host whose coding session acts on what it hears: anyone else's never
+   * reaches it. A check reports as the app that ran it (`github-actions`), so
+   * CI reaches the session only when that app is listed here and the service
+   * flow trusts it (`trustedBots`). Absent: every sender the sender screen
+   * passes. Empty is refused.
    */
   readonly allow?: readonly string[];
 }
