@@ -15,13 +15,11 @@ import { fileURLToPath } from "node:url";
 /** The lab's own folder. */
 export const LAB = fileURLToPath(new URL("..", import.meta.url));
 
-/** The one module the screen reads and writes through. */
-export const READS = "src/lab.ts";
 /** The entry: it builds the one client. */
-export const ENTRY = "src/main.tsx";
+const ENTRY = "src/main.tsx";
 
 /** ER-1's caps: at most this many flows, each under this many lines, and this many lines of configuration in all. */
-export const CAPS = { flows: 3, flowLines: 200, configLines: 300 } as const;
+const CAPS = { flows: 3, flowLines: 200, configLines: 300 } as const;
 
 /**
  * The types the screen computes itself, by the module that exports them: a
@@ -31,7 +29,7 @@ export const CAPS = { flows: 3, flowLines: 200, configLines: 300 } as const;
  * thread's entries drawn from stored items. A new one goes on the list in a
  * reviewed PR.
  */
-export const SCREEN_TYPES: Record<string, readonly string[]> = {
+const SCREEN_TYPES: Record<string, readonly string[]> = {
   "src/lab.ts": ["LabSession", "LabProject", "ConnectionState", "ThreadView", "LabTask", "TaskBoardCalls", "TaskWork", "WorkingNow", "LabHarness", "RepositoryCheck", "LabConnection", "LabCalls"],
   "src/lib/address.ts": ["Address"],
   "src/lib/thread-entries.ts": ["ThreadEntry", "Item"],
@@ -40,7 +38,7 @@ export const SCREEN_TYPES: Record<string, readonly string[]> = {
 };
 
 /** A file of the lab, by its path from the lab, and the kind of code it is. */
-export type Kind = "config" | "flow" | "ui" | "outside" | "other";
+type Kind = "config" | "flow" | "ui" | "outside" | "other";
 
 /** What an install or a build writes: the lab's `.gitignore`. */
 const BUILT = new Set(["node_modules", "dist", "dist-client"]);
@@ -65,7 +63,7 @@ const OUTSIDE = [/^README\.md$/, /^package\.json$/, /^tsconfig\.json$/, /^vite\.
   /^components\.json$/, /^vitest(\.[a-z]+)?\.config\.ts$/, /^cli\/index\.ts$/];
 
 /** The kind of code the file at `rel` is, by its path alone (ER-1). */
-export function kindOf(rel: string): Kind {
+function kindOf(rel: string): Kind {
   if (OUTSIDE.some((r) => r.test(rel))) return "outside";
   if (rel === "fsdev.config.mts" || rel === "host.mts" || /^workforce\/.*\.md$/.test(rel)) return "config";
   if (/^flows\/[^/]+\.mts$/.test(rel)) return "flow";
@@ -83,7 +81,7 @@ const codeOf = (abs: string) =>
     .replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
 
 /** The value imports `text` makes from `pkg`: each name not marked `type`, plus any namespace, default, dynamic or re-export form. */
-export function valueImports(text: string, pkg: string): string[] {
+function valueImports(text: string, pkg: string): string[] {
   const out: string[] = [];
   for (const m of text.matchAll(/\b(import|export)\s+(type\s+)?\{([^}]*)\}\s+from\s+["']([^"']+)["']/g)) {
     if (m[2] !== undefined || m[4] !== pkg) continue;
@@ -139,7 +137,7 @@ export function reachingTheServer(lab = LAB, exempt: readonly string[] = []): st
 export function unlistedTypes(lab = LAB): string[] {
   const modules = filesUnder("src", lab).filter((rel) => /\.tsx?$/.test(rel) && !rel.startsWith("src/components/") && rel !== ENTRY && rel !== "src/App.tsx");
   return modules.flatMap((rel) =>
-    [...readFileSync(join(lab, rel), "utf8").matchAll(/^export\s+(?:interface\s+(\w+)\b[^=]*|type\s+(\w+)(?:<[^>]*>)?\s*=\s*(.*))$/gm)]
+    [...readFileSync(join(lab, rel), "utf8").matchAll(/^export\s+(?:interface\s+(\w+)\b[^=\n]*|type\s+(\w+)(?:<[^>]*>)?\s*=\s*(.*))$/gm)]
       // A union of string literals names no row: only an object type can be one.
       .filter((m) => m[1] !== undefined || !/^("[^"]*"\s*\|?\s*)+;?$/.test(m[3]!.trim()))
       .map((m) => m[1] ?? m[2]!)
