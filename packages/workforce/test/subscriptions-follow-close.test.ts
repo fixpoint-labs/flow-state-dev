@@ -27,8 +27,8 @@ async function following(host: SubscriptionsHost) {
   const session = await host.follower("alice");
   const ran = await host.act("alice", session, "respond", { message: "opened it [follow-pr:412]" }, "follower");
   expect((ran as { error?: unknown }).error).toBeUndefined();
-  const rows = await host.subscriptionRows("alice");
-  expect(rows.map((r) => ({ thread: r.thread, kinds: r.kinds, hearsClose: r.hearsClose }))).toEqual([
+  const subscriptions = await host.subscriptionRows("alice");
+  expect(subscriptions.map((r) => ({ thread: r.thread, kinds: r.kinds, hearsClose: r.hearsClose }))).toEqual([
     { thread: PR, kinds: ["review", "comment", "check"], hearsClose: true }
   ]);
   return session;
