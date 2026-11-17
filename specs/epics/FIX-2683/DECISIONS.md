@@ -116,8 +116,10 @@ case of ER-4.
   89 lines left against its 397. t1 removes about 310: the context flow moves to `flows/`, and the
   host imports the packages' `operatorGitHub`, `sqliteScheduleIndex` and `checkCommandsFrom`
   instead of its own copies. A child that can't meet the cap comments up.
-- **The fake app goes with the adapter.** Before it is deleted, t3 writes a ledger mapping each of
-  its scenarios (14 test files use it) to a view test, or to "dropped, because …".
+- **The fake app goes when the last Teammates child merges.** Each of t1, t2 and t3 cuts its own
+  scenarios (14 test files use the fake) into its ledger, mapping each to a view test or to
+  "dropped, because …". Whichever merges last deletes the fake, its `gone` entry and the shared
+  plumbing types. t1 owns `workers.ts`; t2 owns `steps.ts`. Amended by the cross-spec review below.
 - **A size ratchet on the read models is worth its cost** ([ER-4](#who-owns-what)): the allowlist
   stops new findings, but not logic growing inside an allowlisted function.
 - **Defaults for the division.** Teammates' people and conversations children stay separate unless
@@ -208,5 +210,11 @@ inventory is a ratchet.
   and exact-matches user, tenant, organization and today's worker flows, never
   `principalOwnsRequest`; the read returns a projection, never the record. Wording: the measured
   baseline, the delegate shape, how the checks divide the work, the division's defaults.
+
+- **Cross-spec review (2026-11-17)** — the Teammates children run in parallel, so no one child
+  can delete the shared fake app. Each cuts its own scenarios into its ledger; whichever of
+  FIX-2771, FIX-2772 and FIX-2773 merges last deletes the fake, its `gone` entry and the shared
+  plumbing types (`AppCalls`, `AppState`, `Unsubscribe`, `Item`). FIX-2772 owns `steps.ts`;
+  FIX-2771 owns `workers.ts`. A coordinator call, recorded in each child spec.
 
 **Open:** none.
