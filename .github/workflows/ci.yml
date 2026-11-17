@@ -283,7 +283,20 @@ jobs:
       FSD_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/fsd_test
 
     steps:
+      # Depth 2, as the export check: the inventory ratchet reads the base commit.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # The base the apps' inventory ratchet (`labs/test-support/inventory.ts`)
+      # compares with, picked per event and passed in, so the test never guesses
+      # it: a merge group's base sha, else `HEAD^1` (on `pull_request` the merge
+      # commit's first parent, the branch the PR merges into; on a push to main,
+      # the commit before). Resolved to a sha so turbo's cache key carries it.
+      - name: Inventory base
+        run: echo "INVENTORY_BASE=${MERGE_GROUP_BASE:-$(git rev-parse HEAD^1)}" >> "$GITHUB_ENV"
+        env:
+          MERGE_GROUP_BASE: ${{ github.event.merge_group.base_sha }}
 
       - uses: pnpm/action-setup@v4
 
