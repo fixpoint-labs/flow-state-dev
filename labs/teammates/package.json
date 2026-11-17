@@ -8,6 +8,9 @@
   "exports": {
     ".": "./cli/index.ts"
   },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "vite build && tsx ../../packages/fsdev/bin/fsdev.ts dev --app @flow-state-dev/teammates",
     "build": "vite build",

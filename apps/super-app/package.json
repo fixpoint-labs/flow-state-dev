@@ -4,6 +4,9 @@
   "private": true,
   "description": "Hosts Kitchen Sink, Shift Manager, Teammates and Claude Code Style behind one port, one sub-route each.",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "build": "node build.mjs",
     "build:devtool": "vite build",

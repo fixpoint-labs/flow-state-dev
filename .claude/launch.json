@@ -6,7 +6,7 @@
       "runtimeExecutable": "/bin/bash",
       "runtimeArgs": [
         "-c",
-        "[ -s \"$HOME/.nvm/nvm.sh\" ] && . \"$HOME/.nvm/nvm.sh\"; nvm use 22 > /dev/null 2>&1; R=$(git rev-parse --show-toplevel) && cd \"$R\" && pnpm dev"
+        "[ -s \"$HOME/.nvm/nvm.sh\" ] && . \"$HOME/.nvm/nvm.sh\"; nvm use 24 > /dev/null 2>&1; R=$(git rev-parse --show-toplevel) && cd \"$R\" && pnpm dev"
       ],
       "port": 8080
     },
@@ -60,7 +60,7 @@
       "runtimeExecutable": "/bin/bash",
       "runtimeArgs": [
         "-c",
-        "[ -s \"$HOME/.nvm/nvm.sh\" ] && . \"$HOME/.nvm/nvm.sh\"; nvm use 22 > /dev/null 2>&1; R=$(git rev-parse --show-toplevel) && cd \"$R\" && cd labs/claude-code-style && trap 'kill 0' EXIT && pnpm exec vite build && (pnpm exec vite build --watch > /dev/null 2>&1 &) && cd ../.. && CLAUDE_CODE_STYLE_DATA=.fsdev/claude-code-style-agent pnpm exec tsx packages/fsdev/bin/fsdev.ts dev --config labs/claude-code-style/fsdev.config.mts --app @flow-state-dev/claude-code-style --port 3240 --no-open --watch"
+        "[ -s \"$HOME/.nvm/nvm.sh\" ] && . \"$HOME/.nvm/nvm.sh\"; nvm use 24 > /dev/null 2>&1; R=$(git rev-parse --show-toplevel) && cd \"$R\" && cd labs/claude-code-style && trap 'kill 0' EXIT && pnpm exec vite build && (pnpm exec vite build --watch > /dev/null 2>&1 &) && cd ../.. && CLAUDE_CODE_STYLE_DATA=.fsdev/claude-code-style-agent pnpm exec tsx packages/fsdev/bin/fsdev.ts dev --config labs/claude-code-style/fsdev.config.mts --app @flow-state-dev/claude-code-style --port 3240 --no-open --watch"
       ],
       "port": 3240
     },
@@ -69,7 +69,7 @@
       "runtimeExecutable": "/bin/bash",
       "runtimeArgs": [
         "-c",
-        "[ -s \"$HOME/.nvm/nvm.sh\" ] && . \"$HOME/.nvm/nvm.sh\"; nvm use 22 > /dev/null 2>&1; R=$(git rev-parse --show-toplevel) && cd \"$R\" && cd labs/teammates && pnpm exec vite build && pnpm exec tsx ../../packages/fsdev/bin/fsdev.ts dev --app @flow-state-dev/teammates --port 3250 --no-open"
+        "[ -s \"$HOME/.nvm/nvm.sh\" ] && . \"$HOME/.nvm/nvm.sh\"; nvm use 24 > /dev/null 2>&1; R=$(git rev-parse --show-toplevel) && cd \"$R\" && cd labs/teammates && pnpm exec vite build && pnpm exec tsx ../../packages/fsdev/bin/fsdev.ts dev --app @flow-state-dev/teammates --port 3250 --no-open"
       ],
       "port": 3250
     },
@@ -78,7 +78,7 @@
       "runtimeExecutable": "/bin/bash",
       "runtimeArgs": [
         "-c",
-        "[ -s \"$HOME/.nvm/nvm.sh\" ] && . \"$HOME/.nvm/nvm.sh\"; nvm use 22 > /dev/null 2>&1; R=$(git rev-parse --show-toplevel) && cd \"$R\" && cd labs/knowledge-hub && FSDEV_DEBUG_ENDPOINTS=1 KH_MCP_SECRET=test pnpm exec tsx ../../packages/fsdev/bin/fsdev.ts dev --port 3260 --no-open"
+        "[ -s \"$HOME/.nvm/nvm.sh\" ] && . \"$HOME/.nvm/nvm.sh\"; nvm use 24 > /dev/null 2>&1; R=$(git rev-parse --show-toplevel) && cd \"$R\" && cd labs/knowledge-hub && FSDEV_DEBUG_ENDPOINTS=1 KH_MCP_SECRET=test pnpm exec tsx ../../packages/fsdev/bin/fsdev.ts dev --port 3260 --no-open"
       ],
       "port": 3260
     }

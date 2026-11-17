@@ -9,6 +9,9 @@
     "./page.css": "./page.css"
   },
   "files": ["shift-manager.css", "page.css"],
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root ."

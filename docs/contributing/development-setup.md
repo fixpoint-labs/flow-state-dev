@@ -4,8 +4,9 @@ Guide for setting up the Flow State Dev monorepo for local development.
 
 ## Prerequisites
 
-- **Node.js** >= 22
-- **pnpm** 10.4.1 (`corepack enable && corepack prepare pnpm@10.4.1`)
+- **Node.js** >= 24 to work on `apps/*` and `labs/*` (each declares it in `engines.node`), except `apps/build-site`, which stays on 22. >= 22 is enough for `packages/*` alone, which keep the floor they publish with. CI defaults to 22; only the `e2e` and `docs` jobs, which run an app or lab on its own, use 24.
+  - Declaring the floor: an app that deploys to Vercel pins its major (`"24.x"`, or `"22.x"` for `build-site`, whose `better-sqlite3` has no Node 24 prebuilt binary), because Vercel reads `engines.node` to pick the runtime and a range would let it upgrade silently; every other app and lab uses `">=24"`.
+- **pnpm** 12.18.0 (`corepack enable && corepack prepare pnpm@12.18.0`)
 
 ## Initial Setup
 

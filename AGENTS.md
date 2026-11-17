@@ -214,7 +214,7 @@ For developers building apps WITH the framework, describing what they can instal
 
 ## Cursor Cloud specific instructions
 
-This is a pnpm monorepo (pnpm@10.4.1, Node 22). No Docker, databases, or external services are required. All tests use mocked generators — no API keys needed for `pnpm test`.
+This is a pnpm monorepo (pnpm@12.18.0; Node 22+ for packages, Node 24+ for `apps/*` and `labs/*` except `apps/build-site`, which stays on 22). No Docker, databases, or external services are required. All tests use mocked generators — no API keys needed for `pnpm test`.
 
 **Build order matters for typecheck.** `pnpm typecheck` requires `packages/core` to be built first (its `dist/` must exist). The update script handles this, but if you see TS6305 errors about missing output files, run `pnpm --filter @flow-state-dev/core build` before retrying. The full build order is: core → engine + client → react + testing → fsdev (see `docs/contributing/development-setup.md`).
 
