@@ -19,6 +19,7 @@ import { goalTmpDir, RUN_STAMP, stopProcessGroup, type Tell } from "../../lib/in
 import { launchChromium } from "../../lib/playwright.mts";
 import { labCheckout, makeRepository, sleep, startLab } from "../../claude-code-style-lab/lab.mts";
 import { storeAt, watchVersions, type Store, type Version } from "./store.mts";
+import { columnOf } from "../../../labs/claude-code-style/src/lib/columns.ts";
 
 /** The lead, its flow, and the coder it hands a code change to. */
 const LEAD = { worker: "desk.lead", flow: "coordinator", coder: "desk.thread-coder" };
@@ -83,15 +84,13 @@ const ROW_WATCH = `(() => {
   new MutationObserver(look).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-task-status", "data-column"] });
 })();`;
 
-/** The column a board row lands in, from the task's stored state (the lab's `columnOf`, pins aside). */
+/**
+ * The column a board row lands in, from the task's stored state, by the lab's own pure `columnOf`:
+ * the row is graded before it is pinned and it never fails, so neither pin nor dismissal applies.
+ * A task's `holds` are its open holds (an answered one leaves the list); the first is the one the row shows.
+ */
 function columnOfStored(task: any): string {
-  if (task.status === "completed" || task.status === "cancelled") return "resolved";
-  if (task.status === "errored") return "waiting";
-  // A task's `holds` are its open holds: an answered one leaves the list.
-  const open = (task.holds ?? [])[0];
-  if (open?.ask?.kind === "review") return "review";
-  if (open !== undefined) return "waiting";
-  return "working";
+  return columnOf({ status: task.status, openHold: (task.holds ?? [])[0]?.ask } as unknown as Parameters<typeof columnOf>[0], false, false);
 }
 
 /** One attempt of leg a. `env` is the control's, for the lab's server. */

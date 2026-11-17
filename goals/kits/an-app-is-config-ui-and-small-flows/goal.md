@@ -50,6 +50,8 @@ window shows whether it fires while push is up.
 
 **Run:** `cd goals && pnpm tsx kits/an-app-is-config-ui-and-small-flows/run.mts` (`GOAL_LEGS=a,b,w,seam,j2,j4,j5`, the default, picks legs; w, seam and j4 ride on a). The lab's pages built first: `pnpm --filter @flow-state-dev/claude-code-style build`.
 
+**Wall time:** a full run takes about 15 to 40 minutes. Most of that is two legs. Leg b runs the nested teammates goal `a-coding-task-waits-for-your-review`, a real Cursor run capped at 30 minutes. Leg a runs a real-model thread, about 5 minutes per attempt, up to 3 attempts. Leg j2 also builds Shift Manager's pages first, which takes about a minute. To re-grade one part, name its legs: `GOAL_LEGS=a,w,seam,j4,j5` skips leg b and j2, and `GOAL_LEGS=b` or `GOAL_LEGS=j2` runs that leg alone.
+
 **Controls** (`GOAL_CONTROL=<name>`, same command). Runtime ones patch the engine as the lab loads it (`goals/lib/module-patch`); nothing is written to the checkout's code.
 - `todays-main` — the inventory on the lab at `705c14017a`, the parent of the epic's first implementation merge (#5090). Must FAIL `a:inventory`.
 - `planted-adapter` — `src/glue.ts` planted in the lab: a client import, a `.subscribe(` and a row type. Must FAIL `a:inventory` on L3 and L4.
