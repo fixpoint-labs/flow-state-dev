@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D1, the divider that shows where a worker&#x27;s word-for-word reading begins. Chosen: keep it, by adding each turn&#x27;s historyStart to workforce&#x27;s session turns view. Instead of: drop the divider from Teammates. It comes down to a goal: a-worker-talks-to-another-while-you-talk grades the divider; dropping it retires that step. Price: one more field on a published view, with a changeset. Locks in historyStart on the turns view and core&#x27;s SessionTurn. Flips if no screen but Teammates ever shows the divider and the owner retires the goal step"
+<svg viewBox="0 0 940 418" role="img" aria-label="D1, the divider that shows where a worker&#x27;s word-for-word reading begins. Chosen: keep it, with historyStart on workforce&#x27;s session turns view, useResource reading a session resource by session id, and the history summary resource exported. Instead of: drop the divider from Teammates. It comes down to a goal: a-worker-talks-to-another-while-you-talk grades the divider; dropping it retires that step. Price: three additive package changes, each a patch changeset. Locks in historyStart on the turns view and core&#x27;s SessionTurn. Flips if no screen but Teammates ever shows the divider and the owner retires the goal step"
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -41,7 +41,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Keep it: the turns view carries historyStart</text>
+    <text class="t-h c-code" x="228" y="112">Keep it: three small package reads</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Drop the divider from Teammates</text>
@@ -63,8 +63,8 @@
     <text class="t-lbl" x="32" y="224">THE PACKAGE</text>
     <text class="t-lbl" x="32" y="237">SURFACE</text>
     <text class="mark minus" x="228" y="227">−</text>
-    <text class="t-b" x="248" y="226">One more field on a published view</text>
-    <text class="t-s" x="248" y="244">and on core&#x27;s SessionTurn: a changeset</text>
+    <text class="t-b" x="248" y="226">Three additive package changes</text>
+    <text class="t-s" x="248" y="244">a turns field, a useResource option, an export</text>
     <text class="mark plus" x="592" y="227">+</text>
     <text class="t-b" x="612" y="226">Nothing new</text>
     <text class="t-s" x="612" y="244">the view stays as it is</text>
@@ -84,8 +84,8 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">historyStart on SessionTurn and the turns view</text>
-    <text class="t-s" x="32" y="387">additive: a reader that ignores it is unchanged</text>
+    <text class="t-b" x="32" y="369">historyStart · useResource by session id · an export</text>
+    <text class="t-s" x="32" y="387">all additive, all patch changesets</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>

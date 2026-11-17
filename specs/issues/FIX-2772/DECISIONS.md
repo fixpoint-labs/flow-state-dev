@@ -13,7 +13,7 @@ does yet, and each needs a package change.
 ```mermaid
 flowchart TD
   I["FIX-2772 · Teammates' conversations"] --> M["the conversation on useSessionFeed, the turns view and the workforce client · 22 entries go"]
-  I --> D1["D1 · keep the divider · historyStart on the turns view"]
+  I --> D1["D1 · keep the divider · three additive package reads"]
   D1 -.->|"rejected · retires a graded goal step"| X1["drop the divider"]
   I --> D2["D2 · stopTurns leaves a line sent after the stop"]
   D2 -.->|"rejected · a tested behaviour lost in both starters"| X2["stopTurns as it is"]
@@ -22,20 +22,22 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · Keep the *Earlier turns summarized* divider, by adding each turn's `historyStart` to workforce's session turns view
+## D1 · Keep the *Earlier turns summarized* divider, with three small package reads
 
 | | |
 |---|---|
-| **Instead of** | Dropping the divider from Teammates · or keeping `window.ts`' own request read, which needs `topic` and `client.sessions`, two L3 findings the closure must not see |
-| **Because** | The divider is where the worker's word-for-word reading begins: the last answering turn's `historyStart`, moved forward by the summary's mark. The engine already records `historyStart` on every request ([FIX-1613](https://linear.app/fixpoint-labs/issue/FIX-1613)), and the client's request list carries it, but no package read a screen may use does: the turns view's row (`id, action, status, source, startedAt, completedAt, error`) leaves it out, and core's `SessionTurn` with it. Step 4 of `a-worker-talks-to-another-while-you-talk` grades the divider on the page, so dropping it retires a goal step. The turns view is the read this issue already moves the conversation's running, stopped and retryable turns onto, so one field there is the whole addition. ER-1: a missing read goes into the package that owns the data |
-| **Locks in** | 1. `historyStart: { requestId } \| null` on core's `SessionTurn` (optional, as on the request summary) and on workforce's turns view row.<br>2. The summary's mark is read from the session's `historySummary` resource through `useResource(…, { session })`. No browser-safe handle to that resource exists today. Core's `historySummary(…)` returns `.resource`, and workforce keeps it private as `earlier.resource` in `worker-default-layer.ts`. So this issue adds **one public export of that existing definition**, from workforce's browser entry: the one its workers declare. It is never a second `defineResource` of the same key. If that means splitting the definition out of core's factory, core exports the split piece, and the factory uses it.<br>3. Changesets: `patch` for `core`, `engine` and `workforce`. Per BP-022 / `release-notes-workflow.md`, an optional field and a new export are additive, so no existing code can trip over them.<br>4. No new public term. `historyStart` is the engine's own, and the export is named for the resource it already is (checked against `glossary.mjs` in the implementation PR) |
+| **The fork** | Does Teammates keep the divider that shows where a worker's word-for-word reading of the conversation begins, at the price of three additive package changes? Or does the divider go? |
+| **In plain terms** | The divider's position comes from two facts: the turn where the worker's history window started, and how far the history summary reaches. **Chosen:** keep it. Each turn row of workforce's turns view carries `historyStart`. `react`'s `useResource` learns to read a session's resource by session id. Workforce exports the history summary resource its workers already use. **Instead of:** drop the divider from Teammates. **Also rejected:** keep `window.ts`' own reads, which need `topic` and `client.sessions`: two L3 findings the closure must not see |
+| **Because** | The engine already records `historyStart` on every request ([FIX-1613](https://linear.app/fixpoint-labs/issue/FIX-1613)), but no read a screen may use carries it. The turns view's row leaves it out, and so does core's `SessionTurn`. The summary's mark lives in the session's `historySummary` resource. `useResource(def, { session })` only reads the snapshot of a `useSession` view (`packages/react/src/hooks/useResource.ts`, the session branch reads `options.session?.snapshot?.resources` and never fetches), and this spec does not use `useSession`. So the mark needs a read of its own. Two other places for it are ruled out. A view cannot read another session's resources (`RequestSessions.read` returns readonly state only). And the engine must not record a summary mark, because by design it knows nothing about summaries (`core/src/utility/history-summary.ts`). That leaves `useResource` reading by session id, over the session state route and the session topic's `resource` notice that `window.ts` already uses. The divider's data comes from those reads, never from `useSessionFeed`'s *earlier* paging, which only loads older items. Step 4 of `a-worker-talks-to-another-while-you-talk` grades the divider on the page, so dropping it retires a goal step. ER-1 puts each missing read in the package that owns the data |
+| **Trade-off** | Keeping the divider costs three additive changes in published packages, each a `patch` changeset: a field in `core`, `engine` and `workforce`, one export in `workforce`, and one option in `react`. Dropping it costs nothing in the packages, but it retires the only on-screen proof that the summary works and turns step 4 of a graded goal into a skip |
+| **Recommendation** | Keep it. Each change is additive, has a second use (Claude Code-style can draw the same divider, and any screen can read a session resource by id), and keeps a graded goal step |
+| **Locks in** | 1. `historyStart: { requestId } \| null` on core's `SessionTurn` (optional, as on the request summary) and on workforce's turns view row.<br>2. `useResource(def, { sessionId })` at session scope reads `client.sessions.state(sessionId, { includeItems: false })`. It reads again on the session topic's `resource` notice for that resource's name, and as the user and org scopes read, wherever push can miss a change. It has no setters, like `{ session }`. The `{ session }` snapshot path stays as it is.<br>3. One public export of the existing history summary definition, from workforce's browser entry: the one its workers declare (`earlier.resource` in `worker-default-layer.ts`), never a second `defineResource`. If that means splitting the definition out of core's factory, core exports the split piece, and the factory uses it.<br>4. Changesets: `patch` for `core`, `engine`, `workforce` and `react`, per BP-022 / `release-notes-workflow.md`. An optional field, a new export and a new option are additive.<br>5. No new public term. `historyStart` is the engine's own, `sessionId` is the session's, and the export is named for the resource it already is (checked against `glossary.mjs` in the implementation PR) |
+| **What would change my mind** | The owner retiring step 4's divider check as a lab nicety. Then the divider goes, `window.ts` is deleted outright, and none of the three package changes is made |
+| **If wrong** | Low cost. Each change is additive and used by Teammates' divider alone at first. If no other screen ever reads them, the packages carry one field, one export and one option for a private lab |
 
-![D1, the divider. Chosen: keep it, with historyStart on workforce's session turns view. Instead of: drop it. It comes down to step 4 of a-worker-talks-to-another-while-you-talk, which grades it. Price: one more field on a published view and on core's SessionTurn. Tie: Claude Code-style shows no divider today. Flips if the owner retires that goal step](figures/d1-keep-the-divider.svg)
+![D1, the divider. Chosen: keep it, with historyStart on workforce's session turns view, useResource reading by session id, and the summary resource exported. Instead of: drop it. It comes down to step 4 of a-worker-talks-to-another-while-you-talk, which grades it. Price: three additive package changes. Tie: Claude Code-style shows no divider today. Flips if the owner retires that goal step](figures/d1-keep-the-divider.svg)
 
-It comes down to the goal step: dropping the divider retires the proof that the summary works on screen.
-
-**What would change my mind:** the owner retiring step 4's divider check as a lab nicety. Then
-the divider goes, `window.ts` is deleted outright, and no package changes for it.
+It comes down to the goal step: dropping the divider retires the only proof that the summary works on screen.
 
 <a name="d2"></a>
 ## D2 · What Stop promises: the turns running when it looks, and your own follow-up line keeps running
@@ -86,13 +88,8 @@ It comes down to your own follow-up: today's `stopTurns` stops a line you sent a
 - **Approvals answer through `react`'s approval hook**, not a Teammates call.
 - **`send` streams through the workforce client** and hands its `Response` to the open
   conversation's `useSessionFeed().followResponse`, as Claude Code-style's `threadFeeds` does.
-- **Sibling edges, decided by the coordinator (2026-11-17)** as engineering calls
-  ([Where this meets its siblings](SPEC.md#where-this-meets-its-siblings)):
-  - `session-feed.ts`: this issue removes `watchState` and `watchRuns`. `sessionFeed`, `watch` and `SessionFeed` belong to the last child off `watchFeed`.
-  - `steps.ts`: this issue's.
-  - The busy dot (`workers.ts` · `topic`, `Activity`): FIX-2771's.
-  - The client in `main.tsx`: the first Teammates child to merge adds it.
-  - The shared types and the fake's file: the last Teammates child to merge removes them. Each child ledgers its own scenarios.
+- **Sibling edges** were decided by the coordinator on 2026-11-17, as engineering calls. The
+  table lives in one place: [SPEC.md → Where this meets its siblings](SPEC.md#where-this-meets-its-siblings).
 - **Tests.** Each Teammates test that pins a conversation behaviour is ported to the hooks with
   its assertion intact; the Stop test is the one D2 must keep green.
 
@@ -112,8 +109,8 @@ None. The coordinator has decided the sibling edges.
 <a name="settled"></a>
 ## Settled
 
-- **The entry counts.** `node specs/issues/FIX-2772/poc/entry-ledger/check.mjs`, on `main`
-  `e90786196b`, with the coordinator's rulings: 57 entries, each owned once. This issue owns 22,
+- **The entry counts.** `node specs/issues/FIX-2772/poc/entry-ledger/check.mjs`, run on
+  this branch's merge-base, with the coordinator's rulings: 57 entries, each owned once. This issue owns 22,
   the last child off `watchFeed` 3, FIX-2771 15, FIX-2773 12, and the last Teammates child to
   merge 5. Its negative control, `PLANT=1`, adds an unowned entry, and the check fails naming it.
   The first draft counted 24 (it held the busy dot and all of `session-feed.ts`, without
@@ -128,8 +125,9 @@ covers the set.
 
 **Verdict:** right approach.
 
-1. **Reuse.** `useSessionFeed`, the turns view, the workforce client, `useResource` and the
-   approval hook: **reuse**. The turns view and `stopTurns`: **extend** (D1, D2). Nothing new.
+1. **Reuse.** `useSessionFeed`, the turns view, the workforce client and the approval hook:
+   **reuse**. The turns view, `useResource` and `stopTurns`: **extend** (D1, D2). The history
+   summary resource: **export** the existing definition. Nothing new.
 2. **Prior art.** Claude Code-style, in this repository, on the same pieces.
 3. **Other shapes.** Dropping the divider (D1), accepting the Stop race (D2), a shared
    conversation hook (dropped, ER-7).
@@ -152,3 +150,12 @@ covers the set.
   narrower promise, (a), as the owner's six-part ask. The alternative, (b), is a stop marker held
   on the server. Codex P2: D1 now counts the public export of the existing history summary
   resource, and every changeset is `patch` (BP-022). The `send` contract is aligned with FIX-2776.
+- **Review round 2 (2026-11-17)** — Greptile P1, confirmed against `useResource.ts`: at session
+  scope `useResource` only reads a `useSession` snapshot and never fetches, so the export alone
+  could not supply the summary's mark. D1 now adds `useResource(def, { sessionId })` over the
+  existing session state route and resource notice. The mark on the turns view row and an engine
+  field were ruled out. D1 is rewritten as a six-part ask: the fork is the same (keep the divider
+  or drop it), and its price grows from one field to three additive reads. Greptile P2: SPEC opens
+  on the people table, and the epic's rules follow it. Cursor: the sibling table lives only in
+  SPEC, the counts point at the merge-base and `check.mjs` instead of a pinned commit, the
+  wiring mermaid is gone, and the divider prose names its data source.

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 470" role="img" aria-label="What changes. Before: the conversation screens call Teammates' own calls (conversations, window, files, steps), which reach the server through the lab's session-feed wrapper, the client's live reads with topic, and client.flow calls for send, stop, approve and retry. After: the same screens read through package hooks: react's useSessionFeed for the items, workforce's session turns view (carrying each turn's historyStart, D1) for running, stopped, retryable and the window, the history summary resource through useResource, workforce's client for send, stopTurns (leaving a line sent after the press, D2) and retryTurn, and react's approval hook. Gone: the conversation, window and file call interfaces, and 22 allowlist entries; session-feed.ts goes with the last watchFeed caller."
+<svg viewBox="0 0 940 470" role="img" aria-label="What changes. Before: the conversation screens call Teammates' own calls (conversations, window, files, steps), which reach the server through the lab's session-feed wrapper, the client's live reads with topic, and client.flow calls for send, stop, approve and retry. After: the same screens read through package hooks: react's useSessionFeed for the items, workforce's session turns view (carrying each turn's historyStart, D1) for running, stopped, retryable and the window, the history summary's mark through useResource read by session id (D1), workforce's client for send, stopTurns (leaving a line sent after the press, D2) and retryTurn, and react's approval hook. Gone: the conversation, window and file call interfaces, and 22 allowlist entries; session-feed.ts goes with the last watchFeed caller."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -69,9 +69,9 @@
   <rect class="new" x="708" y="112" width="200" height="56" rx="5"/>
   <text class="t-h c-code" x="720" y="132">workforce · turns view</text>
   <text class="t-s" x="720" y="150">+ each turn's historyStart (D1)</text>
-  <rect class="pkg" x="494" y="180" width="200" height="56" rx="5"/>
+  <rect class="new" x="494" y="180" width="200" height="56" rx="5"/>
   <text class="t-h c-code" x="506" y="200">react · useResource</text>
-  <text class="t-s" x="506" y="218">the history summary's mark</text>
+  <text class="t-s" x="506" y="218">+ read by session id (D1)</text>
   <rect class="new" x="708" y="180" width="200" height="56" rx="5"/>
   <text class="t-h c-code" x="720" y="200">workforce client</text>
   <text class="t-s" x="720" y="218">send · stopTurns (D2) · retryTurn</text>
