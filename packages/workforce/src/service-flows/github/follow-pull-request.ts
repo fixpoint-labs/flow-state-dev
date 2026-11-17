@@ -8,8 +8,9 @@
  * to that pull request through the one `subscribe` (ER-5), as the session's
  * own user, hearing its reviews, comments and CI. So a check that completes
  * before the opening turn ends is heard, and the agent never has to subscribe
- * itself. A merge or close ends the subscription (ER-7 as amended); the
- * session's other subscriptions stay.
+ * itself. A merge or close reaches the session too, whoever made it, so a task
+ * waiting on its pull request wakes, and then ends the
+ * subscription (ER-7 as amended); the session's other subscriptions stay.
  *
  * A pull request on a host other than `github.com` is not followed, nor one
  * recorded already closed or merged.
@@ -73,7 +74,8 @@ export function followPullRequest(options: FollowPullRequestOptions): PullReques
         interest: `Reviews, comments and CI on pull request #${pr.number}, which this session opened.`
       },
       undefined,
-      polling === undefined ? {} : { polling }
+      // Its close reaches the session, so a task waiting on the pull request wakes (FIX-2535 D3).
+      { hearsClose: true, ...(polling === undefined ? {} : { polling }) }
     );
     await options.onFollowed?.(pr, outcome, ctx);
     if ("refused" in outcome) throw new Error(outcome.refused);

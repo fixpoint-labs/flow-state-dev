@@ -92,6 +92,14 @@ export const subscriptionResourceStateSchema = screenSettingsSchema.extend({
   worker: z.string().min(1),
   /** The task that session works, when it is a task's session: its failure or cancel ends this subscription. */
   taskId: z.string().min(1).optional(),
+  // FIX-2784; FIX-2535 D3.
+  /**
+   * Its thread's close reaches it whatever its kinds, screens and cap, and
+   * then it ends: a coding session following the pull request it opened
+   * (`followPullRequest`). Server-written, never a model's input. Absent,
+   * a close ends it unheard unless its kinds and screens pass the close.
+   */
+  hearsClose: z.literal(true).optional(),
   userId: z.string().min(1),
   /** The organization it was made in: the host's owner-run check reads it. */
   orgId: z.string().min(1),
@@ -159,7 +167,13 @@ export const indexEntrySchema = screenSettingsSchema.extend({
    * `interest`. An entry without one reads as not listing it (an entry from
    * before the screen has none).
    */
-  interest: z.string().optional()
+  interest: z.string().optional(),
+  /**
+   * The subscription hears its thread's close (the subscription's own
+   * `hearsClose`), mirrored so routing counts a close it hears as heard: it
+   * isn't forwarded to a coordinator as well. An entry without one doesn't.
+   */
+  hearsClose: z.literal(true).optional()
 });
 
 export type IndexEntry = z.infer<typeof indexEntrySchema>;
