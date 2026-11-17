@@ -130,8 +130,8 @@ describe("what a view of its own draws", () => {
   });
 
   it("says what it is in a session opened before a first line, rather than drawing nothing", async () => {
-    // A project's Stream opens its coordinator session as the tab opens, so the
-    // session exists and reads empty: the screen must still say what it is.
+    // A session can exist and read empty (its first line failed after it opened, or a
+    // standing-rules read wrote only undrawn items): the screen must still say what it is.
     drawn([], { session: "s1" });
     expect((await screen.findByTestId("rev-conversation-empty")).textContent).toBe("Nothing said to the reviewer yet.");
     expect(read.mock.calls[0]![1]).toBe("s1");
@@ -345,6 +345,37 @@ describe("a draft is kept per conversation", () => {
 
     drawn([session("sess-pc")], { session: "sess-pc", project: apollo });
     expect((await box()).value).toBe("the second line, unsent");
+  });
+
+  it("drops a first line that went out while the composer reopened on the session's key", async () => {
+    // Her first line opens the session; she leaves the Stream and comes back before the session
+    // holds it, so the composer reopens on the session's key and takes the line with it. Once
+    // the send lands, the line is gone from the draft: left there, a second Send repeats the work.
+    const apollo = { visibility: "shared", id: "apollo" } as const;
+    ensureWorkerSession.mockResolvedValue({ id: "sess-pc" });
+    let land: (() => void) | undefined;
+    sendTurn.mockImplementation(
+      (_client: unknown, _target: unknown, _message: unknown, on: { onHeld: () => void }) =>
+        new Promise((resolve) => {
+          land = () => {
+            on.onHeld();
+            resolve(delivered);
+          };
+        }),
+    );
+    const before = drawn([], { project: apollo });
+    fireEvent.change(await box(), { target: { value: "the first line" } });
+    fireEvent.click(screen.getByTestId("rev-composer-send"));
+    await waitFor(() => expect(land).toBeDefined());
+    before.unmount();
+
+    drawn([session("sess-pc")], { session: "sess-pc", project: apollo });
+    expect((await box()).value).toBe("the first line");
+    await act(async () => land!());
+    await waitFor(() => expect((screen.getByTestId("rev-composer-input") as HTMLInputElement).value).toBe(""));
+    cleanup();
+    drawn([session("sess-pc")], { session: "sess-pc", project: apollo });
+    expect((await box()).value).toBe("");
   });
 });
 

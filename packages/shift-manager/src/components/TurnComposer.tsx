@@ -42,6 +42,33 @@ import { AttachButton, AttachmentStrip, useAttachments, type AttachmentUploader,
 const DRAFT = "shift-manager:draft";
 const UNCONFIRMED = "shift-manager:unconfirmed";
 
+/**
+ * Where a key's draft was moved (`legacyDraftKey`), for this page's life: a
+ * send pressed under the old key, still pending as a composer reopens on the
+ * new one, clears its line (or keeps its warning) where the line now is.
+ */
+const movedTo = new Map<string, string>();
+
+/** The key `key`'s draft lives under now, after any moves. */
+function draftKeyNow(key: string | undefined): string | undefined {
+  const seen = new Set<string>();
+  let at = key;
+  while (at !== undefined && movedTo.has(at) && !seen.has(at)) {
+    seen.add(at);
+    at = movedTo.get(at);
+  }
+  return at;
+}
+
+/** Composers open on each key, told when a send pressed in another composer has left their line. */
+const openOn = new Map<string, Set<(sent: string) => void>>();
+
+/** The line `sent` left the draft under `key`: clear what is stored, and each composer open on it that still shows it. */
+function lineLeft(key: string | undefined, sent: string): void {
+  clearDraft(DRAFT, key, sent);
+  if (key !== undefined) for (const heard of openOn.get(key) ?? []) heard(sent);
+}
+
 // BP-030.
 /**
  * Move what `from` holds (the draft and its *unconfirmed* warning) to `to`,
@@ -52,6 +79,8 @@ function adoptLegacyDraft(from: string | undefined, to: string | undefined): voi
   if (from === undefined || to === undefined || from === to) return;
   const draft = readDraft(DRAFT, from);
   if (draft === "") return;
+  // A send pending under `from` settles against `to` from now on.
+  movedTo.set(from, to);
   if (readDraft(DRAFT, to) === "") {
     const warning = readDraft(UNCONFIRMED, from);
     saveDraft(DRAFT, to, draft);
@@ -380,6 +409,20 @@ export function TurnComposer({
     },
     [setDraftText],
   );
+  // A send pressed in another composer whose line moved here: once it leaves, this box lets it go too.
+  useEffect(() => {
+    if (draftKey === undefined) return;
+    const heard = (sent: string) => {
+      if (current.current === sent) setDraft("");
+    };
+    const open = openOn.get(draftKey) ?? new Set();
+    open.add(heard);
+    openOn.set(draftKey, open);
+    return () => {
+      open.delete(heard);
+      if (open.size === 0) openOn.delete(draftKey);
+    };
+  }, [draftKey, setDraft]);
 
   const sending = state.kind === "sending" || state.kind === "held";
   const canSend = blocked === null && draft.trim().length > 0 && !sending;
@@ -400,8 +443,9 @@ export function TurnComposer({
     const leave = () => {
       if (left) return;
       left = true;
-      // The composer may have closed and reopened meanwhile: the stored draft goes only if it is still this line.
-      clearDraft(DRAFT, draftKey, submitted);
+      // The composer may have closed and reopened meanwhile, on this key or the one the line moved to:
+      // the stored draft goes only if it is still this line.
+      lineLeft(draftKeyNow(draftKey), submitted);
       if (current.current === submitted) setDraft("");
       onHeld?.(message);
     };
@@ -419,8 +463,9 @@ export function TurnComposer({
     }, (failed) => {
       // It may have arrived, and the box that would say so is closed: keep the warning beside the
       // draft, unless the draft is no longer this line (a newer send, or a newer line, owns it).
-      if (failed.kind !== "unconfirmed") clearDraft(UNCONFIRMED, draftKey, warned);
-      else if (readDraft(DRAFT, draftKey).trim() === submitted.trim()) saveDraft(UNCONFIRMED, draftKey, failed.reason);
+      const now = draftKeyNow(draftKey);
+      if (failed.kind !== "unconfirmed") clearDraft(UNCONFIRMED, now, warned);
+      else if (readDraft(DRAFT, now).trim() === submitted.trim()) saveDraft(UNCONFIRMED, now, failed.reason);
     });
     if (sent) {
       leave();
@@ -431,8 +476,9 @@ export function TurnComposer({
     } else if (delivered) {
       // Delivered after the composer closed: only what is stored is left to clear, the draft and
       // the warning it was sent under (a warning a newer send left is not that one).
-      clearDraft(DRAFT, draftKey, submitted);
-      clearDraft(UNCONFIRMED, draftKey, warned);
+      const now = draftKeyNow(draftKey);
+      lineLeft(now, submitted);
+      clearDraft(UNCONFIRMED, now, warned);
     } else if (left) {
       // It failed after it left: put it back, unless another line was started.
       // A composer that has closed puts nothing back (its draft setter does nothing then).

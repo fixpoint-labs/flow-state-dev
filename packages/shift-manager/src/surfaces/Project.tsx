@@ -48,7 +48,7 @@ import {
   type ProjectSetup,
   type WorkstreamEntry,
 } from "../lib/projects";
-import { describeFailure, type Failure, type Worker } from "../lib/reads";
+import { describeFailure, workerOf, type Failure, type Worker } from "../lib/reads";
 import { useRoster, withRoster } from "../lib/roster";
 import { navigate, PROJECT_TABS, type ProjectTab, type Route } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
@@ -296,6 +296,26 @@ function CoordinatorStream({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workforce, coordinatorId, address.visibility, address.id, tries]);
+  // Found none: look again whenever the Lab lists a new session of the coordinator, such as one
+  // another tab started, so this tab follows it. Still a lookup only; nothing is started here.
+  const unopened = session !== undefined && "value" in session && session.value === null;
+  const listed = snapshot.sessions
+    .filter((s) => workerOf(s) === coordinatorId)
+    .map((s) => s.id)
+    .join("\n");
+  useEffect(() => {
+    if (coordinatorId == null || !unopened || listed === "") return;
+    let closed = false;
+    workforce
+      .findWorkerSession({ worker: coordinatorId, projectId: address })
+      .then((found) => !closed && found !== undefined && setSession({ value: found.id }))
+      // A failed look again leaves the empty conversation on screen; the next listing tries again.
+      .catch(() => undefined);
+    return () => {
+      closed = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workforce, coordinatorId, address.visibility, address.id, unopened, listed]);
 
   if (setup !== undefined && "failure" in setup) {
     return (
@@ -324,7 +344,9 @@ function CoordinatorStream({
   }
   return (
     <Conversation
-      key={session.value ?? "unopened"}
+      // One per project, not per session: the conversation a first line opened here carries on
+      // as the found session, with its composer and any send in flight.
+      key={`${address.visibility}/${address.id}`}
       testId="project-stream"
       worker={worker}
       session={session.value ?? undefined}

@@ -4,7 +4,8 @@
  *
  * The session is the worker's derived address: `ensureWorkerSession({ worker })`
  * opens it, and another worker's message lands there. A session at any other
- * id is not this view's. Items are read when the view opens and then
+ * id is not this view's. A project's conversation (`project`) is the one
+ * `ensureWorkerSession({ worker, projectId })` opens, on its first line. Items are read when the view opens and then
  * followed on the session stream (`followSessionItems`): a line sent here,
  * a reply, another worker's message, each shows as it is stored, from any
  * process, and nothing is read on a clock or on the snapshot's refresh.
