@@ -8,6 +8,11 @@ export interface BoardTask {
   id: string;
 }
 
+/** A row typed by hand, named like the screen type in `src/lib/look.ts`. */
+export interface Look {
+  id: string;
+}
+
 /** Two `.flow(` calls in one function: the same key twice. */
 export function load(client: Calls): unknown[] {
   return [client.flow("a"), client.flow("b")];

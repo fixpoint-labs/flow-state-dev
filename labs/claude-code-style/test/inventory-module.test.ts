@@ -151,6 +151,15 @@ describe("the inventory module, on its fixture app", () => {
       expect(checkInventory(moved({ name: "BoardTask", reason: "the screen adds its own fields to the view's row" }), AT_HEAD)).toEqual([]);
     });
 
+    it("but not on a screen type the base already had, when an allowlisted type of the same name goes", () => {
+      // `src/lib/look.ts`'s `Look` was a screen type at the base: deleting the read model's `Look` moves nothing to it.
+      const app = copy();
+      const reads = at(app, "src/app/reads.ts");
+      writeFileSync(reads, readFileSync(reads, "utf8").replace(/\n\/\*\* A row typed by hand, named like[^]*?\n}\n/, "\n"));
+      writeAllowlist(app, allowlistOf(app).filter((k) => !(k.file === "src/app/reads.ts" && k.symbol === "Look")));
+      expect(checkInventory(app, AT_HEAD)).toEqual([]);
+    });
+
     it("a snapshot type on the screen-type list, reason or not: it stays a finding", () => {
       const app = copy();
       plant(app, "src/lib/state.ts", "export interface FixtureSnapshot {\n  rows: string[];\n}\n");
