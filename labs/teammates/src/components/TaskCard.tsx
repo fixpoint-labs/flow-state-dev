@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useId } from "react";
 import type { BoardTask } from "../app";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -33,15 +33,18 @@ export const TaskCard = memo(function TaskCard({
   const line = taskLine(task, coding, nameOf);
   const on = coding ? runsOn(task) : undefined;
   const state = taskPresentation(task);
+  const descriptionId = useId();
   return (
     <button
       type="button"
       data-entry="task"
       data-status={task.status}
       aria-label={coding ? taskLabel(line, task) : line}
+      aria-describedby={descriptionId}
       onClick={() => onOpen(task.id)}
       className="flex w-full max-w-[85%] items-center gap-2 rounded-md border border-border bg-card/60 px-3 py-1.5 text-left text-sm hover:bg-accent"
     >
+      <span id={descriptionId} className="sr-only">Task {task.id}; {state.word}</span>
       {coding ? (
         <span aria-hidden className="shrink-0 text-muted-foreground">
           ⚙

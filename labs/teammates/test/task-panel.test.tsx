@@ -182,6 +182,8 @@ describe("a task's line in the conversation", () => {
     const cards = within(view.container).getAllByRole("button");
     expect(cards[0]!.textContent).toContain("#original");
     expect(cards[1]!.textContent).toContain("#rerun");
+    expect(within(view.container).getByRole("button", { description: "Task task_original; failed" })).toBe(cards[0]);
+    expect(within(view.container).getByRole("button", { description: "Task task_rerun; running" })).toBe(cards[1]);
     expect(cards.map((card) => card.querySelector("[data-task-status]")?.textContent)).toEqual(["failed", "running"]);
     cards.forEach((card) => fireEvent.click(card));
     expect(opened).toEqual([original.id, rerun.id]);
