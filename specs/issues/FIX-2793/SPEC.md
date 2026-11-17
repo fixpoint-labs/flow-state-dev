@@ -104,7 +104,7 @@ day rows, what an entry holds, `listErrorReports` and who has it); the workforce
 | The debt | |
 |---|---|
 | **Removes** | Error-reporter answering "did you report X" from the task board |
-| **Adds** | Day rows kept with no expiry. Permanent by design for now: a day row is bounded (see [Decided, not asked](DECISIONS.md#decided-not-asked)) and a Lab writes few. One more write per intake on the day's row. Every flow whose catalog has the tool declares `error-reports/*` (in the devteam Lab, the agent and coordinator flows): the same org cell, no new storage |
+| **Adds** | Day rows, kept 90 days and each capped (see [Decided, not asked](DECISIONS.md#decided-not-asked)): permanent by design and bounded. One more write per intake on the day's row. Every flow whose catalog has the tool declares `error-reports/*` (in the devteam Lab, the agent and coordinator flows): the same org cell, no new storage |
 | **Leaves** | Nothing shows the history in Shift Manager; the tool is the only reader. FIX-2791 is the next reader |
 
 **Net: up, a little.** One row kind and one read tool come; nothing goes. The history is what the

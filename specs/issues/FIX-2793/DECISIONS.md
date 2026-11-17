@@ -73,6 +73,7 @@ the tool filters to the caller's own occurrences, and the operator alone sees al
 - **An entry is small and redacted.** Time, event, the report's key (mapped to its title in the
   tool's output), source, task id and request id when there are some, and the error message cut
   to 300 characters. It is built from the redacted occurrence, as the row is.
+- **Day rows are kept 90 days.** The first write of a new day deletes rows older than 90 days, by key, so the history stays bounded with no timer (the same bound `worker-usage.ts` reads to).
 - **A day row holds at most 1,000 entries.** Past that, `dropped` counts them. 1,000 entries of
   ~400 bytes stay under half a megabyte.
 - **The tool only reads.** It reads days by key with `getOptional`, never `getOrCreate` or
