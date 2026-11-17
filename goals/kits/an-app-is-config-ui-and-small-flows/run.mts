@@ -117,6 +117,8 @@ function journeyFour(a: LegA, failures: string[], notes: string[], tell: Tell): 
 
 await runGoal(async (failures, tell) => {
   const notes: string[] = [];
+  // What each leg saw, printed however the run ends: a throw keeps the notes before it.
+  process.on("exit", () => console.error(`notes:\n  ${notes.join("\n  ")}`));
   const commit = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).trim();
   notes.push(`commit ${commit}${CONTROL === "" ? "" : `, control ${CONTROL}`}`);
 
@@ -170,6 +172,5 @@ await runGoal(async (failures, tell) => {
     a?.stop();
   }
   if (PATCHES[CONTROL] !== undefined) assertPatched(PATCHES[CONTROL]!, REPO_ROOT, MARK);
-  console.error(`notes:\n  ${notes.join("\n  ")}`);
   return { failures, evidence: notes.join(" · ") };
 });

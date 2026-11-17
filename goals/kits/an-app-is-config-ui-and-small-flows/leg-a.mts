@@ -71,6 +71,8 @@ const shown = (page: Page): Promise<Shown> =>
 const ROW_WATCH = `(() => {
   const seen = new Map(); window.__closureRows = [];
   const look = () => {
+    // A person keeps the board's groups open to watch the row: a group first drawn shut is opened.
+    for (const shut of document.querySelectorAll('aside[aria-label="Tasks"] button[aria-expanded="false"]')) shut.click();
     for (const el of document.querySelectorAll('aside[aria-label="Tasks"] [data-task-id]')) {
       const id = el.getAttribute("data-task-id"); const status = el.getAttribute("data-task-status") || "";
       const column = (el.closest("section[data-column]") || { getAttribute: () => "" }).getAttribute("data-column") || "";
@@ -236,11 +238,14 @@ export async function legA(n: number, ask: string, failures: string[], notes: st
 
     // 10 s idle: no request running, no version written, and the page sends no view read.
     await until(async () => (store.requests(startedAt).every((r) => !["running", "pending", "queued"].includes(r.status)) ? true : undefined), 60_000, 1_000);
+    // …and nothing written for 3 s, so the window starts after the last change the page should hear.
+    await until(async () => (Date.now() - (watch.versions.at(-1)?.seenAt ?? 0) > 3_000 ? true : undefined), 60_000, 500);
     const idleFrom = Date.now();
     const versionsBefore = watch.versions.length;
     await sleep(IDLE_MS);
     const idleReads = viewReads.filter((r) => r.at >= idleFrom);
-    if (watch.versions.length !== versionsBefore) notes.push(`idle window not quiet: ${watch.versions.length - versionsBefore} version(s) written during it`);
+    const written = watch.versions.slice(versionsBefore);
+    if (written.length > 0) notes.push(`idle window not quiet: ${written.map((v) => `${v.key} v${v.version}`).join(", ")}`);
     if (idleReads.length > 0) failures.push(`a:row-changes: in ${IDLE_MS / 1000} s idle the page sent ${idleReads.length} view read(s): ${[...new Set(idleReads.map((r) => new URL(r.url).pathname))].join(", ")}`);
     notes.push(`idle: ${idleReads.length} view reads in ${IDLE_MS / 1000} s; ${viewReads.length} view reads in all`);
 
