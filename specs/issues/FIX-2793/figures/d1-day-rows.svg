@@ -1,0 +1,43 @@
+<svg viewBox="0 0 940 347" role="img" aria-label="D1, the history&#x27;s shape. Chosen: one appended row per day in error-reports. Instead of: one growing row, or one row per occurrence. It comes down to how a question about a few days is read and how big a write gets: a day row is one read per day and bounded; one growing row is rewritten whole forever; a row per occurrence is many reads. Price: a storm&#x27;s intakes contend on one row for that day. Flips if a Lab&#x27;s error volume makes one day&#x27;s row a hot spot."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; --gone:#DE8A84; } }
+    .bg { fill:var(--surface); } .ask { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-q { fill:var(--ink); font-family:system-ui,sans-serif; font-weight:600; font-size:15px; }
+    .t-h { fill:var(--ink); font-family:system-ui,sans-serif; font-weight:600; font-size:13.5px; }
+    .t-b { fill:var(--ink); font-family:system-ui,sans-serif; font-size:12px; }
+    .t-s { fill:var(--ink-2); font-family:system-ui,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="347"/>
+  <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+  <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+  <text class="t-q" x="32" y="52">What shape does the history take?</text>
+  <rect class="lost" x="16" y="76" width="446" height="99" rx="6"/>
+  <text class="t-lbl" x="30" y="96">INSTEAD OF</text>
+  <text class="t-h" x="30" y="116">One growing row, or one row per occurrence</text>
+  <text class="t-b" x="30" y="137">A growing row is rewritten whole on every intake, forever. A row</text>
+  <text class="t-b" x="30" y="152">per occurrence makes a day&#x27;s question one read per entry.</text>
+  <rect class="chosen" x="478" y="76" width="446" height="114" rx="6"/>
+  <text class="t-lbl" x="492" y="96">CHOSEN</text>
+  <text class="t-h" x="492" y="116">One appended row per day, log-YYYY-MM-DD</text>
+  <text class="t-b" x="492" y="137">A few days is a few reads by key, as worker-usage reads a</text>
+  <text class="t-b" x="492" y="152">period. Each row is bounded: past its cap entries are counted as</text>
+  <text class="t-b" x="492" y="167">dropped.</text>
+  <rect class="decide" x="16" y="204" width="908" height="37" rx="5"/>
+  <text class="t-lbl" x="32" y="222">COMES DOWN TO</text>
+  <text class="t-b" x="170" y="222">How a question about a few days is read, and how big one write gets.</text>
+  <rect class="decide" x="16" y="249" width="908" height="37" rx="5"/>
+  <text class="t-lbl" x="32" y="267">PRICE</text>
+  <text class="t-b" x="170" y="267">A storm&#x27;s intakes contend on that day&#x27;s row. The intake already runs one at a time per process.</text>
+  <rect class="decide" x="16" y="294" width="908" height="37" rx="5"/>
+  <text class="t-lbl" x="32" y="312">FLIPS IF</text>
+  <text class="t-b" x="170" y="312">A Lab&#x27;s error volume makes one day&#x27;s row a hot spot across processes.</text>
+</svg>

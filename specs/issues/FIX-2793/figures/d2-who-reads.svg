@@ -1,0 +1,44 @@
+<svg viewBox="0 0 940 364" role="img" aria-label="D2, who can list the reports. Chosen: any user of the Shift Coordinator, with no user or session ids. Instead of: the operator only. It comes down to who asks the coordinator: whoever uses it, so an operator-only tool leaves most askers without an answer. Price: one user can see that another user&#x27;s task failed, its title, and a reported problem in that user&#x27;s own words. Flips if a Lab is shared by people who must not see each other&#x27;s failures."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; --gone:#DE8A84; } }
+    .bg { fill:var(--surface); } .ask { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-q { fill:var(--ink); font-family:system-ui,sans-serif; font-weight:600; font-size:15px; }
+    .t-h { fill:var(--ink); font-family:system-ui,sans-serif; font-weight:600; font-size:13.5px; }
+    .t-b { fill:var(--ink); font-family:system-ui,sans-serif; font-size:12px; }
+    .t-s { fill:var(--ink-2); font-family:system-ui,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="364"/>
+  <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+  <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+  <text class="t-q" x="32" y="52">Who can list the Lab&#x27;s error reports?</text>
+  <rect class="lost" x="16" y="76" width="446" height="99" rx="6"/>
+  <text class="t-lbl" x="30" y="96">INSTEAD OF</text>
+  <text class="t-h" x="30" y="116">The operator only</text>
+  <text class="t-b" x="30" y="137">Matches who drafts and files. But the coordinator talks to</text>
+  <text class="t-b" x="30" y="152">whoever uses it, so most askers would get no answer.</text>
+  <rect class="chosen" x="478" y="76" width="446" height="131" rx="6"/>
+  <text class="t-lbl" x="492" y="96">CHOSEN</text>
+  <text class="t-h" x="492" y="116">Anyone the Shift Coordinator talks to, no user or session</text>
+  <text class="t-h" x="492" y="133">ids</text>
+  <text class="t-b" x="492" y="154">Title, status, source, count, task and request ids, redacted</text>
+  <text class="t-b" x="492" y="169">error, Linear link. Enough to answer did X get reported, without</text>
+  <text class="t-b" x="492" y="184">another user&#x27;s sessions.</text>
+  <rect class="decide" x="16" y="221" width="908" height="37" rx="5"/>
+  <text class="t-lbl" x="32" y="239">COMES DOWN TO</text>
+  <text class="t-b" x="170" y="239">Who asks the coordinator: whoever uses it.</text>
+  <rect class="decide" x="16" y="266" width="908" height="37" rx="5"/>
+  <text class="t-lbl" x="32" y="284">PRICE</text>
+  <text class="t-b" x="170" y="284">One user can see that another user&#x27;s task failed, its title, and a reported problem in that user&#x27;s own words.</text>
+  <rect class="decide" x="16" y="311" width="908" height="37" rx="5"/>
+  <text class="t-lbl" x="32" y="329">FLIPS IF</text>
+  <text class="t-b" x="170" y="329">A Lab is shared by people who must not see each other&#x27;s failures.</text>
+</svg>

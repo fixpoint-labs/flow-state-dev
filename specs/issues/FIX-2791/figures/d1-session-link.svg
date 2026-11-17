@@ -1,0 +1,44 @@
+<svg viewBox="0 0 940 362" role="img" aria-label="D1, what the reply&#x27;s link points at. Chosen: the report&#x27;s session, resolved by Inbox, through to filed or not filed, given to the operator only. Instead of: the preview&#x27;s suspension, or the session view. It comes down to when the reply is written: before the preview exists, so only the session id is known; and the session view is not where you answer. Price: for the few minutes of drafting, the link opens a still drafting note. Flips if replies were written only after the preview opens."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; --gone:#DE8A84; } }
+    .bg { fill:var(--surface); } .ask { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-q { fill:var(--ink); font-family:system-ui,sans-serif; font-weight:600; font-size:15px; }
+    .t-h { fill:var(--ink); font-family:system-ui,sans-serif; font-weight:600; font-size:13.5px; }
+    .t-b { fill:var(--ink); font-family:system-ui,sans-serif; font-size:12px; }
+    .t-s { fill:var(--ink-2); font-family:system-ui,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="362"/>
+  <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+  <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+  <text class="t-q" x="32" y="52">What does the reply&#x27;s Inbox link point at?</text>
+  <rect class="lost" x="16" y="76" width="446" height="99" rx="6"/>
+  <text class="t-lbl" x="30" y="96">INSTEAD OF</text>
+  <text class="t-h" x="30" y="116">The preview&#x27;s suspension, or the session view</text>
+  <text class="t-b" x="30" y="137">The suspension does not exist yet when the reply is written. The</text>
+  <text class="t-b" x="30" y="152">session view shows the run, but you answer in Inbox.</text>
+  <rect class="chosen" x="478" y="76" width="446" height="129" rx="6"/>
+  <text class="t-lbl" x="492" y="96">CHOSEN</text>
+  <text class="t-h" x="492" y="116">The report&#x27;s session, resolved by Inbox</text>
+  <text class="t-b" x="492" y="137">error-report~&lt;id&gt; exists from intake and never changes. Inbox</text>
+  <text class="t-b" x="492" y="152">opens the item whose hold is in it; with none waiting it reads</text>
+  <text class="t-b" x="492" y="167">the session&#x27;s lines: still drafting, filed with the Linear ID,</text>
+  <text class="t-b" x="492" y="182">or not filed. Given to the operator only.</text>
+  <rect class="decide" x="16" y="219" width="908" height="37" rx="5"/>
+  <text class="t-lbl" x="32" y="237">COMES DOWN TO</text>
+  <text class="t-b" x="170" y="237">When the reply is written: before the preview exists.</text>
+  <rect class="decide" x="16" y="264" width="908" height="37" rx="5"/>
+  <text class="t-lbl" x="32" y="282">PRICE</text>
+  <text class="t-b" x="170" y="282">For the minutes of drafting, the link opens a still-drafting note.</text>
+  <rect class="decide" x="16" y="309" width="908" height="37" rx="5"/>
+  <text class="t-lbl" x="32" y="327">FLIPS IF</text>
+  <text class="t-b" x="170" y="327">Replies were written only after the preview opens.</text>
+</svg>

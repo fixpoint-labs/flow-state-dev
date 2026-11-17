@@ -1,0 +1,45 @@
+<svg viewBox="0 0 940 332" role="img" aria-label="Before and after. Before, the error-reports collection holds one row per fingerprint with only the newest five occurrences, and only the intake&#x27;s internal entry reads it. After, the same collection also holds one history row per day, appended on every intake and every status change, and one read-only tool, listErrorReports, reads the reports and the history for error-reporter and the Shift Coordinator."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; --gone:#DE8A84; } }
+    .bg { fill:var(--surface); } .ask { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-q { fill:var(--ink); font-family:system-ui,sans-serif; font-weight:600; font-size:15px; }
+    .t-h { fill:var(--ink); font-family:system-ui,sans-serif; font-weight:600; font-size:13.5px; }
+    .t-b { fill:var(--ink); font-family:system-ui,sans-serif; font-size:12px; }
+    .t-s { fill:var(--ink-2); font-family:system-ui,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="332"/>
+  <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+  <text class="t-lbl" x="32" y="32">FIX-2793 · WHAT CHANGES</text>
+  <text class="t-q" x="32" y="52">Where the error history lives, and who reads it</text>
+  <rect class="lost" x="16" y="76" width="446" height="144" rx="6"/>
+  <text class="t-lbl" x="30" y="96">BEFORE</text>
+  <text class="t-h" x="30" y="116">One row per fingerprint, newest 5 occurrences</text>
+  <text class="t-b" x="30" y="137">error-reports/* holds fp-, storm-, cap, held- and task- rows.</text>
+  <text class="t-b" x="30" y="152">Occurrence 6 and on are only a count. Status shows only as it is</text>
+  <text class="t-b" x="30" y="167">now. Only the intake&#x27;s internal reports entry reads the rows;</text>
+  <text class="t-b" x="30" y="182">error-reporter&#x27;s turn has reportProblem, and the Shift</text>
+  <text class="t-b" x="30" y="197">Coordinator reads nothing.</text>
+  <rect class="chosen" x="478" y="76" width="446" height="144" rx="6"/>
+  <text class="t-lbl" x="492" y="96">AFTER</text>
+  <text class="t-h" x="492" y="116">Same collection, plus one history row per day</text>
+  <text class="t-b" x="492" y="137">log-YYYY-MM-DD rows get one entry per occurrence the intake</text>
+  <text class="t-b" x="492" y="152">takes and per status change (previewing, filed with Linear ID</text>
+  <text class="t-b" x="492" y="167">and URL, dismissed, closed). listErrorReports, read-only, reads</text>
+  <text class="t-b" x="492" y="182">reports and history for error-reporter and the Shift</text>
+  <text class="t-b" x="492" y="197">Coordinator.</text>
+  <rect class="decide" x="16" y="234" width="908" height="37" rx="5"/>
+  <text class="t-lbl" x="32" y="252">ADDS</text>
+  <text class="t-b" x="170" y="252">One row kind, one read-only tool, two WORKER.md lines. No second store.</text>
+  <rect class="decide" x="16" y="279" width="908" height="37" rx="5"/>
+  <text class="t-lbl" x="32" y="297">STAYS</text>
+  <text class="t-b" x="170" y="297">Report rows, dedupe, cap, storm, preview in Inbox, filing, and the browser can still not read the collection.</text>
+</svg>
