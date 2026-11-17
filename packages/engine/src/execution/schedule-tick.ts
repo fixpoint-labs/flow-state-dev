@@ -41,8 +41,12 @@ export const SCHEDULE_TICK_INTERVAL_MS = 60_000;
 const LAST_TICK_SCOPE_ID = "__fsd_system__";
 const LAST_TICK_KEY = "schedule-tick/last";
 
-/** Where the router mounts its built-in scheduled endpoint: the framework's own namespace. */
-const DISPATCH_BASE_PATH = "/api/flows";
+/**
+ * Where the router mounts its built-in scheduled endpoint: the framework's own
+ * namespace. The endpoint registers its routes under it and the tick sends to
+ * it, so the two can't drift apart.
+ */
+export const DISPATCH_BASE_PATH = "/api/flows";
 
 /** One fire the tick sends: which schedule of which flow, for which scheduled time. */
 export type ScheduleDispatch = {

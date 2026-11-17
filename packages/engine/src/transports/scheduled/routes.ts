@@ -414,8 +414,12 @@ function registeredScheduledFlow(
   flowKind: string
 ): (FlowInstance & { schedules: SchedulesConfig }) | undefined {
   const flow = host.registry.get(flowKind);
-  if (flow?.schedules === undefined) return undefined;
-  return flow as FlowInstance & { schedules: SchedulesConfig };
+  return hasSchedules(flow) ? flow : undefined;
+}
+
+/** Whether `flow` is registered and declares `schedules`. */
+function hasSchedules(flow: FlowInstance | undefined): flow is FlowInstance & { schedules: SchedulesConfig } {
+  return flow?.schedules !== undefined;
 }
 
 function parseDispatchBody(raw: Uint8Array): DispatchBody {
