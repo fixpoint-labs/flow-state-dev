@@ -276,6 +276,13 @@ export type RequestStreamOptions = RequestSSECallbacks &
   StreamResumeOptions & {
     /** Also deliver trace items (`block_trace`, `router_decision`, `state_snapshot`). */
     includeTrace?: boolean;
+    /**
+     * Keep following until the request ends: a failed connection opens again
+     * after the client's backoff (1 s, doubling, at most 30 s), resuming after
+     * the last event, and is not reported. A 401, 403 or 404 still ends the
+     * stream with `onError`; `close()` ends it, a pending reconnect included.
+     */
+    reconnect?: boolean;
   };
 
 /** A flow whose actions type-check `send`, as `typeof myFlow` gives it. Types only. */
@@ -1042,7 +1049,7 @@ function requestHandle(
     },
     resume: resume as RequestHandle["resume"],
     answer: answer as RequestHandle["answer"],
-    stream: ({ includeTrace, startingAfter, lastEventId, dedupWindowSize, ...callbacks }) =>
+    stream: ({ includeTrace, startingAfter, lastEventId, dedupWindowSize, reconnect, ...callbacks }) =>
       openRequestStream(
         {
           fetcher: t.fetcher,
@@ -1052,7 +1059,7 @@ function requestHandle(
               include: includeTrace === true ? "trace" : undefined
             })
         },
-        { ...callbacks, startingAfter, lastEventId, dedupWindowSize }
+        { ...callbacks, startingAfter, lastEventId, dedupWindowSize, reconnect }
       )
   };
   return handle;

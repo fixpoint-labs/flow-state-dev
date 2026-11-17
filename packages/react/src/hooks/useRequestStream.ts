@@ -15,11 +15,9 @@
  * use; `"raf"` auto-falls back to immediate when `requestAnimationFrame` is
  * unavailable (SSR / Node).
  *
- * With `reconnect`, a `{ requestId }` stream that drops while the request is
- * still in progress opens again after a backoff (1 s, doubling to 30 s),
- * resuming after the last event it heard; an answer that says the request is
- * not there for this caller (401, 403, 404) ends it. `client` streams through
- * a host's own client instead of the provider's.
+ * `reconnect` hands a `{ requestId }` stream the client's own `reconnect`
+ * option, which opens a dropped connection again until the request ends.
+ * `client` streams through a host's own client instead of the provider's.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -74,8 +72,9 @@ export type UseRequestStreamOptions = {
   enabled?: boolean;
   /**
    * Open a `{ requestId }` stream again when it drops while the request is in
-   * progress: after 1 s, doubling to 30 s, resuming after the last event
-   * heard. A 401, 403 or 404 ends it. Default `false`.
+   * progress: the client's `request(id).stream({ reconnect: true })`, which
+   * backs off, resumes after the last event and ends on a 401, 403 or 404.
+   * Default `false`.
    */
   reconnect?: boolean;
   /**
@@ -110,12 +109,6 @@ function passesTypeFilter(
   if (filter?.itemTypes === undefined) return true;
   return filter.itemTypes.includes(item.type);
 }
-
-/** A request stream's answers that mean it is not there for this caller: a reconnect stops on them. */
-const STREAM_GONE: ReadonlySet<number> = new Set([401, 403, 404]);
-/** A reconnect's first wait, and the most any later one waits, in ms. */
-const FIRST_BACKOFF_MS = 1_000;
-const MAX_BACKOFF_MS = 30_000;
 
 /**
  * Low-level escape-hatch hook for subscribing to one request stream.
@@ -167,8 +160,6 @@ export function useRequestStream(
   if (storeRef.current === null) storeRef.current = createRequestStreamStore();
   const handleRef = useRef<RequestStreamHandle | null>(null);
   const rafRef = useRef<number | null>(null);
-  // Ends the current subscription's reconnect loop, a pending retry included: what `close()` calls.
-  const stopReconnectRef = useRef<(() => void) | null>(null);
 
   // Latest-callback ref so an inline `onSessionMetadataChanged` doesn't force a
   // re-subscribe every render (it's intentionally absent from the effect deps).
@@ -217,56 +208,32 @@ export function useRequestStream(
     setStatus("in_progress");
     setEnded(false);
 
-    let live = true;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    let failures = 0;
-    const stopReconnect = () => {
-      live = false;
-      if (retry !== undefined) clearTimeout(retry);
-      retry = undefined;
-    };
-    stopReconnectRef.current = stopReconnect;
     const callbacks = {
       ...bindStoreToCallbacks(store, {
-        onChange: () => {
-          failures = 0;
-          scheduleFlush();
-        },
+        onChange: scheduleFlush,
         itemFilter: filter ? (item) => passesTypeFilter(item, filter) : undefined
       }),
       onSessionMetadataChanged: () => onSessionMetadataChangedRef.current?.(),
-      onError: (error: unknown) => {
-        const status = (error as { status?: number } | null)?.status ?? 0;
-        if (reconnect && !responseObj && live && store.status === "in_progress" && !STREAM_GONE.has(status)) {
-          handleRef.current?.close();
-          handleRef.current = null;
-          retry = setTimeout(open, Math.min(MAX_BACKOFF_MS, FIRST_BACKOFF_MS * 2 ** failures));
-          failures += 1;
-          return;
-        }
+      onError: () => {
         setEnded(true);
       }
     };
 
-    /** Open the stream, resuming after the last event heard on a reconnect. */
-    function open(): void {
-      if (!live) return;
-      const heard = store.lastSequenceNumber;
-      handleRef.current = fsd.flow(flowKind!).request(reqId!).stream({
-        includeTrace,
-        lastEventId: sourceLastEventId,
-        ...(heard > 0 ? { startingAfter: heard } : startingAfter === undefined ? {} : { startingAfter }),
-        ...callbacks
-      });
-    }
+    // With `reconnect`, the client's stream opens a dropped connection again itself.
+    const handle = responseObj
+      ? createSSEClientFromResponse({ response: responseObj, ...callbacks })
+      : fsd.flow(flowKind!).request(reqId!).stream({
+          includeTrace,
+          lastEventId: sourceLastEventId,
+          startingAfter,
+          ...(reconnect ? { reconnect: true } : {}),
+          ...callbacks
+        });
 
-    if (responseObj) handleRef.current = createSSEClientFromResponse({ response: responseObj, ...callbacks });
-    else open();
+    handleRef.current = handle;
 
     return () => {
-      stopReconnect();
-      if (stopReconnectRef.current === stopReconnect) stopReconnectRef.current = null;
-      handleRef.current?.close();
+      handle.close();
       handleRef.current = null;
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
@@ -342,7 +309,6 @@ export function useRequestStream(
     },
     close: () => {
       setEnded(true);
-      stopReconnectRef.current?.();
       handleRef.current?.close();
     }
   };

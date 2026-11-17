@@ -96,4 +96,18 @@ describe("the project picker", () => {
     expect(creates.map((record) => record.flowKind)).toEqual([PROJECTS_FLOW, PROJECTS_FLOW]);
     expect(creates.every((record) => record.sessionId?.startsWith("fsd-write.") === true)).toBe(true);
   });
+
+  it("stops listing projects when the server hands back a cursor it already sent, rather than read forever", async () => {
+    let pages = 0;
+    const fetcher = (async (input: RequestInfo | URL) => {
+      if (!String(input).includes("/entries")) return new Response("{}", { status: 404 });
+      // A guard for the test itself: a read with no repeated-cursor stop would never end on its own.
+      if (++pages > 50) throw new Error(`read ${pages} pages and kept going`);
+      const page = { items: [{ topic: "p", storageKey: "projects/p", value: { id: "p", title: "P", members: ["u_lab"], repository: null }, version: 1 }], nextCursor: "again" };
+      return new Response(JSON.stringify(page), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    const lab = labCalls(createClient({ userId: "u_lab", baseUrl: "", fetcher }), { fetcher });
+    await expect(lab.listProjects()).rejects.toThrow(/same page cursor twice/);
+    expect(pages).toBeLessThanOrEqual(4);
+  });
 });

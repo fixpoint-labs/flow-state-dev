@@ -494,18 +494,11 @@ export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Sto
     return session.flowId ?? session.flowKind;
   };
   const boardAt = async (sessionId: string): Promise<BoardActions> => inbox.board({ flowId: await flowOfSession(sessionId), sessionId, board: TASKS_BOARD });
-  /** Every project of yours at `scope`, by scope with no session, a page at a time. */
-  const everyProject = async (scope: "org" | "user") => {
-    const collection = fsd.resource({ scope, pattern: PROJECTS_PATTERN });
-    const projects: { id: string; title: string; members: string[]; repository: string | null }[] = [];
-    let cursor: string | undefined;
-    do {
-      const page = await collection.list(cursor === undefined ? {} : { cursor });
-      projects.push(...page.items.map((entry) => entry.value as (typeof projects)[number]));
-      cursor = page.nextCursor;
-    } while (cursor !== undefined);
-    return projects;
-  };
+  /** Every project of yours at `scope`, by scope with no session. */
+  const everyProject = async (scope: "org" | "user") =>
+    (await fsd.resource({ scope, pattern: PROJECTS_PATTERN }).listAll()).map(
+      (entry) => entry.value as { id: string; title: string; members: string[]; repository: string | null },
+    );
   /**
    * The open hold task `taskId` holds you on that asks for `asks`, read from the coding board now: the
    * row the screen drew can be older than a question or review stop opened since.

@@ -14,7 +14,7 @@ import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { sqliteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { operatorGitHub, projectSourceCapability } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
-import { checkCommandsFrom, listedRepository, localWorkspaceHost, sessionRepositorySource, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { checkCommandsFrom, listedRepository, localWorkspaceHost, sessionRepositorySource, type RunSource, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { defineProjectsFlow, PROJECTS_FLOW } from "./flows/projects.mts";
 import { REPOSITORY_FIELD, sessionFields } from "./flows/session-repository.mts";
 
@@ -44,20 +44,23 @@ export const checkCommands = (value: string | undefined): string[] | undefined =
 /** The lab's host. */
 export async function openLab(options: LabOptions): Promise<{ flowState: ReturnType<typeof createFlowState> }> {
   const { data, model, repositories, scriptedStepMs: scripted } = options;
-  // The workspace host's check of a repository a run could use: a project's create asks it, and a run in an unlisted one.
-  const checkRepository =
-    options.checkRepository === false ? undefined : (repository: string) => workspace.checkRepository!(listedRepository(repository, repositories) ?? repository, { ignored: ASK_MARKER_IGNORED });
+  // The host and its run source need each other: the source checks a repository through the host, so the
+  // host is made first and asks the source, built just below, once a run starts.
   const workspace = localWorkspaceHost({
     root: join(data, "runs"),
     remotes: { allow: ["file"] },
     localRepositories: [...repositories],
-    // A run works in its session's repository, from the session's server-written field; the control answers the first listed.
-    source:
-      options.ignoreSessionRepository === true && repositories[0] !== undefined
-        ? () => ({ kind: "repo", repo: repositories[0]! })
-        : sessionRepositorySource({ field: REPOSITORY_FIELD, repositories, ...(checkRepository === undefined ? {} : { check: checkRepository }) }),
+    source: (ctx) => runSource(ctx),
     ...(options.setup === undefined ? {} : { setup: options.setup }),
   });
+  // The workspace host's check of a repository a run could use: a project's create asks it, and a run in an unlisted one.
+  const checkRepository =
+    options.checkRepository === false ? undefined : (repository: string) => workspace.checkRepository!(listedRepository(repository, repositories) ?? repository, { ignored: ASK_MARKER_IGNORED });
+  // A run works in its session's repository, from the session's server-written field; the control answers the first listed.
+  const runSource: RunSource =
+    options.ignoreSessionRepository === true && repositories[0] !== undefined
+      ? () => ({ kind: "repo", repo: repositories[0]! })
+      : sessionRepositorySource({ field: REPOSITORY_FIELD, repositories, ...(checkRepository === undefined ? {} : { check: checkRepository }) });
   const titler = () => utility.sessionTitleGenerator({ name: "auto-title", model: options.utilityModel });
   const github = operatorGitHub({ operator: options.userId, token: options.githubToken, ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }) });
   const checks = { commands: [...(options.checks ?? [])], timeoutMs: 10 * 60_000 };
