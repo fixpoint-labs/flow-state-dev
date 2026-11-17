@@ -109,7 +109,7 @@ import type { WaitResumeOperation } from "./wait-resume-operation";
 import { createRequestWakes } from "../durability/request-wakes";
 import { createRequestWaits, type WaiterOf } from "../durability/wait-chain";
 import { createOwingPark } from "../durability/park-owed";
-import { createRequestSessions, type SessionAdmission } from "./request-sessions";
+import { createRequestSessions, type SessionAdmission, type SuspensionAdmission } from "./request-sessions";
 import type { SessionReadObserver } from "./view-reads";
 import type { DurabilityProvider } from "../durability/types";
 import type { WakeStore } from "../stores/types";
@@ -124,7 +124,7 @@ export type RequestHostInputs = {
   // `resourceState` is here for the birth of a newly created child: the
   // tombstone reclamation it owes itself and its flow's create check — see the
   // `birthSession` call below.
-  stores: Pick<StoreRegistry, "session" | "activeRequests" | "resourceState" | "request">;
+  stores: Pick<StoreRegistry, "session" | "activeRequests" | "resourceState" | "request"> & Partial<Pick<StoreRegistry, "suspensions">>;
   flow: FlowInstance;
   /** Server-derived identity of the running request. Never caller-supplied. */
   identity: {
@@ -166,6 +166,9 @@ export type RequestHostInputs = {
   // FIX-2725 D1.
   /** A view run's per-session admission for `sessions` (`RequestSessionsInputs.admit`). */
   sessionAdmission?: SessionAdmission;
+  // FIX-2770.
+  /** A view run's credential check on each pending suspension (`RequestSessionsInputs.admitSuspension`). */
+  suspensionAdmission?: SuspensionAdmission;
   /** A view run's recording of each session read that answers (`RequestSessionsInputs.observe`). */
   sessionReads?: SessionReadObserver;
   // FIX-1077.
@@ -875,6 +878,10 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     requests: stores.request,
     ...(inputs.sessionAdmission !== undefined ? { admit: inputs.sessionAdmission } : {}),
     ...(inputs.sessionReads !== undefined ? { observe: inputs.sessionReads } : {}),
+    // The principal's pending asks (FIX-2770), read on the engine's clock.
+    ...(stores.suspensions !== undefined ? { suspensions: stores.suspensions } : {}),
+    ...(inputs.suspensionAdmission !== undefined ? { admitSuspension: inputs.suspensionAdmission } : {}),
+    now: nowMs,
     identity: { userId: identity.userId, tenantId: identity.tenantId, orgId: identity.orgId },
     flow,
     ...(inputs.resolveFlow !== undefined ? { resolveFlow: inputs.resolveFlow } : {}),

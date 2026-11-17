@@ -2,6 +2,8 @@ import type {
   JournalEntry,
   RequestStatus,
   SequencerCheckpoint,
+  PendingUserSuspension,
+  PendingUserSuspensionQuery,
   SuspensionFilter,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
@@ -1784,6 +1786,23 @@ export interface SuspensionStore {
    * partial batch (`deleted < limit`). Idempotent — nothing matching returns 0.
    */
   pruneTerminalBefore(cutoffMs: number, limit: number): Promise<number>;
+
+  // FIX-2770 D3.
+  /**
+   * One user's pending suspensions that wait on them, in one query that
+   * joins each suspension to its request: the request's user and the
+   * suspension's both `query.userId`; the request's tenant and organization
+   * exactly `query.tenantId` and `query.orgId`, NULL-safe (an unbound
+   * principal matches only unbound requests); its flow kind in
+   * `query.flowKinds`; status `pending`; `expiresAt` absent or after
+   * `query.now`; a reason in `USER_SUSPENSION_REASONS`. A suspension whose
+   * request is missing is not returned. Oldest first by
+   * `(createdAt, suspensionId)`, strictly after `query.after`, at most
+   * `query.limit`. Each row is built with `projectUserSuspension` from the
+   * fields it names, never from a spread record. A SQL store runs this as one
+   * statement; nothing is read back and filtered.
+   */
+  listPendingForUser(query: PendingUserSuspensionQuery): Promise<PendingUserSuspension[]>;
 }
 
 // FIX-140.

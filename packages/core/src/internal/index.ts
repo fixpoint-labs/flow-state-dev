@@ -41,6 +41,8 @@ export type {
   ListedSession,
   SessionTurn,
   SessionTurnsQuery,
+  UserSuspensionPage,
+  UserSuspensionsQuery,
   PeerSessionView,
   SettleParentTaskInput,
   SettleParentTaskResult,

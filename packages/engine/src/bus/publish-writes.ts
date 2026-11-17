@@ -2,7 +2,8 @@
 /**
  * The one publish point: every write to the request and session
  * stores publishes a notice on its session's topic, once the write can be
- * read.
+ * read, and every write to the suspension store one on its owner's user
+ * topic.
  *
  * `withChangeBus` is applied wherever a registry enters the engine:
  * `resolveStores` (so `createFlowState` and the router), `runAction`, BullMQ's
@@ -30,6 +31,15 @@
  * | a session's state field delta | `run` on the session and on its parent |
  * | any other session write | the same, and `run` on its owner's user topic |
  * | a session born (`set` over `"absent"`) or deleted | also `state` on the session |
+ * | a suspension written (`set`) | `suspension` on the request owner's user topic, under the request's tenant |
+ * | a request's suspensions deleted (`deleteForRequest`), unless it completed | the same |
+ *
+ * Only a change a read of pending suspensions could see publishes. A durable
+ * request's completion deletes its suspensions, all of them answered by then,
+ * so it publishes nothing: hearing it would wake every Inbox on every turn's
+ * finish. Pruning resolved suspensions (`pruneTerminalBefore`) publishes
+ * nothing either. Nor does a suspension whose request is not stored: the
+ * pending read joins to the request, so it never listed one.
  *
  * The user topic is what a list of the user's sessions watches: it hears a
  * session made, titled or deleted and a request's status written, not the
@@ -49,7 +59,8 @@ import { DEFAULT_RUNTIME_LOGGER } from "../execution/logging";
 import { FlowStateConfigError } from "../errors/flow-error";
 import type { BusTopic, ChangeBus, ChangeNotice } from "./types";
 import { unionNoticeIds, type ChangeKind } from "@flow-state-dev/core/internal";
-import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry } from "../stores/types";
+import type { SuspensionRecord } from "@flow-state-dev/core/types";
+import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry, SuspensionStore } from "../stores/types";
 import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
 import { legacyComponentItemReads } from "../stores/legacy-component-items";
 
@@ -100,8 +111,9 @@ function busOf(store: object): ChangeBus | undefined {
  *
  * @throws FlowStateConfigError when the registry's `bus` differs from the one
  *   its stores already publish to.
- * @returns The registry with `bus` set and its `request` and `session` stores
- *   wrapped: `stores` itself when nothing changed, otherwise a copy.
+ * @returns The registry with `bus` set and its `request`, `session` and
+ *   `suspensions` stores wrapped: `stores` itself when nothing changed,
+ *   otherwise a copy.
  */
 export function withChangeBus<T extends StoreRegistry>(stores: T): T & { bus: ChangeBus } {
   const bus = stores.bus ?? busOf(stores.request) ?? busOf(stores.session) ?? createInMemoryBus();
@@ -111,10 +123,13 @@ export function withChangeBus<T extends StoreRegistry>(stores: T): T & { bus: Ch
   // entry applies it, once per store, so stored `component` items read back
   // as data items on every path (legacy-component-items.ts).
   const request = wrap(stores.request, bus, () => requestWrites(stores.request, bus, identities), legacyComponentItemReads);
-  if (stores.bus === bus && session === stores.session && request === stores.request) {
+  // Optional only on a hand-built registry that leaves it out.
+  const raw = stores.suspensions as SuspensionStore | undefined;
+  const suspensions = raw === undefined ? undefined : wrap(raw, bus, () => suspensionWrites(raw, bus, identities));
+  if (stores.bus === bus && session === stores.session && request === stores.request && suspensions === raw) {
     return stores as T & { bus: ChangeBus };
   }
-  return { ...stores, session, request, bus };
+  return { ...stores, session, request, ...(suspensions !== undefined ? { suspensions } : {}), bus };
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +230,16 @@ function userTopic(userId: string, tenantId: string | undefined): BusTopic {
 
 function notice(topic: BusTopic, kind: ChangeKind, id?: string): ChangeNotice {
   return id === undefined ? { topic, kind } : { topic, kind, ids: [id] };
+}
+
+// FIX-2770 D1.
+/**
+ * The `suspension` a request's owner's user topic hears of a write to one of
+ * its suspensions, under the request's tenant. It names nothing: the topic
+ * spans the user's organizations.
+ */
+function suspensionNotice(owner: RequestIdentity): ChangeNotice | undefined {
+  return owner.userId === undefined ? undefined : notice(userTopic(owner.userId, owner.tenantId), "suspension");
 }
 
 /** The `run` a session's owner's user topic hears of a write to one of their sessions. */
@@ -324,6 +349,15 @@ class Identities {
     };
     remember(cacheOf(requestIdentities, this.requests), id, identity);
     return identity;
+  }
+
+  // FIX-2770.
+  /** The request as stored now, read past the cache: a write that depends on its status. */
+  async currentRequest(id: string): Promise<RequestRecord | undefined> {
+    return this.requests.get(id).catch((error: unknown) => {
+      debugUnassembled(error, { store: "request", id });
+      return undefined;
+    });
   }
 
   forgetRequest(id: string): void {
@@ -595,6 +629,28 @@ function requestWrites(store: RequestStore, bus: ChangeBus, identities: Identiti
         failed ??= { error: held };
       }
       if (failed !== undefined) throw failed.error;
+    }
+  });
+}
+
+// FIX-2770 D1.
+function suspensionWrites(store: SuspensionStore, bus: ChangeBus, identities: Identities): Writes {
+  const publishFor = (identity: RequestIdentity | undefined): void => {
+    const held = identity === undefined ? undefined : suspensionNotice(identity);
+    if (held !== undefined) publishNotices(bus, [held]);
+  };
+  return present(store, {
+    set: (original) => async (record: SuspensionRecord) => {
+      await original(record);
+      publishFor(await identities.request(record.requestId));
+    },
+    deleteForRequest: (original) => async (requestId: string) => {
+      // Read before the delete: the request may go with it.
+      const request = await identities.currentRequest(requestId);
+      await original(requestId);
+      // A completed request waits on no one: its suspensions were all answered.
+      if (request === undefined || request.status === "completed") return;
+      publishFor(identities.rememberRequest(requestId, request));
     }
   });
 }

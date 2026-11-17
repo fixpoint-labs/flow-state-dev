@@ -183,7 +183,7 @@ function bringsNewEntry(held: NonNullable<Shared["held"]>, result: ViewResult): 
 
 // FIX-2625.
 /** The order a merged hearing lists its kinds in, as the engine's answer does. */
-const KIND_ORDER: readonly WireNotice["kind"][] = ["items", "request", "run", "state", "resource", "board", "resync"];
+const KIND_ORDER: readonly WireNotice["kind"][] = ["items", "request", "run", "state", "resource", "board", "suspension", "resync"];
 
 /**
  * Both answers' hearings, one per topic: two for the same topic merge into

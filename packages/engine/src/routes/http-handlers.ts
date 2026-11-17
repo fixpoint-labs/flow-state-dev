@@ -12,6 +12,7 @@ import { registryHasViews, type FlowRegistry } from "../registry/flow-registry";
 import { withResourceIndexWriter } from "../resources/resource-indexes";
 import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
+import { createInMemorySuspensionStore } from "../stores/memory/suspension-store";
 import type { StoreRegistry } from "../stores/types";
 import { withChangeBus } from "../bus/publish-writes";
 import { createMemoryBlobStore } from "../blobs/memory-blob-store";
@@ -219,12 +220,13 @@ export type FlowRouteContext = {
 
 export function resolveStores(partial: Partial<StoreRegistry> | undefined): StoreRegistry & { bus: ChangeBus } {
   const fallback = createInMemoryStores();
+  const request = partial?.request ?? fallback.request;
   // Every request and session write publishes on its session's topic
   // (FIX-2426), on the given bus or an in-memory one.
   return withChangeBus({
     ...(partial?.bus !== undefined ? { bus: partial.bus } : {}),
     session: partial?.session ?? fallback.session,
-    request: partial?.request ?? fallback.request,
+    request,
     user: partial?.user ?? fallback.user,
     org: partial?.org ?? fallback.org,
     activeRequests: partial?.activeRequests ?? fallback.activeRequests,
@@ -232,7 +234,8 @@ export function resolveStores(partial: Partial<StoreRegistry> | undefined): Stor
     resourceState: partial?.resourceState ?? fallback.resourceState,
     checkpoints: partial?.checkpoints ?? fallback.checkpoints,
     traces: partial?.traces ?? fallback.traces,
-    suspensions: partial?.suspensions ?? fallback.suspensions,
+    // A fallback suspension store joins to the request store in use, given or not (FIX-2770).
+    suspensions: partial?.suspensions ?? (partial?.request !== undefined ? createInMemorySuspensionStore({ requests: request }) : fallback.suspensions),
     leases: partial?.leases ?? fallback.leases,
     // Optional (FIX-2078 D1), and never filled in for stores that were given:
     // an in-memory stand-in beside a durable store would claim debts survive

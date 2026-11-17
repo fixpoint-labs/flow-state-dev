@@ -185,9 +185,11 @@ export function resolveTraceMaxRequests(explicit?: number): number {
 }
 
 export function createInMemoryStores(options: CreateStoreOptions = {}): StoreRegistry {
+  // The suspension store joins a user's pending suspensions to this request store (FIX-2770).
+  const request = createInMemoryRequestStore();
   return {
     session: createInMemorySessionStore(),
-    request: createInMemoryRequestStore(),
+    request,
     user: createInMemoryUserStore(),
     org: createInMemoryOrgStore(),
     activeRequests: createInMemoryActiveRequestRegistry(),
@@ -198,7 +200,7 @@ export function createInMemoryStores(options: CreateStoreOptions = {}): StoreReg
       ...options.traceStore,
       maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests)
     }),
-    suspensions: createInMemorySuspensionStore(),
+    suspensions: createInMemorySuspensionStore({ requests: request }),
     leases: createInMemoryLeaseStore(),
     wakes: createInMemoryWakeStore()
   };
@@ -227,14 +229,16 @@ export function createFilesystemStores(
         "this warning."
     );
   }
+  // The suspension store joins a user's pending suspensions to this request store (FIX-2770).
+  const request = createFilesystemRequestStore({
+    rootDir: path.join(options.rootDir, "requests"),
+    onPersistError
+  });
   return {
     session: createFilesystemSessionStore({
       rootDir: path.join(options.rootDir, "sessions")
     }),
-    request: createFilesystemRequestStore({
-      rootDir: path.join(options.rootDir, "requests"),
-      onPersistError
-    }),
+    request,
     user: createFilesystemUserStore({
       rootDir: path.join(options.rootDir, "users")
     }),
@@ -253,7 +257,7 @@ export function createFilesystemStores(
       maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests),
       onPersistError
     }),
-    suspensions: createFilesystemSuspensionStore(path.join(options.rootDir, "suspensions")),
+    suspensions: createFilesystemSuspensionStore(path.join(options.rootDir, "suspensions"), { requests: request }),
     leases: createFilesystemLeaseStore(path.join(options.rootDir, "leases")),
     wakes: createFilesystemWakeStore(path.join(options.rootDir, "wakes"))
   };

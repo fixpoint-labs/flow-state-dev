@@ -47,10 +47,10 @@ import { asObject, extractTenantId, jsonResponse, loadTenantSession, parseJsonBo
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { SessionRecord } from "../stores/types";
-import type { SessionAdmission } from "../context/request-sessions";
+import type { SessionAdmission, SuspensionAdmission } from "../context/request-sessions";
 import { isOrgAttributed } from "../context/org-attribution";
 import { resolveRecordOwner } from "../context/record-owner";
-import { admitListedSession, flowAuthenticates, type InstanceCallerResolver } from "./instance-caller";
+import { admitListedSession, flowAuthenticates, ownResolverVerdict, type InstanceCallerResolver } from "./instance-caller";
 
 type ViewRoute = Extract<ParsedFlowRoute, { kind: "run_view" }>;
 
@@ -147,7 +147,8 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
       runtimeConfig: ctx.runtimeConfig,
       signal: request.signal,
       resolveFlow: (address) => ctx.registry.get(address),
-      admitSession: viewSessionAdmission(ctx, flow, tenantId)
+      admitSession: viewSessionAdmission(ctx, flow, tenantId),
+      admitSuspension: (entry) => viewSuspensionAdmission(ctx, entry)
     });
     return jsonResponse(200, {
       output: answer.output ?? null,
@@ -184,6 +185,19 @@ function viewSessionAdmission(ctx: ViewRouteContext, flow: FlowInstance, tenantI
   return (session) => admitListedSession({ registry: ctx.registry, callerFor: ctx.callerFor, tenantId, hostRule }, session);
 }
 
+// FIX-2770.
+/**
+ * Whether a view's read of the caller's pending suspensions may answer one
+ * row: the instance's own credential check, judged on the row's request,
+ * with or without a session (`ownResolverVerdict`). A sessionless ask has no
+ * session for `admitListedSession` to judge, so this is what covers it; a row
+ * with a session also passes the session admission (`request-sessions.ts`).
+ * It only removes rows the store's query already scoped to the caller.
+ */
+async function viewSuspensionAdmission(ctx: ViewRouteContext, entry: Parameters<SuspensionAdmission>[0]): Promise<boolean> {
+  return (await ownResolverVerdict(ctx.registry, ctx.callerFor, entry)) !== false;
+}
+
 // FIX-2625 D1.
 /**
  * The change a call asks the view to answer for, from `body.changed`: a wire
@@ -199,7 +213,7 @@ function changeOf(value: unknown): ViewChange | undefined {
   return { topic, kind: kind as ViewChange["kind"], ids: [...ids] as string[] };
 }
 
-const CHANGE_KINDS = new Set(["items", "request", "run", "state", "resource", "board", "resync"]);
+const CHANGE_KINDS = new Set(["items", "request", "run", "state", "resource", "board", "suspension", "resync"]);
 
 /** What a failed view answers: the action route's answer for a binding refusal, a named code for the rest. */
 function viewFailureResponse(error: unknown, route: ViewRoute): Response {

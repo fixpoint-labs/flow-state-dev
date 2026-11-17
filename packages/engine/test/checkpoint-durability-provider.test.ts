@@ -31,6 +31,7 @@ function mockSuspensionStore(): SuspensionStore {
     list: vi.fn<SuspensionStore["list"]>().mockResolvedValue([]),
     deleteForRequest: vi.fn<SuspensionStore["deleteForRequest"]>().mockResolvedValue(undefined),
     pruneTerminalBefore: vi.fn<SuspensionStore["pruneTerminalBefore"]>().mockResolvedValue(0),
+    listPendingForUser: vi.fn<SuspensionStore["listPendingForUser"]>().mockResolvedValue([]),
   };
 }
 

@@ -20,7 +20,10 @@
  * with the state the HTTP session list shows the caller, exposed and readonly
  * (`./client-visible-state`), which is display data: `read` and the filter
  * stay readonly-only, what a block may decide on. `turns` reads a session's
- * requests by status, never their words.
+ * requests by status, never their words. `userSuspensions` reads the
+ * principal's pending suspensions on named flows in one store query joined to their
+ * requests, each row then passing the instance's own credential
+ * check, and the session admission when it has a session.
  *
  * In a view, `admit` adds the HTTP session list's per-row admission on top of
  * the owner rule (`view-routes.ts`): a session it refuses reads as one that
@@ -35,6 +38,7 @@ import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-default
 import type {
   FlowInstance,
   HistoryTurn,
+  PendingUserSuspension,
   TokenCounter
 } from "@flow-state-dev/core/types";
 import type {
@@ -46,8 +50,11 @@ import type {
   ListedSession,
   SessionTurn,
   SessionTurnsQuery,
-  PeerSessionView
+  PeerSessionView,
+  UserSuspensionPage,
+  UserSuspensionsQuery
 } from "@flow-state-dev/core/internal";
+import { FlowStateConfigError } from "../errors/flow-error";
 import type { DurabilityProvider } from "../durability/types";
 import {
   matchesParentageFilter,
@@ -56,7 +63,7 @@ import {
   resolveSessionStorageKey,
   toBareSessionId
 } from "../stores/scope-keys";
-import type { RequestRecord, RequestStore, SessionRecord, SessionStore } from "../stores/types";
+import type { RequestRecord, RequestStore, SessionRecord, SessionStore, SuspensionStore } from "../stores/types";
 import { LLM_AUDIENCE_TYPES, selectRequestsByLimit } from "./history";
 import { sessionRequestScope } from "./session-request-scope";
 import { parkedInterruptedIds } from "../durability/stop-suspended";
@@ -70,6 +77,11 @@ const SESSION_HISTORY_DEFAULT_TURNS = 20;
 const SESSION_LIST_MAX = 100;
 /** The most requests `turns` answers a session. */
 const SESSION_TURNS_MAX = 50;
+// FIX-2770 D2.
+/** The most flow kinds `userSuspensions` reads. */
+const USER_SUSPENSION_FLOW_KINDS_MAX = 50;
+/** The most suspensions `userSuspensions` answers a page. */
+const USER_SUSPENSION_PAGE = 200;
 
 /**
  * A view's per-row admission on top of the owner rule: whether the caller may
@@ -77,12 +89,33 @@ const SESSION_TURNS_MAX = 50;
  */
 export type SessionAdmission = (record: SessionRecord) => Promise<boolean>;
 
+// FIX-2770.
+/**
+ * A view's credential check on one pending suspension, judged on its
+ * request: the flow instance and session it runs under, and the principal's
+ * user and organization, which the store matched exactly
+ * (`ownResolverVerdict`, `view-routes.ts`).
+ */
+export type SuspensionAdmission = (entry: {
+  flowKind: string;
+  flowId?: string;
+  sessionId?: string;
+  userId: string;
+  orgId: string;
+}) => Promise<boolean>;
+
 export type RequestSessionsInputs = {
   sessions: Pick<SessionStore, "get" | "list">;
   /** Where `turns` reads a session's requests. Without it, `turns` answers nothing. */
   requests?: Pick<RequestStore, "list">;
   /** A view's admission: every verb answers only a session it admits. */
   admit?: SessionAdmission;
+  /** Where `userSuspensions` reads. Without it, `userSuspensions` throws. */
+  suspensions?: Pick<SuspensionStore, "listPendingForUser">;
+  /** A view's credential check on each pending suspension `userSuspensions` reads. */
+  admitSuspension?: SuspensionAdmission;
+  /** The engine's clock, for a suspension's expiry. Defaults to `Date.now`. */
+  now?: () => number;
   /** A view's recording: told of each session a verb answers, and of each list. */
   observe?: SessionReadObserver;
   /** Server-derived identity of the running request. */
@@ -279,7 +312,65 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       .map(turnOf);
   }
 
+  /**
+   * Whether a pending row read in scope is the caller's to see: the
+   * instance's own credential check on its request, with or without a
+   * session, then, with one, the session's owner rule and admission. It only
+   * removes rows; the scope stays in the store's query.
+   */
+  const admitsSuspension = async (entry: PendingUserSuspension): Promise<boolean> => {
+    if (
+      inputs.admitSuspension !== undefined &&
+      !(await inputs.admitSuspension({
+        flowKind: entry.flowKind,
+        ...(entry.flowId !== undefined ? { flowId: entry.flowId } : {}),
+        ...(entry.sessionId !== undefined ? { sessionId: entry.sessionId } : {}),
+        userId: identity.userId,
+        orgId: identity.orgId
+      }))
+    ) {
+      return false;
+    }
+    return entry.sessionId === undefined || (await owned(entry.sessionId)) !== undefined;
+  };
+
   return {
+    async userSuspensions(query: UserSuspensionsQuery): Promise<UserSuspensionPage> {
+      const flowKinds = [...new Set(query.flowKinds)];
+      if (flowKinds.length > USER_SUSPENSION_FLOW_KINDS_MAX) {
+        throw new FlowStateConfigError(
+          `sessions.userSuspensions reads at most ${USER_SUSPENSION_FLOW_KINDS_MAX} flow kinds; it was given ${flowKinds.length}. ` +
+            "Name the flows the screen covers, never every flow."
+        );
+      }
+      // Heard however few rows it answers: a suspension made later is a change to it.
+      inputs.observe?.suspensions();
+      if (flowKinds.length === 0) return { suspensions: [], more: false };
+      if (inputs.suspensions === undefined) throw new Error("sessions.userSuspensions has no suspension store to read");
+      // The scope is the running request's, every key present (BP-031):
+      // an unbound tenant or organization matches only unbound requests.
+      const stored = await inputs.suspensions.listPendingForUser({
+        userId: identity.userId,
+        tenantId: identity.tenantId,
+        orgId: identity.orgId,
+        flowKinds,
+        now: (inputs.now ?? Date.now)(),
+        limit: USER_SUSPENSION_PAGE + 1,
+        ...(query.after !== undefined ? { after: { createdAt: query.after.createdAt, suspensionId: query.after.suspensionId } } : {})
+      });
+      const page = stored.slice(0, USER_SUSPENSION_PAGE);
+      const admitted = await Promise.all(page.map((entry) => admitsSuspension(entry)));
+      const more = stored.length > USER_SUSPENSION_PAGE;
+      // `next` is the last row the store returned, never the last one shown,
+      // so paging neither stalls on dropped rows nor skips the rows after them.
+      const last = page.at(-1);
+      return {
+        suspensions: page.filter((_, at) => admitted[at]),
+        more,
+        ...(more && last !== undefined ? { next: { createdAt: last.createdAt, suspensionId: last.suspensionId } } : {})
+      };
+    },
+
     async read(sessionId: string): Promise<PeerSessionView | undefined> {
       const record = await owned(sessionId);
       if (record === undefined) return unanswered();
