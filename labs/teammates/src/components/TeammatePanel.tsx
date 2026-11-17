@@ -12,6 +12,7 @@ import { costAmount, tokenCount } from "./flow-state/spend";
 import { TaskTime, taskCounts, taskSignal } from "./flow-state/task-signals";
 import { reasonLine, runsOn, taskLabel, taskLine, type Popup } from "./Popups";
 import { EditForm } from "./TeammateForms";
+import { StatusBadge } from "./StatusBadge";
 
 /** The heading over each of the panel's sections. */
 const HEADING = "font-mono text-[10px] tracking-widest text-muted-foreground uppercase";
@@ -23,14 +24,6 @@ const PANEL_BUTTON = "w-fit rounded-sm border border-border px-2 py-0.5 font-mon
  * never capped.
  */
 const NEWEST_SHOWN = 5;
-
-/** The dot's fill for each status; a task waiting on you overrides it with `bg-warning`. */
-const STATUS_DOT = {
-  running: "animate-pulse bg-info",
-  done: "bg-success",
-  failed: "bg-destructive",
-  cancelled: "border border-muted-foreground/60",
-} satisfies Record<BoardTask["status"], string>;
 
 /**
  * Newest first: by when it ended, else when it first started, else when it
@@ -142,11 +135,12 @@ export function TeammatePanel({
     const state = taskPresentation(t);
     const reason = t.status === "failed" || t.status === "cancelled" ? reasonLine(t) : undefined;
     return (
-      <li key={t.id}>
+      <li key={t.id} className="rounded-md border border-border/60 bg-card/40">
         <button
           type="button"
           aria-current={t.id === openTask ? "true" : undefined}
           aria-label={coding ? taskLabel(line, t) : line}
+          aria-describedby={`task-row-${t.id}`}
           data-task={t.status}
           onClick={() => onOpen({ kind: "task", sessionId, taskId: t.id })}
           className={cn(
@@ -156,8 +150,11 @@ export function TeammatePanel({
             stale && STALE_CLASS,
           )}
         >
-          <span aria-hidden data-task-dot className={cn("mt-[5px] size-2 shrink-0 rounded-full", t.waiting ? "bg-warning" : STATUS_DOT[t.status])} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span id={`task-row-${t.id}`} className="flex items-center justify-between gap-2">
+              <StatusBadge status={state.word} active={!stale && t.status === "running" && !t.waiting} />
+              <span title={`Task ${t.id}`} aria-label={`Task ${t.id}`} className="truncate font-mono text-[10px] text-muted-foreground">#{t.id.replace(/^task_/, "")}</span>
+            </span>
             <span className="line-clamp-2 text-[13px] leading-snug" title={line}>
               {coding ? <TerminalIcon aria-hidden className="mr-1 mb-0.5 inline size-3 text-muted-foreground" /> : null}
               {line}
@@ -206,10 +203,15 @@ export function TeammatePanel({
           </div>
           {tasks.length === 0 ? <p className="px-4 text-xs text-muted-foreground">{worker.name} hasn't started any tasks yet.</p> : null}
           <CodingSpend tasks={tasks.filter((t) => isCoding(t.to))} />
-          <div className="space-y-1">
-          {running.length > 0 ? <ul aria-label="Running" className="space-y-px px-2">{running.map(row)}</ul> : null}
+          <div className="space-y-3">
+          {running.length > 0 ? (
+            <section aria-label="Running tasks">
+              <h3 className="px-4 pb-1.5 text-xs font-medium text-info">Running · {running.length}</h3>
+              <ul aria-label="Running" className="space-y-1.5 px-2">{running.map(row)}</ul>
+            </section>
+          ) : null}
           {failed.length > 0 ? (
-            <div>
+            <div className="border-t border-border pt-2">
               <div className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium">
                 <span className="text-destructive">Failed</span>
                 <span aria-hidden className="rounded-full bg-destructive/15 px-1.5 text-[10px] leading-4 text-destructive tabular-nums">
@@ -225,7 +227,7 @@ export function TeammatePanel({
                   Clear
                 </button>
               </div>
-              <ul aria-label="Failed" className="space-y-px px-2 pb-1">{failedShown.map(row)}</ul>
+              <ul aria-label="Failed" className="space-y-1.5 px-2 pb-1">{failedShown.map(row)}</ul>
               {failedCapped ? (
                 <button
                   type="button"

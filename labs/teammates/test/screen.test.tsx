@@ -213,12 +213,14 @@ describe("the teammates screen", () => {
 
     // Step 3: a second line before researcher answers. Lead takes it, and the reply arrives mid-turn.
     await tell("Lead", "Make section 2 about pricing.");
-    await waitFor(() => expect(conversation().querySelector("[data-pending]")?.textContent).toBe("← researcher replied · Lead reads it after this turn"), {
+    await waitFor(() => {
+      expect(conversation().querySelector("[data-pending]")?.textContent).toBe("← researcher replied · Lead reads it after this turn");
+      expect(within(conversation()).getByRole("status", OUTSIDE_COMPOSER).textContent).toMatch(/Lead is answering/);
+      expect(entries("received")).toHaveLength(2); // only writer's two older replies so far
+    }, {
       interval: 5,
       timeout: 2000,
     });
-    expect(within(conversation()).getByRole("status", OUTSIDE_COMPOSER).textContent).toMatch(/Lead is answering/);
-    expect(entries("received")).toHaveLength(2); // only writer's two older replies so far
 
     // The reply lands as its own line after Lead's answer to you, and Lead's next line uses it.
     const reply = await within(conversation()).findByRole("region", { name: "From researcher" }, { timeout: 2000 });
@@ -340,11 +342,12 @@ describe("the teammates screen", () => {
     expect(document.body.textContent).not.toMatch(/project/i);
   });
 
-  it("brings a finished task back as one collapsed line that opens the task, with the filer's own reply expanded under it", async () => {
+  it("brings a finished task back with its result and a control to open the task, with the filer's reply expanded under it", async () => {
     render(<AppProvider calls={fast()}><App /></AppProvider>);
     await tell("Lead", "Fix the typo in the README's first line.");
     const back = await within(conversation()).findByRole("button", { name: "Coding task finished: Fix the typo in the README's first line" }, { timeout: 2000 });
-    // Collapsed: one line, never the result drawn as a block in the thread.
+    // The result and the task opener sit together, ahead of the filer's own answer.
+    expect(back.parentElement?.textContent).toContain("Fixed the typo in README.md, line 1.");
     expect(within(conversation()).queryByRole("region", { name: /^From the coding task/ })).toBeNull();
     expect(back.closest("section")).toBeNull();
     // Lead's own reply stays expanded, as its answer.
@@ -460,7 +463,7 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(line.querySelector("[data-task-status]")?.textContent).toBe("failed"), { timeout: 2000 });
     expect(line.querySelector("[data-harness]")?.textContent).toBe("Cursor");
     const result = await within(conversation()).findByRole("button", { name: "Coding task couldn't finish: Fix the typo in the README's first line" }, { timeout: 2000 });
-    expect(result.textContent).toMatch(/Cursor isn't set up on this machine/);
+    expect(result.parentElement?.textContent).toMatch(/Cursor isn't set up on this machine/);
     // No other harness took it: one task, on Cursor, and no run.
     expect(entries("task")).toHaveLength(1);
     fireEvent.click(line);
@@ -583,8 +586,9 @@ describe("the teammates screen", () => {
       },
       { interval: 5 },
     );
-    // While its text is being written, the text is the sign it is answering: no second line under it.
-    expect(within(conversation()).queryByRole("status", OUTSIDE_COMPOSER)).toBeNull();
+    // Once the answer starts, activity moves from the waiting bubble into the reply.
+    expect(conversation().querySelector("[data-chat-activity]")).toBeNull();
+    expect(within(conversation()).getByRole("status", OUTSIDE_COMPOSER).textContent).toBe("Reply in progress");
     const scrolled = feeds.scrolls.length;
     const top = scroller.scrollTop;
     await within(conversation()).findByText(/its card shows here\./, {}, { timeout: 4000 });

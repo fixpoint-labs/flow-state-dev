@@ -213,7 +213,9 @@ describe("a task retried after its run ended", () => {
     notice();
     await until(() => tasks[0]?.boardStatus === "in_progress");
     await new Promise((r) => setTimeout(r, 100));
+    expect(tasks[0]).toMatchObject({ id: failed.id, status: "running", boardStatus: "in_progress" });
     expect(tasks[0]!.error).toBeUndefined();
+    expect(tasks[0]!.result).toBeUndefined();
 
     listed = { ...fixedListed, updatedAt: 9 };
     notice();

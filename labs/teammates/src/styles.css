@@ -36,3 +36,24 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+[data-typing-dots] > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-typing-dots][data-active="true"] > span {
+    animation: teammate-typing 1.4s ease-in-out infinite;
+  }
+  [data-typing-dots] > span:nth-child(2) { animation-delay: 0.16s; }
+  [data-typing-dots] > span:nth-child(3) { animation-delay: 0.32s; }
+}
+
+@keyframes teammate-typing {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-2px); opacity: 1; }
+}

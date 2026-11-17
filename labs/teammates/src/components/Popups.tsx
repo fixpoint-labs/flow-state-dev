@@ -16,6 +16,7 @@ import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
 import { SessionOverlay } from "./flow-state/session-overlay";
 import { Steps } from "./Steps";
+import { StatusBadge } from "./StatusBadge";
 
 /** What a popup shows: a task one conversation filed, or one message a worker sent. */
 export type Popup =
@@ -217,13 +218,17 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
   const waitsOnPullRequest = task?.boardStatus === "in_progress" && task.pullRequests !== undefined;
   const status = waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : waitsOnPullRequest ? "PR open" : task?.status;
   return (
-    <SessionOverlay variant="modal" label={line} title={title} status={status} onClose={onClose} footer={pinned}>
+    <SessionOverlay variant="modal" label={line} title={title} meta={task === undefined ? undefined : <span className="break-all font-mono text-[10px] text-muted-foreground">Task #{task.id.replace(/^task_/, "")}</span>} status={status === undefined ? undefined : <StatusBadge status={status} />} onClose={onClose} footer={task === undefined ? null : (
+      <div className="flex flex-col gap-3">
+        {pinned}
+        <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />
+        {task.status !== "running" ? <TaskOutcomeActions task={task} followUp={followUp} /> : null}
+      </div>
+    )}>
       {/* Its run is done and its work is a pull request: open until it merges or closes. The Steer box wakes it to check. */}
       {task !== undefined && waitsOnPullRequest ? <PullRequestOpen adapter={adapter} task={task} /> : null}
-      {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
       {/* What a coding task's run changed, what it ran and how long it took, without opening a step. */}
       {task && isCoding(task.to) ? <TaskSummary adapter={adapter} task={task} steps={steps} /> : null}
-      {task && task.status !== "running" ? <TaskOutcomeActions task={task} followUp={followUp} /> : null}
       {/* What a coding task's runs spent, in and out apart, with the vendor's charge when it reported one. */}
       {task?.spend && isCoding(task.to) ? (
         <div data-task-spend>
@@ -500,7 +505,7 @@ function MessagePopup({ adapter, popup, nameOf, lookOf, onClose }: {
   const to = nameOf(popup.to);
   const line = `Messaged ${to}`;
   return (
-    <SessionOverlay variant="modal" label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={answerIn(talk, popup.messageId)} onClose={onClose}>
+    <SessionOverlay variant="modal" label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={<StatusBadge status={answerIn(talk, popup.messageId)} />} onClose={onClose}>
       <p className="font-mono text-xs text-muted-foreground">
         {nameOf(popup.from)} → {to}
       </p>

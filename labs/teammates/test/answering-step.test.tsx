@@ -65,15 +65,19 @@ describe("the answering line's step", () => {
     const view = render(<Conversation adapter={adapter} worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} harnessOf={() => undefined} onFire={async () => {}} onOpen={() => {}} />);
     const line = () => view.container.querySelector("[data-chat-activity]");
     expect(line()?.textContent).toBe("Lead · reading a file…");
+    expect(line()?.querySelector("[data-typing-dots]")?.getAttribute("aria-hidden")).toBe("true");
+    expect(line()?.querySelector("[data-typing-dots]")?.getAttribute("data-active")).toBe("true");
     expect(view.container.querySelector("details")?.open).toBe(true);
     expect(view.container.querySelector("[data-step=tools] li")?.textContent).toContain(read.text);
 
     act(() => show({ ...initial, entries: [steps({ ...read, state: "waiting" })] }));
     expect(line()?.textContent).toBe("Lead · waiting on you…");
     expect(line()?.className).toContain("text-attention");
+    expect(line()?.querySelector("[data-typing-dots]")?.getAttribute("data-active")).toBe("false");
     act(() => connect("lapsed"));
     expect(line()?.textContent).toBe("Lead is answering…");
     expect(line()?.className).toContain(STALE_CLASS);
+    expect(line()?.querySelector("[data-typing-dots]")?.getAttribute("data-active")).toBe("false");
     act(() => connect("live"));
     expect(line()?.textContent).toBe("Lead · waiting on you…");
 

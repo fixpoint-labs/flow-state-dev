@@ -10,7 +10,7 @@
  * fails; read `waiting` out of `taskPresentation` and the card case fails; drop
  * the times from the board's `listTasks` rows and the adapter case fails.
  */
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { afterEach, describe, expect, it } from "vitest";
 import { toBoardTask, type BoardTask, type AppCalls, type AppWorker } from "../src/app";
@@ -58,6 +58,34 @@ const rows = (list: HTMLElement) => within(list).getAllByRole("button").map((b) 
 const statusOf = (list: HTMLElement, i: number) => list.querySelectorAll("[data-status]")[i]!.textContent;
 
 describe("a teammate's tasks in its panel", () => {
+  it("distinguishes a failed original from an independent active rerun with the same title", () => {
+    const original = task("task_original", { title: "Polish chat", status: "failed", boardStatus: "errored", error: "Index was not writable" });
+    const rerun = task("task_retry", { title: "Polish chat" });
+    const panel = renderPanel(busy([original, rerun]));
+    const active = within(panel).getByRole("list", { name: "Running" });
+    const failed = within(panel).getByRole("list", { name: "Failed" });
+    expect(active.querySelector("[data-status-badge]")?.textContent).toBe("running");
+    expect(failed.querySelector("[data-status-badge]")?.textContent).toBe("failed");
+    expect(active.textContent).toContain("#retry");
+    expect(failed.textContent).toContain("#original");
+    expect(failed.textContent).toContain("Index was not writable");
+  });
+
+  it("moves a same-ID retry from Failed to Running, then shows a new terminal failure", () => {
+    let show: (tasks: BoardTask[]) => void = () => {};
+    const failed = task("task_same", { status: "failed", boardStatus: "errored", error: "First attempt failed" });
+    const live = { watchTasks: (_: string, next: typeof show) => { show = next; next([failed]); return () => {}; }, watchConnection: () => () => {} } as unknown as AppCalls;
+    const panel = renderPanel(live);
+    expect(within(panel).getByRole("list", { name: "Failed" }).textContent).toContain("First attempt failed");
+    act(() => show([task(failed.id, {})]));
+    expect(within(panel).queryByRole("list", { name: "Failed" })).toBeNull();
+    expect(within(panel).getByRole("list", { name: "Running" }).querySelector("[data-status-badge]")?.textContent).toBe("running");
+    expect(panel.textContent).not.toContain("First attempt failed");
+    act(() => show([{ ...failed, error: "Latest attempt failed" }]));
+    expect(within(panel).queryByRole("list", { name: "Running" })).toBeNull();
+    expect(within(panel).getByRole("list", { name: "Failed" }).textContent).toContain("Latest attempt failed");
+  });
+
   it("counts them in the heading", () => {
     const panel = renderPanel();
     // The total, then FIX-2394's counts by state.
@@ -146,6 +174,19 @@ describe("a busy panel stays short", () => {
 });
 
 describe("a task's line in the conversation", () => {
+  it("opens each same-titled task by its own ID and preserves its status", () => {
+    const original = task("task_original", { title: "Polish chat", status: "failed", boardStatus: "errored" });
+    const rerun = task("task_rerun", { title: "Polish chat" });
+    const opened: string[] = [];
+    const view = render(<>{[original, rerun].map((t) => <TaskCard key={t.id} task={t} nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={(id) => opened.push(id)} />)}</>);
+    const cards = within(view.container).getAllByRole("button");
+    expect(cards[0]!.textContent).toContain("#original");
+    expect(cards[1]!.textContent).toContain("#rerun");
+    expect(cards.map((card) => card.querySelector("[data-task-status]")?.textContent)).toEqual(["failed", "running"]);
+    cards.forEach((card) => fireEvent.click(card));
+    expect(opened).toEqual([original.id, rerun.id]);
+  });
+
   it("uses its panel row's word and colour", () => {
     for (const t of [TASKS[1]!, TASKS[2]!, TASKS[0]!]) {
       const { unmount } = render(<TaskCard task={t} nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={() => {}} />);

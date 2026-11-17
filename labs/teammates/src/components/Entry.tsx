@@ -6,17 +6,19 @@ import { Avatar } from "./Avatar";
 import type { AnswerStatus } from "./Popups";
 import { useSubmit } from "@flow-state-dev/react";
 import { MessageFiles } from "./flow-state/message";
-import { MarkdownText } from "./flow-state/message-response";
 import { RequestRecovery } from "./flow-state/request-recovery";
 import { ToolRun } from "./ToolRun";
+import { Reply } from "./Reply";
+import { isLongReply } from "../lib/reply-preview";
 
 /**
  * One entry of a conversation. Your lines sit on the right; the worker's
  * answers on the left. A message the worker sent another worker is one line,
  * "Messaged researcher", that opens the exchange in a popup; a message it
- * received lands under the sender's name. A task it filed coming back is one
- * line, "researcher finished: …", that opens the task's popup, where its
- * result is; a routed answer, which names no task, is shown as said. A worker's text is
+ * received lands under the sender's name. A task it filed coming back names
+ * the task and opens its popup, with a readable result below. Long worker
+ * messages and results start with an excerpt and expand to the original.
+ * Assistant replies stay open until the reader folds them. A worker's text is
  * Markdown; your own lines are shown as typed, with the files they carry
  * above them, a thumbnail per image and a chip for anything else (the
  * registry's `MessageFiles`, its bytes read by `readFile`). A worker that waits for your
@@ -91,7 +93,7 @@ export const Entry = memo(function Entry({
     case "assistant":
       return (
         <div className="py-1 text-sm leading-relaxed" data-entry="assistant" data-incomplete={entry.incomplete ? "true" : undefined}>
-          <MarkdownText text={entry.text} />
+          <Reply key={entry.id} text={entry.text} streaming={entry.streaming && !entry.incomplete} />
           {entry.incomplete ? <span className="mt-1 block text-xs text-muted-foreground">Incomplete</span> : null}
         </div>
       );
@@ -114,7 +116,9 @@ export const Entry = memo(function Entry({
             <Avatar look={lookOf(entry.from)} size="sm" />← {nameOf(entry.from)}
             {entry.noAnswer ? " · no answer" : entry.inReplyTo ? " · reply" : ""}
           </div>
-          <MarkdownText className="mt-0.5 text-sm" text={entry.text} />
+          <div className="mt-1 text-sm">
+            <Reply key={entry.id} text={entry.text} label="message" defaultExpanded={!isLongReply(entry.text)} />
+          </div>
         </section>
       );
     case "result": {
@@ -142,7 +146,9 @@ export const Entry = memo(function Entry({
               </button>
             ) : null}
           </div>
-          <MarkdownText className="mt-0.5 text-sm" text={entry.text} />
+          <div className="mt-1 text-sm">
+            <Reply key={entry.id} text={entry.text} label="result" defaultExpanded={!isLongReply(entry.text)} />
+          </div>
         </section>
       );
     }
@@ -192,30 +198,34 @@ function ApprovalCard({
   );
 }
 
-/** A filed task coming back: one line, "researcher finished: Draft the post", that opens its popup. */
+/** A filed task coming back: its title opens the task; its result stays readable underneath. */
 function ResultLine({ who, look, entry, onOpen }: { who: string; look?: Look; entry: Extract<ConversationEntry, { kind: "result" }>; onOpen: () => void }) {
   const said = `${who} ${entry.failed ? "couldn't finish" : entry.cancelled ? "was cancelled" : "finished"}`;
   const line = entry.title === undefined ? said : `${said}: ${entry.title}`;
   return (
-    <button
-      type="button"
-      aria-label={line}
-      data-entry="result"
-      data-status={entry.failed ? "failed" : entry.cancelled ? "cancelled" : "done"}
-      onClick={onOpen}
-      className="flex w-full max-w-[85%] items-center gap-2 rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-1.5 text-left text-sm hover:bg-accent"
-    >
-      {look === undefined ? (
-        <span aria-hidden className="shrink-0 text-muted-foreground">
-          ⚙
-        </span>
-      ) : (
-        <Avatar look={look} size="sm" />
-      )}
-      <span className={entry.failed ? "min-w-0 truncate text-destructive" : "min-w-0 truncate"}>{line}</span>
-      {/* What it came back with, cut to the line; the whole of it is in the popup. */}
-      <span className="min-w-0 flex-1 truncate text-muted-foreground">{entry.text}</span>
-    </button>
+    <div className="max-w-[85%] rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2">
+      <button
+        type="button"
+        aria-label={line}
+        data-entry="result"
+        data-status={entry.failed ? "failed" : entry.cancelled ? "cancelled" : "done"}
+        onClick={onOpen}
+        className="flex w-full items-center gap-2 rounded-sm text-left text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        {look === undefined ? (
+          <span aria-hidden className="shrink-0 text-muted-foreground">
+            ⚙
+          </span>
+        ) : (
+          <Avatar look={look} size="sm" />
+        )}
+        <span className={entry.failed ? "min-w-0 truncate text-destructive" : "min-w-0 truncate"}>{line}</span>
+        <span className="ml-auto shrink-0 text-xs text-muted-foreground">Open task</span>
+      </button>
+      <div className="mt-1.5 text-sm">
+        <Reply key={entry.id} text={entry.text} label="result" defaultExpanded={!isLongReply(entry.text)} />
+      </div>
+    </div>
   );
 }
 

@@ -126,7 +126,7 @@ export function Composer({
           className={cn("rounded-3xl border border-border bg-card px-3 py-2 focus-within:border-ring", attachments.dragging && "border-ring bg-accent/40")}
         >
           <AttachmentStrip attachments={attachments} className="px-1 pb-1 empty:hidden" />
-          <div className="flex items-end gap-2">
+          <div className="flex items-center gap-2">
           <AttachButton attachments={attachments} className="rounded-full" />
           <textarea
             ref={box}
@@ -139,7 +139,7 @@ export function Composer({
             onKeyDown={onKeyDown}
             onPaste={attachments.onPaste}
             placeholder={`Message ${workerName}…`}
-            className="block field-sizing-content max-h-48 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted-foreground"
+            className="block field-sizing-content min-h-8 max-h-48 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1.5 text-sm leading-5 outline-none placeholder:text-muted-foreground"
           />
           {running || stopping ? (
             <button

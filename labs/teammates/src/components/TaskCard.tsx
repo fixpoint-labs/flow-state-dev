@@ -6,6 +6,7 @@ import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import { Spend } from "./flow-state/spend";
 import { RunsOn, runsOn, taskLabel, taskLine } from "./Popups";
+import { StatusBadge } from "./StatusBadge";
 
 /** What a task's line draws: a board row's task, or a filed task's stand-in before its row is read. */
 export type TaskLine = Pick<BoardTask, "id" | "to" | "title" | "status" | "harness" | "model" | "spend" | "landed" | "waiting">;
@@ -48,7 +49,10 @@ export const TaskCard = memo(function TaskCard({
       ) : (
         <Avatar look={lookOf(task.to)} size="sm" />
       )}
-      <span className="min-w-0 flex-1 truncate">{line}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{line}</span>
+        <span aria-label={`Task ${task.id}`} title={`Task ${task.id}`} className="block truncate font-mono text-[10px] text-muted-foreground">#{task.id.replace(/^task_/, "")}</span>
+      </span>
       {on === undefined ? null : <RunsOn on={on} />}
       {task.landed === undefined ? null : (
         <span data-task-landed={task.landed.kind} className="shrink-0 text-xs text-muted-foreground">
@@ -58,7 +62,7 @@ export const TaskCard = memo(function TaskCard({
       {/* What its runs spent: tokens, and the charge when the vendor reported one. The tag above names the model. */}
       {coding && task.spend ? <Spend spend={{ ...task.spend, model: null }} className="w-auto shrink-0" /> : null}
       <span className={cn("shrink-0 text-xs", state.tone)} data-task-status>
-        {state.word}
+        <StatusBadge status={state.word} />
       </span>
     </button>
   );

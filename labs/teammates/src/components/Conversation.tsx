@@ -16,6 +16,7 @@ import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
 import { answerIn, type Popup } from "./Popups";
 import { TaskCard, type TaskLine } from "./TaskCard";
+import { StatusBadge } from "./StatusBadge";
 
 /** A small button in the conversation's header. */
 const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent";
@@ -169,9 +170,7 @@ export function Conversation({
           </button>
         ) : null}
         {running ? (
-          <span className={cn("flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-info uppercase", stale && STALE_CLASS)}>
-            <span className="size-2 animate-pulse rounded-full bg-info" /> working
-          </span>
+          <StatusBadge status="working" active={!stale} className={stale ? STALE_CLASS : undefined} />
         ) : null}
       </header>
       {onRecheck === undefined ? null : <ContextStrip context={context} harnesses={harnesses} onRecheck={onRecheck} />}
@@ -231,7 +230,11 @@ export function Conversation({
                 </div>
               ) : null}
               <div
-                className={cn(i < markAt && "opacity-60")}
+                className={cn(
+                  i < markAt && "opacity-60",
+                  entry.kind === "user" && i > 0 && "mt-5",
+                  entry.kind !== "user" && entries[i - 1]?.kind === "user" && "mt-3",
+                )}
                 data-in-window={markAt < 0 || i >= markAt ? "true" : "false"}
                 {...(entry.kind === "user" ? feed.mine(entry.id) : {})}
               >
@@ -259,8 +262,11 @@ export function Conversation({
             </Fragment>
           ))}
           {answering ? (
-            <div role="status" data-chat-activity className={cn("w-fit rounded-lg border border-border bg-card px-3 py-2 text-xs", step?.tone ?? "text-muted-foreground", stale && STALE_CLASS)}>
-              {step === undefined ? `${worker.name} is answering…` : `${worker.name} · ${step.text}…`}
+            <div role="status" data-chat-activity className={cn("mt-3 flex w-fit items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-xs", step?.tone ?? "text-muted-foreground", stale && STALE_CLASS)}>
+              <span aria-hidden="true" data-typing-dots data-active={!stale && !step?.needsYou} className="flex items-center gap-1">
+                <span /><span /><span />
+              </span>
+              <span>{step === undefined ? `${worker.name} is answering…` : `${worker.name} · ${step.text}…`}</span>
             </div>
           ) : null}
           {pending.map((m) => (

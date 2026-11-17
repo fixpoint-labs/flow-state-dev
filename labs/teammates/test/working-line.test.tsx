@@ -139,7 +139,7 @@ describe("a running task's feed ends in a live working line", () => {
     expect(line(popup)).not.toBeNull();
     lab.setTask(ended);
     expect(line(popup)).toBeNull();
-    expect(within(popup).getByText(ended.status, { selector: "[data-overlay-status]" })).toBeTruthy();
+    expect(popup.querySelector("[data-overlay-status] [data-status-badge]")?.textContent).toBe(ended.status);
   });
 
   it("is not shown while the task waits on you: the hold says what it needs instead", () => {
