@@ -18,7 +18,7 @@ import { workforce } from "@flow-state-dev/workforce/kit";
 import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { checkCommandsFrom, localWorkspaceHost, setupCommandFrom, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { z } from "zod";
-import { labContextFlow } from "./flows/lab-context.mts";
+import { appContextFlow } from "./flows/lab-context.mts";
 
 /** What {@link openTeammates} builds the host from; the README's "The host" says what each sets. */
 export interface TeammatesOptions {
@@ -96,7 +96,7 @@ export async function openTeammates(options: TeammatesOptions) {
       scripted === undefined ? claudeCode() : claudeCode().without(harnesses.slots.harnesses, "claude-code"),
     ],
     fill: { [harnesses.slots.harnesses]: scripted === undefined ? [codexHarness(), cursorHarness({ model: "composer-2.5" })] : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")] },
-    flows: [labContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, model: options.model, harness, delegates }))],
+    flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, model: options.model, harness, delegates }))],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
     dispatchDrainTimeoutMs: codingDrainBudgetMs({ runTimeoutMs, checks }),

@@ -6,10 +6,10 @@
  * carry Node-only model resolution.
  */
 import { viewRef } from "@flow-state-dev/client";
-import type { LabContextView } from "./lab-context.mts";
+import type { AppContextView } from "./lab-context.mts";
 
 /** The flow whose `context` view answers what the lab works on and with. */
-export const LAB_CONTEXT_FLOW = "lab-context";
+export const APP_CONTEXT_FLOW = "lab-context";
 
-/** What the lab works on and with: `useView(labContextView, {})`. */
-export const labContextView = viewRef<LabContextView>(LAB_CONTEXT_FLOW, "context");
+/** What the lab works on and with: `useView(appContextView, {})`. */
+export const appContextView = viewRef<AppContextView>(APP_CONTEXT_FLOW, "context");

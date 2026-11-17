@@ -25,8 +25,8 @@ import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { harnessReadinessViewRef } from "@flow-state-dev/harness-manager/browser";
 import { workerMessagesViewRef, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import { scriptedModels } from "../../test-support/contract";
-import { labContextView } from "../flows/lab-context-ref.mts";
-import { labContextViewOf } from "../flows/lab-context.mts";
+import { appContextView } from "../flows/lab-context-ref.mts";
+import { appContextViewOf } from "../flows/lab-context.mts";
 import { openTeammates } from "../host.mts";
 import { answerIn } from "../src/components/Popups";
 import { owedRepliesFrom, pendingFor } from "../src/lib/talk";
@@ -51,7 +51,7 @@ function workingFolder(): string {
 }
 
 /** The lab's own host, in process, and a client of it as the page's user. */
-async function openLab() {
+async function openApp() {
   const repo = workingFolder();
   const flowState = await openTeammates({
     store: join(repo, "..", "teammates.sqlite"),
@@ -69,8 +69,8 @@ async function openLab() {
 
 describe("the lab's host reads", () => {
   it("read the context strip and the readiness chips with no session found or made", async () => {
-    const { repo, client } = await openLab();
-    const context = (await client.view(labContextView, {})).value;
+    const { repo, client } = await openApp();
+    const context = (await client.view(appContextView, {})).value;
     expect(context).toMatchObject({ folder: repo, folderProblem: null, model: "test/scripted" });
     expect((await client.view(harnessReadinessViewRef("harnesses"), {})).value.map((harness) => harness.harness)).toEqual(["claude-code", "codex", "cursor"]);
     // Re-check: the same view, checked anew.
@@ -108,7 +108,7 @@ describe("worker talk", () => {
   ];
 
   it("reads Lead's open messages and the answers to its lines on screen, and draws what the whole log draws", async () => {
-    const { flowState, client } = await openLab();
+    const { flowState, client } = await openApp();
     // Written as the log's rows are stored: the view's first lookup builds its indexes from them.
     const stores = (await (flowState as unknown as { getRuntime(): Promise<{ stores: { resourceState: { set(...args: unknown[]): Promise<unknown> } } }> }).getRuntime()).stores;
     for (const r of log) await stores.resourceState.set("user", "you:~org:teammates-lab", `workforce/messages/${r.id}`, r, "any");
@@ -139,7 +139,7 @@ describe("the lab-context view", () => {
     const settings = { folder: "/work", folderProblem: null, model: "openai/gpt-6-luna", harness: "codex", delegates: { lead: "all" as const } };
     const flow = defineFlow({
       kind: "lab-context",
-      views: { context: labContextViewOf(async () => settings) },
+      views: { context: appContextViewOf(async () => settings) },
       authentication: { resolvePrincipal: signIn },
     } as never)();
     const registry = createFlowRegistry();
@@ -159,7 +159,7 @@ describe("the lab-context view", () => {
         },
       });
     for (const [userId, orgId] of [["alice", "org-a"], ["bob", "org-a"], ["carol", "org-b"]] as const) {
-      const answer = await clientOf(userId, orgId).view(labContextView, {});
+      const answer = await clientOf(userId, orgId).view(appContextView, {});
       // The host's settings, not a caller's data: no user or org topic, nothing one caller's read could leak.
       expect(answer.value).toEqual(settings);
       expect(answer.topics).toEqual([]);

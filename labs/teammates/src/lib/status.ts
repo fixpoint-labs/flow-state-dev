@@ -29,7 +29,7 @@ export interface StatusInputs {
 /** How long a coding task's ending stays on the line: long enough for a glance; the panel keeps it after. */
 export const ENDING_SHOWN_MS = 2 * 60_000;
 
-/** An approval's tone: the attention colour, a person must act. A task's tone is `taskPresentation`'s. */
+/** An approval's tone: the attention colour, you must act. A task's tone is `taskPresentation`'s. */
 const NEEDS_OK = "text-attention";
 /** The quiet tone of every other line. */
 const PLAIN = "text-muted-foreground";

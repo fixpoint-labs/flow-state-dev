@@ -1,4 +1,4 @@
-import type { LabContext } from "../../flows/lab-context.mts";
+import type { AppContext } from "../../flows/lab-context.mts";
 import { HarnessReadiness, type HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { harnessName } from "../lib/harness";
 
@@ -14,7 +14,7 @@ export function ContextStrip({
   harnesses,
   onRecheck,
 }: {
-  context: LabContext | undefined;
+  context: AppContext | undefined;
   harnesses: HarnessReadinessChipRow[] | undefined;
   onRecheck: () => Promise<unknown>;
 }) {

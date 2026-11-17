@@ -4,18 +4,18 @@
  * here that wasn't read.
  */
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
-import type { LabContext } from "../../flows/lab-context.mts";
+import type { AppContext } from "../../flows/lab-context.mts";
 import { displayName, roleOf, takesTasks } from "./roster";
 
 /** The workers `worker` hands work to, by name: its declared delegates, from the roster as read. */
-export function delegatesOf(worker: RosterEntry, workers: readonly RosterEntry[], context: LabContext | undefined): RosterEntry[] {
+export function delegatesOf(worker: RosterEntry, workers: readonly RosterEntry[], context: AppContext | undefined): RosterEntry[] {
   const declared = context?.delegates[worker.id];
   if (declared === undefined) return [];
   const others = workers.filter((w) => w.id !== worker.id);
   return declared === "all" ? others : others.filter((w) => declared.includes(w.id));
 }
 
-/** A list as a person says it: "a", "a and b", "a, b and c". */
+/** A list as it is said aloud: "a", "a and b", "a, b and c". */
 function spoken(names: readonly string[]): string {
   return names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }

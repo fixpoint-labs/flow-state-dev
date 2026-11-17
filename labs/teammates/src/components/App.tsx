@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { harnessReadinessViewRef } from "@flow-state-dev/harness-manager/browser";
 import { useView } from "@flow-state-dev/react";
 import type { HireWorkerInput, RosterEntry } from "@flow-state-dev/workforce/browser";
-import { labContextView } from "../../flows/lab-context-ref.mts";
+import { appContextView } from "../../flows/lab-context-ref.mts";
 import { useApp, useAppClient } from "../app";
 import { Conversation } from "./Conversation";
 import { KeysSheet } from "./KeysSheet";
@@ -26,7 +26,7 @@ import { displayName, settingOf, takesTasks, useWorkforce } from "../lib/roster"
  * the worker coding tasks run on is off the list, and each coding task is a
  * row in the panel of the teammate that started it.
  * A task or a message between workers, and a coding task, opens in a popup
- * over the thread, read only and live. The app opens on the first teammate,
+ * over the conversation, read only and live. The app opens on the first teammate,
  * unless the page's address names what was open (`lib/address`): a reload, a
  * link and Back reopen the teammate and the task popup.
  *
@@ -70,7 +70,7 @@ export function App() {
   const [workers, setWorkers] = useState<RosterEntry[]>([]);
   const [sessions, setSessions] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string>();
-  // A task or a message, open in a popup over the thread.
+  // A task or a message, open in a popup over the conversation.
   const [popup, setPopup] = useState<Popup>();
   const [switching, setSwitching] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
@@ -151,7 +151,7 @@ export function App() {
   // The watch brings the new row and its conversation; the pick waits for them.
   // What the lab works on and with (its context view), and which harnesses can run (the harness kit's readiness view);
   // Re-check reads readiness again, checked anew.
-  const context = useView(labContextView, {}, { client, pollIntervalMs }).value;
+  const context = useView(appContextView, {}, { client, pollIntervalMs }).value;
   const readiness = useView(READINESS_VIEW, {}, { client, pollIntervalMs });
   const [rechecked, setRechecked] = useState<HarnessReadinessChipRow[]>();
   // A failed read draws no chips rather than "checking" forever.

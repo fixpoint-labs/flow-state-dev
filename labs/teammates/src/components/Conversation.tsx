@@ -1,7 +1,7 @@
 import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
-import type { LabContext } from "../../flows/lab-context.mts";
+import type { AppContext } from "../../flows/lab-context.mts";
 import type { ConversationEntry, AppCalls } from "../app";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { Look } from "../lib/looks";
@@ -77,7 +77,7 @@ export function Conversation({
   /** The roster as read: an empty conversation names the worker's delegates from it. */
   workers?: readonly RosterEntry[];
   /** What the lab works on and with; drawn over the conversation. */
-  context?: LabContext;
+  context?: AppContext;
   harnesses?: HarnessReadinessChipRow[];
   onRecheck?: () => Promise<unknown>;
   sessionId: string;
@@ -88,7 +88,7 @@ export function Conversation({
   /** A coding worker's harness, by the screen's name for it. */
   harnessOf: (id: string) => string | undefined;
   onFire: () => Promise<void>;
-  /** Open a popup over the thread: a task this conversation filed, or a message it sent. */
+  /** Open a popup over the conversation: a task it filed, or a message it sent. */
   onOpen: (popup: Popup) => void;
   /** Words a popup's follow-up adds to this conversation's composer, once per `n`. */
   prefill?: { text: string; n: number };
@@ -115,7 +115,7 @@ export function Conversation({
   const [seed, setSeed] = useState<{ text: string; at: number }>();
   const keep = useRef<HTMLButtonElement>(null);
   const fireButton = useRef<HTMLButtonElement>(null);
-  // Keep (or Esc) closes the row and puts focus back on the header's Fire, where the person was.
+  // Keep (or Esc) closes the row and puts focus back on the header's Fire, where you were.
   const keepWorker = () => {
     setPanel(undefined);
     fireButton.current?.focus();

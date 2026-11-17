@@ -29,7 +29,7 @@ export type Popup =
 /** "Draft the PM role" as it reads after "Asked writer to". */
 const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 
-/** A task's line, the same in the thread and on the popup: a coding task, or what was asked of whom. */
+/** A task's line, the same in the conversation and on the popup: a coding task, or what was asked of whom. */
 export function taskLine(task: { title: string; to: string }, coding: boolean, nameOf: (id: string) => string): string {
   return coding ? `Coding task: ${task.title}` : `Asked ${nameOf(task.to)} to ${lowerFirst(task.title)}`;
 }

@@ -196,7 +196,7 @@ type Step = [delayMs: number, run: () => void];
 
 /** Planning chatter for Lead's older turns. */
 const OLDER_TURNS: [string, string][] = [
-  ["Who is the post for?", "Teams that sync files across offices. I'd write for the person who sets it up."],
+  ["Who is the post for?", "Teams that sync files across offices. I'd write for whoever sets it up."],
   ["List the launch channels.", "The blog, the changelog, and the newsletter a day later."],
   ["What's the one line pitch?", "Relay keeps every office's files in step, without a server to run."],
   ["Remind me of the beta numbers.", "212 teams, and setup took a median of 4 minutes."],
