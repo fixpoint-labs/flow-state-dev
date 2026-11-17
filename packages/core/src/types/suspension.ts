@@ -243,9 +243,14 @@ export type PendingUserSuspension = {
   readonly expiresAt?: number;
 };
 
-/** Where a read of pending suspensions starts: strictly after this `(createdAt, suspensionId)`. */
+/**
+ * Where a read of pending suspensions starts: strictly after this
+ * `(createdAt, requestId, suspensionId)`. A suspension's id is unique only
+ * within its request, so the request is part of the order.
+ */
 export type PendingUserSuspensionCursor = {
   readonly createdAt: number;
+  readonly requestId: string;
   readonly suspensionId: string;
 };
 
@@ -263,7 +268,7 @@ export type PendingUserSuspensionQuery = {
   readonly flowKinds: readonly string[];
   /** The engine's clock: a suspension whose `expiresAt` is at or before it is left out. */
   readonly now: number;
-  /** At most this many rows, oldest first by `(createdAt, suspensionId)`. */
+  /** At most this many rows, oldest first by `(createdAt, requestId, suspensionId)`. */
   readonly limit: number;
   readonly after?: PendingUserSuspensionCursor;
 };

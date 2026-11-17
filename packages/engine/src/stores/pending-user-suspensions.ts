@@ -25,17 +25,16 @@ export type SuspensionRequestReads = Pick<RequestStore, "get">;
 
 const USER_REASONS: ReadonlySet<string> = new Set(USER_SUSPENSION_REASONS);
 
-/** Whether `record` sorts strictly after `after` by `(createdAt, suspensionId)`. */
-function isAfter(record: { createdAt: number; suspensionId: string }, after: PendingUserSuspensionCursor | undefined): boolean {
-  if (after === undefined) return true;
-  if (record.createdAt !== after.createdAt) return record.createdAt > after.createdAt;
-  return record.suspensionId > after.suspensionId;
+/** `a` against `b` by `(createdAt, requestId, suspensionId)`, ids by code unit as the SQL stores order them. */
+function compareAge(a: PendingUserSuspensionCursor, b: PendingUserSuspensionCursor): number {
+  if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
+  if (a.requestId !== b.requestId) return a.requestId < b.requestId ? -1 : 1;
+  return a.suspensionId < b.suspensionId ? -1 : a.suspensionId > b.suspensionId ? 1 : 0;
 }
 
-/** Oldest first by `(createdAt, suspensionId)`. */
-function byAge(a: SuspensionRecord, b: SuspensionRecord): number {
-  if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
-  return a.suspensionId < b.suspensionId ? -1 : a.suspensionId > b.suspensionId ? 1 : 0;
+/** Whether `record` sorts strictly after `after`. A suspension id is unique only within its request. */
+function isAfter(record: SuspensionRecord, after: PendingUserSuspensionCursor | undefined): boolean {
+  return after === undefined || compareAge(record, after) > 0;
 }
 
 /** The refusal a suspension store built without its request store gives the read. */
@@ -66,7 +65,7 @@ export async function listPendingForUser(
         (record.expiresAt == null || record.expiresAt > query.now) &&
         isAfter(record, query.after)
     )
-    .sort(byAge);
+    .sort(compareAge);
   const rows: PendingUserSuspension[] = [];
   for (const record of candidates) {
     if (rows.length >= query.limit) break;

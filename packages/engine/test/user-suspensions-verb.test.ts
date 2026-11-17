@@ -41,7 +41,7 @@ function store(entries: PendingUserSuspension[]) {
       calls.push(query);
       const after = query.after;
       return entries
-        .filter((r) => after === undefined || r.createdAt > after.createdAt || (r.createdAt === after.createdAt && r.suspensionId > after.suspensionId))
+        .filter((r) => after === undefined || [r.createdAt - after.createdAt, r.requestId.localeCompare(after.requestId), r.suspensionId.localeCompare(after.suspensionId)].find((d) => d !== 0)! > 0)
         .slice(0, query.limit);
     }
   };
@@ -116,7 +116,7 @@ describe("sessions.userSuspensions: paging", () => {
     const page = await read.userSuspensions({ flowKinds: ["worker"] });
     expect(page.suspensions).toHaveLength(200);
     expect(page.more).toBe(true);
-    expect(page.next).toEqual({ createdAt: entries[199]!.createdAt, suspensionId: entries[199]!.suspensionId });
+    expect(page.next).toEqual({ createdAt: entries[199]!.createdAt, requestId: entries[199]!.requestId, suspensionId: entries[199]!.suspensionId });
     const rest = await read.userSuspensions({ flowKinds: ["worker"], after: page.next! });
     expect(rest.suspensions.map((r) => r.suspensionId)).toEqual([entries[200]!.suspensionId]);
     expect(rest.more).toBe(false);
@@ -153,7 +153,7 @@ describe("sessions.userSuspensions: the instance's own credential check", () => 
     const page = await read.userSuspensions({ flowKinds: ["worker", "guarded"] });
     expect(page.suspensions).toHaveLength(150);
     expect(page.more).toBe(true);
-    expect(page.next).toEqual({ createdAt: entries[199]!.createdAt, suspensionId: entries[199]!.suspensionId });
+    expect(page.next).toEqual({ createdAt: entries[199]!.createdAt, requestId: entries[199]!.requestId, suspensionId: entries[199]!.suspensionId });
     const rest = await read.userSuspensions({ flowKinds: ["worker", "guarded"], after: page.next! });
     expect(rest.suspensions.map((r) => r.suspensionId)).toEqual(entries.slice(201).map((r) => r.suspensionId));
     expect(rest.more).toBe(false);

@@ -76,8 +76,8 @@ function pendingForUserSql(kinds: number, after: boolean): string {
        AND r.flow_kind IN (${Array.from({ length: kinds }, () => "?").join(", ")})
        AND json_extract(s.data, '$.reason') IN (${reasons})
        AND (json_extract(s.data, '$.expiresAt') IS NULL OR json_extract(s.data, '$.expiresAt') > ?)
-       ${after ? "AND (s.created_at > ? OR (s.created_at = ? AND s.suspension_id > ?))" : ""}
-     ORDER BY s.created_at ASC, s.suspension_id ASC
+       ${after ? "AND (s.created_at > ? OR (s.created_at = ? AND (s.request_id > ? OR (s.request_id = ? AND s.suspension_id > ?))))" : ""}
+     ORDER BY s.created_at ASC, s.request_id ASC, s.suspension_id ASC
      LIMIT ?`;
 }
 
@@ -179,7 +179,7 @@ export function createSQLiteSuspensionStore(db: Database.Database): SuspensionSt
         ...query.flowKinds,
         ...USER_SUSPENSION_REASONS,
         query.now,
-        ...(after !== undefined ? [after.createdAt, after.createdAt, after.suspensionId] : []),
+        ...(after !== undefined ? [after.createdAt, after.createdAt, after.requestId, after.requestId, after.suspensionId] : []),
         query.limit
       ) as PendingRow[];
       return rows.map((row) =>

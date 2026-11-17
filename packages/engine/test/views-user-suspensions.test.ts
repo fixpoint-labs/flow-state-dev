@@ -230,6 +230,46 @@ describe("the suspension notice", () => {
     expect(heard.filter((notice) => notice.kind === "suspension")).toEqual([]);
   });
 
+  it("is not published for a wait gate or an outside event: set, resolved or deleted, they wake no Inbox", async () => {
+    // The read never lists a stop that waits on no person, so a notice for one
+    // would re-run every Inbox on every internal gate transition (D1).
+    const stores = withChangeBus(createInMemoryStores());
+    const heard: ChangeNotice[] = [];
+    stores.bus.subscribe({ scope: "user", id: "alice", tenantId: "" }, (notice) => heard.push(notice));
+    const gated = (reason: string) =>
+      defineFlow({
+        kind: "worker",
+        actions: {
+          run: {
+            block: sequencer({ name: "seq", durable: true }).step(
+              handler({ name: "gate", inputSchema: z.any(), execute: async (_input, ctx) => (await ctx.suspend!({ reason, message: "waiting" }), { ok: true }) })
+            ),
+            inputSchema: z.any(),
+            durable: true
+          }
+        }
+      })();
+    for (const reason of ["wait", "external_event"]) {
+      const result = await runAction({
+        orgId: "acme",
+        flow: gated(reason),
+        actionName: "run",
+        input: {},
+        userId: "alice",
+        stores,
+        runtimeConfig: { durabilityProvider: createCheckpointDurabilityProvider(stores) }
+      });
+      expect((await stores.request.get(result.requestId!))?.status).toBe("suspended");
+      const [parked] = await stores.suspensions.list({ userId: "alice", status: "pending" });
+      expect(parked?.reason).toBe(reason);
+      await stores.suspensions.set({ ...parked!, status: "approved", resolvedAt: Date.now() });
+      await stores.suspensions.deleteForRequest(result.requestId!);
+    }
+    await settle();
+    expect(heard.some((notice) => notice.kind === "run")).toBe(true);
+    expect(heard.filter((notice) => notice.kind === "suspension")).toEqual([]);
+  });
+
   it("is published when a suspended request's suspensions are deleted", async () => {
     const { stores, seed, heard } = await boot();
     await seed("r1", "worker", "sess_1");

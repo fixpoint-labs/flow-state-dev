@@ -356,7 +356,9 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
         flowKinds,
         now: (inputs.now ?? Date.now)(),
         limit: USER_SUSPENSION_PAGE + 1,
-        ...(query.after !== undefined ? { after: { createdAt: query.after.createdAt, suspensionId: query.after.suspensionId } } : {})
+        ...(query.after !== undefined
+          ? { after: { createdAt: query.after.createdAt, requestId: query.after.requestId, suspensionId: query.after.suspensionId } }
+          : {})
       });
       const page = stored.slice(0, USER_SUSPENSION_PAGE);
       const admitted = await Promise.all(page.map((entry) => admitsSuspension(entry)));
@@ -367,7 +369,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       return {
         suspensions: page.filter((_, at) => admitted[at]),
         more,
-        ...(more && last !== undefined ? { next: { createdAt: last.createdAt, suspensionId: last.suspensionId } } : {})
+        ...(more && last !== undefined ? { next: { createdAt: last.createdAt, requestId: last.requestId, suspensionId: last.suspensionId } } : {})
       };
     },
 

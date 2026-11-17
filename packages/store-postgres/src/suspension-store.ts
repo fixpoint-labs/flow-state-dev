@@ -151,6 +151,7 @@ export function createPostgresSuspensionStore(executor: QueryExecutor): Suspensi
       // whose request is missing drops) and every predicate inside it. Tenant
       // and organization match NULL-safe, as the request list's clauses do.
       // Ids compare by byte (`COLLATE "C"`), as the other stores order them.
+      // The request is part of the order: a suspension id is unique only within it.
       const params: unknown[] = [
         query.userId,
         query.tenantId ?? null,
@@ -161,7 +162,7 @@ export function createPostgresSuspensionStore(executor: QueryExecutor): Suspensi
         query.limit
       ];
       const after = query.after;
-      if (after !== undefined) params.push(after.createdAt, after.suspensionId);
+      if (after !== undefined) params.push(after.createdAt, after.requestId, after.suspensionId);
       const result = await executor.query(
         `SELECT s.suspension_id AS "suspensionId", s.request_id AS "requestId", r.flow_kind AS "flowKind",
            COALESCE(r.flow_id, s.data->>'flowId') AS "flowId", r.session_id AS "sessionId",
@@ -178,8 +179,8 @@ export function createPostgresSuspensionStore(executor: QueryExecutor): Suspensi
            AND r.flow_kind = ANY($4::text[])
            AND s.data->>'reason' = ANY($5::text[])
            AND (s.data->>'expiresAt' IS NULL OR (s.data->>'expiresAt')::double precision > $6)
-           ${after !== undefined ? `AND (s.created_at > $8 OR (s.created_at = $8 AND s.suspension_id COLLATE "C" > $9))` : ""}
-         ORDER BY s.created_at ASC, s.suspension_id COLLATE "C" ASC
+           ${after !== undefined ? `AND (s.created_at > $8 OR (s.created_at = $8 AND (s.request_id COLLATE "C" > $9 OR (s.request_id = $9 AND s.suspension_id COLLATE "C" > $10))))` : ""}
+         ORDER BY s.created_at ASC, s.request_id COLLATE "C" ASC, s.suspension_id COLLATE "C" ASC
          LIMIT $7`,
         params
       );

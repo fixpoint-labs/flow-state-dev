@@ -31,15 +31,17 @@
  * | a session's state field delta | `run` on the session and on its parent |
  * | any other session write | the same, and `run` on its owner's user topic |
  * | a session born (`set` over `"absent"`) or deleted | also `state` on the session |
- * | a suspension written (`set`) | `suspension` on the request owner's user topic, under the request's tenant |
- * | a request's suspensions deleted (`deleteForRequest`), unless it completed | the same |
+ * | a suspension that waits on a person written (`set`) | `suspension` on the request owner's user topic, under the request's tenant |
+ * | a request's suspensions deleted (`deleteForRequest`) while the read lists one of them | the same |
  *
- * Only a change a read of pending suspensions could see publishes. A durable
- * request's completion deletes its suspensions, all of them answered by then,
- * so it publishes nothing: hearing it would wake every Inbox on every turn's
- * finish. Pruning resolved suspensions (`pruneTerminalBefore`) publishes
- * nothing either. Nor does a suspension whose request is not stored: the
- * pending read joins to the request, so it never listed one.
+ * Only a change a read of pending suspensions could see publishes. A wait
+ * gate or an outside event's stop is never listed, so writing one publishes
+ * nothing: hearing it would re-run every Inbox on every internal gate move. A
+ * durable request's completion deletes its suspensions, all of them answered
+ * by then, so it publishes nothing: hearing it would wake every Inbox on
+ * every turn's finish. Pruning resolved suspensions (`pruneTerminalBefore`)
+ * publishes nothing either. Nor does a suspension whose request is not
+ * stored: the pending read joins to the request, so it never listed one.
  *
  * The user topic is what a list of the user's sessions watches: it hears a
  * session made, titled or deleted and a request's status written, not the
@@ -59,7 +61,7 @@ import { DEFAULT_RUNTIME_LOGGER } from "../execution/logging";
 import { FlowStateConfigError } from "../errors/flow-error";
 import type { BusTopic, ChangeBus, ChangeNotice } from "./types";
 import { unionNoticeIds, type ChangeKind } from "@flow-state-dev/core/internal";
-import type { SuspensionRecord } from "@flow-state-dev/core/types";
+import { isUserSuspension, type PendingUserSuspensionCursor, type SuspensionRecord } from "@flow-state-dev/core/types";
 import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry, SuspensionStore } from "../stores/types";
 import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
 import { legacyComponentItemReads } from "../stores/legacy-component-items";
@@ -633,6 +635,38 @@ function requestWrites(store: RequestStore, bus: ChangeBus, identities: Identiti
   });
 }
 
+/** Pending-read pages a delete looks through for its request's suspensions. */
+const LISTED_PAGE = 200;
+
+// FIX-2770 D1.
+/**
+ * Whether the owner's pending read lists a suspension of `request` now: the
+ * one delete a watching Inbox can see. Read with the store's own query, under
+ * the request's scope; a store that can't answer it publishes nothing.
+ */
+async function listsOneOf(store: SuspensionStore, request: RequestRecord): Promise<boolean> {
+  const scope = {
+    userId: request.userId,
+    tenantId: request.tenantId ?? undefined,
+    orgId: request.orgId ?? undefined,
+    flowKinds: [request.flowKind],
+    now: Date.now(),
+    limit: LISTED_PAGE
+  };
+  try {
+    for (let after: PendingUserSuspensionCursor | undefined; ; ) {
+      const page = await store.listPendingForUser({ ...scope, ...(after !== undefined ? { after } : {}) });
+      if (page.some((entry) => entry.requestId === request.id)) return true;
+      const last = page.at(-1);
+      if (page.length < LISTED_PAGE || last === undefined) return false;
+      after = { createdAt: last.createdAt, requestId: last.requestId, suspensionId: last.suspensionId };
+    }
+  } catch (error) {
+    debugUnassembled(error, { store: "request", id: request.id });
+    return false;
+  }
+}
+
 // FIX-2770 D1.
 function suspensionWrites(store: SuspensionStore, bus: ChangeBus, identities: Identities): Writes {
   const publishFor = (identity: RequestIdentity | undefined): void => {
@@ -642,15 +676,15 @@ function suspensionWrites(store: SuspensionStore, bus: ChangeBus, identities: Id
   return present(store, {
     set: (original) => async (record: SuspensionRecord) => {
       await original(record);
-      publishFor(await identities.request(record.requestId));
+      if (isUserSuspension(record)) publishFor(await identities.request(record.requestId));
     },
     deleteForRequest: (original) => async (requestId: string) => {
-      // Read before the delete: the request may go with it.
+      // Read before the delete: the request and its suspensions go with it.
       const request = await identities.currentRequest(requestId);
-      await original(requestId);
       // A completed request waits on no one: its suspensions were all answered.
-      if (request === undefined || request.status === "completed") return;
-      publishFor(identities.rememberRequest(requestId, request));
+      const listed = request !== undefined && request.status !== "completed" && (await listsOneOf(store, request));
+      await original(requestId);
+      if (listed) publishFor(identities.rememberRequest(requestId, request));
     }
   });
 }

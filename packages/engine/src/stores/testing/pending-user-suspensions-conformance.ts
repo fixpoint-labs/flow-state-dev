@@ -14,7 +14,8 @@
  *
  * Beside those: each row carries exactly the projection's keys, never the
  * run's payload; a SQL store runs one statement that joins `requests`; and a
- * cursor inside a `createdAt` tie neither repeats nor skips a row.
+ * cursor inside a `createdAt` tie neither repeats nor skips a row, two
+ * requests' suspensions sharing an id included.
  */
 import { describe, expect, it } from "vitest";
 import type { PendingUserSuspensionQuery, SuspensionRecord } from "@flow-state-dev/core/types";
@@ -253,8 +254,27 @@ export function createPendingUserSuspensionsConformanceTests(
         const first = await store.suspensions.listPendingForUser(query({ limit: 2 }));
         expect(first.map((row) => row.suspensionId)).toEqual(["s_a", "s_b"]);
         const last = first.at(-1)!;
-        const rest = await store.suspensions.listPendingForUser(query({ after: { createdAt: last.createdAt, suspensionId: last.suspensionId } }));
+        const rest = await store.suspensions.listPendingForUser(
+          query({ after: { createdAt: last.createdAt, requestId: last.requestId, suspensionId: last.suspensionId } })
+        );
         expect(rest.map((row) => row.suspensionId)).toEqual(["s_c", "s_d", "s_e", "s_f"]);
+      });
+    });
+
+    it("reads on past a page boundary that splits two requests' suspensions sharing an id and a createdAt", async () => {
+      // A suspension's id is unique only within its request (the key is
+      // `(requestId, suspensionId)`), so a cursor without the request would
+      // skip the second of these.
+      await withStore(async (store) => {
+        await seed(store, "req-a", WORKER, { suspensionId: "s_same", createdAt: NOW - 1_000 });
+        await seed(store, "req-b", WORKER, { suspensionId: "s_same", createdAt: NOW - 1_000 });
+        const first = await store.suspensions.listPendingForUser(query({ limit: 1 }));
+        expect(first.map((entry) => entry.requestId)).toEqual(["req-a"]);
+        const last = first[0]!;
+        const rest = await store.suspensions.listPendingForUser(
+          query({ after: { createdAt: last.createdAt, requestId: last.requestId, suspensionId: last.suspensionId } })
+        );
+        expect(rest.map((entry) => `${entry.requestId}/${entry.suspensionId}`)).toEqual(["req-b/s_same"]);
       });
     });
 

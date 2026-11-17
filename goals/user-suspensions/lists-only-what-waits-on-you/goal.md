@@ -19,3 +19,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-11-17 | implementation PR head | n/a | PASS | a: 2 of 11 rows listed · b: answered ask left the watch 13 ms after the answer, poll off · c: hearing is suspension alone; the reply's 4 `run` notices on alice's user topic made 0 view calls · d: 2 rows, projection keys only. Controls: `owns-request` FAILS a:scope (3 rows, the null-org one included); `hear-run` FAILS c:quiet (hearing `run`, 4 view calls) |
+| 2026-11-17 | after Codex fixes (cursor with requestId; user-only notices) | n/a | PASS | a: 2 of 11 · b: 14 ms · c: 0 view calls over 4 `run` notices · d: projection only. `owns-request` FAILS a:scope; `hear-run` FAILS c:quiet (4 view calls) |

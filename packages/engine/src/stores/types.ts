@@ -1797,7 +1797,7 @@ export interface SuspensionStore {
    * `query.flowKinds`; status `pending`; `expiresAt` absent or after
    * `query.now`; a reason in `USER_SUSPENSION_REASONS`. A suspension whose
    * request is missing is not returned. Oldest first by
-   * `(createdAt, suspensionId)`, strictly after `query.after`, at most
+   * `(createdAt, requestId, suspensionId)`, strictly after `query.after`, at most
    * `query.limit`. Each row is built with `projectUserSuspension` from the
    * fields it names, never from a spread record. A SQL store runs this as one
    * statement; nothing is read back and filtered.
