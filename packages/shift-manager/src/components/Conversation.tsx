@@ -181,18 +181,16 @@ export function Conversation({
           ? "Reading the conversation first…"
           : null;
 
+  const projectDraftKey = project !== undefined ? `project:${project.visibility}/${project.id}` : undefined;
   const composer = (
     <TurnComposer
       testId={`${testId}-composer`}
       // A session the view names (a project's, a workstream's) keeps its own draft, as does a project's conversation
       // before its first line; otherwise the worker's conversation does.
-      draftKey={
-        session !== undefined
-          ? `session:${session}`
-          : project !== undefined
-            ? `project:${project.visibility}/${project.id}`
-            : `conversation:${worker.id}`
-      }
+      draftKey={session !== undefined ? `session:${session}` : projectDraftKey ?? `conversation:${worker.id}`}
+      // Once a project's session is found, the draft typed before it was (a reload after the first line,
+      // or another tab opened it) moves to the session's key.
+      legacyDraftKey={session !== undefined ? projectDraftKey : undefined}
       scale={scale}
       label={`Message ${name}`}
       placeholder={`Message ${name}…`}

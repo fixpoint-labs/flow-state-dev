@@ -334,6 +334,18 @@ describe("a draft is kept per conversation", () => {
     drawn([session("sess-project-a"), session("sess-project-b")], { session: "sess-project-a" });
     expect((await box()).value).toBe("for project a only");
   });
+
+  it("keeps a project conversation's draft once its session exists (a reload after the first line, or another tab opened it)", async () => {
+    // Before its first line a project's conversation keeps its draft under the project; once the
+    // session is found, under the session. A line typed in between must not be lost on the move.
+    const apollo = { visibility: "shared", id: "apollo" } as const;
+    const before = drawn([], { project: apollo });
+    fireEvent.change(await box(), { target: { value: "the second line, unsent" } });
+    before.unmount();
+
+    drawn([session("sess-pc")], { session: "sess-pc", project: apollo });
+    expect((await box()).value).toBe("the second line, unsent");
+  });
 });
 
 describe("sending", () => {
