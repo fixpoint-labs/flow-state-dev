@@ -67,7 +67,7 @@ fires from outside. The fix then is one router option that moves every framework
   there, with no re-export.
 - **Cron math stays in core.** The claim's next-time parsing (`firstAfter` in `scheduledTime.ts`)
   becomes a core helper beside `latestScheduledTime`, so the engine adds no `cron-parser` dependency.
-- **A flow with no `schedules` answers 404 on both routes before auth.** Today the listing
+- **A flow with no `schedules` answers 404 on both routes before auth, with the same bytes as an unknown flow** (`404 { error: "flow_not_found" }`), with or without a secret, so the route can't confirm an instance the catalog hides from the caller (a pinned flow). Today the listing
   runs the principal resolver and returns an empty list. Mounted on every app (D1), that would
   send `source: "scheduled"` calls to resolvers of apps with no schedules.
 - **What the root entry of `@flow-state-dev/scheduled` keeps:** the collection exports,
