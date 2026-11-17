@@ -34,3 +34,36 @@ describe("a received message", () => {
     expect(screen.queryByTestId("received-message-reply-requested")).toBeNull();
   });
 });
+
+/**
+ * A worker's reply is written in Markdown, as its own messages are, and the
+ * feed draws those as Markdown: a table it sends must read as a table, and a
+ * link must be one, not raw pipes and brackets the user has to decode (FIX-2792).
+ */
+describe("a received message's text", () => {
+  const table = ["| Report | Status |", "| --- | --- |", "| fp-12 | waiting in Inbox |", "| fp-13 | filed |"].join("\n");
+
+  it("draws a Markdown table as a table, not as pipe text", () => {
+    render(<ReceivedMessage item={received({ from: "error-reporter", text: `Two reports:\n\n${table}` })} />);
+    const body = screen.getByTestId("received-message");
+    const cells = [...body.querySelectorAll("td")].map((cell) => cell.textContent);
+    expect(cells).toEqual(["fp-12", "waiting in Inbox", "fp-13", "filed"]);
+    expect(body.textContent).not.toContain("| --- |");
+  });
+
+  it("draws a Markdown link and a bare URL as links, as a worker's own messages draw them", () => {
+    render(
+      <ReceivedMessage
+        item={received({ text: "Filed [FIX-12](https://linear.app/acme/issue/FIX-12); the run is at https://example.com/runs/7" })}
+      />
+    );
+    // Streamdown draws a link as a button that asks before it opens the page.
+    const links = [...screen.getByTestId("received-message").querySelectorAll('[data-streamdown="link"]')].map((link) => link.textContent);
+    expect(links).toEqual(["FIX-12", "https://example.com/runs/7"]);
+  });
+
+  it("shows HTML in a reply as text, never as an element", () => {
+    render(<ReceivedMessage item={received({ text: "see <img src=x onerror=alert(1)> here" })} />);
+    expect(screen.getByTestId("received-message").querySelector("img")).toBeNull();
+  });
+});
