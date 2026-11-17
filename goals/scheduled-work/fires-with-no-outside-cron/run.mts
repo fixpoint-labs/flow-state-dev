@@ -401,6 +401,8 @@ async function onePath(failures: string[]) {
 const GONE = "createScheduledTransportAdapter";
 /** The packages the factory could be published from: where it was, and where its code went. */
 const MOUNT_PACKAGES = ["packages/scheduled", "packages/engine"];
+/** The subpaths that import vitest, so they load only under a test runner. */
+const TEST_RUNNER_ENTRIES = new Set(["./testing"]);
 
 /** Every `.ts`/`.tsx`/`.mts` file under `dir`. */
 function sourceFiles(dir: string): string[] {
@@ -424,8 +426,13 @@ async function oneWay(failures: string[]) {
       try {
         const mod = (await import(entry)) as Record<string, unknown>;
         if (mod[GONE] !== undefined) found.push(`${entry} exports ${GONE}`);
-      } catch {
-        // An entry that only loads under a test runner (`./testing` imports vitest): read its source instead.
+      } catch (error) {
+        // Only an entry that loads under a test runner alone (`./testing` imports vitest) is read
+        // from source instead; any other entry that fails to load fails the goal.
+        if (!TEST_RUNNER_ENTRIES.has(sub)) {
+          found.push(`${entry} fails to load: ${error instanceof Error ? error.message : String(error)}`);
+          continue;
+        }
         const target = manifest.exports[sub] as string | { default?: string };
         const source = typeof target === "string" ? target : target.default;
         if (source === undefined) throw new Error(`setup: ${entry} neither imports nor names a source file`);
