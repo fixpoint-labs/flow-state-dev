@@ -88,20 +88,33 @@ It comes down to the dense panes: Roomy wraps and truncates more of the rail, In
 
 ## Settled
 
-- **A new value for a Tailwind step resizes every use, with no class edit** — **CONFIRMED** by `poc/theme-steps/` on Tailwind 4.1.12, the labs' version (`result.txt`). `text-sm` compiles to `font-size: var(--text-sm)`, Tailwind's default sits in `@layer theme`, and an unlayered `:root` value wins. `text-meta` gets a class only if an `@theme` block defines it; `text-[11px]` compiles to a literal no token reaches. The premise held; D1 rests on it.
+- **A new value for a Tailwind step resizes every use, with no class edit** — **CONFIRMED** by `poc/theme-steps/` on Tailwind 4.1.12 (`result.txt`), and re-run unchanged on 4.3.0, the version the lockfile resolves for all three labs (4.1.12 is only the floor of their `^4.1.12` range): the output is byte-identical. `text-sm` compiles to `font-size: var(--text-sm)`, Tailwind's default sits in `@layer theme`, and an unlayered `:root` value wins. `text-meta` gets a class only if an `@theme` block defines it; `text-[11px]` compiles to a literal no token reaches. The premise held; D1 rests on it.
 - **The counts** — re-derived by `poc/census/census.mjs` on `c0bf4f40`: 204 hard-coded sizes, 190 below 12px, 154 unique sites; all 118 registry copies in the three labs and Kitchen Sink byte-identical. Its control plants one `text-[9px]` and the count rises by one. Every file and line the issue cites (read at `7b99800`) still holds; Shift Manager now has 113 hard-coded sizes, not 111.
 
 ## Analysis
 
-2026-11-17 · watermark 2026-11-17 (issue filed) · **Right approach.** Run by the spec author, not a fresh sub-agent; a fresh run is owed before the gate.
+### Analysis — FIX-2783 spec · 2026-11-17 · watermark 2026-11-17 (issue filed)
 
-1. **Reuse** — every Adds item composes an existing piece ([Builds on / Adds](SPEC.md#whats-already-here-and-the-debt)).
-2. **Prior art** — Tailwind v4 retunes its steps through theme variables; Material 3 and Primer use 14px controls, 16px long reading, 12px smallest text.
-3. **Other shapes** — role names, a root font-size bump, per-lab `@theme`: dropped above.
-4. **New factors** — FIX-2792 (Shift Manager replies, in development) touches the feed: merge order only.
-5. **Necessity** — daily complaint; without the lint it returns.
-6. **Ergonomics** — authors write the same classes, minus arbitrary sizes.
-7. **Concerns** — none.
+**Verdict: Right approach, with changes.** Run fresh by an agent that did not author the spec (the author's own pass came first). The direction holds; two scope facts and three factual corrections are below, none of which moves D1, D2 or the sizes fork.
+
+1. **Reuse** — fresh check of the Adds table: `type.css` is genuinely new (no type scale anywhere; same mechanism as the theme's `--radius-*`/`--font-*`, confirmed in `shift-manager.css`). The goal check reuses `skins-reused-components-from-one-token-set`'s Chromium reading, as stated. The lint rule is the one **extend** candidate the spec didn't weigh: `eslint-plugin-better-tailwindcss`'s `no-restricted-classes` bans a class pattern with a custom message and reads `cn()` and template literals. It saves writing a rule but adds a dependency and can't map 10px to "use `text-xs`" per size. Implementer's call; doesn't change the approach.
+2. **Prior art** — [Radix Themes](https://www.radix-ui.com/themes/docs/theme/typography): a numbered size scale whose values are CSS variables you override in one place, with no role names — the same shape as D1. [Vercel AI Elements](https://vercel.com/blog/introducing-ai-elements) (shadcn-style, copied into apps): Tailwind steps in components; our registry's `message.tsx` keeps its `text-sm` body class verbatim. Both back D1: copied components size by Tailwind steps, and the host retunes values.
+3. **Other shapes** — role names, a root font-size bump, per-lab `@theme`, the scale in `shift-manager.css` are weighed in *Considered and dropped*; no shape beats D1. No `adhd` run: no new block kind, public API or schema.
+4. **New factors** — 32 issues in the project updated since the watermark, plus a title search for font/type/size/composer. **FIX-2797** (Kitchen Sink's own screens on the scale) is now filed; the spec said "follow-up to file" (corrected). **FIX-2792** (open PR) renders worker replies through `MarkdownText className="text-sm"` in `ReceivedMessage`: a feed-body site at `text-sm`. Whichever merges second moves it to `text-base`. FIX-2781/2782 add review-card UI; the lint covers new sizes there. FIX-1944 is still Backlog; the type file moves with it.
+5. **Necessity** — should exist. Note on size: with Comfortable, `xs`/`sm`/`base` equal Tailwind's defaults, so the type file changes only line heights and `xl`/`2xl`; nearly all the visible change is D2's class edits plus the body re-tags below. The file earns its place as the single knob the issue asks for, which goal signal (c) proves.
+6. **Ergonomics** — an author writes the same `text-xs` … `text-2xl` and loses `text-[Npx]`; one concept to learn, "a step is a role", documented only in the design-system README. Surprise: nothing tells an author that feed text is `base`, not `sm`; the lint can't see it, and only goal signal (a) catches it in the seeded views.
+7. **Concerns** — **the edit count is understated.** "About 154 edits" counts arbitrary sizes only. Body and composer text is written as `text-sm` today and must be re-tagged to `text-base`: at least the registry's `message.tsx` (two sites), Shift Manager's `ReceivedMessage` and `TurnComposer`, Teammates' `Entry` (three), `Steps` and `Composer`, and Claude Code-style's `Composer`, about a dozen judgment calls. Still far fewer than role names' ~720 `xs`/`sm` uses to re-tag (census, copies included), so D1 is unaffected. **The registry is not private to the labs:** adopters install it with `fsdev ui add`, so D2's registry edits change what they get (12px meta, 16px body). That is a fine default, but the Docs line said "private" (corrected).
+
+| Finding | Objective | Changes the approach? | Disposition |
+|---------|-----------|-----------------------|-------------|
+| Body/composer `text-sm` sites need re-tagging to `text-base` (~a dozen), not counted in "154" | 7 | No | Recorded; implementer's list starts from objective 7 |
+| FIX-2792's `ReceivedMessage` body lands at `text-sm` | 4 | No | Second to merge re-tags it |
+| Registry reaches adopters via `fsdev ui add` | 7 | No | SPEC Docs line corrected |
+| `better-tailwindcss` `no-restricted-classes` as the lint | 1 | No | Implementer's call |
+| POC ran on 4.1.12; labs resolve 4.3.0 | Settled | No | Re-ran on 4.3.0, identical; Settled corrected |
+| Kitchen Sink follow-up is filed | 4 | No | SPEC Leaves line now names FIX-2797 |
+
+**Jake's three questions, after this pass.** D1 holds, and the re-tag finding strengthens it. D2 holds; know that it also changes what registry adopters install. Sizes: Comfortable still recommended; under Roomy a registry piece would read 15px in the labs and 14px in Kitchen Sink and adopters' apps, one more reason for Comfortable.
 
 ## How it got here
 

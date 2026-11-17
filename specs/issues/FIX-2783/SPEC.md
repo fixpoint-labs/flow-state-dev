@@ -80,7 +80,7 @@ Each role gets one step, and each step's size is one value in a new design-syste
 + <span className="font-mono text-xs text-muted-foreground">
 ```
 
-**Docs:** no user-docs impact; the labs, design system and registry are private. `labs/design-system/README.md` gains the type file's import and steps.
+**Docs:** no user-docs impact. The labs and design system are private; the registry is not, since adopters install its pieces with `fsdev ui add`, so after this an installed `message` reads a 16px body and 12px meta at Tailwind's defaults. No docs page states a size. `labs/design-system/README.md` gains the type file's import and steps.
 
 ```mermaid
 flowchart LR
@@ -118,7 +118,7 @@ flowchart LR
 |---|---|
 | **Removes** | 154 hard-coded sizes (204 counting the labs' registry copies). The Shift Coordinator's one-off body and composer sizes |
 | **Adds** | One stylesheet and one lint rule. Three reasoned lint exceptions for icon glyphs in fixed boxes, permanent by design |
-| **Leaves** | Kitchen Sink's own screens off the scale, 5 hard-coded sizes (follow-up to file). Translucent muted icons, decorative |
+| **Leaves** | Kitchen Sink's own screens off the scale, 5 hard-coded sizes (filed as FIX-2797). Translucent muted icons, decorative |
 
 **Net: down.** 154 one-off sizes and two special cases go; one file and one rule arrive.
 
