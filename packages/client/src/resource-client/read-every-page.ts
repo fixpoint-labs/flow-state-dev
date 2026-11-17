@@ -89,11 +89,11 @@ export async function readEveryCollectionPage(
  * from no cursor to the last, with the page ceiling and the repeated-cursor
  * stop of {@link readEveryCollectionPage}.
  */
-export async function followEveryPage<TRow>(
-  readPage: (cursor: string | undefined) => Promise<{ items: readonly TRow[]; nextCursor?: string }>,
+export async function followEveryPage<TEntry>(
+  readPage: (cursor: string | undefined) => Promise<{ items: readonly TEntry[]; nextCursor?: string }>,
   keepReading?: () => boolean
-): Promise<TRow[]> {
-  const rows: TRow[] = [];
+): Promise<TEntry[]> {
+  const rows: TEntry[] = [];
   const seen = new Set<string>();
   let cursor: string | undefined;
   for (let pagesRead = 0; pagesRead < COLLECTION_READ_MAX_PAGES; ) {
