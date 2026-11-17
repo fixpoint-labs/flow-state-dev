@@ -67,8 +67,8 @@ function Page() {
         }}
       >
         {Strip ? <Strip /> : null}
-        <PromptInputTextarea onChange={(e) => setText(e.currentTarget.value)} value={text} />
         <Attach />
+        <PromptInputTextarea onChange={(e) => setText(e.currentTarget.value)} value={text} />
         <SendButton text={text} />
       </PromptInput>
     </main>
