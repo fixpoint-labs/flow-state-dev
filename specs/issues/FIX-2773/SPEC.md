@@ -16,23 +16,24 @@
 
 **Teammates' task cards and popups (board, run, review, recorded work, holds, actions, working
 now) read only harness-manager's coding board and recorded work views, the `react` session hooks
-and orchestration's Inbox client; the 13 allowlist entries below are gone; and every goal the task
-screens touch passes.**
+and orchestration's Inbox client; the 12 `src/app/` allowlist entries below are gone; the fake's
+task and run scenarios are cut and listed in the ledger; and every goal the task screens touch
+passes.** The fake's own `gone` entry goes with the last Teammates child to merge ([B1](#boundaries-with-siblings), decided).
 
 | Is it the right goal? | |
 |---|---|
 | **The real need** | The epic's row: "the second consumer of claude-code-style's task views", with "a ledger of the fake's scenarios, then the fake goes". The epic is done only when Teammates' allowlist is empty ([FIX-2683](../../epics/FIX-2683/SPEC.md#the-goal-and-how-well-know-its-met)) |
 | **Smaller, and rejected** | Delete the client imports and the `.flow(` calls, and keep `BoardTask` as a screen type. The allowlist shrinks, and a second translation layer stays, which [FIX-2766](https://linear.app/fixpoint-labs/issue/FIX-2766)'s owner direction rules out |
 | **Bigger, and not this issue's** | The conversation feed, talk, roster and window (FIX-2771, FIX-2772). Moving `appTaskOf`'s derivations into the view (FIX-2766). The review card's content ([FIX-2782](https://linear.app/fixpoint-labs/issue/FIX-2782)) |
-| **Not done if** | any of the 13 entries is still on the allowlist · a task row type is in `src/app/` or on the screen-type list · `tasks.ts` or `runs.ts` grows, or `src/app/` gains a file · a card or popup shows less than today: the answer, a cancel's reason, a PR's link after a steer, a run's question within the board's 1 s · `goals/task-board/a-settled-task-reaches-the-board` still calls the app's `watchTasks` · a second board view · claude-code-style's inventory goes red |
+| **Not done if** | any of the 12 `src/app/` entries is still on the allowlist · a task or run scenario is still in `test/fake-app.ts`, or is missing from the ledger · this issue merges last of FIX-2771, FIX-2772 and FIX-2773 and the fake's file or its `gone` entry is still there · a task row type is in `src/app/` or on the screen-type list · `tasks.ts` or `runs.ts` grows, or `src/app/` gains a file · a card or popup shows less than today: the answer, a cancel's reason, a PR's link after a steer, a run's question within the board's 1 s · `goals/task-board/a-settled-task-reaches-the-board` still calls the app's `watchTasks` · a second board view · claude-code-style's inventory goes red |
 
 ```mermaid
 flowchart LR
   H["the PR's head · Teammates' real folder and allowlist"] --> I["Teammates' inventory test"]
   H --> G["the task goals · five teammates-lab goals and the settled-task goal"]
-  I -->|"13 entries gone · green"| P["PASS · goal met"]
+  I -->|"12 entries gone · green"| P["PASS · goal met"]
   G -->|"every leg PASS"| P
-  C["controls · the 13 entries put back on main · a planted src/app file · the re-run goal's patches"] -.-> I
+  C["controls · the 12 entries deleted on main · a planted src/app file · the re-run goal's patches"] -.-> I
   C -.-> G
   I -.->|"under each control"| F["must FAIL · naming the file"]
   G -.-> F
@@ -43,14 +44,14 @@ The inventory proves the read path is gone; the goals prove the cards still work
 | How we verify | |
 |---|---|
 | **Goal check** | `pnpm --filter @flow-state-dev/teammates test` (the inventory test), and in `goals/teammates-lab/`: `a-coding-task-waits-for-your-review`, `a-pr-task-waits-for-its-merge`, `stops-and-re-runs-a-task-from-its-popup`, `tells-a-stopped-task-from-a-working-one`, `survives-a-crash-mid-turn`. Also `goals/task-board/a-settled-task-reaches-the-board` with its Teammates leg reading the lab's new path, and claude-code-style's `pnpm test`. Run by the implementer; verdict on the implementation PR |
-| **Signal** | The inventory test green with the 13 entries deleted; every leg of each goal PASS. In the settled-task goal: the Teammates view shows a settled task within 1 s, and makes 0 board reads over 10 s while a reply streams |
+| **Signal** | The inventory test green with the 12 entries deleted, and no task or run scenario left in the fake; every leg of each goal PASS. In the settled-task goal: the Teammates view shows a settled task within 1 s, and makes 0 board reads over 10 s while a reply streams |
 | **Input** | Each goal's own held-out input; the scripted coder where the goal names it |
 | **Anti-game** | Don't assert on a hook's return or a stubbed view: the inventory reads the source, and the goals read the page and the store. Don't drop a goal's control because its patch target moved: re-point it |
-| **Control that must fail** | (1) On `main` with the 13 entries deleted, the inventory test fails naming each. (2) A planted `src/app/task-row.ts` fails as a new read-model file. (3) `stops-and-re-runs-a-task-from-its-popup`'s `wrong-board` and `other-session` controls, re-pointed at the new code, must FAIL. (4) The settled-task goal's `whole-topic` control must FAIL its 0-reads signal |
+| **Control that must fail** | (1) On `main` with the 12 `src/app/` entries deleted, the inventory test fails naming each; the fake's `gone` entry stays, as it must until the last Teammates child. (2) A planted `src/app/task-row.ts` fails as a new read-model file. (3) `stops-and-re-runs-a-task-from-its-popup`'s `wrong-board` and `other-session` controls, re-pointed at the new code, must FAIL. (4) The settled-task goal's `whole-topic` control must FAIL its 0-reads signal |
 
 ## What changes
 
-![Before and after. Before: the card and popup call src/app tasks.ts and runs.ts, which stitch four sources per row and build their own request stream, with seven types in the app and a 900-line fake. After: the card reads the coding board view, whose row also carries the answer and brief; the popup reads the react session hooks and the recorded work view; actions and answers go through the Inbox client; tests use a stub server or the lab's host; 13 entries become 0](figures/what-changes.svg)
+![Before and after. Before: the card and popup call src/app tasks.ts and runs.ts, which stitch four sources per row and build their own request stream, with seven types in the app and a 900-line fake. After: the card reads the coding board view, whose row also carries the answer and brief; the popup reads the react session hooks and the recorded work view; actions and answers go through the Inbox client; tests use a stub server or the lab's host; 12 entries become 0, and the fake goes with the last Teammates child](figures/what-changes.svg)
 
 The task screens read the views claude-code-style reads, and the app's stitching goes.
 
@@ -130,20 +131,21 @@ flowchart LR
 |---|---|
 | **Removes** | Teammates' `taskCalls` and `runCalls` (about 600 of 709 lines); seven types; the row-copy merge across three sources; a hand-built request stream; the fake's task and run scenarios |
 | **Adds** | Four nullable fields on a published view. A second copy of claude-code-style's task hooks, which FIX-2756 pulls into one place (ER-7) |
-| **Leaves** | The fake's file, if a sibling still uses it when this merges ([B1](#boundaries-with-siblings)). `steps.ts`'s types and the shared plumbing ([B2, B3](#boundaries-with-siblings)). `cleared.ts`'s and `attention.ts`'s "needs you", computed on the screen (the epic keeps it) |
+| **Leaves** | The fake's file and its `gone` entry, unless this issue merges last of the three ([B1](#boundaries-with-siblings)). `steps.ts`'s types and the shared plumbing ([B2, B3](#boundaries-with-siblings)). `cleared.ts`'s and `attention.ts`'s "needs you", computed on the screen (the epic keeps it) |
 
 **Net: down.** One of two ways to show a task goes; the view gains four fields.
 
 ## Boundaries with siblings
 
-For the epic's cross-spec review. Each is a recommendation, not a decision of this spec.
+For the epic's cross-spec review. B1 is decided; B2 to B5 are recommendations, open until that review.
 
-- **B1 · The fake.** Fifteen test files use `test/fake-app.ts`; four are task tests. It implements
-  all of `AppCalls`, so FIX-2771 and FIX-2772 must edit it when they remove their calls. Recommended:
-  each child cuts its own scenarios and lists each in its PR's ledger (scenario to a test, or
-  "dropped, because …"). This issue writes the ledger's form and cuts the task and run scenarios.
-  The child whose cut leaves the fake empty deletes the file and its `gone` entry. If this issue
-  merges last, that is this issue. The epic's row gives the whole fake to this issue; that holds only if this issue lands after both siblings.
+- **B1 · The fake. Decided by the coordinator (2026-11-17).** Fifteen test files use
+  `test/fake-app.ts`; four are task tests. It implements all of `AppCalls`, so FIX-2771 and
+  FIX-2772 must edit it when they remove their calls. Each Teammates child cuts its own scenarios
+  and lists each in its PR's ledger (scenario to a test, or "dropped, because …"). This issue cuts
+  the task and run scenarios. Whichever of FIX-2771, FIX-2772 and FIX-2773 merges last deletes the
+  file and owns its `test/fake-app.ts · (file) · gone` entry. The coordinator amends the epic's row,
+  which gave the whole fake to this issue.
 - **B2 · Shared plumbing.** `AppCalls` (`calls.ts`), `AppState` (`state.ts`), `Unsubscribe`
   (`reads.ts`) and `Item` (`items.ts`) serve every job. Recommended: the child whose change leaves
   one unused deletes it, by the orphan rule. This issue removes `TaskCalls`, `RunCalls`,
@@ -162,7 +164,8 @@ For the epic's cross-spec review. Each is a recommendation, not a decision of th
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** the task screens on the views
-claude-code-style reads, 13 entries gone, every task goal passing. If wrong: Teammates keeps a
+claude-code-style reads, 12 entries gone, the fake's task and run scenarios cut, every task goal
+passing. If wrong: Teammates keeps a
 second way to show a task, and the epic's allowlist can't empty.
 
 **[The debt](#whats-already-here-and-the-debt), net down:** one of two task read paths goes; the

@@ -103,10 +103,10 @@ None. The boundaries with siblings (B1 to B5) are for the cross-spec review and 
 
 ## Settled
 
-- **The 13 entries.** `node specs/issues/FIX-2773/poc/entries/check.mjs` re-derives them from the
+- **The 12 entries.** `node specs/issues/FIX-2773/poc/entries/check.mjs` re-derives them from the
   real allowlist and fails on an entry no owner row classifies. On `origin/main` `e90786196b`: 57
-  entries; 13 this issue's (6 in `tasks.ts`, 6 in `runs.ts`, the fake's own); t1 9, t2 22, t1 or t2
-  6, shared 7. With `--control` (a planted unclassified entry) it FAILs, as it must.
+  entries; 12 this issue's (6 in `tasks.ts`, 6 in `runs.ts`); the fake's `gone` entry the last
+  Teammates child's (B1); t1 9, t2 22, t1 or t2 6, shared 7. With `--control` (a planted unclassified entry) it FAILs, as it must.
 - **Not checked before the gate:** whether the coding board view meets the settled-task goal's
   signals for Teammates (a settled task within 1 s; 0 board reads over 10 s while a reply streams).
   Claude-code-style reads the view today, and no goal measures it there. It is the implementation's
@@ -130,13 +130,13 @@ seams with siblings.
    `src/app/`. FIX-2766 and FIX-2782 filed today.
 5. **Necessity.** Yes: the epic can't close with these entries.
 6. **Ergonomics.** A starter copies two hooks and reads the view's row.
-7. **Concerns.** The fake spans three children (B1); the view's read rate is unchecked for
+7. **Concerns.** The fake spans three children (B1, decided); the view's read rate is unchecked for
    Teammates (*Settled*).
 
 | Finding | Objective | Changes the approach? | Disposition |
 |---|---|---|---|
 | The coding board row lacks the answer, the brief and a cancel's reason | 1 | Yes | Folded: D1 |
-| The fake implements every job's calls, so it can't go in one child unless that child lands last | 7 | No | Boundary B1, for the cross-spec review |
+| The fake implements every job's calls, so it can't go in one child unless that child lands last | 7 | No | B1, decided by the coordinator: each child cuts its own scenarios; the last to merge deletes the file |
 | `src/app/` may not gain a file | 7 | No | Decided: hooks join `tasks.ts` |
 
 ## Related: FIX-2782
@@ -153,3 +153,7 @@ doesn't touch the review stop's data or either app's review card.
 - **Draft** — the task screens read the views claude-code-style reads; the 13 entries in
   `tasks.ts`, `runs.ts` and the fake go; the coding board row gains the answer and the brief (D1);
   five boundaries with the sibling jobs named for the cross-spec review.
+- **B1 decided (coordinator, 2026-11-17)** — Gitar on #5363: the goal counted the fake's `gone`
+  entry, which this issue can't remove unless it merges last. Each Teammates child cuts its own
+  scenarios; the last of FIX-2771, FIX-2772 and FIX-2773 to merge deletes the file and the entry.
+  This issue's goal is now the 12 `src/app/` entries and the fake's task and run scenarios.

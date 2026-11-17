@@ -20,7 +20,7 @@ if (process.argv.includes("--control")) allowlist.push({ file: "src/app/planted.
 const OWNER = {
   "src/app/tasks.ts": "t3",
   "src/app/runs.ts": "t3",
-  "test/fake-app.ts": "t3 (its file goes last: B1)",
+  "test/fake-app.ts": "last Teammates child (B1)",
   configuration: "t1",
   "src/app/setup.ts": "t1",
   "src/app/talk.ts": "t1",
@@ -52,8 +52,8 @@ if (unclassified.length > 0) {
   console.error(`\nFAIL: ${unclassified.length} entr${unclassified.length === 1 ? "y" : "ies"} no row classifies: ${unclassified.map((e) => `${e.file} ${e.symbol}`).join(", ")}`);
   process.exit(1);
 }
-if (t3.length !== 13) {
-  console.error(`\nFAIL: the spec names 13 entries; the allowlist gives ${t3.length}`);
+if (t3.length !== 12) {
+  console.error(`\nFAIL: the spec names 12 entries; the allowlist gives ${t3.length}`);
   process.exit(1);
 }
-console.log("\nPASS: every entry classified; 13 are this issue's");
+console.log("\nPASS: every entry classified; 12 are this issue's");

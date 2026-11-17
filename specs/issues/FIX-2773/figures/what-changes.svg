@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 440" role="img" aria-label="Before and after for Teammates' task cards. Before: the card and its popup call the app's task and run calls in src/app tasks.ts and runs.ts, which stitch four sources: the board's task-list view, copies of each row from the conversation's items, each run session's own copies, and a flow call for the brief; the run's work comes from the session feed, a hand-built request stream with a client import, and a live read on the session topic. Five row types and two call types are written in the app, and a 900-line fake plays all of it for the tests. After: the card reads harness-manager's coding board view, whose row also carries the task's answer and brief (D1), and the popup reads the react package's session feed and request stream hooks and the recorded work view; board actions and answers go through orchestration's Inbox client. The row type is the view's own. The tests run on a stub server or the lab's own host, and the fake goes."
+<svg viewBox="0 0 940 440" role="img" aria-label="Before and after for Teammates' task cards. Before: the card and its popup call the app's task and run calls in src/app tasks.ts and runs.ts, which stitch four sources: the board's task-list view, copies of each row from the conversation's items, each run session's own copies, and a flow call for the brief; the run's work comes from the session feed, a hand-built request stream with a client import, and a live read on the session topic. Five row types and two call types are written in the app, and a 900-line fake plays all of it for the tests; 12 allowlist entries are this issue's. After: the card reads harness-manager's coding board view, whose row also carries the task's answer and brief (D1), and the popup reads the react package's session feed and request stream hooks and the recorded work view; board actions and answers go through orchestration's Inbox client. The row type is the view's own. The tests run on a stub server or the lab's own host, and the fake goes."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -41,8 +41,8 @@
     <text class="t-h c-gone" x="44" y="286">test/fake-app.ts (900 lines)</text>
     <text class="t-s" x="44" y="304">plays every call for 15 test files</text>
     <text class="t-lbl" x="32" y="346">ALLOWLIST ENTRIES THIS ISSUE OWNS</text>
-    <text class="t-h c-gone" x="32" y="370">13</text>
-    <text class="t-s" x="58" y="370">6 in tasks.ts · 6 in runs.ts · the fake's own</text>
+    <text class="t-h c-gone" x="32" y="370">12</text>
+    <text class="t-s" x="58" y="370">6 in tasks.ts · 6 in runs.ts · the fake's file goes last (B1)</text>
   </g>
 
   <g id="after">
