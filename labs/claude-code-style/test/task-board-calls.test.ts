@@ -141,6 +141,7 @@ const boardRow = (row: Partial<CodingBoardTask>): CodingBoardTask => ({
   landed: null,
   error: null,
   pullRequests: [],
+  runFlow: null,
   ...row,
 });
 
@@ -167,6 +168,9 @@ describe("a coding board row, as the screen draws it", () => {
   it("names the run its work is read from, once a run has started", () => {
     const run = { sessionId: "run-1", requestId: "req-1", startedAt: 5 } as CodingBoardTask["run"];
     expect(labTaskOf(boardRow({ run }), "s1")).toMatchObject({ runLink: { sessionId: "run-1", requestId: "req-1" }, run: { startedAt: 5 }, startedAt: 5 });
+    expect(labTaskOf(boardRow({ run }), "s1").runLink?.flow).toBeUndefined();
+    // The flow its run's session runs on, where the run's own stream is read.
+    expect(labTaskOf(boardRow({ run, runFlow: "coder" }), "s1").runLink).toEqual({ sessionId: "run-1", requestId: "req-1", flow: "coder" });
     expect(labTaskOf(boardRow({}), "s1").runLink).toBeUndefined();
   });
 });
