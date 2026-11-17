@@ -116,8 +116,10 @@ case of ER-4.
   89 lines left against its 397. t1 removes about 310: the context flow moves to `flows/`, and the
   host imports the packages' `operatorGitHub`, `sqliteScheduleIndex` and `checkCommandsFrom`
   instead of its own copies. A child that can't meet the cap comments up.
-- **The fake app goes with the adapter.** Before it is deleted, t3 writes a ledger mapping each of
-  its scenarios (14 test files use it) to a view test, or to "dropped, because …".
+- **The fake app goes when the last Teammates child merges.** Each of t1, t2 and t3 cuts its own
+  scenarios (14 test files use the fake) into its ledger, mapping each to a view test or to
+  "dropped, because …". Whichever merges last deletes the fake, its `gone` entry and the shared
+  plumbing types. t1 owns `workers.ts`; t2 owns `steps.ts`. Amended by the cross-spec review below.
 - **A size ratchet on the read models is worth its cost** ([ER-4](#who-owns-what)): the allowlist
   stops new findings, but not logic growing inside an allowlisted function.
 - **Defaults for the division.** Teammates' people and conversations children stay separate unless
