@@ -86,6 +86,9 @@ fires from outside. The fix then is one router option that moves every framework
 - **Mount from `createFlowState` only, not the router.** The tick lives there, but a host that
   builds `createFlowApiRouter` itself (tests, the integration suite) would still need the line, so
   the line survives for one path. The router is the one place every app passes through.
+- **Mount on first need: attach the routes when `register()` first adds a flow with schedules.**
+  It avoids two route probes per request on an app that never schedules, but adds a router that
+  changes its route table after it is built, for a cost that is two string matches.
 - **Keep the endpoint in `scheduled` and have the engine load it.** The engine can't import a
   package that imports it, and a dynamic import of an optional peer is a hidden dependency.
 
@@ -111,7 +114,11 @@ exist (`createFlowApiRouter.ts`), and the handlers import only the engine's host
 
 ## Notes from review
 
-None yet.
+From the Cursor review on #5317 (2026-11-17), for the implementer:
+- `g:one-way`: walking every `packages/*` `exports` entry is brittle; a stable enforcer (no root export + no `packages/engine/src/**` import of `@flow-state-dev/scheduled`) may be enough.
+- `f:no-line`: bundles mount, auth, list shape and the no-schedule 404; splitting legs would make failures easier to read.
+- Removes / docs lists: a category plus a grep instruction would age better than enumerating every lab and goal path.
+- Prefer the 404 for flows without `schedules` before `arrayBuffer()` / `resolvePrincipal`.
 
 ## How it got here
 
