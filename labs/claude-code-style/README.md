@@ -177,8 +177,11 @@ through scenarios (a result that lands mid-turn, a failed turn, a held question 
 stop, a lapsed connection). A component's own test that draws one screen from data it names stands
 in for the server at the client's fetch (`test/stub-server.ts`); the screen still reads through
 `src/lab.ts`. The inventory test (`test/inventory.test.ts`) holds the app to configuration, screens
-and small flows: no adapter, nothing of the app's in `workforce/`, no screen file that reaches the
-server itself, and no hand-written type for a row a view returns.
+and small flows: no adapter, nothing of the app's in `workforce/`, every file classed and within
+FIX-2152 ER-1's caps, no screen file that reaches the server itself, no hand-written type for a row
+a view returns, and no host wiring a kit replaces. Its rules live in `test/inventory-rules.ts`, which
+the epic's closure goal (`goals/kits/an-app-is-config-ui-and-small-flows/`) grades too. A rule the
+lab doesn't meet yet is an `it.fails`.
 
 ## How the screen reaches the package
 
