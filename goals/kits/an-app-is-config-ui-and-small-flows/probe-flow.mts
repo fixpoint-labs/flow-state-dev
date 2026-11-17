@@ -15,7 +15,7 @@
  *   each must be refused (`view_model_call`).
  */
 import { defineFlow, defineResource, defineResourceCollection, defineView, generator, handler } from "@flow-state-dev/core";
-import { labPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
+import { appPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 import { defineSkillsCollection } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 
@@ -45,8 +45,8 @@ const pinsSeen = handler({
   name: "closure-pins-seen",
   inputSchema: z.object({}),
   outputSchema: z.object({ pinned: z.array(z.string()) }),
-  resources: { labPins },
-  execute: async (_input, ctx) => ({ pinned: [...((ctx.resources.labPins.state as { pinned?: string[] }).pinned ?? [])] }),
+  resources: { appPins },
+  execute: async (_input, ctx) => ({ pinned: [...((ctx.resources.appPins.state as { pinned?: string[] }).pinned ?? [])] }),
 });
 
 export default [
