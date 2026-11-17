@@ -283,8 +283,8 @@ export function ComposerShell({
           <div className="border-[1.5px] border-foreground bg-card" data-look="composer">
             {strip}
             <div className="flex items-center">
-              {input}
               {attachButton}
+              {input}
               {extra}
               {sendButton}
             </div>
@@ -303,11 +303,11 @@ export function ComposerShell({
             data-look="composer-footer"
           >
             <span className="flex min-w-0 flex-wrap items-center gap-3.5">
+              {attachButton}
               {lead}
               {statusLine}
             </span>
             <span className="flex shrink-0 items-center gap-2.5">
-              {attachButton}
               {extra}
               {sendButton}
             </span>
