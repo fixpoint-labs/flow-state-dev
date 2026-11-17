@@ -7,7 +7,7 @@
  * Why it matters: a task that opened a PR waits on it until it merges or
  * closes, and only a message delivered to its session wakes it. The follow
  * hears `review`, `comment` and `check`; a merge is a `pull_request` event, and
- * the person who merges is usually the subscriber, whose own actions the `own`
+ * whoever merges is usually the subscriber, whose own actions the `own`
  * screen drops. Without this, a merged PR's task stays open until someone
  * types in its session. A routine's close is unchanged: its kinds and screens
  * still decide it.
