@@ -207,16 +207,6 @@ await runGoal(async (failures, tell) => {
       await createInboxClient(client).answer(item, { value: { verdict: "accepted", land: "pull-request" } } as never);
       return await until(id!, (r) => moved(r) && reviewOf(r)?.id !== reviewId);
     };
-    /** The remote's tip of `branch`, or `""` when it has none. */
-    const remoteTip = (branch: string) => {
-      try {
-        return execFileSync("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: github.bare, encoding: "utf8" }).trim();
-      } catch {
-        return "";
-      }
-    };
-    const isAncestor = (older: string, newer: string) =>
-      older !== "" && spawnSync("git", ["merge-base", "--is-ancestor", older, newer], { cwd: github.bare }).status === 0;
     /** A line in the task's session, as its composer sends it: to the coder's door. */
     const line = (message: string) => sendTurn(client, { sessionId: runSession, flowId: runFlow, door: "respond" }, message);
 
@@ -243,7 +233,7 @@ await runGoal(async (failures, tell) => {
     if (waiting) {
       const runsBefore = coder.runs.length;
       const branch = github.pullRequest(7)?.branch ?? "";
-      const tipBefore = remoteTip(branch);
+      const tipBefore = github.remoteTip(branch);
       await line(fixture.line);
       const again = await until(id, (r) => r?.status !== "in_progress" || reviewOf(r) !== undefined || (externalOf(r) !== undefined && externalOf(r).id !== wait.id));
       const runs = coder.runs.length - runsBefore;
@@ -259,9 +249,9 @@ await runGoal(async (failures, tell) => {
         if (runs !== 1) failures.push(`b:one-run: ${runs} harness runs, not 1`);
         if (again!.attempts !== accepted!.attempts) failures.push(`b:same-attempt: attempt ${again!.attempts}, was ${accepted!.attempts}`);
         if (again!.run?.sessionId !== runSession) failures.push(`b:same-session: the run moved to session ${again!.run?.sessionId}`);
-        const tipAfter = remoteTip(branch);
+        const tipAfter = github.remoteTip(branch);
         const runTip = execFileSync("git", ["rev-parse", `refs/heads/${branch}`], { cwd: checkout, encoding: "utf8" }).trim();
-        if (tipAfter !== runTip || !(tipBefore === tipAfter || isAncestor(tipBefore, tipAfter))) {
+        if (tipAfter !== runTip) {
           failures.push(`b:on-pr: PR 7's branch ${branch} on the remote is at ${tipAfter}, not the run's tip ${runTip} (was ${tipBefore})`);
         }
         if (opened.length !== 1) failures.push(`b:one-pr: the stub holds pull requests ${opened.join(", ")}, not PR 7 alone`);

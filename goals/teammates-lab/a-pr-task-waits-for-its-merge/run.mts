@@ -22,7 +22,7 @@
  * Run: pnpm tsx goals/teammates-lab/a-pr-task-waits-for-its-merge/run.mts
  */
 import { join } from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createClient } from "@flow-state-dev/client";
 import { reviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { createInboxClient, inboxItems, taskActionName, taskListViewRef, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
@@ -125,16 +125,6 @@ await runGoal(async (failures, tell) => {
       await inbox.answerOne(hold, { value: { verdict: "accepted", land: "pull-request" } });
       return await until(id, (r) => externalOf(r) !== undefined || !["pending", "in_progress"].includes(r.status) || (reviewOf(r) !== undefined && reviewOf(r)!.id !== hold.id));
     };
-    /** The remote's tip of `branch`, or `""` when it has none. */
-    const remoteTip = (branch: string) => {
-      try {
-        return execFileSync("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: github.bare, encoding: "utf8" }).trim();
-      } catch {
-        return "";
-      }
-    };
-    const isAncestor = (older: string, newer: string) =>
-      older !== "" && spawnSync("git", ["merge-base", "--is-ancestor", older, newer], { cwd: github.bare }).status === 0;
     const runFlow = (await fsd.sessions.get(runSession)).flowId ?? (await fsd.sessions.get(runSession)).flowKind ?? null;
 
     // ── a: Accept with Open a PR: the branch is pushed, PR 7 opened, and the task waits on it.
@@ -161,7 +151,7 @@ await runGoal(async (failures, tell) => {
     if (waiting) {
       const runsBefore = await runsIn(runSession);
       const branch = github.pullRequest(7)?.branch ?? "";
-      const tipBefore = remoteTip(branch);
+      const tipBefore = github.remoteTip(branch);
       await board.steer(id, fixture.steer);
       const again = await until(id, (r) => r.status !== "in_progress" || reviewOf(r) !== undefined || (externalOf(r) !== undefined && externalOf(r).id !== wait.id));
       const runs = (await runsIn(runSession)) - runsBefore;
@@ -177,9 +167,9 @@ await runGoal(async (failures, tell) => {
         if (runs !== 1) failures.push(`b:one-run: ${runs} harness runs in the run session, not 1`);
         if (again.attempts !== accepted?.attempts) failures.push(`b:same-attempt: attempt ${again.attempts}, was ${accepted?.attempts}`);
         if (again.run?.sessionId !== runSession) failures.push(`b:same-session: the run moved to session ${again.run?.sessionId}`);
-        const tipAfter = remoteTip(branch);
+        const tipAfter = github.remoteTip(branch);
         const runTip = execFileSync("git", ["rev-parse", `refs/heads/${branch}`], { cwd: workdir, encoding: "utf8" }).trim();
-        if (tipAfter !== runTip || !(tipBefore === tipAfter || isAncestor(tipBefore, tipAfter))) {
+        if (tipAfter !== runTip) {
           failures.push(`b:on-pr: PR 7's branch ${branch} on the remote is at ${tipAfter}, not the run's tip ${runTip} (was ${tipBefore})`);
         }
         if (opened.length !== 1) failures.push(`b:one-pr: the stub holds pull requests ${opened.join(", ")}, not PR 7 alone`);

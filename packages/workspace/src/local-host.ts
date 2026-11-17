@@ -602,7 +602,8 @@ export interface WorkspaceHost {
    * The pull request already open from the branch `land` would land, asked
    * before the review is: a run whose work goes onto it is never offered a
    * second one, or a local merge. `null` where `landWays` offers no
-   * `pull-request`, where there is none, and where it can't be told. Never rejects.
+   * `pull-request`, and where there is none. Rejects when it can't be told
+   * (git or GitHub can't be read), so the caller can say so.
    */
   existingPullRequest?(target: LandTarget): Promise<ExistingPullRequest | null>;
 }

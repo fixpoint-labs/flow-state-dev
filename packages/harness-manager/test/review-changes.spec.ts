@@ -5,7 +5,7 @@
  * answer route as a screen sends them. Only the harness is a stub, and it
  * records what each step was handed.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -868,10 +868,13 @@ process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify
   }, 90_000);
 });
 
-describe("a run on a branch with a pull request already open from it puts its work there, unasked (FIX-2781)", () => {
+// FIX-2781.
+describe("a run on a branch with a pull request already open from it puts its work there, unasked", () => {
   const PR_URL = "https://github.com/acme/widgets/pull/42";
   const PATH = process.env.PATH;
   let ghLog: string;
+  // When set, how many more times `pr list` finds #42 open; then it finds none (closed since).
+  let listsLeft: string;
   const ghCalls = () => (existsSync(ghLog) ? readFileSync(ghLog, "utf8").trim().split("\n") : []);
   const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
@@ -880,14 +883,22 @@ describe("a run on a branch with a pull request already open from it puts its wo
     const bin = mkdtempSync(join(tmpdir(), "harness-manager-open-pr-gh-"));
     dirs.push(bin);
     ghLog = join(bin, "calls.log");
+    listsLeft = join(bin, "lists-left");
     writeFileSync(
       join(bin, "gh"),
       `#!/usr/bin/env node
+const fs = require("node:fs");
 const args = process.argv.slice(2);
-require("node:fs").appendFileSync(${JSON.stringify(ghLog)}, args.join(" ") + "\\n");
+fs.appendFileSync(${JSON.stringify(ghLog)}, args.join(" ") + "\\n");
+const listed = () => {
+  if (!fs.existsSync(${JSON.stringify(listsLeft)})) return true;
+  const left = Number(fs.readFileSync(${JSON.stringify(listsLeft)}, "utf8"));
+  fs.writeFileSync(${JSON.stringify(listsLeft)}, String(left - 1));
+  return left > 0;
+};
 const out =
   args[0] === "pr" && args[1] === "list"
-    ? JSON.stringify([{ number: 42, url: ${JSON.stringify(PR_URL)} }])
+    ? JSON.stringify(listed() ? [{ number: 42, url: ${JSON.stringify(PR_URL)}, baseRefName: "main", isCrossRepository: false }] : [])
     : args[0] === "pr" && args[1] === "create"
       ? "https://github.com/acme/widgets/pull/43\\n"
       : args[0] === "api" && /pulls\\/42$/.test(args[args.length - 1])
@@ -902,6 +913,18 @@ process.stdout.write(out);
   afterAll(() => {
     process.env.PATH = PATH;
   });
+  afterEach(() => {
+    rmSync(listsLeft, { force: true });
+  });
+  /** Refuse the remote's first `times` pushes, as GitHub refuses one. */
+  const refusePushes = (remote: string, times: number) => {
+    const count = join(remote, "refused");
+    writeFileSync(
+      join(remote, "hooks", "pre-receive"),
+      `#!/bin/sh\nn=$(cat '${count}' 2>/dev/null || echo 0)\nif [ "$n" -lt ${times} ]; then echo $((n+1)) > '${count}'; echo "error: GH006: Protected branch update failed." >&2; exit 1; fi\n`,
+    );
+    chmodSync(join(remote, "hooks", "pre-receive"), 0o755);
+  };
 
   // Jake's report: eng.coder pushed a fix for review feedback to the branch of the pull request it had opened, and
   // was then asked "Open a PR / Merge locally" about it. The work already had its pull request; a second one is never offered.
@@ -927,6 +950,57 @@ process.stdout.write(out);
       // The stream says where the work went, and the session's record holds the pull request the task waits on.
       expect((await h.statuses()).some((line) => line.startsWith(`Pushed ${branch} to pull request #42`) && line.includes(PR_URL))).toBe(true);
       expect(await h.pullRequests(settled.run!.sessionId!)).toEqual([`${OBSERVED_PULL_REQUESTS}/github.com/acme/widgets/42`]);
+      expect(h.seen).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  // The person wasn't asked about this landing, so a failure of it is theirs to see, not the coding
+  // session's to fix; and they are offered only that pull request, never a second one or a local merge.
+  it("asks the person when that push is refused, offering that pull request alone, and records their accept", async () => {
+    const h = host({ script: ["commits", "no-commit"], remote: true });
+    try {
+      refusePushes(h.remote, 2);
+      await h.start();
+      const asked = await h.until(h.waiting, "the review after the refused push");
+
+      // Straight to the person: no step of the coding session was spent on it.
+      expect(h.seen).toHaveLength(1);
+      const hold = h.review(asked)!;
+      expect(hold.ask.prompt).toContain("GH006");
+      expect(hold.ask.prompt).toContain("pull request #42, already open");
+      expect(hold.ask.prompt).not.toContain("choose the other way");
+      expect(reviewDetail((await h.stop(hold))?.data)?.lands).toEqual(["pull-request"]);
+
+      // The person accepts; that push is refused too, so it is handed to the coding session as any
+      // accept's is, and when the session stops it lands on #42: the person's accept is the review.
+      await h.answer({ verdict: "accepted", land: "pull-request" });
+      const done = await h.until((t) => t.status === "completed", "the landing after the person's accept", 45_000);
+      expect(h.seen).toHaveLength(2);
+      expect(done.output).toMatchObject({ review: "accepted", landed: { kind: "pull-request", number: 42, existing: true } });
+      expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  }, 90_000);
+
+  it("opens nothing when that pull request closed before the push, and asks the person with every way to land", async () => {
+    const h = host({ script: ["commits"], remote: true });
+    const calls = ghCalls().length;
+    try {
+      // Open when the review looks, closed when the landing does.
+      writeFileSync(listsLeft, "1");
+      await h.start();
+      const asked = await h.until(h.waiting, "the review after the pull request closed");
+
+      const hold = h.review(asked)!;
+      expect(hold.ask.prompt).not.toContain("already open");
+      expect(reviewDetail((await h.stop(hold))?.data)?.lands).toEqual(["pull-request", "merge"]);
+      // Nothing pushed, and no pull request opened in its place without the person.
+      const branch = git(h.seen[0]!.cwd, "rev-parse", "--abbrev-ref", "HEAD");
+      expect(() => git(h.remote, "rev-parse", "--verify", "--quiet", `refs/heads/${branch}`)).toThrow();
+      expect(ghCalls().slice(calls).filter((call) => call.startsWith("pr create"))).toEqual([]);
       expect(h.seen).toHaveLength(1);
     } finally {
       await h.dispose();

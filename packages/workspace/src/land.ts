@@ -73,6 +73,13 @@ export type LandRequest =
       readonly gh?: string;
       /** The whole landing's wall clock. Default two minutes. */
       readonly timeoutMs?: number;
+      /**
+       * Land only on a pull request already open from the branch into its
+       * base: when none is (it was closed or merged since it was found), or
+       * GitHub can't say, nothing is pushed and none is opened, and the
+       * landing is refused `pull-request-gone` or `pull-request-failed`.
+       */
+      readonly onlyExisting?: boolean;
     }
   | {
       readonly kind: "merge";
@@ -141,9 +148,7 @@ export async function landWays(host: LandHost, target: LandTarget): Promise<Arra
   const git = async (cwd: string, args: string[]) =>
     (await run("git", [...NO_HOOKS, "-c", "core.fsmonitor=false", ...args], { cwd, timeoutMs: RESTORE_TIMEOUT_MS, env: host.env })).stdout.trim();
   try {
-    const base = await resolveBase(git, host.repo, host.pins, target.baseRef);
-    const remote = pushRemote(host.pins, base);
-    const repo = remote === undefined ? undefined : (host.pullRequestRepo ?? repoOf)(remote.url);
+    const { repo } = await pullRequestPlace(git, host, target.baseRef);
     return repo === undefined ? ["merge"] : ["pull-request", "merge"];
   } catch {
     return [];
@@ -162,34 +167,33 @@ export interface ExistingPullRequest {
 // FIX-2781.
 /**
  * The pull request already open from the branch {@link landRun} would land,
- * asked before the review is, so a run whose work goes onto an open pull
- * request is never offered a second one. The same checks `landRun` makes
- * before it pushes (the branch, the pinned remote, the GitHub repository it
- * names), then `gh pr list --head <branch> --state open`. Never throws:
- * `null` when there is none, and when it can't be told.
+ * into the base it would land on, asked before the review is, so a run whose
+ * work goes onto an open pull request is never offered a second one. The
+ * same checks `landRun` makes before it pushes (the branch, the pinned
+ * remote, the GitHub repository it names), then `gh pr list --head <branch>
+ * --state open`. `null` when there is none, or no pull request can be opened
+ * here.
+ *
+ * @throws when it can't be told: the branch, the base or GitHub can't be read.
  */
 export async function existingPullRequest(
   host: LandHost,
   target: LandTarget,
   options: { readonly gh?: string; readonly timeoutMs?: number } = {},
 ): Promise<ExistingPullRequest | null> {
-  const deadline = Date.now() + (options.timeoutMs ?? RESTORE_TIMEOUT_MS);
+  const deadline = Date.now() + (options.timeoutMs ?? LAND_TIMEOUT_MS);
   const left = () => Math.max(1, deadline - Date.now());
   const git = async (cwd: string, args: string[]) =>
     (await run("git", [...NO_HOOKS, "-c", "core.fsmonitor=false", ...args], { cwd, timeoutMs: left(), env: host.env })).stdout.trim();
+  const branch = await branchToLand(git, target);
+  const { remote, repo } = await pullRequestPlace(git, host, target.baseRef);
+  if (remote === undefined || repo === undefined) return null;
   const ghDir = scratchDir();
   try {
-    const branch = await branchToLand(git, target);
-    const base = await resolveBase(git, host.repo, host.pins, target.baseRef);
-    const remote = pushRemote(host.pins, base);
-    const repo = remote === undefined ? undefined : (host.pullRequestRepo ?? repoOf)(remote.url);
-    if (repo === undefined) return null;
     const gh = { gh: options.gh ?? "gh", ghDir, ghEnv: { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) }, where: ["--repo", repo] };
-    const url = await openPullRequestOf(gh, branch, left());
+    const url = await openPullRequestOf(gh, branch, remote.base, left());
     const ref = url === undefined ? null : pullRequestRefFromUrl(url);
     return url === undefined || ref === null ? null : { url, number: ref.number, branch };
-  } catch {
-    return null;
   } finally {
     try {
       rmSync(ghDir, { recursive: true, force: true });
@@ -200,11 +204,11 @@ export async function existingPullRequest(
 /**
  * Land a run's branch, by `request.kind`.
  *
- * A pull request already open from the branch is the landing: nothing is
- * pushed and no second one is opened.
+ * A pull request already open from the branch into its base is the
+ * landing: the branch is pushed to it, and no second one is opened.
  *
  * @throws WorkspaceRefusedError `branch-gone`, `base-unknown`, `no-push-remote`, `no-pull-request-repo`,
- *   `remote-repointed`, `push-failed`, `pull-request-failed`,
+ *   `remote-repointed`, `push-failed`, `pull-request-failed`, `pull-request-gone`,
  *   `base-not-checked-out`, `checkout-dirty`, `checkout-busy`, `merge-conflict` or
  *   `merge-failed`, each saying what happened.
  */
@@ -216,10 +220,10 @@ export async function landRun(host: LandHost, target: LandTarget, request: LandR
   const restoreGit = async (cwd: string, args: string[], env: Record<string, string> = {}) =>
     (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: RESTORE_TIMEOUT_MS, env: { ...host.env, ...env } })).stdout.trim();
   const landing = { ...target, branch: await branchToLand(git, target) };
-  const base = await resolveBase(git, host.repo, host.pins, target.baseRef);
+  const place = await pullRequestPlace(git, host, target.baseRef);
   return request.kind === "merge"
-    ? await merge(git, restoreGit, host.repo, base, landing.branch, { ...process.env, ...host.env })
-    : await openPullRequest(git, host, landing, base, request, left);
+    ? await merge(git, restoreGit, host.repo, place.base, landing.branch, { ...process.env, ...host.env })
+    : await openPullRequest(git, host, landing, place, request, left);
 }
 
 /**
@@ -248,6 +252,25 @@ async function branchToLand(git: Git, target: LandTarget): Promise<string> {
 }
 
 type Git = (cwd: string, args: string[], env?: Record<string, string>) => Promise<string>;
+
+/** The remote a push goes to, as {@link pushRemote} reads it. */
+type PushRemote = { remoteName: string; url: string; base: string };
+
+/**
+ * Where a run's branch would land, read the same way by {@link landWays},
+ * {@link existingPullRequest} and {@link landRun}: the run's base, the pinned
+ * remote a push goes to, and the GitHub repository that remote names
+ * (`undefined` where there is none).
+ */
+async function pullRequestPlace(
+  git: Git,
+  host: LandHost,
+  baseRef: string | null | undefined,
+): Promise<{ base: Base; remote: PushRemote | undefined; repo: string | undefined }> {
+  const base = await resolveBase(git, host.repo, host.pins, baseRef);
+  const remote = pushRemote(host.pins, base);
+  return { base, remote, repo: remote === undefined ? undefined : (host.pullRequestRepo ?? repoOf)(remote.url) };
+}
 
 /**
  * The base the run was cut from. `local` is the branch a merge lands on;
@@ -513,7 +536,7 @@ function notRestored(checkout: string, base: string, from: string, before: strin
  * into there: the base branch's pinned upstream, else the pinned `origin`
  * (or the one pinned remote) and the base's own name.
  */
-function pushRemote(pins: KeptFetchPins | undefined, resolved: Base): { remoteName: string; url: string; base: string } | undefined {
+function pushRemote(pins: KeptFetchPins | undefined, resolved: Base): PushRemote | undefined {
   if (resolved.remote !== undefined) {
     const url = pins?.remotes.get(resolved.remote.remoteName);
     return url === undefined ? undefined : { remoteName: resolved.remote.remoteName, url, base: resolved.remote.branch };
@@ -549,11 +572,11 @@ async function openPullRequest(
   git: Git,
   host: LandHost,
   target: LandTarget,
-  base: Base,
+  place: { base: Base; remote: PushRemote | undefined; repo: string | undefined },
   request: Extract<LandRequest, { kind: "pull-request" }>,
   left: () => number,
 ): Promise<Landed> {
-  const remote = pushRemote(host.pins, base);
+  const { base, remote, repo } = place;
   if (remote === undefined) {
     throw new WorkspaceRefusedError(
       "no-push-remote",
@@ -562,7 +585,6 @@ async function openPullRequest(
     );
   }
   // gh is always told the repository, from the pinned URL: it never falls back to the live remotes.
-  const repo = (host.pullRequestRepo ?? repoOf)(remote.url);
   if (repo === undefined) {
     throw new WorkspaceRefusedError(
       "no-pull-request-repo",
@@ -598,20 +620,36 @@ async function openPullRequest(
   }
 }
 
-/** The open pull request from `branch`, or `undefined`; throws when GitHub can't be asked. */
+/** How many open pull requests from one branch name are read: forks and other bases are passed over. */
+const OPEN_PULL_REQUESTS_READ = 20;
+
+/**
+ * The open pull request from `branch` in the repository itself into `base`,
+ * or `undefined`; throws when GitHub can't be asked. `--head` matches the
+ * branch's name in any fork, and a branch can be open into several bases, so
+ * a pull request from a fork (`isCrossRepository`) or into another base is
+ * not this run's. A field gh doesn't give is not held against it.
+ */
 async function openPullRequestOf(
   gh: { gh: string; ghDir: string; ghEnv: Record<string, string>; where: string[] },
   branch: string,
+  base: string,
   timeoutMs: number,
 ): Promise<string | undefined> {
   const { stdout } = await run(
     gh.gh,
-    ["pr", "list", ...gh.where, "--head", branch, "--state", "open", "--json", "number,url", "--limit", "1"],
+    [
+      "pr", "list", ...gh.where, "--head", branch, "--state", "open",
+      "--json", "number,url,baseRefName,isCrossRepository", "--limit", String(OPEN_PULL_REQUESTS_READ),
+    ],
     { cwd: gh.ghDir, timeoutMs, env: gh.ghEnv },
   );
   const parsed = JSON.parse(stdout || "[]") as unknown;
-  const first = Array.isArray(parsed) ? (parsed[0] as { url?: unknown } | undefined) : undefined;
-  return typeof first?.url === "string" ? first.url : undefined;
+  const listed = (Array.isArray(parsed) ? parsed : []) as Array<{ url?: unknown; baseRefName?: unknown; isCrossRepository?: unknown }>;
+  const ours = listed.find(
+    (pr) => typeof pr?.url === "string" && pr.isCrossRepository !== true && (typeof pr.baseRefName !== "string" || pr.baseRefName === base),
+  );
+  return ours?.url as string | undefined;
 }
 
 async function pushAndOpen(
@@ -648,7 +686,19 @@ async function pushAndOpen(
   // remote's branch already holds the checkout's tip; otherwise the pull
   // request lacks the work, and the refusal stands. A failed ask is no
   // answer: the push and the list after it go on as before.
-  const already = await openPullRequestOf(gh, target.branch, left()).catch(() => undefined);
+  // A landing that may only go onto that pull request (`onlyExisting`) stops
+  // here when it is gone, or can't be found: it pushes nothing and opens none.
+  let already: string | undefined;
+  try {
+    already = await openPullRequestOf(gh, target.branch, remote.base, left());
+  } catch (error) {
+    if (request.onlyExisting === true) {
+      throw new WorkspaceRefusedError(
+        "pull-request-failed",
+        `GitHub couldn't be asked for the pull request open from "${target.branch}", so nothing was pushed: ${firstLine(error) ?? "gh gave no reason"}.`,
+      );
+    }
+  }
   if (already !== undefined && pullRequestRefFromUrl(already) !== null) {
     try {
       await push(git, host, target, remote, judged, left);
@@ -657,6 +707,12 @@ async function pushAndOpen(
     }
     return landedAt(already, true);
   }
+  if (request.onlyExisting === true) {
+    throw new WorkspaceRefusedError(
+      "pull-request-gone",
+      `No pull request is open from "${target.branch}" into ${remote.base} any more, so nothing was pushed and none was opened. Its commits are still there.`,
+    );
+  }
   await push(git, host, target, remote, judged, left);
 
   // `owner:branch` on GitHub's side.
@@ -664,7 +720,7 @@ async function pushAndOpen(
   // A try after one that pushed and opened it, but failed to record it: the open one, not a second.
   let url: string | undefined;
   try {
-    url = await openPullRequestOf(gh, target.branch, left());
+    url = await openPullRequestOf(gh, target.branch, remote.base, left());
   } catch (error) {
     throw failed("asking GitHub for its open pull request", error);
   }
