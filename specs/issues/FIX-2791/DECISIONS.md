@@ -48,7 +48,7 @@ the line goes only to the report's own session, and the coordinator's tool carri
 |---|---|
 | **Instead of** | Linking by the ask's suspension id (Inbox's item id today); or workforce writing a Shift Manager path |
 | **Because** | A report's session (`error-report~<id>`) is fixed at intake, before its ask exists, and one report has at most one waiting ask in it: the preview is the flow's only `ctx.suspend`, and a report's runs take turns under its claim, so a later preview replaces an answered one, never sits beside it. Shift Manager finds the ask by the `sessionId` every loaded ask already carries, a search of the Inbox it has read, not of the store. So one address serves every reply, from *drafting* to *waiting*, and Shift Manager finds the item by it. The suspension id appears only inside `ctx.suspend`, too late for the first reply. The host already builds a Shift Manager path for an occurrence's task (`links`), so the Inbox path is built the same way (`inboxLink`), and workforce names no app route (L2 over the app) |
-| **Locks in** | Shift Manager's `/inbox/<item>` accepts a session id as well as an item id. The address holds the report's key, so the fingerprint can appear inside a link's address, never in the text a person reads. A report that is not waiting opens Inbox with a *not waiting now* note and the report's status, not an error. A host without `inboxLink` gets the words with no link |
+| **Locks in** | Shift Manager's `/inbox/<item>` accepts a session id as well as an item id, and resolves it only against the asks already in the caller's own snapshot (loaded from `sessions.list({ userId })`, the owner check). An id that matches none, whether no report, a report that isn't waiting, or another user's session, opens the same empty selection an unknown id opens today: no status note, no read of the report record or of session state for that id. The ask waits in the operator's session, so the link opens it for the operator only; it is given only where the operator reads it (below). The address holds the report's key, so the fingerprint can appear inside a link's address, never in the text a person reads. A host without `inboxLink` gets the words with no link |
 
 | Trade-off | Report's session, host-built (chosen) | Suspension id |
 |---|---|---|
@@ -75,6 +75,11 @@ uses the item id and Inbox needs no second lookup.
   operator") stays and gains: never quote a report's id.
 - **The ask's message carries source and count** so Inbox shows them with no error-report
   knowledge in the app; `data.source` is added for a reader that wants it.
+- **The link is given only to the operator.** The *waiting* line carries it only when the
+  conversation's user (`ctx.session.identity.userId`) is the operator, and FIX-2793's tool
+  returns `inbox` only to the operator. Anyone else gets the words, *waiting in the operator's
+  Inbox*, with no link, as a host without `inboxLink` does. A link they could not open would read
+  as broken.
 - **`inboxLink` gets the report's own session** (`error-report~<id>`), for every source. For a
   manual report that is not the conversation it was made in (`ctx.session`), which holds no ask.
 - **The old `reportProblem` answer needs no dual-read (BP-030).** No code reads its `decision` or
@@ -130,6 +135,12 @@ For the implementer; none of these changes the direction.
   the wrong session.
 - **Second look:** the Inbox grouping lands on FIX-2774's unfinished view; ship the reply and
   line parts first, and the grouping when that view is in.
+- **Cursor (security), D2:** "Resolve `/inbox/<id>` only against asks already in the caller's
+  snapshot. If none match, render the same empty selection an unknown id gets. Do not read the
+  org report row, and do not call session state for an id that was not in
+  `sessions.list({ userId })`." Folded into D2's Locks in, and the *not waiting now* note is
+  dropped: on main, `inboxItemAt` searches only the loaded snapshot, and a status note would have
+  been the one path that read past it. The operator-only link is the "resolved principal" half.
 - **Second look:** an opaque address (a short hash, the suspension id once known) would keep the
   key out of the address too. Not taken: it needs a second mapping for a value the person never
   reads.
@@ -159,3 +170,6 @@ Factual base: no counted set; no checker is built.
 - **Review round 1** — the fingerprint may sit in a link's address, never in text a person
   reads, because the report's session holds it (Greptile, second look); the check now strips
   link addresses.
+- **Review round 2** — `/inbox/<session>` resolves only against the caller's own asks, and an id
+  that matches none opens the same empty selection as an unknown one; the *not waiting now* note
+  is gone, and only the operator is given the link (Cursor).

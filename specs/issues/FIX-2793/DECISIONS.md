@@ -17,7 +17,7 @@ flowchart TD
   D1 -.->|"rejected · the issue rules out a second store"| X1b["a history collection of its own"]
   I --> D2["D2 · one read tool, listErrorReports, a Workforce built-in"]
   D2 -.->|"rejected · a read depends on another worker's turn, as in Jake's run"| X2["the coordinator messages error-reporter"]
-  I --> O1["Open · who in an org reads it"]
+  I --> O1["Open · whether members read more than their own failures"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -85,6 +85,16 @@ different fields. Then the tool takes a projection option, and it is still one t
   `countOn`, `listOnStorm`) set the first status, `owed`, which the occurrence entry already
   records. A writer added later that moves a status outside `updateReport` must write its own
   entry; the implementer adds a test that fails on that.
+- **The tool is deny-by-default (BP-031).** It knows its caller only from the turn's
+  server-set identity, `ctx.session.identity.userId`, and the operator from the reporter's
+  options, never from an argument. The operator reads every report and entry. Any other user reads
+  a report, with its title, status, count, issue and history entries, only through their own
+  occurrences: an entry whose `userId` is theirs, or a held entry of their task. Anyone else, a
+  turn with no user (a routine's) included, gets `{ reports: [] }`, the same answer a filter that
+  matches nothing gets, so the answer doesn't tell a refused report from no report. Filters
+  (`taskId`, `source`, status, dates) apply only to what the caller may read, after that check.
+  The existing `error-reporter-begin` makes the same check, for the same reason: the dossier reads
+  every user's failures. Whether to widen it is the [Open](#open) question.
 - **An entry holds:** its time, kind (`occurrence` or `status`), the report id, the source, the
   fingerprint, the ids (`requestId`, `sessionId`, `taskId`, `boardId`, `attempt`, `userId`), a
   short redacted message (the first 200 characters of the error or description), and for a
@@ -134,34 +144,36 @@ different fields. Then the tool takes a projection option, and it is still one t
 <a name="open"></a>
 ## Open
 
-### Who in an org reads the error history?
+### Should a member see more than their own failures?
 
 **In plain terms.** The reports belong to the org. In a Lab with several users, one user's
-failure becomes a report every member's Shift Coordinator could now read: its title, its
-message, and the ids of the session and task that failed. Today only the operator sees a report,
-in Inbox.
+failure becomes a report another member's Shift Coordinator could read: its title, its message,
+and the ids of the session and task that failed. Until you decide, the tool shows a member only
+their own failures and the operator everything ([Decided, not asked](#decided-not-asked)). The
+question is whether other members should also read a summary (title, status, count, source,
+when, the Linear link) of reports that aren't theirs.
 
-**The trade-off.** Everyone reads everything: simplest, and a team sees its shared errors, but a
-user sees another user's failing messages. Operator only (the narrower first version Cursor's
-review suggests): private, and widening later is one check, but a teammate asking "was this
-reported?" gets no answer, which is the question this issue is for.
+**The trade-off.** Summaries for everyone: a team sees its shared errors, and a teammate asking
+"was this reported?" about a failure they didn't hit gets an answer. But a title is not a safe
+summary: a described problem's message is the user's own description (`reports.ts`, the manual
+intake), the title falls back to the message's first 120 characters (`flow.ts`), and the drafted
+title comes from a dossier of every user's failures. Own-only: private, and widening later is one
+check, but the teammate gets an empty answer.
 
-**My recommendation.** Every member reads each report's summary (title, status, count, source,
-when, the Linear link), and the ids of an occurrence only when they are the operator or that
-occurrence was their own. The tool knows its caller only from the turn's server-set identity
-(`ctx.session.identity.userId`, and the operator from the reporter's options), never from an
-input (BP-031). A turn with no user, such as a routine's, is denied the ids by default and reads
-summaries only. The `taskId` filter matches only occurrences whose ids the caller may read, so a
-model can't learn that another user's task failed by asking for it.
+**My recommendation.** Keep the default: operator and own failures only. I changed this from
+round 1's "every member reads summaries" because the condition I named then as what would change
+my mind is true on main: a title can quote a user's own words. The coordinator that would read it
+also holds `hire`, `fire` and the routine tools, so another user's text would reach a model that
+acts. If members need more later, widen to "a report exists, with its status and Linear link",
+with no title or message.
 
-**What would change my mind.** If a Lab's reports can quote a user's private words in the title
-(a described problem's title is drafted from the user's own description), then summaries go to
-the operator only, and others see "a report exists, filed as FIX-N".
+**What would change my mind.** Titles written only from code-side fields (flow, action, error
+code), never from a message or a description. Then a summary carries no user text, and every
+member can read it.
 
-**What being wrong costs.** Too open: a teammate reads a short line from another user's failure,
-in a Lab of one team. Too closed: the coordinator says "I can't see that" to everyone but the
-operator, and Jake's question stays unanswered for them. Either is one check in the tool to
-change.
+**What being wrong costs.** Too closed: a teammate's coordinator says it found nothing about a
+failure they didn't hit, and they ask the operator. Too open: one user's words reach another
+user's coordinator. Either is one check in the tool to change.
 
 ## Notes from review
 
@@ -179,6 +191,13 @@ For the implementer; none of these changes the direction.
   `listReports` and the tool is cheaper than a prefix list written twice.
 - **Second look, words for statuses:** the reporter's lines (FIX-2791) and the tool's status words
   should share one status-to-words function, or they will drift.
+- **Cursor (security), the tool's access:** "Return title, message, inbox link, and every id only
+  when the caller is the operator or that occurrence's `userId`. Anyone else gets the same empty
+  `{ reports: [] }`… Apply `taskId` only after that allow. Add a goal or unit check that a second
+  user in the org is refused." Folded as the deny-by-default bullet and the access check. A
+  report with occurrences from several users shows a non-operator their own entries only; its
+  shared title can still come from the whole dossier, which is why the Open question recommends
+  against widening.
 - **Second look, order with FIX-2790:** prefer FIX-2790 first, since it only widens capture.
 
 ## Analysis
@@ -192,7 +211,8 @@ scoped**.
   unbounded event stream beside it; this is the same split, at Lab scale.
 - *Other shapes:* raising the keep and a second collection were weighed (D1).
 - *Should it exist:* yes; the screenshot shows a coordinator unable to answer a direct question.
-- *Major concern:* who reads it in a multi-user org, which is the open question.
+- *Major concern:* who reads it in a multi-user org: deny-by-default, and widening is the open
+  question.
 
 The analysis and validation passes were run by the author in this session; no separate
 sub-agent ran them. A reviewer should weigh that.
@@ -210,3 +230,7 @@ Factual base: the spec rests on no counted set beyond two constants read from so
   at 2,000 entries is about 1.2 MB rewritten on every append (gitar-bot, Cursor). Retention deletes
   computed keys with no list; a held occurrence is logged by its task; the org-read question
   names how the tool knows its caller.
+- **Review round 2** — the tool is deny-by-default: operator and own failures only, an empty
+  answer for anyone else, filters after the check, and a unit check that a second user is refused
+  (Cursor). The Open question's recommendation moved to that default, because a title can quote a
+  user's own words.

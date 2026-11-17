@@ -13,21 +13,21 @@ Part of epic [FIX-2369](../../epics/FIX-2369/SPEC.md) (the workforce apps as a d
 | **asks the Shift Coordinator what has been reported** | The coordinator can't read reports. It messages error-reporter and relays the answer | It reads the reports itself, read-only, and answers in the same turn ([D2](DECISIONS.md#d2)) |
 | **sees one failure come back a sixth time** | The report's count goes up, but it keeps the ids of only the newest 5 occurrences. The first one's time, request and task are gone | Every occurrence is in that hour's history, with its time, ids and a short message ([D1](DECISIONS.md#d1)) |
 | **wants to know when a report was filed or dismissed** | Only the current status is kept, and a filed report's `filedAt` | Each change of status is in the history with its time; *filed* carries the Linear ID and URL ([D1](DECISIONS.md#d1)) |
-| **is one of several users in the org and asks the coordinator** | Can't read reports at all | **Open to the owner** ([Open](DECISIONS.md#open)). Recommended: reads every report's summary, and the occurrence ids only of their own failures |
+| **is one of several users in the org and asks the coordinator** | Can't read reports at all | Reads only the reports and entries of their own failures; the operator reads all. Anyone else gets the same empty answer as a filter that matches nothing ([Decided, not asked](DECISIONS.md#decided-not-asked)). Whether to widen that is **open to the owner** ([Open](DECISIONS.md#open)) |
 
 ## The goal, and how we'll know it's met
 
 **Every occurrence that reaches the Error Reporter, and every change of a report's status, is
 kept in a history beside the reports, and both error-reporter and the Shift Coordinator answer
 "what was reported, and was it filed?" from that history and the reports, not from the task
-board or from each other.**
+board or from each other, showing a caller only the operator's view or their own failures.**
 
 | Is it the right goal? | |
 |---|---|
 | **The real need** | Jake (2026-11-17): "every error the Error Reporter detects should be logged automatically the moment it's detected, with its status (filed or not filed), so there's a history of our errors that both error-reporter and the Shift Coordinator can read" |
 | **Smaller, and rejected** | "Give error-reporter a read tool over the reports as they are." It answers "is it filed?" but keeps losing every occurrence after the fifth, and no status change has a time. Or "raise `KEPT_OCCURRENCES`": the report record grows with every repeat, forever |
 | **Bigger, and not this issue's** | Errors that never reach the Error Reporter: an aborted run today ([FIX-2790](https://linear.app/fixpoint-labs/issue/FIX-2790), in development). What the replies say and the Inbox shows ([FIX-2791](../FIX-2791/SPEC.md)). A history screen in Shift Manager |
-| **Not done if** | An occurrence past the fifth of one fingerprint is missing from the history while its hour is under the cap, or past the cap is not counted · a held occurrence (a failed request inside a task) has no entry · a status change made by any writer has no entry · the Shift Coordinator answers by messaging error-reporter or reading the task board · the read tool writes anything · the restart path (`listReports`, the outbox at bind) reads history entries · one hour's history has no upper size |
+| **Not done if** | An occurrence past the fifth of one fingerprint is missing from the history while its hour is under the cap, or past the cap is not counted · a held occurrence (a failed request inside a task) has no entry · a status change made by any writer has no entry · the Shift Coordinator answers by messaging error-reporter or reading the task board · the read tool writes anything · the restart path (`listReports`, the outbox at bind) reads history entries · one hour's history has no upper size · a caller who is neither the operator nor the occurrence's user reads anything of it, a title included |
 
 ```mermaid
 flowchart LR
@@ -45,6 +45,7 @@ without reading still fails.
 | **Goal check** | A new **leg R** in [`goals/error-reporter/files-a-reproducible-issue`](../../../goals/error-reporter/files-a-reproducible-issue/goal.md), run after leg 2 in the same Lab |
 | **Signal** | **a** The day's history holds 11 occurrence entries for leg 2's fingerprint; the report still keeps 5. **b** Leg 1's report has entries `previewing`, then `filed` with the tracker's identifier and URL. **c** Asked "what has been reported today, and is any of it filed?", the Shift Coordinator's turn calls `listErrorReports` and sends no message or task to error-reporter; its answer names leg 1's issue identifier. **d** Asked in its own conversation "did you report the `burst` failure?", error-reporter calls `listErrorReports` and answers with that report's status |
 | **Input** | The goal's own Lab and plants. The two questions are held out of every prompt and WORKER.md |
+| **Access check** | A unit test in `packages/workforce/test/error-reporter.test.ts`: two users in one org, user A's failure reported. User B's turn calls `listErrorReports` with no filter and with A's `taskId`, and gets `{ reports: [] }` both times, the same answer as an unknown `taskId`; a turn with no user gets the same. A's turn and the operator's get the report. The test fails if the caller check is removed |
 | **Anti-game** | Grade the store's history and the sessions' recorded tool calls. An answer that names the identifier without a `listErrorReports` call fails **c** |
 | **Control that must fail** | `GOAL_CONTROL=no-history`: the intake writes no history entry. FAILS **a** (5 kept, 0 entries). `GOAL_CONTROL=no-report-read`: `listErrorReports` left out of the coordinator's catalog and `tools:` line. FAILS **c** |
 | **Reproduce first** | In `packages/workforce/test/error-reporter.test.ts`, on today's main: seven occurrences of one fingerprint leave the ids of only five anywhere in the collection (red); a coordinator flow built as the devteam host builds it has no tool that reads a report (red). Both go green with this change |
@@ -100,6 +101,10 @@ listErrorReports({ status: "not-filed", from: "2026-11-17", source: "task" })
 //                 firstSeenAt, lastSeenAt, taskIds: ["task_3f5e"], issue: null }],
 //     history?: [{ at, kind: "occurrence" | "status", status?, taskId?, requestId?, message }] }
 ```
+
+What it returns depends only on who is calling, read from the turn's server-set identity: the
+operator reads everything, any other user only their own failures, and anyone else, a turn with
+no user included, gets `{ reports: [] }` ([Decided, not asked](DECISIONS.md#decided-not-asked)).
 
 **Docs:** at release, [`apps/docs/docs/workforce/error-reporter.md`](../../../apps/docs/docs/workforce/error-reporter.md)
 gains a short "The history" section (what is kept, for how long, and `listErrorReports`), and
@@ -181,9 +186,10 @@ no second store. If wrong: a history nobody reads, written on every failure.
 2. **[D2](DECISIONS.md#d2) · One read tool, `listErrorReports`, a Workforce built-in: always on
    error-reporter's turn, and named in the Shift Coordinator's `tools:`.** If wrong: a public tool
    name to keep stable.
-3. **[Open](DECISIONS.md#open) · Who in an org reads the history.** Recommended: everyone reads
-   summaries; occurrence ids only for the operator and for one's own failures, the caller known
-   only from the turn's server-set identity. The narrower option is operator only. The one to weigh.
+3. **[Open](DECISIONS.md#open) · Should other members see more than their own failures?** Until
+   you decide, the tool is deny-by-default: the operator reads everything, a user only their own
+   failures, anyone else nothing. Recommended: keep it so; a title can quote a user's own words.
+   The wider option is every member reading summaries. The one to weigh.
 
 Improvement · `workforce`, `shift-manager` · S–M (one key family and two writers in
 `reports.ts`, one tool, one catalog entry and one WORKER.md line) · depends on nothing ·

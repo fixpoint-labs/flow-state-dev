@@ -27,7 +27,7 @@ reads, and Inbox shows waiting reports together, each with its title, source and
 | **The real need** | The issue: the replies "didn't say that or give a way to open them", and "the queue and the replies were unclear". Jake (2026-11-17): Inbox review stays for every report, no auto-file |
 | **Smaller, and rejected** | "Tell the model in `WORKER.md` not to say fingerprints." The tool still hands it one, and the model has no link to give, so the reply can say *Inbox* but can't open anything |
 | **Bigger, and not this issue's** | Filing without review (Jake decided against). The history and the read tool (FIX-2793). Inbox's read path (FIX-2774, in development). Reports that never reach the reporter (FIX-2790) |
-| **Not done if** | A tool output, line or reply about a report holds `fp-` outside a link's address · a *waiting* reply has no link, or its link opens nothing while the report waits · a filed report's line or tool entry lacks the Linear ID or URL · the Shift Coordinator's answer drops the link the tool gave it · Inbox shows the reports with no source or count |
+| **Not done if** | A tool output, line or reply about a report holds `fp-` outside a link's address · the operator's *waiting* line has no link, or its link opens nothing for the operator while the report waits · an `/inbox/` address that matches none of the caller's own asks shows anything an unknown id doesn't · a filed report's line or tool entry lacks the Linear ID or URL · the Shift Coordinator's answer drops the link the tool gave it · Inbox shows the reports with no source or count |
 
 ```mermaid
 flowchart LR
@@ -121,7 +121,7 @@ flowchart LR
 |---|---|
 | **The job: tell the conversation what happened to a report.** One way: `sayInConversation` → `reporter.say` → the `line` entry, used for *Filed* and *Commented* | **Extended**: one more line, *waiting in Inbox*, from the same place in the flow |
 | **The job: give a host's link for something a report names.** One way: `links` on `ErrorReporterOptions`, which the devteam host fills with a Shift Manager task path | **Extended** by a sibling option, `inboxLink`, same shape of host-built relative path. Not folded into `links`, which is per occurrence and lands in the filed issue |
-| **The job: open one Inbox item.** Shift Manager's `/inbox/<item>` route, resolved by `inboxItemAt` by item id or hold id | **Extended**: it also finds a lone ask by the session it waits in, which a report knows from intake, before its ask exists |
+| **The job: open one Inbox item.** Shift Manager's `/inbox/<item>` route, resolved by `inboxItemAt` by item id or hold id | **Extended**: it also finds a lone ask by the session it waits in, which a report knows from intake, before its ask exists, among the asks already in the caller's snapshot only |
 | **The job: group what waits on the user.** Orchestration's `inboxItems` groups holds under their task; a lone ask is its own item | **Extended** per the [Open](DECISIONS.md#open) answer |
 | FIX-2793's `listErrorReports` | **Reused**: the tool returns `inbox` for a waiting report and `issue` for a filed one |
 
@@ -163,8 +163,8 @@ fingerprint out. If wrong: a host with no `inboxLink` gets words without a link.
    today, and no tool hands a model a fingerprint.** If wrong: the model's own reply and the code's
    line can both appear for one report.
 2. **[D2](DECISIONS.md#d2) · The link is built by the host from the report's session, and Shift
-   Manager opens the waiting ask in that session.** If wrong: a link that resolves to nothing
-   when the report isn't waiting, shown as *not waiting now*.
+   Manager opens the waiting ask in that session, found only among the caller's own asks.** If
+   wrong: a link that opens nothing once the report stops waiting, the same as an unknown id.
 3. **[Open](DECISIONS.md#open) · How Inbox groups waiting reports.** Recommended: group every
    lone ask by the worker that raised it. The narrower option is a group for error reports only.
    The one to weigh.
