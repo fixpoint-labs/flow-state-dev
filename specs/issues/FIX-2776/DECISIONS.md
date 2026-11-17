@@ -102,20 +102,14 @@ with that reason.
   is Teammates'. The board id `tasks` comes from a package export if there is one, else a screen
   constant, never `reads.ts`.
 
-## Boundaries for the cross-spec review
+## Where this meets its siblings
 
-| Seam | With | Proposed |
-|---|---|---|
-| The Inbox's reply, its "From the session" read and its uploader call `sendTurn`, `readSessionItems`, `flowUploader` and `askSessionOf` | FIX-2774 | This issue swaps those four call sites in `Inbox.tsx` when it deletes the modules (ER-3). FIX-2774 owns what the Inbox lists and draws. Both PRs edit `Inbox.tsx`; the second to merge rebases |
-| `AskCard.tsx`, drawn by the Inbox, the coordinator and the task session | FIX-2774 | This issue changes only its review-hold types; the `Ask` type and the answer call are FIX-2774's |
-| `SpendSummary` in `spend.tsx`, drawn by Tasks and the task inspector | FIX-2774 | This issue replaces the type in the shared component; Tasks needs only the import |
-| Worker rows on these screens (name, flow) | FIX-2775 | Read from workforce's roster view, not the inventory snapshot. If FIX-2775 serves workers another way, these screens use that |
-| A task's asks on the task screen and in the Inbox | FIX-2774 | The task screen reads one task's asks per session (above); the Inbox reads across sessions. Should the two be held equal for one task, as the snapshot holds them today? |
-| A shared conversation read: the session feed, the request stream and workforce's `send` | FIX-2772 | Both use `useSessionFeed`, `useRequestStream` and `send`. This issue's changes to them are additive (`completedAt`, `taskId`, `{ requestId }`); whichever finds a hook missing adds it ([the epic's seam](../../epics/FIX-2683/DECISIONS.md#coordination-seams)) |
-| The task row: task-list view here, coding board view in claude-code-style and FIX-2773 | FIX-2773 | Two board reads in two apps, by design (above). Cross-spec review confirms |
-
-FIX-2771 (Teammates' people) shares nothing with this issue. FIX-2770's pending-asks read is not
-touched.
+Settled by the coordinator before review, and recorded in
+[SPEC.md → Where this meets its siblings](SPEC.md#where-this-meets-its-siblings--decided): the
+`Inbox.tsx` call sites are this issue's; `AskCard`'s `Ask` and answer call stay with FIX-2774; a
+task's asks matching the Inbox goes to FIX-2774's spec; worker rows from the roster view go to
+FIX-2775's spec; `send` has one contract with FIX-2772 (the client sets the request id, `send`
+returns it); the task row reads the task-list view.
 
 ## Considered and dropped
 
@@ -151,12 +145,12 @@ run a fresh one before the gate.
    DevTeam host only, no overlap.
 5. **Necessity** — yes: without it Shift Manager's allowlist can't empty.
 6. **Ergonomics** — a screen calls `useView` and `workforce.*`; no new concept.
-7. **Concerns** — `Inbox.tsx` edited by two children in parallel (recorded above).
+7. **Concerns** — `Inbox.tsx` edited by two children in parallel (settled: see the siblings section).
 
 | Finding | Objective | Changes the approach? | Disposition |
 |---|---|---|---|
 | A view can't pin the delegate list on first read | 1 | No | Recorded: shows what pinning would write (Decided, not asked) |
-| `Inbox.tsx` is edited by this issue and FIX-2774 | 7 | No | Recorded: boundaries table |
+| `Inbox.tsx` is edited by this issue and FIX-2774 | 7 | No | Recorded: settled in SPEC.md, siblings section |
 
 ## How it got here
 

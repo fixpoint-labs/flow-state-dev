@@ -86,7 +86,7 @@ modules are struck through.
 
   // @flow-state-dev/workforce: WorkforceClient
 - send(sessionId, message, { attachments? }): Promise<void>
-+ send(sessionId, message, { attachments?, taskId? }): Promise<{ requestId: string }>
++ send(sessionId, message, { attachments?, taskId? }): Promise<{ requestId: string }>  // the id the client set (FIX-2772 D2)
 + stopRun(sessionId, requestId): Promise<void>
 + upload(worker, request): Promise<FileContent>
 + addDelegate(sessionId, worker, note?): Promise<void>
@@ -143,7 +143,7 @@ flowchart LR
 | `WorkforceClient.stopRun` | `stopTurns`; board `cancel` | **Extends** the client: `stopTurns`' abort for one request by id. `cancel` ends the task ([D3](DECISIONS.md#d3)) |
 | `WorkforceClient.upload` | The Lab-wide `client.upload` | **Extends**: the same upload through the worker's flow, whose sign-in the send runs |
 | `addDelegate`, `removeDelegate` on the client | The coordinator's actions through `runAction` | **Composes** the existing actions, as `standingRules` does |
-| `send`'s `taskId` and `{ requestId }` | `sendTurn`'s `TurnTarget` | **Extends** `send`; the door is always `respond`, so the target needs no door |
+| `send`'s `taskId` and `{ requestId }` | `sendTurn`'s `TurnTarget` | **Extends** `send`; the door is always `respond`, so the target needs no door. The client sets the request id (FIX-2772's D2) and `send` returns it: one contract ([siblings](#where-this-meets-its-siblings--decided)) |
 | `useRequestStream`'s `completedAt` | `readRunRecord`'s `endedAtMs` | **Extends** the hook with the terminal event's time |
 | orchestration's item value types on `/tasks` | `task-plan-state.ts`'s inlined copies | **Extends**: `TaskChangeKind` exists on `/internal`; the board-meta value is typed where it is written |
 
@@ -166,6 +166,21 @@ an app needs to do without them.
   (FIX-2774); this issue changes only its review-hold types. The rest is FIX-2777's to delete.
 - **FIX-2778** (the closure): the 32 entries gone, the seven goals green on one `main` commit with
   their re-pointed controls, and the two new legs passing.
+
+## Where this meets its siblings · decided
+
+The coordinator settled these seams before review. They are not open.
+
+| Seam | With | Decided |
+|---|---|---|
+| `Inbox.tsx` calls `sendTurn`, `readSessionItems`, `flowUploader` and `askSessionOf` | FIX-2774 | This issue swaps those four call sites, because it deletes their modules (ER-3). FIX-2774 owns what the Inbox lists and draws. Both PRs edit `Inbox.tsx`; whichever merges second rebases |
+| `AskCard.tsx`, and `SpendSummary` in `spend.tsx` | FIX-2774 | This issue changes only `AskCard`'s review-hold types and the `SpendSummary` type, and Tasks' import of it. The `Ask` type and the answer call stay with FIX-2774 |
+| Whether a task's asks on the task screen must equal the Inbox's for that task | FIX-2774 | Carried into FIX-2774's spec, not this one. Here the task screen reads one task's asks per session |
+| Worker rows on these screens (name, flow), read from workforce's roster view | FIX-2775 | Carried into FIX-2775's spec, not this one |
+| workforce's `send`, `useSessionFeed`, `useRequestStream` | FIX-2772 | One combined `send` contract: the workforce client sets each send's request id (FIX-2772's D2), and `send` takes `taskId` and returns that id as `{ requestId }`. Whichever PR lands second rebases onto the other's `send`. `completedAt` on `useRequestStream` is additive |
+| The task row's read | FIX-2773 | Confirmed: Shift Manager's task row reads orchestration's task-list view, because its boards hold non-coding tasks. Teammates and claude-code-style read the coding board view |
+
+FIX-2771 shares nothing with this issue. FIX-2770's pending-asks read is not touched.
 
 ## Sign off
 
