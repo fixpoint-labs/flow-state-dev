@@ -174,7 +174,8 @@ not independent. The coordinator can run a fresh one before the gate.
   rule, so it is now an open question for the owner, with its membership rule and card stated
   and a goal leg. Retry and `R` re-run the view, which needs `refresh()` and `failure` on
   `useView`. `bump` and `answered` stay until FIX-2776 removes their one reader. The census
-  states its unit.
+  states its unit. Cursor (an independent pass; direction approved): `inboxSection` is named as
+  the merge the view lifts, and D1 tries narrower ledger hearing before a split.
 
 ## Notes from review
 
