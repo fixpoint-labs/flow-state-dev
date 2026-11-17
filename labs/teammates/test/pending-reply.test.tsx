@@ -25,11 +25,11 @@ afterEach(() => {
 });
 
 /** A row of the message log, as workforce's worker messages view answers it. */
-const logRow = (fields: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResourceState, "id" | "from" | "to" | "text" | "at">): WorkerMessageResourceState => ({
+const logEntry = (fields: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResourceState, "id" | "from" | "to" | "text" | "at">): WorkerMessageResourceState => ({
   exchange: fields.id, fromSession: "wks_from", fromFlow: "teammates", toSession: "wks_to", toFlow: "teammates", hop: 1, status: "unconfirmed", ...fields,
 });
-const ask = logRow({ id: "msg_question", from: LEAD, to: RESEARCHER, text: "Launch date?", replyRequested: true, at: 1 });
-const reply = logRow({ id: "msg_reply", from: RESEARCHER, to: LEAD, text: "Nov 12.", inReplyTo: "msg_question", exchange: "msg_question", at: 2 });
+const ask = logEntry({ id: "msg_question", from: LEAD, to: RESEARCHER, text: "Launch date?", replyRequested: true, at: 1 });
+const reply = logEntry({ id: "msg_reply", from: RESEARCHER, to: LEAD, text: "Nov 12.", inReplyTo: "msg_question", exchange: "msg_question", at: 2 });
 
 describe("which messages to a worker are still pending", () => {
   it("leaves out a waited send's answer: it was the tool's result, and no received line will ever land for it", () => {

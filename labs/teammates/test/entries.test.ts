@@ -97,11 +97,11 @@ describe("a session's steps in a popup", () => {
 });
 
 describe("how a sent message stands", () => {
-  const logRow = (fields: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResourceState, "id" | "from" | "to" | "text" | "at">): WorkerMessageResourceState => ({
+  const logEntry = (fields: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResourceState, "id" | "from" | "to" | "text" | "at">): WorkerMessageResourceState => ({
     exchange: fields.id, fromSession: "s_from", fromFlow: "agent", toSession: "s_to", toFlow: "agent", hop: 1, status: "delivered", ...fields,
   });
-  const sent = logRow({ id: "msg_1", from: "teammates.chief-of-staff", to: "teammates.researcher", text: "Launch date?", at: 1 });
-  const reply = logRow({ id: "msg_2", from: sent.to, to: sent.from, text: "Nov 12", at: 2, inReplyTo: "msg_1" });
+  const sent = logEntry({ id: "msg_1", from: "teammates.chief-of-staff", to: "teammates.researcher", text: "Launch date?", at: 1 });
+  const reply = logEntry({ id: "msg_2", from: sent.to, to: sent.from, text: "Nov 12", at: 2, inReplyTo: "msg_1" });
 
   it("is replied when a message answers it", () => {
     expect(answerIn([sent], "msg_1")).toBe("working");

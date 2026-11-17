@@ -23,9 +23,9 @@ export const IN_REPLY_TO_INDEX = "inReplyTo";
  * A message still open: on its way (`unconfirmed`), or asked for a reply that
  * hasn't come (no `answeredBy`) and neither refused nor undeliverable.
  */
-export function isOpenMessage(row: WorkerMessageResourceState): boolean {
-  if (row.status === "unconfirmed") return true;
-  return row.replyRequested === true && row.answeredBy === undefined && row.status !== "refused" && row.status !== "undeliverable";
+export function isOpenMessage(message: WorkerMessageResourceState): boolean {
+  if (message.status === "unconfirmed") return true;
+  return message.replyRequested === true && message.answeredBy === undefined && message.status !== "refused" && message.status !== "undeliverable";
 }
 
 /**
@@ -46,8 +46,8 @@ export const workerMessagesCollection = defineResourceCollection({
   // its declaration (`{ version: 2, value }`): the bump is what rebuilds the
   // index from the rows (`ResourceIndexDeclaration`).
   indexes: {
-    [OPEN_MESSAGES_INDEX]: (_key, row) => (isOpenMessage(row) ? [row.from, row.to] : null),
-    [IN_REPLY_TO_INDEX]: (_key, row) => row.inReplyTo
+    [OPEN_MESSAGES_INDEX]: (_key, message) => (isOpenMessage(message) ? [message.from, message.to] : null),
+    [IN_REPLY_TO_INDEX]: (_key, message) => message.inReplyTo
   }
 });
 

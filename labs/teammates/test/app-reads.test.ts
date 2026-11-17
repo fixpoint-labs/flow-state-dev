@@ -83,22 +83,22 @@ describe("worker talk", () => {
   const LEAD = "teammates.chief-of-staff";
   const RESEARCHER = "teammates.researcher";
   const WRITER = "teammates.writer";
-  const row = (id: string, at: number, fields: Partial<WorkerMessageResourceState>): WorkerMessageResourceState => ({
+  const logged = (id: string, at: number, fields: Partial<WorkerMessageResourceState>): WorkerMessageResourceState => ({
     id, from: LEAD, to: RESEARCHER, text: `text ${id}`, exchange: id, fromSession: "s_from", fromFlow: "agent", toSession: "s_to", toFlow: "agent", hop: 1, status: "delivered", at, ...fields,
   });
   // Every way a row stands, for Lead: to it and from it, open and closed, answered and not.
   const log = [
-    row("m01", 1, { from: RESEARCHER, to: LEAD, status: "unconfirmed" }), // on its way to Lead: pending
-    row("m02", 2, { from: WRITER, to: LEAD, status: "delivered" }), // landed: not pending
-    row("m03", 3, { from: WRITER, to: LEAD, status: "refused" }), // never lands
-    row("m04", 4, { replyRequested: true }), // Lead waits on researcher's reply
-    row("m05", 5, { to: WRITER, replyRequested: true, answeredBy: "m06" }), // answered
-    row("m06", 6, { from: WRITER, to: LEAD, inReplyTo: "m05", exchange: "m05" }),
-    row("m07", 7, { to: WRITER, replyRequested: true, answeredBy: "m08" }), // answered with no answer
-    row("m08", 8, { from: WRITER, to: LEAD, inReplyTo: "m07", exchange: "m07", noAnswer: true }),
-    row("m09", 9, { replyRequested: true, status: "undeliverable" }), // never landed: owes nothing
-    row("m10", 10, {}), // a plain message: owes nothing
-    row("m11", 11, { from: WRITER, to: RESEARCHER, status: "unconfirmed" }), // not Lead's
+    logged("m01", 1, { from: RESEARCHER, to: LEAD, status: "unconfirmed" }), // on its way to Lead: pending
+    logged("m02", 2, { from: WRITER, to: LEAD, status: "delivered" }), // landed: not pending
+    logged("m03", 3, { from: WRITER, to: LEAD, status: "refused" }), // never lands
+    logged("m04", 4, { replyRequested: true }), // Lead waits on researcher's reply
+    logged("m05", 5, { to: WRITER, replyRequested: true, answeredBy: "m06" }), // answered
+    logged("m06", 6, { from: WRITER, to: LEAD, inReplyTo: "m05", exchange: "m05" }),
+    logged("m07", 7, { to: WRITER, replyRequested: true, answeredBy: "m08" }), // answered with no answer
+    logged("m08", 8, { from: WRITER, to: LEAD, inReplyTo: "m07", exchange: "m07", noAnswer: true }),
+    logged("m09", 9, { replyRequested: true, status: "undeliverable" }), // never landed: owes nothing
+    logged("m10", 10, {}), // a plain message: owes nothing
+    logged("m11", 11, { from: WRITER, to: RESEARCHER, status: "unconfirmed" }), // not Lead's
   ];
   // The lines Lead's conversation shows: what it sent, and what it read.
   const sentIds = ["m04", "m05", "m07", "m09", "m10"];

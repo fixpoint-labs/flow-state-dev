@@ -21,7 +21,7 @@ const LEAD = "lead";
 const RESEARCHER = "researcher";
 
 /** A log row with what every row carries; `fields` says the rest. */
-function row(id: string, fields: Partial<WorkerMessageResourceState>): WorkerMessageResourceState {
+function logged(id: string, fields: Partial<WorkerMessageResourceState>): WorkerMessageResourceState {
   return {
     id,
     from: LEAD,
@@ -69,8 +69,8 @@ function boot(): BoardHost {
 }
 
 /** Write `rows` as `userId`, in `orgId`. */
-async function write(h: BoardHost, rows: WorkerMessageResourceState[], userId = "alice", orgId = ORG): Promise<void> {
-  const done = await h.act(userId, `writer-${userId}`, "write", { rows }, "log-writer", orgId);
+async function write(h: BoardHost, messages: WorkerMessageResourceState[], userId = "alice", orgId = ORG): Promise<void> {
+  const done = await h.act(userId, `writer-${userId}`, "write", { rows: messages }, "log-writer", orgId);
   expect(done.error).toBeUndefined();
 }
 
@@ -89,7 +89,7 @@ async function read(h: BoardHost, worker: string, ids?: string[], userId = "alic
   return client.view(workerMessagesViewRef(), { worker, ...(ids === undefined ? {} : { ids }) });
 }
 
-const idsOf = (rows: readonly { id: string }[]) => rows.map((r) => r.id);
+const idsOf = (listed: readonly { id: string }[]) => listed.map((m) => m.id);
 
 describe("a worker's open messages", () => {
   it("answers each message to or from the worker still on its way, or still owed an answer, oldest first, and no closed one", async () => {
@@ -97,16 +97,16 @@ describe("a worker's open messages", () => {
     try {
       await write(h, [
         // On its way to researcher: pending for researcher.
-        row("m1", { status: "unconfirmed" }),
+        logged("m1", { status: "unconfirmed" }),
         // Lead asked researcher for a reply, delivered, none yet: Lead is "Messaging researcher".
-        row("m2", { status: "delivered", replyRequested: true }),
+        logged("m2", { status: "delivered", replyRequested: true }),
         // Answered, refused, undeliverable, or delivered with no reply asked: closed.
-        row("m3", { status: "delivered", replyRequested: true, answeredBy: "m9" }),
-        row("m4", { status: "refused", replyRequested: true }),
-        row("m5", { status: "undeliverable" }),
-        row("m6", { status: "delivered" }),
+        logged("m3", { status: "delivered", replyRequested: true, answeredBy: "m9" }),
+        logged("m4", { status: "refused", replyRequested: true }),
+        logged("m5", { status: "undeliverable" }),
+        logged("m6", { status: "delivered" }),
         // Between two other workers: not lead's.
-        row("m7", { from: "writer", to: "editor", status: "unconfirmed" })
+        logged("m7", { from: "writer", to: "editor", status: "unconfirmed" })
       ]);
       expect(idsOf((await read(h, LEAD)).value)).toEqual(["m1", "m2"]);
       expect(idsOf((await read(h, RESEARCHER)).value)).toEqual(["m1", "m2"]);
@@ -121,9 +121,9 @@ describe("a worker's open messages", () => {
   it("drops a message once it lands, and once its answer comes", async () => {
     const h = boot();
     try {
-      await write(h, [row("m1", { status: "unconfirmed" }), row("m2", { status: "delivered", replyRequested: true })]);
+      await write(h, [logged("m1", { status: "unconfirmed" }), logged("m2", { status: "delivered", replyRequested: true })]);
       expect(idsOf((await read(h, LEAD)).value)).toEqual(["m1", "m2"]);
-      await write(h, [row("m1", { status: "delivered" }), row("m2", { status: "delivered", replyRequested: true, answeredBy: "m3" })]);
+      await write(h, [logged("m1", { status: "delivered" }), logged("m2", { status: "delivered", replyRequested: true, answeredBy: "m3" })]);
       expect((await read(h, LEAD)).value).toEqual([]);
     } finally {
       await h.dispose();
@@ -136,11 +136,11 @@ describe("the messages on screen", () => {
     const h = boot();
     try {
       await write(h, [
-        row("m1", { status: "delivered", replyRequested: true, answeredBy: "m2" }),
-        row("m2", { from: RESEARCHER, to: LEAD, inReplyTo: "m1", exchange: "m1", status: "delivered" }),
-        row("m3", { status: "delivered", replyRequested: true, answeredBy: "m4" }),
-        row("m4", { from: RESEARCHER, to: LEAD, inReplyTo: "m3", exchange: "m3", status: "delivered", noAnswer: true }),
-        row("m5", { status: "delivered" })
+        logged("m1", { status: "delivered", replyRequested: true, answeredBy: "m2" }),
+        logged("m2", { from: RESEARCHER, to: LEAD, inReplyTo: "m1", exchange: "m1", status: "delivered" }),
+        logged("m3", { status: "delivered", replyRequested: true, answeredBy: "m4" }),
+        logged("m4", { from: RESEARCHER, to: LEAD, inReplyTo: "m3", exchange: "m3", status: "delivered", noAnswer: true }),
+        logged("m5", { status: "delivered" })
       ]);
       // None is open: the ids alone bring them.
       expect((await read(h, LEAD)).value).toEqual([]);
@@ -165,13 +165,13 @@ describe("the messages on screen", () => {
   it("is heard on a write to the log, so a new open row and a new answer each reach a watching view", async () => {
     const h = boot();
     try {
-      await write(h, [row("m1", { status: "delivered", replyRequested: true })]);
+      await write(h, [logged("m1", { status: "delivered", replyRequested: true })]);
       const before = await read(h, LEAD, ["m1"]);
       // A write of a new row anywhere in the log is a resource notice under the log's root, on the user's topic: heard.
       const heard = before.hears?.find((hearing) => hearing.topic.scope === "user" && hearing.kinds.includes("resource"));
       expect(heard?.paths).toEqual(["workforce/messages"]);
       // And the read that follows it has the row.
-      await write(h, [row("m2", { from: RESEARCHER, to: LEAD, inReplyTo: "m1", exchange: "m1", status: "delivered" }), row("m3", { status: "unconfirmed" })]);
+      await write(h, [logged("m2", { from: RESEARCHER, to: LEAD, inReplyTo: "m1", exchange: "m1", status: "delivered" }), logged("m3", { status: "unconfirmed" })]);
       expect(idsOf((await read(h, LEAD, ["m1"])).value)).toEqual(["m1", "m2", "m3"]);
     } finally {
       await h.dispose();
@@ -183,7 +183,7 @@ describe("another user's messages", () => {
   it("another user, and the same user in another organization, passing the first user's worker and a live id get what an unknown id gets", async () => {
     const h = boot();
     try {
-      await write(h, [row("m1", { status: "unconfirmed" }), row("m2", { from: RESEARCHER, to: LEAD, inReplyTo: "m1", status: "delivered" })]);
+      await write(h, [logged("m1", { status: "unconfirmed" }), logged("m2", { from: RESEARCHER, to: LEAD, inReplyTo: "m1", status: "delivered" })]);
       expect(idsOf((await read(h, LEAD, ["m1"])).value)).toEqual(["m1", "m2"]);
       const unknown = (await read(h, LEAD, ["nope"], "bob")).value;
       expect(unknown).toEqual([]);
@@ -197,22 +197,22 @@ describe("another user's messages", () => {
 
 describe("what it reads", () => {
   it("reads through the indexes and by id, never the whole log", async () => {
-    const rows = [
-      row("m1", { status: "unconfirmed" }),
-      row("m2", { from: RESEARCHER, to: LEAD, inReplyTo: "m5", status: "delivered" }),
-      row("m5", { status: "delivered" })
+    const stored = [
+      logged("m1", { status: "unconfirmed" }),
+      logged("m2", { from: RESEARCHER, to: LEAD, inReplyTo: "m5", status: "delivered" }),
+      logged("m5", { status: "delivered" })
     ];
     const refOf = (state: WorkerMessageResourceState) => ({ state }) as unknown as ResourceRef<WorkerMessageResourceState>;
     const lookups: string[] = [];
     const log: WorkerMessageLog & { list(): Promise<never> } = {
       findBy: async (index, value) => {
         lookups.push(`${index}=${String(value)}`);
-        if (index === "open") return rows.filter((r) => r.status === "unconfirmed" && (r.from === value || r.to === value)).map(refOf);
-        return rows.filter((r) => r.inReplyTo === value).map(refOf);
+        if (index === "open") return stored.filter((r) => r.status === "unconfirmed" && (r.from === value || r.to === value)).map(refOf);
+        return stored.filter((r) => r.inReplyTo === value).map(refOf);
       },
       getOptional: async (key) => {
         lookups.push(`get=${String(key)}`);
-        const found = rows.find((r) => r.id === key);
+        const found = stored.find((r) => r.id === key);
         return found === undefined ? undefined : refOf(found);
       },
       list: async () => {

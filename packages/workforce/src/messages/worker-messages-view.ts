@@ -57,8 +57,8 @@ export async function readWorkerMessages(log: WorkerMessageLog, input: z.infer<t
     log.findBy(OPEN_MESSAGES_INDEX, input.worker),
     Promise.all(
       (input.ids ?? []).map(async (id) => {
-        const [row, answers] = await Promise.all([log.getOptional(id), log.findBy(IN_REPLY_TO_INDEX, id)]);
-        return [...(row === undefined ? [] : [row]), ...answers];
+        const [message, answers] = await Promise.all([log.getOptional(id), log.findBy(IN_REPLY_TO_INDEX, id)]);
+        return [...(message === undefined ? [] : [message]), ...answers];
       })
     )
   ]);
@@ -71,7 +71,7 @@ export async function readWorkerMessages(log: WorkerMessageLog, input: z.infer<t
 export function defineWorkerMessagesView(): WorkerMessagesView {
   return defineView({
     scope: "user",
-    key: (row) => row.id,
+    key: (message) => message.id,
     block: handler({
       name: "workforce-worker-messages",
       inputSchema,

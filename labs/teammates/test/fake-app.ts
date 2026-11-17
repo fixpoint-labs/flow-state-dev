@@ -589,7 +589,7 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
   const retries: { sessionId: string; requestId: string }[] = [];
 
   // Workforce's roster writes and reads, as its roster flow answers them.
-  const rosterRows = (): RosterEntry[] =>
+  const rosterEntries = (): RosterEntry[] =>
     [...workers.values()].filter((w) => !fired.has(w.row.id)).map(({ row }) => ({
       id: row.id,
       flow: row.takesTasks ? CODER_FLOW : "agent",
@@ -633,7 +633,7 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
     return { id };
   };
   /** A log row as the worker messages view answers it: answered once a reply names it, delivered to the recipient's conversation. */
-  const logRow = (m: AppTalk): WorkerMessageResourceState => {
+  const logEntry = (m: AppTalk): WorkerMessageResourceState => {
     const answer = log.find((r) => r.inReplyTo === m.id);
     return {
       id: m.id, from: m.from, to: m.to, text: m.text, exchange: m.id, at: m.at, hop: 1, status: "unconfirmed",
@@ -645,7 +645,7 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
   };
   /** The worker messages view: the worker's open messages (every row of the double's is on its way), and each id's row and answer. */
   const workerMessages = ({ worker: id, ids = [] }: { worker: string; ids?: string[] }) =>
-    log.filter((m) => m.from === id || m.to === id || ids.includes(m.id) || (m.inReplyTo !== undefined && ids.includes(m.inReplyTo))).sort((a, b) => a.at - b.at).map(logRow);
+    log.filter((m) => m.from === id || m.to === id || ids.includes(m.id) || (m.inReplyTo !== undefined && ids.includes(m.inReplyTo))).sort((a, b) => a.at - b.at).map(logEntry);
   /** A session's items as the server stores them, for a message popup's feed: a turn starts at your line or a received message. */
   const itemsOf = (sessionId: string) => {
     let requestId = "turn-0";
@@ -665,7 +665,7 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
         unreachable -= 1;
         throw new TypeError("fetch failed");
       }
-      return rosterRows();
+      return rosterEntries();
     },
     context: () => ({ folder: "/work/launch-site", folderProblem: null, model: "openai/gpt-6-luna", harness: "cursor", delegates: { [LEAD]: "all" as const } }),
     readiness: () => [
@@ -856,7 +856,7 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
     client,
     hire: async ({ name, role }) => hire({ id: name, description: role }),
     fire: async (workerId) => void (await fire(workerId)),
-    roster: () => rosterRows(),
+    roster: () => rosterEntries(),
     rosterWrites,
 
     watchTasks(sessionId, onChange) {

@@ -17,7 +17,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
       ensureWorkerSession: async ({ worker }: { worker: string }) => ({ id: `conv_${worker}`, flowKind: "agent" }),
       roster: async () => [],
       // The calls' own roster watch, which a conversation's open waits on: an empty roster at once.
-      watchRoster: (onRoster: (rows: unknown[]) => void) => (onRoster([]), () => {}),
+      watchRoster: (onRoster: (entries: unknown[]) => void) => (onRoster([]), () => {}),
     }),
   };
 });
