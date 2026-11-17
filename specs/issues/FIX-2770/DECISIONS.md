@@ -47,7 +47,7 @@ refresh. Then `run` would do and the kind could go.
 |---|---|
 | **Instead of** | The engine working out the worker flows itself, or an optional list that reads every flow on the host when absent |
 | **Because** | ER-6 limits the read to the worker flows the Inbox walks today and forbids widening it to every flow. Which flows are workers' is the worker inventory's answer, one layer up: the engine never depends on workforce. FIX-2774's view already reads that inventory on the server, so it passes the kinds, as `workerFlowNames` does in the browser now. A required, bounded list with no wildcard is how "never widened" holds at the verb. The kinds come from server code, never from a caller's body; the identity is closed over as on every session read |
-| **Locks in** | `userSuspensions({ flowKinds })` takes 0 to 50 kinds. An empty list answers `{ suspensions: [], more: false }` without a query; more than 50 throws a `FlowStateConfigError` naming the limit. Matched on the request's `flow_kind` column, which every store indexes. Which kinds a block passes is that block's review, at FIX-2774 |
+| **Locks in** | `userSuspensions({ flowKinds })` takes 0 to 50 kinds. An empty list is allowed on purpose, since a Lab with no workers has an empty Inbox: it answers `{ suspensions: [], more: false }` without a query. More than 50 is the only refusal: it throws a `FlowStateConfigError` naming the limit. Matched on the request's `flow_kind` column, which every store indexes. Which kinds a block passes is that block's review, at FIX-2774 |
 
 ![D2, who names the flows the read covers. Chosen: the caller, required and at most 50 kinds. Instead of: the engine works out the worker flows. It comes down to layering: the engine stays below workforce, which knows what a worker is. Price: a block can pass more kinds than the Inbox walks. Tie: the Inbox's flows today are the same either way. Locks in a required flowKinds list. Flips if a second kit needs the worker flows as a host fact](figures/d2-caller-names-flows.svg)
 
@@ -104,13 +104,22 @@ absence.
   structural typing would not catch it, so the tests check the keys at runtime.
   `data` is the author's payload, unbounded, and the card draws the prompt, not it. A field
   FIX-2774 finds missing is an additive change to this type in its PR, never a second read.
-- **The worker link.** The engine has no notion of a worker. The projection carries the flow
-  instance and session an answer goes through; FIX-2774's view maps a session to its worker from
-  the sessions it already lists (`sessions.list({ ids })`), on the server.
+- **The worker link is FIX-2774's, under one constraint.** The engine has no notion of a worker,
+  so the projection carries the flow instance and session an answer goes through, and FIX-2774
+  maps a session to its worker on the server. An earlier draft prescribed `sessions.list({ ids })`
+  for that. It can't be used: `list` records the user's session list
+  (`sessionReadObserver.list` → `{ scope: "user", what: "sessions" }`), which hears `run` on the
+  user topic whether or not `ids` is passed (`PEER_KINDS.sessions`), and every request write with
+  a session publishes `run` there (`requestNotices`). A view combining it with this read would run
+  again on every turn start and finish, which D1 exists to prevent. **The constraint FIX-2774's
+  spec settles:** the worker lookup must not hear `run` on the user topic. Where the mapping
+  comes from (a field the server stamps where this read can carry it, or a per-session read whose
+  hearing is narrower) is FIX-2774's design, against this constraint.
 - **A view's admission still applies.** In a view, a row whose flow instance has its own resolver
   that refuses this caller is left out, as the session list leaves out such a session
   (`admitListedSession`). That is a credential check per instance, after the query, not a scope
-  filter: scope is all in the query.
+  filter: scope is all in the query. ER-6's "never a filter after the store" is about the user,
+  tenant, organization and flow predicates, so this check doesn't conflict with it.
 - **The ask predicate moves.** `suspensionShape`, `SuspensionShape` and the schema classification
   they read move to `contracts/src/types/suspension.ts`, beside `isUserSuspension` and
   `suspendForUserKindOf`, re-exported by core. `@flow-state-dev/react` keeps exporting both
@@ -120,7 +129,9 @@ absence.
   identifiers outside Shift Manager and orchestration's Inbox, so the code says "user
   suspension": the term `isUserSuspension` already uses. No glossary entry changes.
 - **What the read hears.** One recorded read, `{ scope: "user", what: "suspensions" }`, hears
-  `suspension` on the user topic, and nothing else. An ask that passes its `expiresAt` unanswered
+  `suspension` on the user topic, and nothing else. The goal's `c:quiet` leg also checks the
+  view's whole recorded hearing, so FIX-2774 can run the same leg over its combined view (this
+  read, the worker lookup and the task holds) and see a broad dependency fail it. An ask that passes its `expiresAt` unanswered
   is dropped by the next read; what wakes the view is the sweep's write that expires it.
 - **Tests, each shown failing first.** A store conformance suite
   (`engine/src/stores/testing/`, run by memory, filesystem, SQLite, and Postgres when
@@ -193,6 +204,14 @@ Round 1 (#5348, 2026-11-17), all folded as implementation obligations; no decisi
 - Codex 4605209524: the SQL adapters prove the missing-request row drops in the one joined statement, by statement shape and count.
 - Codex 4605209542 and Gitar 4605155408: one rule for the flow list's bounds; D2's *Because* no longer says "non-empty".
 
+Round 2 (#5348, 2026-11-17):
+- Greptile 4605238531: confirmed against the code: `sessions.list({ ids })` hears `run` on the user topic. The worker lookup's design moves to FIX-2774 with the constraint named under *Decided, not asked → The worker link*; `c:quiet` checks the view's whole hearing.
+- Cursor 4605230964: an empty flow list is allowed on purpose; more than 50 is the only refusal.
+- Cursor 4605230977: one sentence on why the per-instance admission doesn't conflict with ER-6.
+- Cursor 4605230985, for the implementer: one shared helper derives `kind` and `shape` and builds the row from selected fields, used by every adapter, so the four stores can't drift. SQL adapters import it from core, not the engine.
+- Cursor 4605231000, for the implementer: `createInMemoryStores` and `createFilesystemStores` pass the request store they build to the suspension store; no store reaches a sibling any other way.
+- Cursor 4605231010: the slicing order is the implementer's build plan; declined here.
+
 ## How it got here
 
 - **Draft** — ER-6 built as a fifth request-host session read over one required, joined store
@@ -201,3 +220,5 @@ Round 1 (#5348, 2026-11-17), all folded as implementation obligations; no decisi
 - **Review round 1** — five findings folded as obligations: runtime key checks on the projection,
   the null-tenant case and owned scope keys, a paging cursor, one joined SQL statement proved by
   shape, and one rule for the flow list's bounds. D1 to D3 unchanged.
+- **Review round 2** — the worker lookup the draft prescribed would hear every turn; its design
+  moves to FIX-2774 under a named constraint, and the quiet leg checks the view's whole hearing.
