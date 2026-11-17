@@ -54,6 +54,14 @@ function buildPages(scratch: string, patches: readonly Patch[]): string {
   symlinkSync(join(LAB, "node_modules"), join(root, "node_modules"));
   const tsconfig = join(root, "tsconfig.json");
   writeFileSync(tsconfig, readFileSync(tsconfig, "utf8").replace('"../../tsconfig.base.json"', JSON.stringify(join(REPO_ROOT, "tsconfig.base.json"))));
+  // The build config reads its build-inputs plugin, and the repository it records, from two folders up: the checkout's.
+  const viteConfig = join(root, "vite.config.ts");
+  writeFileSync(
+    viteConfig,
+    readFileSync(viteConfig, "utf8")
+      .replace('"../../scripts/build-inputs.mjs"', JSON.stringify(join(REPO_ROOT, "scripts/build-inputs.mjs")))
+      .replace('fileURLToPath(new URL("../..", import.meta.url))', JSON.stringify(REPO_ROOT)),
+  );
   for (const patch of patches) {
     const path = join(root, patch.file);
     const before = readFileSync(path, "utf8");

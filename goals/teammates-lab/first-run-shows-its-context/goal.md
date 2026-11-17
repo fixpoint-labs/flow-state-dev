@@ -44,3 +44,4 @@ requests on the server, read through the public client, not the page.
 |------|--------|-------|---------|-------|
 | 2026-11-04 | e2307a57 + this change, pre-commit | none | PASS | strip showed `folder …/site-1389`, `model openai/goal-model-3289`, `default harness Claude Code`; Codex chip `✗Codex: Run \`codex login\`, or set CODEX_API_KEY`, then ✓ after login and Re-check; "What can the team do for me?" in the composer, nothing sent |
 | 2026-11-04 | same | none | control `fixed-chips`: FAIL **codex-chip** as required | The Codex chip read `✓codex` before any login |
+| 2026-11-17 | FIX-2629 closure branch | n/a | PASS | The scratch copy's Vite config reads the checkout's build-inputs plugin (FIX-2643 moved it two folders up), and the lead is Chief of Staff |

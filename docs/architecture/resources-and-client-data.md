@@ -74,14 +74,17 @@ Resources can also carry file-like text content. Use `content` for inline templa
 - `readContent()` returns rendered content (`string`) or `null` if no content exists.
 - `readContentRaw()` returns the stored raw body (`string`) or `null`.
 - Empty content (`""`) is valid and distinct from `null`.
-- Template rendering is **opt-in** via `render`, e.g. `render: renderTemplate` from `@flow-state-dev/engine`. Nested `{{#each}}` blocks are not supported. Templates longer than 512 KB are rejected.
+- Rendering is **opt-in**, one of two ways. `render` is a function you supply, `(content, state) => string`, handed the raw content and the resource's state. `contentTemplate` is a role-tagged Markdown template (`parseResourceTemplate` from `@flow-state-dev/core/resource-template`, or a path the server loads at start through `loadResourceTemplate`), rendered against the resource's state by LiquidJS with strict variables; templates longer than 512 KB are rejected. `render` and `contentTemplate` are mutually exclusive.
 - LLM content access is **tool-driven and opt-in**. Add `readResourceContentTool()` / `writeResourceContentTool()` to a generator's `tools` list when you want these capabilities available.
 
 ```ts
 const soul = defineResource({
   stateSchema: z.object({ values: z.array(z.string()), tone: z.string() }),
-  content: "## Values\n{{#each values}}- {{this}}\n{{/each}}Tone: {{tone}}",
-  render: renderTemplate,
+  content: "## Values\n{{values}}\nTone: {{tone}}",
+  render: (content, state) =>
+    content
+      .replace("{{values}}", (state.values as string[]).map((v) => `- ${v}`).join("\n"))
+      .replace("{{tone}}", String(state.tone)),
   llmReadable: true,
   llmWritable: false,
 });
@@ -129,7 +132,7 @@ A resource (or collection) can opt into a typed-edge graph by declaring `edges: 
 - **`.edges` ref API.** When `edges` is declared, the live `ResourceRef` / `ResourceContext` (and each collection-instance ref) gains an `.edges` accessor: `add`, `supersede` (bi-temporal close, never a hard delete), `remove`, `all({ at? })`, `neighbors`, `egoGraph`, `shortestPath`, and `pruneDangling`. Mutators route through the resource's existing `updateState`, so edge writes emit the same `resource_change` events as any state write. The edge schema and pure traversal helpers are the reusable `@flow-state-dev/core/graph` primitive; the slot is what wires them onto the resource.
 - **Bounding.** `maxEdges` caps growth; the cull drops superseded tombstones first, then lowest-confidence active edges, and never evicts the edge just added (so `add()` always returns a stored edge).
 
-The first consumer is the memory `relations` tier (see `apps/docs/docs/memory/relations`), which stores typed relationships between fact subjects on the semantic resource's edge slot.
+The first consumer is the memory `relations` tier (see `apps/docs/docs/memory/relations.md`), which stores typed relationships between fact subjects on the semantic resource's edge slot.
 
 ### Three-Wave Loading
 

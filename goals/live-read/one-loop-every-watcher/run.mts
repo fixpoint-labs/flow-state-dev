@@ -70,8 +70,8 @@ const ORG = "acme";
 const PATCHES: Record<string, ModulePatch[]> = {
   // No queue: every notice heard starts a read of its own.
   "no-coalesce": [{ module: "packages/client/src/live/coalesce.ts", from: String.raw`if \(!running\) return run\(notice\);`, to: "return run(notice);" }],
-  // The path rule says no to every path, even with nothing ruled out.
-  "rule-says-no": [{ module: "packages/client/src/live/paths.ts", from: String.raw`if \(roots === undefined\) return true;`, to: "return false;" }],
+  // The path rule (`mayHold`, in contracts since FIX-2734) says no to every path, even with nothing ruled out.
+  "rule-says-no": [{ module: "packages/contracts/src/types/view-hearing.ts", from: String.raw`if \(roots === undefined\) return true;`, to: "return false;" }],
   // A failed read schedules nothing: it waits for the next change.
   "no-retry": [
     {
