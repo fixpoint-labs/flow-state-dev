@@ -212,7 +212,7 @@ export async function legA(n: number, ask: string, failures: string[], notes: st
       failures.push(`a:row-changes: the coding task never held its work for review (${now?.status}: ${now?.statusNote ?? ""})`);
     } else {
       await until(async () => ((await shown(page)).rows.find((r) => r.id === filed.id)?.column === "review" ? true : undefined), 10_000, 100);
-      await page.locator(`main[aria-label="Main thread"] [data-entry="thread"][data-task-id="${filed.id}"]`).getByRole("button", { name: "Resolve" }).click();
+      await page.locator(`main[aria-label="Main thread"] [data-entry="thread"][data-task-id="${filed.id}"]`).getByRole("button", { name: /^(Resolve|Merge locally)$/ }).first().click();
       const done = await until(async () => (taskOf(filed.id)?.status === "completed" ? true : undefined), 3 * 60_000, 250);
       if (done === undefined) failures.push(`a:row-changes: ${filed.id} never read completed after Resolve`);
     }
