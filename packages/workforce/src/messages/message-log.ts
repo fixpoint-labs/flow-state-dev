@@ -23,7 +23,7 @@ export const IN_REPLY_TO_INDEX = "inReplyTo";
  * A message still open: on its way (`unconfirmed`), or asked for a reply that
  * hasn't come (no `answeredBy`) and neither refused nor undeliverable.
  */
-export function isOpenMessage(message: WorkerMessageResourceState): boolean {
+function isOpenMessage(message: WorkerMessageResourceState): boolean {
   if (message.status === "unconfirmed") return true;
   return message.replyRequested === true && message.answeredBy === undefined && message.status !== "refused" && message.status !== "undeliverable";
 }
