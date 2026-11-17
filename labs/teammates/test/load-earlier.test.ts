@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
-import { createLabAdapter, type ConversationView } from "../src/adapter";
+import { createAppCalls, type ConversationView } from "../src/app";
 import { liveOver } from "./live-over";
 
 const line = (n: number) => ({
@@ -46,7 +46,7 @@ const until = async (check: () => boolean) => {
 describe("a long conversation", () => {
   it("opens on its newest turns, offers Load earlier, and reaches its first line with it", async () => {
     let view: ConversationView | undefined;
-    const stop = createLabAdapter(clientOver(260)).watchConversation("wks_1", (next) => (view = next));
+    const stop = createAppCalls(clientOver(260)).watchConversation("wks_1", (next) => (view = next));
     await until(() => view !== undefined);
     expect(view!.entries).toHaveLength(200);
     expect(view!.loadEarlier).toBeTypeOf("function");
@@ -61,7 +61,7 @@ describe("a long conversation", () => {
 
   it("offers nothing earlier when the whole conversation fits", async () => {
     let view: ConversationView | undefined;
-    const stop = createLabAdapter(clientOver(3)).watchConversation("wks_2", (next) => (view = next));
+    const stop = createAppCalls(clientOver(3)).watchConversation("wks_2", (next) => (view = next));
     await until(() => view !== undefined);
     stop();
     expect(view!.entries).toHaveLength(3);

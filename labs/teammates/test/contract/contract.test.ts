@@ -1,6 +1,6 @@
 /**
  * The lab's contract matrix: six scenarios, each run against the test double
- * (`test/fake-lab.ts`) and against the real adapter over the lab's own host
+ * (`test/fake-app.ts`) and against the real adapter over the lab's own host
  * (`host.mts`, in process, with only the model scripted and every coding run
  * on harness-manager's scripted coder). Both columns share every assertion,
  * so a package change that alters what the adapter hands the screen fails
@@ -26,16 +26,16 @@ import type { ModelResolver } from "@flow-state-dev/core/types";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { pluggable, scriptedModels, waitFor } from "../../../test-support/contract";
 import { openTeammates } from "../../host.mts";
-import { createLabAdapter, type BoardTask, type ConversationEntry, type ConversationView, type LabAdapter, type Unsubscribe } from "../../src/adapter";
+import { createAppCalls, type BoardTask, type ConversationEntry, type ConversationView, type AppCalls, type Unsubscribe } from "../../src/app";
 import { Entry } from "../../src/components/Entry";
-import { createFixtureLab } from "../fake-lab";
+import { createFixtureApp } from "../fake-app";
 
 const CHIEF = "teammates.chief-of-staff";
 const CODER = "teammates.cursor";
 
 /** One column of the matrix: an adapter, and what a scenario does to the server behind it. */
 interface Target {
-  lab: LabAdapter;
+  lab: AppCalls;
   /** The next line's turn fails at its model call. */
   failNextTurn(): void;
   /** The host stops answering; `restore` brings it back. */
@@ -85,7 +85,7 @@ const lastUserLine = (said: string) => said.slice(said.lastIndexOf('"role":"user
 /** The fake; `asks` makes its coding run ask {@link QUESTION} before it edits. */
 function fakeTarget(asks: boolean): Target {
   // A coding run that committed waits for your review, as the real coders' runs do.
-  const fake = createFixtureLab({ speed: 0.2, asks, review: true });
+  const fake = createFixtureApp({ speed: 0.2, asks, review: true });
   return {
     lab: fake,
     failNextTurn: () => fake.failNextTurn(FAILURE),
@@ -97,7 +97,7 @@ function fakeTarget(asks: boolean): Target {
 }
 
 /** The workers' turns, by the worker a step is for. Only the model is scripted; every tool runs for real. */
-function labScript(failing: { next: boolean }): ModelResolver {
+function appScript(failing: { next: boolean }): ModelResolver {
   const worker = (said: string) => /You are ([\w ]+?),/.exec(said)?.[1];
   return scriptedModels(
     {
@@ -158,7 +158,7 @@ async function realTarget(): Promise<Target> {
     workdir: repo,
     runsRoot: join(data, "runs"),
     scriptedHarnessStepMs: 50,
-    modelResolver: labScript(failing),
+    modelResolver: appScript(failing),
   });
   const inProcess = createInProcessFetch(flowState as never) as unknown as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   const aborts: string[] = [];
@@ -178,7 +178,7 @@ async function realTarget(): Promise<Target> {
     return inProcess(input, init);
   });
   const client = createClient({ userId: "you", baseUrl: "", fetcher: plug.fetcher as never });
-  const lab = createLabAdapter(client, { fetcher: plug.fetcher as never });
+  const lab = createAppCalls(client, { fetcher: plug.fetcher as never });
   return {
     lab,
     failNextTurn: () => (failing.next = true),
@@ -243,9 +243,9 @@ function follow<T>(watch: (on: (value: T) => void) => Unsubscribe): Followed<T> 
   };
 }
 
-const conversation = (lab: LabAdapter, id: string) => follow<ConversationView>((on) => lab.watchConversation(id, on));
-const tasks = (lab: LabAdapter, id: string) => follow<BoardTask[]>((on) => lab.watchTasks(id, on));
-const connection = (lab: LabAdapter, id: string) => follow<SessionConnectionStatus>((on) => lab.watchConnection(id, on));
+const conversation = (lab: AppCalls, id: string) => follow<ConversationView>((on) => lab.watchConversation(id, on));
+const tasks = (lab: AppCalls, id: string) => follow<BoardTask[]>((on) => lab.watchTasks(id, on));
+const connection = (lab: AppCalls, id: string) => follow<SessionConnectionStatus>((on) => lab.watchConnection(id, on));
 
 /** Reads `read` every 100 ms until `check` holds for it, or fails after `ms`. */
 async function readUntil<T>(read: () => Promise<T>, check: (value: T) => boolean, ms = 15_000): Promise<T> {
@@ -260,7 +260,7 @@ async function readUntil<T>(read: () => Promise<T>, check: (value: T) => boolean
 }
 
 /** Presses Stop until the conversation reads nothing running. */
-async function stopAll(lab: LabAdapter, id: string, view: Followed<ConversationView>) {
+async function stopAll(lab: AppCalls, id: string, view: Followed<ConversationView>) {
   for (let press = 0; press < 10 && view.latest()!.running; press++) {
     await lab.interrupt(id);
     await waitFor(1_000);

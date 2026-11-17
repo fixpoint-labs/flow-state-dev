@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { attemptDurationMs, commandsRun, runSummaryLine, type BoardTask, type LabAdapter, type LabTalk, type LabWorker, type SessionStep, type WorkingNow } from "../adapter";
+import { attemptDurationMs, commandsRun, runSummaryLine, type BoardTask, type AppCalls, type AppTalk, type AppWorker, type SessionStep, type WorkingNow } from "../app";
 import type { RecordedWork } from "@flow-state-dev/harness-manager/browser";
 import { harnessName } from "../lib/harness";
 import { taskPresentation } from "../lib/task-presentation";
@@ -53,7 +53,7 @@ export const taskLabel = (line: string, task: { harness?: string; model?: string
  * `harness:` differs from the harness of the worker the task was filed for.
  * A task that isn't a coding task, or whose worker's harness isn't known, has none.
  */
-function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly LabWorker[]): LabWorker[] {
+function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly AppWorker[]): AppWorker[] {
   const own = coders.find((w) => w.id === task.to)?.harness;
   if (own === undefined) return [];
   return coders.filter((w) => w.takesTasks && w.harness !== undefined && w.harness !== own);
@@ -66,7 +66,7 @@ export const PULL_REQUEST_HINT = "Merged? Say so here and I'll check.";
  * *PR open · #7*, each number a link to its pull request once its run
  * session's record is read, and the line that says how to wake the task.
  */
-export function PullRequestOpen({ adapter, task }: { adapter: LabAdapter; task: BoardTask }) {
+export function PullRequestOpen({ adapter, task }: { adapter: AppCalls; task: BoardTask }) {
   const [links, setLinks] = useState<ReadonlyMap<number, string>>(new Map());
   const numbers = (task.pullRequests ?? []).flatMap((pr) => (pr.number === null ? [] : [pr.number]));
   const key = numbers.join(",");
@@ -112,7 +112,7 @@ export type AnswerStatus = "working" | "replied" | "no answer";
  * (one a waited send took as its result is in the log too); `no answer` when
  * the reply is the framework's "no answer"; `working` until then.
  */
-export const answerIn = (talk: readonly LabTalk[], messageId: string): AnswerStatus => {
+export const answerIn = (talk: readonly AppTalk[], messageId: string): AnswerStatus => {
   const reply = talk.find((row) => row.inReplyTo === messageId);
   if (reply !== undefined) return reply.noAnswer === true ? "no answer" : "replied";
   return "working";
@@ -134,13 +134,13 @@ const followUpText = (task: Pick<BoardTask, "title">) => `Follow up on "${task.t
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
 export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
-  adapter: LabAdapter;
+  adapter: AppCalls;
   popup: Popup;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   /** The roster's coding workers: a failed or cancelled coding task can be re-run on another's harness. */
-  coders: readonly LabWorker[];
+  coders: readonly AppWorker[];
   /** For a task popup, who filed it, to ask for a follow-up once it ended; absent when its conversation isn't on the roster. */
   followUp?: FollowUp;
   onClose: () => void;
@@ -163,12 +163,12 @@ export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, fo
  * was cancelled. The board decides each; the row shows its words.
  */
 function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
-  adapter: LabAdapter;
+  adapter: AppCalls;
   popup: Extract<Popup, { kind: "task" }>;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
-  coders: readonly LabWorker[];
+  coders: readonly AppWorker[];
   followUp?: FollowUp;
   onClose: () => void;
   onMissing?: () => void;
@@ -282,7 +282,7 @@ const CHIPS_SHOWN = 8;
  * changes, so an ended task shows all of it. `undefined` until read, or when
  * the read fails: the line then goes without files rather than say a wrong count.
  */
-export function useRecordedFiles(adapter: LabAdapter, task: BoardTask): RecordedWork["files"] | undefined {
+export function useRecordedFiles(adapter: AppCalls, task: BoardTask): RecordedWork["files"] | undefined {
   const { runSessionId: sessionId, runRequestId: requestId, status } = task;
   // Kept with the run it was read for: a retry's new run never shows the last attempt's files.
   const run = sessionId === undefined || requestId === undefined ? undefined : `${sessionId}\n${requestId}`;
@@ -304,7 +304,7 @@ export function useRecordedFiles(adapter: LabAdapter, task: BoardTask): Recorded
 }
 
 /** "Edited 2 files · ran 5 commands · 2m 14s", and a chip per file the run recorded, named by its file name. */
-function TaskSummary({ adapter, task, steps }: { adapter: LabAdapter; task: BoardTask; steps: readonly SessionStep[] }) {
+function TaskSummary({ adapter, task, steps }: { adapter: AppCalls; task: BoardTask; steps: readonly SessionStep[] }) {
   const files = useRecordedFiles(adapter, task) ?? null;
   // One per path (a steer or a review's changes record the path again), and only a path an edit landed on:
   // one whose every attempt failed was tried, not edited.
@@ -378,7 +378,7 @@ function TaskOutcomeActions({ task, followUp }: { task: BoardTask; followUp?: Fo
  * it is doing now (the tool call in flight, the plan step in progress, its
  * last note), else "Working...", with how long it has been running.
  */
-function WorkingLine({ adapter, task, runSessionId }: { adapter: LabAdapter; task: BoardTask; runSessionId: string }) {
+function WorkingLine({ adapter, task, runSessionId }: { adapter: AppCalls; task: BoardTask; runSessionId: string }) {
   const requestId = task.runRequestId;
   const watch = useCallback<(sessionId: string, onChange: (now: WorkingNow) => void) => () => void>(
     (sessionId, onChange) => adapter.watchWorking({ sessionId, ...(requestId === undefined ? {} : { requestId }) }, onChange),
@@ -402,7 +402,7 @@ const decisionLine = (answer: ReviewAnswer) => (answer.verdict === "accepted" ? 
 
 /** A coding run's review, with the registry's card: its commits and the judge's verdict, and Accept or Ask for changes. */
 function TaskReview({ adapter, sessionId, task, onAnswered }: {
-  adapter: LabAdapter;
+  adapter: AppCalls;
   sessionId: string;
   task: BoardTask;
   /** The answer went through. */
@@ -424,7 +424,7 @@ function TaskReview({ adapter, sessionId, task, onAnswered }: {
 }
 
 /** A question the task's run asked you, with a box for your answer; the run goes on with it. */
-function QuestionPopup({ adapter, sessionId, task }: { adapter: LabAdapter; sessionId: string; task: BoardTask }) {
+function QuestionPopup({ adapter, sessionId, task }: { adapter: AppCalls; sessionId: string; task: BoardTask }) {
   const [words, setWords] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -488,7 +488,7 @@ function QuestionPopup({ adapter, sessionId, task }: { adapter: LabAdapter; sess
 
 /** One message: what was sent, what the worker that read it did, and its reply. */
 function MessagePopup({ adapter, popup, nameOf, lookOf, onClose }: {
-  adapter: LabAdapter;
+  adapter: AppCalls;
   popup: Extract<Popup, { kind: "message" }>;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;

@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { noticeMetadata, noticeText, type TaskNotice } from "@flow-state-dev/orchestration/tasks";
 import { delegateAnswerMetadata } from "@flow-state-dev/workforce/browser";
-import { destinationOf, exchangeOf, toBoardTask, toEntries, toSteps, type ConversationEntry } from "../src/adapter";
+import { destinationOf, exchangeOf, toBoardTask, toEntries, toSteps, type ConversationEntry } from "../src/app";
 import { answerIn } from "../src/components/Popups";
 
 const CODER = "teammates.claude-code";

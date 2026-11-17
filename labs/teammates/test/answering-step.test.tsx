@@ -2,7 +2,7 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SessionConnectionStatus } from "@flow-state-dev/client";
-import { stepRun, toEntries, type ConversationEntry, type ConversationView, type LabAdapter, type SessionStep } from "../src/adapter";
+import { stepRun, toEntries, type ConversationEntry, type ConversationView, type AppCalls, type SessionStep } from "../src/app";
 import { Conversation } from "../src/components/Conversation";
 import { STALE_CLASS } from "../src/components/flow-state/connection-banner";
 import { answeringStep } from "../src/lib/status";
@@ -60,7 +60,7 @@ describe("the answering line's step", () => {
       watchConversation: (_: string, onChange: (view: ConversationView) => void) => { subscribers.add(onChange); onChange(initial); return () => { subscribers.delete(onChange); }; },
       watchConnection: (_: string, onChange: typeof connect) => { connect = onChange; onChange("live"); return () => {}; },
       watchWindow: quiet, watchTalk: quiet, watchTasks: quiet, watchActivity: quiet,
-    } as unknown as LabAdapter;
+    } as unknown as AppCalls;
     const worker = { id: "lead", name: "Lead", role: "Coordinates work" };
     const view = render(<Conversation adapter={adapter} worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} harnessOf={() => undefined} onFire={async () => {}} onOpen={() => {}} />);
     const line = () => view.container.querySelector("[data-chat-activity]");

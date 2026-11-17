@@ -11,7 +11,7 @@
  * title counts is wider, a teammate with an unread line or a need, once.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BoardTask } from "../adapter";
+import type { BoardTask } from "../app";
 import { endedAt, type Need } from "./status";
 
 /** The page's own name, the title with nothing waiting. */

@@ -6,7 +6,7 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LabTask, ReviewDetail } from "../src/lab";
+import type { AppTask, ReviewDetail } from "../src/app";
 import { ThreadCard } from "../src/components/ThreadCard";
 import { RUN, reviewStop, stubServer, underReview, verdictOf, type Posted } from "./stub-server";
 
@@ -21,11 +21,11 @@ const REVIEW: ReviewDetail = {
   lands: ["pull-request", "merge"],
 };
 
-const codingTask = (patch: Partial<LabTask> = {}): LabTask =>
+const codingTask = (patch: Partial<AppTask> = {}): AppTask =>
   ({
     ...underReview({ id: "t-1", title: "Add a CHANGELOG line", goal: "Add a line", status: "in_progress", harness: "claude-code" }),
     ...patch,
-  }) as LabTask;
+  }) as AppTask;
 
 /**
  * A run session holding `review` as its review stop (none: no stop yet), and the review answers
@@ -42,12 +42,12 @@ function stubRun(review: ReviewDetail | undefined, answer?: (posted: Posted) => 
 }
 
 /** Draws `task`'s card, its board holding `task` as drawn; `rerender` draws `next`, and the board holds it from then. */
-function renderCard(task: LabTask, run: ReturnType<typeof stubRun>, onOpen = vi.fn()) {
+function renderCard(task: AppTask, run: ReturnType<typeof stubRun>, onOpen = vi.fn()) {
   run.server.board["s-1"] = [task];
   const { rerender } = render(run.server.wrap(<ThreadCard sessionId="s-1" task={task} onOpen={onOpen} />));
   return {
     onOpen,
-    rerender: (next: LabTask) => {
+    rerender: (next: AppTask) => {
       run.server.board["s-1"] = [next];
       rerender(run.server.wrap(<ThreadCard sessionId="s-1" task={next} onOpen={onOpen} />));
     },

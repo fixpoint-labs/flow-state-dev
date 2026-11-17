@@ -7,12 +7,12 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { App } from "../src/App";
-import { closeLabs, openTestLab, seedSession, type TestLab } from "./lab-host";
+import { App } from "../src/components/App";
+import { closeApps, openTestApp, seedSession, type TestApp } from "./app-host";
 
-let lab: TestLab;
+let lab: TestApp;
 beforeEach(async () => {
-  lab = await openTestLab();
+  lab = await openTestApp();
   await seedSession(lab, "session", "Review the vendor shortlist");
   await seedSession(lab, "session", "Draft the launch note");
 });
@@ -20,7 +20,7 @@ afterEach(async () => {
   cleanup();
   // The app keeps what is open in the page's address; each test starts on a bare one.
   window.history.replaceState(null, "", "/");
-  await closeLabs();
+  await closeApps();
 });
 
 const list = () => screen.getByRole("navigation", { name: "Sessions" });

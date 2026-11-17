@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
-import { labCalls, labTaskOf } from "../src/lab";
+import { appCalls, appTaskOf } from "../src/app";
 
 type Sent = { flow: string; action: string; input: Record<string, unknown>; sessionId: string };
 
@@ -72,14 +72,14 @@ const RUNNING = { id: "t1", goal: "Fix the typo", status: "in_progress", attempt
 describe("the lab's task actions", () => {
   it("sends a steer typed in a thread with no open question through the board client's steer", async () => {
     const lab = fakeClient([RUNNING]);
-    await labCalls(lab.client).sayInThread("s1", { ...RUNNING, title: RUNNING.goal, status: "in_progress", asks: [] }, "Use the British spelling.");
+    await appCalls(lab.client).sayInThread("s1", { ...RUNNING, title: RUNNING.goal, status: "in_progress", asks: [] }, "Use the British spelling.");
     expect(lab.sent).toEqual([{ flow: "agent", action: "updateTask_tasks", input: { id: "t1", message: "Use the British spelling." }, sessionId: "s1" }]);
   });
 
   it("answers the question the board holds now, even when the drawn row was read before it opened", async () => {
     // The screen drew the row with no question; the run has since asked one. The line answers it, not steers.
     const lab = fakeClient([{ ...RUNNING, asks: [questionHold("ask-1")] }]);
-    await labCalls(lab.client).sayInThread("s1", { ...RUNNING, title: RUNNING.goal, status: "in_progress", asks: [] }, "British.");
+    await appCalls(lab.client).sayInThread("s1", { ...RUNNING, title: RUNNING.goal, status: "in_progress", asks: [] }, "British.");
     expect(lab.sent).toEqual([{ flow: "agent", action: "updateTask_tasks", input: { id: "t1", answers: "ask-1", message: "British." }, sessionId: "s1" }]);
   });
 
@@ -88,28 +88,28 @@ describe("the lab's task actions", () => {
     // Accepting round 2 unseen would land work nobody read, so nothing is sent.
     const lab = fakeClient([{ ...RUNNING, asks: [reviewHold("stop-2")] }]);
     const drawn = { ...RUNNING, title: RUNNING.goal, status: "in_progress" as const, asks: [reviewHold("stop-1")] };
-    await expect(labCalls(lab.client).resolve("s1", drawn)).rejects.toThrow(`The thread "t1" has a newer review; look it over first.`);
-    await expect(labCalls(lab.client).requestChanges("s1", drawn, "Shorter, please.")).rejects.toThrow(/newer review/);
+    await expect(appCalls(lab.client).resolve("s1", drawn)).rejects.toThrow(`The thread "t1" has a newer review; look it over first.`);
+    await expect(appCalls(lab.client).requestChanges("s1", drawn, "Shorter, please.")).rejects.toThrow(/newer review/);
     expect(lab.answered).toEqual([]);
   });
 
   it("answers the review round it drew while the board still holds it", async () => {
     const lab = fakeClient([{ ...RUNNING, asks: [reviewHold("stop-1")] }]);
     const drawn = { ...RUNNING, title: RUNNING.goal, status: "in_progress" as const, asks: [reviewHold("stop-1")] };
-    await labCalls(lab.client).requestChanges("s1", drawn, "Shorter, please.");
+    await appCalls(lab.client).requestChanges("s1", drawn, "Shorter, please.");
     expect(lab.answered.map((a) => a.body.suspensionId)).toEqual(["stop-1"]);
   });
 
   it("refuses a review answer when the board holds no review, whatever the drawn row says", async () => {
     const lab = fakeClient([{ ...RUNNING, asks: [] }]);
     const drawn = { ...RUNNING, title: RUNNING.goal, status: "in_progress" as const, asks: [reviewHold("stop-1")] };
-    await expect(labCalls(lab.client).resolve("s1", drawn)).rejects.toThrow(`The thread "t1" isn't waiting on your review.`);
+    await expect(appCalls(lab.client).resolve("s1", drawn)).rejects.toThrow(`The thread "t1" isn't waiting on your review.`);
     expect(lab.answered).toEqual([]);
   });
 
   it("cancels, releases and retries on the session's own board, and hands back the dependents a cancel took", async () => {
     const lab = fakeClient([RUNNING], (sent) => (sent.input.status === "cancelled" ? { ok: true, cancelled: ["t2"] } : { ok: true }));
-    const actions = labCalls(lab.client).taskActions("s1");
+    const actions = appCalls(lab.client).taskActions("s1");
     expect(await actions.cancel("t1")).toEqual(["t2"]);
     await actions.release("t1");
     await actions.retry("t1");
@@ -124,13 +124,13 @@ describe("the lab's task actions", () => {
 
   it("reads the board on the instance of its flow that owns the session, not the base flow", async () => {
     const lab = fakeClient([RUNNING], undefined, "agent:desk");
-    await labCalls(lab.client).taskActions("s1").steer("t1", "Faster, please.");
+    await appCalls(lab.client).taskActions("s1").steer("t1", "Faster, please.");
     expect(lab.sent.map((s) => s.flow)).toEqual(["agent:desk"]);
   });
 
   it("rejects with the board's own words when it refuses", async () => {
     const lab = fakeClient([RUNNING], () => ({ ok: false, error: "Task t1 is already cancelled." }));
-    await expect(labCalls(lab.client).taskActions("s1").retry("t1")).rejects.toThrow("Task t1 is already cancelled.");
+    await expect(appCalls(lab.client).taskActions("s1").retry("t1")).rejects.toThrow("Task t1 is already cancelled.");
   });
 
 });
@@ -154,29 +154,29 @@ const boardRow = (row: Partial<CodingBoardTask>): CodingBoardTask => ({
 describe("a coding board row, as the screen draws it", () => {
   it("waits on you for its first open hold, a confirm read as input", () => {
     const hold = (kind: string, prompt: string) => ({ ask: { kind, prompt } }) as unknown as CodingBoardTask["asks"][number];
-    expect(labTaskOf(boardRow({ asks: [hold("review", "Review the change")] }), "s1").openHold).toEqual({ kind: "review", prompt: "Review the change" });
-    expect(labTaskOf(boardRow({ asks: [hold("confirm", "Go ahead?"), hold("question", "Which one?")] }), "s1").openHold).toEqual({ kind: "input", prompt: "Go ahead?" });
-    expect(labTaskOf(boardRow({}), "s1").openHold).toBeUndefined();
+    expect(appTaskOf(boardRow({ asks: [hold("review", "Review the change")] }), "s1").openHold).toEqual({ kind: "review", prompt: "Review the change" });
+    expect(appTaskOf(boardRow({ asks: [hold("confirm", "Go ahead?"), hold("question", "Which one?")] }), "s1").openHold).toEqual({ kind: "input", prompt: "Go ahead?" });
+    expect(appTaskOf(boardRow({}), "s1").openHold).toBeUndefined();
   });
 
   it("carries the view's error, harness and pull request numbers, and nothing for a null", () => {
-    const failed = labTaskOf(boardRow({ status: "errored", error: "The export timed out after 30s.", harness: "codex", pullRequests: [7] }), "s1");
+    const failed = appTaskOf(boardRow({ status: "errored", error: "The export timed out after 30s.", harness: "codex", pullRequests: [7] }), "s1");
     expect(failed).toMatchObject({ error: "The export timed out after 30s.", harness: "codex", pullRequests: [{ number: 7, url: null, title: null }] });
-    const plain = labTaskOf(boardRow({}), "s1");
+    const plain = appTaskOf(boardRow({}), "s1");
     expect(plain.error).toBeUndefined();
     expect(plain.harness).toBeUndefined();
     expect(plain.pullRequests).toBeUndefined();
     // How a review ended is a finished coding task's only.
     expect(plain.review).toBeUndefined();
-    expect(labTaskOf(boardRow({ status: "completed", harness: "codex", review: "deadline" }), "s1").review).toBe("deadline");
+    expect(appTaskOf(boardRow({ status: "completed", harness: "codex", review: "deadline" }), "s1").review).toBe("deadline");
   });
 
   it("names the run its work is read from, once a run has started", () => {
     const run = { sessionId: "run-1", requestId: "req-1", startedAt: 5 } as CodingBoardTask["run"];
-    expect(labTaskOf(boardRow({ run }), "s1")).toMatchObject({ runLink: { sessionId: "run-1", requestId: "req-1" }, run: { startedAt: 5 }, startedAt: 5 });
-    expect(labTaskOf(boardRow({ run }), "s1").runLink?.flow).toBeUndefined();
+    expect(appTaskOf(boardRow({ run }), "s1")).toMatchObject({ runLink: { sessionId: "run-1", requestId: "req-1" }, run: { startedAt: 5 }, startedAt: 5 });
+    expect(appTaskOf(boardRow({ run }), "s1").runLink?.flow).toBeUndefined();
     // The flow its run's session runs on, where the run's own stream is read.
-    expect(labTaskOf(boardRow({ run, runFlow: "coder" }), "s1").runLink).toEqual({ sessionId: "run-1", requestId: "req-1", flow: "coder" });
-    expect(labTaskOf(boardRow({}), "s1").runLink).toBeUndefined();
+    expect(appTaskOf(boardRow({ run, runFlow: "coder" }), "s1").runLink).toEqual({ sessionId: "run-1", requestId: "req-1", flow: "coder" });
+    expect(appTaskOf(boardRow({}), "s1").runLink).toBeUndefined();
   });
 });

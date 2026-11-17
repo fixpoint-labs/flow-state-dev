@@ -13,7 +13,7 @@
  *   (FIX-2152 ER-1, by path), within ER-1's caps;
  * - no screen file reaches the server itself: the entry imports only
  *   `createClient`, and no file imports another client value or calls
- *   `.subscribe(` or `.flow(`, `src/lab.ts` included;
+ *   `.subscribe(` or `.flow(`, `src/app/` included;
  * - every exported object type in a `src/` module that is not a component
  *   is on `SCREEN_TYPES`, the types the screen computes itself; a row a view
  *   returns takes its type from the view;
@@ -58,7 +58,7 @@ describe("the lab's inventory", () => {
     expect(overCaps()).toEqual([]);
   });
 
-  it("reaches the server from no screen file at all: src/lab.ts reads and sends through package hooks", () => {
+  it("reaches the server from no screen file at all: src/app/ reads and sends through package hooks", () => {
     expect(reachingTheServer()).toEqual([]);
   });
 

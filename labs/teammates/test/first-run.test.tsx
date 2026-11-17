@@ -8,10 +8,11 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { LabWorker } from "../src/adapter";
-import { App } from "../src/App";
+import type { AppWorker } from "../src/app";
+import { App } from "../src/components/App";
+import { AppProvider } from "../src/app";
 import { delegatesOf, emptyLine, starterLines } from "../src/lib/first-run";
-import { createFixtureLab } from "./fake-lab";
+import { createFixtureApp } from "./fake-app";
 
 afterEach(() => {
   cleanup();
@@ -19,7 +20,7 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-const row = (id: string, name: string, extra: Partial<LabWorker> = {}): LabWorker => ({ id, name, role: "", ...extra });
+const row = (id: string, name: string, extra: Partial<AppWorker> = {}): AppWorker => ({ id, name, role: "", ...extra });
 const context = (delegates: Record<string, "all" | string[]>) => ({ folder: "/x", folderProblem: null, model: "m", harness: "cursor", delegates });
 
 describe("the first run's lines", () => {
@@ -45,7 +46,7 @@ describe("the first run's lines", () => {
 
 describe("the context strip", () => {
   it("shows the folder, model and harness the server read, and the harness chips with their remedy", async () => {
-    render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
+    render(<AppProvider calls={createFixtureApp({ speed: 0.05 })}><App /></AppProvider>);
     const strip = await screen.findByRole("region", { name: "Working context" });
     await waitFor(() => expect(within(strip).getByTestId("context-folder").textContent).toBe("folder /work/launch-site"));
     expect(within(strip).getByTestId("context-model").textContent).toBe("model openai/gpt-6-luna");
@@ -55,22 +56,22 @@ describe("the context strip", () => {
   });
 
   it("warns when a coding run's checkout of the folder would be refused", async () => {
-    const lab = createFixtureLab({ speed: 0.05 });
-    render(<App adapter={{ ...lab, readContext: async () => ({ ...(await lab.readContext()), folderProblem: "the repository does not ignore .fsdev/ask" }) }} />);
+    const lab = createFixtureApp({ speed: 0.05 });
+    render(<AppProvider calls={{ ...lab, readContext: async () => ({ ...(await lab.readContext()), folderProblem: "the repository does not ignore .fsdev/ask" }) }}><App /></AppProvider>);
     expect((await screen.findByTestId("context-folder-problem")).textContent).toContain("does not ignore .fsdev/ask");
   });
 });
 
 describe("an empty conversation", () => {
   it("offers starter lines; a click fills the composer and sends nothing", async () => {
-    const lab = createFixtureLab({ speed: 0.05 });
+    const lab = createFixtureApp({ speed: 0.05 });
     let sends = 0;
-    render(<App adapter={{ ...lab, send: async (...args) => (sends++, lab.send(...args)) }} />);
+    render(<AppProvider calls={{ ...lab, send: async (...args) => (sends++, lab.send(...args)) }}><App /></AppProvider>);
     // A teammate hired now has an empty conversation.
     await screen.findByRole("region", { name: "Working context" });
     const hired = await lab.hire({ name: "scout", role: "Finds facts.", instructions: "Find facts." });
     cleanup();
-    render(<App adapter={{ ...lab, send: async (...args) => (sends++, lab.send(...args)) }} />);
+    render(<AppProvider calls={{ ...lab, send: async (...args) => (sends++, lab.send(...args)) }}><App /></AppProvider>);
     fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${hired.name}`) }));
     const lines = await screen.findByRole("list", { name: "Starter lines" });
     fireEvent.click(within(lines).getByRole("button", { name: "What can you help me with?" }));

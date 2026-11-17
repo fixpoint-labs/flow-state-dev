@@ -17,7 +17,7 @@ import { createClient } from "@flow-state-dev/client";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { SET_SESSION_FIELDS_ACTION } from "@flow-state-dev/workforce/browser";
 import { scriptedModels } from "../../test-support/contract";
-import { openLab } from "../host.mts";
+import { openClaudeCodeStyle } from "../host.mts";
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -41,7 +41,7 @@ async function lab(listed: string[], data: string) {
   const modelResolver = scriptedModels({
     "agent-answer": ({ step }) => (step === 0 ? { call: { name: "readProjectSource", args: { path: "README.md" } } } : { text: "Read." }),
   }) as never;
-  const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: listed, scriptedStepMs: 20, modelResolver });
+  const { flowState } = await openClaudeCodeStyle({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: listed, scriptedStepMs: 20, modelResolver });
   cleanup.push(async () => {
     await (flowState as unknown as { dispose?: () => Promise<void> }).dispose?.();
     rmSync(data, { recursive: true, force: true });

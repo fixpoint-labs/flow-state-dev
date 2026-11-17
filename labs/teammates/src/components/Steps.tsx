@@ -1,4 +1,4 @@
-import { stepRun, type SessionStep } from "../adapter";
+import { stepRun, type SessionStep } from "../app";
 import { MarkdownText } from "./flow-state/message-response";
 import { ToolRun } from "./ToolRun";
 

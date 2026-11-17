@@ -34,7 +34,7 @@ import {
   stopProcessGroup,
   type ModulePatch,
 } from "../../lib/index.mts";
-import { createLabAdapter, type ConversationEntry, type ConversationView } from "../../../labs/teammates/src/adapter.ts";
+import { createAppCalls, type ConversationEntry, type ConversationView } from "../../../labs/teammates/src/app/index.ts";
 import { sleep, startTeammates } from "../lab.mts";
 
 const fixture = loadFixture<{ worker: string; path: string; line: string; decoys: Record<string, string>; asks: string[] }>(import.meta.url);
@@ -49,7 +49,7 @@ const SETTLE_MS = 3_000;
 /** The `popup-only` control: the conversation draws no tool steps, as before FIX-2393; the popup still does. */
 const POPUP_ONLY: ModulePatch[] = [
   {
-    module: "labs/teammates/src/adapter.ts",
+    module: "labs/teammates/src/app/conversations.ts",
     from: String.raw`const step = toolStep\(item, ended\);`,
     to: "continue;",
   },
@@ -115,7 +115,7 @@ await runGoal(async (failures, tell) => {
     const value = `ORCHID-${randomInt(1000, 9999)}`;
     const lab = await startTeammates(dir, USER, {}, seedWorkdir(join(dir, "workdir"), value));
     try {
-      const adapter = createLabAdapter(createClient({ userId: USER, baseUrl: lab.origin }));
+      const adapter = createAppCalls(createClient({ userId: USER, baseUrl: lab.origin }));
       const sessionId = await adapter.openConversation(fixture.worker);
       const seen: Seen[] = [];
       const stop = adapter.watchConversation(sessionId, (view) => seen.push({ at: Date.now(), view }));

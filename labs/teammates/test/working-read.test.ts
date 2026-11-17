@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { Client, WireNotice } from "@flow-state-dev/client";
-import { createLabAdapter, type WorkingNow } from "../src/adapter";
+import { createAppCalls, type WorkingNow } from "../src/app";
 import { liveOver } from "./live-over";
 
 const tool = (id: string, status: string, command: string) => ({
@@ -106,7 +106,7 @@ describe("a running task's working line, as the adapter reads it", () => {
       { title: "Add regression test", status: "in_progress" },
     ]);
     let now: WorkingNow = {};
-    const stop = createLabAdapter(client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
+    const stop = createAppCalls(client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
     await until(() => now.inFlight !== undefined && now.plan !== undefined);
     stop();
     expect(now.inFlight).toEqual({ tool: "Bash", args: { command: "pnpm test" } });
@@ -122,7 +122,7 @@ describe("a running task's working line, as the adapter reads it", () => {
     const crashed = { ...tool("t0", "in_progress", "rm -rf build"), requestId: "req_old" };
     const { client } = clientWith([crashed, tool("t1", "completed", "ls")]);
     const seen: WorkingNow[] = [];
-    const stop = createLabAdapter(client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => seen.push(next));
+    const stop = createAppCalls(client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => seen.push(next));
     await until(() => seen.length > 0);
     await new Promise((r) => setTimeout(r, 50));
     stop();
@@ -133,7 +133,7 @@ describe("a running task's working line, as the adapter reads it", () => {
     // The session stream sends an item once it is finished: stored is the finished `ls` only.
     const lab = clientWith([tool("t1", "completed", "ls")], undefined, [tool("t1", "completed", "ls"), tool("t2", "in_progress", "pnpm test")]);
     let now: WorkingNow = {};
-    const stop = createLabAdapter(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
+    const stop = createAppCalls(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
     await until(() => now.inFlight !== undefined);
     stop();
     expect(now.inFlight).toEqual({ tool: "Bash", args: { command: "pnpm test" } });
@@ -143,7 +143,7 @@ describe("a running task's working line, as the adapter reads it", () => {
   it("reconnects a dropped request stream and resumes it, so a call that starts after the drop still shows", async () => {
     const lab = clientWith([tool("t1", "completed", "ls")], undefined, [tool("t1", "completed", "ls"), tool("t2", "in_progress", "pnpm test")], 1);
     let now: WorkingNow = {};
-    const stop = createLabAdapter(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
+    const stop = createAppCalls(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
     await until(() => now.inFlight !== undefined);
     stop();
     expect(now.inFlight).toEqual({ tool: "Bash", args: { command: "pnpm test" } });
@@ -154,7 +154,7 @@ describe("a running task's working line, as the adapter reads it", () => {
   it("has nothing in flight once the feed holds the call's finished copy, whatever the request stream last said", async () => {
     const lab = clientWith([tool("t2", "completed", "pnpm test")], undefined, [tool("t2", "in_progress", "pnpm test")]);
     const seen: WorkingNow[] = [];
-    const stop = createLabAdapter(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => seen.push(next));
+    const stop = createAppCalls(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => seen.push(next));
     await until(() => lab.streamed.length > 0 && seen.length > 0);
     await new Promise((r) => setTimeout(r, 50));
     stop();
@@ -164,7 +164,7 @@ describe("a running task's working line, as the adapter reads it", () => {
   it("reads the plan again when the harness writes it, and not on the run's other notices", async () => {
     const lab = clientWith([tool("t1", "in_progress", "pnpm test")], [{ title: "Fix the ordering", status: "in_progress" }]);
     let now: WorkingNow = {};
-    const stop = createLabAdapter(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
+    const stop = createAppCalls(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
     await until(() => now.plan !== undefined);
     lab.setPlan([
       { title: "Fix the ordering", status: "completed" },
@@ -184,7 +184,7 @@ describe("a running task's working line, as the adapter reads it", () => {
   it("has nothing in flight once every call finished, and no plan from a run that records none", async () => {
     const { client } = clientWith([tool("t1", "completed", "ls")]);
     const seen: WorkingNow[] = [];
-    const stop = createLabAdapter(client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => seen.push(next));
+    const stop = createAppCalls(client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => seen.push(next));
     await until(() => seen.length > 0);
     await new Promise((r) => setTimeout(r, 50));
     stop();

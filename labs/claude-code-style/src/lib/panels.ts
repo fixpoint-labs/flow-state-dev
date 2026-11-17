@@ -1,6 +1,6 @@
 /**
  * Whether the sessions list and the right pane are collapsed, and the keys
- * that toggle them (`[` and `]`, see `useLabKeys`).
+ * that toggle them (`[` and `]`, see `useAppKeys`).
  *
  * Each collapses on its own so the thread can take the window: the list to a
  * rail with its two actions, the pane to a strip with its name. The pick is

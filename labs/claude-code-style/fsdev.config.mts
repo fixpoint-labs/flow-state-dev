@@ -1,10 +1,10 @@
-/** What `fsdev dev --app @flow-state-dev/claude-code-style` serves: `openLab` (`host.mts`) on the settings the README's "Run it" lists. */
+/** What `fsdev dev --app @flow-state-dev/claude-code-style` serves: `openClaudeCodeStyle` (`host.mts`) on the settings the README's "Run it" lists. */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { delimiter, resolve } from "node:path";
 import { setupCommandFrom } from "@flow-state-dev/workspace";
 import { operatorGitHubToken } from "@flow-state-dev/workforce";
-import { checkCommands, openLab } from "./host.mts";
+import { checkCommands, openClaudeCodeStyle } from "./host.mts";
 
 const env = process.env;
 const data = resolve(env.CLAUDE_CODE_STYLE_DATA ?? ".fsdev/claude-code-style");
@@ -13,7 +13,7 @@ mkdirSync(data, { recursive: true });
 const startedIn = () => spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).stdout?.trim() ?? "";
 const setup = setupCommandFrom(env.CLAUDE_CODE_STYLE_SETUP, "CLAUDE_CODE_STYLE_SETUP");
 
-const { flowState } = await openLab({
+const { flowState } = await openClaudeCodeStyle({
   data,
   userId: env.CLAUDE_CODE_STYLE_USER ?? "u_lab",
   model: env.CLAUDE_CODE_STYLE_MODEL ?? "openai/gpt-5.4",

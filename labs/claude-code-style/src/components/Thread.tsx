@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
-import { useLab, useThread, type LabProject, type LabSession, type LabTask, type ThreadEntry } from "../lab";
+import { useApp, useThread, type AppProject, type AppSession, type AppTask, type ThreadEntry } from "../app";
 import { elapsed, useNow } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
 import { cn } from "../lib/utils";
@@ -37,15 +37,15 @@ export function Thread({
   onOpenThread,
   onViewTasks,
 }: {
-  session: LabSession;
-  project: LabProject | undefined;
+  session: AppSession;
+  project: AppProject | undefined;
   /** The session's task rows, as the app reads them for this thread and its pane; `undefined` until read. */
-  tasks: LabTask[] | undefined;
+  tasks: AppTask[] | undefined;
   onOpenThread: (taskId: string) => void;
   /** Show where this session's background tasks are listed. */
   onViewTasks?: () => void;
 }) {
-  const lab = useLab();
+  const lab = useApp();
   const mode = modeOfWorker(session.worker);
   const view = useThread(session.id, mode?.pane === "board");
   // What a line that names a task reads of it, and opens it with.

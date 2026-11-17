@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
-import { createLabAdapter, toBoardTask } from "../src/adapter";
+import { createAppCalls, toBoardTask } from "../src/app";
 import { liveOver } from "./live-over";
 
 /**
@@ -54,7 +54,7 @@ describe("a task's buttons act on the board of the conversation that filed it", 
   it("re-run files the task again on the other worker, the old brief kept and a line naming the old task by title", async () => {
     const { client, sent } = boardClient({ ok: true, taskId: "task_2" }, failedRow);
     const task = toBoardTask(failedRow, () => "cursor");
-    const id = await createLabAdapter(client).taskActions("wks_cos").rerun(task, "teammates.claude-code");
+    const id = await createAppCalls(client).taskActions("wks_cos").rerun(task, "teammates.claude-code");
 
     expect(id).toBe("task_2");
     expect(sent.map((s) => s.action)).toEqual(["getTask_tasks", "createTask_tasks"]);
@@ -70,7 +70,7 @@ describe("a task's buttons act on the board of the conversation that filed it", 
   it("re-run of a task filed with no brief carries just the line naming it", async () => {
     const { context: _, ...bare } = failedRow;
     const { client, sent } = boardClient({ ok: true, taskId: "task_2" }, { ...bare, status: "cancelled" });
-    await createLabAdapter(client).taskActions("wks_cos").rerun(toBoardTask({ ...bare, status: "cancelled" }), "teammates.codex");
+    await createAppCalls(client).taskActions("wks_cos").rerun(toBoardTask({ ...bare, status: "cancelled" }), "teammates.codex");
     expect(sent[1]!.input.context).toBe('This re-runs the task "Fix the typo", which was cancelled.');
   });
 
@@ -78,7 +78,7 @@ describe("a task's buttons act on the board of the conversation that filed it", 
     // Only what the board's list read carries: an old task's history copy is past the loaded window.
     const listed = { id: failedRow.id, title: failedRow.title, goal: failedRow.goal, assignee: failedRow.assignee, status: failedRow.status };
     const { client, sent } = boardClient({ ok: true, taskId: "task_2" }, failedRow);
-    await createLabAdapter(client).taskActions("wks_cos").rerun(toBoardTask(listed, () => "cursor"), "teammates.claude-code");
+    await createAppCalls(client).taskActions("wks_cos").rerun(toBoardTask(listed, () => "cursor"), "teammates.claude-code");
     const filed = sent.find((s) => s.action === "createTask_tasks")!;
     expect(filed.input).toMatchObject({ labels: ["docs"], priority: 2 });
     expect(String(filed.input.context).startsWith(`${failedRow.context}\n\n`)).toBe(true);
@@ -86,13 +86,13 @@ describe("a task's buttons act on the board of the conversation that filed it", 
 
   it("re-run files nothing when the whole task can't be read", async () => {
     const { client, sent } = boardClient({ ok: false, error: "No task task_1 on this board." });
-    await expect(createLabAdapter(client).taskActions("wks_cos").rerun(toBoardTask(failedRow), "teammates.claude-code")).rejects.toThrow(/No task task_1/);
+    await expect(createAppCalls(client).taskActions("wks_cos").rerun(toBoardTask(failedRow), "teammates.claude-code")).rejects.toThrow(/No task task_1/);
     expect(sent.map((s) => s.action)).toEqual(["getTask_tasks"]);
   });
 
   it("cancel, steer, release and retry go to the same board's own actions", async () => {
     const { client, sent } = boardClient({ ok: true });
-    const actions = createLabAdapter(client).taskActions("wks_cos");
+    const actions = createAppCalls(client).taskActions("wks_cos");
     await actions.cancel("task_1");
     await actions.steer("task_1", "Only line 1.");
     await actions.release("task_1");
@@ -107,7 +107,7 @@ describe("a task's buttons act on the board of the conversation that filed it", 
 
   it("a refusal shows as the board's own words", async () => {
     const { client } = boardClient({ ok: false, error: 'already_open: task "Fix the typo" (task_2) is this same work for teammates.claude-code' }, failedRow);
-    await expect(createLabAdapter(client).taskActions("wks_cos").rerun(toBoardTask(failedRow), "teammates.claude-code")).rejects.toThrow(/^already_open: /);
+    await expect(createAppCalls(client).taskActions("wks_cos").rerun(toBoardTask(failedRow), "teammates.claude-code")).rejects.toThrow(/^already_open: /);
   });
 });
 
@@ -153,7 +153,7 @@ describe("a task's brief, which the board's list read leaves out", () => {
     const until = async (check: () => boolean) => {
       for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
     };
-    const stop = createLabAdapter(client).watchTasks("wks_cos", (next) => (tasks = next));
+    const stop = createAppCalls(client).watchTasks("wks_cos", (next) => (tasks = next));
     await until(() => tasks[0]?.boardStatus === "in_progress" && subscriptions.length > 0);
     await new Promise((r) => setTimeout(r, 50));
     expect(tasks[0]).toMatchObject({ context: failedRow.context, labels: ["docs"], priority: 2 });
@@ -201,7 +201,7 @@ describe("a task retried after its run ended", () => {
     const until = async (check: () => boolean) => {
       for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
     };
-    const stop = createLabAdapter(client).watchTasks("wks_cos", (next) => (tasks = next));
+    const stop = createAppCalls(client).watchTasks("wks_cos", (next) => (tasks = next));
     await until(() => tasks[0]?.error === failedRow.error && subscriptions.length > 0);
     expect(tasks[0]).toMatchObject({ boardStatus: "errored", error: failedRow.error });
 

@@ -15,11 +15,11 @@ import { PUBLIC_REENTRY_SOURCES } from "@flow-state-dev/engine";
 import { entriesOf, RETRYABLE_SOURCES, type ThreadEntry } from "../src/lib/thread-entries";
 import { Entry } from "../src/components/Entry";
 import { Thread } from "../src/components/Thread";
-import { closeLabs, openTestLab, readUntil, type TestLab } from "./lab-host";
+import { closeApps, openTestApp, readUntil, type TestApp } from "./app-host";
 
 afterEach(async () => {
   cleanup();
-  await closeLabs();
+  await closeApps();
 });
 
 /** An `error` item as `runAction.ts` writes one for a failed request. */
@@ -102,9 +102,9 @@ describe("the line a failed turn draws", () => {
 });
 
 /** A host whose main worker fails each line in `failing` once, with `<line> failed`, and answers it on a retry. */
-async function failingLab(failing: string[]): Promise<TestLab> {
+async function failingApp(failing: string[]): Promise<TestApp> {
   const failed = new Set<string>();
-  return openTestLab({
+  return openTestApp({
     scripts: {
       "agent-answer": ({ said }) => {
         const line = failing.find((text) => said.slice(said.lastIndexOf('"role":"user"')).includes(text));
@@ -119,14 +119,14 @@ async function failingLab(failing: string[]): Promise<TestLab> {
 }
 
 /** Send `line` in session `sessionId` and wait until its turn has ended. */
-async function sendAndSettle(lab: TestLab, sessionId: string, line: string) {
+async function sendAndSettle(lab: TestApp, sessionId: string, line: string) {
   await lab.calls.send(sessionId, line);
   await readUntil(() => lab.client.sessions.requests(sessionId, { limit: 20 }), (requests) => requests.length > 0 && requests.every((r) => r.status !== "in_progress"));
 }
 
 describe("the main thread", () => {
   it("shows a failed turn's line with the engine's reason, and Retry runs it again as a new request", async () => {
-    const lab = await failingLab(["Fix the build"]);
+    const lab = await failingApp(["Fix the build"]);
     const row = await lab.calls.openSession("session", lab.project!.id);
     await sendAndSettle(lab, row.id, "Fix the build");
     render(lab.wrap(<Thread session={row} project={lab.project} tasks={[]} onOpenThread={() => undefined} />));
@@ -141,7 +141,7 @@ describe("the main thread", () => {
   });
 
   it("offers Retry on the newest of two failed turns, not the older one", async () => {
-    const lab = await failingLab(["first", "second"]);
+    const lab = await failingApp(["first", "second"]);
     const row = await lab.calls.openSession("session", lab.project!.id);
     for (const line of ["first", "second"]) await sendAndSettle(lab, row.id, line);
     render(lab.wrap(<Thread session={row} project={lab.project} tasks={[]} onOpenThread={() => undefined} />));

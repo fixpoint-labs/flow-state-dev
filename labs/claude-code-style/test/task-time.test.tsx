@@ -14,7 +14,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { taskView } from "@flow-state-dev/orchestration/inbox";
-import type { LabTask, TaskStatus } from "../src/lab";
+import type { AppTask, TaskStatus } from "../src/app";
 import { stubServer } from "./stub-server";
 import { TasksPane } from "../src/components/TasksPane";
 import { ThreadsBoard } from "../src/components/ThreadsBoard";
@@ -24,7 +24,7 @@ afterEach(cleanup);
 const MIN = 60_000;
 
 /** A pane row as the lab reads one from the board's `listTasks` row. */
-function row(id: string, title: string, status: TaskStatus, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }): LabTask {
+function row(id: string, title: string, status: TaskStatus, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }): AppTask {
   const { startedAt, leaseUntil, updatedAt } = times;
   return {
     id,

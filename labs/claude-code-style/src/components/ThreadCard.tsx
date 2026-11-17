@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { usePullRequestLinks, useTaskWork, type LabTask } from "../lab";
+import { usePullRequestLinks, useTaskWork, type AppTask } from "../app";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
 import { LandFailure } from "./flow-state/review-hold";
@@ -18,7 +18,7 @@ import { HarnessTag, PullRequestOpen, statusColumn, statusLine, ThreadIcon, wait
  */
 export function ThreadCard(props: {
   sessionId: string;
-  task: LabTask | undefined;
+  task: AppTask | undefined;
   onOpen: (taskId: string) => void;
 }) {
   return props.task ? <LoadedThreadCard {...props} task={props.task} /> : null;
@@ -33,7 +33,7 @@ function LoadedThreadCard({
   onOpen,
 }: {
   sessionId: string;
-  task: LabTask;
+  task: AppTask;
   onOpen: (taskId: string) => void;
 }) {
   const column = statusColumn(task);
@@ -103,7 +103,7 @@ function ReviewActions({
   viewThread,
 }: {
   sessionId: string;
-  task: LabTask;
+  task: AppTask;
   onOpen: (taskId: string) => void;
   viewThread: ReactNode;
 }) {

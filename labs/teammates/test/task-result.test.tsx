@@ -14,7 +14,7 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
-import { createLabAdapter, toBoardTask, type BoardTask, type LabAdapter } from "../src/adapter";
+import { createAppCalls, toBoardTask, type BoardTask, type AppCalls } from "../src/app";
 import { PopupView } from "../src/components/Popups";
 import { lookOf } from "../src/lib/looks";
 import { liveOver } from "./live-over";
@@ -80,7 +80,7 @@ describe("a teammate's finished task reads its answer", () => {
       view: async () => ({ value: [listed], topics: [{ scope: "session", id: "wks_cos" }], keys: [String(listed.id)] }),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
-    const stop = createLabAdapter(client).watchTasks("wks_cos", (next) => (tasks = next));
+    const stop = createAppCalls(client).watchTasks("wks_cos", (next) => (tasks = next));
     for (let i = 0; i < 100 && tasks[0]?.result === undefined; i++) await new Promise((r) => setTimeout(r, 20));
     stop();
     expect(tasks[0]).toMatchObject({ status: "done", result: REVIEW });
@@ -88,7 +88,7 @@ describe("a teammate's finished task reads its answer", () => {
 });
 
 /** An adapter that holds one conversation's rows, read the way the lab reads them, and nothing else. */
-function rowsAdapter(rows: Record<string, unknown>[]): LabAdapter {
+function rowsAdapter(rows: Record<string, unknown>[]): AppCalls {
   return {
     watchTasks: (_sessionId: string, onChange: (tasks: BoardTask[]) => void) => {
       onChange(rows.map((row) => toBoardTask(row)));
@@ -99,7 +99,7 @@ function rowsAdapter(rows: Record<string, unknown>[]): LabAdapter {
       return () => {};
     },
     taskActions: () => ({}),
-  } as unknown as LabAdapter;
+  } as unknown as AppCalls;
 }
 
 const openTask = (rows: Record<string, unknown>[]) => {

@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { BoardTask } from "../adapter";
+import type { BoardTask } from "../app";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";

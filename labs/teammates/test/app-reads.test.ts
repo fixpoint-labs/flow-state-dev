@@ -19,8 +19,8 @@ import { createFlowApiRouter, createFlowRegistry, createInProcessFetch, disposeF
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { viewRef } from "@flow-state-dev/client";
 import { scriptedModels } from "../../test-support/contract";
-import { labContextView, openTeammates, type LabContextView } from "../host.mts";
-import { createLabAdapter } from "../src/adapter";
+import { appContextView, openTeammates, type AppContextView } from "../host.mts";
+import { createAppCalls } from "../src/app";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -56,7 +56,7 @@ describe("the lab's host reads", () => {
     cleanups.push(async () => (flowState as unknown as { dispose?: () => Promise<void> }).dispose?.());
     const fetcher = createInProcessFetch(flowState as never) as unknown as typeof fetch;
     const client = createClient({ userId: "you", baseUrl: "", fetcher });
-    const lab = createLabAdapter(client, { fetcher });
+    const lab = createAppCalls(client, { fetcher });
 
     const context = await lab.readContext();
     expect(context).toMatchObject({ folder: repo, folderProblem: null, model: "test/scripted" });
@@ -76,7 +76,7 @@ describe("the lab-context view", () => {
     const settings = { folder: "/work", folderProblem: null, model: "openai/gpt-6-luna", harness: "codex", delegates: { lead: "all" as const } };
     const flow = defineFlow({
       kind: "lab-context",
-      views: { context: labContextView(async () => settings) },
+      views: { context: appContextView(async () => settings) },
       authentication: { resolvePrincipal: signIn },
     } as never)();
     const registry = createFlowRegistry();
@@ -95,7 +95,7 @@ describe("the lab-context view", () => {
           return request.method === "GET" ? router.GET(request, { params: { path } }) : router.POST(request, { params: { path } });
         },
       });
-    const ref = viewRef<LabContextView>("lab-context", "context");
+    const ref = viewRef<AppContextView>("lab-context", "context");
 
     for (const [userId, orgId] of [["alice", "org-a"], ["bob", "org-a"], ["carol", "org-b"]] as const) {
       const answer = await clientOf(userId, orgId).view(ref, {});

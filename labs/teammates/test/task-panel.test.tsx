@@ -13,7 +13,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { afterEach, describe, expect, it } from "vitest";
-import { toBoardTask, type BoardTask, type LabAdapter, type LabWorker } from "../src/adapter";
+import { toBoardTask, type BoardTask, type AppCalls, type AppWorker } from "../src/app";
 import { TaskCard } from "../src/components/TaskCard";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 import { lookOf } from "../src/lib/looks";
@@ -41,15 +41,15 @@ const TASKS: BoardTask[] = [
   task("c1", { status: "cancelled", boardStatus: "cancelled" }, { completedAt: NOW - MIN }),
 ];
 
-const worker: LabWorker = { id: "chief", name: "Lead", role: "Routes work", instructions: "", own: false } as LabWorker;
+const worker: AppWorker = { id: "chief", name: "Lead", role: "Routes work", instructions: "", own: false } as AppWorker;
 
 /** Just what the panel watches: one conversation's tasks, and a connection that never went stale. */
 const adapter = {
   watchTasks: (_: string, onChange: (tasks: BoardTask[]) => void) => (onChange(TASKS), () => {}),
   watchConnection: () => () => {},
-} as unknown as LabAdapter;
+} as unknown as AppCalls;
 
-function renderPanel(a: LabAdapter = adapter) {
+function renderPanel(a: AppCalls = adapter) {
   render(<TeammatePanel adapter={a} worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} isCoding={() => false} onOpen={() => {}} />);
   return screen.getByRole("complementary", { name: "Lead's panel" });
 }
@@ -100,7 +100,7 @@ const BUSY: BoardTask[] = [
   ),
 ];
 const busy = (tasks: BoardTask[]) =>
-  ({ watchTasks: (_: string, onChange: (t: BoardTask[]) => void) => (onChange(tasks), () => {}), watchConnection: () => () => {} }) as unknown as LabAdapter;
+  ({ watchTasks: (_: string, onChange: (t: BoardTask[]) => void) => (onChange(tasks), () => {}), watchConnection: () => () => {} }) as unknown as AppCalls;
 
 describe("a busy panel stays short", () => {
   // Red state: on the parent commit Failed lists all seven, with no Show all and no Clear.

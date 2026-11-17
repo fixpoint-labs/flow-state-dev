@@ -16,7 +16,7 @@ import type { ScriptedCall, ScriptedStep } from "../../../labs/test-support/cont
 import type { Routine } from "../../../packages/shift-manager/src/lib/routines.ts";
 import { build } from "esbuild";
 import { openTeammates } from "../../../labs/teammates/host.mts";
-import { openLab as openClaudeCodeStyle } from "../../../labs/claude-code-style/host.mts";
+import { openClaudeCodeStyle } from "../../../labs/claude-code-style/host.mts";
 import { LAB_USERS, openLab as openDevTeam } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { selectHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { startStubGitHub, type StubPull } from "./stub-github.mts";

@@ -23,14 +23,17 @@ const CAPS = { flows: 3, flowLines: 200, configLines: 300 } as const;
 
 /**
  * The types the screen computes itself, by the module that exports them: a
- * view's row in the screen's fields with what the screen adds (`LabSession`,
- * `LabTask`), what a hook hands back assembled from several reads
+ * view's row in the screen's fields with what the screen adds (`AppSession`,
+ * `AppTask`), what a hook hands back assembled from several reads
  * (`ThreadView`, `TaskWork`, `WorkingNow`), the calls' own shapes, and the
  * thread's entries drawn from stored items. A new one goes on the list in a
  * reviewed PR.
  */
 const SCREEN_TYPES: Record<string, readonly string[]> = {
-  "src/lab.ts": ["LabSession", "LabProject", "ConnectionState", "ThreadView", "LabTask", "TaskBoardCalls", "TaskWork", "WorkingNow", "LabHarness", "RepositoryCheck", "LabConnection", "LabCalls"],
+  "src/app/calls.ts": ["AppProject", "AppHarness", "RepositoryCheck", "AppConnection", "AppCalls"],
+  "src/app/feed.ts": ["ConnectionState", "ThreadFeeds"],
+  "src/app/sessions.ts": ["AppSession", "ThreadView"],
+  "src/app/tasks.ts": ["AppTask", "TaskBoardCalls", "TaskWork", "WorkingNow"],
   "src/lib/address.ts": ["Address"],
   "src/lib/thread-entries.ts": ["ThreadEntry", "Item"],
   "src/lib/tool-steps.ts": ["ToolCallOf", "ToolStep", "ToolRun"],
@@ -135,7 +138,7 @@ export function reachingTheServer(lab = LAB, exempt: readonly string[] = []): st
 
 /** L4: exported object types outside the components that aren't on {@link SCREEN_TYPES}. */
 export function unlistedTypes(lab = LAB): string[] {
-  const modules = filesUnder("src", lab).filter((rel) => /\.tsx?$/.test(rel) && !rel.startsWith("src/components/") && rel !== ENTRY && rel !== "src/App.tsx");
+  const modules = filesUnder("src", lab).filter((rel) => /\.tsx?$/.test(rel) && !rel.startsWith("src/components/") && rel !== ENTRY);
   return modules.flatMap((rel) =>
     [...readFileSync(join(lab, rel), "utf8").matchAll(/^export\s+(?:interface\s+(\w+)\b[^=\n]*|type\s+(\w+)(?:<[^>]*>)?\s*=\s*(.*))$/gm)]
       // A union of string literals names no row: only an object type can be one.

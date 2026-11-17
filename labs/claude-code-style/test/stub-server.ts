@@ -4,16 +4,16 @@
  * items, each run's recorded work, and a session stream the test can push an
  * item on, and each board's rows as the coding board view answers them now
  * (the lab reads a task's open hold there when you answer it). Every other POST is recorded and answered done, or as `answer`
- * says. The screen still reads through `src/lab.ts` and the real client;
+ * says. The screen still reads through `src/app/` and the real client;
  * only the host behind them is stood in for. A test of how the screen and the
- * host work together uses `lab-host.ts`.
+ * host work together uses `app-host.ts`.
  */
 import { createElement, type ReactNode } from "react";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import type { RecordedWorkView } from "@flow-state-dev/harness-manager/browser";
 import type { ViewOutput } from "@flow-state-dev/core/types";
-import { LabProvider, type LabTask } from "../src/lab";
+import { AppProvider, type AppTask } from "../src/app";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
@@ -30,7 +30,7 @@ export interface StubData {
    * Each board's tasks by its session id, as the coding board view answers them: a row's `id` and
    * `asks`. Read on every view call, so a test that changes a row here changes what the server holds.
    */
-  board?: Record<string, LabTask[]>;
+  board?: Record<string, AppTask[]>;
   /** Answers a POST the screen made: a throw fails it as a lost connection does. Absent: done. */
   answer?: (posted: Posted) => Promise<void> | void;
 }
@@ -59,7 +59,7 @@ const reviewHold = (stop = "stop-1"): InboxHold =>
   }) as InboxHold;
 
 /** A coding task under review in {@link RUN}, as the coding board's row reads. */
-export const underReview = (task: LabTask, stop = "stop-1"): LabTask => ({
+export const underReview = (task: AppTask, stop = "stop-1"): AppTask => ({
   ...task,
   openHold: { kind: "review", prompt: "Accept the changes, or ask for changes in words." },
   asks: [reviewHold(stop)],
@@ -124,7 +124,7 @@ export function stubServer(data: StubData = {}) {
       at += 1;
       streams.get(sessionId)?.(`event: session.item\ndata: ${JSON.stringify({ stream: "session", sessionId, at, type: "session.item", requestId: item.requestId, item })}\n\n`);
     },
-    wrap: (children: ReactNode) => createElement(LabProvider, { client, pollIntervalMs: 100 }, children),
+    wrap: (children: ReactNode) => createElement(AppProvider, { client, pollIntervalMs: 100 }, children),
   };
 }
 

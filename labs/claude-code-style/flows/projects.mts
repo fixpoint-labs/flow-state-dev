@@ -10,7 +10,7 @@
  */
 import { defineFlow } from "@flow-state-dev/core";
 import { defineProjectBlocks, PROJECTS_FLOW, type RepositoryCheck } from "@flow-state-dev/workforce";
-import { labDismissals, labPins } from "./user-marks.mts";
+import { appDismissals, appPins } from "./user-marks.mts";
 
 // FIX-2624: workforce's projects flow kind, which the projects collections' `runBy` names.
 /** The flow kind the screen writes projects through. */
@@ -28,7 +28,7 @@ export function defineProjectsFlow(options: { checkRepository?: RepositoryCheck 
     kind: PROJECTS_FLOW,
     // Your pins and dismissals: declared on a flow the host serves, as every resource is, so the
     // screen reads them by scope and writes them through the default write flow (FIX-2624).
-    resources: { labPins, labDismissals },
+    resources: { appPins, appDismissals },
     actions: {
       listProjects: projects.actions.listProjects,
       createProject: projects.actions.createProject,

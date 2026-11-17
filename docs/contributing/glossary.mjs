@@ -723,6 +723,22 @@ export const ENTRIES = [
     retires: [],
   },
   {
+    term: "Starter",
+    means: "An app on FSD that ships as a template to start your own from: the Claude Code-style app and Teammates. Its screen reads and writes the server through `src/app/`, one file per job, whose `index.ts` exports `AppProvider` and `useApp`; its root component is `src/components/App.tsx`.",
+    decision: "Owner, 2026-11-17 (FIX-2755): the labs ship as app starters; the module is `src/app/` and its hook `useApp`, not `data`",
+    // A starter's own names say app, not lab. The folder is still `labs/`, beside apps there that are
+    // not starters, and the word "lab" in prose moves with it. Persisted names (the `lab-pins` and
+    // `lab-dismissals` refs, the `lab-context` flow) are wire names, not identifiers, and stay (BP-030).
+    retires: [
+      {
+        id: "starter-lab-names",
+        check: "sweep",
+        files: /^labs\/(claude-code-style|teammates)\/.*\.(ts|tsx|mts)$/,
+        pattern: /\b\w*Lab(?:[A-Z]\w*)?\b|\blab[A-Z]\w*\b/,
+      },
+    ],
+  },
+  {
     term: "Live read",
     means: "`client.live`: keep a screen current on change notices. It filters the notices a screen hears, merges them, runs one read at a time with at most one waiting, reports a value only when it changed, and retries a failed read on its own. Every watch in the framework and its apps is one; a view's hook builds on it.",
     decision: "Owner, 2026-11-11 (FIX-2551 D1, epic FIX-2618 ER-7)",
@@ -887,6 +903,12 @@ const PROJECT_MODULES = /^packages\/workforce\/src\/projects\/|^packages\/workfo
  */
 const EXEMPTIONS = [
   // ---- sweep ----
+  {
+    path: /^labs\/claude-code-style\/test\/inventory\.test\.ts$/,
+    line: /\bLabAdapter\b/,
+    rules: ["starter-lab-names"],
+    why: "the Claude Code-style inventory's check that the retired `LabAdapter` seam stays gone, which names it to look for it",
+  },
   {
     path: /^packages\/harness-manager\/README\.md$/,
     line: /^### Upgrading from `messageDoor`$|^Before `harnessSessionDoor`, a manager's `messageDoor` \(and `harnessMessageDoor`\) kept/,

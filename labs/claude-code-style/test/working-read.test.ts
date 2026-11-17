@@ -12,7 +12,7 @@ import { cleanup, renderHook } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
-import { LabProvider, useTaskWork, type LabTask, type TaskWork } from "../src/lab";
+import { AppProvider, useTaskWork, type AppTask, type TaskWork } from "../src/app";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
@@ -82,7 +82,7 @@ function host(options: { stored: unknown[]; live: Record<string, unknown[]>; pla
     return json({});
   }) as ClientFetch;
   const client = createClient({ userId: "u", baseUrl: "", fetcher });
-  const wrapper = ({ children }: { children: ReactNode }) => createElement(LabProvider, { client, pollIntervalMs: 100 }, children);
+  const wrapper = ({ children }: { children: ReactNode }) => createElement(AppProvider, { client, pollIntervalMs: 100 }, children);
   return { client, calls, wrapper };
 }
 
@@ -94,20 +94,20 @@ const until = async (check: () => boolean) => {
 afterEach(cleanup);
 
 /** A coding task the board names as running in `run1`, as request `requestId`. */
-const running = (requestId: string): LabTask => ({ id: "t1", title: "Fix it", goal: "Fix it", status: "in_progress", harness: "claude-code", runLink: { sessionId: "run1", requestId, flow: "f" } });
+const running = (requestId: string): AppTask => ({ id: "t1", title: "Fix it", goal: "Fix it", status: "in_progress", harness: "claude-code", runLink: { sessionId: "run1", requestId, flow: "f" } });
 
 /** Every work value the hook hands back, in order, deduped by identity. */
-function watch(h: ReturnType<typeof host>, task: LabTask) {
+function watch(h: ReturnType<typeof host>, task: AppTask) {
   const seen: TaskWork[] = [];
   const hook = renderHook(
-    ({ task }: { task: LabTask }) => {
+    ({ task }: { task: AppTask }) => {
       const work = useTaskWork(task);
       if (work !== undefined && seen.at(-1) !== work) seen.push(work);
       return work;
     },
     { wrapper: h.wrapper, initialProps: { task } },
   );
-  return { seen, latest: () => hook.result.current, rerender: (next: LabTask) => hook.rerender({ task: next }) };
+  return { seen, latest: () => hook.result.current, rerender: (next: AppTask) => hook.rerender({ task: next }) };
 }
 
 describe("a running task's working line", () => {

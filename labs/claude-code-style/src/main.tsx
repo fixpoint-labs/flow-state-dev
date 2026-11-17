@@ -2,8 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createClient } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
-import { LabProvider } from "./lab";
-import { App } from "./App";
+import { AppProvider } from "./app";
+import { App } from "./components/App";
 import "./styles.css";
 
 // The page follows the system's light or dark setting; `.dark` is what the design-system theme keys on.
@@ -18,8 +18,8 @@ const client = createClient({ userId: readUserId(), baseUrl: readBasePath(), fet
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <LabProvider client={client} connection={{ basePath: readBasePath(), fetcher }}>
+    <AppProvider client={client} connection={{ basePath: readBasePath(), fetcher }}>
       <App />
-    </LabProvider>
+    </AppProvider>
   </StrictMode>,
 );

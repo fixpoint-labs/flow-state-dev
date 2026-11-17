@@ -7,12 +7,13 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { App } from "../src/App";
-import type { BoardTask, LabAdapter } from "../src/adapter";
+import { App } from "../src/components/App";
+import { AppProvider } from "../src/app";
+import type { BoardTask, AppCalls } from "../src/app";
 import { PopupView } from "../src/components/Popups";
-import { createFixtureLab } from "./fake-lab";
+import { createFixtureApp } from "./fake-app";
 
-const fast = () => createFixtureLab({ speed: 0.05 });
+const fast = () => createFixtureApp({ speed: 0.05 });
 
 afterEach(() => {
   cleanup();
@@ -35,9 +36,9 @@ async function tell(worker: string, text: string) {
 }
 
 /** The app drawn afresh on the same lab, as a reload draws it: only the address carries over. */
-function reload(adapter: LabAdapter) {
+function reload(adapter: AppCalls) {
   cleanup();
-  render(<App adapter={adapter} />);
+  render(<AppProvider calls={adapter}><App /></AppProvider>);
 }
 
 /** Back, as the browser does it: the address moves, then `popstate` fires. */
@@ -51,7 +52,7 @@ async function back() {
 describe("the page's address", () => {
   it("reopens the teammate that was open, not the first, after a reload", async () => {
     const adapter = fast();
-    render(<App adapter={adapter} />);
+    render(<AppProvider calls={adapter}><App /></AppProvider>);
     await waitFor(() => expect(workerRow("Lead").getAttribute("aria-current")).toBe("true"));
     fireEvent.click(workerRow("writer"));
     await screen.findByLabelText("Message writer");
@@ -64,7 +65,7 @@ describe("the page's address", () => {
 
   it("reopens the task popup that was open, after a reload", async () => {
     const adapter = fast();
-    render(<App adapter={adapter} />);
+    render(<AppProvider calls={adapter}><App /></AppProvider>);
     await tell("Lead", "Fix the typo in the README's first line.");
     fireEvent.click(await within(conversation()).findByRole("button", { name: `${TASK}, on Cursor` }));
     await screen.findByRole("dialog", { name: TASK });
@@ -75,7 +76,7 @@ describe("the page's address", () => {
   });
 
   it("goes Back to the teammate that was open before", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await screen.findByLabelText("Message Lead");
     fireEvent.click(workerRow("writer"));
     await screen.findByLabelText("Message writer");
@@ -89,7 +90,7 @@ describe("the page's address", () => {
 
   it("opens the first teammate on a link whose teammate and task are gone, and drops them from the address", async () => {
     window.history.replaceState(null, "", "/?worker=teammates.gone&session=session-gone&task=task-gone");
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     expect(await screen.findByLabelText("Message Lead")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(params().get("worker")).toBe("teammates.chief-of-staff"));
@@ -99,7 +100,7 @@ describe("the page's address", () => {
 
   it("closes a task popup whose task is gone, and keeps the teammate", async () => {
     const adapter = fast();
-    render(<App adapter={adapter} />);
+    render(<AppProvider calls={adapter}><App /></AppProvider>);
     await screen.findByLabelText("Message Lead");
     fireEvent.click(workerRow("writer"));
     await screen.findByLabelText("Message writer");
@@ -118,7 +119,7 @@ describe("the page's address", () => {
     const lab = fast();
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
-    const adapter: LabAdapter = {
+    const adapter: AppCalls = {
       ...lab,
       // The roster's first read lands only once the test releases it.
       watchWorkers: (onChange, onError) => {
@@ -133,7 +134,7 @@ describe("the page's address", () => {
         };
       },
     };
-    render(<App adapter={adapter} />);
+    render(<AppProvider calls={adapter}><App /></AppProvider>);
     await act(async () => {
       window.history.pushState(null, "", "/?worker=teammates.writer");
       window.dispatchEvent(new PopStateEvent("popstate"));
@@ -150,7 +151,7 @@ describe("the page's address", () => {
       "session-a": [{ id: "task-a", to: "teammates.writer", title: "Draft the notes", goal: "Draft the notes", status: "running", boardStatus: "in_progress" }],
       "session-b": [{ id: "task-b", to: "teammates.researcher", title: "Look it up", goal: "Look it up", status: "running", boardStatus: "in_progress" }],
     };
-    const adapter: LabAdapter = { ...fast(), watchTasks: (sessionId, onChange) => (onChange(rows[sessionId] ?? []), () => {}) };
+    const adapter: AppCalls = { ...fast(), watchTasks: (sessionId, onChange) => (onChange(rows[sessionId] ?? []), () => {}) };
     const missing: string[] = [];
     const draw = (sessionId: string, taskId: string) => (
       <PopupView adapter={adapter} popup={{ kind: "task", sessionId, taskId }} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} coders={[]} onClose={() => {}} onMissing={() => missing.push(taskId)} />

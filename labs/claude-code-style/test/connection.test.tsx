@@ -10,21 +10,21 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { App } from "../src/App";
-import { closeLabs, openTestLab, waitFor as wait, type TestLab } from "./lab-host";
+import { App } from "../src/components/App";
+import { closeApps, openTestApp, waitFor as wait, type TestApp } from "./app-host";
 
 afterEach(async () => {
   cleanup();
   window.history.replaceState(null, "", "/");
-  await closeLabs();
+  await closeApps();
 });
 
 const thread = () => screen.getByRole("main", { name: "Main thread" });
 const working = () => within(thread()).getByText(/working ·/).closest<HTMLElement>("[role=status]")!;
 
 /** A turn that runs until it is stopped, so the test reads it while it is still running. */
-async function startTurn(): Promise<TestLab> {
-  const lab = await openTestLab({
+async function startTurn(): Promise<TestApp> {
+  const lab = await openTestApp({
     scripts: {
       "agent-answer": async ({ signal }) => {
         await wait(60_000, signal);

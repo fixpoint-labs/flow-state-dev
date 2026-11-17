@@ -4,10 +4,10 @@
  * mark the lab keeps.
  */
 import { describe, expect, it } from "vitest";
-import type { LabTask } from "../src/lab";
+import type { AppTask } from "../src/app";
 import { columnOf, dismissalKey, waitingOnYou } from "../src/lib/columns";
 
-const task = (patch: Partial<LabTask>): LabTask => ({ id: "t", title: "t", goal: "g", status: "in_progress", ...patch });
+const task = (patch: Partial<AppTask>): AppTask => ({ id: "t", title: "t", goal: "g", status: "in_progress", ...patch });
 
 describe("columnOf", () => {
   it.each([

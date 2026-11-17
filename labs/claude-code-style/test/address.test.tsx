@@ -7,17 +7,17 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { App } from "../src/App";
-import { closeLabs, openTestLab, vendorScripts, type TestLab } from "./lab-host";
+import { App } from "../src/components/App";
+import { closeApps, openTestApp, vendorScripts, type TestApp } from "./app-host";
 
-let lab: TestLab;
+let lab: TestApp;
 beforeEach(async () => {
-  lab = await openTestLab({ scripts: vendorScripts().scripts });
+  lab = await openTestApp({ scripts: vendorScripts().scripts });
 });
 afterEach(async () => {
   cleanup();
   window.history.replaceState(null, "", "/");
-  await closeLabs();
+  await closeApps();
 });
 
 /** Long enough for a read of the in-process host, which hears no push and reads on its timer. */

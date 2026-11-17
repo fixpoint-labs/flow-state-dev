@@ -9,7 +9,7 @@
 import type { Client } from "@flow-state-dev/client";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
-import { labCalls } from "../src/lab";
+import { appCalls } from "../src/app";
 import { entriesOf, type Item } from "../src/lib/thread-entries";
 
 const SHOT: FileContent = { type: "file", data: "fsd-blob:b_0123456789", mediaType: "image/png", filename: "bug.png" };
@@ -36,7 +36,7 @@ function fakeClient() {
 describe("the lab's files", () => {
   it("sends a line's files beside its message, through the worker's door", async () => {
     const lab = fakeClient();
-    await labCalls(lab.client).send("s1", "What does this show?", [SHOT]);
+    await appCalls(lab.client).send("s1", "What does this show?", [SHOT]);
     expect(lab.sends).toEqual([{ action: "respond", input: { message: "What does this show?" }, options: { sessionId: "s1", attachments: [SHOT] } }]);
   });
 
@@ -47,7 +47,7 @@ describe("the lab's files", () => {
       asked.push(url);
       return new Response(new Blob(["png"]), { status: 200 });
     };
-    const calls = labCalls(lab.client, { basePath: "/lab", fetcher });
+    const calls = appCalls(lab.client, { basePath: "/lab", fetcher });
     const blob = new Blob(["x"], { type: "image/png" });
     expect(await calls.upload({ data: blob, mediaType: "image/png", filename: "bug.png" })).toBe(SHOT);
     expect(lab.uploads).toEqual([{ data: blob, mediaType: "image/png", filename: "bug.png" }]);
@@ -56,7 +56,7 @@ describe("the lab's files", () => {
   });
 
   it("says so when the server won't serve a file, so the line draws its chip", async () => {
-    const calls = labCalls(fakeClient().client, { fetcher: async () => new Response(null, { status: 404 }) });
+    const calls = appCalls(fakeClient().client, { fetcher: async () => new Response(null, { status: 404 }) });
     await expect(calls.readFile(SHOT)).rejects.toThrow("bug.png couldn't be read (404).");
   });
 

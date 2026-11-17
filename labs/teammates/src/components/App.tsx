@@ -1,17 +1,17 @@
 import { ClientHttpError } from "@flow-state-dev/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { LabHarness, LabAdapter, LabContext, NewTeammate, LabWorker } from "./adapter";
-import { Conversation } from "./components/Conversation";
-import { KeysSheet } from "./components/KeysSheet";
-import { PopupView, type FollowUp, type Popup } from "./components/Popups";
-import { Switcher } from "./components/Switcher";
-import { TeammatePanel } from "./components/TeammatePanel";
-import { WorkersList } from "./components/WorkersList";
-import { ConnectionScreen, type ConnectionFailure } from "./components/flow-state/connection-screen";
-import { readAddress, writeAddress, type Address, type AddressWrite } from "./lib/address";
-import { harnessName } from "./lib/harness";
-import { focusComposer, focusWhenDrawn, useLabKeys } from "./lib/keys";
-import { lookOf as lookOfRow } from "./lib/looks";
+import { useApp, type AppHarness, type AppContext, type NewTeammate, type AppWorker } from "../app";
+import { Conversation } from "./Conversation";
+import { KeysSheet } from "./KeysSheet";
+import { PopupView, type FollowUp, type Popup } from "./Popups";
+import { Switcher } from "./Switcher";
+import { TeammatePanel } from "./TeammatePanel";
+import { WorkersList } from "./WorkersList";
+import { ConnectionScreen, type ConnectionFailure } from "./flow-state/connection-screen";
+import { readAddress, writeAddress, type Address, type AddressWrite } from "../lib/address";
+import { harnessName } from "../lib/harness";
+import { focusComposer, focusWhenDrawn, useAppKeys } from "../lib/keys";
+import { lookOf as lookOfRow } from "../lib/looks";
 
 /**
  * The screen: the teammates on the left, the chosen teammate's one
@@ -31,7 +31,7 @@ import { lookOf as lookOfRow } from "./lib/looks";
  * loses the server draws `connection-banner` over it and greys the status
  * lines drawn from that feed.
  *
- * Keys (`useLabKeys`): ⌘K switches to any teammate or hires one, Alt+↑/↓
+ * Keys (`useAppKeys`): ⌘K switches to any teammate or hires one, Alt+↑/↓
  * steps through the teammates, `/` puts the cursor in the composer, `?` lists
  * the keys. Opening a teammate, however it is opened, puts the cursor in its
  * composer.
@@ -52,8 +52,9 @@ function failureOf(error: unknown): ConnectionFailure {
   return { message: error instanceof Error ? error.message : String(error) };
 }
 
-export function App({ adapter }: { adapter: LabAdapter }) {
-  const [workers, setWorkers] = useState<LabWorker[]>([]);
+export function App() {
+  const adapter = useApp();
+  const [workers, setWorkers] = useState<AppWorker[]>([]);
   const [sessions, setSessions] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string>();
   // A task or a message, open in a popup over the thread.
@@ -78,9 +79,9 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const addressed = useRef<Popup | undefined>(undefined);
   // The teammates the last landed roster drew, and a pick waiting for a roster: a hire picks its
   // teammate once its row lands; a fire picks from the roster that no longer has the fired one.
-  const landedTalking = useRef<LabWorker[]>([]);
-  const waitingPick = useRef<((talking: LabWorker[]) => boolean) | null>(null);
-  const pickWhenLanded = (pick: (talking: LabWorker[]) => boolean) => {
+  const landedTalking = useRef<AppWorker[]>([]);
+  const waitingPick = useRef<((talking: AppWorker[]) => boolean) | null>(null);
+  const pickWhenLanded = (pick: (talking: AppWorker[]) => boolean) => {
     waitingPick.current = pick(landedTalking.current) ? null : pick;
   };
   const fromAddress = (named: Address) => {
@@ -136,8 +137,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
 
   // The watch brings the new row and its conversation; the pick waits for them.
   // What the lab works on and with, and which harnesses can run: read once, the chips again on Re-check.
-  const [context, setContext] = useState<LabContext>();
-  const [harnesses, setHarnesses] = useState<LabHarness[]>();
+  const [context, setContext] = useState<AppContext>();
+  const [harnesses, setHarnesses] = useState<AppHarness[]>();
   useEffect(() => {
     let on = true;
     void adapter.readContext().then((read) => on && setContext(read), () => undefined);
@@ -262,7 +263,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   }, [adapter, unopened]);
   // No teammate open, no panel column held for one.
   const panelShown = worker !== undefined && sessionId !== undefined;
-  useLabKeys({
+  useAppKeys({
     palette: () => setSwitching((open) => !open),
     step: (by) => {
       // The teammates in the order the list draws them; the ends hold.

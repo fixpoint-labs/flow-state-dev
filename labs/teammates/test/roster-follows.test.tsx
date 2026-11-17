@@ -10,8 +10,9 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { App } from "../src/App";
-import { createFixtureLab } from "./fake-lab";
+import { App } from "../src/components/App";
+import { AppProvider } from "../src/app";
+import { createFixtureApp } from "./fake-app";
 
 afterEach(() => {
   cleanup();
@@ -24,8 +25,8 @@ const listed = () =>
 
 describe("the worker list follows the roster", () => {
   it("shows a teammate hired elsewhere, and drops it when it is fired elsewhere", async () => {
-    const lab = createFixtureLab({ speed: 0.05 });
-    render(<App adapter={lab} />);
+    const lab = createFixtureApp({ speed: 0.05 });
+    render(<AppProvider calls={lab}><App /></AppProvider>);
     await screen.findByLabelText("Message Lead");
     expect(listed()).not.toContain("scribe");
 
@@ -38,7 +39,7 @@ describe("the worker list follows the roster", () => {
   });
 
   it("watches the roster once, whatever this tab hires", async () => {
-    const lab = createFixtureLab({ speed: 0.05 });
+    const lab = createFixtureApp({ speed: 0.05 });
     let watches = 0;
     const counted: typeof lab = {
       ...lab,
@@ -47,7 +48,7 @@ describe("the worker list follows the roster", () => {
         return lab.watchWorkers(onChange, onError);
       },
     };
-    render(<App adapter={counted} />);
+    render(<AppProvider calls={counted}><App /></AppProvider>);
     await screen.findByLabelText("Message Lead");
     await act(async () => void (await lab.hire({ name: "scribe", role: "Takes notes", instructions: "" })));
     await waitFor(() => expect(listed()).toContain("scribe"));
@@ -55,14 +56,14 @@ describe("the worker list follows the roster", () => {
   });
 
   it("keeps following the roster when one teammate's conversation won't open, and opens it when picked", async () => {
-    const lab = createFixtureLab({ speed: 0.05 });
+    const lab = createFixtureApp({ speed: 0.05 });
     let refuse = true;
     const flaky: typeof lab = {
       ...lab,
       openConversation: (workerId) =>
         workerId === "scribe" && refuse ? Promise.reject(new TypeError("fetch failed")) : lab.openConversation(workerId),
     };
-    render(<App adapter={flaky} />);
+    render(<AppProvider calls={flaky}><App /></AppProvider>);
     await screen.findByLabelText("Message Lead");
 
     // The hire's conversation fails to open: the roster still lands, and so does the next change.
@@ -80,8 +81,8 @@ describe("the worker list follows the roster", () => {
   });
 
   it("opens a teammate hired here with the cursor in its composer, once its row lands", async () => {
-    const lab = createFixtureLab({ speed: 0.05 });
-    render(<App adapter={lab} />);
+    const lab = createFixtureApp({ speed: 0.05 });
+    render(<AppProvider calls={lab}><App /></AppProvider>);
     await screen.findByLabelText("Message Lead");
     fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
     const form = screen.getByRole("form", { name: "Hire a teammate" });

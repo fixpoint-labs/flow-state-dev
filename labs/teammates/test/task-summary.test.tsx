@@ -23,11 +23,12 @@
  */
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { attemptDurationMs, commandsRun, runSummaryLine, runSteps, toBoardTask, type BoardTask } from "../src/adapter";
-import { App } from "../src/App";
+import { attemptDurationMs, commandsRun, runSummaryLine, runSteps, toBoardTask, type BoardTask } from "../src/app";
+import { App } from "../src/components/App";
+import { AppProvider } from "../src/app";
 import { useRecordedFiles } from "../src/components/Popups";
-import type { LabAdapter } from "../src/adapter";
-import { createFixtureLab } from "./fake-lab";
+import type { AppCalls } from "../src/app";
+import { createFixtureApp } from "./fake-app";
 
 afterEach(() => {
   cleanup();
@@ -102,7 +103,7 @@ async function openTask(agent = "Codex") {
 
 describe("a coding task's popup", () => {
   it("sums up a finished Claude Code run from what it recorded: files and commands, a chip per file", async () => {
-    render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
+    render(<AppProvider calls={createFixtureApp({ speed: 0.05 })}><App /></AppProvider>);
     const popup = await openTask("Claude Code");
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
     await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toMatch(/^Edited 1 file · ran 1 command · \d+s$/));
@@ -112,14 +113,14 @@ describe("a coding task's popup", () => {
   });
 
   it("counts a file only when an edit to it landed, not when every attempt failed", async () => {
-    const lab = createFixtureLab({ speed: 0.05 });
+    const lab = createFixtureApp({ speed: 0.05 });
     const read = lab.recordedWork.bind(lab);
     lab.recordedWork = async (run) => {
       const work = await read(run);
       const tried = { path: "/work/LICENSE", kind: "edited" as const, applied: 0 };
       return work.files === null ? work : { ...work, files: { ...work.files, rows: [...work.files.rows, tried] } };
     };
-    render(<App adapter={lab} />);
+    render(<AppProvider calls={lab}><App /></AppProvider>);
     const popup = await openTask("Claude Code");
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
     await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toMatch(/^Edited 1 file · ran 1 command · \d+s$/));
@@ -127,13 +128,13 @@ describe("a coding task's popup", () => {
   });
 
   it("counts a file once when the run edited it again after a steer or a review's changes", async () => {
-    const lab = createFixtureLab({ speed: 0.05 });
+    const lab = createFixtureApp({ speed: 0.05 });
     const read = lab.recordedWork.bind(lab);
     lab.recordedWork = async (run) => {
       const work = await read(run);
       return work.files === null ? work : { ...work, files: { ...work.files, rows: [...work.files.rows, ...work.files.rows] } };
     };
-    render(<App adapter={lab} />);
+    render(<AppProvider calls={lab}><App /></AppProvider>);
     const popup = await openTask("Claude Code");
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
     await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toMatch(/^Edited 1 file · ran 1 command · \d+s$/));
@@ -141,7 +142,7 @@ describe("a coding task's popup", () => {
   });
 
   it("says no file count for a harness that records none, though its run edited one", async () => {
-    render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
+    render(<AppProvider calls={createFixtureApp({ speed: 0.05 })}><App /></AppProvider>);
     const popup = await openTask("Codex");
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
     await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toMatch(/^Ran 2 commands · \d+s$/));
@@ -151,7 +152,7 @@ describe("a coding task's popup", () => {
   it("copies the result", async () => {
     const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
+    render(<AppProvider calls={createFixtureApp({ speed: 0.05 })}><App /></AppProvider>);
     const popup = await openTask();
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
     await act(async () => fireEvent.click(within(popup).getByRole("button", { name: "Copy" })));
@@ -160,7 +161,7 @@ describe("a coding task's popup", () => {
   });
 
   it("asks the worker that filed it to follow up: its conversation opens with the task named in the composer", async () => {
-    render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
+    render(<AppProvider calls={createFixtureApp({ speed: 0.05 })}><App /></AppProvider>);
     const popup = await openTask();
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
     fireEvent.click(within(popup).getByRole("button", { name: "Ask Lead to follow up" }));
@@ -178,7 +179,7 @@ describe("the files a popup reads", () => {
         requestId === "req-1"
           ? Promise.resolve({ plan: null, pullRequests: null, files: { rows: [{ path: "a.ts", kind: "edited" as const, applied: 1 }], truncated: false } })
           : new Promise((resolve) => (answer = (files) => resolve({ plan: null, pullRequests: null, files }))),
-    } as unknown as LabAdapter;
+    } as unknown as AppCalls;
     const task = (requestId: string, status: BoardTask["status"]): BoardTask => ({ id: "t1", to: "w", title: "T", goal: "T", status, boardStatus: status === "running" ? "in_progress" : "errored", runSessionId: "run:t1", runRequestId: requestId });
     const { result, rerender } = renderHook(({ t }) => useRecordedFiles(adapter, t), { initialProps: { t: task("req-1", "failed") } });
     await waitFor(() => expect(result.current?.rows.map((r) => r.path)).toEqual(["a.ts"]));
@@ -203,7 +204,7 @@ describe("a filed task's popup, opened by its address", () => {
   };
   const open = (task: BoardTask & { filer: string }, worker = LEAD) => {
     window.history.replaceState(null, "", `/?worker=${worker}&session=conversation:${task.filer}&task=${task.id}`);
-    render(<App adapter={createFixtureLab({ speed: 0.05, tasks: [task] })} />);
+    render(<AppProvider calls={createFixtureApp({ speed: 0.05, tasks: [task] })}><App /></AppProvider>);
     return screen.findByRole("dialog", { name: "Asked writer to draft the PM role" });
   };
 

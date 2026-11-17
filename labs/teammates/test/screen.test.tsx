@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * The screen, on a test double (`fake-lab.ts`). These prove the UI only: a list of workers rather
+ * The screen, on a test double (`fake-app.ts`). These prove the UI only: a list of workers rather
  * than sessions, worker talk drawn in both conversations (D1), the open
  * teammate's panel with the tasks its conversation filed, a reply that waits for your turn and shows as pending (D2), and a
  * divider that never calls a window boundary a summary, and a coding job that
@@ -10,13 +10,14 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
-import { App } from "../src/App";
+import { App } from "../src/components/App";
+import { AppProvider } from "../src/app";
 import { TEAMMATE_COLORS } from "../src/lib/looks";
-import type { TeammateEdit } from "../src/adapter";
-import { createFixtureLab } from "./fake-lab";
+import type { TeammateEdit } from "../src/app";
+import { createFixtureApp } from "./fake-app";
 
 // The script runs at a twentieth of real time.
-const fast = (options = {}) => createFixtureLab({ speed: 0.05, ...options });
+const fast = (options = {}) => createFixtureApp({ speed: 0.05, ...options });
 
 afterEach(() => {
   cleanup();
@@ -83,7 +84,7 @@ function layOutFeeds(height: (feed: HTMLElement) => number = () => 5000) {
 
 describe("the teammates screen", () => {
   it("lists teammates, not sessions, and opens on Lead's one conversation", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
     // Coding is a background task, not a teammate: the worker coding tasks run on is not listed.
     for (const coder of ["Claude Code", "Codex", "Cursor"]) expect(workers().querySelector(`[data-worker="${coder}"]`), coder).toBeNull();
@@ -94,7 +95,7 @@ describe("the teammates screen", () => {
   });
 
   it("marks where Lead's word-for-word turns begin, and calls it out of view, not summarized", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     const divider = await screen.findByRole("separator");
     expect(divider.getAttribute("aria-label")).toBe("Earlier turns out of view");
     // 52 turns seeded, 50 in the window: turns 1 and 2 sit before the divider, turn 3 right after it.
@@ -105,13 +106,13 @@ describe("the teammates screen", () => {
   });
 
   it("labels the divider summarized only when the earlier turns were summarized", async () => {
-    render(<App adapter={fast({ summary: true })} />);
+    render(<AppProvider calls={fast({ summary: true })}><App /></AppProvider>);
     const divider = await screen.findByRole("separator");
     expect(divider.getAttribute("aria-label")).toBe("Earlier turns summarized");
   });
 
   it("draws Lead's message to researcher in both conversations", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
 
     // Step 2: one line in Lead's conversation, "Messaged researcher", that opens the exchange.
@@ -127,7 +128,7 @@ describe("the teammates screen", () => {
   });
 
   it("opens a message line to the exchange in a popup that fills in live, and closes it with Esc or a click outside", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
     expect(line.querySelector("[data-sent-status]")?.textContent).toBe("working");
@@ -177,7 +178,7 @@ describe("the teammates screen", () => {
   });
 
   it("a pick from ⌘K over a popup closes the popup, so the picked conversation takes the keys", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
     line.focus();
@@ -192,7 +193,7 @@ describe("the teammates screen", () => {
   });
 
   it("an Esc in ⌘K over a popup closes the switcher only, and the popup stays open under it", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
     line.focus();
@@ -206,7 +207,7 @@ describe("the teammates screen", () => {
   });
 
   it("holds researcher's reply as pending while Lead answers you, and lands it after that answer", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     await within(conversation()).findByRole("button", { name: /^Messaged researcher/ });
 
@@ -228,7 +229,7 @@ describe("the teammates screen", () => {
   });
 
   it("answers a line you send while Lead answers at once, beside that answer, and never says it waits", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await tell("Lead", "Meanwhile, draft the release note.");
     await within(conversation()).findByRole("status", OUTSIDE_COMPOSER);
     // The composer says what a line sent now does.
@@ -242,7 +243,7 @@ describe("the teammates screen", () => {
   });
 
   it("counts what researcher did while you watched Lead as unread, and clears it when you open researcher", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     await waitFor(() => expect(within(workerRow("researcher")).getByLabelText(/unread/).textContent).toBe("3"), { timeout: 2000 });
     fireEvent.click(workerRow("researcher"));
@@ -250,7 +251,7 @@ describe("the teammates screen", () => {
   });
 
   it("has no Talk panel or Talk control: the right pane is the open teammate's panel", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await screen.findByLabelText("Message Lead");
     expect(screen.queryByRole("complementary", { name: "Talk" })).toBeNull();
     expect(screen.queryByRole("button", { name: /talk/i })).toBeNull();
@@ -267,7 +268,7 @@ describe("the teammates screen", () => {
       { filer: "teammates.chief-of-staff", id: "t-lead", to: "teammates.cursor", title: "Bump the version", status: "running" as const, harness: "Cursor" },
       { filer: "teammates.researcher", id: "t-research", to: "teammates.writer", title: "Draft the survey summary", status: "running" as const },
     ];
-    render(<App adapter={fast({ tasks })} />);
+    render(<AppProvider calls={fast({ tasks })}><App /></AppProvider>);
     const lead = await screen.findByRole("button", { name: "Coding task: Bump the version, on Cursor" });
     expect(panel("Lead").contains(lead)).toBe(true);
     expect(screen.queryByRole("button", { name: "Asked writer to draft the survey summary" })).toBeNull();
@@ -289,7 +290,7 @@ describe("the teammates screen", () => {
   it("puts the running tasks first, shows the failed ones, folds done and cancelled into groups with their counts, and moves a task that ends into its group live", async () => {
     const ended = (id: string, title: string, status: "done" | "failed" | "cancelled") => ({ filer: "teammates.chief-of-staff", id, to: "teammates.researcher", title, status });
     const tasks = [ended("t-1", "Look up the launch date", "done"), ended("t-2", "Check the beta numbers", "failed"), ended("t-3", "Find a customer quote", "done"), ended("t-4", "Pull the survey", "cancelled")];
-    render(<App adapter={fast({ tasks })} />);
+    render(<AppProvider calls={fast({ tasks })}><App /></AppProvider>);
     const side = await screen.findByRole("complementary", { name: "Lead's panel" });
     const groups = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-label"));
     // Done and cancelled tasks are folded: their groups show counts, and none of their rows.
@@ -318,7 +319,7 @@ describe("the teammates screen", () => {
   });
 
   it("starts a coding task at once, with no project anywhere on the screen, and lands its result as the coding task's", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await tell("Lead", "Fix the typo in the README's first line.");
 
     // Step 5: the task runs in the working folder straight away: nothing asks where.
@@ -340,7 +341,7 @@ describe("the teammates screen", () => {
   });
 
   it("brings a finished task back as one collapsed line that opens the task, with the filer's own reply expanded under it", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await tell("Lead", "Fix the typo in the README's first line.");
     const back = await within(conversation()).findByRole("button", { name: "Coding task finished: Fix the typo in the README's first line" }, { timeout: 2000 });
     // Collapsed: one line, never the result drawn as a block in the thread.
@@ -355,7 +356,7 @@ describe("the teammates screen", () => {
   });
 
   it("opens a coding task's run in a popup, from its line in the thread or its row in the teammate's panel", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await tell("Lead", "Fix the typo in the README's first line.");
     const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
 
@@ -381,7 +382,7 @@ describe("the teammates screen", () => {
 
   it("runs a coding task on the agent you name, and on Cursor when you name none, and its line says which", async () => {
     // Slower than fast(): the line must be seen before the run reports its model, and fast() leaves that window under one poll.
-    render(<App adapter={fast({ speed: 0.3 })} />);
+    render(<AppProvider calls={fast({ speed: 0.3 })}><App /></AppProvider>);
     const line = () => entries("task").at(-1) as HTMLElement;
     const on = () => line().querySelector("[data-harness]")?.textContent;
 
@@ -416,7 +417,7 @@ describe("the teammates screen", () => {
     const BARE = /^(Bash|Read|Edit|Write|command_execution|file_change|shell|read|edit)$/;
     // Each run holds before its first step until the popup has shown what it starts on: that line lasts only until the run reports.
     const lab = fast({ speed: 0.3, held: true });
-    render(<App adapter={lab} />);
+    render(<AppProvider calls={lab}><App /></AppProvider>);
     for (const [ask, harness, check] of [
       ["Have Claude Code fix the typo in the README's first line.", "Claude Code", "Run the docs check"],
       ["Have Codex fix the typo in the README's first line.", "Codex", "pnpm docs:check"],
@@ -452,7 +453,7 @@ describe("the teammates screen", () => {
   }, 20_000);
 
   it("fails a task on a harness this machine isn't set up for at once, naming it, and runs nothing else in its place", async () => {
-    render(<App adapter={fast({ notSetUp: ["cursor"] })} />);
+    render(<AppProvider calls={fast({ notSetUp: ["cursor"] })}><App /></AppProvider>);
     await tell("Lead", "Have Cursor fix the typo in the README's first line.");
     await waitFor(() => expect(entries("task")).toHaveLength(1), { timeout: 3000 });
     const line = entries("task")[0] as HTMLElement;
@@ -469,7 +470,7 @@ describe("the teammates screen", () => {
   });
 
   it("lines the composer up with the message list: one column token, centred", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     const box = await screen.findByLabelText("Message Lead");
     const columns = () => [...conversation().querySelectorAll<HTMLElement>("[data-column]")];
     const capped = (el: HTMLElement) => el.classList.contains("max-w-(--thread-width)") && el.classList.contains("mx-auto");
@@ -486,7 +487,7 @@ describe("the teammates screen", () => {
     // Slow enough to scroll up while the answer is still being written.
     const feeds = layOutFeeds();
     onTestFinished(feeds.restore);
-    render(<App adapter={fast({ speed: 0.5 })} />);
+    render(<AppProvider calls={fast({ speed: 0.5 })}><App /></AppProvider>);
     await screen.findByLabelText("Message Lead");
     const scroller = conversation().querySelector<HTMLElement>("[data-scroller]")!;
     const before = entries("assistant");
@@ -517,7 +518,7 @@ describe("the teammates screen", () => {
   it("opens a worker's conversation already at its end, with no scroll to watch, and switching workers does the same", async () => {
     const feeds = layOutFeeds();
     try {
-      render(<App adapter={fast()} />);
+      render(<AppProvider calls={fast()}><App /></AppProvider>);
       await screen.findByLabelText("Message Lead");
       await screen.findByRole("separator");
       const first = conversation().querySelector<HTMLElement>("[data-scroller]")!;
@@ -540,7 +541,7 @@ describe("the teammates screen", () => {
   it("opens a message's popup already at its latest step, and leaves it there as the reply arrives", async () => {
     const feeds = layOutFeeds();
     try {
-      render(<App adapter={fast()} />);
+      render(<AppProvider calls={fast()}><App /></AppProvider>);
       await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
       const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
       feeds.scrolls.length = 0;
@@ -566,7 +567,7 @@ describe("the teammates screen", () => {
     // Slow enough to look at the answer while it is still being written. The list grows with its text.
     const feeds = layOutFeeds((feed) => 500 + (feed.textContent?.length ?? 0));
     onTestFinished(feeds.restore);
-    render(<App adapter={fast({ speed: 0.5 })} />);
+    render(<AppProvider calls={fast({ speed: 0.5 })}><App /></AppProvider>);
     await screen.findByLabelText("Message Lead");
     await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
     const scroller = conversation().querySelector<HTMLElement>("[data-scroller]")!;
@@ -597,7 +598,7 @@ describe("the teammates screen", () => {
   });
 
   it("draws a task card the moment it is filed and fills it in place: the same card from filing to done", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await tell("Lead", "Fix the typo in the README's first line.");
     const card = (await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" })).closest("[data-entry=task]")!;
     await waitFor(() => expect(card.querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 3000 });
@@ -605,7 +606,7 @@ describe("the teammates screen", () => {
   });
 
   it("sizes the composer's box to its draft in CSS, so a column that narrows rewraps and regrows it", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     // One line to start; the browser grows the box with its text (and its width) up to the cap, then it scrolls.
     expect(box.getAttribute("rows")).toBe("1");
@@ -615,7 +616,7 @@ describe("the teammates screen", () => {
   });
 
   it("doesn't carry a draft to another worker: switching workers starts an empty box", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     const leadBox = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     fireEvent.change(leadBox, { target: { value: "For Lead only" } });
     fireEvent.click(workerRow("researcher"));
@@ -631,7 +632,7 @@ describe("the teammates screen", () => {
       send: (sessionId: string, text: string) =>
         refuse ? Promise.reject(new Error("the server refused it (401)")) : lab.send(sessionId, text),
     };
-    render(<App adapter={adapter} />);
+    render(<AppProvider calls={adapter}><App /></AppProvider>);
     const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     await tell("Lead", "Where is the launch plan?");
     const alert = await within(conversation()).findByRole("alert");
@@ -654,7 +655,7 @@ describe("the teammates screen", () => {
       ...lab,
       send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
     };
-    render(<App adapter={adapter} />);
+    render(<AppProvider calls={adapter}><App /></AppProvider>);
     const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     await tell("Lead", "first ask");
     expect(box.value).toBe("first ask");
@@ -672,35 +673,35 @@ describe("the teammates screen", () => {
       ...lab,
       send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
     };
-    const first = render(<App adapter={adapter} />);
+    const first = render(<AppProvider calls={adapter}><App /></AppProvider>);
     await tell("Lead", "first ask");
     first.unmount();
 
-    const second = render(<App adapter={adapter} />);
+    const second = render(<AppProvider calls={adapter}><App /></AppProvider>);
     const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     expect(box.value).toBe("first ask");
     fireEvent.change(box, { target: { value: "first ask, revised" } });
     await act(async () => land());
     second.unmount();
 
-    render(<App adapter={lab} />);
+    render(<AppProvider calls={lab}><App /></AppProvider>);
     expect(((await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement).value).toBe("first ask, revised");
   });
 
   it("brings an unsent draft back after a reload, for that worker only", async () => {
     const lab = fast();
-    const first = render(<App adapter={lab} />);
+    const first = render(<AppProvider calls={lab}><App /></AppProvider>);
     fireEvent.change(await screen.findByLabelText("Message Lead"), { target: { value: "half a thought" } });
     first.unmount();
 
-    render(<App adapter={lab} />);
+    render(<AppProvider calls={lab}><App /></AppProvider>);
     expect(((await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement).value).toBe("half a thought");
     fireEvent.click(workerRow("researcher"));
     expect(((await screen.findByLabelText("Message researcher")) as HTMLTextAreaElement).value).toBe("");
   });
 
   it("sends with Cmd+Enter and Ctrl+Enter as well as Enter, and Shift+Enter stays a new line", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: "first line" } });
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
@@ -713,7 +714,7 @@ describe("the teammates screen", () => {
   });
 
   it("doesn't send when Enter ends an input method's composition", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     const box = await screen.findByLabelText("Message Lead");
     fireEvent.change(box, { target: { value: "日本語" } });
     fireEvent.keyDown(box, { key: "Enter", isComposing: true });
@@ -726,7 +727,7 @@ describe("the teammates screen", () => {
   });
 
   it("shows what a worker waits for your yes on, and Approve answers it so its turn carries on", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await waitFor(() => expect(workerRow("writer")).toBeTruthy());
     fireEvent.click(workerRow("writer"));
     await tell("writer", "Publish the draft.");
@@ -740,7 +741,7 @@ describe("the teammates screen", () => {
   });
 
   it("gives each teammate the icon and color its file sets, the same in the list, the header, a message line and its popup", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
     const look = (row: HTMLElement) => {
       const avatar = row.querySelector<HTMLElement>("[data-avatar]")!;
@@ -759,7 +760,7 @@ describe("the teammates screen", () => {
   });
 
   it("gives a teammate whose file sets no look its initial, on a color of the palette", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await screen.findByLabelText("Message Lead");
     fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
     const form = screen.getByRole("form", { name: "Hire a teammate" });
@@ -772,7 +773,7 @@ describe("the teammates screen", () => {
   });
 
   it("says under each name what the teammate is doing now, live, from its own state", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     const status = (name: string) => workerRow(name).querySelector("[data-status]")?.textContent;
     const header = () => conversation().querySelector("[data-header-status]")?.textContent;
     await waitFor(() => expect(status("Lead")).toMatch(/^Idle/));
@@ -793,7 +794,7 @@ describe("the teammates screen", () => {
   });
 
   it("hires with Cmd+Enter in the instructions and saves new ones with Ctrl+Enter, never from a form that can't send yet", async () => {
-    render(<App adapter={fast()} />);
+    render(<AppProvider calls={fast()}><App /></AppProvider>);
     await screen.findByLabelText("Message Lead");
     fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
     const form = screen.getByRole("form", { name: "Hire a teammate" });
@@ -832,7 +833,7 @@ describe("the teammates screen", () => {
       resets.push(worker);
       return resetTeammate(worker);
     };
-    render(<App adapter={lab} />);
+    render(<AppProvider calls={lab}><App /></AppProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
     expect(within(panel("Lead")).getByRole("button", { name: "Asked researcher to check the launch date" })).toBeTruthy();
@@ -871,7 +872,7 @@ describe("the teammates screen", () => {
       edits.push([worker, edit]);
       return editTeammate(worker, edit);
     };
-    render(<App adapter={lab} />);
+    render(<AppProvider calls={lab}><App /></AppProvider>);
     await screen.findByLabelText("Message Lead");
     // A worker from the files has no fire control.
     expect(within(conversation()).queryByRole("button", { name: "Fire" })).toBeNull();

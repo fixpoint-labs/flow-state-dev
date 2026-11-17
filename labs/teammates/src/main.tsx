@@ -1,11 +1,13 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createLabAdapter } from "./adapter";
-import { App } from "./App";
+import { AppProvider, createAppCalls } from "./app";
+import { App } from "./components/App";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App adapter={createLabAdapter()} />
+    <AppProvider calls={createAppCalls()}>
+      <App />
+    </AppProvider>
   </StrictMode>,
 );

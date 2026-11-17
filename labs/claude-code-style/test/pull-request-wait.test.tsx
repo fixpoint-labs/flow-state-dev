@@ -9,7 +9,7 @@
  */
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { LabTask } from "../src/lab";
+import type { AppTask } from "../src/app";
 import { stubServer } from "./stub-server";
 import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import { ThreadCard } from "../src/components/ThreadCard";
@@ -21,7 +21,7 @@ afterEach(cleanup);
 
 const URL_7 = "https://github.com/acme/app/pull/7";
 
-const WAITING: LabTask = {
+const WAITING: AppTask = {
   id: "t-7",
   title: "Rename the session log",
   goal: "Rename it",
@@ -32,7 +32,7 @@ const WAITING: LabTask = {
 };
 
 
-function openView(task: LabTask) {
+function openView(task: AppTask) {
   render(
     stubServer().wrap(
       <SessionOverlayProvider>

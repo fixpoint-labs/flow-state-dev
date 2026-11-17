@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { Client, SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/client";
-import { createLabAdapter, type BoardTask } from "../src/adapter";
+import { createAppCalls, type BoardTask } from "../src/app";
 import { liveOver } from "./live-over";
 
 /** `client.subscribe`, faked: each subscription is kept so a case can deliver its notices. */
@@ -73,7 +73,7 @@ describe("a coding task's run, while it runs", () => {
   it("is named on the task as soon as the board says it started, not when the task ends", async () => {
     const { client, reads } = clientWith(filed("in_progress"));
     let tasks: BoardTask[] = [];
-    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    const stop = createAppCalls(client).watchTasks("wks_1", (next) => (tasks = next));
     await until(() => tasks[0]?.runSessionId !== undefined);
     stop();
     expect(tasks[0]?.runSessionId).toBe("dsx_run");
@@ -82,7 +82,7 @@ describe("a coding task's run, while it runs", () => {
 
   it("names no topic: it hears the topics the board view's answer named, with today's pace for where push can miss a change", async () => {
     const { client, push } = clientWith(filed("in_progress"));
-    const stop = createLabAdapter(client).watchTasks("wks_1", () => {});
+    const stop = createAppCalls(client).watchTasks("wks_1", () => {});
     await until(() => push.subscriptions.some((s) => s.topics.length > 0));
     stop();
     const board = push.subscriptions.find((s) => s.topics.length > 0)!;
@@ -95,7 +95,7 @@ describe("a coding task's run, while it runs", () => {
     let started = false;
     const { client, reads, push } = clientWith(filed("in_progress"), () => started);
     let tasks: BoardTask[] = [];
-    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    const stop = createAppCalls(client).watchTasks("wks_1", (next) => (tasks = next));
     // Read once, and once more once it hears the topics the answer named.
     await until(() => reads.length === 2);
     // No timer of its own: with no notice, the board is read no more.
@@ -129,7 +129,7 @@ describe("a coding task's run, while it runs", () => {
       view: async () => boardAnswer([{ ...item.value.task, updatedAt: linked ? 3 : 1, ...(linked ? { run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } } : {}) }]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
-    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    const stop = createAppCalls(client).watchTasks("wks_1", (next) => (tasks = next));
     await until(() => tasks.length > 0);
     await new Promise((r) => setTimeout(r, 50));
     linked = true;
@@ -156,7 +156,7 @@ describe("a coding task's run, while it runs", () => {
       view: async () => boardAnswer([{ ...item.value.task, status, updatedAt: status === "completed" ? 5 : 1 }]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
-    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    const stop = createAppCalls(client).watchTasks("wks_1", (next) => (tasks = next));
     await until(() => tasks.length > 0);
     status = "completed";
     push.hear({ topic: { scope: "session", id: "wks_1", resource: "tasks" }, kind: "board" });
@@ -184,7 +184,7 @@ describe("what a task's runs spent, as the board read folds it", () => {
         boardAnswer([{ ...item.value.task, spend: { harness: "codex", model: "gpt-5.5-codex", inputTokens: 10, outputTokens: 5, costUsd: null, unreported: false, live: false } }]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
-    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    const stop = createAppCalls(client).watchTasks("wks_1", (next) => (tasks = next));
     await until(() => tasks[0]?.model !== undefined);
     stop();
     expect(tasks[0]).toMatchObject({ harness: "Codex", model: "gpt-5.5-codex" });
@@ -214,7 +214,7 @@ describe("a hold answered in the run's session", () => {
       view: async () => boardAnswer([{ ...conversation.value.task, run, updatedAt: answered ? 3 : 2, ...(answered ? {} : { holds: [hold] }) }]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
-    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    const stop = createAppCalls(client).watchTasks("wks_1", (next) => (tasks = next));
     await until(() => tasks[0]?.waiting !== undefined);
     answered = true;
     push.hear({ topic: { scope: "session", id: "wks_1", resource: "tasks" }, kind: "board" });
@@ -255,7 +255,7 @@ describe("a row the run's feed and the board read both carry", () => {
     let spend: unknown = null;
     const { client, push } = twoSources(() => ({ updatedAt: 5, spend }));
     let tasks: BoardTask[] = [];
-    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    const stop = createAppCalls(client).watchTasks("wks_1", (next) => (tasks = next));
     await new Promise((r) => setTimeout(r, 100));
     spend = { harness: "codex", model: "gpt-5.5-codex", inputTokens: 10, outputTokens: 5, costUsd: null, unreported: false, live: true };
     push.hear(notice);
@@ -268,7 +268,7 @@ describe("a row the run's feed and the board read both carry", () => {
     let done = false;
     const { client, push } = twoSources(() => (done ? { status: "completed", updatedAt: 9 } : { updatedAt: 5 }));
     let tasks: BoardTask[] = [];
-    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    const stop = createAppCalls(client).watchTasks("wks_1", (next) => (tasks = next));
     await new Promise((r) => setTimeout(r, 100));
     done = true;
     push.hear(notice);
@@ -303,7 +303,7 @@ describe("a board read still in flight when the watch stops", () => {
         }),
     } as unknown as Client;
     const calls: BoardTask[][] = [];
-    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => calls.push(next));
+    const stop = createAppCalls(client).watchTasks("wks_1", (next) => calls.push(next));
     await until(() => land !== undefined && calls.length > 0);
     const before = calls.length;
     stop();
@@ -355,7 +355,7 @@ describe("a coding task's hold, while it runs", () => {
 
   it("is read from the board, which the run's write reaches from its own session", async () => {
     let tasks: BoardTask[] = [];
-    const stop = createLabAdapter(clientWithRunRow()).watchTasks("wks_1", (next) => (tasks = next));
+    const stop = createAppCalls(clientWithRunRow()).watchTasks("wks_1", (next) => (tasks = next));
     await until(() => tasks[0]?.waiting !== undefined);
     stop();
     expect(tasks[0]?.waiting).toEqual({ kind: "review", prompt: "1 commit on b", unanswerable: null, holdId: "susp-1" });
@@ -387,7 +387,7 @@ describe("a coding task's hold, while it runs", () => {
       view: async () => boardAnswer([]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
-    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    const stop = createAppCalls(client).watchTasks("wks_1", (next) => (tasks = next));
     await until(() => opened.includes("dsx_run") && pushTo.has("wks_1"));
     expect(opened).not.toContain("dsx_old");
     expect(closed).not.toContain("dsx_run");
@@ -403,7 +403,7 @@ describe("a coding task's hold, while it runs", () => {
   it("a second watch of the same board, once the run's feed has loaded, reads it too", async () => {
     // The popup opens while the conversation still watches: the run's feed answers the second watch at once.
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-    const adapter = createLabAdapter(clientWithRunRow());
+    const adapter = createAppCalls(clientWithRunRow());
     let first: BoardTask[] = [];
     const stopFirst = adapter.watchTasks("wks_1", (next) => (first = next));
     await until(() => first[0]?.waiting !== undefined);
@@ -430,7 +430,7 @@ describe("the board read's freshness", () => {
     };
     let tasks: BoardTask[] = [];
     const stale: boolean[] = [];
-    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next), (next) => stale.push(next));
+    const stop = createAppCalls(client).watchTasks("wks_1", (next) => (tasks = next), (next) => stale.push(next));
     await until(() => tasks.length === 1);
     expect(stale).toEqual([]);
 

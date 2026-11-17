@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { SessionStep, StepRun } from "../adapter";
+import type { SessionStep, StepRun } from "../app";
 import { withToolState } from "./flow-state/tool-grouping";
 import { cn } from "../lib/utils";
 

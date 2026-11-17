@@ -9,7 +9,7 @@ import { cleanup, renderHook } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
-import { LabProvider, useLab, useThread, type ThreadView } from "../src/lab";
+import { AppProvider, useApp, useThread, type ThreadView } from "../src/app";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
@@ -68,7 +68,7 @@ function host(history: unknown[]) {
   const client = createClient({ userId: "u", baseUrl: "", fetcher });
   return {
     client,
-    wrapper: ({ children }: { children: ReactNode }) => createElement(LabProvider, { client, pollIntervalMs: 100 }, children),
+    wrapper: ({ children }: { children: ReactNode }) => createElement(AppProvider, { client, pollIntervalMs: 100 }, children),
     counts,
     push: (at: number, value: unknown) => send(item(at, value)),
     /** The frame the stream sends once it is open, naming the session's unfinished runs. */
@@ -91,7 +91,7 @@ function follow(h: ReturnType<typeof host>) {
     () => {
       const view = useThread("s1", false);
       if (view !== undefined && views.at(-1) !== view) views.push(view);
-      return useLab();
+      return useApp();
     },
     { wrapper: h.wrapper },
   );

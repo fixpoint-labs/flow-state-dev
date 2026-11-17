@@ -21,7 +21,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
   };
 });
 
-import { createLabAdapter, type Activity, type ConversationView, type LabTalk, type Unsubscribe, type WindowMark } from "../src/adapter";
+import { createAppCalls, type Activity, type ConversationView, type AppTalk, type Unsubscribe, type WindowMark } from "../src/app";
 import { liveOver } from "./live-over";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -127,7 +127,7 @@ describe("watchConversation's answering state", () => {
   it("reads the requests on a request notice, never on a streamed item, at the old pace where push can miss one", async () => {
     const h = host();
     const views: ConversationView[] = [];
-    stops.push(createLabAdapter(h.client).watchConversation("s1", (view) => views.push(view)));
+    stops.push(createAppCalls(h.client).watchConversation("s1", (view) => views.push(view)));
     await until(() => views.length > 0 && h.count("/sessions/s1/requests") === 1);
     const sub = h.subscriptions.find((s) => !s.closed)!;
     expect(sub.topics).toEqual([{ scope: "session", id: "s1" }]);
@@ -153,7 +153,7 @@ describe("a Stop after a turn that crashed mid-answer, long ago", () => {
       { id: "a1", type: "message", status: "completed", requestId: "r1", itemIndex: 2, ts: 3, role: "assistant", content: [{ type: "output_text", text: "hello" }] },
     ]);
     h.requests([{ id: "r1", actionName: "respond", status: "completed", startedAtMs: 2 }]);
-    const lab = createLabAdapter(h.client);
+    const lab = createAppCalls(h.client);
     const id = await lab.openConversation("eng");
     const views: ConversationView[] = [];
     stops.push(lab.watchConversation(id, (view) => views.push(view)));
@@ -168,7 +168,7 @@ describe("a Stop after a turn that crashed mid-answer, long ago", () => {
 describe("a Stop whose read of running turns answers late", () => {
   it("leaves a line sent after the press to run on", async () => {
     const h = host();
-    const lab = createLabAdapter(h.client);
+    const lab = createAppCalls(h.client);
     const id = await lab.openConversation("eng");
     h.requests([{ id: "r1", actionName: "respond", status: "in_progress", startedAtMs: 1 }]);
     const views: ConversationView[] = [];
@@ -193,7 +193,7 @@ describe("a stopped line", () => {
     const h = host();
     h.requests([{ id: "r1", actionName: "respond", status: "aborted", startedAtMs: 1 }]);
     const views: ConversationView[] = [];
-    stops.push(createLabAdapter(h.client).watchConversation("s1", (view) => views.push(view)));
+    stops.push(createAppCalls(h.client).watchConversation("s1", (view) => views.push(view)));
     await until(() => views.at(-1)?.entries.some((e) => e.kind === "stopped") === true);
     // Twenty later passes push r1 out of the read.
     h.requests(Array.from({ length: 20 }, (_, i) => ({ id: `d${i}`, actionName: "dispatch", status: "completed", startedAtMs: 10 + i })));
@@ -210,7 +210,7 @@ describe("a read that failed", () => {
     h.failRequestReads(1);
     h.requests([{ id: "r2", actionName: "respond", status: "in_progress", startedAtMs: 2 }]);
     const views: ConversationView[] = [];
-    stops.push(createLabAdapter(h.client).watchConversation("s1", (view) => views.push(view)));
+    stops.push(createAppCalls(h.client).watchConversation("s1", (view) => views.push(view)));
     await until(() => h.count("/sessions/s1/requests") === 1);
     // The retry backs off from 1 s, as the client's own reconnects do.
     await until(() => h.count("/sessions/s1/requests") === 2);
@@ -221,7 +221,7 @@ describe("a read that failed", () => {
 describe("watchActivity", () => {
   it("waits for the worker's conversation to open, then reads its requests on each request notice", async () => {
     const h = host();
-    const lab = createLabAdapter(h.client);
+    const lab = createAppCalls(h.client);
     const seen: Activity[] = [];
     stops.push(lab.watchActivity("eng", (activity) => seen.push(activity)));
     await settle();
@@ -245,7 +245,7 @@ describe("watchActivity", () => {
 
   it("shows nothing from a read still in flight when the watch stopped", async () => {
     const h = host();
-    const lab = createLabAdapter(h.client);
+    const lab = createAppCalls(h.client);
     await lab.openConversation("eng");
     const seen: Activity[] = [];
     const release = h.holdRequestReads();
@@ -263,7 +263,7 @@ describe("watchWindow", () => {
   it("reads on a request notice and on its history summary's notice, and on nothing else", async () => {
     const h = host();
     const marks: Array<WindowMark | undefined> = [];
-    stops.push(createLabAdapter(h.client).watchWindow("s1", (mark) => marks.push(mark)));
+    stops.push(createAppCalls(h.client).watchWindow("s1", (mark) => marks.push(mark)));
     await until(() => h.count("/sessions/s1/requests") === 1);
     const sub = h.subscriptions.find((s) => !s.closed)!;
     expect(sub.topics).toEqual([{ scope: "session", id: "s1" }]);
@@ -300,9 +300,9 @@ describe("watchTalk", () => {
   it("reads your message log on a notice of it under your user scope, not on a clock; at the old pace where push can miss one", async () => {
     const h = host();
     h.messages([message("msg_1", 1)]);
-    const lab = createLabAdapter(h.client);
+    const lab = createAppCalls(h.client);
     await lab.openConversation("eng");
-    const shown: LabTalk[][] = [];
+    const shown: AppTalk[][] = [];
     stops.push(lab.watchTalk("eng", (talk) => shown.push(talk)));
     await until(() => shown.length === 1);
     // The log is the user's: a message sent from any session lands under the user's scope.

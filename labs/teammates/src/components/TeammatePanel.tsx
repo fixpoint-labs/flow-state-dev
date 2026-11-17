@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { ChevronRightIcon, TerminalIcon } from "lucide-react";
-import type { BoardTask, LabAdapter, LabWorker } from "../adapter";
+import type { BoardTask, AppCalls, AppWorker } from "../app";
 import type { Look } from "../lib/looks";
 import { useNow, useStale, useWatch } from "../lib/use-watch";
 import { clearMark, useCleared } from "../lib/cleared";
@@ -99,8 +99,8 @@ export function TeammatePanel({
   isCoding,
   onOpen,
 }: {
-  adapter: LabAdapter;
-  worker: LabWorker;
+  adapter: AppCalls;
+  worker: AppWorker;
   /** The teammate's one conversation: the tasks listed are the ones it filed. */
   sessionId: string;
   /** The task open in the popup, if one is. */

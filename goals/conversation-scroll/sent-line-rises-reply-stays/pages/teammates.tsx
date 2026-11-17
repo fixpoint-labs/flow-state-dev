@@ -8,7 +8,7 @@
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import type { ConversationEntry, LabAdapter, LabWorker } from "../adapter";
+import type { AppCalls, AppWorker, ConversationEntry } from "../app";
 import { Conversation } from "../components/Conversation";
 import { SessionOverlay } from "../components/flow-state/session-overlay";
 import "../styles.css";
@@ -23,7 +23,7 @@ const entryOf = (line: Line): ConversationEntry =>
 
 const watchers = new Map<string, unknown>();
 /** Every read the conversation makes; only the conversation itself and its connection say anything. */
-const adapter = new Proxy({} as LabAdapter, {
+const adapter = new Proxy({} as AppCalls, {
   get(_, name: string) {
     if (!watchers.has(name)) {
       watchers.set(
@@ -50,7 +50,7 @@ const adapter = new Proxy({} as LabAdapter, {
   },
 });
 
-const worker: LabWorker = { id: "helper", name: "Helper", role: "helps out" };
+const worker: AppWorker = { id: "helper", name: "Helper", role: "helps out" };
 
 function Page() {
   const open = useOpen();
