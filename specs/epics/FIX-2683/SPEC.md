@@ -102,8 +102,8 @@ flowchart LR
   R -->|"each app's allowlist"| T1
   A["FIX-XXX · a user's pending asks"] -->|"one read across sessions"| S1["FIX-XXX · Shift Manager's Inbox and boards"]
   R --> S1
-  S1 -->|"its screens off the snapshot"| S4
-  S1 -->|"the Inbox view, for the sidebar counts"| S2["FIX-XXX · Shift Manager's snapshot goes"]
+  S1 -->|"its screens off the snapshot"| S4["FIX-XXX · Shift Manager's snapshot goes"]
+  S1 -->|"the Inbox view, for the sidebar counts"| S2
   S2["FIX-XXX · Shift Manager's directory"] --> S4
   S3["FIX-XXX · Shift Manager's conversations"] --> S4
   classDef proposed stroke-dasharray:4 3
