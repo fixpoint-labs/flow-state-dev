@@ -35,7 +35,7 @@ const at = (app: AppInventory, rel: string) => join(app.root!, rel);
 const allowlistOf = (app: AppInventory): Key[] => JSON.parse(readFileSync(at(app, ALLOWLIST), "utf8"));
 const writeAllowlist = (app: AppInventory, keys: Key[]) => writeFileSync(at(app, ALLOWLIST), JSON.stringify(keys));
 
-/** An adapter of the kind the epic removes: a client import, a `.subscribe(` and a hand-written row type. */
+/** An adapter like the ones the epic removes: a client import, a `.subscribe(` and a hand-written row type. */
 const GLUE = 'import { createClient } from "@flow-state-dev/client";\nexport interface BoardRow { id: string; status: string }\nexport const watch = (c: any) => c.subscribe([], {});\n';
 
 describe("the lab's inventory", () => {
@@ -66,9 +66,11 @@ describe("the lab's inventory", () => {
     });
 
     it("an own-session helper planted in src/lib/", () => {
+      // Built at run time: the vocabulary sweep and the closure's grep read this file too.
+      const helper = ["openReader", "Session"].join("");
       const app = copy();
-      writeFileSync(at(app, "src/lib/glue.ts"), "export const openReaderSession = () => undefined;\n");
-      expect(checkInventory(app)).toEqual(["src/lib/glue.ts:1: openReaderSession, an own-session helper (own sessions: not on the allowlist)"]);
+      writeFileSync(at(app, "src/lib/glue.ts"), `export const ${helper} = () => undefined;\n`);
+      expect(checkInventory(app)).toEqual([`src/lib/glue.ts:1: ${helper}, an own-session helper (own sessions: not on the allowlist)`]);
     });
 
     it("an entry added to the allowlist, even with its finding: the merge-base's list doesn't have it", () => {

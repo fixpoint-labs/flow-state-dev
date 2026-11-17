@@ -35,7 +35,7 @@ const at = (app: AppInventory, rel: string) => join(app.root!, rel);
 const allowlistOf = (app: AppInventory): Key[] => JSON.parse(readFileSync(at(app, ALLOWLIST), "utf8"));
 const writeAllowlist = (app: AppInventory, keys: Key[]) => writeFileSync(at(app, ALLOWLIST), JSON.stringify(keys));
 
-/** An adapter of the kind the epic removes: a client import, a `.subscribe(` and a hand-written row type. */
+/** An adapter like the ones the epic removes: a client import, a `.subscribe(` and a hand-written row type. */
 const GLUE = 'import { createClient } from "@flow-state-dev/client";\nexport interface BoardRow { id: string; status: string }\nexport const watch = (c: any) => c.subscribe([], {});\n';
 
 describe("Shift Manager's inventory", () => {
