@@ -578,6 +578,24 @@ export function isStartable(task: Task, rows: readonly Task[]): boolean {
   return !rows.some((other) => other.id !== task.id && holdsSession(other) && sessionKeyOf(other) === key);
 }
 
+/**
+ * Whether a pending task on this one board will start because a finished
+ * task released its session. A startable task with no finished sibling was
+ * never handed to the dispatcher. The test host's quiet check reads this,
+ * so it does not keep a second copy of the start rule.
+ *
+ * @param tasks One board's tasks: one partition of one scope.
+ */
+export function owesStartAfterRelease(tasks: readonly Task[], now = Date.now()): boolean {
+  const lookup = (id: string): Task | undefined => tasks.find((task) => task.id === id);
+  return tasks.some((task) => {
+    if (task.status !== "pending" || !isClaimable(task, lookup, now) || !isStartable(task, tasks)) return false;
+    const key = sessionKeyOf(task);
+    if (key === undefined) return false;
+    return tasks.some((other) => other.id !== task.id && isTerminalStatus(other.status) && sessionKeyOf(other) === key);
+  });
+}
+
 
 /**
  * The sessions by id another board's routed task holds now, by board, as this

@@ -23,12 +23,12 @@ import type { FlowInstance, GeneratorModel } from "@flow-state-dev/core/types";
 import { createFlowState, createInProcessFetch, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import type { SchedulerAdapter } from "@flow-state-dev/engine/host";
 import { createClient } from "@flow-state-dev/client";
-import { isClaimable, isTerminalStatus, type Task } from "@flow-state-dev/orchestration/tasks";
+import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { askMidway } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver, mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "../src/agent-worker-flow";
-import { isStartable, sessionKeyOf } from "../src/conversation-board/board";
+import { owesStartAfterRelease } from "../src/conversation-board/board";
 import { conversationLedgerAt, conversationLedgerResources } from "../src/conversation-board/ledger";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
@@ -90,28 +90,19 @@ const doorInput = z.object({ message: z.string() });
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * A pending task the board will start because a finished task on its session
- * released it. A startable task with no finished sibling was never handed to
- * the dispatcher (a wake that was lost, written straight into the store),
- * and `settled` must not wait for that one.
+ * Whether any board among these tasks still owes a start after a release.
+ * Each board is one scope and one partition; the start rule itself is
+ * {@link owesStartAfterRelease}.
  */
-function awaitsReleasedSession(tasks: readonly (Task & { partition: string })[]): boolean {
-  const byPartition = new Map<string, (Task & { partition: string })[]>();
+function owesReleasedStart(tasks: readonly (Task & { partition: string; scope: string })[]): boolean {
+  const boards = new Map<string, Task[]>();
   for (const stored of tasks) {
-    const list = byPartition.get(stored.partition);
-    if (list === undefined) byPartition.set(stored.partition, [stored]);
+    const key = `${stored.scope}\0${stored.partition}`;
+    const list = boards.get(key);
+    if (list === undefined) boards.set(key, [stored]);
     else list.push(stored);
   }
-  const now = Date.now();
-  for (const group of byPartition.values()) {
-    const lookup = (id: string): Task | undefined => group.find((stored) => stored.id === id);
-    for (const task of group) {
-      if (task.status !== "pending" || !isClaimable(task, lookup, now) || !isStartable(task, group)) continue;
-      const key = sessionKeyOf(task);
-      if (key === undefined) continue;
-      if (group.some((other) => other.id !== task.id && isTerminalStatus(other.status) && sessionKeyOf(other) === key)) return true;
-    }
-  }
+  for (const board of boards.values()) if (owesStartAfterRelease(board)) return true;
   return false;
 }
 
@@ -316,6 +307,11 @@ export const SCHEDULER_SECRET = "board-harness-scheduler";
 
 export function bootBoardHost(options: BoardHostOptions = {}) {
   const stores = options.stores ?? inMemoryStores();
+  /** User scopes this host has written for, so a quiet check does not list every session. */
+  const scopes = new Set<string>();
+  const noteScope = (userId: string, orgId = ORG) => {
+    scopes.add(`${userId}\0${orgId}`);
+  };
   const runs: TaskRun[] = [];
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({
@@ -408,6 +404,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** POST a session create as `userId`. */
   const create = async (userId: string, flow: string, body: Record<string, unknown>) => {
+    noteScope(userId);
     const res = await postJson(userId, [flow, "sessions"], { userId, ...body });
     return { status: res.status, body: (await res.json()) as { session?: { id: string }; error?: string } };
   };
@@ -426,6 +423,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** POST an action through the host's dispatch, so its concurrency policy applies. The accepted request's id. */
   const post = async (userId: string, sessionId: string, actionName: string, input: unknown, flow = "coordinator") => {
+    noteScope(userId);
     const res = await postJson(userId, [flow, sessionId, "actions", actionName], { userId, input });
     const body = (await res.json()) as { request?: { id: string }; error?: unknown };
     if (res.status !== 202) throw new Error(`POST ${actionName} was refused (${res.status}): ${JSON.stringify(body)}`);
@@ -440,6 +438,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** Run an action on `flow` as `userId`, in process. */
   const act = async (userId: string, sessionId: string, actionName: string, input: unknown, flow = "coordinator", orgId = ORG) => {
+    noteScope(userId, orgId);
     const runtime = await state.getRuntime();
     return (await runAction({
       flow: instances[flow]!,
@@ -463,17 +462,14 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     }));
   };
 
-  /** Every stored task on every session's board. */
-  const storedTasks = async (): Promise<Array<Task & { partition: string }>> => {
-    const runtime = await state.getRuntime();
-    const seen = new Set<string>();
-    const out: Array<Task & { partition: string }> = [];
-    for (const session of await runtime.stores.session.list()) {
-      const orgId = session.orgId ?? ORG;
-      const scope = `${session.userId}\0${orgId}`;
-      if (seen.has(scope)) continue;
-      seen.add(scope);
-      out.push(...(await tasksUnder(session.userId, orgId)));
+  /** Stored tasks for the scopes this host has written, each tagged with that scope. */
+  const storedTasks = async (): Promise<Array<Task & { partition: string; scope: string }>> => {
+    const out: Array<Task & { partition: string; scope: string }> = [];
+    for (const scope of scopes) {
+      const split = scope.indexOf("\0");
+      const userId = scope.slice(0, split);
+      const orgId = scope.slice(split + 1);
+      for (const task of await tasksUnder(userId, orgId)) out.push({ ...task, scope });
     }
     return out;
   };
@@ -494,7 +490,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     const quiet = async () => {
       const all = await (await state.getRuntime()).stores.request.list({});
       const busy = all.some(running);
-      return { all, pending: busy ? false : await awaitsReleasedSession(await storedTasks()) };
+      return { all, pending: busy ? false : owesReleasedStart(await storedTasks()) };
     };
     for (;;) {
       const first = await quiet();
@@ -585,6 +581,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** Write a stored row as a crash would leave it: a test's stand-in for a write that landed with nothing after it. */
   const writeRow = async (userId: string, partition: string, task: Task) => {
+    noteScope(userId);
     const store = (await state.getRuntime()).stores.resourceState;
     const key = `tasks/${encodeUserSegment(partition)}/${task.id}`;
     await store.set("user", `${userId}:~org:${ORG}`, key, task as never, "any" as never);
