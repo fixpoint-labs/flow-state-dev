@@ -542,7 +542,7 @@ function claimOf(ctx: BlockContext): { assignee?: string; followUpOf?: string } 
  * workstream session its filing resolved. A follow-up's row
  * carries its root's setting, so it keys where its root ran.
  */
-export function sessionKeyOf(task: Pick<Task, "id" | "assignee" | "followUpOf" | "session" | "targetSessionId">): string | undefined {
+function sessionKeyOf(task: Pick<Task, "id" | "assignee" | "followUpOf" | "session" | "targetSessionId">): string | undefined {
   if (task.assignee === undefined) return undefined;
   if (task.session === "ongoing") {
     return task.targetSessionId !== undefined ? `id:${task.targetSessionId}` : `delegate:${delegateKey({ worker: task.assignee })}`;
@@ -571,7 +571,7 @@ function holdsSession(task: Task): boolean {
  *
  * @param rows The board's rows, as the claim write reads them.
  */
-export function isStartable(task: Task, rows: readonly Task[]): boolean {
+function isStartable(task: Task, rows: readonly Task[]): boolean {
   if (task.assignee === undefined) return false;
   const key = sessionKeyOf(task);
   if (key === undefined) return true;
