@@ -3967,8 +3967,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         const recorded = await readRunRecord(ctx, state.topic!)
           .then((record) => taskPullRequests(ctx, record?.requestIds ?? [ctx.request.identity.id]))
           .catch(() => []);
-        const all = [...recorded.flatMap((pr) => (pr.url === null ? [] : [{ number: pr.number, url: pr.url }])), ...(onPullRequest === null ? [] : [{ number: onPullRequest.number, url: onPullRequest.url }])];
-        return all.filter((pr, i) => all.findIndex((other) => other.url === pr.url) === i);
+        // Each read as a pull request's web link and kept in its normalized form, so a card links only to one.
+        const links = [...recorded.map((pr) => pr.url), onPullRequest?.url ?? null].flatMap((url) => {
+          const ref = url === null ? null : pullRequestRefFromUrl(url);
+          return ref === null ? [] : [{ number: ref.number, url: ref.url }];
+        });
+        return links.filter((pr, i) => links.findIndex((other) => other.url === pr.url) === i);
       };
       const pullRequests =
         ctx.runOnce === undefined ? await readPullRequests() : await ctx.runOnce(`review:pull-requests:${state.steerSteps ?? 0}`, readPullRequests);

@@ -124,7 +124,7 @@ describe("reviewDetail: what the review card needs to decide on", () => {
       branch: "b",
       goal: 3,
       answer: { text: "x" },
-      pullRequests: [{ number: "41", url: "u" }, { number: 7, url: "https://x/pull/7" }, "y"],
+      pullRequests: [{ number: "41", url: "u" }, { number: 7, url: "https://x/pull/7" }, { number: 8, url: "javascript:alert(1)" }, "y"],
       round: { commits: -1, subjects: [] },
       files: [{ path: 1 }, { path: "bin.png", added: null, removed: null }],
       fileCount: "2",

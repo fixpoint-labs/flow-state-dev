@@ -135,9 +135,11 @@ const isCount = (value: unknown): value is number => typeof value === "number" &
 /** A line count, or a binary file's `null`; `undefined` when the value is neither. */
 const lineCountOf = (value: unknown): number | null | undefined => (value === null ? null : isCount(value) ? value : undefined);
 
-/** One pull request, or `null` when the entry isn't one. */
+/** One pull request, or `null` when the entry isn't one or its link isn't a web address. */
 function pullRequestOf(value: unknown): ReviewPullRequest | null {
-  return isRecord(value) && isCount(value.number) && typeof value.url === "string" ? { number: value.number, url: value.url } : null;
+  return isRecord(value) && isCount(value.number) && typeof value.url === "string" && value.url.startsWith("https://")
+    ? { number: value.number, url: value.url }
+    : null;
 }
 
 /** This round's commits, or `null` when they aren't readable. */
