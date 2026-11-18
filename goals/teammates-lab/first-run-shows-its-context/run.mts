@@ -36,10 +36,10 @@ const CONTROLS: Record<string, Patch[]> = {
   // The chips drawn from a constant list where every harness is ready: what a strip that never reads the machine shows.
   "fixed-chips": [
     {
-      file: "src/app/setup.ts",
-      from: "return (await client.view(READINESS_VIEW, { refresh })).value;",
+      file: "src/components/App.tsx",
+      from: "const harnesses = rechecked ?? readiness.value ?? (readiness.stale ? [] : undefined);",
       to:
-        "void refresh; return [\"cursor\", \"codex\", \"claude-code\"].map((harness) => ({ harness, label: harness, ready: true, reason: null, remedy: null, unanswered: false, checkedAt: Date.now() })) as AppHarness[];",
+        "void rechecked; const harnesses = [\"cursor\", \"codex\", \"claude-code\"].map((harness) => ({ harness, label: harness, ready: true, reason: null, remedy: null, unanswered: false, checkedAt: Date.now() })) as HarnessReadinessChipRow[];",
       why: "the chips read a constant all-ready list, not harness-manager's readiness",
     },
   ],

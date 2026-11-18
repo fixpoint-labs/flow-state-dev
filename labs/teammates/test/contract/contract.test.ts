@@ -301,9 +301,8 @@ describe.each([
   /** The lead's conversation, on a fresh target. */
   const chief = async (asks = false) => {
     target = await make(asks);
-    // The screen opens on the roster: the adapter learns the workers' names from it, and draws a line
-    // from a worker it knows as that worker's.
-    await target.lab.listWorkers();
+    // Opening a conversation reads the roster first: the calls learn the workers' names from it, and draw a line
+    // from a worker they know as that worker's.
     return { lab: target.lab, id: await target.lab.openConversation(CHIEF) };
   };
 

@@ -15,7 +15,7 @@
  */
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, defineWebhookBinding, generator, handler, sequencer } from "@flow-state-dev/core";
 import {
   createFlowRegistry,
   defaultBodyUserIdPrincipalResolver,
@@ -83,15 +83,14 @@ const billingFlow = defineFlow({
   webhooks: {
     stripe: {
       on: {
-        "invoice.paid": {
+        "invoice.paid": defineWebhookBinding<StripeEvent>({
           block: recordPayment,
-          input: (e: { payload: StripeEvent }) => ({
-            invoiceId: e.payload.data.object.id,
-            memo: e.payload.data.object.memo,
+          input: (event) => ({
+            invoiceId: event.payload.data.object.id,
+            memo: event.payload.data.object.memo,
           }),
-          sessionId: (e: { payload: StripeEvent }) =>
-            `customer-${e.payload.data.object.customer}`,
-        },
+          sessionId: (event) => `customer-${event.payload.data.object.customer}`,
+        }),
       },
     },
   },
@@ -113,6 +112,8 @@ const host = createInboundTransportHost({
   runtimeConfig: {},
 });
 let handle: { finished?: Promise<unknown> } | undefined;
+/** Read after `route.handler`: dispatch assigns `handle`, which a local read stays narrowed away from. */
+const dispatched = () => handle?.finished;
 const realDispatch = host.dispatch.bind(host);
 (host as { dispatch: typeof host.dispatch }).dispatch = ((env: Parameters<typeof host.dispatch>[0]) => {
   handle = realDispatch(env) as { finished?: Promise<unknown> };
@@ -179,7 +180,7 @@ async function main(): Promise<void> {
     }),
     PARAMS,
   );
-  await handle?.finished;
+  await dispatched();
 
   const s = await stores.session.get(`customer-${fixture.customer}`);
   const state = (s?.state as { lastInvoice?: string; company?: string } | undefined) ?? null;

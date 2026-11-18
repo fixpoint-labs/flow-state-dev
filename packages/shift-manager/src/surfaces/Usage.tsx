@@ -193,7 +193,7 @@ function WorkerUsageSection({ readAt }: { readAt: number }) {
     <section className="mt-5" data-testid="worker-usage" data-days={days}>
       <header className="flex flex-wrap items-center gap-3 border-b border-foreground/20 pb-2">
         <h2 className="text-sm font-semibold">Usage by worker</h2>
-        <div role="tablist" aria-label="Period" className="ml-auto flex border border-foreground font-mono text-[11.5px] font-medium" data-testid="worker-usage-period">
+        <div role="tablist" aria-label="Period" className="ml-auto flex border border-foreground font-mono text-xs font-medium" data-testid="worker-usage-period">
           {USAGE_PERIODS.map((period, i) => (
             <button
               key={period.days}

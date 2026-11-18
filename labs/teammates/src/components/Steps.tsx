@@ -22,14 +22,14 @@ export function Steps({ steps, nameOf, empty }: { steps: readonly SessionStep[];
       case "given":
         return (
           <div key={group.id} className="flex justify-end">
-            <div data-step="given" className="max-w-[80%] rounded-lg bg-accent px-4 py-2.5 text-sm whitespace-pre-wrap">
+            <div data-step="given" className="max-w-[80%] rounded-lg bg-accent px-4 py-2.5 text-base whitespace-pre-wrap">
               {group.text}
             </div>
           </div>
         );
       case "said":
         return (
-          <div key={group.id} data-step="said" className="text-sm leading-relaxed">
+          <div key={group.id} data-step="said" className="text-base">
             <MarkdownText text={group.text} />
           </div>
         );

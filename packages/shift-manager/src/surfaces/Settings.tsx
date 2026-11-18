@@ -24,7 +24,7 @@ export function SettingsView() {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto" data-testid="settings">
       <header className="px-4 pt-3">
-        <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">SETTINGS</p>
+        <p className="text-xs font-semibold tracking-wider text-muted-foreground">SETTINGS</p>
         <h1 className="text-base font-semibold">MCP server keys</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           A coding run on a project that names one of these servers reaches it with the key of the user the run works
