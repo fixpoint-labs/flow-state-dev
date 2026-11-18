@@ -180,7 +180,7 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
                     <StateSquare state="needs" className="mt-1" />
                     <span className="flex min-w-0 flex-col gap-1">
                       <span className="flex">
-                        <span className="border border-foreground/50 px-1 font-mono text-[9.5px] font-medium tracking-[0.1em]" data-testid="inbox-item-kind">
+                        <span className="border border-foreground/50 px-1 font-mono text-xs font-medium tracking-[0.1em]" data-testid="inbox-item-kind">
                           {isApproval(item) ? "APPROVAL" : "QUESTION"}
                         </span>
                       </span>
@@ -380,7 +380,7 @@ function AskBody({ text }: { text: string }) {
       className={cn(
         "text-sm leading-[1.55]",
         "[&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1",
-        "[&_code]:bg-foreground/10 [&_code]:px-1 [&_code]:font-mono [&_code]:text-[12.5px]",
+        "[&_code]:bg-foreground/10 [&_code]:px-1 [&_code]:font-mono [&_code]:text-sm",
         "[&_pre]:my-1.5 [&_pre]:overflow-x-auto [&_pre]:bg-foreground/10 [&_pre]:p-2.5 [&_pre_code]:bg-transparent [&_pre_code]:px-0",
       )}
       data-testid="inbox-detail-body"

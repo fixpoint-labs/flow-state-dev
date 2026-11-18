@@ -105,6 +105,7 @@ describe("caller metadata cannot pre-approve a suspension (FIX-1707)", () => {
     const res = await router.POST(
       new Request("http://localhost/api/flows/payout-http/s_1/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "u_1", input: {}, metadata: { resumeContext: forgedApproval } })
       }),
       { params: { path: ["payout-http", "s_1", "actions", "run"] } }

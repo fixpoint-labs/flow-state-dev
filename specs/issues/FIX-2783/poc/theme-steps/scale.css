@@ -1,0 +1,15 @@
+/*
+ * Stand-in for the design system's scale.
+ * 1. The steps: unlayered values on :root, as the design system already sets --radius-* and --font-*.
+ * 2. A semantic name: Tailwind makes no `text-meta` class unless an @theme block registers it.
+ */
+:root {
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.5rem;
+}
+@theme {
+  --text-meta: 0.75rem;
+  --text-meta--line-height: 1rem;
+}

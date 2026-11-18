@@ -42,8 +42,8 @@ const GROUP_SUB: Record<ShiftStatus, string> = {
  */
 function WaitEntry({ kind, id, what, when }: { kind: "task" | "ask"; id: string; what: string; when: string }) {
   return (
-    <li className="grid grid-cols-[66px_minmax(0,1fr)] items-baseline gap-2 font-mono text-[11px] font-medium" data-testid="roster-wait" data-kind={kind} data-id={id}>
-      <span className="border border-foreground bg-attention px-1 text-center text-[9.5px] tracking-[0.1em] text-attention-foreground" data-testid="roster-wait-tag">
+    <li className="grid grid-cols-[66px_minmax(0,1fr)] items-baseline gap-2 font-mono text-xs font-medium" data-testid="roster-wait" data-kind={kind} data-id={id}>
+      <span className="border border-foreground bg-attention px-1 text-center text-xs tracking-[0.1em] text-attention-foreground" data-testid="roster-wait-tag">
         WAITING
       </span>
       <span className="flex min-w-0 flex-col">
@@ -82,7 +82,7 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
           <span className="font-medium">{workerLabel(worker.displayName)}</span>
           <span className="text-xs text-muted-foreground">{worker.teamName}</span>
           {own ? (
-            <span className="border px-1 text-[10px] tracking-widest text-muted-foreground" data-testid="roster-worker-own">
+            <span className="border px-1 text-xs tracking-widest text-muted-foreground" data-testid="roster-worker-own">
               YOURS
             </span>
           ) : null}
@@ -143,7 +143,7 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
       </div>
       <ul className="min-w-0 space-y-[5px]">
         {waitsOnYou.length === 0 && asks.length === 0 ? (
-          <li className="pt-[3px] font-mono text-[11px] font-medium text-muted-foreground" data-testid="roster-no-wait">
+          <li className="pt-[3px] font-mono text-xs font-medium text-muted-foreground" data-testid="roster-no-wait">
             —
           </li>
         ) : null}
@@ -199,7 +199,7 @@ export function RosterView({
         <div className="min-w-0">
           <div className="flex items-baseline gap-2">
             <ScreenTitle testId="roster-title">{title}</ScreenTitle>
-            <span className="border px-1 text-[10px] tracking-widest text-muted-foreground">ROSTER</span>
+            <span className="border px-1 text-xs tracking-widest text-muted-foreground">ROSTER</span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             <span data-testid="roster-summary">
@@ -226,7 +226,7 @@ export function RosterView({
         </div>
       </header>
       <div
-        className={`${COLUMNS_GRID} border-b border-foreground/20 px-7 pt-[9px] pb-[7px] font-mono text-[10px] font-medium tracking-[0.12em] text-muted-foreground`}
+        className={`${COLUMNS_GRID} border-b border-foreground/20 px-7 pt-[9px] pb-[7px] font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground`}
         data-testid="roster-columns"
       >
         <span>WORKER</span>
@@ -260,7 +260,7 @@ export function RosterView({
           if (group.length === 0) return null;
           return (
             <section key={status} data-testid="roster-group" data-status={status}>
-              <h2 className="flex items-center gap-[9px] border-b border-foreground/30 px-2 pt-[18px] pb-[7px] font-mono text-[11px] font-medium text-foreground/80">
+              <h2 className="flex items-center gap-[9px] border-b border-foreground/30 px-2 pt-[18px] pb-[7px] font-mono text-xs font-medium text-foreground/80">
                 <ShiftMark status={status} className="size-[9px]" />
                 <span className="font-semibold tracking-[0.1em] text-foreground" data-testid="roster-group-label">
                   {status.toUpperCase()}

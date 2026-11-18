@@ -14,9 +14,8 @@ import { ClientHttpError } from "@flow-state-dev/client";
 import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/components/App";
-import { AppProvider } from "../src/app";
 import { useNow } from "../src/lib/use-watch";
-import { createFixtureApp } from "./fake-app";
+import { createFixtureApp, FixtureProvider, rosterReadsBy } from "./fake-app";
 
 afterEach(() => {
   cleanup();
@@ -34,7 +33,7 @@ const rowStatus = (name: string) => document.querySelector<HTMLElement>(`[data-w
 describe("the server going away", () => {
   it("shows the bar and greys status only once a retry has failed, and clears both when the feed is live again", async () => {
     const lab = createFixtureApp({ speed: 0.05 });
-    render(<AppProvider calls={lab}><App /></AppProvider>);
+    render(<FixtureProvider calls={lab}><App /></FixtureProvider>);
     await screen.findByLabelText("Message Lead", undefined, FIRST_DRAW);
 
     act(() => lab.setConnection("reconnecting"));
@@ -55,7 +54,7 @@ describe("the server going away", () => {
   it("greys a running task's dot and stops its pulse in the panel while the feed is stale", async () => {
     const tasks = [{ filer: "teammates.chief-of-staff", id: "t-1", to: "teammates.researcher", title: "Check the beta numbers", goal: "Check the beta numbers", status: "running" as const, boardStatus: "in_progress" }];
     const lab = createFixtureApp({ speed: 0.05, tasks });
-    render(<AppProvider calls={lab}><App /></AppProvider>);
+    render(<FixtureProvider calls={lab}><App /></FixtureProvider>);
     const panel = await screen.findByRole("complementary", { name: "Lead's panel" }, FIRST_DRAW);
     const row = () => panel.querySelector<HTMLElement>("[data-task=running]")!;
     expect(row().className).not.toContain(STALE);
@@ -72,7 +71,7 @@ describe("the server going away", () => {
 
   it("says a stopped feed has ended and offers Retry", async () => {
     const lab = createFixtureApp({ speed: 0.05 });
-    render(<AppProvider calls={lab}><App /></AppProvider>);
+    render(<FixtureProvider calls={lab}><App /></FixtureProvider>);
     await screen.findByLabelText("Message Lead", undefined, FIRST_DRAW);
     act(() => lab.setConnection("stopped"));
     expect(screen.getByTestId("connection-banner").textContent).toContain("The server stopped this feed");
@@ -80,7 +79,7 @@ describe("the server going away", () => {
   });
 
   it("opened with the server down, draws the connection screen, then the lab once a read lands", async () => {
-    render(<AppProvider calls={createFixtureApp({ speed: 0.05, unreachableReads: 1 })}><App /></AppProvider>);
+    render(<FixtureProvider calls={createFixtureApp({ speed: 0.05, unreachableReads: 1 })}><App /></FixtureProvider>);
     expect((await screen.findByTestId("unreachable-message")).textContent).toBe("fetch failed");
     expect(screen.queryByRole("navigation", { name: "Workers" })).toBeNull();
     await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));
@@ -90,38 +89,21 @@ describe("the server going away", () => {
 
   it("a roster read the server answered with an error shows its status, so a 502 reads apart from a dead socket", async () => {
     const lab = createFixtureApp({ speed: 0.05 });
-    const failing = {
-      ...lab,
-      watchWorkers: (_onChange: unknown, onError?: (error: unknown) => void) => {
-        queueMicrotask(() => onError?.(new ClientHttpError("Bad Gateway", { status: 502, body: undefined })));
-        return () => {};
-      },
-    };
-    render(<AppProvider calls={failing}><App /></AppProvider>);
+    const failing = rosterReadsBy(lab, () => Promise.reject(new ClientHttpError("Bad Gateway", { status: 502, body: undefined })));
+    render(<FixtureProvider calls={lab} client={failing}><App /></FixtureProvider>);
     expect((await screen.findByTestId("unreachable-message")).textContent).toBe("502 · Bad Gateway");
   });
 
   it("a slow read a Retry overtook doesn't put the failure back over a lab that came back", async () => {
     const lab = createFixtureApp({ speed: 0.05 });
     let rejectSlow: (error: Error) => void = () => {};
-    let call = 0;
-    const flaky: typeof lab = {
-      ...lab,
-      watchWorkers: (onChange, onError) => {
-        call += 1;
-        if (call === 1) {
-          queueMicrotask(() => onError?.(new Error("fetch failed")));
-          return () => {};
-        }
-        // A watch whose read is still out: its failure arrives after the next Retry.
-        if (call === 2) {
-          rejectSlow = (error) => onError?.(error);
-          return () => {};
-        }
-        return lab.watchWorkers(onChange, onError);
-      }
-    };
-    render(<AppProvider calls={flaky}><App /></AppProvider>);
+    const flaky = rosterReadsBy(lab, (call, read) => {
+      if (call === 1) return Promise.reject(new Error("fetch failed"));
+      // A read still out: its failure arrives after the next Retry.
+      if (call === 2) return new Promise((_, reject) => (rejectSlow = reject));
+      return read();
+    });
+    render(<FixtureProvider calls={lab} client={flaky}><App /></FixtureProvider>);
     await screen.findByTestId("unreachable-message");
     await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));
     await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));

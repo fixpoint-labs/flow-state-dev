@@ -304,7 +304,7 @@ export function Conversation({
                     >
                       {item.type === "message" && role === "assistant" ? (
                         // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
-                        <p className="mb-2.5 flex items-baseline gap-2 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
+                        <p className="mb-2.5 flex items-baseline gap-2 font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
                           {(sender ?? name).toUpperCase()}
                           <span className="tracking-normal" data-look="message-time">
                             {clockTime(item.ts)}
@@ -328,7 +328,7 @@ export function Conversation({
         {working ? (
           // v2's thinking line (v2:167-169), saying only what is true: the worker has the line.
           // Greyed while the server is gone: the worker had the line when it last said so.
-          <p className={cn("flex items-center gap-2 font-mono text-[11.5px] font-medium text-muted-foreground", stale && STALE_CLASS)} data-testid={`${testId}-working`}>
+          <p className={cn("flex items-center gap-2 font-mono text-xs font-medium text-muted-foreground", stale && STALE_CLASS)} data-testid={`${testId}-working`}>
             <span className="size-[7px] shrink-0 bg-info" data-look="working" aria-hidden />
             {name} is working on it…
           </p>

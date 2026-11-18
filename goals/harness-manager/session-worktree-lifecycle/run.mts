@@ -143,7 +143,7 @@ async function create(state: Record<string, unknown>, userId = USER): Promise<st
 /** Create a session; its id, or the status the create route refused it with. */
 async function tryCreate(state: Record<string, unknown>, userId = USER): Promise<{ status: number; id?: string }> {
   const res = await router.POST(
-    new Request(`http://goal/api/flows/${KIND}/sessions`, { method: "POST", body: JSON.stringify({ userId, state }) }),
+    new Request(`http://goal/api/flows/${KIND}/sessions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId, state }) }),
     { params: { path: [KIND, "sessions"] } },
   );
   const body = (await res.json()) as { session?: { id: string } };
@@ -168,6 +168,7 @@ async function send(sessionId: string, action: string, input: unknown, settle: b
   const res = await router.POST(
     new Request(`http://goal/api/flows/${KIND}/${sessionId}/actions/${action}`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId, input }),
     }),
     { params: { path: [KIND, sessionId, "actions", action] } },

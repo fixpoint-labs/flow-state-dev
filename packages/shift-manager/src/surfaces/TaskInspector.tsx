@@ -27,7 +27,7 @@ import type { Gaps } from "../gaps";
 function Section({ title, children, testId }: { title: string; children: ReactNode; testId: string }) {
   return (
     <section className="border-b px-4 py-3" data-testid={testId}>
-      <h3 className="pb-1.5 text-[11px] font-semibold tracking-wider text-muted-foreground">{title}</h3>
+      <h3 className="pb-1.5 text-xs font-semibold tracking-wider text-muted-foreground">{title}</h3>
       {children}
     </section>
   );
@@ -72,7 +72,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
           <div className="px-4 pt-3.5">
             <RouteLink
               to={{ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) }}
-              className="flex w-full justify-between border border-foreground bg-attention px-2.5 py-2 text-left font-mono text-[11.5px] font-medium text-attention-foreground"
+              className="flex w-full justify-between border border-foreground bg-attention px-2.5 py-2 text-left font-mono text-xs font-medium text-attention-foreground"
               data-testid="inspector-needs"
               data-suspension-id={ask.item.suspensionId}
             >
@@ -91,7 +91,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
           ) : (
             <div data-testid="inspector-spend" data-harness={row.spend.harness ?? ""}>
               <p className="text-sm">{row.spend.harness ?? "No harness"}</p>
-              <Spend spend={row.spend} split className="text-[11px]" />
+              <Spend spend={row.spend} split className="text-xs" />
             </div>
           )}
         </Section>
@@ -109,7 +109,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
           </Section>
         )}
         <Section title="LINKED" testId="inspector-linked">
-          <p className="text-[11px] text-muted-foreground">After</p>
+          <p className="text-xs text-muted-foreground">After</p>
           <ul className="mb-2 text-sm" data-testid="inspector-after">
             {after.map((r) => (
               <li key={r.id} data-task-id={r.id}>
@@ -125,7 +125,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
             ))}
             {row?.deps.length === 0 ? <li className="text-xs text-muted-foreground">Nothing</li> : null}
           </ul>
-          <p className="text-[11px] text-muted-foreground">Blocks</p>
+          <p className="text-xs text-muted-foreground">Blocks</p>
           <ul className="text-sm" data-testid="inspector-blocks">
             {blocks.map((r) => (
               <li key={r.id} data-task-id={r.id}>
