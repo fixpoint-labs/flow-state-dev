@@ -27,7 +27,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Only a `WORKER.md` rule telling the model to say *Inbox* and not the fingerprint |
-| **Because** | The model said the fingerprint because the tool gave it nothing else: `reportProblem` returns `reportId: "fp-…"`. And at that moment there is no Inbox item yet, since drafting takes minutes. So the honest reply at report time is *drafting, it will wait in Inbox*, and the link comes later, when the preview opens. Code knows that moment (`keepDraft` moves the report to `previewing`), and already writes the *Filed* line at the matching moment, so the *waiting* line goes out the same way, worded by code. The tools (`reportProblem`, FIX-2793's `listErrorReports`) name a report by title, status and link. Tenet 7: the check grades what is stored, not a prompt |
+| **Because** | The model said the fingerprint because the tool gave it nothing else: `reportProblem` returns `reportId: "fp-…"`. And at that moment there is no Inbox item yet, since drafting takes minutes. So the honest reply at report time is *drafting, it will wait in Inbox*, and the link comes later, when the preview opens. Code knows that moment (`keepDraft` moves the report to `previewing`), and already writes the *Filed* line at the matching moment, so the *waiting* line goes out the same way, worded by code. `reportProblem` and FIX-2793's `error-history` view name a report by title, status and link. Tenet 7: the check grades what is stored, not a prompt |
 | **Locks in** | A line in the reporter's conversation each time a report starts waiting in Inbox; a Lab that wants fewer lines can't turn it off without a new option. `reportProblem`'s answer changes shape: a model that read `decision` and `reportId` reads `status`, `title` and `inbox` |
 
 | Trade-off | Code writes the line (chosen) | `WORKER.md` rule alone |
@@ -70,14 +70,14 @@ uses the item id and Inbox needs no second lookup.
 - **Where the lines go:** where `reporter.say` writes today, the reporter's conversation. A
   manual report is made in that conversation, so its reporter hears both lines there.
 - **The Shift Coordinator's `WORKER.md`** gains one sentence: when it tells the user about a
-  report, it gives the link `listErrorReports` returned, never an id.
+  report, it gives the link its `error-history` record carried, never an id.
 - **error-reporter's `WORKER.md`**'s existing line ("tell them it will wait in Inbox for the
   operator") stays and gains: never quote a report's id.
 - **The ask's message carries source and count** so Inbox shows them with no error-report
   knowledge in the app; `data.source` is added for a reader that wants it.
 - **The link is given only to the operator.** The *waiting* line carries it only when the
-  conversation's user (`ctx.session.identity.userId`) is the operator, and FIX-2793's tool
-  returns `inbox` only to the operator. Anyone else gets the words, *waiting in the operator's
+  conversation's user (`ctx.session.identity.userId`) is the operator, and FIX-2793's
+  `error-history` hook puts `inbox` on the record only when its `ctx.userId` is the operator. Anyone else gets the words, *waiting in the operator's
   Inbox*, with no link, as a host without `inboxLink` does. A link they could not open would read
   as broken.
 - **`inboxLink` gets the report's own session** (`error-report~<id>`), for every source. For a
@@ -88,7 +88,7 @@ uses the item id and Inbox needs no second lookup.
   and changes with it. Old answers stay in stored conversations as text a model reads, and no
   tool takes a report id back, so hiding it leaves no follow-up call without its input.
 - **The convergence point for "no fingerprint in a conversation"** is every model-facing output
-  and every line about a report: `reportProblem`'s answer, `listErrorReports`' answer,
+  and every line about a report: `reportProblem`'s answer, the `error-history` record and its path,
   `sayInConversation`'s lines (`keepFiled`, `keepComment`, the new *waiting* line) and
   `keepFiled`'s `ctx.emit.message` fallback, which today prints the report id when the draft has
   no title. A test asserts no `fp-` across all of them.

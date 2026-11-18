@@ -5,7 +5,8 @@
 Two decisions and one open question are the sign-off. Jake fixed the frame: build on the
 `error-reports/*` collection, no second store, and both error-reporter and the Shift Coordinator
 read the history. What was left: the history's shape (the issue recommends one record per day),
-how the two workers read it, and who in an org may.
+how the two workers read it, and who in an org may. D2 is asked of Jake on the PR's decision
+card: general tools on a filtered view (recommended), or keep `listErrorReports`.
 
 ## The tree
 
@@ -15,7 +16,8 @@ flowchart TD
   D1 -.->|"rejected · each append rewrites a record that never stops growing"| X1["one growing history record"]
   D1 -.->|"rejected · a busy day's record is about 1.2 MB, rewritten on every append"| X1c["one record per UTC day"]
   D1 -.->|"rejected · the issue rules out a second store"| X1b["a history collection of its own"]
-  I --> D2["D2 · one read tool, listErrorReports, a Workforce built-in"]
+  I --> D2["D2 · general resource tools over a read-only error-history view (asked of Jake)"]
+  D2 -.->|"rejected · a specific tool for a job the general tools do"| X2a["a listErrorReports tool"]
   D2 -.->|"rejected · a read depends on another worker's turn, as in Jake's run"| X2["the coordinator messages error-reporter"]
   I --> O1["Open · whether members read more than their own failures"]
 ```
@@ -45,24 +47,29 @@ than the first.
 record costs nothing to append, and a list by range is the only difference.
 
 <a name="d2"></a>
-## D2 · One read tool, `listErrorReports`, a Workforce built-in: always on error-reporter's turn, and named in the Shift Coordinator's `tools:`
+## D2 · Workers read the history with core's general resource tools, over a read-only, caller-filtered `error-history` view
+
+Asked of Jake on the PR's decision card; this is the recommendation.
 
 | | |
 |---|---|
-| **Instead of** | The coordinator asks error-reporter (`sendMessage`) and relays, as in Jake's run; or Shift Manager writes its own read of the collection |
-| **Because** | A read should not depend on a second worker's model turn, which is the step that went wrong: error-reporter answered from the task board. One block serves both workers, so their answers can't disagree. The block declares `errorReportsResources`, so a flow that carries it installs the org-scoped collection itself, and a worker gets it only by naming it in `tools:`, as every catalog tool works. Workforce owns it (L2), Shift Manager adopts it in its catalog and the Shift Coordinator's file; core and engine learn nothing |
-| **Locks in** | A public tool name, `listErrorReports`, that a worker's `tools:` line spells, and `errorReportTools()` exported from `@flow-state-dev/workforce`. It only reads: a model can't change a report through it |
+| **Instead of** | A `listErrorReports` tool made for error reports (the first draft); the coordinator asking error-reporter (`sendMessage`) and relaying, as in Jake's run |
+| **Because** | Jake: workers should search and navigate resources without a tool made for one resource. Core already has that surface: `searchResources` and `readResourceContent` reach any `llmReadable` collection, projected ones included, and a projected collection's `read`/`search` hooks get a trusted, server-derived `ctx.userId`, so the per-record caller check (BP-031) lives in the hook, where the per-collection `resourceVisibility` rule can't put it. A read still never rests on a second worker's turn. Workforce owns the view (L2); core and engine learn nothing. Tenet 2: no new tool |
+| **Locks in** | The `error-history/**` path and its record fields, which a worker's searches spell. `searchResources` and `readResourceContent` in the devteam catalog and in two `tools:` lines, which also reach every other `llmReadable` collection the worker's flow declares. Narrowing by status or source is by search words: `searchResources` forwards no equality `filter` today |
 
-| Trade-off | One built-in tool (chosen) | Coordinator messages error-reporter |
+| Trade-off | General tools on a view (chosen) | `listErrorReports` |
 |---|---|---|
-| Answers agree | One read, one answer | Two models, two answers |
-| Works when error-reporter is busy or failed | Yes | No |
-| New public surface | One tool name | None |
+| New public surface | A collection path | A tool name and its arguments |
+| Narrow by status or source | Search words the hook reads | Exact arguments |
+| A list with no keyword | A query is needed (`"error report"` matches every record) | No arguments needed |
+| Same as other Workforce lookups | No: they are tools of their own | Yes |
 
-It comes down to the dependency: the coordinator's answer can't rest on another worker's turn.
+It comes down to surface: one view the general tools reach, against one more tool for one
+resource. The cost is looser narrowing.
 
-**What would change my mind:** a second worker beside the coordinator needing reports with
-different fields. Then the tool takes a projection option, and it is still one tool.
+**What would change my mind:** a goal run where a worker misses a report it should have listed
+because its search words didn't match. Then the fix is `searchResources` forwarding `filter`
+(core), not a specific tool.
 
 ## Decided, not asked
 
@@ -72,7 +79,7 @@ different fields. Then the tool takes a projection option, and it is still one t
   the board drain, `reportProblem`), after its decision, for every decision except `ignored`:
   `new`, `counted` and `storm` each write one entry with the report id the decision named. A
   `held` decision names no report (a failed request inside a task, whose task may still pass),
-  so its entry carries the `taskId` and no report id; the tool joins it to the task's report at
+  so its entry carries the `taskId` and no report id; the view joins it to the task's report at
   read time through the `task-<task>` mapping, so no entry is rewritten later. Status changes go
   in at `updateReport`, which every flow handler that moves a status goes through (draft kept →
   `previewing`, dismiss, approve → `filing`, file → `filed`, keep only, the comment's `closed`).
@@ -85,16 +92,34 @@ different fields. Then the tool takes a projection option, and it is still one t
   `countOn`, `listOnStorm`) set the first status, `owed`, which the occurrence entry already
   records. A writer added later that moves a status outside `updateReport` must write its own
   entry; the implementer adds a test that fails on that.
-- **The tool is deny-by-default (BP-031).** It knows its caller only from the turn's
-  server-set identity, `ctx.session.identity.userId`, and the operator from the reporter's
-  options, never from an argument. The operator reads every report and entry. Any other user reads
-  a report, with its title, status, count, issue and history entries, only through their own
-  occurrences: an entry whose `userId` is theirs, or a held entry of their task. Anyone else, a
-  turn with no user (a routine's) included, gets `{ reports: [] }`, the same answer a filter that
-  matches nothing gets, so the answer doesn't tell a refused report from no report. Filters
-  (`taskId`, `source`, status, dates) apply only to what the caller may read, after that check.
-  The existing `error-reporter-begin` makes the same check, for the same reason: the dossier reads
-  every user's failures. Whether to widen it is the [Open](#open) question.
+- **How the hooks reach the store.** A projected hook gets a trusted `ctx` and no resource
+  refs, so it can't open `error-reports/*` itself. The reporter can: `ErrorReporter` gains one
+  read method that runs the intake flow's internal `reports` entry through its bound host
+  (`host.run`, `source: "internal"`, as the operator), the path the restart outbox takes at
+  bind. The devteam host's `run` is an in-process `runAction` on the runtime's stores. The entry
+  gains an op that returns a day's hour records with the reports they name. One `search` is one
+  such run. Before `bind`, and in a Lab with no Error Reporter, the hooks return no hit. The
+  implementer checks that this read doesn't queue behind a long intake run on the intake
+  session, and reads in a session of its own if it does.
+- **The view is deny-by-default (BP-031), and the hook is its only fence.** The internal run
+  reads as the operator, so the hook filters what it returns, by `ctx.userId` and `ctx.orgId`
+  only, never a query word: a different org reads nothing. The operator reads every report and
+  entry. Any other user reads a report, with its title, status, count, issue and entries, only
+  through their own occurrences: an entry whose `userId` is theirs, or a held entry of their
+  task. Anyone else gets no hit, and `read` returns `null` as for an unknown key, so the answer
+  doesn't tell a refused report from no report. Search words narrow only what the caller may
+  read. The existing `error-reporter-begin` makes the same check, for the same reason: the
+  dossier reads every user's failures. Whether to widen it is the [Open](#open) question.
+- **One record per report per UTC day,** at `error-history/<YYYY-MM-DD>/<ref>`, org scope,
+  `llmReadable`, no client read. A report has a record on each day it has an entry (an
+  occurrence or a status change), so a day narrows by `prefix`, and a search with no prefix
+  reads the last 7 days. The record carries the report's title, status in words, source, count,
+  first and last seen, task ids, issue, and that day's entries, newest first, at most 50, with
+  the hour's `cut` count when one was cut; a `contentTemplate` renders it for
+  `readResourceContent`. `ref` is a short name from the title and a few characters that keep it
+  unique, never `fp-` or the fingerprint (FIX-2791's rule covers paths); `read` resolves it
+  through that day's hour records, which name every report the day saw, with no list of the
+  collection.
 - **An entry holds:** its time, kind (`occurrence` or `status`), the report id, the source, the
   fingerprint, the ids (`requestId`, `sessionId`, `taskId`, `boardId`, `attempt`, `userId`), a
   short redacted message (the first 200 characters of the error or description), and for a
@@ -108,37 +133,37 @@ different fields. Then the tool takes a projection option, and it is still one t
   history is a record of it.
 - **An hour keeps at most 250 entries,** then counts the rest in the record (`cut: n`), so a
   storm can't grow one record without bound. Past the cap an occurrence is counted, not kept:
-  the tool says when an hour was cut and by how many.
+  the view says when an hour was cut and by how many.
 - **Retention is 90 days, with no list.** When the intake creates the first record of a UTC
   day, it deletes the computed keys of the days 91 to 97 back (7 × 24 keys). A delete of a
   missing key is a no-op, so two intakes that both prune do no harm, and a Lab silent for up to
   a week still prunes the days it skipped. A Lab silent for longer leaves those older records
-  in place; the tool never reads past 90 days, so they cost storage only.
+  in place; the view never reads past 90 days, so they cost storage only.
 - **`listReports` lists by prefix.** It lists `fp-` and `storm-` keys only, so the restart outbox
   never loads history (BP-033).
-- **The tool's statuses are the caller's words, not the stored enum:** `owed` and `drafting` read
+- **The view's statuses are the caller's words, not the stored enum:** `owed` and `drafting` read
   *drafting*, `previewing` *waiting in Inbox*, `filing` *approved, filing*, `filed` with an issue
   *filed*, `filed` with none *kept, no tracker* (what `keepOnly` stores today), `dismissed`,
-  `closed` *issue closed*. Its `status` filter takes `filed`, `not-filed`, `dismissed`, or one of
-  those words. It never returns the fingerprint as a name for a report; it returns the title
+  `closed` *issue closed*. It never names a report by its fingerprint; it names it by the title
   (the draft's, else the error's first line). FIX-2791 relies on that.
-- **The tool's filters** are the issue's (status, date range, source) plus `taskId`, because the
-  question that started this was about two tasks. The date range defaults to the last 7 days.
-  It returns the reports seen in the range, and their history entries only when asked, newest
-  first, at most 50.
+- **What a search matches.** The hook reads the query's words against each record's title,
+  status words (with *not filed* for any status short of filed), source and task ids, and every
+  record carries the words *error report*, so `"error report"` lists them all. The hook also
+  takes an equality `filter` on `status`, `source` and `taskId` for a caller of the
+  collection's `list`; `searchResources` doesn't forward one today.
 - **error-reporter's `WORKER.md` gains one paragraph:** asked whether something was reported,
-  call `listErrorReports` and answer from it, never from the task board. The Shift Coordinator's
-  gains the same, and its `tools:` line names the tool.
-- **A Lab with no Error Reporter still has the tool** in its catalog: the collection is empty and
-  the tool says no Error Reporter is on. So the Shift Coordinator's file is the same in every Lab,
-  since a `tools:` line that names a key the catalog lacks is refused at the mint.
+  search `error-history` and answer from it, never from the task board. The Shift Coordinator's
+  gains the same. Both `tools:` lines name `searchResources` and `readResourceContent`; the
+  catalog has them in every Lab, so the files are the same whether a Lab has an Error Reporter
+  or not.
 
 ## Considered and dropped
 
 | Considered | Why it lost |
 |---|---|
 | Keep every occurrence on the report (`KEPT_OCCURRENCES` unbounded) | The report is read whole by every draft, repeat and run; it would grow with every repeat |
-| Read the reports through the intake's internal `reports` entry from the coordinator | Internal entries are not a model's tool, and it returns whole records, dossier fields included |
+| **Rejected: a `listErrorReports` tool** (the first draft's D2) | A public tool for one resource, where core's general tools reach a projected view of it. Jake's review asked why workers need a resource-specific tool. Its exact filters are the one thing it had over the view ([D2](#d2)) |
+| Read the reports through the intake's internal `reports` entry from the coordinator | Internal entries are not a model's tool, and it returns whole records, dossier fields included. The view's hooks call it, and filter what it returns |
 | A history screen in Shift Manager | Not asked. The tool answers in conversation; a screen can read the same records later |
 
 <a name="open"></a>
@@ -148,7 +173,7 @@ different fields. Then the tool takes a projection option, and it is still one t
 
 **In plain terms.** The reports belong to the org. In a Lab with several users, one user's
 failure becomes a report another member's Shift Coordinator could read: its title, its message,
-and the ids of the session and task that failed. Until you decide, the tool shows a member only
+and the ids of the session and task that failed. Until you decide, the view shows a member only
 their own failures and the operator everything ([Decided, not asked](#decided-not-asked)). The
 question is whether other members should also read a summary (title, status, count, source,
 when, the Linear link) of reports that aren't theirs.
@@ -158,7 +183,7 @@ when, the Linear link) of reports that aren't theirs.
 summary: a described problem's message is the user's own description (`reports.ts`, the manual
 intake), the title falls back to the message's first 120 characters (`flow.ts`), and the drafted
 title comes from a dossier of every user's failures. Own-only: private, and widening later is one
-check, but the teammate gets an empty answer.
+check in the hook, but the teammate gets an empty answer.
 
 **My recommendation.** Keep the default: operator and own failures only. I changed this from
 round 1's "every member reads summaries" because the condition I named then as what would change
@@ -173,7 +198,7 @@ member can read it.
 
 **What being wrong costs.** Too closed: a teammate's coordinator says it found nothing about a
 failure they didn't hit, and they ask the operator. Too open: one user's words reach another
-user's coordinator. Either is one check in the tool to change.
+user's coordinator. Either is one check in the hook to change.
 
 ## Notes from review
 
@@ -188,13 +213,14 @@ For the implementer; none of these changes the direction.
   `fp-` report would put the history back on a record that grows with every repeat, so no.
 - **Second look, `listReports`:** `list(prefix)` exists on the collection ref and filters keys
   before refs are made, so `listReports` lists `fp-` and `storm-`. One `isReportKey` helper used by
-  `listReports` and the tool is cheaper than a prefix list written twice.
-- **Second look, words for statuses:** the reporter's lines (FIX-2791) and the tool's status words
+  `listReports` and the view is cheaper than a prefix list written twice.
+- **Second look, words for statuses:** the reporter's lines (FIX-2791) and the view's status words
   should share one status-to-words function, or they will drift.
 - **Cursor (security), the tool's access:** "Return title, message, inbox link, and every id only
   when the caller is the operator or that occurrence's `userId`. Anyone else gets the same empty
   `{ reports: [] }`… Apply `taskId` only after that allow. Add a goal or unit check that a second
-  user in the org is refused." Folded as the deny-by-default bullet and the access check. A
+  user in the org is refused." Folded as the deny-by-default bullet (now the hook's check, where
+  the empty answer is no hit) and the access check. A
   report with occurrences from several users shows a non-operator their own entries only; its
   shared title can still come from the whole dossier, which is why the Open question recommends
   against widening.
@@ -205,8 +231,9 @@ For the implementer; none of these changes the direction.
 2026-11-17 · watermark: `origin/main` at c0bf4f40 · verdict: **right approach, build as
 scoped**.
 
-- *Reuse:* the collection, its CAS helper and the read helpers are reused; the Adds table names
-  each piece considered. No second store.
+- *Reuse:* the collection, its CAS helper and the read helpers are reused, and since the owner
+  amendment, core's projection and general resource tools too; the Adds table names each piece
+  considered. No second store, no new tool.
 - *Other frameworks:* error trackers (Sentry, Rollbar) keep an issue per fingerprint with an
   unbounded event stream beside it; this is the same split, at Lab scale.
 - *Other shapes:* raising the keep and a second collection were weighed (D1).
@@ -234,3 +261,8 @@ Factual base: the spec rests on no counted set beyond two constants read from so
   answer for anyone else, filters after the check, and a unit check that a second user is refused
   (Cursor). The Open question's recommendation moved to that default, because a title can quote a
   user's own words.
+- **Owner amendment** — the read side is a read-only, caller-filtered projected collection,
+  `error-history/**`, searched with core's `searchResources` and `readResourceContent`, and
+  `listErrorReports` is rejected, because Jake asked why workers need a resource-specific tool
+  when general ones exist. Its hooks read through the reporter's bound host. D2 is asked of
+  Jake on the card.
