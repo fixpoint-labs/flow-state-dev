@@ -20,7 +20,8 @@ import { interruptChordLabel, useInterruptKeys } from "@flow-state-dev/react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor } from "../lib/columns";
-import { asksOfTask, doorOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
+import { doorOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
+import { taskAsks, useInbox } from "../lib/inbox";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
@@ -161,11 +162,11 @@ function runWord(status: string | undefined): string {
  */
 function Activity({ worker, armed }: { worker: string | null; armed: boolean }) {
   const task = useTask();
-  const { snapshot } = useLab();
+  const inbox = useInbox().section;
   const pending = task.interrupt.kind === "pending";
   const live = task.run.kind === "open" && task.status === "in_progress";
-  // FIX-2774: a task's asks move to its Inbox view.
-  const waiting = asksOfTask(snapshot, task.row).length > 0;
+  // D2: the task's asks are its Inbox item's.
+  const waiting = taskAsks(inbox?.ok === true ? inbox.value.items : [], task.row).length > 0;
   return (
     <div className="flex items-center gap-2 px-[22px] pt-3 font-mono text-xs font-medium text-muted-foreground" data-testid="task-activity">
       {waiting ? (

@@ -11,8 +11,10 @@
 import { describe, expect, it } from "vitest";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { askSessionOf } from "../src/lib/ask-session";
-import { elapsed, emptyInboxSentence, isQueued, tasksSummary } from "../src/lib/tasks";
-import { inboxItemAt, type LoadedSnapshot } from "../src/lib/derive";
+import { inboxItems, taskActionName } from "@flow-state-dev/orchestration/inbox";
+import { elapsed, isQueued, nothingWaitingSentence, summaryLine } from "../src/lib/tasks";
+import { itemAtRoute, type InboxAsk, type InboxViewValue } from "../src/lib/inbox";
+import type { LoadedSnapshot } from "../src/lib/derive";
 import { inboxSection, type Ask, type BoardTaskView, type Worker } from "../src/lib/reads";
 
 let index = 0;
@@ -95,6 +97,31 @@ function snapshot(rows: BoardTaskView[], asks: Ask[] = [], workers: Worker[] = [
   } as unknown as LoadedSnapshot;
 }
 
+/**
+ * The inbox view's answer over `tasks` and the asks no row claims, as the
+ * server builds it: orchestration's list over the rows (each answered on its
+ * conversation's board) and the asks.
+ */
+function viewOf(tasks: BoardTaskView[], asks: Array<Pick<InboxAsk, "suspensionId" | "workerId">> = []): InboxViewValue {
+  return {
+    tasks: tasks.map((r) => ({ ...r, owner: r.ownerSessionId })),
+    items: inboxItems<InboxAsk>({
+      rows: tasks.map((r) => ({ ...r, board: r.boardRef, holder: { sessionId: r.ownerSessionId, action: taskActionName("updateTask", "tasks") } })),
+      suspensions: asks.map((ask) => ({
+        sessionId: "s_ask",
+        flowId: "agent",
+        requestId: `req_${ask.suspensionId}`,
+        suspensionId: ask.suspensionId,
+        kind: "approval",
+        prompt: "ok?",
+        since: 0,
+        detail: { ...ask, sessionId: "s_ask", requestId: `req_${ask.suspensionId}`, flowKind: "agent", kind: "approval", message: "ok?", createdAt: 0, shape: "approval" } as unknown as InboxAsk,
+      })),
+      flowOf: () => "coordinator",
+    }),
+  };
+}
+
 describe("Tasks (BR-14, K1, K4, K8)", () => {
   it("TIME is elapsed from the row's start in v2's form, and a row that never started has none", () => {
     expect(elapsed(row("A", "in_progress", { startedAt: 10_000 }), 10_000 + 400_000)).toBe("6m 40s");
@@ -116,21 +143,19 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
       { id: "eng.idle", workerId: "eng.idle", name: "idle", team: "eng", kind: null },
     ] as unknown as Worker[];
     const asks = [{ workerId: "eng.em", item: { suspensionId: "a1" }, since: 0 }] as unknown as Ask[];
-    const s = snapshot(
-      [
-        row("A", "in_progress", { assignee: "eng.coder" }),
-        // Held on a question for you: running, and one Inbox item of its own (FIX-2131).
-        row("B", "in_progress", {
-          ownerSessionId: "s_desk",
-          holds: [{ id: "q-B", actor: "user", openedAt: 1, source: { kind: "task", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
-        }),
-        row("C", "pending"),
-        row("D", "completed", { ownerSessionId: "s_other" }),
-      ],
-      asks,
-      workers,
-    );
-    expect(tasksSummary(s)).toBe("2 in flight · 2 need you · 2 on shift · 2 streams");
+    const tasks = [
+      row("A", "in_progress", { assignee: "eng.coder" }),
+      // Held on a question for you: running, and one Inbox item of its own (FIX-2131).
+      row("B", "in_progress", {
+        ownerSessionId: "s_desk",
+        holds: [{ id: "q-B", actor: "user", openedAt: 1, source: { kind: "task", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
+      }),
+      row("C", "pending"),
+      row("D", "completed", { ownerSessionId: "s_other" }),
+    ];
+    // Who is on shift is still the snapshot's (FIX-2775); the tasks and the Inbox are the view's.
+    const s = snapshot(tasks, asks, workers);
+    expect(summaryLine({ ok: true, value: viewOf(tasks, [{ suspensionId: "a1", workerId: "eng.em" }]) }, s)).toBe("2 in flight · 2 need you · 2 on shift · 2 streams");
   });
 
   it("an Inbox link written with a suspension id still opens the task's item that holds it", () => {
@@ -146,37 +171,36 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
         },
       ],
     });
-    const s = snapshot([held]);
-    const item = inboxItemAt(s, "susp_legacy");
+    const { items } = viewOf([held]);
+    const item = itemAtRoute(items, "susp_legacy");
     expect(item?.id).toBe(`task:${held.boardRef}:T`);
-    expect(inboxItemAt(s, item!.id)).toBe(item);
-    expect(inboxItemAt(s, "nothing")).toBeNull();
+    expect(itemAtRoute(items, item!.id)).toBe(item);
+    expect(itemAtRoute(items, "nothing")).toBeNull();
   });
 
   it("an Inbox that didn't load says so in the summary, never 0 need you, which reads as all clear", () => {
-    const s = { ...snapshot([row("A", "in_progress")]), inbox: { ok: false, failure: { message: "asks offline" } } } as LoadedSnapshot;
-    const line = tasksSummary(s);
-    expect(line).toBe("1 in flight · Inbox didn't load · 0 on shift · 1 stream");
+    const s = snapshot([row("A", "in_progress")]);
+    const line = summaryLine({ ok: false, failure: { message: "asks offline" } }, s);
+    // With no answer there are no rows to count either: the line says the Inbox didn't load.
+    expect(line).toBe("0 in flight · Inbox didn't load · 0 on shift · 0 streams");
     expect(line).not.toMatch(/need/);
   });
 
   it("the empty Inbox names the runs still going (BR-19, I8)", () => {
-    const workers = [{ id: "eng.coder", workerId: "eng.coder", name: "coder", team: "eng", kind: null }] as unknown as Worker[];
-    expect(emptyInboxSentence(snapshot([row("A", "in_progress", { assignee: "eng.coder" }), row("B", "in_progress")], [], workers))).toBe(
+    expect(nothingWaitingSentence(viewOf([row("A", "in_progress", { assignee: "eng.coder" }), row("B", "in_progress")]))).toBe(
       "Nothing needs you. 2 sessions are still running.",
     );
-    expect(emptyInboxSentence(snapshot([row("A", "completed", { assignee: "eng.coder" }), row("B", "in_progress")], [], workers))).toBe(
+    expect(nothingWaitingSentence(viewOf([row("A", "completed", { assignee: "eng.coder" }), row("B", "in_progress")]))).toBe(
       "Nothing needs you. 1 session is still running.",
     );
   });
 
   it("counts sessions, not rows: two running rows in one run session are one session, and an unlinked row is its own", () => {
-    const workers = [{ id: "eng.coder", workerId: "eng.coder", name: "coder", team: "eng", kind: null }] as unknown as Worker[];
     const inOne = (id: string, attempt: number) => row(id, "in_progress", { run: { sessionId: "s_coder", requestId: `req_${id}`, attempt } });
-    expect(emptyInboxSentence(snapshot([inOne("A", 1), inOne("B", 1)], [], workers))).toBe(
+    expect(nothingWaitingSentence(viewOf([inOne("A", 1), inOne("B", 1)]))).toBe(
       "Nothing needs you. 1 session is still running.",
     );
-    expect(emptyInboxSentence(snapshot([inOne("A", 1), inOne("B", 1), row("C", "in_progress")], [], workers))).toBe(
+    expect(nothingWaitingSentence(viewOf([inOne("A", 1), inOne("B", 1), row("C", "in_progress")]))).toBe(
       "Nothing needs you. 2 sessions are still running.",
     );
   });

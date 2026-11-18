@@ -79,6 +79,7 @@ export const shiftManager: AppInventory = {
     "src/lib/derive.ts": ["Roster", "WorkerState", "WorkerStates", "ShiftCounts", "ShiftCoordinator"],
     "src/lib/feed-health.ts": ["ReportFeed"],
     "src/lib/first-run.ts": ["StarterDelegate"],
+    "src/lib/inbox.ts": ["ReviewData"],
     "src/lib/lab-data.tsx": ["LabData"],
     "src/lib/messages.ts": ["MessageExchange"],
     "src/lib/projects.ts": ["ProjectAddress"],

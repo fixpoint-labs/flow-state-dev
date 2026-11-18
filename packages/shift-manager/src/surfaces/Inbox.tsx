@@ -1,9 +1,10 @@
-// BR-24; BR-25; BR-18; BR-21; BR-22.
+// BR-24; BR-25; BR-18; BR-21; BR-22; FIX-2774.
 /**
  * Inbox (S10): everything waiting on the user, oldest first: every
- * pending approval and question in the worker sessions the Lab lists for this
- * user, dispatch runs included, and every task holding questions for them. It
- * draws the snapshot's `inbox` section and reads no other list (`inbox.ts`).
+ * pending approval and question in their workers' sessions, dispatch runs
+ * included, every one from a worker run with no conversation, and every task
+ * holding questions for them. It draws workforce's inbox view and reads no
+ * other list (`lib/inbox.ts`).
  * A list and a detail pane; the detail draws an ask with the same card Shift
  * Coordinator uses, and answers it through the same resume.
  *
@@ -19,7 +20,8 @@
  * Under the detail, a reply box sends a line into the session the ask sits in,
  * through the door of the worker that owns that session. A worker whose
  * worker flow has no door gets the box disabled, saying so; Approve and Reject are
- * untouched.
+ * untouched. An ask from a run with no conversation names no worker and has
+ * no session to read or reply into: its box is disabled, saying so.
  */
 import { useMemo, useState, type ReactNode } from "react";
 import Markdown from "react-markdown";
@@ -27,24 +29,30 @@ import { AskCard } from "../components/AskCard";
 import { TurnComposer } from "../components/TurnComposer";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { askSessionOf, type SessionCall, type SessionReply } from "../lib/ask-session";
-import { doorOf, inboxItemAt, rosterOf, waited, workerLabel, type LoadedSnapshot } from "../lib/derive";
-import type { InboxHold, InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
-import { useLab } from "../lib/lab-data";
-import { describeFailure, type Ask, type Failure } from "../lib/reads";
+import { doorOf, rosterOf, waited, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import type { InboxHold, InboxAnswer, InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
+import type { SuspensionItem } from "@flow-state-dev/core/items";
+import { describeFailure, type Failure } from "../lib/reads";
+import { itemAtRoute, sessionOfHold, useInbox, useInboxAnswer, workerOfHold, type InboxAsk } from "../lib/inbox";
 import { navigate } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import { useRetrySessionFeed, useSharedSessionFeed } from "../lib/session-feeds";
 import { TurnNotDelivered, useDeliverLine } from "../lib/deliver";
 import { useWorkforce } from "../lib/workforce";
-import { emptyInboxSentence } from "../lib/tasks";
+import { nothingWaitingSentence } from "../lib/tasks";
 import { cn } from "../lib/utils";
 import type { Gaps } from "../gaps";
 
 const FILTERS = ["All", "Approvals", "Questions"] as const;
 type Filter = (typeof FILTERS)[number];
 
-/** An Inbox item, its suspensions drawn with the ask a worker session holds for them. */
-type InboxItem = OrchestrationInboxItem<Ask>;
+/** An Inbox item, its suspensions drawn with the ask the view found for them. */
+type InboxItem = OrchestrationInboxItem<InboxAsk>;
+/** One hold of an Inbox item. */
+type InboxViewHold = InboxHold<InboxAsk>;
+
+/** What a run with no conversation is drawn as: no session to read, and none to reply into. */
+const NO_CONVERSATION_REPLY = "This ask comes from a run with no conversation, so there is nothing to reply into. Answer it with the card above.";
 
 /** Whether `item` is an approval, as the filter and its tag read it: its first hold asks for a yes or a no. */
 function isApproval(item: InboxItem): boolean {
@@ -55,8 +63,8 @@ function matches(filter: Filter, item: InboxItem): boolean {
   return filter === "All" || (filter === "Approvals") === isApproval(item);
 }
 
-function askHeading(ask: Ask): string {
-  return ask.item.title || ask.item.message || "(no message)";
+function askHeading(hold: InboxViewHold): string {
+  return hold.detail?.title || hold.detail?.message || hold.ask.title || hold.ask.prompt || "(no message)";
 }
 
 /** An item's heading: its first hold's title, else what it asks. */
@@ -65,63 +73,46 @@ function itemHeading(item: InboxItem): string {
   return ask.title || ask.prompt || "(no message)";
 }
 
-/** Who an item waits for the user on behalf of: the task's assignee, else the worker that asked, and the task. */
+/**
+ * Who an item waits for the user on behalf of: the task's assignee, else the
+ * worker that asked, and the task. A run with no conversation names no
+ * worker: its flow is named instead.
+ */
 function itemFrom(item: InboxItem): string {
-  const who = item.task?.assignee ?? item.holds[0]!.detail?.workerId ?? "unknown worker";
+  const hold = item.holds[0]!;
+  const noConversation = item.task === null && sessionOfHold(hold) === null;
+  const who = item.task?.assignee ?? workerOfHold(hold) ?? (noConversation ? `${hold.detail?.flowKind ?? "a worker flow"}, no conversation` : "unknown worker");
   const more = item.holds.length > 1 ? ` · ${item.holds.length} asks` : "";
   return `${workerLabel(who)} · task ${item.task?.title ?? "—"}${more}`;
 }
 
-/**
- * The ask a suspension item's card is drawn with: the pending ask the
- * worker's session holds for it, or, when the session wasn't read, one made
- * from what the task's row records of the stop. Either answers through the
- * same route, by the hold's source.
- */
-function askOfItem(item: InboxItem): Ask {
-  const hold = item.holds[0]!;
-  if (hold.detail !== undefined) return hold.detail;
-  if (hold.source.kind !== "suspension") throw new Error(`Inbox item "${item.id}" holds no suspension`);
-  const approval = hold.ask.kind === "approval";
-  return {
-    sessionId: hold.source.sessionId,
-    workerId: item.task?.assignee ?? null,
-    flowId: hold.source.flowId,
-    parentSessionId: null,
-    kind: approval ? "approval" : "question",
-    item: {
-      type: "suspension",
-      id: hold.source.suspensionId,
-      suspensionId: hold.source.suspensionId,
-      requestId: hold.source.requestId,
-      suspensionStatus: "pending",
-      reason: approval ? "user_approval" : "user_input",
-      message: hold.ask.prompt,
-      ...(hold.ask.title !== undefined ? { title: hold.ask.title } : {}),
-      allow: approval ? ["approve", "reject"] : ["submit"],
-    } as Ask["item"],
-    since: hold.openedAt,
-    unanswerable: item.unanswerable,
-  };
-}
-
 export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; itemId: string | null; gaps: Gaps }) {
-  const { client, refresh } = useLab();
+  const inbox = useInbox();
   const [filter, setFilter] = useState<Filter>("All");
   // Bumped when a reply is delivered, so the ask's session is read again then.
   const [replies, setReplies] = useState(0);
-  if (!snapshot.inbox.ok) {
+  if (inbox.section === undefined) {
+    return (
+      <p className="p-6 text-sm text-muted-foreground" data-testid="inbox-loading">
+        Reading the Inbox…
+      </p>
+    );
+  }
+  if (!inbox.section.ok) {
     return (
       <div className="p-6">
-        <SectionFailure what="Inbox" failure={snapshot.inbox.failure} onRetry={() => void refresh()} />
+        <SectionFailure what="Inbox" failure={inbox.section.failure} onRetry={inbox.refresh} />
       </div>
     );
   }
-  const items = snapshot.inbox.value;
+  const view = inbox.section.value;
+  // A refresh that failed after a good read: the older list stays, saying it may be out of date and why.
+  const lapsed = inbox.failure !== undefined ? <SectionFailure what="The Inbox's latest read" failure={inbox.failure} onRetry={inbox.refresh} testId="inbox-stale" /> : null;
+  const items = view.items;
   const shown = items.filter((item) => matches(filter, item));
   // An older link names a suspension id; it opens the item that holds it.
-  const selected = inboxItemAt(snapshot, itemId);
-  const now = snapshot.readAt;
+  const selected = itemAtRoute(items, itemId);
+  const now = Date.now();
 
   const oldest = items.reduce<number | null>((min, item) => (min === null || item.since < min ? item.since : min), null);
 
@@ -147,10 +138,11 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
               counts={Object.fromEntries(FILTERS.map((f) => [f, items.filter((item) => matches(f, item)).length]))}
             />
           </div>
+          {lapsed !== null ? <div className="mx-[18px] mt-3">{lapsed}</div> : null}
         </header>
         {items.length === 0 ? (
           <p className="px-[18px] py-7 text-sm leading-normal text-muted-foreground" data-testid="inbox-empty">
-            {emptyInboxSentence(snapshot)}
+            {nothingWaitingSentence(view)}
           </p>
         ) : shown.length === 0 ? (
           <p className="px-[18px] py-7 text-sm leading-normal text-muted-foreground" data-testid="inbox-filter-empty">
@@ -170,7 +162,7 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
                     data-item-id={item.id}
                     data-source={item.holds[0]!.source.kind}
                     data-suspension-id={item.holds[0]!.source.kind === "suspension" ? item.holds[0]!.source.suspensionId : undefined}
-                    data-session-id={item.holds[0]!.source.kind === "suspension" ? item.holds[0]!.source.sessionId : undefined}
+                    data-session-id={sessionOfHold(item.holds[0]!) ?? undefined}
                     className={cn(
                       "grid w-full grid-cols-[10px_minmax(0,1fr)_auto] gap-2.5 border-b border-foreground/10 px-[18px] py-[13px] text-left",
                       isSelected ? "bg-card shadow-[inset_2px_0_0_var(--color-info)]" : "hover:bg-foreground/5",
@@ -208,14 +200,11 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
           <HeldQuestions item={selected} />
         ) : (
           <AskDetail
-            ask={askOfItem(selected)}
+            hold={selected.holds[0]!}
             snapshot={snapshot}
             gaps={gaps}
             replies={replies}
-            onDelivered={() => {
-              setReplies((n) => n + 1);
-              void refresh();
-            }}
+            onDelivered={() => setReplies((n) => n + 1)}
           />
         )}
       </section>
@@ -225,13 +214,13 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
 
 /** A suspension's detail: its card, its session, and the reply box under it. */
 function AskDetail({
-  ask: selected,
+  hold: selected,
   snapshot,
   gaps,
   replies,
   onDelivered,
 }: {
-  ask: Ask;
+  hold: InboxViewHold;
   snapshot: LoadedSnapshot;
   gaps: Gaps;
   replies: number;
@@ -242,21 +231,23 @@ function AskDetail({
             <div className="min-h-0 flex-1 overflow-y-auto px-[34px] py-6">
               <div className="flex max-w-[660px] flex-col gap-[18px]">
                 <Meta className="text-muted-foreground" testId="inbox-detail-head">
-                  {workerLabel(selected.workerId ?? "unknown worker")} asked, in session {selected.sessionId}
+                  {sessionOfHold(selected) === null
+                    ? `${selected.detail?.flowKind ?? (selected.source.kind === "suspension" ? selected.source.flowId : null) ?? "A worker flow"} asked, from a run with no conversation`
+                    : `${workerLabel(workerOfHold(selected) ?? "unknown worker")} asked, in session ${sessionOfHold(selected)}`}
                 </Meta>
                 <ScreenTitle scale="detail" testId="inbox-detail-title">
                   {askHeading(selected)}
                 </ScreenTitle>
-                {selected.item.title && selected.item.message ? <AskBody text={selected.item.message} /> : null}
-                <AskCard ask={selected} titled />
-                <AskSession key={selected.item.suspensionId} ask={selected} reread={replies} />
+                {selected.detail?.title && selected.detail.message ? <AskBody text={selected.detail.message} /> : null}
+                <AskCard hold={selected} titled />
+                {sessionOfHold(selected) === null ? null : <AskSession key={selected.id} hold={selected} reread={replies} />}
               </div>
             </div>
             <div className="px-[34px] pt-3 pb-4">
               <div className="max-w-[660px]">
                 <Reply
-                  key={selected.item.suspensionId}
-                  ask={selected}
+                  key={selected.id}
+                  hold={selected}
                   snapshot={snapshot}
                   gaps={gaps}
                   onDelivered={onDelivered}
@@ -302,7 +293,7 @@ function HeldQuestions({ item }: { item: InboxItem }) {
 
 /** One held question's answer: words for a question, a yes or a no (with a note) for a confirm. */
 function HeldAnswer({ hold }: { hold: InboxHold<unknown> }) {
-  const { answerOne } = useLab();
+  const answerOne = useInboxAnswer();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -313,7 +304,7 @@ function HeldAnswer({ hold }: { hold: InboxHold<unknown> }) {
       </p>
     );
   }
-  const send = async (answer: Parameters<typeof answerOne>[1]) => {
+  const send = async (answer: InboxAnswer) => {
     setSending(true);
     setFailure(null);
     try {
@@ -403,21 +394,21 @@ type AskSessionRead =
  * the session holds it, with no read of its own. The component is keyed by
  * the ask, so the ask it reads around never changes under it.
  */
-function AskSession({ ask }: { ask: Ask; reread?: number }) {
-  const feed = useSharedSessionFeed(ask.sessionId);
-  const retry = useRetrySessionFeed(ask.sessionId);
+function AskSession({ hold }: { hold: InboxViewHold; reread?: number }) {
+  const sessionId = sessionOfHold(hold)!;
+  const feed = useSharedSessionFeed(sessionId);
+  const retry = useRetrySessionFeed(sessionId);
   const items = feed?.items;
   const hasEarlier = feed?.hasEarlier ?? false;
   const error = feed?.error ?? null;
-  const read = useMemo<AskSessionRead | null>(
-    () =>
-      items !== undefined
-        ? { ok: true, value: askSessionOf(items, ask.item), truncated: hasEarlier }
-        : error !== null
-          ? { ok: false, failure: describeFailure(error) }
-          : null,
-    [items, hasEarlier, error, ask.item],
-  );
+  const read = useMemo<AskSessionRead | null>(() => {
+    if (items !== undefined) {
+      // The stop as the session holds it, where *From the session* is read around.
+      const stop = items.find((item) => item.type === "suspension" && (item as SuspensionItem).suspensionId === hold.id);
+      return { ok: true, value: stop === undefined ? null : askSessionOf(items, stop), truncated: hasEarlier };
+    }
+    return error !== null ? { ok: false, failure: describeFailure(error) } : null;
+  }, [items, hasEarlier, error, hold.id]);
   if (read === null) {
     return (
       <Meta className="text-muted-foreground" testId="inbox-session-loading">
@@ -465,7 +456,7 @@ function AskSession({ ask }: { ask: Ask; reread?: number }) {
       {(found?.replies ?? []).map((reply) => (
         <div key={reply.id} className="border-l-2 border-info py-1 pl-2.5" data-testid="inbox-reply-line">
           <Meta role="count" className="text-muted-foreground" testId="inbox-reply-line-label">
-            You · {clock(reply.at)} · sent into {ask.sessionId}
+            You · {clock(reply.at)} · sent into {sessionId}
           </Meta>
           <p className="mt-0.5 text-sm leading-[1.55]" data-testid="inbox-reply-line-text">
             {reply.text}
@@ -477,47 +468,51 @@ function AskSession({ ask }: { ask: Ask; reread?: number }) {
 }
 
 /** Why a reply can't go into the ask's session, or the door it goes through. */
-function replyRoute(ask: Ask, snapshot: LoadedSnapshot, gaps: Gaps): { blocked: string } | { blocked: null; flowId: string; door: string } {
+function replyRoute(hold: InboxViewHold, snapshot: LoadedSnapshot, gaps: Gaps): { blocked: string } | { blocked: null; sessionId: string; flowId: string; door: string } {
+  const sessionId = sessionOfHold(hold);
+  // A run with no conversation has no session to reply into.
+  if (sessionId === null) return { blocked: NO_CONVERSATION_REPLY };
+  const flowId = hold.source.flowId;
   // A session written before instance ownership names no flow, so no door.
-  if (ask.flowId === null) return { blocked: ask.unanswerable ?? "This session names no flow to send through." };
+  if (flowId === null) return { blocked: hold.unanswerable ?? "This session names no flow to send through." };
   if (!snapshot.inventory.ok) return { blocked: snapshot.inventory.failure.message };
-  const door = doorOf(rosterOf(snapshot).workers, ask.flowId);
-  if (door === null) return { blocked: `${workerLabel(ask.workerId ?? ask.flowId)} ${gaps.turn.replyNoDoor}` };
-  return { blocked: null, flowId: ask.flowId, door };
+  const door = doorOf(rosterOf(snapshot).workers, flowId);
+  if (door === null) return { blocked: `${workerLabel(workerOfHold(hold) ?? flowId)} ${gaps.turn.replyNoDoor}` };
+  return { blocked: null, sessionId, flowId, door };
 }
 
 // BR-21, BR-22.
 /** The reply box under an ask. */
 function Reply({
-  ask,
+  hold,
   snapshot,
   gaps,
   onDelivered,
 }: {
-  ask: Ask;
+  hold: InboxViewHold;
   snapshot: LoadedSnapshot;
   gaps: Gaps;
   onDelivered: () => void;
 }) {
-  const route = replyRoute(ask, snapshot, gaps);
+  const route = replyRoute(hold, snapshot, gaps);
+  const worker = workerOfHold(hold);
   const workforce = useWorkforce();
   const deliver = useDeliverLine();
-  const workerId = ask.workerId;
   return (
     <div>
       <TurnComposer
         testId="inbox-reply"
-        draftKey={`reply:${ask.item.suspensionId}`}
-        label={`Reply to ${workerLabel(ask.workerId ?? "this worker")}`}
-        placeholder={`Reply to ${workerLabel(ask.workerId ?? "this worker")}…`}
+        draftKey={`reply:${hold.id}`}
+        label={`Reply to ${workerLabel(worker ?? "this worker")}`}
+        placeholder={`Reply to ${workerLabel(worker ?? "this worker")}…`}
         blocked={route.blocked}
         // Through the flow the reply goes to, whose sign-in its send runs.
-        uploader={route.blocked === null && workerId !== null ? { upload: (file) => workforce.upload(workerId, file) } : null}
+        uploader={route.blocked === null && worker !== null ? { upload: (file) => workforce.upload(worker, file) } : null}
         send={async (message, held, attachments) => {
           // The box is disabled while blocked; a send that got here anyway
           // must not read as delivered.
           if (route.blocked !== null) throw new TurnNotDelivered("refused", route.blocked);
-          return await deliver({ sessionId: ask.sessionId }, message, { onHeld: held, attachments });
+          return await deliver({ sessionId: route.sessionId }, message, { onHeld: held, attachments });
         }}
         onHeld={onDelivered}
         onDelivered={onDelivered}

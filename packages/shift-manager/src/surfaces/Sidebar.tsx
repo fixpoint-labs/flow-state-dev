@@ -32,7 +32,8 @@ import { themeLabel, type ThemeLook } from "../lib/theme";
 import type { Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
-import { openTasks, projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { openBoardTasks, useInbox } from "../lib/inbox";
 import { useProjectRead, type WorkstreamEntry } from "../lib/projects";
 import type { Project } from "../lib/reads";
 import { initialsOf } from "../lib/shell";
@@ -417,9 +418,11 @@ export function Sidebar({
   // The counts dim only while a read the user asked for runs.
   const dim = asking ? ` ${ASKING_CLASS}` : "";
 
-  const inboxCount = loaded === undefined ? "…" : loaded.inbox.ok ? loaded.inbox.value.length : "!";
-  const tasksCount = loaded === undefined ? "…" : openTasks(loaded).length;
-  const waiting = loaded !== undefined && loaded.inbox.ok && loaded.inbox.value.length > 0;
+  // FIX-2774: the Inbox count and the Tasks count are the inbox view's, the same answer those screens list.
+  const inbox = useInbox().section;
+  const inboxCount = inbox === undefined ? "…" : inbox.ok ? inbox.value.items.length : "!";
+  const tasksCount = inbox === undefined ? "…" : inbox.ok ? openBoardTasks(inbox.value).length : "!";
+  const waiting = inbox?.ok === true && inbox.value.items.length > 0;
   // The user's own workers are on their roster, not in the inventory: joined as Roster joins them.
   const roster = useRoster();
   const joined = loaded === undefined ? undefined : withRoster(loaded, roster);

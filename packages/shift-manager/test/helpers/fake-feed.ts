@@ -15,11 +15,23 @@ export type FakeFeed = {
  * each feed it opens pushed to `opened`. A failure after items landed keeps them, as the feed does.
  */
 export function fakeFeeds(opened: FakeFeed[], read?: (sessionId: string) => unknown, retried: string[] = []) {
+  // Each mounted feed's restart, by session: Retry opens that session's feeds anew.
+  const restarts = new Map<string, Set<() => void>>();
   return {
     useRetrySessionFeed: (sessionId: string | null | undefined) => () => {
-      if (sessionId != null) retried.push(sessionId);
+      if (sessionId == null) return;
+      retried.push(sessionId);
+      for (const restart of [...(restarts.get(sessionId) ?? [])]) restart();
     },
     useSharedSessionFeed: (sessionId: string | null | undefined) => {
+      const [generation, setGeneration] = useState(0);
+      useEffect(() => {
+        if (sessionId == null) return;
+        const restart = () => setGeneration((n) => n + 1);
+        const set = restarts.get(sessionId) ?? new Set();
+        restarts.set(sessionId, set.add(restart));
+        return () => void set.delete(restart);
+      }, [sessionId]);
       const [held, setHeld] = useState<{ sessionId: string; items?: unknown[]; hasEarlier: boolean; loadEarlier: () => Promise<void>; error: Error | null }>();
       useEffect(() => {
         if (sessionId == null) return;
@@ -34,6 +46,8 @@ export function fakeFeeds(opened: FakeFeed[], read?: (sessionId: string) => unkn
           },
         };
         opened.push(entry);
+        // A restart drops what the feed it replaced read, as a new feed starts empty.
+        if (generation > 0) setHeld(undefined);
         if (read !== undefined) {
           Promise.resolve(read(sessionId)).then(
             (got) => entry.onRead(got as never),
@@ -41,7 +55,7 @@ export function fakeFeeds(opened: FakeFeed[], read?: (sessionId: string) => unkn
           );
         }
         return () => void (entry.closed = true);
-      }, [sessionId]);
+      }, [sessionId, generation]);
       return held === undefined || held.sessionId !== sessionId ? undefined : { ...held, state: "live", runs: null, followResponse: () => {} };
     },
   };

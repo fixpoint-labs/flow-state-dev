@@ -15,6 +15,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const lab = { client: { userId: "u_1" }, snapshot: undefined, refresh: vi.fn() };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
+// FIX-2774: a task's asks read the inbox view, which this test doesn't serve.
+vi.mock("../src/lib/inbox", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/inbox")>()),
+  useInbox: () => ({ section: undefined, stale: false, refresh: () => {} }),
+}));
+
 const run = { flowId: "agent", sessionId: "s_run", requestId: "req_run" };
 const task = {
   row: undefined,
