@@ -56,7 +56,7 @@ import { commandCheck, type CommandCheckCommands } from "../command-check";
 import { goalJudge } from "../goal-judge";
 import type { Harness } from "../harness";
 import { harnessDrainBudgetMs, harnessManager, resolveOwnership, type CompletionRunContext, type PhaseSpec } from "../manager";
-import { DEFAULT_IDLE_TIMEOUT_MS } from "../idle-stop";
+import { DEFAULT_IDLE_TIMEOUT_MS } from "../run-stops";
 import { harnessSessionDoor, harnessTalkTurn } from "../session-door";
 import { taskIssueSegment } from "../workspace";
 

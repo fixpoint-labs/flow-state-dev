@@ -158,7 +158,7 @@ import {
   type CommandCheckOptions,
 } from "./command-check";
 import { assertPositiveInt } from "./guards";
-import { DEFAULT_IDLE_TIMEOUT_MS, idleStops, type IdleStops } from "./idle-stop";
+import { DEFAULT_IDLE_TIMEOUT_MS, runStops, type RunStops } from "./run-stops";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import {
   MAX_APPROVAL_STEPS,
@@ -838,11 +838,9 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // The branch each attached turn started on, by request id: it must end on it.
   const attachedHeads = new Map<string, string | null>();
   const approveTools = options.approveTools === true;
-  const deadlines = turnDeadlines(
-    idleStops(
-      assertPositiveInt("harnessSessionFlow's idleTimeoutMs", options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS),
-      options.harnessLabel,
-    ),
+  const deadlines = runStops(
+    assertPositiveInt("harnessSessionFlow's idleTimeoutMs", options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS),
+    options.harnessLabel,
     options.turnTimeoutMs === undefined ? undefined : assertPositiveInt("harnessSessionFlow's turnTimeoutMs", options.turnTimeoutMs),
   );
   const sessionFeeds = harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse, attachedHeads);
@@ -890,7 +888,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     const requestId = ctx.request.identity.id;
     const fired = deadlines.takeFired(requestId);
     const timedOut = fired !== undefined;
-    const ended = fired === undefined ? error : fired.idle ? new Error(fired.message) : new Error(fired.message, { cause: error });
+    const ended = fired === undefined ? error : fired.kind === "idle" ? new Error(fired.message) : new Error(fired.message, { cause: error });
     await changeState(ctx as unknown as HarnessCallbackContext, (state) =>
       withTurn(state, requestId, (record) => ({
         ...record,
@@ -1303,61 +1301,8 @@ function turnEndOf(ctx: object, requestId: string): { spend: TaskSpendView | nul
 }
 
 
-/** The error a turn whose harness ran past its cap ends with. */
-function turnTimedOutMessage(timeoutMs: number): string {
-  return `[harness-session] the turn's harness timed out after ${timeoutMs}ms and was stopped.`;
-}
-
-// FIX-2680.
-/**
- * Each running harness step's stops, by request: its silence stop (`idle`),
- * and its cap on run time when the host set one. The step runs under both,
- * composed with any other stop it has; both timers go when the step settles,
- * and whichever fired is read once by the turn's failure record.
- */
-function turnDeadlines(idle: IdleStops, timeoutMs: number | undefined) {
-  const timers = new Map<string, ReturnType<typeof setTimeout>>();
-  const fired = new Set<string>();
-  return {
-    /** The step's stops: silence, and its cap when there is one. */
-    arm(ctx: BlockContext): AbortSignal {
-      const silence = idle.arm(ctx);
-      if (timeoutMs === undefined) return silence;
-      const requestId = ctx.request.identity.id;
-      const controller = new AbortController();
-      clearTimeout(timers.get(requestId));
-      fired.delete(requestId);
-      const timer = setTimeout(() => {
-        fired.add(requestId);
-        controller.abort(new Error(turnTimedOutMessage(timeoutMs)));
-      }, timeoutMs);
-      // A deadline never holds a host's process open on its own.
-      timer.unref?.();
-      timers.set(requestId, timer);
-      return AbortSignal.any([silence, controller.signal]);
-    },
-    /** The step's harness sent something. */
-    heard(ctx: BlockContext): void {
-      idle.heard(ctx);
-    },
-    /** The step settled: its timers go, and what fired too unless the step threw, for the failure record to read. */
-    clear(ctx: BlockContext, outcome: StepOutcome): void {
-      idle.clear(ctx, outcome);
-      const requestId = ctx.request.identity.id;
-      if (outcome !== "threw") fired.delete(requestId);
-      clearTimeout(timers.get(requestId));
-      timers.delete(requestId);
-    },
-    /** What stopped the request's step, forgetting it: asked once per turn end. `undefined` when neither fired. */
-    takeFired(requestId: string): { message: string; idle: boolean } | undefined {
-      const silence = idle.takeFired(requestId);
-      const capped = fired.delete(requestId);
-      if (silence !== undefined) return { message: silence, idle: true };
-      return capped && timeoutMs !== undefined ? { message: turnTimedOutMessage(timeoutMs), idle: false } : undefined;
-    },
-  };
-}
-type TurnDeadlines = ReturnType<typeof turnDeadlines>;
+/** Each running harness step's stops, by request: its silence stop, and its cap on run time when the host set one. */
+type TurnDeadlines = RunStops;
 
 // FIX-2432.
 /**

@@ -145,7 +145,10 @@ describe("a coding run that keeps working is never stopped for how long it has r
     try {
       await h.act("seed");
       void h.act("drain");
-      expect(await h.until(settled, "the run to end")).toMatchObject({ status: "errored" });
+      const ended = await h.until(settled, "the run to end");
+      // In the cap's own words, not the harness's aborted error, which reads as a person's stop.
+      expect(ended).toMatchObject({ status: "errored", error: "The stub harness ran for 1 second, its cap on run time; stopped." });
+      expect(isAbortLike(new Error(ended.error))).toBe(false);
     } finally {
       await h.dispose();
     }

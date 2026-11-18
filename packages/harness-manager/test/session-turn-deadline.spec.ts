@@ -108,11 +108,11 @@ describe("a harness session turn's deadline", () => {
       // The harness ran, and only its abort ended it.
       expect(h.stub.runs).toHaveLength(1);
       expect(Date.now() - startedAt).toBeGreaterThanOrEqual(200);
-      expect(result.error?.message).toMatch(/timed out after 200ms/);
+      expect(result.error?.message).toMatch(/ran for less than a second, its cap on run time; stopped\./);
       expect(record?.timedOut).toBe(true);
       // Not a person's stop: a page tells the two apart.
       expect(record?.stopped).toBe(false);
-      expect(record?.error).toMatch(/timed out after 200ms/);
+      expect(record?.error).toMatch(/ran for less than a second, its cap on run time; stopped\./);
       // Ended like any other turn: a page reads its end and what it spent.
       expect(record?.endedAt).not.toBeNull();
     } finally {
@@ -125,7 +125,7 @@ describe("a harness session turn's deadline", () => {
     try {
       const { result, record } = await h.turn("s-wedged-approvals", "do the thing");
       expect(h.stub.runs).toHaveLength(1);
-      expect(result.error?.message).toMatch(/timed out after 200ms/);
+      expect(result.error?.message).toMatch(/ran for less than a second, its cap on run time; stopped\./);
       expect(record?.timedOut).toBe(true);
       expect(record?.stopped).toBe(false);
       expect(record?.waitsOnApproval ?? null).toBeNull();

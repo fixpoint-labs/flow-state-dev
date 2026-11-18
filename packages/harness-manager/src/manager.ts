@@ -117,7 +117,7 @@ import {
 } from "@flow-state-dev/workspace";
 import { NETWORK_CALL_TIMEOUT_MS } from "./timeouts";
 import { MAX_TIMER_MS, assertPositiveInt } from "./guards";
-import { DEFAULT_IDLE_TIMEOUT_MS, idleStops } from "./idle-stop";
+import { DEFAULT_IDLE_TIMEOUT_MS, runStops } from "./run-stops";
 import {
   RUNS,
   assertPlaceAndHeld,
@@ -3522,8 +3522,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   };
 
   // FIX-2794.
-  /** Each running step's silence stop, and when its checkout lock was last marked live, by request. */
-  const silence = idleStops(idleTimeoutMs, harnessLabel);
+  /** Each running step's stops (silence, and the cap when set), and when its checkout lock was last marked live, by request. */
+  const harnessStops = runStops(idleTimeoutMs, harnessLabel, runTimeoutMs);
   const lockRefreshedAt = new Map<string, number>();
 
   // BP-031.
@@ -3578,7 +3578,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     // into "stale" under a waiter. See `resolveOwnership` above.
     onEvent: (ctx) => {
       const requestId = ctx.request.identity.id;
-      silence.heard(ctx);
+      harnessStops.heard(ctx);
       const now = Date.now();
       if (now - (lockRefreshedAt.get(requestId) ?? 0) < LOCK_REFRESH_MS) return;
       const state = harnessCtxState(ctx);
@@ -4314,18 +4314,18 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         followRecordedPullRequests(ctx, onPullRequestRecorded);
         // A run that goes silent is stopped; one that keeps working runs on,
         // unless the host capped its run time too.
-        const stops = [silence.arm(ctx), ...(runTimeoutMs === undefined ? [] : [AbortSignal.timeout(runTimeoutMs)])];
+        const stop = harnessStops.arm(ctx);
         // Armed for every step: a run may offer a live steer once it starts.
         const steer = watchForSteers(ctx);
         startProgressNotes(ctx);
-        return AbortSignal.any([...stops, steer]);
+        return AbortSignal.any([stop, steer]);
       },
       // Fires on every exit from the dispatch — returned, threw, or
       // suspended. The tree is only written by the agent, so releasing the
       // moment it stops is tighter than holding through the verdict; a step
       // the request runs next for a steer takes it again.
       onSettled: (ctx, outcome) => {
-        silence.clear(ctx, outcome);
+        harnessStops.clear(ctx, outcome);
         lockRefreshedAt.delete(ctx.request.identity.id);
         stopWatching(ctx);
         stopProgressNotes(ctx);
@@ -4341,11 +4341,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           execute: (error: unknown, ctx) => {
             const watch = steerWatches.get(ctx.request.identity.id);
             steerWatches.delete(ctx.request.identity.id);
-            // FIX-2794: a run stopped for silence failed, in its own words. Not
-            // the harness's error, whose cause is the abort: a run that went
-            // silent was stopped by no one, and must not read as a stop.
-            const silent = silence.takeFired(ctx.request.identity.id);
-            if (silent !== undefined && watch?.stopped !== true) throw new HarnessAttemptFailed(silent);
+            // FIX-2794: a run stopped for silence, or at its cap, failed, in the
+            // stop's own words. Not the harness's error, whose cause is the
+            // abort: such a run was stopped by no one, and must not read as a stop.
+            const fired = harnessStops.takeFired(ctx.request.identity.id);
+            if (fired !== undefined && watch?.stopped !== true) throw new HarnessAttemptFailed(fired.message);
             if (watch?.stopped !== true) throw error;
             return STOPPED_FOR_STEER;
           },
