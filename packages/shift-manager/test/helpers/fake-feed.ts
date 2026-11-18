@@ -14,8 +14,11 @@ export type FakeFeed = {
  * The session-feeds module with a hook whose first answer is `read(sessionId)`'s (when given), and
  * each feed it opens pushed to `opened`. A failure after items landed keeps them, as the feed does.
  */
-export function fakeFeeds(opened: FakeFeed[], read?: (sessionId: string) => unknown) {
+export function fakeFeeds(opened: FakeFeed[], read?: (sessionId: string) => unknown, retried: string[] = []) {
   return {
+    useRetrySessionFeed: (sessionId: string | null | undefined) => () => {
+      if (sessionId != null) retried.push(sessionId);
+    },
     useSharedSessionFeed: (sessionId: string | null | undefined) => {
       const [held, setHeld] = useState<{ sessionId: string; items?: unknown[]; hasEarlier: boolean; loadEarlier: () => Promise<void>; error: Error | null }>();
       useEffect(() => {

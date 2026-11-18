@@ -14,6 +14,9 @@
  * What a feed holds is react's `UseSessionFeedResult`: the session's newest
  * items and each item kept since, `undefined` until the history read lands;
  * its connection; its unfinished runs; and `loadEarlier`.
+ *
+ * A feed whose history read gave up (`stopped`) never reads again on its own;
+ * {@link useRetrySessionFeed} closes it and opens a new one for the session.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Client } from "@flow-state-dev/client";
@@ -26,6 +29,8 @@ type Registry = {
   /** What the feed for `sessionId` holds now, or `undefined` while none is open or it hasn't answered. */
   get(sessionId: string): UseSessionFeedResult | undefined;
   subscribe(listener: () => void): () => void;
+  /** Close `sessionId`'s feed and open a new one, for every screen showing it. */
+  restart(sessionId: string): void;
 };
 
 const FeedsContext = createContext<Registry | null>(null);
@@ -48,6 +53,8 @@ export function SessionFeedsProvider({ client, children }: { client: Pick<Client
   const held = useRef(new Map<string, UseSessionFeedResult>());
   const listeners = useRef(new Set<() => void>());
   const [shown, setShown] = useState<readonly string[]>([]);
+  // Each session's feed generation: a restart bumps it, which keys a new `FeedHost`.
+  const [generations, setGenerations] = useState<ReadonlyMap<string, number>>(new Map());
 
   const publish = useCallback((sessionId: string, feed: UseSessionFeedResult | undefined) => {
     if (feed === undefined) held.current.delete(sessionId);
@@ -74,6 +81,7 @@ export function SessionFeedsProvider({ client, children }: { client: Pick<Client
         };
       },
       get: (sessionId) => held.current.get(sessionId),
+      restart: (sessionId) => setGenerations((was) => new Map(was).set(sessionId, (was.get(sessionId) ?? 0) + 1)),
       subscribe: (listener) => {
         listeners.current.add(listener);
         return () => listeners.current.delete(listener);
@@ -85,7 +93,7 @@ export function SessionFeedsProvider({ client, children }: { client: Pick<Client
   return (
     <FeedsContext.Provider value={registry}>
       {shown.map((sessionId) => (
-        <FeedHost key={sessionId} sessionId={sessionId} client={client} publish={publish} />
+        <FeedHost key={`${sessionId}\u0000${generations.get(sessionId) ?? 0}`} sessionId={sessionId} client={client} publish={publish} />
       ))}
       {children}
     </FeedsContext.Provider>
@@ -108,4 +116,17 @@ export function useSharedSessionFeed(sessionId: string | null | undefined): UseS
     () => (sessionId == null ? undefined : registry.get(sessionId)),
     () => (sessionId == null ? undefined : registry.get(sessionId)),
   );
+}
+
+/**
+ * Read session `sessionId` again from scratch: close the page's feed for it
+ * and open a new one, for every screen showing it. What a Retry under a feed
+ * that gave up calls. Throws outside a {@link SessionFeedsProvider}.
+ */
+export function useRetrySessionFeed(sessionId: string | null | undefined): () => void {
+  const registry = useContext(FeedsContext);
+  if (registry === null) throw new Error("useRetrySessionFeed: no SessionFeedsProvider above this component");
+  return useCallback(() => {
+    if (sessionId != null && sessionId !== "") registry.restart(sessionId);
+  }, [registry, sessionId]);
 }

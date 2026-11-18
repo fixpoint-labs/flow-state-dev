@@ -91,7 +91,7 @@ export const EM_TURN = "devforce-em-turn";
  * one would let a row be filed that the coder's manager then refuses after
  * the checkout has been cut.
  */
-export const fileInputSchema = z.object({
+const fileInputSchema = z.object({
   /** The row's identity, and the leaf of every path derived from it. */
   issue: z.string().min(1),
   /** What the row is, in a sentence. */
@@ -113,7 +113,7 @@ export const fileInputSchema = z.object({
 });
 
 /** What the asking door is handed: the feature it asks about. */
-export const askInputSchema = z.object({
+const askInputSchema = z.object({
   /** The row's identity, as {@link fileInputSchema} takes it. */
   issue: z.string().min(1),
   /** What the row is, in a sentence. Named in the ask so a user knows what they approve. */

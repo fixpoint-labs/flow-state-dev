@@ -30,7 +30,7 @@ import { useLab } from "../lib/lab-data";
 import { useReportFeedState } from "../lib/feed-health";
 import { asksOfTask, waitsOnYou } from "../lib/derive";
 import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
-import { useSharedSessionFeed } from "../lib/session-feeds";
+import { useRetrySessionFeed, useSharedSessionFeed } from "../lib/session-feeds";
 import { readTaskClaims, taskItems } from "../lib/task-items";
 import { RouteLink } from "../components/RouteLink";
 import { isTaskBrief } from "../components/TaskBrief";
@@ -103,6 +103,7 @@ function RunItems({ run }: { run: OpenRun }) {
   const [attempt, setAttempt] = useState(0);
   // The page's one feed for the run session; its connection goes to the page's bar.
   const session = useSharedSessionFeed(run.sessionId);
+  const retryFeed = useRetrySessionFeed(run.sessionId);
   useReportFeedState(session?.state);
   const sessionItems = session?.items;
   const stored = useMemo(
@@ -170,7 +171,12 @@ function RunItems({ run }: { run: OpenRun }) {
   if (shownFailure !== undefined) {
     return (
       <div className="p-4">
-        <SectionFailure what="This run's session" failure={shownFailure} onRetry={() => setAttempt((n) => n + 1)} testId="session-failure" />
+        <SectionFailure what="This run's session" failure={shownFailure} onRetry={() => {
+            // The feed, if its first read gave up, and the claims, if their read failed.
+            if (failure !== undefined) retryFeed();
+            setAttempt((n) => n + 1);
+          }}
+          testId="session-failure" />
       </div>
     );
   }

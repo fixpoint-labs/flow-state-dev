@@ -6,7 +6,7 @@
  * it, so showing a session twice opens no second stream. The feed closes once
  * the last screen showing it goes, and every screen hears what it holds.
  */
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /** Each feed react's hook opened, by session, and whether it has closed. */
@@ -28,7 +28,7 @@ vi.mock("@flow-state-dev/react", async (original) => {
   };
 });
 
-import { SessionFeedsProvider, useSharedSessionFeed } from "../src/lib/session-feeds";
+import { SessionFeedsProvider, useRetrySessionFeed, useSharedSessionFeed } from "../src/lib/session-feeds";
 
 function Pane({ sessionId, testId }: { sessionId: string | null; testId: string }) {
   const feed = useSharedSessionFeed(sessionId);
@@ -73,6 +73,33 @@ describe("the page's session feeds", () => {
     expect(opened[0]!.closed).toBe(false);
     rerender(<Page panes={0} />);
     expect(opened[0]!.closed).toBe(true);
+  });
+
+  // A feed whose history read gave up (`stopped`) never reads again on its own: Retry opens it afresh.
+  it("reads a stopped session again when a pane asks to retry it, and only that session", async () => {
+    function Retrying() {
+      const feed = useSharedSessionFeed("s1");
+      const retry = useRetrySessionFeed("s1");
+      return (
+        <button type="button" data-testid="retry" onClick={retry}>
+          {feed?.items === undefined ? "reading" : "read"}
+        </button>
+      );
+    }
+    render(
+      <SessionFeedsProvider client={client}>
+        <Retrying />
+        <Pane sessionId="s1" testId="other" />
+        <Pane sessionId="s2" testId="unrelated" />
+      </SessionFeedsProvider>,
+    );
+    expect(opened.map((feed) => feed.sessionId).sort()).toEqual(["s1", "s2"]);
+    await act(async () => fireEvent.click(screen.getByTestId("retry")));
+    // The stopped feed is closed and a new one opened for the same session; the other session's is kept.
+    expect(opened.filter((feed) => feed.sessionId === "s1").map((feed) => feed.closed)).toEqual([true, false]);
+    expect(opened.filter((feed) => feed.sessionId === "s2")).toHaveLength(1);
+    await act(async () => opened.at(-1)!.push([{ id: "i1" }]));
+    expect(screen.getByTestId("other").textContent).toBe("1 items");
   });
 
   it("shows nothing for no session", () => {

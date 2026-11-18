@@ -20,7 +20,7 @@ import { COORDINATOR_FLOW, deriveWorkerSessionId, type ProjectAddressRef } from 
 import { useLab } from "./lab-data";
 import { useReportFeedState } from "./feed-health";
 import { describeFailure, workerOf, type Failure, type Worker } from "./reads";
-import { useSharedSessionFeed } from "./session-feeds";
+import { useRetrySessionFeed, useSharedSessionFeed } from "./session-feeds";
 import { useWorkforce } from "./workforce";
 
 /** The flow a coordinator worker runs on, whose conversations carry its delegates' answers. */
@@ -117,7 +117,7 @@ export interface WorkerConversation {
   read: { items: OutputItem[]; truncated: boolean; loadEarlier?: () => Promise<void> } | undefined;
   /** Why the first read failed; cleared by the next that succeeds. A failed later read keeps the last one. */
   failure: Failure | undefined;
-  /** Retry after a failed first read. The page's feed reads again on its own, so this asks nothing of it. */
+  /** Read the session again from scratch after a failed first read (Retry): the page's feed for it opens anew. */
   reread(): void;
   /** The conversation's address is still being worked out: nothing is sent until it is. */
   resolving: boolean;
@@ -154,7 +154,11 @@ export function useWorkerConversation(
   );
   // Only a first read that failed shows: once items landed, a lapse keeps them.
   const failure = read === undefined && feed?.error != null ? describeFailure(feed.error) : undefined;
-  const reread = useCallback(() => {}, []);
+  const retry = useRetrySessionFeed(sessionId);
+  // Only a feed with nothing read is opened again: a live one already brings every change.
+  const reread = useCallback(() => {
+    if (failure !== undefined) retry();
+  }, [failure, retry]);
   const ensure = useCallback(async () => {
     if (sessionId !== null) return sessionId;
     const session = await workforce.ensureWorkerSession(project === undefined ? { worker: worker.id } : { worker: worker.id, projectId: project });

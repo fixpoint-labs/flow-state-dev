@@ -159,12 +159,43 @@ export function deliveryOf(requestId: string, watch: DeliveryWatch): Delivery {
   return { kind: "waiting", held };
 }
 
+/** How often a send whose composer closed reads its turn's record. */
+const DETACHED_POLL_MS = 1_000;
+
+/**
+ * Follow one send whose composer closed, by its session's records, to the
+ * same verdict the live check reaches: its turn's status from the session's
+ * requests, then, once it ended, the request's own items.
+ */
+async function settleDetached(client: Pick<Client, "sessions">, send: Pending): Promise<void> {
+  try {
+    while (Date.now() < send.until) {
+      const listed = await client.sessions.requests(send.sessionId, { limit: 50 }).catch((): Awaited<ReturnType<Client["sessions"]["requests"]>> => []);
+      const turn = listed.find((request) => request.id === send.requestId);
+      if (turn !== undefined && turn.status !== "in_progress") {
+        const items = await readRequestItems(client, send.sessionId, send.requestId);
+        const settled = deliveryOf(send.requestId, { items, turn: { status: turn.status, error: null } });
+        if (settled.kind === "delivered") send.resolve({ requestId: send.requestId, suspended: settled.suspended, stopped: settled.stopped });
+        else if (settled.kind === "failed") send.reject(settled.error);
+        else send.reject(unconfirmed("The worker answered, but its session doesn't hold your message."));
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, DETACHED_POLL_MS));
+    }
+    send.reject(unconfirmed("The worker did not answer in time; the message may still arrive."));
+  } catch (error) {
+    send.reject(unconfirmed(`Couldn't read back whether the message arrived: ${describeFailure(error).message}.`));
+  }
+}
+
 /** What a delivered line came to. */
 export type Delivered = { requestId: string; suspended: boolean; stopped: "ask" | "wait" | null };
 
 /** One send in flight: where it settles, and what it heard so far. */
 type Pending = {
   requestId: string;
+  /** The session the line went to: what it is judged against. */
+  sessionId: string;
   onHeld?: () => void;
   heldTold: boolean;
   answeredAt?: number;
@@ -194,6 +225,7 @@ export function useDeliverLine() {
   const turnsView = useMemo(() => sessionTurnsViewRef(), []);
   const { value: turns } = useView(turnsView, { sessionId: target ?? "-" }, { client, enabled: target !== null });
   const pending = useRef(new Set<Pending>());
+  const inFlight = useRef(false);
   const [tick, setTick] = useState(0);
 
   const latest = useRef<{ target: string | null; items: readonly OutputItem[] | undefined; feedStopped?: Error | null; turns: readonly ListedTurn[] | undefined }>({ target: null, items: undefined, turns: undefined });
@@ -224,7 +256,7 @@ export function useDeliverLine() {
         send.answeredAt ??= now;
         const turn = watch.turns?.find((t) => t.id === send.requestId);
         // The feed lags the turn: read the request's own items, once, and decide on them.
-        send.readBack ??= readRequestItems(client, watch.target!, send.requestId).then(
+        send.readBack ??= readRequestItems(client, send.sessionId, send.requestId).then(
           (items) => {
             if (!pending.current.has(send)) return;
             const read = deliveryOf(send.requestId, { items, turn });
@@ -250,6 +282,16 @@ export function useDeliverLine() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feed?.items, feed?.state, turns, tick, client]);
 
+  // A composer that closes mid-send still hears how its line ended (it clears or keeps the stored
+  // draft by it): each send still pending is followed on its own, by its session's records, from here.
+  useEffect(
+    () => () => {
+      for (const send of [...pending.current]) void settleDetached(client, send);
+      pending.current.clear();
+    },
+    [client],
+  );
+
   // A clock only for the deadlines: what a send waits on is pushed.
   useEffect(() => {
     const timer = setInterval(() => {
@@ -264,6 +306,9 @@ export function useDeliverLine() {
       message: string,
       options: { attachments?: readonly FileContent[]; onHeld?: () => void; onStarted?: (requestId: string) => void } = {},
     ): Promise<Delivered> => {
+      // The check follows one session at a time: a second line waits for the first to land.
+      if (inFlight.current) throw new TurnNotDelivered("not-sent", "A line to this worker is still on its way. Send this one once it lands.");
+      inFlight.current = true;
       setTarget(to.sessionId);
       let requestId: string;
       try {
@@ -272,12 +317,24 @@ export function useDeliverLine() {
           ...(to.taskId === undefined ? {} : { taskId: to.taskId }),
         }));
       } catch (error) {
+        inFlight.current = false;
         throw new TurnNotDelivered("not-sent", describeFailure(error).message);
       }
       options.onStarted?.(requestId);
-      return new Promise<Delivered>((resolve, reject) => {
-        pending.current.add({ requestId, ...(options.onHeld === undefined ? {} : { onHeld: options.onHeld }), heldTold: false, until: Date.now() + DELIVER_TIMEOUT_MS, resolve, reject });
+      const settled = new Promise<Delivered>((resolve, reject) => {
+        pending.current.add({
+          requestId,
+          sessionId: to.sessionId,
+          ...(options.onHeld === undefined ? {} : { onHeld: options.onHeld }),
+          heldTold: false,
+          until: Date.now() + DELIVER_TIMEOUT_MS,
+          resolve,
+          reject,
+        });
         setTick((n) => n + 1);
+      });
+      return settled.finally(() => {
+        inFlight.current = false;
       });
     },
     [workforce],

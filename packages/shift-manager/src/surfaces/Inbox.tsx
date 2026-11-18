@@ -21,7 +21,7 @@
  * worker flow has no door gets the box disabled, saying so; Approve and Reject are
  * untouched.
  */
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import { AskCard } from "../components/AskCard";
 import { TurnComposer } from "../components/TurnComposer";
@@ -33,7 +33,7 @@ import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
-import { useSharedSessionFeed } from "../lib/session-feeds";
+import { useRetrySessionFeed, useSharedSessionFeed } from "../lib/session-feeds";
 import { TurnNotDelivered, useDeliverLine } from "../lib/deliver";
 import { useWorkforce } from "../lib/workforce";
 import { emptyInboxSentence } from "../lib/tasks";
@@ -211,7 +211,6 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
             ask={askOfItem(selected)}
             snapshot={snapshot}
             gaps={gaps}
-            client={client}
             replies={replies}
             onDelivered={() => {
               setReplies((n) => n + 1);
@@ -229,14 +228,12 @@ function AskDetail({
   ask: selected,
   snapshot,
   gaps,
-  client,
   replies,
   onDelivered,
 }: {
   ask: Ask;
   snapshot: LoadedSnapshot;
   gaps: Gaps;
-  client: ReturnType<typeof useLab>["client"];
   replies: number;
   onDelivered: () => void;
 }) {
@@ -262,7 +259,6 @@ function AskDetail({
                   ask={selected}
                   snapshot={snapshot}
                   gaps={gaps}
-                  client={client}
                   onDelivered={onDelivered}
                 />
               </div>
@@ -409,6 +405,7 @@ type AskSessionRead =
  */
 function AskSession({ ask }: { ask: Ask; reread?: number }) {
   const feed = useSharedSessionFeed(ask.sessionId);
+  const retry = useRetrySessionFeed(ask.sessionId);
   const items = feed?.items;
   const hasEarlier = feed?.hasEarlier ?? false;
   const error = feed?.error ?? null;
@@ -429,8 +426,8 @@ function AskSession({ ask }: { ask: Ask; reread?: number }) {
     );
   }
   if (!read.ok) {
-    // The feed reads again on its own: Retry has nothing more to ask of it.
-    return <SectionFailure what="The ask's session" failure={read.failure} onRetry={() => {}} testId="inbox-session-failure" />;
+    // A feed whose read gave up is opened anew.
+    return <SectionFailure what="The ask's session" failure={read.failure} onRetry={retry} testId="inbox-session-failure" />;
   }
   const found = read.value;
   return (
@@ -495,13 +492,11 @@ function Reply({
   ask,
   snapshot,
   gaps,
-  client,
   onDelivered,
 }: {
   ask: Ask;
   snapshot: LoadedSnapshot;
   gaps: Gaps;
-  client: ReturnType<typeof useLab>["client"];
   onDelivered: () => void;
 }) {
   const route = replyRoute(ask, snapshot, gaps);

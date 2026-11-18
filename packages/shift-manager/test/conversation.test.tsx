@@ -35,12 +35,24 @@ vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
  */
 type Follower = { onRead(read: { items: unknown[]; truncated: boolean; loadEarlier?: () => Promise<void> }): void; onFailure(failure: { message: string }): void };
 const follows: Array<{ sessionId: string; to: Follower; closed: boolean }> = [];
+/** Each mounted feed's restart, as the page's Retry calls it. */
+const restarts = new Set<() => void>();
 // The page's one feed for a session (`useSharedSessionFeed`), stood in for: its first answer is `read`'s,
 // and a case pushes what the session stream brings. A failure after items landed keeps them, as the feed does.
 vi.mock("../src/lib/session-feeds", async () => {
   const { useEffect, useState } = await import("react");
   return {
+    // Retry opens the session's feed anew: here, a new follow whose first answer is `read`'s again.
+    useRetrySessionFeed: () => () => {
+      for (const restart of [...restarts]) restart();
+    },
     useSharedSessionFeed: (sessionId: string | null) => {
+      const [generation, setGeneration] = useState(0);
+      useEffect(() => {
+        const restart = () => setGeneration((n) => n + 1);
+        restarts.add(restart);
+        return () => void restarts.delete(restart);
+      }, []);
       const [held, setHeld] = useState<{ sessionId: string; items?: unknown[]; hasEarlier: boolean; loadEarlier: () => Promise<void>; error: Error | null } | undefined>();
       useEffect(() => {
         if (sessionId === null) return;
@@ -55,7 +67,7 @@ vi.mock("../src/lib/session-feeds", async () => {
           (error: unknown) => !entry.closed && to.onFailure({ message: error instanceof Error ? error.message : String(error) }),
         );
         return () => void (entry.closed = true);
-      }, [sessionId]);
+      }, [sessionId, generation]);
       return held === undefined || held.sessionId !== sessionId ? undefined : { ...held, state: "live", runs: null, followResponse: () => {} };
     },
   };
@@ -316,14 +328,14 @@ describe("an open conversation", () => {
     expect(screen.queryByTestId("rev-composer-blocked")).toBeNull();
   });
 
-  it("shows a first read's failure, and the session once the feed's own retry lands", async () => {
+  // A feed whose first read gave up never reads again on its own: Retry opens it anew.
+  it("opens the session's feed anew on Retry after a first read failed, and stops the feed it replaced", async () => {
     read.mockRejectedValueOnce(new Error("down"));
     drawn([session(s1)]);
-    expect(await screen.findByTestId("rev-conversation-failure")).toBeTruthy();
-    await streamed([item("i1", "Back.")]);
+    fireEvent.click(await screen.findByRole("button", { name: /retry/i }));
+    await waitFor(() => expect(follows).toHaveLength(2));
+    expect(follows[0]!.closed).toBe(true);
     await waitFor(() => expect(screen.queryByTestId("rev-conversation-failure")).toBeNull());
-    // One feed for the session throughout: the page's, which reads again on its own.
-    expect(follows).toHaveLength(1);
   });
 
   it("sends nothing into a session the view draws read-only, and says why, whatever the worker", async () => {

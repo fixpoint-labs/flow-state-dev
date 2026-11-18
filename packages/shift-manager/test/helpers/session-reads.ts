@@ -21,7 +21,7 @@ export async function readSessionItems(client: Pick<Client, "sessions">, session
 }
 
 /** The flow that owns `sessionId`, as its session records it. */
-export async function resolveRunFlow(client: Pick<Client, "sessions">, sessionId: string): Promise<string> {
+export async function readRunFlow(client: Pick<Client, "sessions">, sessionId: string): Promise<string> {
   const flowId = (await client.sessions.get(sessionId)).flowId;
   if (flowId == null || flowId.length === 0) throw new Error("The run's session names no owning flow.");
   return flowId;

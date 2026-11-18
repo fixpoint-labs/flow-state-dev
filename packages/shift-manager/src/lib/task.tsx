@@ -233,14 +233,18 @@ export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { board
     reconnectToken: retries,
     enabled: openRun !== undefined,
   });
-  const status: RequestStatus | undefined = openRun === undefined ? undefined : stream.status;
+  // The stream reconnects on its own, and ends only on a 401, 403 or 404: one that ended while the
+  // request still reads in progress is a request that isn't there, or isn't the user's.
+  const unreadable = openRun !== undefined && !stream.isStreaming && stream.status === "in_progress";
+  const status: RequestStatus | undefined = openRun === undefined || unreadable ? undefined : stream.status;
 
   const run: RunState = useMemo(() => {
     if (link === null) return { kind: "none" };
     if (runFlow !== undefined && "failure" in runFlow && runFlow.sessionId === link.sessionId) return { kind: "failed", failure: runFlow.failure };
     if (openRun === undefined) return { kind: "resolving" };
+    if (unreadable) return { kind: "failed", failure: { message: "The run's request couldn't be read: it isn't there, or it isn't yours." } };
     return { kind: "open", run: openRun };
-  }, [link, runFlow, openRun]);
+  }, [link, runFlow, openRun, unreadable]);
 
   const linkSettled = status !== undefined && status !== "in_progress";
   const awaitingNextRun = row !== undefined && row.run !== null && linkSettled && isOpen(row);

@@ -96,7 +96,7 @@ function adoptLegacyDraft(from: string | undefined, to: string | undefined): voi
 }
 
 /** Where the last send stands. */
-export type TurnSendState =
+type TurnSendState =
   | { kind: "idle" }
   | { kind: "sending" }
   /** The session holds the line; the worker's turn on it hasn't ended. */
@@ -114,7 +114,7 @@ export type TurnSendState =
  * resolve `{ stopped }`, as `useDeliverLine` does, to say what the worker stopped on,
  * and may call the `held` it is handed once the session holds the line.
  */
-export function useTurnSend(initial: TurnSendState = { kind: "idle" }) {
+function useTurnSend(initial: TurnSendState = { kind: "idle" }) {
   const [state, setState] = useState<TurnSendState>(initial);
   const mounted = useRef(true);
   // Set on every mount, not just the first: StrictMode unmounts and remounts once in dev.
@@ -159,7 +159,7 @@ export function useTurnSend(initial: TurnSendState = { kind: "idle" }) {
 }
 
 /** What a send's state says, with Retry only for a line that never got there. */
-export function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendState; testId: string; onRetry: () => void }) {
+function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendState; testId: string; onRetry: () => void }) {
   if (state.kind === "sending") return <>Sending…</>;
   if (state.kind === "held") return <>Sent. Waiting on the worker's reply…</>;
   if (state.kind === "delivered") {
@@ -193,7 +193,7 @@ export function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendStat
  * above the text, + sits before ⏎, and a paste into the text or a drop on the
  * composer adds files.
  */
-export function ComposerShell({
+function ComposerShell({
   testId,
   label,
   placeholder,

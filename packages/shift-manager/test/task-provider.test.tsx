@@ -21,6 +21,7 @@ const state = vi.hoisted(() => ({
   stale: false,
   status: "in_progress",
   completedAt: undefined as number | undefined,
+  streaming: true,
   viewed: [] as Array<{ flow: string | null; sessionId: string | null }>,
   streamed: [] as Array<{ flowKind?: string; requestId?: string; enabled?: boolean }>,
 }));
@@ -40,7 +41,7 @@ vi.mock("@flow-state-dev/react", async (original) => ({
   ...(await original<typeof import("@flow-state-dev/react")>()),
   useRequestStream: (options: { flowKind?: string; source: { requestId?: string }; enabled?: boolean }) => {
     state.streamed.push({ flowKind: options.flowKind, requestId: options.source.requestId, enabled: options.enabled });
-    return { status: state.status, ...(state.completedAt === undefined ? {} : { completedAt: state.completedAt }), items: [], messages: [], blockOutputs: [], isStreaming: true, isFinishing: false, close: () => {} };
+    return { status: state.status, ...(state.completedAt === undefined ? {} : { completedAt: state.completedAt }), items: [], messages: [], blockOutputs: [], isStreaming: state.streaming, isFinishing: false, close: () => {} };
   },
 }));
 
@@ -69,6 +70,7 @@ beforeEach(() => {
   state.stale = false;
   state.status = "in_progress";
   state.completedAt = undefined;
+  state.streaming = true;
   stopRun.mockReset();
   sessionsGet.mockReset();
   sessionsGet.mockImplementation(async (id: string) => ({ id, flowKind: "agent", flowId: id === CONVERSATION ? "coordinator" : "agent:desk" }));
@@ -119,6 +121,19 @@ describe("a task's entry on its board", () => {
     await settle();
     expect(last().rowFailure?.message).toMatch(/didn't load/);
     expect(last().gaveUp).toBe(false);
+  });
+});
+
+describe("a run its link names but nobody can read", () => {
+  // Codex 4617770920: a request that isn't there, or isn't the user's, ends its stream (404, 403) with no status:
+  // the screen says so, never draws it running, and offers no Interrupt.
+  it("fails the run when its stream gave up before the request said how it stands", async () => {
+    state.tasks = [task(LINK)];
+    state.streaming = false;
+    draw();
+    await settle();
+    expect(last().run.kind).toBe("failed");
+    expect(last().status).toBeUndefined();
   });
 });
 

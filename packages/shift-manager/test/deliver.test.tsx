@@ -7,14 +7,23 @@
  * not delivered, and a lost answer never reads as a failure that invites a
  * second send.
  */
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const send = vi.fn();
 let feed: { items: unknown[] | undefined; state: string; error: Error | null } | undefined;
 let turns: Array<{ id: string; status: string; error: { code: string; message: string } | null }> | undefined;
 // The session's own read, when a turn ends ahead of the feed: it holds nothing from these requests.
-const lab = { client: { userId: "u_1", sessions: { state: async () => ({ items: [], pagination: { total: 0 } }) } } };
+// And its requests, which a send whose composer closed reads on its own.
+const lab = {
+  client: {
+    userId: "u_1",
+    sessions: {
+      state: async (..._a: unknown[]) => ({ items: [] as unknown[], pagination: { total: 0 } }),
+      requests: async (..._a: unknown[]) => [] as Array<{ id: string; status: string }>,
+    },
+  },
+};
 const workforce = { send };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
@@ -25,6 +34,7 @@ vi.mock("@flow-state-dev/react", async (original) => ({
 }));
 
 import { deliveryOf, HOLD_GRACE_MS, TurnNotDelivered, useDeliverLine } from "../src/lib/deliver";
+import { TurnComposer } from "../src/components/TurnComposer";
 
 const line = (requestId: string) => ({ id: `u-${requestId}`, requestId, type: "message", role: "user", ts: 1, content: [] });
 const reply = (requestId: string) => ({ id: `a-${requestId}`, requestId, type: "message", role: "assistant", ts: 2, content: [] });
@@ -136,5 +146,59 @@ describe("a send through useDeliverLine", () => {
     send.mockRejectedValue(new Error("Request failed (503)"));
     const { result } = renderHook(() => useDeliverLine());
     await expect(result.current({ sessionId: "s1" }, "hello")).rejects.toMatchObject({ kind: "not-sent" });
+  });
+});
+
+describe("a send the hook can't follow to its end", () => {
+  beforeEach(() => {
+    send.mockReset();
+    feed = { items: [], state: "live", error: null };
+    turns = [];
+  });
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    window.localStorage.clear();
+  });
+
+  // Gitar 4617730693: the check reads one session at a time, so a second send while one is in flight is refused,
+  // safe to send again, and the first is still judged against its own session.
+  it("refuses a second send while one is in flight, and settles the first on its own session", async () => {
+    send.mockResolvedValueOnce({ requestId: "q1" }).mockResolvedValueOnce({ requestId: "q2" });
+    const { result, rerender } = renderHook(() => useDeliverLine());
+    let first: unknown;
+    await act(async () => {
+      void result.current({ sessionId: "s1" }, "one").then((v) => (first = v));
+    });
+    await expect(result.current({ sessionId: "s2" }, "two")).rejects.toMatchObject({ kind: "not-sent" });
+    expect(send).toHaveBeenCalledTimes(1);
+    feed = { items: [line("q1")], state: "live", error: null };
+    turns = [turn("q1", "completed")];
+    await act(async () => rerender());
+    expect(first).toEqual({ requestId: "q1", suspended: false, stopped: null });
+  });
+
+  // Codex P1 4617770894: a composer that closes mid-send still hears how it ended, so a delivered line leaves the
+  // stored draft and isn't offered again when the composer reopens.
+  it("settles a send whose composer closed: a delivered line leaves the stored draft", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    send.mockResolvedValue({ requestId: "q" });
+    let ended = false;
+    const requests = vi.fn(async () => [{ id: "q", status: ended ? "completed" : "in_progress" }]);
+    const state = vi.fn(async () => ({ items: ended ? [line("q")] : [], pagination: { total: ended ? 1 : 0 } }));
+    Object.assign(lab.client.sessions, { requests, state });
+    function Box() {
+      const deliver = useDeliverLine();
+      return <TurnComposer testId="t" label="Message" placeholder="" blocked={null} draftKey="conversation:w" send={(message, held, attachments) => deliver({ sessionId: "s1" }, message, { onHeld: held, attachments })} />;
+    }
+    const first = render(<Box />);
+    fireEvent.change(screen.getByTestId("t-input"), { target: { value: "the line" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    expect(send).toHaveBeenCalledTimes(1);
+    first.unmount();
+    ended = true;
+    await act(async () => vi.advanceTimersByTimeAsync(3_000));
+    render(<Box />);
+    expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("");
   });
 });

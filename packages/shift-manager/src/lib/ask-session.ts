@@ -10,7 +10,7 @@
 import { compareItemOrder, type OutputItem } from "@flow-state-dev/core/items";
 
 /** How many tool calls *From the session* shows (v2:624-633). */
-export const FROM_THE_SESSION = 3;
+const FROM_THE_SESSION = 3;
 
 /** One tool call: the tool, what it was pointed at, and what came back. */
 export type SessionCall = { id: string; tool: string; target: string; result: string };

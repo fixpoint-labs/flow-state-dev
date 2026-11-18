@@ -19,3 +19,8 @@ export function useSharedSessionFeed(sessionId: string | null | undefined) {
     [sessionId, lines],
   );
 }
+
+/** Retry: the script never gives up, so there is nothing to open again. */
+export function useRetrySessionFeed() {
+  return () => undefined;
+}
