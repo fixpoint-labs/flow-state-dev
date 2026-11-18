@@ -161,6 +161,7 @@ async function act(on: Server, action: string, input: Record<string, unknown>): 
   const res = await on.router.POST(
     new Request(`http://localhost/api/flows/chat/s1/actions/${action}`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: "alice", orgId: DEFAULT_ORG_ID, input })
     }),
     { params: { path: ["chat", "s1", "actions", action] } }

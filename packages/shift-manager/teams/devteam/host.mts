@@ -1780,6 +1780,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           // The inline stream, because the plain POST acks 202 with no output
           // and the positive half is graded on the worker's facts.
           headers: {
+            "content-type": "application/json",
             accept: "text/event-stream",
             ...(bearer ? { authorization: `Bearer ${LAB_PRINCIPAL_SECRET}` } : {}),
           },
