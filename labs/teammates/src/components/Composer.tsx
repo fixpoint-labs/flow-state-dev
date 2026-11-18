@@ -126,7 +126,8 @@ export function Composer({
           className={cn("rounded-3xl border border-border bg-card px-3 py-2 focus-within:border-ring", attachments.dragging && "border-ring bg-accent/40")}
         >
           <AttachmentStrip attachments={attachments} className="px-1 pb-1 empty:hidden" />
-          <div className="flex items-center gap-2">
+          {/* Buttons sit at the foot of a grown box, as in any chat composer; at one line the box and buttons are the same height. */}
+          <div className="flex items-end gap-2">
           <AttachButton attachments={attachments} className="rounded-full" />
           <textarea
             ref={box}
@@ -146,7 +147,7 @@ export function Composer({
               type="button"
               onClick={onStop}
               disabled={stopping}
-              className="rounded-full border border-border px-3 py-1 text-sm font-semibold text-destructive hover:bg-accent disabled:opacity-60"
+              className="rounded-full border border-border h-8 px-3 text-sm font-semibold text-destructive hover:bg-accent disabled:opacity-60"
             >
               {stopping ? "Stopping…" : "Stop"}
             </button>
@@ -154,7 +155,7 @@ export function Composer({
           <button
             type="submit"
             disabled={!canSend || busy}
-            className="rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground disabled:opacity-40"
+            className="rounded-full bg-primary h-8 px-3 text-sm font-semibold text-primary-foreground disabled:opacity-40"
           >
             {busy ? "Sending…" : "Send"}
           </button>

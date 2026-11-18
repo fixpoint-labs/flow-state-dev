@@ -6,7 +6,7 @@ import { Entry } from "../src/components/Entry";
 import { PopupView } from "../src/components/Popups";
 import { StatusBadge } from "../src/components/StatusBadge";
 import { lookOf } from "../src/lib/looks";
-import { replyPreview } from "../src/lib/reply-preview";
+import { taskPresentation } from "../src/lib/task-presentation";
 
 afterEach(cleanup);
 const names = (id: string) => id;
@@ -15,9 +15,9 @@ const entryProps = { workerName: "Lead", nameOf: names, lookOf: looks };
 const FINDINGS = "# Research findings\n\nParallel is configured for web search.\n\n" + Array.from({ length: 16 }, (_, i) => `- Finding ${i + 1}: source details and supporting evidence.`).join("\n") + "\n\nThe original final detail is **preserved**.";
 
 describe("readable replies", () => {
-  it("opens replies by default and lets the reader fold them with an explicitly connected control", () => {
+  it("opens a long reply by default and lets the reader fold it with an explicitly connected control", () => {
     const draw = (text: string) => <Entry {...entryProps} entry={{ kind: "assistant", id: "a1", text, streaming: true }} />;
-    const view = render(draw("The answer so far."));
+    const view = render(draw(FINDINGS));
     const control = screen.getByRole("button", { name: "Collapse reply" });
     expect(control.getAttribute("aria-expanded")).toBe("true");
     const body = document.getElementById(control.getAttribute("aria-controls")!)!;
@@ -25,7 +25,7 @@ describe("readable replies", () => {
     fireEvent.click(control);
     expect(control.getAttribute("aria-expanded")).toBe("false");
     expect(body.hidden).toBe(true);
-    view.rerender(draw("The answer so far. More words streamed in."));
+    view.rerender(draw(`${FINDINGS}\n\nMore words streamed in.`));
     expect(control.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(control);
     expect(body.textContent).toContain("More words streamed in.");
@@ -34,8 +34,8 @@ describe("readable replies", () => {
 
   it("keeps an older reply folded while a new reply arrives readable", () => {
     const draw = (latest: boolean) => <>
-      <Entry {...entryProps} entry={{ kind: "assistant", id: "a1", text: "Earlier answer" }} />
-      {latest ? <Entry {...entryProps} entry={{ kind: "assistant", id: "a2", text: "Newest answer" }} /> : null}
+      <Entry {...entryProps} entry={{ kind: "assistant", id: "a1", text: FINDINGS }} />
+      {latest ? <Entry {...entryProps} entry={{ kind: "assistant", id: "a2", text: `Newest answer\n\n${FINDINGS}` }} /> : null}
     </>;
     const view = render(draw(false));
     fireEvent.click(screen.getByRole("button", { name: "Collapse reply" }));
@@ -60,32 +60,23 @@ describe("readable replies", () => {
     expect(expand.getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("makes a bounded excerpt from prose instead of raw headings, pipes and link markup", () => {
-    const preview = replyPreview("# Findings\n\nSearch is **ready** via [Parallel](https://example.com).\n\n| key | value |\n| --- | --- |\n" + "Evidence from the source. ".repeat(40));
-    expect(preview).toMatch(/^Search is ready via Parallel\./);
-    expect(preview.length).toBeLessThanOrEqual(361);
-    expect(preview).not.toMatch(/\||\*\*|https:/);
-    expect(replyPreview("```ts\nconst value = 1;\n```")).toBe("const value = 1;");
-    expect(replyPreview("# Ready to ship")).toBe("Ready to ship");
-    expect(replyPreview("Updated `my_file.ts` with **passing** checks.")).toBe("Updated my_file.ts with passing checks.");
-    expect(replyPreview("~~~sh\ngit status --short\n~~~")).toBe("git status --short");
-    expect(replyPreview("One\nTwo\nThree\nFour")).toBe("One Two Three…");
-    expect(replyPreview("")).toBe("");
+  it("draws a short reply as plain text, with no fold control to skip past", () => {
+    render(<Entry {...entryProps} entry={{ kind: "assistant", id: "a1", text: "Done." }} />);
+    expect(screen.getByText("Done.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Collapse|Expand/ })).toBeNull();
   });
 
-  it.each([
-    { kind: "received", id: "m1", messageId: "m1", from: "researcher", text: "Found the primary source." },
-    { kind: "result", id: "r1", taskId: "task_r", from: "researcher", text: "The check passed." },
-  ] satisfies ConversationEntry[])("lets the reader collapse even a short $kind without opening a task", (entry) => {
-    let opened = false;
-    const view = render(<Entry {...entryProps} entry={entry} onOpenTask={() => { opened = true; }} />);
-    fireEvent.click(screen.getByRole("button", { name: /Collapse (message|result)/ }));
-    expect(view.container.querySelector("[data-reply-preview]")?.textContent).toBe(entry.text);
-    expect(opened).toBe(false);
+  it("folds a message to its excerpt once it grows past the long line, not only when it arrives long", () => {
+    const draw = (text: string) => <Entry {...entryProps} entry={{ kind: "received", id: "m1", messageId: "m1", from: "researcher", text }} />;
+    const view = render(draw("Parallel is configured for web search."));
+    expect(view.container.querySelector("[data-reply-preview]")).toBeNull();
+    view.rerender(draw(FINDINGS));
+    expect(view.container.querySelector("[data-reply-preview]")?.textContent).toContain("Parallel is configured for web search.");
+    expect(screen.getByRole("button", { name: "Expand message · full details" })).toBeTruthy();
   });
 
   it("shows streaming activity while folded, then stops when the answer finishes or is interrupted", () => {
-    const draw = (streaming: boolean, incomplete = false) => <Entry {...entryProps} entry={{ kind: "assistant", id: "a1", text: "Answer in progress", streaming, incomplete }} />;
+    const draw = (streaming: boolean, incomplete = false) => <Entry {...entryProps} entry={{ kind: "assistant", id: "a1", text: FINDINGS, streaming, incomplete }} />;
     const view = render(draw(true));
     fireEvent.click(screen.getByRole("button", { name: "Collapse reply" }));
     expect(screen.getByRole("status").textContent).toBe("Reply in progress");
@@ -95,17 +86,38 @@ describe("readable replies", () => {
     view.rerender(draw(true, true));
     expect(screen.queryByRole("status")).toBeNull();
   });
+
+  it("holds a streaming reply's dots still once the feed goes stale", () => {
+    const draw = (stale: boolean) => <Entry {...entryProps} stale={stale} entry={{ kind: "assistant", id: "a1", text: "Answer in progress", streaming: true }} />;
+    const view = render(draw(false));
+    const dots = () => view.container.querySelector("[data-typing-dots]")?.getAttribute("data-active");
+    expect(dots()).toBe("true");
+    view.rerender(draw(true));
+    expect(dots()).toBe("false");
+  });
 });
 
 describe("task activity", () => {
   it("uses text as well as a decorative dot, with motion only for active work", () => {
-    const view = render(<StatusBadge status="running" />);
+    const view = render(<StatusBadge label="running" tone="info" active />);
     expect(view.container.textContent).toBe("running");
     const dot = view.container.querySelector('[aria-hidden="true"]')!;
     expect(dot.className).toContain("motion-safe:animate-pulse");
-    view.rerender(<StatusBadge status="done" />);
+    view.rerender(<StatusBadge label="done" tone="success" />);
     expect(view.container.textContent).toBe("done");
     expect(dot.className).not.toContain("animate");
+  });
+
+  it("colours a task's badge from taskPresentation, so a quiet run keeps its warning colour", () => {
+    // A quiet run is read through taskPresentation's signal; the badge takes that tone rather than guessing from the word.
+    const quiet = taskPresentation({ status: "running" }, "quiet");
+    const view = render(<StatusBadge label={quiet.word} tone={quiet.badge} />);
+    const badge = view.container.querySelector("[data-status-badge]")!;
+    expect(badge.getAttribute("data-tone")).toBe("warning");
+    expect(badge.className).toContain("text-warning");
+    expect(taskPresentation({ status: "failed" }).badge).toBe("destructive");
+    expect(taskPresentation({ status: "done" }).badge).toBe("success");
+    expect(taskPresentation({ status: "cancelled" }).badge).toBe("muted");
   });
 
   it("keeps steer below the log, with its draft and focus intact as output grows", () => {

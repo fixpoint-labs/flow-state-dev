@@ -9,7 +9,6 @@ import { MessageFiles } from "./flow-state/message";
 import { RequestRecovery } from "./flow-state/request-recovery";
 import { ToolRun } from "./ToolRun";
 import { Reply } from "./Reply";
-import { isLongReply } from "../lib/reply-preview";
 
 /**
  * One entry of a conversation. Your lines sit on the right; the worker's
@@ -47,6 +46,7 @@ export const Entry = memo(function Entry({
   stillRunning,
   onViewTasks,
   readFile,
+  stale = false,
 }: {
   entry: ConversationEntry;
   workerName: string;
@@ -70,6 +70,8 @@ export const Entry = memo(function Entry({
   onViewTasks?: () => void;
   /** Reads the bytes of a file your line carries, for its thumbnail. */
   readFile?: (file: FileContent) => Promise<Blob>;
+  /** The feed stopped hearing from the server: a reply still arriving holds its dots still. */
+  stale?: boolean;
 }) {
   switch (entry.kind) {
     case "stopped":
@@ -93,7 +95,7 @@ export const Entry = memo(function Entry({
     case "assistant":
       return (
         <div className="py-1 text-base leading-relaxed" data-entry="assistant" data-incomplete={entry.incomplete ? "true" : undefined}>
-          <Reply key={entry.id} text={entry.text} streaming={entry.streaming && !entry.incomplete} />
+          <Reply key={entry.id} text={entry.text} streaming={entry.streaming && !entry.incomplete} stale={stale} />
           {entry.incomplete ? <span className="mt-1 block text-xs text-muted-foreground">Incomplete</span> : null}
         </div>
       );
@@ -117,7 +119,7 @@ export const Entry = memo(function Entry({
             {entry.noAnswer ? " · no answer" : entry.inReplyTo ? " · reply" : ""}
           </div>
           <div className="mt-1 text-base">
-            <Reply key={entry.id} text={entry.text} label="message" defaultExpanded={!isLongReply(entry.text)} />
+            <Reply key={entry.id} text={entry.text} label="message" foldLong />
           </div>
         </section>
       );
@@ -147,7 +149,7 @@ export const Entry = memo(function Entry({
             ) : null}
           </div>
           <div className="mt-1 text-base">
-            <Reply key={entry.id} text={entry.text} label="result" defaultExpanded={!isLongReply(entry.text)} />
+            <Reply key={entry.id} text={entry.text} label="result" foldLong />
           </div>
         </section>
       );
@@ -223,7 +225,7 @@ function ResultLine({ who, look, entry, onOpen }: { who: string; look?: Look; en
         <span className="ml-auto shrink-0 text-xs text-muted-foreground">Open task</span>
       </button>
       <div className="mt-1.5 text-base">
-        <Reply key={entry.id} text={entry.text} label="result" defaultExpanded={!isLongReply(entry.text)} />
+        <Reply key={entry.id} text={entry.text} label="result" foldLong />
       </div>
     </div>
   );

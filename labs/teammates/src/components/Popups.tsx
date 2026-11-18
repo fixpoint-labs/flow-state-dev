@@ -6,7 +6,7 @@ import type { RecordedWork } from "@flow-state-dev/harness-manager/browser";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
 import { exchangeOf, useTalk } from "../lib/talk";
-import { taskPresentation } from "../lib/task-presentation";
+import { taskPresentation, taskShortId, type BadgeTone } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";
 import { useWatch } from "../lib/use-watch";
@@ -116,6 +116,13 @@ export function PullRequestOpen({ adapter, task }: { adapter: AppCalls; task: Bo
 /** How a sent message stands. */
 export type AnswerStatus = "working" | "replied" | "no answer";
 
+const ANSWER_TONES: Record<AnswerStatus, BadgeTone> = { working: "info", replied: "success", "no answer": "muted" };
+
+/** How a sent message stands, as a badge: it pulses only while the worker is still working on it. */
+function AnswerBadge({ status }: { status: AnswerStatus }) {
+  return <StatusBadge label={status} tone={ANSWER_TONES[status]} active={status === "working"} />;
+}
+
 /**
  * How a message stands, from the message log: `replied` by a reply message
  * (one a waited send took as its result is in the log too); `no answer` when
@@ -224,9 +231,15 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
       <QuestionPopup adapter={adapter} sessionId={popup.sessionId} task={task} />
     ) : null;
   const waitsOnPullRequest = task?.boardStatus === "in_progress" && task.pullRequests !== undefined;
-  const status = waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : waitsOnPullRequest ? "PR open" : task?.status;
+  // The header's badge: what waits on you first, then an open pull request, else the task's own word and colour.
+  const presented = task === undefined ? undefined : taskPresentation(task);
+  const badge: { label: string; tone: BadgeTone } | undefined =
+    waiting === "review" ? { label: "Needs review", tone: "attention" }
+    : waiting === "question" ? { label: "Waiting on you", tone: "attention" }
+    : waitsOnPullRequest ? { label: "PR open", tone: "info" }
+    : presented === undefined ? undefined : { label: presented.word, tone: presented.badge };
   return (
-    <SessionOverlay variant="modal" label={line} title={title} meta={task === undefined ? undefined : <span className="break-all font-mono text-xs text-muted-foreground">Task #{task.id.replace(/^task_/, "")}</span>} status={status === undefined ? undefined : <StatusBadge status={status} />} onClose={onClose} footer={task === undefined ? null : (
+    <SessionOverlay variant="modal" label={line} title={title} meta={task === undefined ? undefined : <span className="break-all font-mono text-xs text-muted-foreground">Task {taskShortId(task.id)}</span>} status={badge === undefined ? undefined : <StatusBadge {...badge} active={task?.status === "running" && waiting === undefined && !waitsOnPullRequest} />} onClose={onClose} footer={task === undefined ? null : (
       <div className="flex flex-col gap-3">
         {pinned}
         <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />
@@ -514,7 +527,7 @@ function MessagePopup({ popup, nameOf, lookOf, onClose }: {
   const to = nameOf(popup.to);
   const line = `Messaged ${to}`;
   return (
-    <SessionOverlay variant="modal" label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={<StatusBadge status={answerIn(talk, popup.messageId)} />} onClose={onClose}>
+    <SessionOverlay variant="modal" label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={<AnswerBadge status={answerIn(talk, popup.messageId)} />} onClose={onClose}>
       <p className="font-mono text-xs text-muted-foreground">
         {nameOf(popup.from)} → {to}
       </p>

@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { toBoardTask, type BoardTask, type AppCalls } from "../src/app";
 import { FixtureProvider, rosterEntry } from "./fake-app";
 import { TaskCard } from "../src/components/TaskCard";
+import { taskPresentation } from "../src/lib/task-presentation";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 import { lookOf } from "../src/lib/looks";
 
@@ -97,7 +98,9 @@ describe("a teammate's tasks in its panel", () => {
     const panel = renderPanel();
     const running = within(panel).getByRole("list", { name: "Running" });
     expect(rows(running)).toEqual(["Asked researcher to task r-asks", "Asked researcher to task r-old"]);
-    expect(statusOf(running, 0)).toBe("waiting on you");
+    // The badge says "waiting on you"; the line under it says what for, rather than repeating the badge.
+    expect(within(running).getAllByRole("listitem")[0]!.querySelector("[data-status-badge]")!.textContent).toBe("waiting on you");
+    expect(statusOf(running, 0)).toBe("has a question for you");
     expect(statusOf(running, 1)).not.toContain("waiting on you");
   });
 
@@ -183,8 +186,9 @@ describe("a task's line in the conversation", () => {
     const cards = within(view.container).getAllByRole("button");
     expect(cards[0]!.textContent).toContain("#original");
     expect(cards[1]!.textContent).toContain("#rerun");
-    expect(within(view.container).getByRole("button", { description: "Task task_original; failed" })).toBe(cards[0]);
-    expect(within(view.container).getByRole("button", { description: "Task task_rerun; running" })).toBe(cards[1]);
+    // Screen readers hear the visible short id and status, not the raw task_ id.
+    expect(within(view.container).getByRole("button", { description: "#original failed" })).toBe(cards[0]);
+    expect(within(view.container).getByRole("button", { description: "#rerun running" })).toBe(cards[1]);
     expect(cards.map((card) => card.querySelector("[data-task-status]")?.textContent)).toEqual(["failed", "running"]);
     cards.forEach((card) => fireEvent.click(card));
     expect(opened).toEqual([original.id, rerun.id]);
@@ -195,7 +199,8 @@ describe("a task's line in the conversation", () => {
       const { unmount } = render(<TaskCard task={t} nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={() => {}} />);
       const word = document.querySelector("[data-task-status]")!;
       expect(word.textContent).toBe(t.waiting ? "waiting on you" : t.status);
-      expect(word.className).toContain(t.waiting ? "text-attention" : t.status === "failed" ? "text-destructive" : "text-muted-foreground");
+      // The badge takes its colour from taskPresentation, the one reader the panel row uses too.
+      expect(word.querySelector("[data-status-badge]")!.getAttribute("data-tone")).toBe(taskPresentation(t).badge);
       unmount();
     }
   });

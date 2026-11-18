@@ -1,7 +1,6 @@
 import { memo, useId } from "react";
 import type { BoardTask } from "../app";
-import { taskPresentation } from "../lib/task-presentation";
-import { cn } from "../lib/utils";
+import { taskPresentation, taskShortId } from "../lib/task-presentation";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import { Spend } from "./flow-state/spend";
@@ -21,6 +20,7 @@ export const TaskCard = memo(function TaskCard({
   nameOf,
   lookOf,
   coding = false,
+  stale = false,
   onOpen,
 }: {
   task: TaskLine;
@@ -28,23 +28,25 @@ export const TaskCard = memo(function TaskCard({
   lookOf: (id: string) => Look;
   /** It is a coding task: a background task, not a teammate's. */
   coding?: boolean;
+  /** The feed stopped hearing from the server: a running badge holds still. */
+  stale?: boolean;
   onOpen: (taskId: string) => void;
 }) {
   const line = taskLine(task, coding, nameOf);
   const on = coding ? runsOn(task) : undefined;
   const state = taskPresentation(task);
-  const descriptionId = useId();
+  const ids = useId();
   return (
     <button
       type="button"
       data-entry="task"
       data-status={task.status}
       aria-label={coding ? taskLabel(line, task) : line}
-      aria-describedby={descriptionId}
+      // Its visible short id and status: what tells apart two tasks with the same title.
+      aria-describedby={`${ids}-id ${ids}-status`}
       onClick={() => onOpen(task.id)}
       className="flex w-full max-w-[85%] items-center gap-2 rounded-md border border-border bg-card/60 px-3 py-1.5 text-left text-sm hover:bg-accent"
     >
-      <span id={descriptionId} className="sr-only">Task {task.id}; {state.word}</span>
       {coding ? (
         <span aria-hidden className="shrink-0 text-muted-foreground">
           ⚙
@@ -54,7 +56,7 @@ export const TaskCard = memo(function TaskCard({
       )}
       <span className="min-w-0 flex-1">
         <span className="block truncate">{line}</span>
-        <span aria-label={`Task ${task.id}`} title={`Task ${task.id}`} className="block truncate font-mono text-xs text-muted-foreground">#{task.id.replace(/^task_/, "")}</span>
+        <span id={`${ids}-id`} title={`Task ${task.id}`} className="block truncate font-mono text-xs text-muted-foreground">{taskShortId(task.id)}</span>
       </span>
       {on === undefined ? null : <RunsOn on={on} />}
       {task.landed === undefined ? null : (
@@ -64,8 +66,8 @@ export const TaskCard = memo(function TaskCard({
       )}
       {/* What its runs spent: tokens, and the charge when the vendor reported one. The tag above names the model. */}
       {coding && task.spend ? <Spend spend={{ ...task.spend, model: null }} className="w-auto shrink-0" /> : null}
-      <span className={cn("shrink-0 text-xs", state.tone)} data-task-status>
-        <StatusBadge status={state.word} />
+      <span id={`${ids}-status`} className="shrink-0" data-task-status>
+        <StatusBadge label={state.word} tone={state.badge} active={!stale && task.status === "running" && task.waiting === undefined} />
       </span>
     </button>
   );

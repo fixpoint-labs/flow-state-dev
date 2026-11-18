@@ -16,5 +16,10 @@ export function replyPreview(text: string): string {
   return excerpt.length <= 360 ? `${excerpt}${lines.length > 3 ? "…" : ""}` : `${excerpt.slice(0, 360).replace(/\s+\S*$/, "")}…`;
 }
 
-/** Long replies get a readable excerpt before their full original details. */
-export const isLongReply = (text: string): boolean => text.length > 700 || text.split("\n").length > 12;
+/** Past this many characters a reply is long: roughly a screenful of prose in the thread's column. */
+export const LONG_REPLY_CHARS = 700;
+/** Past this many lines a reply is long, however short its lines: a list or a table that would fill the view. */
+export const LONG_REPLY_LINES = 12;
+
+/** Long replies get a fold control and, where the reader chose it, an excerpt before their full original details. */
+export const isLongReply = (text: string): boolean => text.length > LONG_REPLY_CHARS || text.split("\n").length > LONG_REPLY_LINES;

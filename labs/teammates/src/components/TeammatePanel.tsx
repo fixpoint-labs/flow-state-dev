@@ -6,7 +6,7 @@ import type { Look } from "../lib/looks";
 import { displayName, roleOf, useWorkforce } from "../lib/roster";
 import { useNow, useStale, useWatch } from "../lib/use-watch";
 import { clearMark, useCleared } from "../lib/cleared";
-import { taskPresentation } from "../lib/task-presentation";
+import { taskPresentation, taskShortId, waitingDetail } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
@@ -143,6 +143,7 @@ export function TeammatePanel({
           type="button"
           aria-current={t.id === openTask ? "true" : undefined}
           aria-label={coding ? taskLabel(line, t) : line}
+          // Its status and visible short id: what tells apart two tasks with the same title.
           aria-describedby={`task-row-${t.id}`}
           data-task={t.status}
           onClick={() => onOpen({ kind: "task", sessionId, taskId: t.id })}
@@ -155,15 +156,15 @@ export function TeammatePanel({
         >
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span id={`task-row-${t.id}`} className="flex items-center justify-between gap-2">
-              <StatusBadge status={state.word} active={!stale && t.status === "running" && !t.waiting} />
-              <span title={`Task ${t.id}`} aria-label={`Task ${t.id}`} className="truncate font-mono text-xs text-muted-foreground">#{t.id.replace(/^task_/, "")}</span>
+              <StatusBadge label={state.word} tone={state.badge} active={!stale && t.status === "running" && !t.waiting} />
+              <span title={`Task ${t.id}`} className="truncate font-mono text-xs text-muted-foreground">{taskShortId(t.id)}</span>
             </span>
             <span className="line-clamp-2 text-sm leading-snug" title={line}>
               {coding ? <TerminalIcon aria-hidden className="mr-1 mb-0.5 inline size-3 text-muted-foreground" /> : null}
               {line}
             </span>
             <span className={cn("block truncate text-xs", state.tone, stale && STALE_CLASS)} data-status>
-              {t.waiting ? state.word : <StatusWords task={t} now={now} stale={stale} />}
+              {t.waiting ? waitingDetail(t.waiting) : <StatusWords task={t} now={now} stale={stale} />}
               {reason ? ` · ${reason}` : ""}
               {runsOn(t) ? ` · ${runsOn(t)}` : ""}
             </span>

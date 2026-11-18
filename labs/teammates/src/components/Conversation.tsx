@@ -21,6 +21,7 @@ import { Entry } from "./Entry";
 import { answerIn, type Popup } from "./Popups";
 import { TaskCard, type TaskLine } from "./TaskCard";
 import { StatusBadge } from "./StatusBadge";
+import { TypingDots } from "./TypingDots";
 
 /** A small button in the conversation's header. */
 const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-xs tracking-widest uppercase hover:bg-accent";
@@ -155,7 +156,7 @@ export function Conversation({
   // A line is drawn from the filing until the board's row arrives, then from the row, in the same place.
   const taskTile = (entry: TaskEntry) => {
     const task = tasks.find((t) => t.id === entry.taskId) ?? placeholderOf(entry, harnessOf(entry.to));
-    return <TaskCard task={task} nameOf={nameOf} lookOf={lookOf} coding={isCoding(task.to)} onOpen={openTask} />;
+    return <TaskCard task={task} nameOf={nameOf} lookOf={lookOf} coding={isCoding(task.to)} stale={stale} onOpen={openTask} />;
   };
 
   const markAt = mark ? entries.findIndex((e) => e.id === mark.firstVerbatimEntryId) : -1;
@@ -176,7 +177,7 @@ export function Conversation({
           </button>
         )}
         {running ? (
-          <StatusBadge status="working" active={!stale} className={stale ? STALE_CLASS : undefined} />
+          <StatusBadge label="working" tone="info" active={!stale} className={stale ? STALE_CLASS : undefined} />
         ) : null}
       </header>
       {onRecheck === undefined ? null : <ContextStrip context={context} harnesses={harnesses} onRecheck={onRecheck} />}
@@ -259,6 +260,7 @@ export function Conversation({
                     stillRunning={stillRunningFor(entry)}
                     onViewTasks={onViewTasks}
                     readFile={adapter.readFile}
+                    stale={stale}
                     {...(entry.kind === "approval" ? { onAnswer: (approve: boolean) => adapter.answerApproval(sessionId, entry, approve) } : {})}
                     // Retry only the newest turn, and not while one runs: the engine runs a failed request again as a new one.
                     {...(entry.kind === "failed" && entry.retryable && !running ? { onRetry: () => adapter.retry(sessionId, entry.requestId) } : {})}
@@ -269,9 +271,7 @@ export function Conversation({
           ))}
           {answering ? (
             <div role="status" data-chat-activity className={cn("mt-3 flex w-fit items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-xs", step?.tone ?? "text-muted-foreground", stale && STALE_CLASS)}>
-              <span aria-hidden="true" data-typing-dots data-active={!stale && !step?.needsYou} className="flex items-center gap-1">
-                <span /><span /><span />
-              </span>
+              <TypingDots active={!stale && !step?.needsYou} />
               <span>{step === undefined ? `${displayName(worker)} is answering…` : `${displayName(worker)} · ${step.text}…`}</span>
             </div>
           ) : null}
