@@ -10,7 +10,7 @@
  * harness-manager's recorded work view, the note and start from the board row.
  */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
-import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { CODER_FLOW, type CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppCalls } from "../src/app";
 import { PopupView } from "../src/components/Popups";
@@ -35,6 +35,7 @@ const RUNNING: CodingBoardTask = codingTask({
   title: "Fix session log ordering",
   status: "in_progress",
   harness: "claude-code",
+  runFlow: CODER_FLOW,
   run: { sessionId: "run-1", requestId: "req-1", attempt: 1, startedAt: STARTED },
 });
 
@@ -72,6 +73,15 @@ describe("a running task's feed ends in a live working line", () => {
     await waitFor(() => expect(line(popup)?.textContent).toContain("Reading the session log"));
     setTask({ statusNote: undefined });
     await waitFor(() => expect(line(popup)?.textContent).toMatch(/^Working\.\.\./));
+  });
+
+  it("reads no recorded work for a plain teammate task: that view is the coding flow's, and refuses a run on another flow", async () => {
+    const plain = { ...RUNNING, assignee: "writer", harness: null, runFlow: "agent" };
+    const { popup, server } = open(plain);
+    await waitFor(() => expect(within(popup).getByText("Looking at the log.")).toBeTruthy());
+    // Its run's own feed still reads; the coding flow's plan view never does.
+    await new Promise((settle) => setTimeout(settle, 300));
+    expect(server.planReads).toEqual([]);
   });
 
   it("follows a re-run in the same session: the new request is the run it reads", async () => {

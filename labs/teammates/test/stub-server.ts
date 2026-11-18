@@ -72,6 +72,17 @@ export const codingTask = (fields: Partial<CodingBoardTask> & { id: string }): C
  * answered through the board's `updateTask` on the conversation that filed it, or a review,
  * answered at the run's stop in `run-1`.
  */
+/** Thrown by a test's `answer` to refuse the post as the server would: its status and its words, as the engine's answer route refuses a stop already resolved (409, `already-resolved`). */
+export class Refused extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+    readonly refused?: string,
+  ) {
+    super(message);
+  }
+}
+
 export const hold = (kind: "question" | "review", prompt: string, { id = `hold-${kind}`, taskId = "t1", unanswerable = null as string | null } = {}): InboxHold =>
   ({
     id,
@@ -120,6 +131,7 @@ export function stubServer(data: StubData = {}) {
       try {
         outputs.set(id, (await data.answer?.(posted)) ?? { ok: true });
       } catch (error) {
+        if (error instanceof Refused) return new Response(JSON.stringify({ error: error.message, refused: error.refused }), { status: error.status, headers: { "content-type": "application/json" } });
         outputs.set(id, { ok: false, error: error instanceof Error ? error.message : String(error) });
       }
       return json({ request: { id, flowId: path.split("/")[3], status: "completed" }, requestId: id, id, status: "completed", output: outputs.get(id) });

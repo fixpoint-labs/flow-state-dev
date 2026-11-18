@@ -13,7 +13,7 @@ import { cleanup, renderHook } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
-import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { CODER_FLOW, type CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { AppProvider, useTaskWork, type AppCalls } from "../src/app";
 import { codingTask } from "./stub-server";
 
@@ -98,7 +98,7 @@ afterEach(cleanup);
 
 /** A coding task the board names as running in `run1`, as request `requestId`. */
 const running = (requestId: string): CodingBoardTask =>
-  codingTask({ id: "t1", title: "Fix it", status: "in_progress", harness: "claude-code", run: { sessionId: "run1", requestId, attempt: 1 }, runFlow: "f" });
+  codingTask({ id: "t1", title: "Fix it", status: "in_progress", harness: "claude-code", run: { sessionId: "run1", requestId, attempt: 1 }, runFlow: CODER_FLOW });
 
 /** Every work value the hook hands back, in order, deduped by identity. */
 function watch(h: ReturnType<typeof host>, task: CodingBoardTask) {
@@ -121,7 +121,7 @@ describe("a running task's working line", () => {
     const w = watch(h, running("q1"));
     await until(() => w.latest()?.working?.inFlight !== undefined);
     expect(w.latest()?.working?.inFlight).toEqual({ tool: "Bash", args: { command: "pnpm test" } });
-    expect(h.calls.some((call) => call.startsWith("GET /api/flows/f/requests/q1/stream"))).toBe(true);
+    expect(h.calls.some((call) => call.startsWith("GET /api/flows/coder/requests/q1/stream"))).toBe(true);
   });
 
   it("reconnects a dropped request stream and resumes it, so a call that starts after the drop still shows", async () => {
@@ -131,9 +131,9 @@ describe("a running task's working line", () => {
     await until(() => w.latest()?.working?.inFlight !== undefined);
     expect(w.latest()?.working?.inFlight).toEqual({ tool: "Bash", args: { command: "pnpm test" } });
     // The second connection resumes after what the first one heard, rather than replaying it.
-    expect(h.calls.filter((call) => call.startsWith("GET /api/flows/f/requests/q1/stream"))).toEqual([
-      "GET /api/flows/f/requests/q1/stream",
-      "GET /api/flows/f/requests/q1/stream?starting_after=1",
+    expect(h.calls.filter((call) => call.startsWith("GET /api/flows/coder/requests/q1/stream"))).toEqual([
+      "GET /api/flows/coder/requests/q1/stream",
+      "GET /api/flows/coder/requests/q1/stream?starting_after=1",
     ]);
   });
 
@@ -155,7 +155,7 @@ describe("a running task's working line", () => {
     // A reused run session: `q0` crashed mid-call and left its call `in_progress` for good. The board names `q1`.
     const h = host({ stored: [tool("c0", "q0", "in_progress", "rm -rf build"), tool("c1", "q1", "completed", "ls")], live: { q1: [tool("c1", "q1", "completed", "ls")] } });
     const w = watch(h, running("q1"));
-    await until(() => h.calls.some((call) => call.startsWith("GET /api/flows/f/requests/q1/stream")) && w.seen.length > 0);
+    await until(() => h.calls.some((call) => call.startsWith("GET /api/flows/coder/requests/q1/stream")) && w.seen.length > 0);
     await new Promise((r) => setTimeout(r, 50));
     expect(w.seen.some((work) => work.working?.inFlight !== undefined)).toBe(false);
   });
@@ -164,7 +164,7 @@ describe("a running task's working line", () => {
     // The request stream dropped before the call's done arrived; the session stream has the finished copy.
     const h = host({ stored: [tool("c2", "q1", "completed", "pnpm test")], live: { q1: [tool("c2", "q1", "in_progress", "pnpm test")] } });
     const w = watch(h, running("q1"));
-    await until(() => h.calls.some((call) => call.startsWith("GET /api/flows/f/requests/q1/stream")) && w.seen.length > 0);
+    await until(() => h.calls.some((call) => call.startsWith("GET /api/flows/coder/requests/q1/stream")) && w.seen.length > 0);
     await new Promise((r) => setTimeout(r, 50));
     expect(w.latest()?.working?.inFlight).toBeUndefined();
   });

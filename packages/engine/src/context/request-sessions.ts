@@ -388,8 +388,8 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       };
       const observe = inputs.observe;
       if (observe === undefined) return view;
-      // Its state is heard only once a block reads it: a read of the flow or
-      // lineage alone hears `run`, never a state write.
+      // A read of the flow or lineage alone hears `state` too (its birth and
+      // delete publish it), never `run`; reading the state records it here.
       return Object.defineProperty(view, "state", {
         enumerable: true,
         get: () => {

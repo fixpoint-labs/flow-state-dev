@@ -19,7 +19,7 @@ import { App } from "../src/components/App";
 import { TaskCard } from "../src/components/TaskCard";
 import { lookOf } from "../src/lib/looks";
 import { createFixtureApp } from "./fake-app";
-import { codingTask, hold, stubServer, TestProvider, type Posted, POPUP_READ } from "./stub-server";
+import { codingTask, hold, Refused, stubServer, TestProvider, type Posted, POPUP_READ } from "./stub-server";
 
 afterEach(() => {
   cleanup();
@@ -81,6 +81,11 @@ function playRun({ asks = false, review = true, lands = false } = {}) {
       }
       // A review's answer: the run's own stop.
       const verdict = verdictOf(posted);
+      // As the engine's answer route: a stop that isn't the one the run waits on now was resolved, and is refused.
+      const answered = (posted.body as { suspensionId?: string }).suspensionId;
+      if (posted.path === "/api/flows/coder/requests/q1/answer" && answered !== current().asks[0]?.id) {
+        throw new Refused(409, `Suspension "${answered}" has already been resolved (status: "resolved")`, "already-resolved");
+      }
       if (posted.path === "/api/flows/coder/requests/q1/answer" && verdict !== undefined) {
         set({ asks: [] });
         if (verdict.verdict === "revise") {
@@ -142,6 +147,22 @@ describe("a coding task's popup answers what its run waits on you for", () => {
     await waitFor(() => expect(server.posts.some((posted) => posted.path.endsWith("/actions/updateTask_tasks"))).toBe(true));
     const sent = server.posts.find((posted) => posted.path.endsWith("/actions/updateTask_tasks"))!;
     expect(sent.body.input).toMatchObject({ id: "t1", answers: "hold-question-2", message: "Only line 1." });
+  });
+
+  it("refuses, out loud, a verdict on a review round the run has moved past: it never lands on the newer one", async () => {
+    const { popup: opened, server } = playRun();
+    const popup = await opened;
+    const review = await within(popup).findByRole("region", { name: "Ready for review" }, { timeout: 3000 });
+    // Between the draw and the click, the round was answered elsewhere and the run stopped for a newer one.
+    server.board[BOARD]![0] = { ...server.board[BOARD]![0]!, asks: [hold("review", "2 commits on fix/readme-typo", { id: "stop-2" })] };
+    fireEvent.click(within(review).getByRole("button", { name: "Accept" }));
+    // The answer named the round the popup drew, and the server refused it: the popup says so.
+    expect((await within(review).findByRole("alert", {}, { timeout: 2000 })).textContent).toMatch(/409/);
+    const answers = server.posts.filter((posted) => posted.path === "/api/flows/coder/requests/q1/answer");
+    expect(answers.map((posted) => (posted.body as { suspensionId?: string }).suspensionId)).toEqual(["stop-1"]);
+    // Nothing landed: the newer round still waits on you, and the task isn't done.
+    expect(server.board[BOARD]![0]!.asks.map((h) => h.id)).toEqual(["stop-2"]);
+    expect(within(popup).queryByRole("region", { name: "Result" })).toBeNull();
   });
 
   // The popup opens on the run's latest step, so a hold drawn at the top of the feed is off-screen:

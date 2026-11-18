@@ -15,6 +15,7 @@ import {
   codingBoardViewRef,
   readRecordedWork,
   readSessionPullRequests,
+  CODER_FLOW,
   recordedWorkViewRef,
   reviewDetail,
   type CodingBoardTask,
@@ -62,8 +63,9 @@ export function useTaskWork(task: CodingBoardTask | undefined) {
   const requestId = task?.run?.requestId ?? null;
   const running = task !== undefined && taskStatus(task) === "running" && requestId !== null;
   const feed = useSessionFeed(runSession, { client });
-  const plan = useView(recordedWorkViewRef(), { requestId: requestId ?? "" }, { client, pollIntervalMs, sessionId: runSession ?? undefined, enabled: running }).value?.plan;
   const flowKind = task?.runFlow ?? undefined;
+  // The plan view is the coding flow's: a run on any other flow is refused, so only a coder run reads it.
+  const plan = useView(recordedWorkViewRef(), { requestId: requestId ?? "" }, { client, pollIntervalMs, sessionId: runSession ?? undefined, enabled: running && flowKind === CODER_FLOW }).value?.plan;
   const streamed = useRequestStream({ client, flowKind, source: { requestId: requestId ?? "" }, filter: TOOL_CALLS, reconnect: true, flush: "immediate", enabled: running && flowKind !== undefined })
     .items as unknown as readonly OutputItem[];
   return useMemo(() => {
@@ -172,6 +174,8 @@ export function useTaskActions(sessionId: string) {
       /** Answer what `task` waits on you for: a question's words, or a review's verdict. */
       answer: async (task: CodingBoardTask, answer: { text: string } | ReviewAnswer) => {
         const kind = "text" in answer ? "question" : "review";
+        // No fresh board read: the server refuses a round the run moved past (409 already-resolved),
+        // so it never lands on the newer one (popup-holds.test "refuses, out loud…").
         const hold = task.asks.find((h) => h.ask.kind === kind);
         if (hold === undefined) throw new Error(`This task isn't waiting on your ${kind === "question" ? "answer" : "review"} any more.`);
         await inbox.answerOne(hold, inboxAnswerOf(answer));
