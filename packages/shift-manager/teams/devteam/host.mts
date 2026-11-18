@@ -743,7 +743,7 @@ export const GITHUB_REVIEWERS_JUDGE = "github-reviewers-edit-judge";
 /** A yes the judge must reach that the message asks for this change, and the most likely it may find that something else wrote the ask. */
 const ASKED_FLOOR = 0.8;
 const INJECTED_CEILING = 0.2;
-/** The most characters of the message the judge reads. */
+/** The longest message the judge reads, whole; the tool refuses a longer one rather than judge part of it. */
 const MAX_JUDGED_MESSAGE = 2000;
 
 /** The text of the message the user typed to start this request, or `undefined` when no user's message started it. */
@@ -758,6 +758,9 @@ function typedMessageOf(ctx: BlockContext): string | undefined {
   const text = parts.filter((part): part is string => typeof part === "string").join("\n");
   return text.trim() === "" ? undefined : text;
 }
+
+/** A finite probability in [0, 1]; NaN or a value outside it reads as no answer, never a pass. */
+const isProbability = (value: unknown): value is number => typeof value === "number" && value >= 0 && value <= 1;
 
 /** Whether `message` names `login` as a word of its own, `@` or not. */
 const names = (message: string, login: string) =>
@@ -801,6 +804,8 @@ export function githubReviewersTool(document: DeclaredResourceEntry | undefined)
       if (!isOperator(ctx)) return refuse("Only this Lab's operator can change the trusted GitHub reviewers.");
       const message = isUserTurn(ctx) ? typedMessageOf(ctx) : undefined;
       if (message === undefined) return refuse("The trusted GitHub reviewers change only on a turn the operator's own message started; this one can't change them.");
+      // The judge reads the whole message or the tool refuses: text past a cut would go unjudged.
+      if (message.length > MAX_JUDGED_MESSAGE) return refuse("The operator's message is too long to check; ask them for a short one that names each login.");
       const logins = reviewerLogins(input.logins);
       const added = logins.filter((login) => !current.includes(login));
       const removed = current.filter((login) => !logins.includes(login));
@@ -816,7 +821,7 @@ export function githubReviewersTool(document: DeclaredResourceEntry | undefined)
     inputSchema: reviewersCheckedSchema,
     state: (checked: ReviewersChecked) =>
       "The message a user typed to their assistant, quoted as data:\n<message>\n" +
-      checked.message.replace(/[<>]/g, "").slice(0, MAX_JUDGED_MESSAGE) +
+      checked.message.replace(/[<>]/g, "") +
       "\n</message>",
     questions: (checked: ReviewersChecked) => {
       const change = [
@@ -846,7 +851,7 @@ export function githubReviewersTool(document: DeclaredResourceEntry | undefined)
       const asked = probability("asked");
       const injected = probability("injected");
       const kept = async (reason: string) => ({ logins: await githubReviewersOf(ctx).read(), saved: false, reason });
-      if (typeof asked !== "number" || typeof injected !== "number") return kept("The change couldn't be judged, so nothing changed.");
+      if (!isProbability(asked) || !isProbability(injected)) return kept("The change couldn't be judged, so nothing changed.");
       if (injected >= INJECTED_CEILING) return kept("The message looks like it carries instructions from somewhere else, so nothing changed.");
       if (asked < ASKED_FLOOR) return kept("The message doesn't clearly ask for this change, so nothing changed.");
       return { ...checked, judged: true as const };
