@@ -11,11 +11,13 @@
  * itself. A merge or close reaches the session too, whoever made it, so a task
  * waiting on its pull request wakes, and then ends the
  * subscription (ER-7 as amended); the session's other subscriptions stay.
+ * The subscription names the run's task, so a task that fails or is
+ * cancelled ends it too.
  *
  * A pull request on a host other than `github.com` is not followed, nor one
  * recorded already closed or merged.
  */
-import type { PullRequestFollower, RecordedPullRequest } from "@flow-state-dev/core/harness";
+import type { FollowingRun, PullRequestFollower, RecordedPullRequest } from "@flow-state-dev/core/harness";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { WorkerInstallation } from "../../workers/installation";
 import { installationPolling, pollingOn } from "../../subscriptions/poll";
@@ -57,7 +59,7 @@ export function pullRequestThread(pr: Pick<RecordedPullRequest, "host" | "owner"
 export function followPullRequest(options: FollowPullRequestOptions): PullRequestFollower {
   if (options.allow !== undefined && options.allow.length === 0) throw new Error("followPullRequest: `allow` lists no GitHub login; omit it to hear every sender the sender screen passes.");
   const screens = options.allow === undefined ? undefined : [{ screen: "allow" as const, ids: options.allow.map(githubLoginId) }];
-  const follower = async (ctx: BlockContext, pr: RecordedPullRequest): Promise<void> => {
+  const follower = async (ctx: BlockContext, pr: RecordedPullRequest, run?: FollowingRun): Promise<void> => {
     const thread = pullRequestThread(pr);
     // Recorded already closed or merged (the branch check found it late): its closing event has
     // passed, so nothing would end a subscription made now.
@@ -75,7 +77,8 @@ export function followPullRequest(options: FollowPullRequestOptions): PullReques
       },
       undefined,
       // Its close reaches the session, so a task waiting on the pull request wakes (FIX-2535 D3).
-      { hearsClose: true, ...(polling === undefined ? {} : { polling }) }
+      // The run's task, when it works one: its failure or cancel ends the follow.
+      { hearsClose: true, ...(run?.taskId === undefined ? {} : { taskId: run.taskId }), ...(polling === undefined ? {} : { polling }) }
     );
     await options.onFollowed?.(pr, outcome, ctx);
     if ("refused" in outcome) throw new Error(outcome.refused);

@@ -404,6 +404,12 @@ export interface RecordedPullRequest extends PullRequestRef {
 /** Called once per pull request a write records for the first time. */
 export type PullRequestRecordedCallback = (pr: RecordedPullRequest) => void | Promise<void>;
 
+/** What the host knows of the run that recorded a pull request, handed to its {@link PullRequestFollower}. */
+export interface FollowingRun {
+  /** The task the run works, when it works one: its failure or cancel ends what the follower made. */
+  readonly taskId?: string;
+}
+
 // FIX-2535 D2.
 /**
  * What a host hands a coding session to act on each pull request it records
@@ -414,7 +420,7 @@ export type PullRequestRecordedCallback = (pr: RecordedPullRequest) => void | Pr
  * declared beside the session's own so the request carries them.
  */
 export interface PullRequestFollower {
-  (ctx: BlockContext, pr: RecordedPullRequest): void | Promise<void>;
+  (ctx: BlockContext, pr: RecordedPullRequest, run?: FollowingRun): void | Promise<void>;
   readonly resources?: Readonly<Record<string, DeclaredResourceEntry>>;
 }
 
