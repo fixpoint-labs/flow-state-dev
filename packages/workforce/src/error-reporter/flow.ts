@@ -24,6 +24,8 @@ import { defineMcpCredentialsCollection } from "../projects/mcp-credentials";
 import { conversationLedgerAt, conversationLedgerResources } from "../conversation-board/ledger";
 import { reportOwedKey } from "../conversation-board/report-owed";
 import { ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY } from "./keys";
+import { HISTORY_RETENTION_DAYS } from "./history";
+import { defineErrorHistoryCollection, ERROR_HISTORY_RESOURCE } from "./history-view";
 import { redact, secretsFromEnv } from "./redact";
 import {
   CLAIM_LEASE_MS,
@@ -31,9 +33,10 @@ import {
   intakeOccurrence,
   listReports,
   occurrenceSchema,
+  readHistory,
   readReport,
   reportsOf,
-  updateReport,
+  updateReport as updateReportRow,
   type IntakeDecision,
   type Occurrence,
   type ReportResourceState
@@ -212,6 +215,11 @@ async function secretsFor(ctx: BlockContext, reporter: ErrorReporter): Promise<s
   return found;
 }
 
+/** Change one report through `updateReport`, a failed history write said in the reporter's log. */
+function reportUpdater(reporter: ErrorReporter) {
+  return (...[reports, id, change]: Parameters<typeof updateReportRow>) => updateReportRow(reports, id, change, { log: (m) => reporter.log(m) });
+}
+
 /** Hard bound on the dossier handed to a run, in characters of JSON. */
 const DOSSIER_LIMIT = 16_000;
 
@@ -224,6 +232,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
   const { reporter, installation } = options;
   const flowKind = reporter.flowKind;
   const secretsOf = (ctx: BlockContext) => secretsFor(ctx, reporter);
+  const updateReport = reportUpdater(reporter);
 
   /**
    * `ctx` as the tracker's project's run: its session reads as one linked to
@@ -685,7 +694,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
           sessionId: ctx.session.identity.id,
           ...(Object.values(named).some((v) => v !== undefined) ? { named } : {})
         },
-        { reporterFlow: flowKind, limits: reporter.limits, secrets: await secretsOf(ctx) }
+        { reporterFlow: flowKind, limits: reporter.limits, secrets: await secretsOf(ctx), log: (m) => reporter.log(m) }
       );
       reporter.follow(decision);
       return { decision: decision.decision, ...("reportId" in decision ? { reportId: decision.reportId } : {}) };
@@ -717,7 +726,13 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     configSchema: turn.settings,
     ...turn.bound,
     session,
-    resources: { ...(turn.bound.resources ?? {}), ...errorReportsResources, ...workerMessagesResources },
+    resources: {
+      ...(turn.bound.resources ?? {}),
+      ...errorReportsResources,
+      ...workerMessagesResources,
+      // What its turn reads, asked what it reported, with the general resource tools its file names.
+      [ERROR_HISTORY_RESOURCE]: defineErrorHistoryCollection({ reporter })
+    },
     actions: {
       [RESPOND_ACTION]: { ...doorTask(turn.inputSchema.strict()), block: door, userMessage: (input: { message: string }) => input.message },
       // Public so its preview is answerable from Inbox (a dispatched run is never reopened from outside).
@@ -794,7 +809,8 @@ export function defineErrorReporterIntakeFlow(options: ErrorReporterIntakeFlowOp
       const decision = await intakeOccurrence(reportsOf(ctx), occurrence, {
         reporterFlow: reporter.flowKind,
         limits: reporter.limits,
-        secrets: await secretsFor(ctx, reporter)
+        secrets: await secretsFor(ctx, reporter),
+        log: (m) => reporter.log(m)
       });
       // Taken: the board's owed mark is cleared here, once the report holds it, never on the send alone.
       if (occurrence.kind === "task" && occurrence.partition !== undefined) {
@@ -808,11 +824,17 @@ export function defineErrorReporterIntakeFlow(options: ErrorReporterIntakeFlowOp
 
   const reportsRead = handler({
     name: "error-reporter-reports",
-    inputSchema: z.discriminatedUnion("op", [z.object({ op: z.literal("get"), id: z.string() }), z.object({ op: z.literal("all") })]),
+    inputSchema: z.discriminatedUnion("op", [
+      z.object({ op: z.literal("get"), id: z.string() }),
+      z.object({ op: z.literal("all") }),
+      // Whole UTC days of history, with the reports they name: what the error-history view reads.
+      z.object({ op: z.literal("history"), days: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).max(HISTORY_RETENTION_DAYS) })
+    ]),
     resources: { ...errorReportsResources },
     execute: async (input, ctx) => {
       const reports = reportsOf(ctx);
       if (input.op === "get") return { rows: [await readReport(reports, input.id)].filter((r) => r !== undefined) };
+      if (input.op === "history") return readHistory(reports, input.days);
       return { rows: await listReports(reports) };
     }
   });

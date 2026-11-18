@@ -1,4 +1,6 @@
 /** The Error Reporter on the real engine (FIX-1983). */
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // The send's own dispatch of a worker message (`from: "sendMessage"`) can be
@@ -14,7 +16,7 @@ vi.mock("@flow-state-dev/core/internal", async (original) => {
         : actual.dispatchThroughSeam(ctx, spec as never)
   };
 });
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, handler, readResourceContentTool, resourceSearchTools } from "@flow-state-dev/core";
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import { ensureSessionRecord } from "@flow-state-dev/engine/host";
 import { runAction } from "@flow-state-dev/engine";
@@ -24,6 +26,7 @@ import { callerMetadata } from "../src/conversation-board/ledger";
 import { owedReports } from "../src/conversation-board/report-owed";
 import {
   createErrorReporter,
+  defineErrorHistoryCollection,
   defineErrorReporterFlow,
   defineErrorReporterIntakeFlow,
   ERROR_REPORTER_FLOW,
@@ -118,6 +121,20 @@ function breakerFlow(installation: WorkerInstallation) {
   });
 }
 
+/** A flow whose actions are core's two general read tools, over the error history: what a worker's turn calls. */
+const HISTORY_READER = "history-reader";
+function historyReaderFlow(reporter: ErrorReporter) {
+  const { searchResources } = resourceSearchTools();
+  return defineFlow({
+    kind: HISTORY_READER,
+    resources: { errorHistory: defineErrorHistoryCollection({ reporter }) },
+    actions: {
+      searchResources: { inputSchema: searchResources.inputSchema, block: searchResources },
+      readResourceContent: { inputSchema: z.object({ uri: z.string().optional() }), block: readResourceContentTool() }
+    }
+  } as never);
+}
+
 type Lab = {
   host: BoardHost;
   reporter: ErrorReporter;
@@ -132,6 +149,10 @@ type Lab = {
   intake: (occurrence: Record<string, unknown>) => Promise<unknown>;
   /** Start a report's run again, as a restart does. */
   rerun: (reportId: string) => Promise<void>;
+  /** Search the error history as `userId` would through `searchResources`: the uris and snippets. */
+  searchHistory: (userId: string, input: { query: string; prefix?: string }, orgId?: string) => Promise<Array<{ uri: string; snippet: string }>>;
+  /** Read one history record as `userId` would through `readResourceContent`: its content, or the tool's error. */
+  readHistory: (userId: string, uri: string, orgId?: string) => Promise<{ content?: string; error?: string }>;
 };
 
 let open: BoardHost | undefined;
@@ -163,13 +184,23 @@ async function openLab(
     standard: [
       ...boardWorkers(),
       { id: "eng.breaker", declared: { flow: "breaker" }, body: "", skills: [] },
-      { id: "error-reporter", declared: { flow: ERROR_REPORTER_FLOW }, body: "You report errors.", skills: [] }
+      // Its file names the general read tools, as the devteam tree's does.
+      { id: "error-reporter", declared: { flow: ERROR_REPORTER_FLOW, tools: ["searchResources", "readResourceContent"] }, body: "You report errors.", skills: [] }
     ],
     flows: (installation) => ({
       breaker: breakerFlow(installation),
-      [ERROR_REPORTER_FLOW]: defineErrorReporterFlow({ reporter, installation, harness: standInHarness(prompts, { closed, trailer, fileFails, commentUnreadable, draftThrows }), mcpTools: trackerTools })
+      [ERROR_REPORTER_FLOW]: defineErrorReporterFlow({
+        reporter,
+        installation,
+        harness: standInHarness(prompts, { closed, trailer, fileFails, commentUnreadable, draftThrows }),
+        mcpTools: trackerTools,
+        agent: { catalog: { searchResources: resourceSearchTools().searchResources, readResourceContent: readResourceContentTool() } }
+      })
     }),
-    plainFlows: { [ERROR_REPORTER_INTAKE_FLOW]: (defineErrorReporterIntakeFlow({ reporter }) as any)({ id: ERROR_REPORTER_INTAKE_FLOW }) },
+    plainFlows: {
+      [ERROR_REPORTER_INTAKE_FLOW]: (defineErrorReporterIntakeFlow({ reporter }) as any)({ id: ERROR_REPORTER_INTAKE_FLOW }),
+      [HISTORY_READER]: (historyReaderFlow(reporter) as any)({ id: HISTORY_READER })
+    },
     generators: { "error-reporter-answer": agentAnswer ?? mockGenerator({ script: [] }) },
     errorCapture: (event) => reporter.capture(event)
   });
@@ -265,6 +296,19 @@ async function openLab(
       await host.settled();
       await reporter.idle();
       return result.output;
+    },
+    searchHistory: async (userId, input, orgId = ORG) => {
+      const sessionId = `reader-${userId}-${orgId}`;
+      await ensure(HISTORY_READER, sessionId, userId, orgId, {});
+      const result = await host.act(userId, sessionId, "searchResources", { prefix: null, ...input }, HISTORY_READER, orgId);
+      expect(result.error, messageOf(result.error)).toBeUndefined();
+      return ((result.output as { results: Array<{ uri: string; snippet: string }> }).results ?? []).map(({ uri, snippet }) => ({ uri, snippet }));
+    },
+    readHistory: async (userId, uri, orgId = ORG) => {
+      const sessionId = `reader-${userId}-${orgId}`;
+      await ensure(HISTORY_READER, sessionId, userId, orgId, {});
+      const result = await host.act(userId, sessionId, "readResourceContent", { uri }, HISTORY_READER, orgId);
+      return result.error === undefined ? { content: String((result.output as { content?: unknown }).content) } : { error: messageOf(result.error) };
     },
     rerun: async (reportId) => {
       const result = await bound.run({ flowKind: ERROR_REPORTER_FLOW, action: "report", input: {}, userId: OPERATOR, orgId: ORG, sessionId: `${REPORT_SESSION_PREFIX}${reportId}`, source: "http" });
@@ -471,6 +515,214 @@ describe("what the intake keeps", () => {
   });
 });
 
+/** The history records the Lab's org holds (`error-reports/log-<day>-<hour>`), by key. */
+async function historyOf(lab: Lab): Promise<Record<string, { entries: Array<Record<string, any>>; cut?: number }>> {
+  const runtime = await lab.host.state.getRuntime();
+  const stored = await runtime.stores.resourceState.getByPrefix("org", ORG, "error-reports/log-");
+  return Object.fromEntries(Object.entries(stored).map(([key, value]) => [key, value.state as never]));
+}
+
+/** Every history entry the Lab's org holds, oldest hour first. */
+async function entriesOf(lab: Lab): Promise<Array<Record<string, any>>> {
+  const records = await historyOf(lab);
+  return Object.keys(records)
+    .sort()
+    .flatMap((key) => records[key]!.entries);
+}
+
+/** The UTC hour key a time falls in. */
+const hourKeyOf = (at: number) => `error-reports/log-${new Date(at).toISOString().slice(0, 13).replace("T", "-")}`;
+
+describe("the history", () => {
+  // The report keeps only its newest five occurrences; the history is where the first one's time and ids live on.
+  it("keeps every occurrence of one failure in its hour's record, past the five the report keeps", async () => {
+    const lab = await openLab();
+    const at = Date.now();
+    for (let i = 1; i <= 7; i += 1) await lab.intake(requestOccurrence(`req_${i}`, "the queue is full", at + i));
+    const [row] = await lab.rows();
+    expect(row!.occurrences.map((o) => o.requestId)).toEqual(["req_3", "req_4", "req_5", "req_6", "req_7"]);
+    const records = await historyOf(lab);
+    const entries = records[hourKeyOf(at)]?.entries ?? [];
+    const occurrences = entries.filter((e) => e.kind === "occurrence");
+    expect(occurrences.map((e) => e.requestId)).toEqual(["req_1", "req_2", "req_3", "req_4", "req_5", "req_6", "req_7"]);
+    // Each with its time, its ids, the report it went to and a short message.
+    expect(occurrences[0]).toMatchObject({ at: at + 1, reportId: row!.id, userId: "alice", sessionId: "breaker-alice", message: "the queue is full" });
+  });
+
+  // A held request names no report yet (its task may still pass), so its entry is joined to the task's report when read.
+  it("keeps a held request by its task, naming no report", async () => {
+    const lab = await openLab();
+    await lab.intake({ ...requestOccurrence("req_held", "the step timed out"), kind: "held", taskId: "task_7" });
+    expect(await lab.rows()).toEqual([]);
+    const [entry, ...rest] = await entriesOf(lab);
+    expect(rest).toEqual([]);
+    expect(entry).toMatchObject({ kind: "occurrence", source: "held", taskId: "task_7", requestId: "req_held" });
+    expect(entry!.reportId).toBeUndefined();
+  });
+
+  it("logs a redelivered occurrence once", async () => {
+    const lab = await openLab();
+    await lab.intake(requestOccurrence("req_same", "the queue is full"));
+    await lab.intake(requestOccurrence("req_same", "the queue is full"));
+    expect((await entriesOf(lab)).filter((e) => e.kind === "occurrence").map((e) => e.requestId)).toEqual(["req_same"]);
+  });
+
+  // One hour's record has an upper size: a storm is counted, not kept, once the hour is full.
+  it("counts an occurrence past the hour's cap instead of keeping it", async () => {
+    const lab = await openLab();
+    const at = Date.now();
+    const key = hourKeyOf(at);
+    const full = Array.from({ length: 250 }, (_, i) => ({ at: at - 1000 + i, kind: "occurrence", key: `request:old_${i}`, requestId: `old_${i}` }));
+    const runtime = await lab.host.state.getRuntime();
+    await runtime.stores.resourceState.set("org", ORG, key, { hour: key.slice("error-reports/log-".length), entries: full, cut: 0 }, "any");
+    await lab.intake(requestOccurrence("req_late", "the queue is full", at));
+    const record = (await historyOf(lab))[key]!;
+    expect(record.entries).toHaveLength(250);
+    expect(record.entries.some((e) => e.requestId === "req_late")).toBe(false);
+    // The occurrence, and the status changes of the report it made, are each counted.
+    expect(record.cut).toBeGreaterThanOrEqual(1);
+  });
+
+  // When a report was filed or dismissed is only known from the history: the report keeps its current status alone.
+  it("keeps each change of a report's status with its time, and the issue once filed", async () => {
+    const lab = await openLab();
+    await lab.breaks("disk is full");
+    await lab.answer((await lab.asks())[0]!, { decision: "file" });
+    const [row] = await lab.rows();
+    const statuses = (await entriesOf(lab)).filter((e) => e.kind === "status" && e.reportId === row!.id);
+    expect(statuses.map((e) => e.status)).toEqual(["drafting", "previewing", "filing", "filed"]);
+    expect(statuses.every((e) => typeof e.at === "number")).toBe(true);
+    expect(statuses.at(-1)).toMatchObject({ issue: { identifier: "FIX-9", url: "https://tracker.example/FIX-9" } });
+  });
+
+  it("keeps a dismissal, and nothing for a write that moves no status", async () => {
+    const lab = await openLab();
+    await lab.breaks("disk is full");
+    await lab.answer((await lab.asks())[0]!, { decision: "dont-file" });
+    // A repeat while dismissed only counts: no status moves.
+    await lab.breaks("disk is full");
+    const statuses = (await entriesOf(lab)).filter((e) => e.kind === "status");
+    expect(statuses.map((e) => e.status)).toEqual(["drafting", "previewing", "dismissed"]);
+  });
+
+  // A status change is logged by `updateReport` only. These are the writers that may write a report another
+  // way, each because what it writes is a first status (`owed`, already logged as its occurrence) or no report.
+  // A new writer here moves a status with no history entry unless it writes its own: add it on purpose.
+  it("is written for status changes by updateReport alone: no other module writes a report", () => {
+    const dir = fileURLToPath(new URL("../src/error-reporter/", import.meta.url));
+    const writers: string[] = [];
+    for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts"))) {
+      const source = readFileSync(`${dir}${file}`, "utf8");
+      for (const match of source.matchAll(/updateStateWith\(|\.upsert\(|\.patchState\(|\.setState\(/g)) {
+        const before = source.slice(0, match.index);
+        const fn = [...before.matchAll(/function (\w+)/g)].at(-1)?.[1] ?? "(module)";
+        writers.push(`${file}:${fn}:${match[0]}`);
+      }
+    }
+    expect(writers.sort()).toEqual(
+      [
+        "history.ts:appendHistory:updateStateWith(",
+        "reports.ts:claimCapSlot:updateStateWith(",
+        "reports.ts:countOn:updateStateWith(",
+        "reports.ts:decide:updateStateWith(",
+        "reports.ts:intakeOccurrence:.upsert(",
+        "reports.ts:intakeOccurrence:updateStateWith(",
+        "reports.ts:listOnStorm:updateStateWith(",
+        "reports.ts:updateReport:updateStateWith("
+      ].sort()
+    );
+  });
+
+  // Retention is by computed key: the first record of a day deletes days 91 to 97 back, never listing the collection.
+  it("deletes the records past 90 days when a day's first record is written, and keeps day 90", async () => {
+    const lab = await openLab();
+    const runtime = await lab.host.state.getRuntime();
+    const now = Date.now();
+    const daysBack = (n: number) => new Date(now - n * 24 * 60 * 60_000).toISOString().slice(0, 10);
+    const seeded = [90, 91, 97].map((n) => `error-reports/log-${daysBack(n)}-05`);
+    for (const key of seeded) await runtime.stores.resourceState.set("org", ORG, key, { hour: key.slice(18), entries: [], cut: 0 }, "any");
+    await lab.intake(requestOccurrence("req_today", "the queue is full", now));
+    const kept = Object.keys(await historyOf(lab));
+    expect(kept).toContain(seeded[0]);
+    expect(kept).not.toContain(seeded[1]);
+    expect(kept).not.toContain(seeded[2]);
+  });
+});
+
+describe("reading the history", () => {
+  const today = () => new Date().toISOString().slice(0, 10);
+  const TITLE = "Coordinator fails on a project with no repository";
+
+  it("is found with searchResources and read with readResourceContent: title, status in words, ids, never the fingerprint", async () => {
+    const lab = await openLab();
+    await lab.breaks("disk is full");
+    const [row] = await lab.rows();
+    const hits = await lab.searchHistory(OPERATOR, { query: "error report", prefix: `error-history/${today()}` });
+    expect(hits.map((h) => h.uri)).toEqual([expect.stringMatching(new RegExp(`^org/error-history/${today()}/[a-z0-9-]+$`))]);
+    expect(hits[0]!.uri).not.toContain(row!.fingerprint.slice(0, 8));
+    const read = await lab.readHistory(OPERATOR, hits[0]!.uri);
+    expect(read.content).toContain(TITLE);
+    expect(read.content).toContain("waiting in Inbox");
+    expect(read.content).toContain(row!.occurrences[0]!.requestId!);
+    expect(read.content).not.toContain(row!.fingerprint);
+  });
+
+  it("says a filed report is filed, with the issue's identifier and URL", async () => {
+    const lab = await openLab();
+    await lab.breaks("disk is full");
+    await lab.answer((await lab.asks())[0]!, { decision: "file" });
+    const [hit] = await lab.searchHistory(OPERATOR, { query: "filed" });
+    const read = await lab.readHistory(OPERATOR, hit!.uri);
+    expect(read.content).toContain("filed");
+    expect(read.content).toContain("FIX-9");
+    expect(read.content).toContain("https://tracker.example/FIX-9");
+  });
+
+  // Deny by default: a title can quote a user's own words, so another member's turn reads nothing of it.
+  it("shows a member only their own failures, and anyone else what an unknown path shows", async () => {
+    const lab = await openLab();
+    await lab.intake({ kind: "task", at: Date.now(), taskId: "task_alice_1", boardId: "board_a", attempt: 1, error: "eng.tasker could not do it", userId: "alice", orgId: ORG, assignee: "eng.tasker" });
+    const [hit] = await lab.searchHistory(OPERATOR, { query: "error report" });
+    expect(hit).toBeDefined();
+    // Alice reads her own; the operator reads everything.
+    expect((await lab.searchHistory("alice", { query: "error report" })).map((h) => h.uri)).toEqual([hit!.uri]);
+    expect((await lab.readHistory("alice", hit!.uri)).content).toContain(TITLE);
+    // Bob, in the same org, finds nothing by her title's words or her task's id, and reads nothing of it.
+    expect(await lab.searchHistory("bob", { query: TITLE })).toEqual([]);
+    expect(await lab.searchHistory("bob", { query: "task_alice_1" })).toEqual([]);
+    const refused = await lab.readHistory("bob", hit!.uri);
+    const unknown = await lab.readHistory("bob", `org/error-history/${today()}/no-such-report-zz9`);
+    expect(refused.content).toBeUndefined();
+    expect(refused.error?.replace(hit!.uri, "<uri>")).toBe(unknown.error?.replace(`org/error-history/${today()}/no-such-report-zz9`, "<uri>"));
+  });
+
+  // A held request's entry names only its task; the read joins it to the report the task's ending went to.
+  it("shows a held request under its task's report, joined when read", async () => {
+    const lab = await openLab();
+    await lab.intake({ ...requestOccurrence("req_held_1", "the step timed out"), kind: "held", taskId: "task_9" });
+    await lab.intake({ kind: "task", at: Date.now(), taskId: "task_9", boardId: "board_a", attempt: 1, error: "eng.tasker gave up", userId: "alice", orgId: ORG, assignee: "eng.tasker" });
+    const [hit] = await lab.searchHistory(OPERATOR, { query: "task_9" });
+    expect((await lab.readHistory(OPERATOR, hit!.uri)).content).toContain("req_held_1");
+  });
+
+  it("writes nothing when read", async () => {
+    const lab = await openLab();
+    await lab.breaks("disk is full");
+    const runtime = await lab.host.state.getRuntime();
+    const before = await runtime.stores.resourceState.getByPrefix("org", ORG, "error-reports/");
+    const [hit] = await lab.searchHistory(OPERATOR, { query: "error report" });
+    await lab.readHistory(OPERATOR, hit!.uri);
+    await lab.searchHistory("bob", { query: "error report" });
+    expect(await runtime.stores.resourceState.getByPrefix("org", ORG, "error-reports/")).toEqual(before);
+  });
+
+  it("shows another org nothing, the operator's own id included", async () => {
+    const lab = await openLab();
+    await lab.breaks("disk is full");
+    expect(await lab.searchHistory(OPERATOR, { query: "error report" }, "other-org")).toEqual([]);
+  });
+});
+
 describe("drafting, filing and commenting", () => {
   it("drafts with no tracker tools; only the approved filing gets them", async () => {
     const lab = await openLab();
@@ -653,6 +905,47 @@ describe("a user reporting a problem", () => {
     expect(rows[0]).toMatchObject({ source: "manual", status: "previewing", description: "The board shows a task as done that never ran" });
     expect(await lab.asks()).toHaveLength(1);
     expect(lab.prompts.map((p) => p.kind)).toEqual(["draft"]);
+  });
+});
+
+/**
+ * A generator that, asked `call <tool> <json>`, calls that tool and records
+ * what the tool handed back, so the real tool runs and the test reads its answer.
+ */
+function scriptedReads(seen: unknown[]): ReturnType<typeof mockGenerator> {
+  return {
+    name: "error-reporter-answer",
+    calls: [],
+    reset: () => undefined,
+    next: (messages: Array<{ role: string; content: unknown }>, state: { toolResults: Array<{ result: unknown }> }) => {
+      if (state.toolResults.length > 0) {
+        seen.push(state.toolResults[0]!.result);
+        return { text: "done" };
+      }
+      const turn = JSON.stringify([...messages].reverse().find((m) => m.role === "user")?.content ?? "");
+      const call = /call (\w+) (\{.*\})/.exec(JSON.parse(turn) as string);
+      if (call === null) return { text: "nothing to call" };
+      return { toolCalls: [{ toolCallId: `c${seen.length}`, toolName: call[1]!, args: JSON.parse(call[2]!) }] };
+    }
+  } as unknown as ReturnType<typeof mockGenerator>;
+}
+
+describe("asked what it reported", () => {
+  // Its own turn answers from the history, never from the task board or another worker.
+  it("searches and reads the error history with the general resource tools", async () => {
+    const seen: unknown[] = [];
+    const lab = await openLab({ agentAnswer: scriptedReads(seen) });
+    await lab.breaks("disk is full");
+    const ask = async (message: string) => {
+      const turn = await lab.host.act(OPERATOR, CONVERSATION, "respond", { message }, ERROR_REPORTER_FLOW);
+      expect(turn.error, messageOf(turn.error)).toBeUndefined();
+    };
+    await ask('call searchResources {"query":"disk full error report","prefix":null}');
+    const found = JSON.stringify(seen[0]);
+    const uri = /org\/error-history\/[^"]+/.exec(found)?.[0];
+    expect(uri, found).toBeDefined();
+    await ask(`call readResourceContent {"uri":"${uri}"}`);
+    expect(JSON.stringify(seen[1])).toContain("waiting in Inbox");
   });
 });
 

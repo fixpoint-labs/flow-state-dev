@@ -49,7 +49,7 @@ import {
   type FlowState
 } from "@flow-state-dev/engine";
 import { ensureSessionRecord, type PrincipalResolver } from "@flow-state-dev/engine/host";
-import { defineCapability, defineView, handler, sequencer } from "@flow-state-dev/core";
+import { defineCapability, defineView, handler, readResourceContentTool, resourceSearchTools, sequencer } from "@flow-state-dev/core";
 import {
   encodeUserSegment,
   type BlockContext,
@@ -111,7 +111,9 @@ import {
   type ProjectMcpServers,
   type InventoryActionRequest,
   createErrorReporter,
+  defineErrorHistoryCollection,
   defineErrorReporterFlow,
+  ERROR_HISTORY_RESOURCE,
   defineErrorReporterIntakeFlow,
   ERROR_REPORTER_FLOW,
   ERROR_REPORTER_INTAKE_FLOW,
@@ -1168,6 +1170,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // for a user's Approve in Inbox, which needs durable execution (asked for
   // below).
   const rosterTools = shiftCoordinatorRosterTools(installation, harnessNames);
+  // Core's general read tools, under their own names: a worker that names them reads every `llmReadable`
+  // collection its flow declares. Here that is the Error Reporter's history (`error-history/**`), which
+  // the Shift Coordinator and error-reporter search when asked what was reported.
+  const readTools = { searchResources: resourceSearchTools().searchResources, readResourceContent: readResourceContentTool() };
   // What the agent's turn is built with. The `agent` flow runs it behind its
   // door, and the `coordinator` flow, which the Shift Coordinator runs on, runs
   // the same turn for its judgment, with memory added (below).
@@ -1190,8 +1196,14 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       ...projectSourceTools(workspaceHost ?? answerHost),
       search: search(),
       fetch: fetch(),
+      ...readTools,
     },
     uses: [
+      // The Error Reporter's history, read-only and filtered by caller. With no reporter in the Lab it has no record.
+      defineCapability({
+        name: "error-history",
+        resources: { [ERROR_HISTORY_RESOURCE]: defineErrorHistoryCollection({ reporter }) },
+      }),
       // The worker inventory, which the discovery door reads.
       defineCapability({
         name: "lab-inventory",
@@ -1243,6 +1255,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       harness: options.errorReporter!.harness,
       ...(options.errorReporter!.cwd === undefined ? {} : { cwd: options.errorReporter!.cwd }),
       ...(mcpTools === undefined ? {} : { mcpTools }),
+      // The flow declares its history; its file names these to read it.
+      agent: { catalog: readTools },
     }) as never;
   }
 
