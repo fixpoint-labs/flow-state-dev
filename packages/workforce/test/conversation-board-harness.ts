@@ -114,16 +114,16 @@ function holdsSession(task: Task): boolean {
  * the dispatcher (a wake that was lost, a row written straight into the
  * store), and `settled` must not wait for that one.
  */
-function awaitsReleasedSession(rows: readonly (Task & { partition: string })[]): boolean {
+function awaitsReleasedSession(tasks: readonly (Task & { partition: string })[]): boolean {
   const byPartition = new Map<string, (Task & { partition: string })[]>();
-  for (const row of rows) {
-    const list = byPartition.get(row.partition);
-    if (list === undefined) byPartition.set(row.partition, [row]);
-    else list.push(row);
+  for (const stored of tasks) {
+    const list = byPartition.get(stored.partition);
+    if (list === undefined) byPartition.set(stored.partition, [stored]);
+    else list.push(stored);
   }
   const now = Date.now();
   for (const group of byPartition.values()) {
-    const lookup = (id: string): Task | undefined => group.find((row) => row.id === id);
+    const lookup = (id: string): Task | undefined => group.find((stored) => stored.id === id);
     for (const task of group) {
       if (task.status !== "pending" || !isClaimable(task, lookup, now)) continue;
       const key = sessionKeyOf(task);
@@ -475,7 +475,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   };
 
   /** Every stored task on every session's board, by the partition it is filed in. */
-  const taskRows = async (): Promise<Array<Task & { partition: string }>> => {
+  const storedTasks = async (): Promise<Array<Task & { partition: string }>> => {
     const runtime = await state.getRuntime();
     const seen = new Set<string>();
     const out: Array<Task & { partition: string }> = [];
@@ -511,13 +511,13 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
       const all = await runtime.stores.request.list({});
       waitingOnReleasedSession = false;
       if (!all.some(running)) {
-        waitingOnReleasedSession = awaitsReleasedSession(await taskRows());
+        waitingOnReleasedSession = awaitsReleasedSession(await storedTasks());
         if (!waitingOnReleasedSession) {
           // Read again after a beat: a dispatch accepted just now may not have
           // written its request yet.
           await sleep(20);
           const again = await runtime.stores.request.list({});
-          const stillWaiting = awaitsReleasedSession(await taskRows());
+          const stillWaiting = awaitsReleasedSession(await storedTasks());
           if (!again.some(running) && !stillWaiting && again.length === all.length) return again;
           continue;
         }
