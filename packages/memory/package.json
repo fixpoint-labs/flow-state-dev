@@ -31,6 +31,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
+    },
+    "./kit": {
+      "types": "./dist/kit/index.d.ts",
+      "default": "./src/kit/index.ts"
     }
   },
   "license": "MIT",
@@ -46,6 +50,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./kit": {
+        "types": "./dist/kit/index.d.ts",
+        "default": "./dist/kit/index.js"
       }
     }
   },
