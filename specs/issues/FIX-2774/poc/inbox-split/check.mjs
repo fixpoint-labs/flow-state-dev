@@ -23,6 +23,12 @@
 //
 //   node specs/issues/FIX-2774/poc/inbox-split/check.mjs              # check
 //   node specs/issues/FIX-2774/poc/inbox-split/check.mjs --control    # plant an unclassified entry and site, expect FAIL
+//   node specs/issues/FIX-2774/poc/inbox-split/check.mjs --built      # the goal check: this issue's expected counts set to 0
+//
+// `--built` is the spec's goal check, run on the implementation: this issue's
+// allowlist entry and its 30 sites are expected gone (0), every other owner's
+// count as before, and each site of this issue's still found is named. On
+// today's `main` it fails, naming the 30.
 //
 // Exit 0: both totals hold and the counts are the spec's. Exit 1 otherwise.
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -32,6 +38,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
 const APP = join(ROOT, "packages/shift-manager");
 const CONTROL = process.argv.includes("--control");
+const BUILT = process.argv.includes("--built");
 const failures = [];
 
 // ── 1. The allowlist ─────────────────────────────────────────────────────
@@ -76,12 +83,15 @@ for (const entry of allowlist) {
   if (owner === "FIX-2774") mineEntries.push(entry);
 }
 for (const key of Object.keys(bySymbol)) {
+  // Built, this issue's entry is gone: an override naming it names nothing, as it should.
+  if (BUILT && bySymbol[key] === "FIX-2774") continue;
   if (!allowlist.some((e) => `${e.file}#${e.symbol}` === key)) failures.push(`override names no entry: ${key}`);
 }
 for (const file of Object.keys(byFile)) {
   if (!allowlist.some((e) => e.file === file)) failures.push(`classified but not on the allowlist: ${file}`);
 }
-const expectEntries = { "FIX-2776": 32, "FIX-2775": 16, "FIX-2777": 21, "FIX-2774": 1 };
+const expectEntries = { "FIX-2776": 32, "FIX-2775": 16, "FIX-2777": 21, "FIX-2774": BUILT ? 0 : 1 };
+if (BUILT) for (const e of mineEntries) failures.push(`still on the allowlist: ${e.file} ${e.symbol} (${e.kind})`);
 for (const [owner, n] of Object.entries(expectEntries)) {
   if ((entryCounts[owner] ?? 0) !== n) failures.push(`allowlist: ${owner} owns ${entryCounts[owner] ?? 0}, the spec says ${n}`);
 }
@@ -175,8 +185,10 @@ for (const site of distinct) {
   siteCounts[owner] = (siteCounts[owner] ?? 0) + 1;
   if (owner.startsWith("FIX-2774")) mineSites.push(`${site.file}:${site.line} ${site.token}${owner.endsWith("(D2)") ? "  (D2)" : ""}`);
 }
-for (const key of Object.keys(sites)) if (!seenKeys.has(key)) failures.push(`census names no site: ${key}`);
-const expectSites = { "FIX-2774": 25, "FIX-2774 (D2)": 5, "FIX-2775": 8, "FIX-2776": 4 };
+// Built, this issue's sites are gone: a census key of its that names no site is what the change did.
+for (const key of Object.keys(sites)) if (!seenKeys.has(key) && !(BUILT && sites[key].startsWith("FIX-2774"))) failures.push(`census names no site: ${key}`);
+const expectSites = BUILT ? { "FIX-2774": 0, "FIX-2774 (D2)": 0, "FIX-2775": 8, "FIX-2776": 4 } : { "FIX-2774": 25, "FIX-2774 (D2)": 5, "FIX-2775": 8, "FIX-2776": 4 };
+if (BUILT) for (const site of mineSites) failures.push(`still reads the snapshot: ${site}`);
 for (const [owner, n] of Object.entries(expectSites)) {
   if ((siteCounts[owner] ?? 0) !== n) failures.push(`census: ${owner} has ${siteCounts[owner] ?? 0} sites, the spec says ${n}`);
 }

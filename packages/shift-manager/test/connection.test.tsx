@@ -36,6 +36,12 @@ const workforce = {
   watchRoster: (onRoster: (entries: never[]) => void, options?: { onError?: (error: unknown) => void }) => (void Promise.resolve([] as never[]).then(onRoster, options?.onError), () => {}),
 };
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
+// FIX-2774: Tasks' rows are the inbox view's: here, the view of the good read, while the Lab read comes and goes.
+vi.mock("../src/lib/inbox", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/lib/inbox")>();
+  const { viewOfSnapshot } = await import("./helpers/inbox-view");
+  return { ...real, useInbox: () => ({ section: viewOfSnapshot(lab()), stale: false, refresh: () => {} }) };
+});
 vi.mock("../src/lib/reads", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/lib/reads")>();
   return {
@@ -54,7 +60,7 @@ vi.mock("../src/lib/reads", async (importOriginal) => {
 const STALE = "opacity-60";
 const startedAt = Date.UTC(2026, 10, 4, 9, 0);
 
-/** One running task on eng's board, and ops' board failing, so Tasks offers a Retry that reads again. */
+/** One running task on eng's board. */
 function lab(): LabSnapshot {
   const workers = [toWorker({ id: "eng.coder", kind: "coder" })!];
   const running = toBoardTaskView("s_eng.tasks", "s_eng", "E-1", { id: "E-1", title: "E-1 title", status: "in_progress", assignee: "coder", startedAt });
@@ -65,7 +71,6 @@ function lab(): LabSnapshot {
     inventory: { ok: true, value: { workers } },
     boards: {
       s_eng: { ok: true, value: { refs: [running.boardRef], rows: [running] } },
-      s_ops: { ok: false, failure: { message: "board offline" } },
     },
     asks: { ok: true, value: [] },
     resources: { ok: true, value: [] },
@@ -90,8 +95,11 @@ async function openTasks() {
   render(<App connection={{ userId: "u_test" }} />);
   await screen.findByTestId("tasks");
 }
-/** Tasks' Retry on ops' failing board: the one refresh this screen can ask for. */
-const retryBoards = () => act(async () => void fireEvent.click(within(screen.getByTestId("tasks")).getByText("Retry")));
+/**
+ * R, pressed outside any field: the Lab read again (and the inbox view with
+ * it, FIX-2774). Tasks' own Retry reads the view now, not the Lab.
+ */
+const retryBoards = () => act(async () => void fireEvent.keyDown(document.body, { key: "r" }));
 const sleep = (ms: number) => act(() => new Promise((r) => setTimeout(r, ms)));
 
 describe("a refresh that can't reach the Lab after a good read", () => {

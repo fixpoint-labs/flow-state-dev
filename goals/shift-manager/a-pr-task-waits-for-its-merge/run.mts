@@ -42,7 +42,7 @@ import { LAB_ORG_ID, LAB_USER_ID, openLab } from "../../../packages/shift-manage
 import { CODER_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
-import { createLabReader } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { inboxViewRef } from "@flow-state-dev/workforce/browser";
 import { sendTurn } from "../../../packages/shift-manager/src/lib/send.ts";
 
 stripIntentOverrides();
@@ -200,8 +200,8 @@ await runGoal(async (failures, tell) => {
 
     /** Accept the task's review with Open a PR, as Shift Manager's Inbox card answers it, and read the row once it moved on. */
     const openAPr = async (reviewId: string) => {
-      const snapshot = await createLabReader(client).read();
-      const items = ("inbox" in snapshot && snapshot.inbox?.ok ? snapshot.inbox.value : []) as InboxItem<unknown>[];
+      // FIX-2774: Shift Manager's Inbox reads the roster flow's inbox view.
+      const items = (await client.view(inboxViewRef, {})).value.items as InboxItem<unknown>[];
       const item = items.find((i) => i.task?.taskId === id);
       if (item === undefined) throw new Error(`Shift Manager's Inbox lists no item for ${id}`);
       await createInboxClient(client).answer(item, { value: { verdict: "accepted", land: "pull-request" } } as never);

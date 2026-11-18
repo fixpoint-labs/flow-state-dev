@@ -57,6 +57,12 @@ const client = {
 };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client, reader }) }));
 
+// FIX-2774: a task's asks read the inbox view, which this test doesn't serve.
+vi.mock("../src/lib/inbox", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/inbox")>()),
+  useInbox: () => ({ section: undefined, stale: false, refresh: () => {} }),
+}));
+
 import { MISSING_FOR_MS, TaskProvider, useTask, type TaskView } from "../src/lib/task";
 import { TaskFrame } from "../src/surfaces/TaskFrame";
 import { GAPS } from "../src/gaps";
