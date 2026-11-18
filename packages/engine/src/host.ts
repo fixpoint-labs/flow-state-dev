@@ -244,4 +244,4 @@ export { decideClaim, isSweepable } from "./blobs/shared";
 export { createLocalBlobStore } from "./blobs/local-blob-store";
 export { declareEphemeralDisk } from "./blobs/host-disk";
 
-export { networkAuthenticationError, createProductionAuthGuard } from "./routes/network-auth";
+export { networkAuthenticationError, createNetworkAuthGuard } from "./routes/network-auth";

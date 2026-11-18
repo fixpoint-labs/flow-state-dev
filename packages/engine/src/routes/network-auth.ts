@@ -1,5 +1,3 @@
-import { isFlowState } from "../flowstate/createFlowState";
-import type { FlowState } from "../flowstate/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { FlowApiRouter } from "./createFlowApiRouter";
 import type { PrincipalResolver } from "../transports/types";
@@ -11,6 +9,9 @@ import { pickPrincipalResolver } from "../transports/auth/pickPrincipalResolver"
 
 // Like the router's other host metadata, this survives separate engine copies.
 const AUTH_STATE = Symbol.for("@flow-state-dev/engine/networkAuthState");
+
+/** What an anonymous caller of a misconfigured host receives. The kinds stay in the log. */
+const GENERIC_REFUSAL = { error: "Internal server error" };
 
 interface NetworkAuthState {
   registry: FlowRegistry;
@@ -36,12 +37,14 @@ export function attachNetworkAuthState(
  * the router's host-level resolver) is the framework default that trusts
  * `body.userId`. It does not judge whether a custom resolver verifies
  * credentials. Hand-written routers have no framework flows to inspect.
+ *
+ * Callers pass the router the routes will use. Reading the live registry means
+ * a flow registered after the router was built is visible on the next call.
  */
 export async function networkAuthenticationError(
-  app: FlowState | FlowApiRouter,
+  router: FlowApiRouter,
   target: string,
 ): Promise<string | undefined> {
-  const router = isFlowState(app) ? await app.getRouter() : app;
   const state = (router as unknown as Record<symbol, unknown>)[AUTH_STATE] as NetworkAuthState | undefined;
   if (state === undefined) return undefined;
   const kinds = [...new Set(state.registry.list()
@@ -55,19 +58,29 @@ export async function networkAuthenticationError(
     "for local-only use, or set allowUnauthenticated: true (--allow-unauthenticated in fsdev) to override.";
 }
 
-/** Production request guard, with one diagnostic per adapter instance. */
-export function createProductionAuthGuard(
+/**
+ * Request guard for a network-exposed host. Refuses an unauthenticated app on
+ * every call, independent of `NODE_ENV`: an unset environment is how Lambda
+ * serves, and a development flag must not put the default resolver on the
+ * network. Loopback exemption belongs to the host that can see the bind
+ * (`serve` skips this guard). `allowUnauthenticated` is the explicit override.
+ *
+ * The pass/fail result is not cached. `FlowState.register` can add a flow
+ * after the first request, and a cached pass would serve it. The diagnostic
+ * is logged once per guard; the response body stays generic.
+ */
+export function createNetworkAuthGuard(
   allowUnauthenticated = false,
-): (app: FlowState | FlowApiRouter) => Promise<Response | undefined> {
+): (router: FlowApiRouter) => Promise<Response | undefined> {
   let logged = false;
-  return async (app: FlowState | FlowApiRouter): Promise<Response | undefined> => {
-    if (process.env.NODE_ENV !== "production" || allowUnauthenticated) return undefined;
-    const message = await networkAuthenticationError(app, "serve in production");
+  return async (router: FlowApiRouter): Promise<Response | undefined> => {
+    if (allowUnauthenticated) return undefined;
+    const message = await networkAuthenticationError(router, "serve");
     if (message === undefined) return undefined;
     if (!logged) {
       logged = true;
       console.error(message);
     }
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json(GENERIC_REFUSAL, { status: 500 });
   };
 }

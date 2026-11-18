@@ -18,10 +18,11 @@
  * false-negative (out of scope — closing it would need an explicit auth marker,
  * which is new auth machinery this framework intentionally does not add here).
  *
- * Enforced by `serve()` before listening; CLI commands pass the override through.
+ * Enforced by `serve()` before it listens, and again on each request so a flow
+ * registered later is refused. CLI commands pass the override through.
  */
 import { isIP } from "node:net";
-import { networkAuthenticationError, type FlowApiRouter } from "@flow-state-dev/engine/host";
+import { isFlowState, networkAuthenticationError, type FlowApiRouter } from "@flow-state-dev/engine/host";
 import type { FlowState } from "@flow-state-dev/engine";
 
 /**
@@ -82,6 +83,7 @@ export async function assertNetworkBindIsAuthenticated(
 ): Promise<void> {
   if (opts.allowUnauthenticated === true || isLoopbackHost(opts.host)) return;
 
-  const message = await networkAuthenticationError(app, `bind ${opts.host}`);
+  const router: FlowApiRouter = isFlowState(app) ? await app.getRouter() : app;
+  const message = await networkAuthenticationError(router, `bind ${opts.host}`);
   if (message !== undefined) throw new Error(message);
 }

@@ -64,7 +64,7 @@ aptPkgs = ["build-essential", "python3"]
 
 `fsdev serve` refuses to bind a network address when a flow has no `authentication.resolvePrincipal`, because the server would trust any `userId` a caller sends. Configure authentication on your flows. To deploy without it, use `fsdev serve --allow-unauthenticated`.
 
-To own the entry file instead, call `serve(flowState)` from `@flow-state-dev/node`. It does not run the authentication check.
+To own the entry file instead, call `serve(flowState)` from `@flow-state-dev/node`. It runs the same check: a network bind refuses a flow with no resolver. Pass `host: "127.0.0.1"` for a local process, or `allowUnauthenticated: true` to override.
 
 ## 3. Set variables
 

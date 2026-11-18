@@ -19,31 +19,20 @@ function makeApp(auth: "missing" | "default" | "custom" = "missing") {
   apps.push(app);
   return app;
 }
-describe("production network authentication", () => {
+describe("vercel network authentication", () => {
   async function requestFor(app: ReturnType<typeof makeApp>, allowUnauthenticated = false, raw = false) {
     const router = await app.getRouter();
     const handlers = raw ? createVercelBareHandler(router, { allowUnauthenticated }) : createVercelHandler(async () => router, { allowUnauthenticated });
     return () => handlers.GET(new Request("http://localhost/api/flows"), { params: Promise.resolve({ path: [] }) });
   }
-  it.each([false, true])("refuses missing and explicit default resolvers, logging once (raw/bare=%s)", async raw => {
-    vi.stubEnv("NODE_ENV", "production");
+  it.each([false, true])("refuses with a generic body (bare=%s)", async raw => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    for (const auth of ["missing", "default"] as const) {
-      log.mockClear();
-      const request = await requestFor(makeApp(auth), false, raw);
-      const responses = await Promise.all([request(), request()]);
-      for (const response of responses) {
-        expect(response.status).toBe(500);
-        expect((await response.json()).error).toContain('"network-test"');
-      }
-      const diagnostics = log.mock.calls.filter(([message]) =>
-        typeof message === "string" && message.startsWith("Refusing to serve"));
-      expect(diagnostics).toHaveLength(1);
-      expect(diagnostics[0]?.[0]).toContain("no authentication configured");
-    }
+    const response = await (await requestFor(makeApp(), false, raw))();
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "Internal server error" });
+    expect(log.mock.calls.some(([message]) => typeof message === "string" && message.includes('"network-test"'))).toBe(true);
   });
-  it("forwards the production opt-out through the Next composition", async () => {
-    vi.stubEnv("NODE_ENV", "production");
+  it("forwards the opt-out through the Next composition", async () => {
     const app = makeApp();
     const request = () => new Request("http://localhost/api/flows");
     const ctx = { params: Promise.resolve({ path: [] }) };
@@ -51,17 +40,7 @@ describe("production network authentication", () => {
     expect((await createVercelNextHandler(app).GET(request(), ctx)).status).toBe(500);
     expect((await createVercelNextHandler(app, { allowUnauthenticated: true }).GET(request(), ctx)).status).toBe(200);
   });
-  it.each(["development", "production"])("serves with explicit opt-out in %s", async env => {
-    vi.stubEnv("NODE_ENV", env);
-    const request = await requestFor(makeApp(), true);
-    expect((await request()).status).toBe(200);
-  });
-  it("serves in development without opt-out", async () => {
-    vi.stubEnv("NODE_ENV", "development");
-    expect((await (await requestFor(makeApp()))()).status).toBe(200);
-  });
-  it("serves authenticated flows in production", async () => {
-    vi.stubEnv("NODE_ENV", "production");
+  it("serves a flow with its own resolver", async () => {
     expect((await (await requestFor(makeApp("custom")))()).status).toBe(200);
   });
 });

@@ -7,7 +7,7 @@
  * SSE heartbeats are emitted by `@flow-state-dev/engine` for every live and
  * GET-attach stream — this adapter no longer injects them itself.
  */
-import { createProductionAuthGuard, declareEphemeralDisk } from "@flow-state-dev/engine/host";
+import { createNetworkAuthGuard, declareEphemeralDisk } from "@flow-state-dev/engine/host";
 import type {
   FlowApiRouter,
   VercelHandlerInput,
@@ -64,7 +64,7 @@ function createHandlerCore(
   options?: VercelHandlerOptions
 ) {
   const onAbort = options?.onAbort;
-  const guard = createProductionAuthGuard(options?.allowUnauthenticated);
+  const guard = createNetworkAuthGuard(options?.allowUnauthenticated);
 
   let cachedRouter: FlowApiRouter | Promise<FlowApiRouter> | undefined;
 

@@ -8,7 +8,7 @@
  * works on Next-on-Cloudflare and other non-Vercel Next deployments. On
  * Vercel, compose with `@flow-state-dev/vercel/next` instead.
  */
-import { createProductionAuthGuard, type FlowApiRouter } from "@flow-state-dev/engine/host";
+import { createNetworkAuthGuard, type FlowApiRouter } from "@flow-state-dev/engine/host";
 import type { FlowState } from "@flow-state-dev/engine";
 
 /** Next.js 15 route context — `params` is a promise. */
@@ -24,7 +24,7 @@ async function dispatch(
   req: Request,
   ctx: NextRouteHandlerContext,
   getRouter: () => Promise<FlowApiRouter>,
-  guard: ReturnType<typeof createProductionAuthGuard>
+  guard: ReturnType<typeof createNetworkAuthGuard>
 ): Promise<Response> {
   const router = await getRouter();
   const refused = await guard(router);
@@ -41,7 +41,7 @@ async function dispatch(
  * ```
  */
 export function createNextHandler(flowstate: FlowState, options: {
-  /** Explicitly permit default-resolver flows in production. */
+  /** Explicitly permit flows that trust a caller-supplied userId. */
   allowUnauthenticated?: boolean;
 } = {}): {
   GET: NextRouteHandler;
@@ -49,7 +49,7 @@ export function createNextHandler(flowstate: FlowState, options: {
   PATCH: NextRouteHandler;
   DELETE: NextRouteHandler;
 } {
-  const guard = createProductionAuthGuard(options.allowUnauthenticated);
+  const guard = createNetworkAuthGuard(options.allowUnauthenticated);
   const getRouter = () => flowstate.getRouter();
   return {
     GET: (req, ctx) => dispatch("GET", req, ctx, getRouter, guard),

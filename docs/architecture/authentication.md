@@ -33,13 +33,15 @@ caller-controlled, so it is not a source an organization may come from
 instead, and a body still carrying `orgId` is ignored with a once-per-host
 warning. It is there for early development and the framework's tests, not as
 a security boundary — an app still on it is unauthenticated, and the
-guarantee above does not apply to it. `@flow-state-dev/node` refuses to bind such an app to a
-network interface for exactly that reason. `serve()` enforces this before
-listening; loopback hosts remain exempt. Lambda, Vercel (including bare and
-Next composition handlers), and Next hosts answer 500 in `NODE_ENV=production`
-with the same diagnostic and log it once per handler instance. Host options
-accept `allowUnauthenticated: true` as an explicit override; fsdev passes its
-`--allow-unauthenticated` flag through to `serve()`.
+guarantee above does not apply to it. Every host refuses to serve such an app
+on the network, whatever `NODE_ENV` is, including when it is unset. `serve()`
+throws before listening on a non-loopback host and runs the same check on each
+later request, so a flow registered after startup is refused too. Loopback
+hosts stay exempt. Lambda, Vercel (including bare and Next composition
+handlers), and Next answer 500 with a generic body and log the flow kinds once
+per handler instance. Host options accept `allowUnauthenticated: true` as an
+explicit override; fsdev passes its `--allow-unauthenticated` flag through to
+`serve()`.
 
 These hosts share engine's detection: a flow counts as unauthenticated when the
 resolver the routes would pick for it (its own, else the host-level

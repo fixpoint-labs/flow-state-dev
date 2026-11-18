@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
-import { createFlowState, inMemoryStores, defaultBodyUserIdPrincipalResolver } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, defaultBodyUserIdPrincipalResolver, type StoreAdapter } from "@flow-state-dev/engine";
 import { EventEmitter } from "node:events";
 import { serve as listen } from "@hono/node-server";
 import { serve } from "../src/serve";
@@ -34,40 +34,52 @@ function makeApp(auth: "missing" | "default" | "custom" = "missing") {
   apps.push(app);
   return app;
 }
-describe("production network authentication", () => {
+describe("lambda network authentication", () => {
   async function requestFor(app: ReturnType<typeof makeApp>, allowUnauthenticated = false, raw = false) {
     createLambdaHandler(raw ? await app.getRouter() : app, { allowUnauthenticated });
     return () => captured.app!.request("http://localhost/api/flows");
   }
-  it.each([false, true])("refuses missing and explicit default resolvers, logging once (raw/bare=%s)", async raw => {
-    vi.stubEnv("NODE_ENV", "production");
+  it.each([false, true])("refuses with a generic body when NODE_ENV is unset (raw=%s)", async raw => {
+    const previous = process.env.NODE_ENV;
+    delete process.env.NODE_ENV;
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    for (const auth of ["missing", "default"] as const) {
-      log.mockClear();
-      const request = await requestFor(makeApp(auth), false, raw);
-      const responses = await Promise.all([request(), request()]);
-      for (const response of responses) {
-        expect(response.status).toBe(500);
-        expect((await response.json()).error).toContain('"network-test"');
-      }
-      const diagnostics = log.mock.calls.filter(([message]) =>
-        typeof message === "string" && message.startsWith("Refusing to serve"));
-      expect(diagnostics).toHaveLength(1);
-      expect(diagnostics[0]?.[0]).toContain("no authentication configured");
+    try {
+      const request = await requestFor(makeApp(), false, raw);
+      const response = await request();
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: "Internal server error" });
+      expect(log.mock.calls.some(([message]) =>
+        typeof message === "string" && message.includes('"network-test"'))).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previous;
     }
   });
-  it.each(["development", "production"])("serves with explicit opt-out in %s", async env => {
-    vi.stubEnv("NODE_ENV", env);
-    const request = await requestFor(makeApp(), true);
-    expect((await request()).status).toBe(200);
-  });
-  it("serves in development without opt-out", async () => {
-    vi.stubEnv("NODE_ENV", "development");
-    expect((await (await requestFor(makeApp()))()).status).toBe(200);
-  });
-  it("serves authenticated flows in production", async () => {
-    vi.stubEnv("NODE_ENV", "production");
+  it("serves with an explicit opt-out or a real resolver", async () => {
+    expect((await (await requestFor(makeApp(), true))()).status).toBe(200);
     expect((await (await requestFor(makeApp("custom")))()).status).toBe(200);
+  });
+  it("reports store init failure as the app's health JSON", async () => {
+    const inner = inMemoryStores();
+    const failing: StoreAdapter = {
+      capabilities: inner.capabilities,
+      resolve: async () => { throw new Error("store init failed"); },
+      dispose: () => {},
+    };
+    const app = createFlowState({
+      flows: [defineFlow({ kind: "network-test", actions: {} })()],
+      stores: { default: { primary: failing } },
+    });
+    apps.push(app);
+    createLambdaHandler(app);
+    await app.getRouter().catch(() => {});
+    const response = await captured.app!.request("http://localhost/healthz");
+    expect(response.status).toBe(500);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    const body = await response.json() as { status?: string; message?: string; error?: string };
+    expect(body.status).toBe("error");
+    expect(body.message).toContain("store init failed");
+    expect(body.error).toBeUndefined();
   });
 });
 
@@ -85,6 +97,19 @@ describe("serve authentication", () => {
     const router = await makeApp().getRouter();
     await expect(serve(router, { host: "0.0.0.0", port: 0 })).rejects.toThrow('"network-test"');
   });
+  it("refuses a flow registered after the network bind", async () => {
+    const app = makeApp("custom");
+    const handle = await serve(app, { host: "0.0.0.0", port: 0, handleSignals: false });
+    try {
+      app.register(defineFlow({ kind: "late", actions: {} })());
+      const options = vi.mocked(listen).mock.calls.at(-1)![0];
+      const response = await options.fetch(new Request("http://localhost/api/flows"), {} as Parameters<typeof options.fetch>[1]);
+      expect((response as Response).status).toBe(500);
+      expect(await (response as Response).json()).toEqual({ error: "Internal server error" });
+    } finally {
+      await handle.close();
+    }
+  });
   it("serves an authenticated app on a network bind", async () => {
     const handle = await serve(makeApp("custom"), { host: "0.0.0.0", port: 0, handleSignals: false });
     await handle.close();
@@ -96,7 +121,12 @@ describe("serve authentication", () => {
     const handle = await serve(makeApp(), { ...options, port: 0, handleSignals: false });
     try {
       const options = vi.mocked(listen).mock.calls.at(-1)![0];
-      const response = await options.fetch(new Request("http://localhost/api/flows"), {} as Parameters<typeof options.fetch>[1]);
+      // A loopback bind refuses a request whose Host header is not loopback.
+      // The Fetch API hides that header unless it is set explicitly.
+      const response = await options.fetch(
+        new Request("http://127.0.0.1/api/flows", { headers: { host: "127.0.0.1" } }),
+        {} as Parameters<typeof options.fetch>[1],
+      );
       expect((response as Response).status).toBe(200);
     }
     finally { await handle.close(); }
