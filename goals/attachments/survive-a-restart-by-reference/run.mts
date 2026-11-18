@@ -31,6 +31,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import { parseBlobRef } from "@flow-state-dev/core/attachments";
+import { makePdf } from "../../../packages/engine/test/blobs/pdf-fixture.ts";
 import {
   REPO_ROOT,
   assertPatched,
@@ -121,62 +122,8 @@ function freshPng(): Uint8Array {
   return new Uint8Array(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), body]));
 }
 
-/**
- * A readable one-page PDF of exactly `PDF_BYTES`. The spare bytes are a
- * stream of random data, and the cross-reference table accounts for every
- * object, so a parser that opens the file accepts it. The stream is new
- * random bytes on every call.
- */
-function freshPdf(): Uint8Array {
-  const ascii = (text: string): Buffer => Buffer.from(text, "ascii");
-  const object = (id: number, body: string): Buffer => ascii(`${id} 0 obj\n${body}\nendobj\n`);
-  const stream = (id: number, data: Buffer): Buffer =>
-    Buffer.concat([ascii(`${id} 0 obj\n<< /Length ${data.length} >>\nstream\n`), data, ascii("\nendstream\nendobj\n")]);
-
-  const text = ascii("BT /F1 12 Tf 14 TL 72 720 Td (goal) Tj T* ET");
-  const header = ascii("%PDF-1.4\n");
-  const objects = [
-    object(1, "<< /Type /Catalog /Pages 2 0 R >>"),
-    object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
-    object(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"),
-    object(4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"),
-    stream(5, text),
-  ];
-  const before = Buffer.concat([header, ...objects]);
-
-  // Object 6 is the pad. The digits of its /Length are part of its size, so
-  // the byte budget and that digit count have to agree. At 20 MB the trailer
-  // offset is 8 digits, and every xref entry is 20 bytes.
-  const entries = objects.length + 2;
-  const trailer = `trailer\n<< /Size ${entries} /Root 1 0 R >>\nstartxref\n`;
-  const tailBytes = `xref\n0 ${entries}\n`.length + entries * 20 + trailer.length + 8 + "\n%%EOF\n".length;
-  const padFrame = "6 0 obj\n<< /Length ".length + " >>\nstream\n".length + "\nendstream\nendobj\n".length;
-  const room = PDF_BYTES - before.length - padFrame - tailBytes;
-  let padBytes = room - String(room).length;
-  for (let attempt = 0; attempt < 4 && padBytes + String(padBytes).length !== room; attempt += 1) {
-    padBytes = room - String(padBytes).length;
-  }
-  if (padBytes + String(padBytes).length !== room) throw new Error(`the 20 MB PDF's pad length did not settle (${padBytes})`);
-
-  const pad = stream(6, randomBytes(padBytes));
-  const body = Buffer.concat([before, pad]);
-  const xrefAt = body.length;
-  if (String(xrefAt).length !== 8) throw new Error(`the 20 MB PDF's xref offset is ${xrefAt}, expected 8 digits`);
-
-  const offsets: number[] = [];
-  let cursor = header.length;
-  for (const part of [...objects, pad]) {
-    offsets.push(cursor);
-    cursor += part.length;
-  }
-  let xref = `xref\n0 ${entries}\n0000000000 65535 f \n`;
-  for (const offset of offsets) xref += `${String(offset).padStart(10, "0")} 00000 n \n`;
-  xref += `${trailer}${xrefAt}\n%%EOF\n`;
-
-  const file = Buffer.concat([body, ascii(xref)]);
-  if (file.length !== PDF_BYTES) throw new Error(`the PDF is ${file.length} bytes, expected ${PDF_BYTES}`);
-  return new Uint8Array(file);
-}
+/** A readable one-page PDF of exactly `PDF_BYTES`, new random bytes on every call. */
+const freshPdf = (): Uint8Array => makePdf(["goal"], { padTo: PDF_BYTES });
 
 /** The repo-side "not done if" lines: no store adapter changed, no dependency added. */
 function repoFailures(): string[] {
