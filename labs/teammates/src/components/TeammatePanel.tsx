@@ -6,7 +6,7 @@ import { useTasks, type AppCalls } from "../app";
 import type { Look } from "../lib/looks";
 import { displayName, roleOf, useWorkforce } from "../lib/roster";
 import { useNow, useStale } from "../lib/use-watch";
-import { askOf, harnessOf, modelOf, runTimesOf, taskStatus, titleOf, viewOf, workerOf } from "../lib/task";
+import { holdOf, harnessOf, modelOf, runTimesOf, taskStatus, titleOf, viewOf, workerOf } from "../lib/task";
 import { clearMark, useCleared } from "../lib/cleared";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -66,7 +66,7 @@ function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<stri
   const running = of("running");
   const failed = of("failed");
   return {
-    running: [...running.filter((t) => askOf(t) !== undefined), ...running.filter((t) => askOf(t) === undefined)],
+    running: [...running.filter((t) => holdOf(t) !== undefined), ...running.filter((t) => holdOf(t) === undefined)],
     failed: failed.filter((t) => !cleared.has(clearMark(t))),
     clearedFailed: failed.filter((t) => cleared.has(clearMark(t))).length,
     ended: [
@@ -156,14 +156,14 @@ export function TeammatePanel({
             stale && STALE_CLASS,
           )}
         >
-          <span aria-hidden data-task-dot className={cn("mt-[5px] size-2 shrink-0 rounded-full", askOf(t) ? "bg-warning" : STATUS_DOT[status])} />
+          <span aria-hidden data-task-dot className={cn("mt-[5px] size-2 shrink-0 rounded-full", holdOf(t) ? "bg-warning" : STATUS_DOT[status])} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="line-clamp-2 text-[13px] leading-snug" title={line}>
               {coding ? <TerminalIcon aria-hidden className="mr-1 mb-0.5 inline size-3 text-muted-foreground" /> : null}
               {line}
             </span>
             <span className={cn("block truncate text-xs", state.tone, stale && STALE_CLASS)} data-status>
-              {askOf(t) ? state.word : <StatusWords task={t} sessionId={sessionId} now={now} stale={stale} />}
+              {holdOf(t) ? state.word : <StatusWords task={t} sessionId={sessionId} now={now} stale={stale} />}
               {reason ? ` · ${reason}` : ""}
               {runsOn(runs) ? ` · ${runsOn(runs)}` : ""}
             </span>

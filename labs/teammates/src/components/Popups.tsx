@@ -16,7 +16,7 @@ import {
 } from "../app";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
-import { waitsFor, askOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, titleOf, workerOf } from "../lib/task";
+import { waitsFor, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, titleOf, workerOf } from "../lib/task";
 import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -279,7 +279,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
         </section>
       ) : null}
       {/* The live line ends the feed while it runs: until its first step, the line above says it is starting; a task waiting on you isn't working. */}
-      {task && status === "running" && askOf(task) === undefined && !waitsOnPullRequest && task.run?.sessionId !== undefined && steps.length > 0 ? (
+      {task && status === "running" && holdOf(task) === undefined && !waitsOnPullRequest && task.run?.sessionId !== undefined && steps.length > 0 ? (
         <StreamingIndicator message={workingStatus({ ...work.working, note: task.statusNote })} since={attemptStartedAt(task)} />
       ) : null}
     </SessionOverlay>
@@ -381,7 +381,7 @@ function TaskReview({ task, review, answer, onAnswered }: {
   /** The answer went through. */
   onAnswered: (answer: ReviewAnswer) => void;
 }) {
-  const hold = askOf(task);
+  const hold = holdOf(task);
   return (
     <ReviewHold
       review={review}
@@ -401,7 +401,7 @@ function QuestionPopup({ task, answer }: { task: CodingBoardTask; answer: (task:
   const [words, setWords] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hold = askOf(task);
+  const hold = holdOf(task);
   const unanswerable = hold?.unanswerable ?? null;
   const send = async () => {
     const text = words.trim();

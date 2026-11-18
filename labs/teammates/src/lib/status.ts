@@ -13,7 +13,7 @@ import { sessionTurnsViewRef, workerSessionsViewRef, type ListedTurn, type Liste
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useAppClient, useTasks, type ConversationEntry, type AppCalls } from "../app";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
-import { askOf, taskStatus, titleOf, workerOf } from "./task";
+import { holdOf, taskStatus, titleOf, workerOf } from "./task";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom, useTalk } from "./talk";
 import { age, useNow, useWatch } from "./use-watch";
@@ -61,8 +61,8 @@ export function needsOf({ entries, tasks }: Pick<StatusInputs, "entries" | "task
   return [
     ...entries.flatMap((e): Need[] => (e.kind === "approval" && openApproval(e) ? [{ key: `approval:${e.suspensionId}`, text: e.text, kind: "approval" }] : [])),
     ...tasks.flatMap((t): Need[] => {
-      const ask = askOf(t);
-      return taskStatus(t) === "running" && ask !== undefined ? [{ key: `waiting:${t.id}:${ask.id}`, text: ask.ask.prompt, kind: "task", task: t }] : [];
+      const hold = holdOf(t);
+      return taskStatus(t) === "running" && hold !== undefined ? [{ key: `waiting:${t.id}:${hold.id}`, text: hold.ask.prompt, kind: "task", task: t }] : [];
     }),
   ];
 }

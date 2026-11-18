@@ -60,7 +60,7 @@ function playRun({ asks = false, review = true, lands = false } = {}) {
   const set = (fields: Partial<CodingBoardTask>) => (server.board[BOARD]![0] = { ...current(), ...fields });
   const complete = (fields: Partial<CodingBoardTask> = {}) => set({ status: "completed", asks: [], completedAt: Date.now(), detail: { answer: "Fixed the typo in README.md, line 1.", answerCut: false }, ...fields });
   /** The run commits once more and stops for review, with `landFailed` when a landing just failed. */
-  const askReview = (landFailed: { land: string; message: string } | null = null) => {
+  const stopForReview = (landFailed: { land: string; message: string } | null = null) => {
     commits += landFailed === null ? 1 : 0;
     const id = `stop-${++stops}`;
     const data = { branch: BRANCH, commits, subjects: ["docs: fix the README typo"], judge: { verdict: "done", confidence: 0.91, reason: "The typo on line 1 is fixed." }, checks: null, lands: lands ? ["pull-request", "merge"] : [], landFailed };
@@ -68,7 +68,7 @@ function playRun({ asks = false, review = true, lands = false } = {}) {
     set({ asks: [hold("review", `${commits} commit${commits === 1 ? "" : "s"} on ${BRANCH}`, { id })] });
   };
   /** The run goes on past its question, or past nothing: it edits, then waits for review or completes, once the popup follows its session. */
-  const carryOn = (): void => void setTimeout(() => (!server.streaming("run-1") ? carryOn() : review ? askReview() : complete()), 50);
+  const carryOn = (): void => void setTimeout(() => (!server.streaming("run-1") ? carryOn() : review ? stopForReview() : complete()), 50);
   const server = stubServer({
     board: { [BOARD]: [codingTask({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo in the README's first line", status: "in_progress", run: { sessionId: "run-1", requestId: "q1", attempt: 1 }, ...(asks ? { asks: [hold("question", QUESTION)] } : {}) })] },
     items: { "run-1": [said("s1", 'The typo is on line 1: "Relay keps".')] },
@@ -85,9 +85,9 @@ function playRun({ asks = false, review = true, lands = false } = {}) {
         set({ asks: [] });
         if (verdict.verdict === "revise") {
           server.push("run-1", said(`r${stops}`, `Revising: ${verdict.words}`));
-          setTimeout(() => askReview(), 50);
+          setTimeout(() => stopForReview(), 50);
         } else if (verdict.land === "merge") {
-          setTimeout(() => askReview({ land: "merge", message: "Merging conflicts in README.md, so it was stopped." }), 50);
+          setTimeout(() => stopForReview({ land: "merge", message: "Merging conflicts in README.md, so it was stopped." }), 50);
         } else if (verdict.land === "pull-request") {
           complete({ landed: { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: BRANCH, base: "main" } });
         } else complete();
