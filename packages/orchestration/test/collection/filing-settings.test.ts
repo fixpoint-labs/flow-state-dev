@@ -437,7 +437,13 @@ describe.each(BACKINGS)("a stored status the board does not know (%s)", (_name, 
 
   it("is not claimed, and a release is declined unknown-status, leaving the row as stored", async () => {
     const { seed } = await makeBacking();
-    const hold = { id: "q1", actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which region?" } };
+    const hold = {
+      id: "q1",
+      actor: "user",
+      openedAt: 1,
+      source: { kind: "row", closedBy: [{ by: "answer" }] },
+      ask: { kind: "question", prompt: "Which region?" },
+    };
     const tasks = await seed({ ...stored, id: "t", goal: "t", status: "blocked", holds: [hold] } as unknown as Task);
     expect(tasks.get("t")?.status).toBe("blocked");
     expect(tasks.get("t")?.holds?.[0]?.source.kind).toBe("row");
