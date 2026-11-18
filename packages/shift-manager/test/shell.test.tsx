@@ -175,8 +175,8 @@ describe("the refusal (V2, BR-3)", () => {
 
 describe("a Lab Shift Manager can't reach", () => {
   it("shows what the Lab answered with Retry, not the refusal, and Retry opens the Lab once it answers", async () => {
-    // Happy DOM's fetch is Node's HTTP client. This read stays in process.
-    // afterEach has drained earlier tests, so the spy sees only this one.
+    // The spy covers this whole test on purpose: any socket here is the failure.
+    // afterEach has drained earlier tests, so it sees only this one.
     const sockets = vi.spyOn(net.Socket.prototype, "connect");
     let down = true;
     await openAppInProcess("/inbox", (inProcess) => {
