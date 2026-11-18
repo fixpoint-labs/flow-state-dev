@@ -45,6 +45,7 @@ import { LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "../../../packages/shif
 import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { DRAIN_ENTRY, EM_FLOW, FILE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["em-session"] as const;
@@ -65,7 +66,6 @@ const GOAL = "Add a greeting module to the repository.";
 const LIST_TASKS = "listTasks_tasks";
 const SETTLE_BUDGET_MS = 60_000;
 const SETTLED = new Set(["completed", "errored", "cancelled"]);
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown): string => JSON.stringify(value)?.slice(0, 400) ?? "undefined";
 
 /** What the harness "did": write a file and commit it, so the run completes. */

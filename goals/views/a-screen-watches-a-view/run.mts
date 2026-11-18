@@ -39,6 +39,7 @@ import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modul
 import { bootBoardHost } from "../../../packages/workforce/test/conversation-board-harness.ts";
 import { createWorkforceClient, type RosterEntry } from "../../../packages/workforce/src/workers/client.ts";
 import { rosterView } from "../../../packages/workforce/src/workers/roster-view-ref.ts";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("views-screen-watches");
@@ -125,15 +126,13 @@ function clientOf(base: string, userId: string): { client: Client; views: Call[]
   return { client, views };
 }
 
-const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
 async function firstAt<T>(seen: Array<{ at: number; value: T }>, match: (value: T) => boolean, from: number, withinMs: number): Promise<number | undefined> {
   const deadline = Date.now() + withinMs;
   for (;;) {
     const hit = seen.find((entry) => entry.at >= from && match(entry.value));
     if (hit !== undefined) return hit.at;
     if (Date.now() > deadline) return undefined;
-    await delay(10);
+    await sleep(10);
   }
 }
 
@@ -142,7 +141,7 @@ async function quiet(lists: Array<{ at: number }[]>, quietMs = 800): Promise<voi
     const last = Math.max(0, ...lists.map((list) => list[list.length - 1]?.at ?? 0));
     const wait = last + quietMs - Date.now();
     if (wait <= 0) return;
-    await delay(wait);
+    await sleep(wait);
   }
 }
 
@@ -212,7 +211,7 @@ await runGoal(async (failures, tell) => {
         watchView<Array<{ id: string }>>(watcher.client, taskListViewRef("coordinator", "tasks"), {}, { onValue: (value) => board.push({ at: Date.now(), value }) }, { sessionId: conversation, pollIntervalMs: null })
       );
       stops.push(watchView<{ count: number }>(watcher.client, viewRef("probe", "probe"), {}, { onValue: (value) => probe.push({ at: Date.now(), value }) }, { pollIntervalMs: null }));
-      await delay(1_500);
+      await sleep(1_500);
       await quiet([watcher.views]);
       if (roster.length === 0 || board.length === 0 || probe.length === 0) failures.push("b:within-1s: a watch never answered at start");
 
@@ -250,7 +249,7 @@ await runGoal(async (failures, tell) => {
       await quiet([watcher.views]);
       const beforeBob = watcher.views.length;
       await createWorkforceClient(clientOf(base, "bob").client).hire({ id: "bobs", flow: "tasker" });
-      await delay(BOUND_MS);
+      await sleep(BOUND_MS);
       const bobWoke = watcher.views.length - beforeBob;
       if (bobWoke > 0) failures.push(`b:within-1s: a second user's hire woke ${bobWoke} of alice's view calls`);
       else evidence.push("b: a second user's hire reached none of alice's watches");
@@ -258,7 +257,7 @@ await runGoal(async (failures, tell) => {
       // Idle.
       await quiet([watcher.views]);
       const idleFrom = watcher.views.length;
-      await delay(IDLE_MS);
+      await sleep(IDLE_MS);
       const idle = watcher.views.length - idleFrom;
       tell.over("b:idle-0-reads · view calls over 10 s idle", [idle]);
       if (idle > 0) failures.push(`b:idle-0-reads: ${idle} view calls over ${IDLE_MS / 1000} s idle`);

@@ -55,6 +55,7 @@ import { createAppCalls, type AppWorker } from "../../../labs/teammates/src/app/
 import { AppProvider as CcAppProvider, usePins as useCcPins } from "../../../labs/claude-code-style/src/app/index.ts";
 import { defineFlow } from "@flow-state-dev/core";
 import { appPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("live-read-one-loop");
@@ -284,8 +285,6 @@ function mount(on: Host, rosterSession: string): () => void {
   };
 }
 
-const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
 /** Wait until no watcher has read for `quietMs` (15 s at most). */
 async function quiet(quietMs = 400): Promise<void> {
   const giveUpAt = Date.now() + 15_000;
@@ -293,7 +292,7 @@ async function quiet(quietMs = 400): Promise<void> {
     const last = Math.max(0, ...WATCHERS.map((w) => reads.get(w)!.at(-1) ?? 0));
     const wait = Math.min(last + quietMs, giveUpAt) - Date.now();
     if (wait <= 0) return;
-    await delay(wait);
+    await sleep(wait);
   }
 }
 
@@ -303,7 +302,7 @@ async function waitFor(check: () => boolean, withinMs: number): Promise<boolean>
   const deadline = Date.now() + withinMs;
   while (!check()) {
     if (Date.now() > deadline) return false;
-    await delay(10);
+    await sleep(10);
   }
   return true;
 }
@@ -342,11 +341,11 @@ try {
     for (let i = 0; i < BURST; i++) await write(i);
     const written = Date.now();
     // Give the last notice time to reach every socket before the reads land.
-    await delay(200);
+    await sleep(200);
     release();
     held = undefined;
     // The held reads land now, and each queued one starts after: quiet is measured from here.
-    await delay(400);
+    await sleep(400);
     await quiet();
     const done = Date.now();
     return { what, from, written, done };
@@ -398,7 +397,7 @@ try {
       const last = Math.max(writtenAt, ...who.map((w) => notices.get(w)!.at(-1) ?? 0));
       const wait = Math.min(last + QUIET_MS, capAt) - Date.now();
       if (wait <= 0) break;
-      await delay(wait);
+      await sleep(wait);
     }
     for (const w of who) failing.delete(w);
     const closedAt = Date.now();

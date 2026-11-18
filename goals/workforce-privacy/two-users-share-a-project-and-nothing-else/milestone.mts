@@ -28,6 +28,7 @@ import {
   type SessionSummary,
 } from "./people.mts";
 import { messageOf, type RunRecord } from "./record.mts";
+import { sleep } from "../../lib/time.mts";
 
 /** The worker collections, by the key pattern a session's manifest publishes. */
 const WORKERS = "workforce/workers/*";
@@ -38,7 +39,6 @@ const FREE_TEXT_FLOWS = ["agent", "coordinator"];
 const hex = (n = 2) => randomBytes(n).toString("hex");
 const WORDS = ["amber", "basalt", "cobalt", "delta", "ember", "fjord", "garnet", "harbor", "indigo", "juniper", "kestrel", "lagoon", "marble", "nimbus", "orchid", "pewter", "quill", "russet", "saffron", "tundra"];
 const word = () => WORDS[randomInt(WORDS.length)]!;
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** The control the milestone runs under, or none. */
 export type MilestoneControl = "org-scoped-workers" | null;

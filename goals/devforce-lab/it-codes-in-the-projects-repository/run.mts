@@ -48,6 +48,7 @@ import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { DRAIN_ENTRY, FILE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { BASE_REF, commitAll, createBareRemote, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["fixed-source", "no-sync-back"] as const;
@@ -82,7 +83,6 @@ const ISSUE = {
 } as const;
 const SETTLE_BUDGET_MS = 60_000;
 const SETTLED = new Set(["completed", "errored", "failed", "cancelled"]);
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** What one run was handed: where it worked, and every file there (path → contents) when it started. */
 interface SeenRun {

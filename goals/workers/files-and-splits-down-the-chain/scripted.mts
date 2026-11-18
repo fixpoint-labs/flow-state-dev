@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ORG, PEOPLE } from "./lab/people.mts";
 import { requests, sessions } from "../../coordinators/files-tasks-down-the-owners-chain/store.mts";
+import { sleep } from "../../lib/time.mts";
 
 /** The wait after things go quiet, before the run reports and the store is read again. */
 export const GRACE_MS = 5_000;
@@ -22,7 +23,6 @@ const ROSTER = "workforce-roster";
 
 const RUNNING = new Set(["pending", "queued", "in_progress", "running"]);
 const TERMINAL = new Set(["completed", "failed", "incomplete", "aborted", "interrupted"]);
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const WORDS = ["heron", "copper", "lantern", "marble", "saffron", "willow", "ember", "glacier", "orchid", "tinsel"];
 /** A word nobody wrote down before the run. */
 export const word = () => `${WORDS[randomBytes(1)[0]! % WORDS.length]}${randomBytes(3).toString("hex")}`;

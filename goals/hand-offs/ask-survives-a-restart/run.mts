@@ -28,11 +28,11 @@ import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from
 import { buildShiftManagerPages, startShiftManager, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { loadShipped, type Person } from "../../coordinators/files-tasks-down-the-owners-chain/devteam.mts";
 import { items, requests, taskRows, textOf, type StoredTask } from "../../coordinators/files-tasks-down-the-owners-chain/store.mts";
+import { sleep } from "../../lib/time.mts";
 
 const SCRATCH = goalTmpDir("ask-survives-a-restart");
 const say = (s: string) => console.error(`[ask ${new Date().toISOString().slice(11, 19)}] ${s}`);
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 400);
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const word = () => `${["heron", "copper", "lantern", "saffron", "willow", "glacier"][randomBytes(1)[0]! % 6]}${randomBytes(3).toString("hex")}`;
 
 // ---- controls -------------------------------------------------------------------

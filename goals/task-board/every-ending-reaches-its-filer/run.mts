@@ -82,6 +82,7 @@ import {
   workforceTree
 } from "../../lib/index.mts";
 import { KILL_AFTER_ENDING, PATCHES } from "./controls.mts";
+import { sleep } from "../../lib/time.mts";
 
 const USER = "u_every_ending";
 const ORG = "org_every_ending";
@@ -113,7 +114,6 @@ if (PHASE === "main" && PATCHES[CONTROL] !== undefined && process.env.GOAL_MODUL
 
 type Proof = { taskId?: string; attempt: number; sessionId: string; goal: string; at: number };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const lines = <T,>(file: string): T[] =>
   existsSync(file)
     ? readFileSync(file, "utf8")
