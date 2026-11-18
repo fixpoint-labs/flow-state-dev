@@ -86,7 +86,7 @@ export const PULL_REQUEST_HINT = "Merged? Say so here and I'll check.";
  * *PR open · #7*, each number a link to its pull request once its run
  * session's record is read, and the line that says how to wake the task.
  */
-export function PullRequestOpen({ task }: { task: Pick<CodingBoardTask, "pullRequests" | "run"> }) {
+function PullRequestOpen({ task }: { task: Pick<CodingBoardTask, "pullRequests" | "run"> }) {
   const numbers = task.pullRequests.flatMap((n) => (n === null ? [] : [n]));
   const links = usePullRequestLinks(task.run?.sessionId, numbers.join(","));
   return (
