@@ -89,6 +89,18 @@ describe("githubTrustedReviewersScreen", () => {
     await expect(tokenless.screen(from("jhoffner"), {} as never, {} as never)).rejects.toThrow(/no token/);
   });
 
+  it("stops the permission lookup when the request is cancelled", async () => {
+    const signals: unknown[] = [];
+    const screen = githubTrustedReviewersScreen({
+      reviewers: () => ["jhoffner"],
+      token: () => "t",
+      fetch: (async (url: string, init?: RequestInit) => (signals.push(init?.signal), fakeFetch(url, init))) as typeof fetch,
+    });
+    const stop = new AbortController();
+    await screen.screen(from("jhoffner"), { userId: "operator" } as never, { signal: stop.signal } as never);
+    expect(signals).toEqual([stop.signal]);
+  });
+
   it("asks for the token for the subscription it screens, so an app lends its token only to the subscriptions it chooses", async () => {
     // Routing runs as the service, not the subscriber: the subscription's own owner is what decides.
     const owners: string[] = [];

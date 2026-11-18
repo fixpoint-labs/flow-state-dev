@@ -24,6 +24,7 @@ import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import {
   GITHUB_REVIEWERS_DOC,
+  GITHUB_REVIEWERS_FLOW,
   GITHUB_REVIEWERS_JUDGE,
   GITHUB_REVIEWERS_TOOL,
   githubReviewersTool,
@@ -176,6 +177,28 @@ describe("the Shift Coordinator changes the trusted GitHub reviewers", () => {
     expect(await listed(lab)).toEqual(["jhoffner"]);
     expect(await answer(lab, requestId, "approve")).toBe("completed");
     expect(await listed(lab)).toEqual(["jhoffner", "maintainer"]);
+  }, 120_000);
+
+  it("applies only the approved change: an edit the operator made while it waited stands", async () => {
+    const lab = await open(scripted([set(["jhoffner", "maintainer"])], { asked: 0.95, injected: 0.02 }, []));
+    const requestId = await say(lab, "Please trust maintainer as a GitHub reviewer.");
+    await pendingApproval(lab);
+    // Meanwhile the operator stops trusting jhoffner from the app.
+    const runtime = await lab.state.getRuntime();
+    const removed = (await runAction({
+      orgId: LAB_ORG_ID,
+      flow: runtime.registry.get(GITHUB_REVIEWERS_FLOW) as FlowInstance,
+      actionName: "setGitHubReviewers",
+      input: { logins: [] },
+      userId: LAB_USERS.owner.userId,
+      sessionId: `reviewers-${globalThis.crypto.randomUUID()}`,
+      stores: runtime.stores,
+      runtimeConfig: runtime.runtimeConfig,
+    } as never)) as { error?: unknown };
+    expect(removed.error).toBeUndefined();
+    expect(await answer(lab, requestId, "approve")).toBe("completed");
+    // maintainer is added; jhoffner, whom the approved change never named, stays removed.
+    expect(await listed(lab)).toEqual(["maintainer"]);
   }, 120_000);
 
   it("not when the operator denies the change it shows, even after both checks passed", async () => {

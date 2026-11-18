@@ -67,7 +67,9 @@ export function githubTrustedReviewersScreen(options: GitHubTrustedReviewersOpti
       const token = await options.token(ctx, entry);
       if (token === undefined || token.length === 0) throw new Error("no token to ask GitHub who can write");
       const res = await (options.fetch ?? fetch)(`${api}/repos/${repository}/collaborators/${encodeURIComponent(event.sender.id)}/permission`, {
-        headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" }
+        headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
+        // A cancelled request stops the lookup too.
+        signal: ctx.signal
       });
       // GitHub answers 404 for a login that isn't a collaborator: no write access.
       if (res.status === 404) return `"${event.sender.id}" can't write to ${repository}`;

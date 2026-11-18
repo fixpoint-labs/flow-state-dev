@@ -55,6 +55,10 @@ export function pullRequestThread(pr: Pick<RecordedPullRequest, "host" | "owner"
 
 /** Build the follower: each newly recorded GitHub pull request subscribes the session to it. */
 export function followPullRequest(options: FollowPullRequestOptions): PullRequestFollower {
+  // A removed key fails loudly: dropped quietly, it would let every sender through (BP-030).
+  if (Object.hasOwn(options, "allow")) {
+    throw new Error("followPullRequest no longer takes `allow`; list a screen in `screens`, such as the custom screen githubTrustedReviewersScreen builds.");
+  }
   const screens = options.screens;
   const follower = async (ctx: BlockContext, pr: RecordedPullRequest, run?: FollowingRun): Promise<void> => {
     const thread = pullRequestThread(pr);

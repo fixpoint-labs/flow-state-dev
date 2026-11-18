@@ -705,8 +705,8 @@ function githubReviewersOf(ctx: BlockContext) {
 const githubLoginSchema = z.string().regex(/^@?[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/, "a GitHub login");
 const githubReviewersInputSchema = z.object({ logins: z.array(githubLoginSchema).max(100) }).strict();
 
-/** Logins as the document keeps them: no `@`, lowercase, each once. */
-const reviewerLogins = (logins: readonly string[]) => [...new Set(logins.map((login) => login.replace(/^@/, "").toLowerCase()))];
+/** Logins as the document keeps them, each once: read back through the parser the screen reads with, so the two can't disagree. */
+const reviewerLogins = (logins: readonly string[]) => [...new Set(githubLoginsListed(logins.map((login) => `- ${login}`).join("\n")))];
 
 /** Only the Lab's operator: the session's server-set user, never the input. */
 const isOperator = (ctx: BlockContext) => (ctx.session.identity as { userId?: string }).userId === LAB_USER_ID;
@@ -725,6 +725,8 @@ function githubReviewersFlow(document: DeclaredResourceEntry | undefined): FlowI
     outputSchema: z.object({ logins: z.array(z.string()) }),
     resources,
     execute: async (input: { logins: string[] }, ctx: BlockContext) => {
+      // The operator's own edit, from the app: the server-set user is the whole check. The Shift
+      // Coordinator never reaches this action; its tool has its own gates (githubReviewersTool).
       if (!isOperator(ctx)) throw new Error("Only this Lab's operator can change the trusted GitHub reviewers.");
       const logins = reviewerLogins(input.logins);
       await githubReviewersOf(ctx).write(logins);
@@ -876,8 +878,13 @@ export function githubReviewersTool(document: DeclaredResourceEntry | undefined)
     outputSchema: reviewersAnswerSchema,
     resources,
     execute: async (edit: z.infer<typeof judgedSchema>, ctx: BlockContext) => {
-      await githubReviewersOf(ctx).write(edit.logins);
-      return { logins: edit.logins, saved: true };
+      // The approved change, onto the list as it is now: an edit made while this one waited
+      // (a removal by the operator, say) stands. Only the logins approved are added or removed.
+      const reviewers = githubReviewersOf(ctx);
+      const current = await reviewers.read();
+      const logins = [...current.filter((login) => !edit.removed.includes(login)), ...edit.added.filter((login) => !current.includes(login))];
+      await reviewers.write(logins);
+      return { logins, saved: true };
     },
   });
   const approved = sequencer({ name: "github-reviewers-edit-approved", inputSchema: judgedSchema, outputSchema: reviewersAnswerSchema })
