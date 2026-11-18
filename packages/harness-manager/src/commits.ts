@@ -38,6 +38,15 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return (await run("git", args, { cwd, timeoutMs: GIT_READ_TIMEOUT_MS })).stdout;
 }
 
+/** The commit `cwd`'s checkout is on, or `null` when git can't read one there. */
+export async function headCommit(cwd: string): Promise<string | null> {
+  try {
+    return (await git(cwd, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The copies of the base that exist in `cwd`, by the rule {@link readRunCommits}
  * documents. Empty when there is no base, or none of its copies is there.

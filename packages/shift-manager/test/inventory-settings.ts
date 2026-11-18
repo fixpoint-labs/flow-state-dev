@@ -55,6 +55,7 @@ export const shiftManager: AppInventory = {
     ],
     "src/components/flow-state/reasoning.tsx": ["ReasoningProps", "ReasoningTriggerProps", "ReasoningContentProps"],
     "src/components/flow-state/review-hold.tsx": ["ReviewDetail", "ReviewAnswer"],
+    "src/components/flow-state/run-changes.tsx": ["RunChangesFile", "RunChangesPatch", "RunChangesProps"],
     "src/components/flow-state/run-checks.tsx": ["RunChecksProps"],
     "src/components/flow-state/shimmer.tsx": ["TextShimmerProps"],
     "src/components/flow-state/spend.tsx": ["SpendLineOptions"],

@@ -156,9 +156,9 @@ import {
 } from "./await-pull-requests";
 import { PULL_REQUEST_EVENT } from "./pull-request-wait";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
-import { readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
+import { headCommit, readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
 import { commandCheckResultSchema, commandChecksSummary, readVerdict, type CommandCheckResult } from "./command-check";
-import type { ReviewDetail } from "./review-detail";
+import type { ReviewDetail, ReviewPullRequest } from "./review-detail";
 import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
 import {
   MAX_APPROVAL_STEPS,
@@ -1147,6 +1147,17 @@ const managerStateSchema = z.object({
        * it was read.
        */
       diff: runDiffSchema.nullable().default(null),
+      // FIX-2782; BP-030.
+      /**
+       * This round's commits, read once by `decide` when the run will be
+       * reviewed and the branch had commits before the round. `null` when the
+       * round is the whole branch, when no review reads it, and on a decision
+       * kept before it was read.
+       */
+      round: z
+        .object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()), verified: z.boolean() })
+        .nullable()
+        .default(null),
       // FIX-2163.
       /**
        * How this decision's review ended: `accepted` or `deadline`
@@ -1203,6 +1214,15 @@ const managerStateSchema = z.object({
   remote: z.string().nullable().default(null),
   baseRef: z.string().nullable().default(null),
   baseCommit: z.string().nullable().default(null),
+  // FIX-2782; BP-030.
+  /**
+   * The commit the checkout was on when this attempt provisioned it: where
+   * this round's commits start. It is the base on a new branch, and later on
+   * one that already had commits, so a review can list this round's apart.
+   * `null` before the provision, for a run with no repository, and on a run
+   * recorded before it was kept.
+   */
+  roundStart: z.string().nullable().default(null),
   /** The run was first provisioned as kept files alone, read off its run record with them. */
   filesOnly: z.boolean().nullable().default(null),
   /**
@@ -1410,10 +1430,12 @@ function runRefused(ctx: { sequencer?: { state?: unknown } | undefined }, messag
   });
 }
 
-// FIX-2163.
+// FIX-2163; FIX-2782.
 /**
- * What a person reviewing a run's changes reads: the commits, or
- * that they couldn't be read, and the judge's verdict as information.
+ * What a person reviewing a run's changes reads: what was asked and the
+ * run's own summary, the commits (this round's first, when the branch had
+ * earlier ones), or that they couldn't be read, where the pull requests are,
+ * and the judge's verdict as information.
  */
 function reviewPrompt(
   changes: RunCommits | null,
@@ -1421,8 +1443,22 @@ function reviewPrompt(
   read: HarnessJudgeVerdict | null,
   diff: RunDiff | null,
   checks: CommandCheckResult[] | null = null,
+  about: {
+    goal: string | null;
+    answer: string | null;
+    round: { commits: number; subjects: string[] } | null;
+    pullRequests: ReviewPullRequest[];
+  } = { goal: null, answer: null, round: null, pullRequests: [] },
 ): string {
   const lines: string[] = [];
+  if (about.goal !== null) lines.push(`Asked: ${about.goal}`);
+  if (about.answer !== null) lines.push(`The run's summary: ${about.answer}`);
+  if (lines.length > 0) lines.push("");
+  if (about.round !== null) {
+    lines.push(`${about.round.commits} commit${about.round.commits === 1 ? "" : "s"} this round:`);
+    lines.push(...about.round.subjects.map((subject) => `- ${subject}`));
+    if (about.round.commits > about.round.subjects.length) lines.push(`- and ${about.round.commits - about.round.subjects.length} more`);
+  }
   if (changes === null || !changes.verified) {
     lines.push("The run's commits couldn't be read, so its changes wait for your review rather than settling unseen.");
   } else {
@@ -1433,6 +1469,7 @@ function reviewPrompt(
       lines.push(`${diff.fileCount} file${diff.fileCount === 1 ? "" : "s"} changed (+${diff.added} −${diff.removed}).`);
     }
   }
+  for (const pr of about.pullRequests) lines.push(`Pull request #${pr.number}: ${pr.url}`);
   lines.push("");
   if (checks !== null && checks.length > 0) lines.push(`${commandChecksSummary(checks)}.`);
   lines.push(
@@ -2906,7 +2943,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // The branch the run opened on decides the derivation, so this step
       // derives the place the open step did.
       const place = await provisionRunPlace(ctx);
-      await ctx.sequencer!.patchState({ place });
+      // Where this round's commits start (FIX-2782): read before the agent runs, so none of its commits are behind it.
+      await ctx.sequencer!.patchState({ place, roundStart: place.repo === undefined ? null : await headCommit(place.cwd) });
       // A checkout rebuilt or started over on another machine has no vendor
       // conversation to continue: that lives on the machine it ran on.
       if (place.origin === "held" || place.origin === "base") {
@@ -3102,7 +3140,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           reviewChanges && settle === "complete" && state.filesOnly !== true && commits.verified && commits.count > 0
             ? (read ?? (await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)))
             : null;
-        await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, diff, reviewed: null, landed: null, checks } });
+        // This round's commits, apart from the branch's earlier ones (FIX-2782): only when the round began past the base.
+        const round: RunCommits | null =
+          diff !== null && state.roundStart != null && state.roundStart !== state.baseCommit
+            ? await readRunCommits(state.workspacePath!, state.baseRef, state.roundStart)
+            : null;
+        await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, diff, round, reviewed: null, landed: null, checks } });
         return judgeInput;
       };
       // A run of kept files alone has no branch, so nothing on one to review: a verified none.
@@ -3917,6 +3960,17 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       }
       let onPullRequest = probed.open;
       let lands: LandHow[] = onPullRequest === null ? ways : ["pull-request"];
+      // **Where a person looks at the work** (FIX-2782): the task's recorded pull requests, as the settle
+      // reads them, and the one open from its branch; each once. Read once, as the ways are.
+      const readPullRequests = async (): Promise<ReviewPullRequest[]> => {
+        const recorded = await taskPullRequests(ctx, (await readRunRecord(ctx, state.topic!))?.requestIds ?? [ctx.request.identity.id]);
+        const all = [...recorded.flatMap((pr) => (pr.url === null ? [] : [{ number: pr.number, url: pr.url }])), ...(onPullRequest === null ? [] : [{ number: onPullRequest.number, url: onPullRequest.url }])];
+        return all.filter((pr, i) => all.findIndex((other) => other.url === pr.url) === i);
+      };
+      const pullRequests =
+        ctx.runOnce === undefined ? await readPullRequests() : await ctx.runOnce(`review:pull-requests:${state.steerSteps ?? 0}`, readPullRequests);
+      // This round's commits, read by `decide`; `null` when the round is the whole branch.
+      const thisRound = decision.round?.verified === true ? { commits: decision.round.count, subjects: decision.round.subjects } : null;
       // A landing the coding session was handed is tried again first, as the
       // person asked it the first time (FIX-2658).
       const pending = state.landing ?? null;
@@ -3946,7 +4000,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             prompt:
               (failed === null ? "" : `${landFailedLine(failed, lands.length > 1)}\n\n`) +
               (onPullRequest === null ? "" : `${onPullRequestLine(onPullRequest)}\n\n`) +
-              reviewPrompt(changes, decision.output.branch, read, decision.diff ?? null, decision.checks ?? null),
+              reviewPrompt(changes, decision.output.branch, read, decision.diff ?? null, decision.checks ?? null, {
+                goal: state.goal ?? null,
+                answer: decision.output.answer,
+                round: thisRound,
+                pullRequests,
+              }),
             resumeSchema: harnessReviewAnswerSchema,
             data: {
               branch: decision.output.branch,
@@ -3963,6 +4022,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               landFailed: failed,
               // Every try of the last landing, oldest first (FIX-2658).
               landAttempts: attempts,
+              // What a person decides on, beside the commits (FIX-2782).
+              goal: state.goal ?? null,
+              answer: decision.output.answer,
+              pullRequests,
+              round: thisRound,
               // The review card reads these fields through reviewDetail: the type keeps writer and reader in step.
             } satisfies ReviewDetail & Record<string, unknown>,
           });
