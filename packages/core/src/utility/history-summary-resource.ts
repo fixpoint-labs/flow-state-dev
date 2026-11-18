@@ -3,8 +3,9 @@
  * definition, apart from the capability and fold that write it
  * (`history-summary.ts`), so a browser screen can import the definition it
  * reads without the blocks. A leaf: it imports zod and the resource builder
- * only. Exported from `@flow-state-dev/core/types` for browser code, and from
- * `utility` beside `historySummary`.
+ * only. `historySummaryResource` is exported from `@flow-state-dev/core/types`
+ * alone, a browser-safe path; workforce's browser entry re-exports it for the
+ * screens on workforce.
  */
 import { z } from "zod";
 import { defineResource } from "../types/resource";

@@ -53,7 +53,6 @@ export type {
 
 export {
   historySummary,
-  historySummaryResource,
   historySummaryStateSchema
 } from "./history-summary";
 

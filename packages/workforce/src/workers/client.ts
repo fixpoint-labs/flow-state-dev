@@ -405,13 +405,13 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
     return leadSession === null ? undefined : matching.find((row) => row.id === leadSession);
   };
 
+  /** The turns this client sent, by session, newest last: a stop leaves the ones sent after it began. */
+  const sentTurns = new Map<string, string[]>();
+
   /**
    * The flow session `sessionId` runs on, as the server records it: the instance that owns it, or its
    * base flow for a session written before instance ownership.
    */
-  /** The turns this client sent, by session, newest last: a stop leaves the ones sent after it began. */
-  const sentTurns = new Map<string, string[]>();
-
   const flowOfSession = async (sessionId: string): Promise<string> => {
     const session = await sessions.get(sessionId);
     return session.flowId ?? session.flowKind;

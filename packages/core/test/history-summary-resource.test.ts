@@ -7,7 +7,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler } from "../src/blocks/handler";
-import { historySummary, historySummaryResource } from "../src/utility";
+import { historySummaryResource } from "../src/types";
+import { historySummary } from "../src/utility";
 
 const summarize = handler({
   name: "earlier-turns",

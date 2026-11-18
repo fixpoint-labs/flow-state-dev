@@ -35,7 +35,7 @@ import {
   type HistorySummaryState,
 } from "./history-summary-resource";
 
-export { historySummaryResource, historySummaryStateSchema, type HistorySummaryState } from "./history-summary-resource";
+export { historySummaryStateSchema, type HistorySummaryState } from "./history-summary-resource";
 
 /** What `summarize` is handed on each fold. */
 export type HistorySummaryInput = {
