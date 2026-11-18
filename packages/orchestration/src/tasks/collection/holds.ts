@@ -19,21 +19,19 @@
 import { generateId } from "../generate-id";
 import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
-import { MAX_QUESTION_PROMPT, withCurrentHoldMarker, type ExternalWait, type QuestionInit, type OwnHold, type SuspensionHold, type TaskHold } from "../schema/hold";
+import { MAX_QUESTION_PROMPT, type ExternalWait, type QuestionInit, type OwnHold, type SuspensionHold, type TaskHold } from "../schema/hold";
 import { MAX_STEERS, type TaskSteer } from "../schema/steer";
 import type { TaskWriteDeclineReason } from "./types";
 
 /** What the board's steer says when it closes a question at a deadline a host set. */
 export const NO_ANSWER_CAME = "No answer came before this question's deadline. Go on from your brief without it.";
 
-// FIX-2479 D1 (BP-030).
 /**
  * Whether `hold` is a task's own hold (a question, a confirm or an external
- * wait). Takes a hold its caller never parsed too (a replayed stream item, a
- * raw store read): its marker is read forward first ({@link withCurrentHoldMarker}).
+ * wait): `source.kind` is `"task"`.
  */
 export function isOwnHold(hold: { readonly source: { readonly kind: string } }): hold is OwnHold {
-  return withCurrentHoldMarker(hold).source.kind === "task";
+  return hold.source.kind === "task";
 }
 
 // FIX-2578.

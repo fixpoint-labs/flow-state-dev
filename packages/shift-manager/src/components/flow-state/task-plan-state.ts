@@ -136,35 +136,6 @@ export type TaskPlanState = {
 // imports at runtime.
 // ---------------------------------------------------------------------------
 
-/**
- * The status `held` replaced: a trace recorded before then carries
- * `blocked` on `task-change.task.status` and a `counts.blocked` key on
- * `task-board-meta`. Item logs are immutable and no resource-level migration
- * can reach them, so they are read here as `held`, at the fold every consumer
- * of this state reads through. A trace recorded after the rename allocates
- * nothing.
- */
-const LEGACY_HELD_STATUS = "blocked";
-
-function migrateTaskStatus<T extends { status?: unknown }>(task: T): T {
-  if (task.status === LEGACY_HELD_STATUS) return { ...task, status: "held" };
-  return task;
-}
-
-/** Fold a legacy count key into the current one, removing it. */
-function foldCount<T>(counts: T, legacyKey: string, key: string): T {
-  const legacy = (counts as Record<string, unknown>)[legacyKey];
-  if (typeof legacy !== "number") return counts;
-  const { [legacyKey]: _legacy, ...rest } = counts as Record<string, unknown>;
-  const current = (counts as Record<string, unknown>)[key];
-  return { ...rest, [key]: (typeof current === "number" ? current : 0) + legacy } as unknown as T;
-}
-
-function migrateCounts<T extends { held?: number }>(counts: T | undefined): T | undefined {
-  if (counts === undefined) return counts;
-  return foldCount(counts, LEGACY_HELD_STATUS, "held");
-}
-
 export const TASK_CHANGE_DATA_TYPE = "task-change";
 export const TASK_BOARD_META_DATA_TYPE = "task-board-meta";
 
@@ -360,7 +331,7 @@ export function extractTaskPlanState(
       if (data.taskId === undefined || data.task === undefined) continue;
       if (tasks.has(data.taskId)) continue; // first match in reverse = latest
       tasks.set(data.taskId, {
-        task: migrateTaskStatus(data.task),
+        task: data.task,
         kind: data.kind,
         prevStatus: data.prevStatus,
       });
@@ -372,7 +343,7 @@ export function extractTaskPlanState(
       if (data.collectionId !== collectionId) continue;
       boardMeta = {
         status: data.status,
-        counts: migrateCounts(data.counts),
+        counts: data.counts,
       };
       boardMetaResolved = true;
     }

@@ -52,11 +52,6 @@ describe("taskView: one display state per row", () => {
     expect(taskView(row({ status })).state).toBe(state);
   });
 
-  it("reads a legacy blocked row as held, the same as the board", () => {
-    const view = taskView(row({ status: "blocked" }));
-    expect(view).toMatchObject({ status: "held", state: "held" });
-  });
-
   it("keeps a stored word it doesn't know on status, and reads it queued, never hidden", () => {
     expect(taskView(row({ status: "paused" }))).toMatchObject({ status: "paused", state: "queued" });
   });

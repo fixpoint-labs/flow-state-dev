@@ -336,19 +336,6 @@ export interface TaskSettingsPatch {
   assignee?: string;
 }
 
-
-// FIX-2080; BP-030.
-/**
- * A release and nothing else, of a row an older version stored `blocked`
- * (`heldFromBlocked`, set only at the read boundary). Such a row may have
- * started before it was blocked, and a release is how it runs again.
- * No current path holds a started row, so any other started held
- * row keeps the field table's rule: no release. Field edits stay locked.
- */
-function legacyReleaseOnly(task: Task, patch: TaskSettingsPatch): boolean {
-  return task.status === "held" && task.heldFromBlocked === true && patch.held === false && patchFields(patch).length === 1;
-}
-
 /**
  * The status check the field table leaves: a settings edit lands only on a
  * pending or held row. Which fields a started row still takes is the
@@ -394,7 +381,7 @@ export function settingsWrite(
       detail: `task "${task.id}" sends its result to the conversation, so it has one attempt. Nothing was written.`,
     });
   }
-  const locked = legacyReleaseOnly(task, patch) ? [] : lockedFields(task, patchFields(patch));
+  const locked = lockedFields(task, patchFields(patch));
   if (locked.length > 0) return { decline: "started" };
   const declined = settingsDecline(task);
   if (declined !== undefined) return { decline: declined };
@@ -402,8 +389,6 @@ export function settingsWrite(
   if (patch.held === true && task.status === "pending") update.status = "held";
   if (patch.held === false && task.status === "held") {
     update.status = "pending";
-    // The legacy mark serves one release; a later hold is an ordinary one.
-    if (task.heldFromBlocked === true) update.heldFromBlocked = undefined;
   }
   if (patch.deps !== undefined && !sameIds(patch.deps, task.deps)) {
     assertDepsEditable(task.id, patch.deps, lookup);
