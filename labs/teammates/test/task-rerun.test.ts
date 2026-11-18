@@ -13,7 +13,7 @@ import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import { useTaskActions, type AppCalls } from "../src/app";
-import { codingRow, TestProvider } from "./stub-server";
+import { codingTask, TestProvider } from "./stub-server";
 
 /** The board's actions the popup sends, as `useTaskActions` hands them, over `client`. */
 function actionsOn(client: Client) {
@@ -60,7 +60,7 @@ const failedRow = {
 };
 /** The same task as the coding board view lists it: no brief. */
 const listed = (fields: Record<string, unknown> = {}) =>
-  codingRow({ id: failedRow.id, title: failedRow.title, goal: failedRow.goal, assignee: failedRow.assignee, status: failedRow.status, harness: "cursor", error: failedRow.error, ...fields });
+  codingTask({ id: failedRow.id, title: failedRow.title, goal: failedRow.goal, assignee: failedRow.assignee, status: failedRow.status, harness: "cursor", error: failedRow.error, ...fields });
 
 describe("a task's buttons act on the board of the conversation that filed it", () => {
   it("re-run files the task again on the other worker, the old brief kept and a line naming the old task by title", async () => {

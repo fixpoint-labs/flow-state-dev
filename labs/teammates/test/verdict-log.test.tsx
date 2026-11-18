@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AppCalls } from "../src/app";
 import { placeDecisions, PopupView, type Popup } from "../src/components/Popups";
 import { lookOf } from "../src/lib/looks";
-import { codingRow, hold, stubServer, TestProvider } from "./stub-server";
+import { codingTask, hold, stubServer, TestProvider } from "./stub-server";
 
 afterEach(cleanup);
 
@@ -21,7 +21,7 @@ const SESSION = "wks_cos";
 const said = (run: string, count: number) =>
   Array.from({ length: count }, (_, i) => ({ id: `${run}-${i + 1}`, type: "message", role: "assistant", status: "completed", requestId: `q_${run}`, content: [{ type: "output_text", text: `step ${i + 1}` }] }));
 const task = (id: string, review = false) =>
-  codingRow({
+  codingTask({
     id,
     assignee: "coder.cursor",
     title: `Task ${id}`,

@@ -12,7 +12,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import type { AppCalls } from "../src/app";
 import { PopupView } from "../src/components/Popups";
 import { lookOf } from "../src/lib/looks";
-import { codingRow, hold, stubServer, TestProvider } from "./stub-server";
+import { codingTask, hold, stubServer, TestProvider } from "./stub-server";
 
 afterEach(cleanup);
 
@@ -38,7 +38,7 @@ function drawTask(task: CodingBoardTask) {
   );
 }
 
-const drawResult = (answer: string) => drawTask(codingRow({ id: "t1", assignee: "coder", title: "Fix the adapter", status: "completed", detail: { answer, answerCut: false } }));
+const drawResult = (answer: string) => drawTask(codingTask({ id: "t1", assignee: "coder", title: "Fix the adapter", status: "completed", detail: { answer, answerCut: false } }));
 
 describe("a task popup's cards", () => {
   it("draws the result's Markdown: bold, inline code and a list, with no literal markers", async () => {
@@ -61,7 +61,7 @@ describe("a task popup's cards", () => {
   });
 
   it("draws a question the run asks as Markdown too", async () => {
-    drawTask(codingRow({ id: "t1", assignee: "coder", title: "Fix the adapter", status: "in_progress", asks: [hold("question", "Fix **only** `src/adapter.ts`, or every caller?")] }));
+    drawTask(codingTask({ id: "t1", assignee: "coder", title: "Fix the adapter", status: "in_progress", asks: [hold("question", "Fix **only** `src/adapter.ts`, or every caller?")] }));
     const asked = await within(document.body).findByRole("region", { name: "Waiting on you" });
     await waitFor(() => expect(asked.querySelector(STRONG)?.textContent).toBe("only"));
     expect(asked.querySelector("code")?.textContent).toBe("src/adapter.ts");

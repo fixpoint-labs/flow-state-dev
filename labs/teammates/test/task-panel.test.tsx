@@ -17,7 +17,7 @@ import type { AppCalls, ConversationView } from "../src/app";
 import { createFixtureApp, rosterEntry } from "./fake-app";
 import { Conversation } from "../src/components/Conversation";
 import { attemptStartedAt, viewOf } from "../src/lib/task";
-import { codingRow, hold, POPUP_READ, stubServer, TestProvider } from "./stub-server";
+import { codingTask, hold, POPUP_READ, stubServer, TestProvider } from "./stub-server";
 import { TaskCard } from "../src/components/TaskCard";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 import { lookOf } from "../src/lib/looks";
@@ -32,7 +32,7 @@ const MIN = 60_000;
 
 /** A coding board row, running for researcher unless `over` says otherwise, with the board's `createdAt` / `startedAt` / `completedAt`. */
 const task = (id: string, over: Partial<CodingBoardTask>, times: { createdAt?: number; startedAt?: number; completedAt?: number } = {}): CodingBoardTask =>
-  codingRow({ id, assignee: "researcher", title: `Task ${id}`, status: "in_progress", ...over, ...times });
+  codingTask({ id, assignee: "researcher", title: `Task ${id}`, status: "in_progress", ...over, ...times });
 
 const TASKS: CodingBoardTask[] = [
   task("r-old", {}, { startedAt: NOW - 42 * MIN }),
@@ -170,7 +170,7 @@ describe("a task's line in the conversation", () => {
     const card = screen.getByRole("button", { name: "Coding task: Fix the typo, on Cursor" }).closest("[data-entry=task]")!;
     expect(card.querySelector("[data-task-status]")?.textContent).toBe("running");
     // The row arrives, then ends: the same card reads it.
-    server.board.s1!.push(codingRow({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo", status: "completed" }));
+    server.board.s1!.push(codingTask({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo", status: "completed" }));
     await waitFor(() => expect(card.querySelector("[data-task-status]")?.textContent).toBe("done"), POPUP_READ);
     expect(screen.getByRole("button", { name: "Coding task: Fix the typo, on Cursor" }).closest("[data-entry=task]")).toBe(card);
   });
@@ -189,13 +189,13 @@ describe("a task's line in the conversation", () => {
 
 describe("a board row's times, as the screen reads them", () => {
   it("passes when it was filed, first started and ended through to the task's view", () => {
-    const row = codingRow({ id: "t1", status: "completed", createdAt: 1, startedAt: 2, completedAt: 3, updatedAt: 3 });
+    const row = codingTask({ id: "t1", status: "completed", createdAt: 1, startedAt: 2, completedAt: 3, updatedAt: 3 });
     expect(viewOf(row).times).toMatchObject({ createdAt: 1, startedAt: 2, completedAt: 3 });
   });
 
   it("keeps the feed's start on this attempt, not the task's first start", () => {
     // A retried task: its first run started at 2, this attempt at 5.
-    const row = codingRow({ id: "t1", status: "in_progress", createdAt: 1, startedAt: 2, run: { sessionId: "r", requestId: "q", attempt: 2, startedAt: 5 } });
+    const row = codingTask({ id: "t1", status: "in_progress", createdAt: 1, startedAt: 2, run: { sessionId: "r", requestId: "q", attempt: 2, startedAt: 5 } });
     expect(attemptStartedAt(row)).toBe(5);
     expect(viewOf(row).times.startedAt).toBe(2);
   });

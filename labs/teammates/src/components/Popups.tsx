@@ -16,7 +16,7 @@ import {
 } from "../app";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
-import { askKind, askOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, titleOf, workerOf } from "../lib/task";
+import { waitsFor, askOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, titleOf, workerOf } from "../lib/task";
 import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -217,7 +217,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const run = `${task?.id}:${task?.run?.sessionId}`;
   const decided = (answer: ReviewAnswer) => setGiven((all) => [...all, { id: `decision-${all.length}`, run, after: steps.length, text: decisionLine(answer) }]);
   const decisions = placeDecisions(given.filter((d) => d.run === run), steps.length);
-  const waiting = task === undefined ? undefined : askKind(task);
+  const waiting = task === undefined ? undefined : waitsFor(task);
   const status = task === undefined ? undefined : taskStatus(task);
   // What waits on you is held below the feed, which opens on the latest step, so it can't scroll out of view.
   const pinned =

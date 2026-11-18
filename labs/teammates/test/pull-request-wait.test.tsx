@@ -12,21 +12,21 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AppCalls } from "../src/app";
 import { PopupView, PULL_REQUEST_HINT } from "../src/components/Popups";
 import { lookOf } from "../src/lib/looks";
-import { codingRow, stubServer, TestProvider } from "./stub-server";
+import { codingTask, stubServer, TestProvider } from "./stub-server";
 
 afterEach(cleanup);
 
 const URL_7 = "https://github.com/acme/app/pull/7";
 
 /** A coding row waiting on pull request 7, as the coding board view answers it: running, nothing asked of you. */
-const waitingRow = codingRow({ id: "t-7", status: "in_progress", assignee: "coder.cursor", harness: "cursor", title: "Add a welcome line", run: { sessionId: "run-7", requestId: "r-1", attempt: 1 }, pullRequests: [7] });
+const waitingRow = codingTask({ id: "t-7", status: "in_progress", assignee: "coder.cursor", harness: "cursor", title: "Add a welcome line", run: { sessionId: "run-7", requestId: "r-1", attempt: 1 }, pullRequests: [7] });
 
-function drawPopup(row = waitingRow) {
-  const { client } = stubServer({ board: { s1: [row] }, recorded: { "run-7": { pullRequests: [{ number: 7, url: URL_7, title: "Add a welcome line" }] } } });
+function drawPopup(task = waitingRow) {
+  const { client } = stubServer({ board: { s1: [task] }, recorded: { "run-7": { pullRequests: [{ number: 7, url: URL_7, title: "Add a welcome line" }] } } });
   const calls = {} as AppCalls;
   render(
     <TestProvider calls={calls} client={client}>
-      <PopupView adapter={calls} popup={{ kind: "task", sessionId: "s1", taskId: row.id }} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => true} coders={[]} onClose={() => {}} />
+      <PopupView adapter={calls} popup={{ kind: "task", sessionId: "s1", taskId: task.id }} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => true} coders={[]} onClose={() => {}} />
     </TestProvider>,
   );
   return screen.findByRole("dialog");

@@ -21,7 +21,7 @@ import type { AppCalls } from "../src/app";
 import { rosterEntry } from "./fake-app";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 import { runTimesOf, viewOf } from "../src/lib/task";
-import { codingRow, stubServer, TestProvider, type StubData } from "./stub-server";
+import { codingTask, stubServer, TestProvider, type StubData } from "./stub-server";
 
 afterEach(cleanup);
 
@@ -30,7 +30,7 @@ const worker = rosterEntry({ id: "lead", name: "Lead", description: "Runs the te
 
 /** A board row as the coding board view answers it. */
 const listed = (id: string, status: string, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }): CodingBoardTask =>
-  codingRow({
+  codingTask({
     id,
     title: `Task ${id}`,
     assignee: "researcher",

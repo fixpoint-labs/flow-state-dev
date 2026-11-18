@@ -71,11 +71,11 @@ export function useTaskWork(task: CodingBoardTask | undefined) {
     const stop = [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review");
     const fed = items as unknown as OutputItem[];
     const inFlight = running ? inFlightOf(streamed, fed, requestId) : undefined;
-    const rows = running ? plan?.rows.map(({ title, status }): PlanRowNow => ({ title, status })) : undefined;
+    const steps = running ? plan?.rows.map(({ title, status }): PlanRowNow => ({ title, status })) : undefined;
     return {
       steps: runSession === null ? [] : runSteps(items),
       review: stop === undefined ? undefined : (reviewDetail(stop.data) ?? undefined),
-      working: { ...(inFlight === undefined ? {} : { inFlight }), ...(rows === undefined ? {} : { plan: rows }) },
+      working: { ...(inFlight === undefined ? {} : { inFlight }), ...(steps === undefined ? {} : { plan: steps }) },
     };
   }, [feed?.items, runSession, running, requestId, streamed, plan]);
 }
@@ -127,7 +127,7 @@ export function usePullRequestLinks(runSessionId: string | undefined, numbers: s
     if (runSessionId === undefined) return;
     let current = true;
     readSessionPullRequests(client, runSessionId).then(
-      (rows) => current && setLinks(new Map(rows.map((row) => [row.number, row.url]))),
+      (opened) => current && setLinks(new Map(opened.map((pullRequest) => [pullRequest.number, pullRequest.url]))),
       (error) => console.warn(`teammates: the pull requests of run session ${runSessionId} couldn't be read`, error),
     );
     return () => {

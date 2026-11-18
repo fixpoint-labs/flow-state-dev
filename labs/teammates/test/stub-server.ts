@@ -52,7 +52,7 @@ export interface Posted {
 export const POPUP_READ = { timeout: 5_000 };
 
 /** A coding board row: the fields a test names over a plain pending row with nothing open. */
-export const codingRow = (fields: Partial<CodingBoardTask> & { id: string }): CodingBoardTask => ({
+export const codingTask = (fields: Partial<CodingBoardTask> & { id: string }): CodingBoardTask => ({
   goal: fields.title ?? fields.id,
   status: "pending",
   attempts: 0,
@@ -103,14 +103,14 @@ export function stubServer(data: StubData = {}) {
         const input = body.input as { sessionId: string; taskId?: string };
         boardReads.push(input);
         if (data.boardFails) return new Response(JSON.stringify({ error: "The board can't be read." }), { status: 500, headers: { "content-type": "application/json" } });
-        const rows = (board[input.sessionId] ?? []).map((task) => ({ ...task, detail: task.id === input.taskId ? (task.detail ?? { answer: null, answerCut: false }) : null }));
-        return json({ output: rows, topics: [] });
+        const tasks = (board[input.sessionId] ?? []).map((task) => ({ ...task, detail: task.id === input.taskId ? (task.detail ?? { answer: null, answerCut: false }) : null }));
+        return json({ output: tasks, topics: [] });
       }
       if (path.endsWith("/views/recordedWork")) {
         const { requestId } = body.input as { requestId: string };
         planReads.push(requestId);
-        const rows = data.plan?.[requestId];
-        return json({ output: { plan: rows === undefined ? null : { rows: rows.map((r, i) => ({ id: `p${i}`, ...r })), truncated: false }, pullRequests: { rows: [], truncated: false } }, topics: [] });
+        const steps = data.plan?.[requestId];
+        return json({ output: { plan: steps === undefined ? null : { rows: steps.map((r, i) => ({ id: `p${i}`, ...r })), truncated: false }, pullRequests: { rows: [], truncated: false } }, topics: [] });
       }
       if (path.endsWith("/views/sessionTurns")) return json({ output: [], topics: [] });
       const posted = { path, body };

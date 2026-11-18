@@ -20,7 +20,7 @@ import { TaskCard } from "../src/components/TaskCard";
 import { codingSpendLine } from "../src/components/TeammatePanel";
 import { lookOf } from "../src/lib/looks";
 import { createFixtureApp } from "./fake-app";
-import { codingRow, stubServer, TestProvider, POPUP_READ } from "./stub-server";
+import { codingTask, stubServer, TestProvider, POPUP_READ } from "./stub-server";
 
 afterEach(() => {
   cleanup();
@@ -46,7 +46,7 @@ const CLAUDE = spent("claude-code", null, 8_000, 1_200, null);
 
 /** A coding task of Lead's conversation that ran on `harness`'s worker. */
 const ranOn = (id: string, harness: string, spend: CodingBoardTask["spend"]) =>
-  codingRow({ id, assignee: `teammates.${harness}`, harness, title: "Fix the typo in the README's first line", status: "completed", spend });
+  codingTask({ id, assignee: `teammates.${harness}`, harness, title: "Fix the typo in the README's first line", status: "completed", spend });
 
 const spendOn = (el: Element) => el.querySelector("[data-spend]")?.textContent ?? null;
 

@@ -19,7 +19,7 @@ import { App } from "../src/components/App";
 import { TaskCard } from "../src/components/TaskCard";
 import { lookOf } from "../src/lib/looks";
 import { createFixtureApp } from "./fake-app";
-import { codingRow, hold, stubServer, TestProvider, type Posted, POPUP_READ } from "./stub-server";
+import { codingTask, hold, stubServer, TestProvider, type Posted, POPUP_READ } from "./stub-server";
 
 afterEach(() => {
   cleanup();
@@ -56,8 +56,8 @@ function playRun({ asks = false, review = true, lands = false } = {}) {
   let stops = 0;
   let commits = 0;
   const said = (id: string, text: string) => ({ id, type: "message", role: "assistant", status: "completed", requestId: "q1", content: [{ type: "output_text", text }] });
-  const row = (): CodingBoardTask => server.board[BOARD]![0]!;
-  const set = (fields: Partial<CodingBoardTask>) => (server.board[BOARD]![0] = { ...row(), ...fields });
+  const current = (): CodingBoardTask => server.board[BOARD]![0]!;
+  const set = (fields: Partial<CodingBoardTask>) => (server.board[BOARD]![0] = { ...current(), ...fields });
   const complete = (fields: Partial<CodingBoardTask> = {}) => set({ status: "completed", asks: [], completedAt: Date.now(), detail: { answer: "Fixed the typo in README.md, line 1.", answerCut: false }, ...fields });
   /** The run commits once more and stops for review, with `landFailed` when a landing just failed. */
   const askReview = (landFailed: { land: string; message: string } | null = null) => {
@@ -70,7 +70,7 @@ function playRun({ asks = false, review = true, lands = false } = {}) {
   /** The run goes on past its question, or past nothing: it edits, then waits for review or completes, once the popup follows its session. */
   const carryOn = (): void => void setTimeout(() => (!server.streaming("run-1") ? carryOn() : review ? askReview() : complete()), 50);
   const server = stubServer({
-    board: { [BOARD]: [codingRow({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo in the README's first line", status: "in_progress", run: { sessionId: "run-1", requestId: "q1", attempt: 1 }, ...(asks ? { asks: [hold("question", QUESTION)] } : {}) })] },
+    board: { [BOARD]: [codingTask({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo in the README's first line", status: "in_progress", run: { sessionId: "run-1", requestId: "q1", attempt: 1 }, ...(asks ? { asks: [hold("question", QUESTION)] } : {}) })] },
     items: { "run-1": [said("s1", 'The typo is on line 1: "Relay keps".')] },
     answer: (posted) => {
       // A question's answer: the board's updateTask on the conversation, naming the hold.
@@ -228,7 +228,7 @@ describe("accepting a coding task's review says where its work goes", () => {
   }, 20_000);
 
   it("names where an accepted task's work landed on its line in the thread", () => {
-    const landed = codingRow({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo", status: "completed", landed: { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: BRANCH, base: "main" } });
+    const landed = codingTask({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo", status: "completed", landed: { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: BRANCH, base: "main" } });
     const { container } = render(<TaskCard task={landed} coding nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={() => {}} />);
     expect(container.querySelector("[data-task-landed]")?.textContent).toBe("PR #7");
   });

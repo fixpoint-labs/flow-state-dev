@@ -25,7 +25,7 @@ export const titleOf = (task: Pick<CodingBoardTask, "title" | "goal">): string =
 export const askOf = (task: Pick<CodingBoardTask, "asks">) => task.asks[0];
 
 /** Its ask's kind as the screen draws it: a question, a review, or another stop. */
-export function askKind(task: Pick<CodingBoardTask, "asks">): "question" | "review" | "other" | undefined {
+export function waitsFor(task: Pick<CodingBoardTask, "asks">): "question" | "review" | "other" | undefined {
   const kind = askOf(task)?.ask.kind;
   return kind === undefined ? undefined : kind === "question" || kind === "review" ? kind : "other";
 }

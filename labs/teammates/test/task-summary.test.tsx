@@ -30,7 +30,7 @@ import { commandsRun, runSummaryLine, runSteps, useRecordedFiles, type AppCalls 
 import { App } from "../src/components/App";
 import { attemptDurationMs } from "../src/lib/task";
 import { createFixtureApp } from "./fake-app";
-import { codingRow, stubServer, TestProvider, type StubData, POPUP_READ } from "./stub-server";
+import { codingTask, stubServer, TestProvider, type StubData, POPUP_READ } from "./stub-server";
 
 afterEach(() => {
   cleanup();
@@ -78,7 +78,7 @@ describe("a run's summary line", () => {
 
   it("times this attempt from its run's start to the task's end, and not while it runs", () => {
     // A retry: the task first started at 1_000; this attempt's run started at 50_000 and the task ended at 184_000.
-    const ended = codingRow({ id: "t1", status: "completed", startedAt: 1_000, completedAt: 184_000, run: { sessionId: "s1", requestId: "q2", attempt: 2, startedAt: 50_000 } });
+    const ended = codingTask({ id: "t1", status: "completed", startedAt: 1_000, completedAt: 184_000, run: { sessionId: "s1", requestId: "q2", attempt: 2, startedAt: 50_000 } });
     expect(attemptDurationMs(ended)).toBe(134_000);
     expect(attemptDurationMs({ ...ended, status: "in_progress" })).toBeUndefined();
     expect(attemptDurationMs({ ...ended, completedAt: undefined })).toBeUndefined();
@@ -94,7 +94,7 @@ const ran = (harness: "claude-code" | "codex") =>
 
 /** A finished coding task on `harness`, filed from Lead's conversation, its run in `run-1`, 12 s long. */
 const finished = (harness: "claude-code" | "codex", fields: Partial<CodingBoardTask> = {}) =>
-  codingRow({
+  codingTask({
     id: "t1",
     assignee: `teammates.${harness}`,
     harness,
@@ -174,7 +174,7 @@ describe("the files a popup reads", () => {
             : new Promise((resolve) => (answer = (items) => resolve({ items, nextCursor: null }))),
       },
     } as unknown as Client;
-    const task = (requestId: string, status: string) => codingRow({ id: "t1", assignee: "w", title: "T", status, run: { sessionId: "run:t1", requestId, attempt: 1 } });
+    const task = (requestId: string, status: string) => codingTask({ id: "t1", assignee: "w", title: "T", status, run: { sessionId: "run:t1", requestId, attempt: 1 } });
     const wrapper = ({ children }: { children: ReactNode }) => <TestProvider calls={{} as AppCalls} client={client}>{children}</TestProvider>;
     const { result, rerender } = renderHook(({ t }) => useRecordedFiles(t), { initialProps: { t: task("req-1", "errored") }, wrapper });
     await waitFor(() => expect(result.current?.rows.map((r) => r.path)).toEqual(["a.ts"]));
@@ -189,7 +189,7 @@ describe("the files a popup reads", () => {
 });
 
 describe("a filed task's popup, opened by its address", () => {
-  const failed = codingRow({
+  const failed = codingTask({
     id: "t-failed",
     assignee: "teammates.writer",
     title: "Draft the PM role",

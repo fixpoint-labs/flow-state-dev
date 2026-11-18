@@ -176,7 +176,7 @@ describe("the coding board view", () => {
 });
 
 describe("the coding board view, for one open task", () => {
-  /** A conversation with `goals` filed on its board, and its rows as stored. */
+  /** A conversation with `goals` filed on its board, and its entries as stored. */
   async function filed(goals: string[]) {
     const { post, stores } = await boot();
     const created = await post(["agent", "sessions"], { userId: "alice", state: { workerId: "core.lead" } });
@@ -187,43 +187,43 @@ describe("the coding board view, for one open task", () => {
       for (let i = 0; i < 100 && (await stores.request.get(filing.body.request.id))?.status === "in_progress"; i += 1) await new Promise((r) => setTimeout(r, 10));
     }
     const userKey = `alice:~org:${DEFAULT_ORG_ID}`;
-    const rows = Object.entries(await stores.resourceState.getByPrefix("user", userKey, "tasks/")).map(([key, record]) => ({ key, row: record.state as { id: string } }));
-    const write = (key: string, row: object) => stores.resourceState.set("user", userKey, key, row as never, "any");
+    const entries = Object.entries(await stores.resourceState.getByPrefix("user", userKey, "tasks/")).map(([key, record]) => ({ key, entry: record.state as { id: string } }));
+    const write = (key: string, entry: object) => stores.resourceState.set("user", userKey, key, entry as never, "any");
     const read = async (input: Record<string, unknown> = {}) => {
       const answer = await post(["harnesses", "views", "codingBoard"], { userId: "alice", input: { sessionId: conversation, ...input } });
       expect(answer.status, JSON.stringify(answer.body)).toBe(200);
       return answer.body.output as Array<{ id: string; status: string; error: string | null; detail: unknown }>;
     };
-    return { rows, write, read };
+    return { entries, write, read };
   }
 
-  it("carries the answer of the task its input names, cut as getTask cuts it, and on no other row or read", async () => {
-    const { rows, write, read } = await filed(["Fix the build", "Write the notes"]);
-    const [long, short] = rows;
+  it("carries the answer of the task its input names, cut as getTask cuts it, and on no other entry or read", async () => {
+    const { entries, write, read } = await filed(["Fix the build", "Write the notes"]);
+    const [long, short] = entries;
     // One answer past getTask's cut, one a coding run's `answer` under it.
     const text = "a".repeat(20_005);
-    await write(long!.key, { ...long!.row, status: "completed", output: text });
-    await write(short!.key, { ...short!.row, status: "completed", output: { answer: "Fixed: the lockfile was stale." } });
+    await write(long!.key, { ...long!.entry, status: "completed", output: text });
+    await write(short!.key, { ...short!.entry, status: "completed", output: { answer: "Fixed: the lockfile was stale." } });
 
-    // The board read carries no answer: every row's detail is null.
-    expect((await read()).map((row) => row.detail)).toEqual([null, null]);
-    // Named, every row still comes back, and only the named one carries its answer.
-    const longRead = await read({ taskId: long!.row.id });
+    // The board read carries no answer: every entry's detail is null.
+    expect((await read()).map((entry) => entry.detail)).toEqual([null, null]);
+    // Named, every entry still comes back, and only the named one carries its answer.
+    const longRead = await read({ taskId: long!.entry.id });
     expect(longRead).toHaveLength(2);
-    expect(longRead.find((row) => row.id === long!.row.id)!.detail).toEqual({ answer: text.slice(0, 20_000), answerCut: true });
-    expect(longRead.find((row) => row.id === short!.row.id)!.detail).toBeNull();
-    const shortRead = await read({ taskId: short!.row.id });
-    expect(shortRead.find((row) => row.id === short!.row.id)!.detail).toEqual({ answer: "Fixed: the lockfile was stale.", answerCut: false });
-    expect(shortRead.find((row) => row.id === long!.row.id)!.detail).toBeNull();
+    expect(longRead.find((entry) => entry.id === long!.entry.id)!.detail).toEqual({ answer: text.slice(0, 20_000), answerCut: true });
+    expect(longRead.find((entry) => entry.id === short!.entry.id)!.detail).toBeNull();
+    const shortRead = await read({ taskId: short!.entry.id });
+    expect(shortRead.find((entry) => entry.id === short!.entry.id)!.detail).toEqual({ answer: "Fixed: the lockfile was stale.", answerCut: false });
+    expect(shortRead.find((entry) => entry.id === long!.entry.id)!.detail).toBeNull();
   });
 
   it("names the reason a cancelled task was cancelled with, as it names why a failed one failed", async () => {
-    const { rows, write, read } = await filed(["Fix the build"]);
-    const [{ key, row }] = rows as [(typeof rows)[number]];
-    await write(key, { ...row, status: "cancelled", error: "Not needed any more" });
+    const { entries, write, read } = await filed(["Fix the build"]);
+    const [{ key, entry }] = entries as [(typeof entries)[number]];
+    await write(key, { ...entry, status: "cancelled", error: "Not needed any more" });
     expect((await read())[0]).toMatchObject({ status: "cancelled", error: "Not needed any more" });
     // A completed task's stale error is still none.
-    await write(key, { ...row, status: "completed", error: "a stale error" });
+    await write(key, { ...entry, status: "completed", error: "a stale error" });
     expect((await read())[0]).toMatchObject({ status: "completed", error: null });
   });
 });

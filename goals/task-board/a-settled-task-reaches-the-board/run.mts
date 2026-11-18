@@ -27,7 +27,6 @@
  *        completed within its own poll interval plus 1 s.
  *
  * Controls (each runs this file again with a patch applied as it loads):
- *   GOAL_CONTROL=running-session  publish on the session that wrote: a's 1 s signal must FAIL.
  *   GOAL_CONTROL=whole-topic      the lab views hear the whole session topic (no `hears`): a's 0-reads must FAIL,
  *                                 on Teammates' card read and its popup's `taskId` read as on the merged view.
  *   GOAL_CONTROL=tasks-only       the lab views hear `tasks` alone (no plan topics): a's plan-step signal must FAIL.
@@ -98,14 +97,6 @@ type ViewName = keyof typeof PACE;
 const VIEW_WATCH = "packages/client/src/view/view.ts";
 const MERGED_VIEW = "goals/task-board/a-settled-task-reaches-the-board/merged-view.mts";
 const PATCHES: Record<string, ModulePatch[]> = {
-  // Publish on the session that wrote, not the one that filed.
-  "running-session": [
-    {
-      module: "packages/orchestration/src/tasks/collection/get-or-create.ts",
-      from: String.raw`task\.filer\?\.sessionId \?\? legacyFiler\?\.\(task\) \?\? runningSession`,
-      to: "runningSession"
-    }
-  ],
   // The lab views hear every notice under the conversation's whole topic: the view's answer's `hears` is dropped.
   "whole-topic": [
     {

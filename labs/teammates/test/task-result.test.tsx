@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AppCalls } from "../src/app";
 import { PopupView } from "../src/components/Popups";
 import { lookOf } from "../src/lib/looks";
-import { codingRow, stubServer, TestProvider } from "./stub-server";
+import { codingTask, stubServer, TestProvider } from "./stub-server";
 
 afterEach(cleanup);
 
@@ -25,7 +25,7 @@ const REVIEW = "Here are the 20 newest pull requests, reviewed:\n\n| PR | Verdic
 
 /** A researcher's task as its run settled it: done, its answer on the open task's detail. */
 const doneRow = (answer: string | null, fields: Partial<CodingBoardTask> = {}) =>
-  codingRow({ id: "task_r", title: "Review 20 newest FSD pull requests", assignee: "researcher", status: "completed", detail: { answer, answerCut: false }, ...fields });
+  codingTask({ id: "task_r", title: "Review 20 newest FSD pull requests", assignee: "researcher", status: "completed", detail: { answer, answerCut: false }, ...fields });
 
 const openTask = (row: CodingBoardTask) => {
   const server = stubServer({ board: { wks_cos: [row] } });

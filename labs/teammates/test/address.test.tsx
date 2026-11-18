@@ -9,7 +9,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/components/App";
 import type { Client } from "@flow-state-dev/client";
-import { codingRow, stubServer, TestProvider, POPUP_READ } from "./stub-server";
+import { codingTask, stubServer, TestProvider, POPUP_READ } from "./stub-server";
 import type { AppCalls } from "../src/app";
 import { PopupView } from "../src/components/Popups";
 import { createFixtureApp, FixtureProvider, rosterReadsBy } from "./fake-app";
@@ -60,7 +60,7 @@ describe("the page's address", () => {
     const { client } = stubServer({
       board: {
         "conversation:teammates.chief-of-staff": [
-          codingRow({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo in the README's first line", status: "in_progress", detail: { answer: "Fixed the typo.", answerCut: false } }),
+          codingTask({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo in the README's first line", status: "in_progress", detail: { answer: "Fixed the typo.", answerCut: false } }),
         ],
       },
     });
@@ -135,8 +135,8 @@ describe("the page's address", () => {
     // popup that judges one conversation's task by another's rows drops it.
     const { client } = stubServer({
       board: {
-        "session-a": [codingRow({ id: "task-a", assignee: "teammates.writer", title: "Draft the notes", status: "in_progress" })],
-        "session-b": [codingRow({ id: "task-b", assignee: "teammates.researcher", title: "Look it up", status: "in_progress" })],
+        "session-a": [codingTask({ id: "task-a", assignee: "teammates.writer", title: "Draft the notes", status: "in_progress" })],
+        "session-b": [codingTask({ id: "task-b", assignee: "teammates.researcher", title: "Look it up", status: "in_progress" })],
       },
     });
     const adapter = fast();

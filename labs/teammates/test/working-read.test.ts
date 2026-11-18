@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { AppProvider, useTaskWork, type AppCalls } from "../src/app";
-import { codingRow } from "./stub-server";
+import { codingTask } from "./stub-server";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
@@ -98,7 +98,7 @@ afterEach(cleanup);
 
 /** A coding task the board names as running in `run1`, as request `requestId`. */
 const running = (requestId: string): CodingBoardTask =>
-  codingRow({ id: "t1", title: "Fix it", status: "in_progress", harness: "claude-code", run: { sessionId: "run1", requestId, attempt: 1 }, runFlow: "f" });
+  codingTask({ id: "t1", title: "Fix it", status: "in_progress", harness: "claude-code", run: { sessionId: "run1", requestId, attempt: 1 }, runFlow: "f" });
 
 /** Every work value the hook hands back, in order, deduped by identity. */
 function watch(h: ReturnType<typeof host>, task: CodingBoardTask) {

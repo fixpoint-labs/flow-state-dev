@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import type { ConversationEntry } from "../src/app";
 import { App } from "../src/components/App";
-import { codingRow, hold as openHold } from "./stub-server";
+import { codingTask, hold as openHold } from "./stub-server";
 import { createNotifier, teammateAttention, titleFor, useNotifyToggle } from "../src/lib/attention";
 import { ENDING_SHOWN_MS, needsOf, statusOf, type StatusInputs } from "../src/lib/status";
 import { createFixtureApp, FixtureProvider } from "./fake-app";
@@ -27,7 +27,7 @@ const NOW = 1_000_000_000;
 const coder = (id: string) => id === "cursor";
 const named = (id: string) => id;
 /** A coding board row, running on `cursor` unless `over` says otherwise. */
-const task = (id: string, over: Partial<CodingBoardTask>): CodingBoardTask => codingRow({ id, assignee: "cursor", title: `Task ${id}`, goal: "g", status: "in_progress", ...over });
+const task = (id: string, over: Partial<CodingBoardTask>): CodingBoardTask => codingTask({ id, assignee: "cursor", title: `Task ${id}`, goal: "g", status: "in_progress", ...over });
 const approval = (resolution?: string): ConversationEntry => ({ kind: "approval", id: "ap", requestId: "q", suspensionId: "s", text: "Publish the draft?", ...(resolution ? { resolution } : {}) });
 const inputs = (over: Partial<StatusInputs>): StatusInputs => ({ activity: { running: false, lastActiveAt: 0 } as StatusInputs["activity"], entries: [], talk: [], tasks: [], now: NOW, ...over });
 const status = (over: Partial<StatusInputs>) => statusOf("writer", inputs(over), named, coder);

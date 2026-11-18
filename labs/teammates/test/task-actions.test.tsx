@@ -18,7 +18,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/components/App";
 import { createFixtureApp } from "./fake-app";
-import { codingRow, stubServer, TestProvider, type Posted, POPUP_READ } from "./stub-server";
+import { codingTask, stubServer, TestProvider, type Posted, POPUP_READ } from "./stub-server";
 
 afterEach(() => {
   cleanup();
@@ -33,7 +33,7 @@ const BRIEF = "Only the first line. ".repeat(1_200);
 
 /** A coding task of Lead's conversation on `harness`'s worker, with a long brief the board keeps whole. */
 const coding = (id: string, harness: string, fields: Partial<CodingBoardTask> = {}) =>
-  codingRow({ id, assignee: `teammates.${harness}`, harness, title: "Fix the typo in the README's first line", goal: "Fix the typo in the README's first line.", status: "in_progress", ...fields });
+  codingTask({ id, assignee: `teammates.${harness}`, harness, title: "Fix the typo in the README's first line", goal: "Fix the typo in the README's first line.", status: "in_progress", ...fields });
 
 /** The board's action a POST sent, and its input. */
 const actionOf = (posted: Posted) => ({ action: posted.path.split("/").at(-1)!, input: posted.body.input as Record<string, any> });
@@ -45,11 +45,11 @@ function onBoard(rows: CodingBoardTask[]) {
     answer: (posted) => {
       const { action, input } = actionOf(posted);
       const board = server.board[BOARD]!;
-      const at = board.findIndex((row) => row.id === input.id);
+      const at = board.findIndex((task) => task.id === input.id);
       if (action === "getTask_tasks") return { ok: true, task: { ...board[at], context: BRIEF, labels: ["docs"], priority: 2 } };
       if (action === "updateTask_tasks" && input.status === "cancelled") board[at] = { ...board[at]!, status: "cancelled", completedAt: Date.now() };
       if (action === "createTask_tasks") {
-        const same = board.find((row) => row.assignee === input.assignee && row.goal === input.goal && row.status === "in_progress");
+        const same = board.find((task) => task.assignee === input.assignee && task.goal === input.goal && task.status === "in_progress");
         if (same !== undefined) return { ok: false, error: `already_open: task "${same.title}" (${same.id}) is this same work for ${input.assignee}. Nothing was filed.` };
         board.push(coding(`t${board.length + 1}`, String(input.assignee).replace("teammates.", "")));
         return { ok: true, taskId: `t${board.length}` };

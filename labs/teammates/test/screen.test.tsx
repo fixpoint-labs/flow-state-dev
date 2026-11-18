@@ -12,7 +12,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { App } from "../src/components/App";
-import { codingRow, POPUP_READ, stubServer, TestProvider, type StubData } from "./stub-server";
+import { codingTask, POPUP_READ, stubServer, TestProvider, type StubData } from "./stub-server";
 import { TEAMMATE_COLORS } from "../src/lib/looks";
 import { createFixtureApp } from "./fake-app";
 
@@ -35,7 +35,7 @@ function renderOnBoard(board: Record<string, CodingBoardTask[]>, data: Omit<Stub
 
 /** A coding task on `harness`'s worker, filed from Lead's conversation. */
 const coding = (id: string, harness: "cursor" | "codex" | "claude-code", fields: Partial<CodingBoardTask> = {}) =>
-  codingRow({ id, assignee: `teammates.${harness}`, title: "Fix the typo in the README's first line", harness, status: "in_progress", ...fields });
+  codingTask({ id, assignee: `teammates.${harness}`, title: "Fix the typo in the README's first line", harness, status: "in_progress", ...fields });
 
 /** A coding run's items in its session, in `harness`'s own shapes: it reads the file, says where the typo is, edits it, and runs the docs check. */
 const runItems = (harness: "cursor" | "codex" | "claude-code", requestId: string) => {
@@ -301,7 +301,7 @@ describe("the teammates screen", () => {
     // Each teammate's conversation filed its own: a list that leaked another's would show both titles.
     renderOnBoard({
       [LEAD]: [coding("t-lead", "cursor", { title: "Bump the version" })],
-      "conversation:teammates.researcher": [codingRow({ id: "t-research", assignee: "teammates.writer", title: "Draft the survey summary", status: "in_progress" })],
+      "conversation:teammates.researcher": [codingTask({ id: "t-research", assignee: "teammates.writer", title: "Draft the survey summary", status: "in_progress" })],
     });
     const lead = await screen.findByRole("button", { name: "Coding task: Bump the version, on Cursor" }, POPUP_READ);
     expect(panel("Lead").contains(lead)).toBe(true);
@@ -322,7 +322,7 @@ describe("the teammates screen", () => {
   });
 
   it("puts the running tasks first, shows the failed ones, folds done and cancelled into groups with their counts, and moves a task that ends into its group live", async () => {
-    const ended = (id: string, title: string, status: "completed" | "errored" | "cancelled") => codingRow({ id, assignee: "teammates.researcher", title, status });
+    const ended = (id: string, title: string, status: "completed" | "errored" | "cancelled") => codingTask({ id, assignee: "teammates.researcher", title, status });
     const { server } = renderOnBoard({
       [LEAD]: [ended("t-1", "Look up the launch date", "completed"), ended("t-2", "Check the beta numbers", "errored"), ended("t-3", "Find a customer quote", "completed"), ended("t-4", "Pull the survey", "cancelled")],
     });
@@ -470,10 +470,10 @@ describe("the teammates screen", () => {
     const reason = "Cursor isn't set up on this machine: no sign-in found. Sign in to Cursor, then start the task again.";
     renderOnBoard({ [LEAD]: [coding("t-1", "cursor", { status: "errored", completedAt: Date.now(), error: reason })] });
     const side = await screen.findByRole("complementary", { name: "Lead's panel" });
-    const row = await within(await within(side).findByRole("list", { name: "Failed" }, POPUP_READ)).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
-    expect(row.getAttribute("data-task")).toBe("failed");
-    expect(row.textContent).toMatch(/Cursor isn't set up on this machine/);
-    fireEvent.click(row);
+    const line = await within(await within(side).findByRole("list", { name: "Failed" }, POPUP_READ)).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
+    expect(line.getAttribute("data-task")).toBe("failed");
+    expect(line.textContent).toMatch(/Cursor isn't set up on this machine/);
+    fireEvent.click(line);
     const popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" }, POPUP_READ);
     expect(within(popup).getByRole("alert").textContent).toMatch(/Cursor isn't set up on this machine/);
     // Its run started nowhere: the popup names no harness it ran on.
@@ -745,8 +745,8 @@ describe("the teammates screen", () => {
   it("gives each teammate the icon and color its file sets, the same in the list, the header, a message line and its popup", async () => {
     render(<TestProvider calls={fast()}><App /></TestProvider>);
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
-    const look = (row: HTMLElement) => {
-      const avatar = row.querySelector<HTMLElement>("[data-avatar]")!;
+    const look = (worker: HTMLElement) => {
+      const avatar = worker.querySelector<HTMLElement>("[data-avatar]")!;
       return [avatar.textContent, avatar.dataset.avatar];
     };
     expect(look(workerRow("Lead"))).toEqual(["★", "amber"]);
@@ -828,7 +828,7 @@ describe("the teammates screen", () => {
 
   // FIX-2526.
   it("renames a teammate from the files, and the new name shows in the list, header, task lines and Messaged lines; Reset puts the file's name back", async () => {
-    const server = stubServer({ board: { [LEAD]: [codingRow({ id: "t-ask", assignee: "teammates.researcher", title: "Check the launch date", status: "in_progress" })] } });
+    const server = stubServer({ board: { [LEAD]: [codingTask({ id: "t-ask", assignee: "teammates.researcher", title: "Check the launch date", status: "in_progress" })] } });
     const lab = fast();
     // What the panel hands workforce's client: a reset of the file's teammate, by id.
     const resets = () => lab.rosterWrites.filter((w) => w.action === "reset").map((w) => w.input.id);

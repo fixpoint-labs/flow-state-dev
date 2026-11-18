@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppCalls } from "../src/app";
 import { PopupView } from "../src/components/Popups";
 import { attemptStartedAt } from "../src/lib/task";
-import { codingRow, hold, stubServer, TestProvider, type StubData } from "./stub-server";
+import { codingTask, hold, stubServer, TestProvider, type StubData } from "./stub-server";
 
 afterEach(() => {
   cleanup();
@@ -29,7 +29,7 @@ const item = (id: string, status: string, body: Record<string, unknown>) => ({ i
 const said = item("s1", "completed", { type: "message", role: "assistant", content: [{ type: "output_text", text: "Looking at the log." }] });
 const test = (status: string) => item("t1", status, { type: "tool_output", toolCall: { name: "Bash", arguments: JSON.stringify({ command: "cd labs/teammates && pnpm test" }) } });
 
-const RUNNING: CodingBoardTask = codingRow({
+const RUNNING: CodingBoardTask = codingTask({
   id: "t-1",
   assignee: "coder.claude-code",
   title: "Fix session log ordering",
