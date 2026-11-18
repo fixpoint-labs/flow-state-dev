@@ -4,6 +4,8 @@
  * BR-28). What the screen draws is compared with what the Lab's routes hold.
  */
 import type { Client } from "@flow-state-dev/client";
+import { createInProcessFetch } from "@flow-state-dev/engine";
+import net from "node:net";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -158,12 +160,22 @@ describe("the refusal (V2, BR-3)", () => {
 
 describe("a Lab Shift Manager can't reach", () => {
   it("shows what the Lab answered with Retry, not the refusal, and Retry opens the Lab once it answers", async () => {
-    const real = globalThis.fetch;
+    const opened = await openAskLab();
+    onTestFinished(() => opened.flowState.dispose());
+    const inProcess = createInProcessFetch(opened.flowState);
+    // Retry used to call Happy DOM's fetch, which is Node's HTTP client. The
+    // read goes to this Lab in process. A socket opened here fails the test.
+    const sockets = vi.spyOn(net.Socket.prototype, "connect");
     let down = true;
-    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
-      down ? Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 })) : real(input, init),
-    );
-    await openApp("/inbox");
+    const responses: Promise<Response>[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      if (down) return Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 }));
+      const response = inProcess(input, init);
+      responses.push(response);
+      return response;
+    });
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL("http://lab.local/inbox");
+    render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     const screenEl = await screen.findByTestId("unreachable");
     expect(screen.getByTestId("unreachable-message").textContent).toMatch(/503.*store offline/);
     expect(screen.queryByTestId("refusal")).toBeNull();
@@ -174,7 +186,23 @@ describe("a Lab Shift Manager can't reach", () => {
     // Flush them, so the click can't land on the no-op it starts with.
     await act(async () => {});
     act(() => fireEvent.click(screen.getByTestId("unreachable-retry")));
-    await screen.findByTestId("sidebar");
+    // The click does not return the read. Wait until the responses it started have settled, then look.
+    await act(async () => {
+      let seen = 0;
+      for (let quiet = 0; quiet < 2; ) {
+        if (responses.length === seen) {
+          await new Promise((r) => setTimeout(r, 0));
+          quiet = responses.length === seen ? quiet + 1 : 0;
+          continue;
+        }
+        const batch = responses.slice(seen);
+        seen = responses.length;
+        await Promise.all(batch);
+        quiet = 0;
+      }
+    });
+    expect(screen.getByTestId("sidebar")).toBeTruthy();
+    expect(sockets).not.toHaveBeenCalled();
   });
 });
 
