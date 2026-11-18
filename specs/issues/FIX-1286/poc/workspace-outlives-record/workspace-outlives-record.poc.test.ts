@@ -92,6 +92,7 @@ type Caller = ReturnType<TwoUserServer["as"]>;
 async function run(caller: Caller, sessionId: string, command: string, requestId?: string) {
   const response = await caller(`/scratch/${sessionId}/actions/run`, {
     method: "POST",
+    headers: { "content-type": "application/json" },
     body: JSON.stringify({ input: { command }, ...(requestId === undefined ? {} : { requestId }) })
   });
   expect(response.status).toBe(202);

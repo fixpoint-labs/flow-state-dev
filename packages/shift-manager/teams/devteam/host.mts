@@ -83,6 +83,7 @@ import {
   createRoutinesCapability,
   createWorkforceCapability,
   defineAgentWorkerFlow,
+  followPullRequest,
   githubSubscriptionProvider,
   defineWorkerInventoryCollection,
   inventoryWorkers,
@@ -136,7 +137,7 @@ import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { DOCUMENT_KEY, INSPECT_ENTRY, WORKER_FACTS_DATA_TYPE, workerOf } from "./worker-config.mts";
 import { editedTree } from "./edited-tree.mts";
 import { defineAnswerPhase, defineImplementPhase, noteStartingFiles } from "./phase.mts";
-import { defineCoderJudge } from "./judge.mts";
+import { defineCoderJudge, JUDGE_MODEL } from "./judge.mts";
 import { CODER_FLOW, coderHarnessNames, defineCoderWorkerFlow, HARNESS_SETTING } from "./workforce/flows/workers/coder.mts";
 import {
   DRAIN_ENTRY,
@@ -571,6 +572,13 @@ export interface OpenLabOptions {
    * still run.
    */
   githubToken?: string;
+  /**
+   * The GitHub logins whose reviews and comments on a coder's pull request
+   * reach its run, which acts on them with the coder's tools
+   * ({@link githubReviewersFromEnv}). Absent or empty: a coder follows no
+   * pull request, so nobody on GitHub can steer it.
+   */
+  githubReviewers?: readonly string[];
   /** GitHub's REST API root. Absent: GitHub's own. A goal check names its stub. */
   githubApiUrl?: string;
   /**
@@ -683,13 +691,26 @@ export function operatorGitHubToken(env: NodeJS.ProcessEnv = process.env): strin
 }
 
 /**
+ * The GitHub logins trusted to steer a coder through its pull requests:
+ * `GITHUB_REVIEWERS`, comma- or space-separated. Empty when unset.
+ */
+export function githubReviewersFromEnv(env: NodeJS.ProcessEnv = process.env): string[] {
+  return (env.GITHUB_REVIEWERS ?? "").split(/[\s,]+/).filter((login) => login !== "");
+}
+
+/**
  * GitHub for routines, read with the operator's token and for the operator
  * alone: a GitHub routine another user asks for, or one asked for with no
  * token, is refused naming `GITHUB_TOKEN`, and the token is never lent.
  */
 function operatorGitHub(operator: string, token: string | undefined, apiUrl: string | undefined) {
   const reads = (ctx: BlockContext) => (ctx.session.identity as { userId?: string }).userId === operator;
-  const github = githubSubscriptionProvider({ token: (ctx) => (reads(ctx) ? token : undefined), ...(apiUrl === undefined ? {} : { apiUrl }) });
+  const github = githubSubscriptionProvider({
+    token: (ctx) => (reads(ctx) ? token : undefined),
+    ...(apiUrl === undefined ? {} : { apiUrl }),
+    // A routine's `interest` is judged on the model the coder's judge and best fit run on.
+    screens: { interestModel: JUDGE_MODEL },
+  });
   return {
     ...github,
     async canRead(key: string, ctx: BlockContext) {
@@ -1116,6 +1137,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ...(options.withoutJudge === true ? {} : { judge: defineCoderJudge() }),
     ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
     ...(options.approveTools === true ? { approveTools: true } : {}),
+    // A run's session follows the pull request it opens, polled: a Lab on a laptop has no public URL for GitHub to push to.
+    // Only the listed reviewers are heard: what a run hears it acts on, with Bash and a push.
+    ...(options.githubReviewers === undefined || options.githubReviewers.length === 0
+      ? {}
+      : { onPullRequestRecorded: followPullRequest({ providers: [github], installation, allow: options.githubReviewers }) }),
     harness: labSlot(options.harness),
     ...(options.harnessName === undefined ? {} : { harnessName: options.harnessName }),
     ...(options.harnesses === undefined
@@ -1754,6 +1780,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           // The inline stream, because the plain POST acks 202 with no output
           // and the positive half is graded on the worker's facts.
           headers: {
+            "content-type": "application/json",
             accept: "text/event-stream",
             ...(bearer ? { authorization: `Bearer ${LAB_PRINCIPAL_SECRET}` } : {}),
           },

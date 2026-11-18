@@ -34,6 +34,7 @@ import { createLabReader, type Ask } from "../../../packages/shift-manager/src/l
 import { parseRoute } from "../../../packages/shift-manager/src/lib/routes.ts";
 import { plantedAgentModel, plantedCoderRun, plantedCoderStatus, plantedCoordinatorModel, type KnownProject } from "./plant.mts";
 import { startRecordingTracker, type TrackerCall } from "./recording-tracker.mts";
+import { sleep } from "../../lib/time.mts";
 
 const SLUG = "error-reporter-files-a-reproducible-issue";
 const say = (line: string) => console.log(`[${SLUG}] ${line}`);
@@ -160,7 +161,6 @@ const FSD = { visibility: "shared" as const, id: "fsd" };
 const COORDINATOR_MODEL = /^model:\s*(\S+)\s*$/m.exec(
   readFileSync(join(REPO_ROOT, "packages/shift-manager/teams/devteam/workforce/org/workers/project-coordinator/WORKER.md"), "utf8")
 )![1]!;
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const DRAFT_MS = 20 * 60_000;
 
 /** The leg-1 message: it names a project with no repository, and carries a token no report may hold. */

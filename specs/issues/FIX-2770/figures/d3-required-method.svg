@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="D3, whether a store may skip the joined read. Chosen: a required store method. Instead of: optional, with the verb absent without it. It comes down to a host on a custom store: required, its author gets a type error naming the method; optional, its Inbox is silently empty. Price: every custom adapter must implement it on upgrade. Tie: the four stores in the repository implement it either way. Locks in a sixth required SuspensionStore method. Flips if a published store exists that cannot reach the request table"
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
+    <text class="t-q" x="32" y="52">May a suspension store skip the joined read?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">No: a required method</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Yes: optional, the verb absent</text>
+  </g>
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A HOST ON A</text>
+    <text class="t-lbl" x="32" y="169">CUSTOM STORE</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="163">+</text>
+    <text class="t-b" x="248" y="162">A type error names the method</text>
+    <text class="t-s" x="248" y="180">at the adapter&#x27;s build</text>
+    <text class="mark minus" x="592" y="163">−</text>
+    <text class="t-b" x="612" y="162">An Inbox that is always empty</text>
+    <text class="t-s" x="612" y="180">and says nothing</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="224">A CUSTOM ADAPTER</text>
+    <text class="t-lbl" x="32" y="237">ON UPGRADE</text>
+    <text class="mark minus" x="228" y="227">−</text>
+    <text class="t-b" x="248" y="226">Must implement it now</text>
+    <text class="t-s" x="248" y="244">a minor changeset says so</text>
+    <text class="mark plus" x="592" y="227">+</text>
+    <text class="t-b" x="612" y="226">Nothing to do</text>
+    <text class="t-s" x="612" y="244">until it wants the read</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="282">THE FOUR STORES</text>
+    <text class="t-lbl" x="32" y="295">IN THE REPO</text>
+    <text class="mark tie" x="228" y="285">=</text>
+    <text class="t-b" x="248" y="284">Implement it</text>
+    <text class="t-s" x="248" y="302">memory, filesystem, SQLite, Postgres</text>
+    <text class="mark tie" x="592" y="285">=</text>
+    <text class="t-b" x="612" y="284">Implement it</text>
+    <text class="t-s" x="612" y="302">the same four</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">A sixth required SuspensionStore method</text>
+    <text class="t-s" x="32" y="387">memory and filesystem take the request store</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">A published store can&#x27;t reach requests</text>
+    <text class="t-s" x="494" y="387">then the method is optional, its absence named</text>
+  </g>
+</svg>

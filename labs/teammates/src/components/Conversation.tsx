@@ -1,16 +1,20 @@
 import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import type { ConversationEntry, AppHarness, AppCalls, AppContext, AppWorker } from "../app";
+import type { RosterEntry } from "@flow-state-dev/workforce/browser";
+import type { AppContext } from "../../flows/lab-context.mts";
+import type { ConversationEntry, AppCalls } from "../app";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { Look } from "../lib/looks";
+import { displayName, roleOf } from "../lib/roster";
 import { answeringStep, useStatusLine } from "../lib/status";
-import { pendingFor } from "../lib/talk";
+import { ANSWERED_LINES_MAX, pendingFor, useTalk } from "../lib/talk";
 import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
 import { ContextStrip } from "./ContextStrip";
 import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
+import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
@@ -19,7 +23,7 @@ import { TaskCard, type TaskLine } from "./TaskCard";
 import { StatusBadge } from "./StatusBadge";
 
 /** A small button in the conversation's header. */
-const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent";
+const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-xs tracking-widest uppercase hover:bg-accent";
 
 type TaskEntry = Extract<ConversationEntry, { kind: "task" }>;
 const placeholders = new WeakMap<TaskEntry, TaskLine>();
@@ -70,12 +74,12 @@ export function Conversation({
   onViewTasks,
 }: {
   adapter: AppCalls;
-  worker: AppWorker;
+  worker: RosterEntry;
   /** The roster as read: an empty conversation names the worker's delegates from it. */
-  workers?: readonly AppWorker[];
+  workers?: readonly RosterEntry[];
   /** What the lab works on and with; drawn over the conversation. */
   context?: AppContext;
-  harnesses?: AppHarness[];
+  harnesses?: HarnessReadinessChipRow[];
   onRecheck?: () => Promise<unknown>;
   sessionId: string;
   nameOf: (id: string) => string;
@@ -85,7 +89,7 @@ export function Conversation({
   /** A coding worker's harness, by the screen's name for it. */
   harnessOf: (id: string) => string | undefined;
   onFire: () => Promise<void>;
-  /** Open a popup over the thread: a task this conversation filed, or a message it sent. */
+  /** Open a popup over the conversation: a task it filed, or a message it sent. */
   onOpen: (popup: Popup) => void;
   /** Words a popup's follow-up adds to this conversation's composer, once per `n`. */
   prefill?: { text: string; n: number };
@@ -99,19 +103,21 @@ export function Conversation({
   const connection = useWatch(adapter.watchConnection, sessionId) ?? "connecting";
   const stale = isFeedStale(connection);
   const mark = useWatch(adapter.watchWindow, sessionId);
-  const talk = useWatch(adapter.watchTalk, worker.id) ?? [];
   const entries = view?.entries ?? [];
+  // The worker's open messages, and the answers to the newest lines it sent: an older line shows no status, never a wrong one.
+  const answered = entries.flatMap((e) => (e.kind === "sent" ? [e.messageId] : [])).slice(-ANSWERED_LINES_MAX);
+  const talk = useTalk(worker.id, answered) ?? [];
   const running = view?.running ?? false;
   const pending = pendingFor(worker.id, talk, entries, view?.since);
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
-  const status = useStatusLine(adapter, worker, sessionId, nameOf, isCoding, stale);
+  const status = useStatusLine(adapter, worker.id, sessionId, nameOf, isCoding, stale);
   const [panel, setPanel] = useState<"fire">();
   const delegates = delegatesOf(worker, workers, context);
   // A starter line picked from the empty conversation: the composer takes it as its text, and nothing is sent.
   const [seed, setSeed] = useState<{ text: string; at: number }>();
   const keep = useRef<HTMLButtonElement>(null);
   const fireButton = useRef<HTMLButtonElement>(null);
-  // Keep (or Esc) closes the row and puts focus back on the header's Fire, where the person was.
+  // Keep (or Esc) closes the row and puts focus back on the header's Fire, where you were.
   const keepWorker = () => {
     setPanel(undefined);
     fireButton.current?.focus();
@@ -158,17 +164,17 @@ export function Conversation({
       <header className="flex items-center gap-3 border-b border-border px-6 py-3">
         <Avatar look={lookOf(worker.id)} />
         <div className="min-w-0">
-          <h1 className="text-sm font-semibold">{worker.name}</h1>
+          <h1 className="text-sm font-semibold">{displayName(worker)}</h1>
           <p className={cn("truncate text-xs text-muted-foreground", stale && STALE_CLASS)} data-header-status>
             {status}
           </p>
         </div>
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{worker.role}</span>
-        {worker.own ? (
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{roleOf(worker)}</span>
+        {worker.standard ? null : (
           <button ref={fireButton} type="button" onClick={() => setPanel("fire")} aria-expanded={panel === "fire"} className={HEADER_BUTTON}>
             Fire
           </button>
-        ) : null}
+        )}
         {running ? (
           <StatusBadge status="working" active={!stale} className={stale ? STALE_CLASS : undefined} />
         ) : null}
@@ -179,7 +185,7 @@ export function Conversation({
       {panel === "fire" ? (
         <div
           role="group"
-          aria-label={`Fire ${worker.name}?`}
+          aria-label={`Fire ${displayName(worker)}?`}
           className="flex items-center gap-3 border-b border-border bg-destructive/10 px-6 py-2 text-sm"
           onKeyDown={(event) => {
             if (event.key === "Escape") {
@@ -188,7 +194,7 @@ export function Conversation({
             }
           }}
         >
-          <span className="min-w-0 flex-1">Fire {worker.name}? It leaves your roster; this conversation stays readable.</span>
+          <span className="min-w-0 flex-1">Fire {displayName(worker)}? It leaves your roster; this conversation stays readable.</span>
           <button type="button" onClick={() => void onFire()} className={cn(HEADER_BUTTON, "text-destructive")}>
             Fire
           </button>
@@ -223,7 +229,7 @@ export function Conversation({
               {i === markAt && mark ? (
                 <div role="separator" aria-label={mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"} className="my-2 flex items-center gap-3">
                   <span className="h-px flex-1 bg-border" />
-                  <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+                  <span className="font-mono text-xs tracking-widest text-muted-foreground uppercase">
                     {mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"}
                   </span>
                   <span className="h-px flex-1 bg-border" />
@@ -243,11 +249,11 @@ export function Conversation({
                 ) : (
                   <Entry
                     entry={entry}
-                    workerName={worker.name}
+                    workerName={displayName(worker)}
                     nameOf={nameOf}
                     lookOf={lookOf}
                     isCoding={isCoding}
-                    answer={entry.kind === "sent" ? answerIn(talk, entry.messageId) : undefined}
+                    answer={entry.kind === "sent" && answered.includes(entry.messageId) ? answerIn(talk, entry.messageId) : undefined}
                     onOpenMessage={openMessage}
                     onOpenTask={openTask}
                     stillRunning={stillRunningFor(entry)}
@@ -266,7 +272,7 @@ export function Conversation({
               <span aria-hidden="true" data-typing-dots data-active={!stale && !step?.needsYou} className="flex items-center gap-1">
                 <span /><span /><span />
               </span>
-              <span>{step === undefined ? `${worker.name} is answering…` : `${worker.name} · ${step.text}…`}</span>
+              <span>{step === undefined ? `${displayName(worker)} is answering…` : `${displayName(worker)} · ${step.text}…`}</span>
             </div>
           ) : null}
           {pending.map((m) => (
@@ -275,7 +281,7 @@ export function Conversation({
               data-pending={m.id}
               className="w-fit rounded-md border border-dashed border-attention bg-attention/15 px-3 py-1.5 font-mono text-xs text-foreground"
             >
-              ← {nameOf(m.from)} {m.inReplyTo ? "replied" : "sent a message"} · {worker.name} reads it {running ? "after this turn" : "next"}
+              ← {nameOf(m.from)} {m.inReplyTo ? "replied" : "sent a message"} · {displayName(worker)} reads it {running ? "after this turn" : "next"}
             </div>
           ))}
         </div>
@@ -283,7 +289,7 @@ export function Conversation({
       </div>
       <Composer
         sessionId={sessionId}
-        workerName={worker.name}
+        workerName={displayName(worker)}
         running={running}
         stopping={stopping}
         stopRefused={stopRefused}

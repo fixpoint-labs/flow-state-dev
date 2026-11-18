@@ -1,7 +1,9 @@
 import { useCallback, useState } from "react";
 import { ChevronRightIcon, TerminalIcon } from "lucide-react";
-import type { BoardTask, AppCalls, AppWorker } from "../app";
+import type { RosterEntry } from "@flow-state-dev/workforce/browser";
+import type { BoardTask, AppCalls } from "../app";
 import type { Look } from "../lib/looks";
+import { displayName, roleOf, useWorkforce } from "../lib/roster";
 import { useNow, useStale, useWatch } from "../lib/use-watch";
 import { clearMark, useCleared } from "../lib/cleared";
 import { taskPresentation } from "../lib/task-presentation";
@@ -15,8 +17,8 @@ import { EditForm } from "./TeammateForms";
 import { StatusBadge } from "./StatusBadge";
 
 /** The heading over each of the panel's sections. */
-const HEADING = "font-mono text-[10px] tracking-widest text-muted-foreground uppercase";
-const PANEL_BUTTON = "w-fit rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent disabled:opacity-40";
+const HEADING = "font-mono text-xs tracking-widest text-muted-foreground uppercase";
+const PANEL_BUTTON = "w-fit rounded-sm border border-border px-2 py-0.5 font-mono text-xs tracking-widest uppercase hover:bg-accent disabled:opacity-40";
 
 /**
  * How many of *Failed*'s and *Done*'s rows show before *Show all*: the newest
@@ -93,7 +95,7 @@ export function TeammatePanel({
   onOpen,
 }: {
   adapter: AppCalls;
-  worker: AppWorker;
+  worker: RosterEntry;
   /** The teammate's one conversation: the tasks listed are the ones it filed. */
   sessionId: string;
   /** The task open in the popup, if one is. */
@@ -120,6 +122,7 @@ export function TeammatePanel({
   const now = useNow(1_000, !stale);
   const counts = taskCounts(tasks.flatMap((t) => (t.view === undefined ? [] : [t.view])));
   const [editing, setEditing] = useState(false);
+  const workforce = useWorkforce();
   // Every ended group starts collapsed; a click opens it.
   const [opened, setOpened] = useState<Record<string, boolean>>({});
   // *Done* shows its newest few until *Show all*.
@@ -153,9 +156,9 @@ export function TeammatePanel({
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span id={`task-row-${t.id}`} className="flex items-center justify-between gap-2">
               <StatusBadge status={state.word} active={!stale && t.status === "running" && !t.waiting} />
-              <span title={`Task ${t.id}`} aria-label={`Task ${t.id}`} className="truncate font-mono text-[10px] text-muted-foreground">#{t.id.replace(/^task_/, "")}</span>
+              <span title={`Task ${t.id}`} aria-label={`Task ${t.id}`} className="truncate font-mono text-xs text-muted-foreground">#{t.id.replace(/^task_/, "")}</span>
             </span>
-            <span className="line-clamp-2 text-[13px] leading-snug" title={line}>
+            <span className="line-clamp-2 text-sm leading-snug" title={line}>
               {coding ? <TerminalIcon aria-hidden className="mr-1 mb-0.5 inline size-3 text-muted-foreground" /> : null}
               {line}
             </span>
@@ -171,18 +174,18 @@ export function TeammatePanel({
   };
 
   return (
-    <aside aria-label={`${worker.name}'s panel`} className="flex h-full min-h-0 flex-col border-l border-border bg-inspector">
+    <aside aria-label={`${displayName(worker)}'s panel`} className="flex h-full min-h-0 flex-col border-l border-border bg-inspector">
       <section aria-label="Teammate" className="flex flex-col gap-2 border-b border-border px-4 pt-4 pb-3">
         <div className="flex items-center gap-3">
           <Avatar look={lookOf(worker.id)} />
-          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{worker.name}</h2>
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{displayName(worker)}</h2>
         </div>
-        <p className="text-xs text-muted-foreground">{worker.role}</p>
+        <p className="text-xs text-muted-foreground">{roleOf(worker)}</p>
         {editing ? (
           <EditForm
-            name={worker.name}
+            name={displayName(worker)}
             onSave={async (edit) => {
-              await adapter.editTeammate(worker.id, edit);
+              await workforce.edit({ id: worker.id, ...edit });
               setEditing(false);
             }}
             onCancel={() => setEditing(false)}
@@ -192,7 +195,7 @@ export function TeammatePanel({
             <button type="button" onClick={() => setEditing(true)} className={PANEL_BUTTON}>
               Edit
             </button>
-            {worker.edited ? <ResetButton name={worker.name} onReset={() => adapter.resetTeammate(worker.id)} /> : null}
+            {worker.edited ? <ResetButton name={displayName(worker)} onReset={async () => void (await workforce.reset(worker.id))} /> : null}
           </div>
         )}
       </section>
@@ -201,7 +204,7 @@ export function TeammatePanel({
           <div id="tasks-heading" className={cn(HEADING, "px-4 pt-4 pb-2")}>
             Tasks{tasks.length > 0 ? ` (${tasks.length})` : ""}{counts === "" ? "" : ` · ${counts}`}
           </div>
-          {tasks.length === 0 ? <p className="px-4 text-xs text-muted-foreground">{worker.name} hasn't started any tasks yet.</p> : null}
+          {tasks.length === 0 ? <p className="px-4 text-xs text-muted-foreground">{displayName(worker)} hasn't started any tasks yet.</p> : null}
           <CodingSpend tasks={tasks.filter((t) => isCoding(t.to))} />
           <div className="space-y-3">
           {running.length > 0 ? (
@@ -214,7 +217,7 @@ export function TeammatePanel({
             <div className="border-t border-border pt-2">
               <div className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium">
                 <span className="text-destructive">Failed</span>
-                <span aria-hidden className="rounded-full bg-destructive/15 px-1.5 text-[10px] leading-4 text-destructive tabular-nums">
+                <span aria-hidden className="rounded-full bg-destructive/15 px-1.5 text-xs leading-4 text-destructive tabular-nums">
                   {failed.length}
                 </span>
                 <button
@@ -222,7 +225,7 @@ export function TeammatePanel({
                   aria-label={`Clear failed (${failed.length})`}
                   title="Hide these from this panel. The tasks themselves stay."
                   onClick={() => clearFailed(failed.map(clearMark))}
-                  className="ml-auto text-[11px] font-normal text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  className="ml-auto text-xs font-normal text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 >
                   Clear
                 </button>
@@ -260,7 +263,7 @@ export function TeammatePanel({
                 >
                   <ChevronRightIcon aria-hidden className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
                   <span>{group.label}</span>
-                  <span aria-hidden className="rounded-full bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground tabular-nums">
+                  <span aria-hidden className="rounded-full bg-muted px-1.5 text-xs leading-4 text-muted-foreground tabular-nums">
                     {group.tasks.length}
                   </span>
                 </button>
@@ -346,7 +349,7 @@ function CodingSpend({ tasks }: { tasks: readonly BoardTask[] }) {
   const line = codingSpendLine(tasks);
   if (line === "") return null;
   return (
-    <p className="px-4 pb-2 font-mono text-[10px] text-muted-foreground" data-coding-spend>
+    <p className="px-4 pb-2 font-mono text-xs text-muted-foreground" data-coding-spend>
       {line}
     </p>
   );

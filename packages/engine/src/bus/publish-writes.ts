@@ -2,7 +2,8 @@
 /**
  * The one publish point: every write to the request and session
  * stores publishes a notice on its session's topic, once the write can be
- * read.
+ * read, and every write to the suspension store one on its owner's user
+ * topic.
  *
  * `withChangeBus` is applied wherever a registry enters the engine:
  * `resolveStores` (so `createFlowState` and the router), `runAction`, BullMQ's
@@ -30,6 +31,27 @@
  * | a session's state field delta | `run` on the session and on its parent |
  * | any other session write | the same, and `run` on its owner's user topic |
  * | a session born (`set` over `"absent"`) or deleted | also `state` on the session |
+ * | a session deleted | also `suspension` on its owner's user topic |
+ * | a suspension that waits on a person written (`set`) | `suspension` on the request owner's user topic, under the request's tenant |
+ * | a request's suspensions deleted (`deleteForRequest`) while the read lists one of them | the same |
+ *
+ * Only a change a read of pending suspensions could see publishes. A wait
+ * gate or an outside event's stop is never listed, so writing one publishes
+ * nothing: hearing it would re-run every Inbox on every internal gate move. A
+ * durable request's completion deletes its suspensions, all of them answered
+ * by then, so it publishes nothing: hearing it would wake every Inbox on
+ * every turn's finish. Pruning resolved suspensions (`pruneTerminalBefore`)
+ * publishes nothing either. Nor does a suspension whose request is not
+ * stored: the pending read joins to the request, so it never listed one.
+ *
+ * A session delete leaves its requests and suspensions stored, but the
+ * pending read answers a suspension in a session only while the session
+ * exists, so the delete publishes `suspension` too. It does so on every
+ * session delete, without reading whether the session held one: a delete is
+ * never per turn, notices for one topic in one microtask turn fold into one,
+ * and a user with no Inbox open hears nothing, so the cost is one Inbox read
+ * per delete a watcher sees, where the check would cost a suspension-store
+ * read on every delete.
  *
  * The user topic is what a list of the user's sessions watches: it hears a
  * session made, titled or deleted and a request's status written, not the
@@ -49,7 +71,8 @@ import { DEFAULT_RUNTIME_LOGGER } from "../execution/logging";
 import { FlowStateConfigError } from "../errors/flow-error";
 import type { BusTopic, ChangeBus, ChangeNotice } from "./types";
 import { unionNoticeIds, type ChangeKind } from "@flow-state-dev/core/internal";
-import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry } from "../stores/types";
+import { isUserSuspension, type PendingUserSuspensionCursor, type SuspensionRecord } from "@flow-state-dev/core/types";
+import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry, SuspensionStore } from "../stores/types";
 import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
 import { legacyComponentItemReads } from "../stores/legacy-component-items";
 
@@ -100,8 +123,9 @@ function busOf(store: object): ChangeBus | undefined {
  *
  * @throws FlowStateConfigError when the registry's `bus` differs from the one
  *   its stores already publish to.
- * @returns The registry with `bus` set and its `request` and `session` stores
- *   wrapped: `stores` itself when nothing changed, otherwise a copy.
+ * @returns The registry with `bus` set and its `request`, `session` and
+ *   `suspensions` stores wrapped: `stores` itself when nothing changed,
+ *   otherwise a copy.
  */
 export function withChangeBus<T extends StoreRegistry>(stores: T): T & { bus: ChangeBus } {
   const bus = stores.bus ?? busOf(stores.request) ?? busOf(stores.session) ?? createInMemoryBus();
@@ -111,10 +135,13 @@ export function withChangeBus<T extends StoreRegistry>(stores: T): T & { bus: Ch
   // entry applies it, once per store, so stored `component` items read back
   // as data items on every path (legacy-component-items.ts).
   const request = wrap(stores.request, bus, () => requestWrites(stores.request, bus, identities), legacyComponentItemReads);
-  if (stores.bus === bus && session === stores.session && request === stores.request) {
+  // Optional only on a hand-built registry that leaves it out.
+  const raw = stores.suspensions as SuspensionStore | undefined;
+  const suspensions = raw === undefined ? undefined : wrap(raw, bus, () => suspensionWrites(raw, bus, identities));
+  if (stores.bus === bus && session === stores.session && request === stores.request && suspensions === raw) {
     return stores as T & { bus: ChangeBus };
   }
-  return { ...stores, session, request, bus };
+  return { ...stores, session, request, ...(suspensions !== undefined ? { suspensions } : {}), bus };
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +242,16 @@ function userTopic(userId: string, tenantId: string | undefined): BusTopic {
 
 function notice(topic: BusTopic, kind: ChangeKind, id?: string): ChangeNotice {
   return id === undefined ? { topic, kind } : { topic, kind, ids: [id] };
+}
+
+// FIX-2770 D1.
+/**
+ * The `suspension` a request's owner's user topic hears of a write to one of
+ * its suspensions, under the request's tenant. It names nothing: the topic
+ * spans the user's organizations.
+ */
+function suspensionNotice(owner: RequestIdentity): ChangeNotice | undefined {
+  return owner.userId === undefined ? undefined : notice(userTopic(owner.userId, owner.tenantId), "suspension");
 }
 
 /** The `run` a session's owner's user topic hears of a write to one of their sessions. */
@@ -324,6 +361,15 @@ class Identities {
     };
     remember(cacheOf(requestIdentities, this.requests), id, identity);
     return identity;
+  }
+
+  // FIX-2770.
+  /** The request as stored now, read past the cache: a write that depends on its status. */
+  async currentRequest(id: string): Promise<RequestRecord | undefined> {
+    return this.requests.get(id).catch((error: unknown) => {
+      debugUnassembled(error, { store: "request", id });
+      return undefined;
+    });
   }
 
   forgetRequest(id: string): void {
@@ -498,6 +544,8 @@ function sessionWrites(store: SessionStore, bus: ChangeBus, identities: Identiti
         publishNotices(bus, identities.sessionNotices(identity, "run"));
         // Deleting takes the state away: a view that read only it must hear.
         publishNotices(bus, [notice(sessionTopic(identity.id, identity.tenantId), "state")]);
+        // And the session's pending suspensions out of its owner's pending read (FIX-2770).
+        if (identity.userId !== undefined) publishNotices(bus, [notice(userTopic(identity.userId, identity.tenantId), "suspension")]);
       }
     },
     ...Object.fromEntries(DELTA_METHODS.map((name) => [name, delta]))
@@ -595,6 +643,60 @@ function requestWrites(store: RequestStore, bus: ChangeBus, identities: Identiti
         failed ??= { error: held };
       }
       if (failed !== undefined) throw failed.error;
+    }
+  });
+}
+
+/** Pending-read pages a delete looks through for its request's suspensions. */
+const LISTED_PAGE = 200;
+
+// FIX-2770 D1.
+/**
+ * Whether the owner's pending read lists a suspension of `request` now: the
+ * one delete a watching Inbox can see. Read with the store's own query, under
+ * the request's scope; a store that can't answer it publishes nothing.
+ */
+async function listsOneOf(store: SuspensionStore, request: RequestRecord): Promise<boolean> {
+  const scope = {
+    userId: request.userId,
+    tenantId: request.tenantId ?? undefined,
+    orgId: request.orgId ?? undefined,
+    flowKinds: [request.flowKind],
+    now: Date.now(),
+    limit: LISTED_PAGE
+  };
+  try {
+    for (let after: PendingUserSuspensionCursor | undefined; ; ) {
+      const page = await store.listPendingForUser({ ...scope, ...(after !== undefined ? { after } : {}) });
+      if (page.some((entry) => entry.requestId === request.id)) return true;
+      const last = page.at(-1);
+      if (page.length < LISTED_PAGE || last === undefined) return false;
+      after = { createdAt: last.createdAt, requestId: last.requestId, suspensionId: last.suspensionId };
+    }
+  } catch (error) {
+    debugUnassembled(error, { store: "request", id: request.id });
+    return false;
+  }
+}
+
+// FIX-2770 D1.
+function suspensionWrites(store: SuspensionStore, bus: ChangeBus, identities: Identities): Writes {
+  const publishFor = (identity: RequestIdentity | undefined): void => {
+    const held = identity === undefined ? undefined : suspensionNotice(identity);
+    if (held !== undefined) publishNotices(bus, [held]);
+  };
+  return present(store, {
+    set: (original) => async (record: SuspensionRecord) => {
+      await original(record);
+      if (isUserSuspension(record)) publishFor(await identities.request(record.requestId));
+    },
+    deleteForRequest: (original) => async (requestId: string) => {
+      // Read before the delete: the request and its suspensions go with it.
+      const request = await identities.currentRequest(requestId);
+      // A completed request waits on no one: its suspensions were all answered.
+      const listed = request !== undefined && request.status !== "completed" && (await listsOneOf(store, request));
+      await original(requestId);
+      if (listed) publishFor(identities.rememberRequest(requestId, request));
     }
   });
 }

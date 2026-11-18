@@ -70,8 +70,6 @@ function discover(dir: string, found: Goal[] = []): Goal[] {
     }
     if (isGoal) {
       const spec = readFileSync(goalMd, "utf8");
-      // Two goal.md schemas are in use: the template's field list (`**Model:**`)
-      // and a prose form (`**Model.**`). Accept both.
       const modelLine = /^\*\*Model[:.]\*\*(.*)$/m.exec(spec);
       const declared = (modelLine?.[1] ?? "").trim().toLowerCase();
       const modelFree = declared.startsWith("n/a") || declared.startsWith("none");

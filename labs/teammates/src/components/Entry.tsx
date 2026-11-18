@@ -39,7 +39,7 @@ export const Entry = memo(function Entry({
   nameOf,
   lookOf,
   isCoding = () => false,
-  answer = "working",
+  answer,
   onOpenMessage,
   onOpenTask,
   onAnswer,
@@ -84,7 +84,7 @@ export const Entry = memo(function Entry({
           {entry.files !== undefined ? <MessageFiles files={entry.files} readFile={readFile} /> : null}
           {/* A line of files alone has no words to box. */}
           {entry.text !== "" || entry.files === undefined ? (
-            <div className="max-w-[80%] rounded-lg bg-accent px-4 py-2.5 text-sm whitespace-pre-wrap" data-entry="user">
+            <div className="max-w-[80%] rounded-lg bg-accent px-4 py-2.5 text-base whitespace-pre-wrap" data-entry="user">
               {entry.text}
             </div>
           ) : null}
@@ -92,7 +92,7 @@ export const Entry = memo(function Entry({
       );
     case "assistant":
       return (
-        <div className="py-1 text-sm leading-relaxed" data-entry="assistant" data-incomplete={entry.incomplete ? "true" : undefined}>
+        <div className="py-1 text-base leading-relaxed" data-entry="assistant" data-incomplete={entry.incomplete ? "true" : undefined}>
           <Reply key={entry.id} text={entry.text} streaming={entry.streaming && !entry.incomplete} />
           {entry.incomplete ? <span className="mt-1 block text-xs text-muted-foreground">Incomplete</span> : null}
         </div>
@@ -112,11 +112,11 @@ export const Entry = memo(function Entry({
           data-entry="received"
           className="max-w-[85%] rounded-md border border-dashed border-info/60 bg-info/5 px-3 py-2"
         >
-          <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-info uppercase">
+          <div className="flex items-center gap-1.5 font-mono text-xs tracking-widest text-info uppercase">
             <Avatar look={lookOf(entry.from)} size="sm" />← {nameOf(entry.from)}
             {entry.noAnswer ? " · no answer" : entry.inReplyTo ? " · reply" : ""}
           </div>
-          <div className="mt-1 text-sm">
+          <div className="mt-1 text-base">
             <Reply key={entry.id} text={entry.text} label="message" defaultExpanded={!isLongReply(entry.text)} />
           </div>
         </section>
@@ -136,7 +136,7 @@ export const Entry = memo(function Entry({
       }
       return (
         <section aria-label={`From ${from}`} data-entry="result" className="max-w-[85%] rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2">
-          <div className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-success uppercase">
+          <div className="flex items-center gap-2 font-mono text-xs tracking-widest text-success uppercase">
             <span className="flex-1">
               ← {isCoding(entry.from) ? "coding task" : nameOf(entry.from)} · {entry.failed ? "task failed" : entry.cancelled ? "task cancelled" : "task done"}
             </span>
@@ -146,7 +146,7 @@ export const Entry = memo(function Entry({
               </button>
             ) : null}
           </div>
-          <div className="mt-1 text-sm">
+          <div className="mt-1 text-base">
             <Reply key={entry.id} text={entry.text} label="result" defaultExpanded={!isLongReply(entry.text)} />
           </div>
         </section>
@@ -177,7 +177,7 @@ function ApprovalCard({
   const { error, busy, submit } = useSubmit((approve: boolean) => onAnswer?.(approve) ?? Promise.resolve());
   return (
     <section aria-label={`${workerName} asks`} data-entry="approval" className="max-w-[85%] rounded-md border border-attention bg-attention/10 px-3 py-2 text-sm">
-      <div className="font-mono text-[10px] tracking-widest text-attention uppercase">{workerName} asks · {resolution ?? "waiting for you"}</div>
+      <div className="font-mono text-xs tracking-widest text-attention uppercase">{workerName} asks · {resolution ?? "waiting for you"}</div>
       <p className="mt-0.5 whitespace-pre-wrap">{text}</p>
       {resolution === undefined ? (
         <div className="mt-2 flex gap-2 text-xs">
@@ -222,7 +222,7 @@ function ResultLine({ who, look, entry, onOpen }: { who: string; look?: Look; en
         <span className={entry.failed ? "min-w-0 truncate text-destructive" : "min-w-0 truncate"}>{line}</span>
         <span className="ml-auto shrink-0 text-xs text-muted-foreground">Open task</span>
       </button>
-      <div className="mt-1.5 text-sm">
+      <div className="mt-1.5 text-base">
         <Reply key={entry.id} text={entry.text} label="result" defaultExpanded={!isLongReply(entry.text)} />
       </div>
     </div>
@@ -230,7 +230,7 @@ function ResultLine({ who, look, entry, onOpen }: { who: string; look?: Look; en
 }
 
 /** A message to another worker: one line, "Messaged researcher", that opens the exchange. */
-function SentLine({ to, look, text, answer, onOpen }: { to: string; look: Look; text: string; answer: AnswerStatus; onOpen?: () => void }) {
+function SentLine({ to, look, text, answer, onOpen }: { to: string; look: Look; text: string; answer: AnswerStatus | undefined; onOpen?: () => void }) {
   return (
     <button
       type="button"

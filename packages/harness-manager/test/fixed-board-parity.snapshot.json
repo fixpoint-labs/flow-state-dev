@@ -13,6 +13,7 @@
     "finalMessage": "the answer",
     "held": null,
     "incarnationId": "string",
+    "landedPullRequests": [],
     "lastSave": null,
     "outcome": "succeeded",
     "place": null,

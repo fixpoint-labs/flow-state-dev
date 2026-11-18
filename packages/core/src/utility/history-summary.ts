@@ -24,10 +24,18 @@ import { z } from "zod";
 import { defineCapability } from "../capability";
 import { handler } from "../blocks/handler";
 import { sequencer } from "../blocks/sequencer";
-import { defineResource } from "../types/resource";
 import type { BlockContext, BlockDefinition } from "../types/block";
 import type { HistoryTurn, LLMMessage } from "../types/scope";
 import { MAX_READING_CHARS } from "./consult-session-history";
+import {
+  HISTORY_SUMMARY_DEFAULT,
+  HISTORY_SUMMARY_NAME,
+  historySummaryResource,
+  historySummaryResourceNamed,
+  type HistorySummaryState,
+} from "./history-summary-resource";
+
+export { historySummaryStateSchema, type HistorySummaryState } from "./history-summary-resource";
 
 /** What `summarize` is handed on each fold. */
 export type HistorySummaryInput = {
@@ -36,37 +44,6 @@ export type HistorySummaryInput = {
   /** The turns being folded, oldest first, as the model would have read them. */
   turns: LLMMessage[];
 };
-
-/** The session resource a history summary keeps. */
-export const historySummaryStateSchema = z.object({
-  /** The running summary. */
-  summary: z.string().nullable().default(null),
-  /** The high-water mark: the newest turn folded, or moved past and kept pending. */
-  throughRequestId: z.string().nullable().default(null),
-  throughStartedAtMs: z.number().nullable().default(null),
-  /** The oldest turn after the mark at the last fold. Gone unfolded later means turns were lost. */
-  nextRequestId: z.string().nullable().default(null),
-  /**
-   * The oldest settled turn after the mark at the last fold. Tracked apart
-   * from `nextRequestId`, which an older waiting turn can hold for as long as
-   * it waits while settled turns behind it leave the window.
-   */
-  nextSettledRequestId: z.string().nullable().default(null),
-  /** Turns behind the mark that had not settled, by request id; folded once they do. */
-  pending: z.array(z.string()).default([]),
-  /** A turn left the window unsummarized. Stays set: the summary has a hole. */
-  gap: z.boolean().default(false),
-  /** Every turn before the mark is in the summary: no gap and nothing pending. */
-  complete: z.boolean().default(true),
-  /** Folds written. */
-  folds: z.number().int().default(0),
-  /** Folds tried, written or failed. A turn out of view with none tried: the fold step is missing. */
-  attempts: z.number().int().default(0),
-});
-
-export type HistorySummaryState = z.infer<typeof historySummaryStateSchema>;
-
-const HISTORY_SUMMARY_DEFAULT: HistorySummaryState = historySummaryStateSchema.parse({});
 
 /** Ends a summary cut to the cap, so the model and the next fold know text is missing. */
 const TRUNCATED_MARKER = "\n[earlier summary truncated]";
@@ -169,18 +146,8 @@ export interface HistorySummaryOptions {
  * ```
  */
 export function historySummary(options: HistorySummaryOptions) {
-  const name = options.name ?? "historySummary";
-
-  // One per conversation, however many generators install the capability.
-  // Public, so a screen can label its divider "earlier turns summarized".
-  const resource = defineResource({
-    ref: name,
-    scope: "session",
-    stateSchema: historySummaryStateSchema,
-    default: HISTORY_SUMMARY_DEFAULT,
-    writable: true,
-    client: { expose: ["throughRequestId", "complete", "folds"] },
-  });
+  const name = options.name ?? HISTORY_SUMMARY_NAME;
+  const resource = name === HISTORY_SUMMARY_NAME ? historySummaryResource : historySummaryResourceNamed(name);
   const resources = { [name]: resource };
   const stateOf = (ctx: BlockContext): HistorySummaryState =>
     ({ ...HISTORY_SUMMARY_DEFAULT, ...((ctx.resources as any)[name]?.state ?? {}) }) as HistorySummaryState;

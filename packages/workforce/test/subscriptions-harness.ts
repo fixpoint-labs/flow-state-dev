@@ -32,7 +32,7 @@ import {
   type SubscriptionProvider,
   type SubscriptionScreens
 } from "../src/subscriptions";
-import { defineSubscriptionServiceFlow, internalServiceFlow, type InternalServiceFlow, type InternalTopics, type SubscriptionServiceOptions } from "../src/service-flows";
+import { defineSubscriptionServiceFlow, followPullRequest, internalServiceFlow, type InternalServiceFlow, type InternalTopics, type SubscriptionServiceOptions } from "../src/service-flows";
 import { createRoutinesCapability } from "../src/routines";
 import { workerRoutineVerbs } from "../src/routines/routines";
 import type { WorkerManifest } from "../src/manifest";
@@ -145,17 +145,28 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
   // A worker's turn on a model: one with the routines capability, one without.
   const chat = generator({ name: "follower-chat", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, uses: [createRoutinesCapability(installation), ...(internal === undefined ? [] : [internal.capability])], user: (input) => input.message, itemVisibility: { client: true, history: true } });
   const chatPlain = generator({ name: "follower-chat-plain", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, user: (input) => input.message, itemVisibility: { client: true, history: true } });
-  // A task's turn: `[subscribe:<thread>]` subscribes the task's session to it, `[hold]` waits on the
-  // host's hold, then `[fail]` fails the task.
+  // A coding session's follower, as a host hands harness-manager one (FIX-2535 D2).
+  const follower = followPullRequest({ providers: [github], installation });
+  // A task's turn: `[subscribe:<thread>]` subscribes the task's session to it, `[follow-pr:<n>]` follows
+  // acme/api's PR #n as a coding session that opened it does, `[hold]` waits on the host's hold, then
+  // `[fail]` fails the task.
   const door = handler({
     name: "follower-run",
     inputSchema: doorInput,
-    resources: subscriptionResources,
+    resources: { ...subscriptionResources, ...follower.resources },
     execute: async (input, ctx) => {
       const asked = /\[subscribe:([^\]]+)\]/.exec(input.message);
       if (asked !== null) {
         const outcome = await subscribe(ctx as never, [github], { provider: "github", thread: asked[1]!, interest: "the task's PR" });
         if ("refused" in outcome) throw new Error(outcome.refused);
+      }
+      const opened = /\[follow-pr:(\d+)\]/.exec(input.message);
+      if (opened !== null) {
+        const number = Number(opened[1]);
+        const url = `https://github.com/acme/api/pull/${number}`;
+        // `[run-task:<id>]`: the run works that task, as harness-manager hands the follower a run's task.
+        const runTask = /\[run-task:([^\]]+)\]/.exec(input.message)?.[1];
+        await follower(ctx as never, { host: "github.com", owner: "acme", name: "api", number, url, key: `github.com/acme/api/${number}`, state: "open" } as never, runTask === undefined ? undefined : { taskId: runTask });
       }
       if (input.message.includes("[hold]")) await hold;
       if (input.message.includes("[fail]")) throw new Error("the task failed");

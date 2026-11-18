@@ -54,7 +54,7 @@ export const TaskCard = memo(function TaskCard({
       )}
       <span className="min-w-0 flex-1">
         <span className="block truncate">{line}</span>
-        <span aria-label={`Task ${task.id}`} title={`Task ${task.id}`} className="block truncate font-mono text-[10px] text-muted-foreground">#{task.id.replace(/^task_/, "")}</span>
+        <span aria-label={`Task ${task.id}`} title={`Task ${task.id}`} className="block truncate font-mono text-xs text-muted-foreground">#{task.id.replace(/^task_/, "")}</span>
       </span>
       {on === undefined ? null : <RunsOn on={on} />}
       {task.landed === undefined ? null : (

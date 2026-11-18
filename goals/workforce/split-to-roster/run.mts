@@ -44,6 +44,7 @@ import {
   silentLogger,
   type ModulePatch
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const USER_ID = "u_split_to_roster";
@@ -145,7 +146,6 @@ if (control !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
 const legs = new Set((process.env.GOAL_LEGS ?? "1,2,3,4").split(",").map((s) => s.trim()).filter(Boolean));
 const say = (s: string) => console.error(`[split-to-roster ${new Date().toISOString().slice(11, 19)}] ${s}`);
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 600);
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** A fresh codename, held nowhere but in `crew.keeper`'s answer. */
 function codename(): string {

@@ -10,6 +10,7 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 import oneCoalescer, { LIVE_READ_SOURCE } from "./scripts/eslint-rules/one-coalescer.mjs";
 import trackerIds, { COPIED_WHOLE, SHIPPED_SOURCE } from "./scripts/eslint-rules/no-tracker-ids.mjs";
+import textSize, { TYPE_SCALE_SOURCE } from "./scripts/eslint-rules/no-hardcoded-text-size.mjs";
 
 export default defineConfig(
   {
@@ -48,7 +49,7 @@ export default defineConfig(
     plugins: {
       "@typescript-eslint": tseslint.plugin,
       "react-hooks": reactHooks,
-      fsd: { rules: { ...trackerIds.rules, ...oneCoalescer.rules } },
+      fsd: { rules: { ...trackerIds.rules, ...oneCoalescer.rules, ...textSize.rules } },
     },
     linterOptions: { reportUnusedDisableDirectives: "off" },
     rules: {
@@ -114,5 +115,11 @@ export default defineConfig(
     // One coalescer, in the client: a live screen calls `client.live`.
     ...LIVE_READ_SOURCE,
     rules: { "fsd/one-coalescer": "error" },
+  },
+  {
+    // A lab's text takes its size from the design system's type scale: a step
+    // class, never a hard-coded size (`labs/design-system/type.css`).
+    ...TYPE_SCALE_SOURCE,
+    rules: { "fsd/no-hardcoded-text-size": "error" },
   },
 );

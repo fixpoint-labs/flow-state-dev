@@ -364,12 +364,12 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   // loaded lazily via item.fetchContent() when an artifact is opened.
   const artifacts = useMemo(() => {
     return artifactItems.map((item) => {
-      const data = item.clientData as { title: string; summary: string; updatedAt: number; extension: string | null; content: string } | undefined;
+      const data = item.clientData as { title: string; summary: string; updatedAt: string; extension: string | null; content: string } | undefined;
       return {
         id: item.topic.replace("artifacts/", ""),
         title: data?.title ?? "Untitled",
         summary: data?.summary ?? "",
-        updatedAt: data?.updatedAt ?? 0,
+        updatedAt: data?.updatedAt ?? "",
         extension: data?.extension ?? null,
         content: data?.content ?? "",
         _handle: item,
@@ -1083,6 +1083,7 @@ function ChatPanel({
           </div>
           <PromptInput onSubmit={send} attachments={draftFiles}>
             <PromptInputAttachments />
+            <PromptInputAttachButton className="ml-2 sm:ml-4" disabled={composerDisabled} />
             <PromptInputTextarea
               name="message"
               placeholder={
@@ -1095,7 +1096,6 @@ function ChatPanel({
               onChange={(e) => onSetMessage(e.target.value)}
               disabled={composerDisabled}
             />
-            <PromptInputAttachButton disabled={composerDisabled} />
             {/* While a turn runs, Stop and Send are two buttons: one that did both would stop the turn when a line was meant. */}
             {session.isStreaming && (
               <PromptInputButton

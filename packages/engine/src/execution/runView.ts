@@ -46,7 +46,7 @@ import { generateId } from "../utils/generate-id";
 import { executeBlock } from "./executeBlock";
 import { requestEndRegistryOf } from "./request-end-hooks";
 import { drainRequestSideChainPool } from "./runAction";
-import type { SessionAdmission } from "../context/request-sessions";
+import type { SessionAdmission, SuspensionAdmission } from "../context/request-sessions";
 
 /** What {@link runView} needs: the flow, the view, the caller, and the session for a session view. */
 export type RunViewOptions = {
@@ -71,6 +71,13 @@ export type RunViewOptions = {
    * the view route builds. Absent, the owner rule alone (a direct call).
    */
   admitSession?: SessionAdmission;
+  // FIX-2770.
+  /**
+   * The credential check on each pending suspension the view's
+   * `sessions.userSuspensions` reads, which the view route builds. Absent, the
+   * store's scope alone (a direct call).
+   */
+  admitSuspension?: SuspensionAdmission;
   /** Another registered flow by its address: what a session read needs to cut a session's state to its flow's readonly fields. */
   resolveFlow?: (address: string) => FlowInstance | undefined;
 };
@@ -127,6 +134,8 @@ const READ_VERBS = new Set([
   "getRunOnceResult",
   "latest",
   "listRequestIds",
+  // FIX-2770: the pending-asks read.
+  "listPendingForUser",
   "listStale",
   "listAll",
   "listDue",
@@ -278,6 +287,7 @@ type ReadOnlyRun = {
   /** `ctx.view` on every block of the run. */
   view: ViewRunContext;
   admitSession?: SessionAdmission;
+  admitSuspension?: SuspensionAdmission;
   resolveFlow?: (address: string) => FlowInstance | undefined;
 };
 
@@ -326,7 +336,8 @@ async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
         throw readOnlyRefusal("start a request");
       },
       ...(run.resolveFlow !== undefined ? { resolveFlow: run.resolveFlow } : {}),
-      ...(run.admitSession !== undefined ? { sessionAdmission: run.admitSession } : {})
+      ...(run.admitSession !== undefined ? { sessionAdmission: run.admitSession } : {}),
+      ...(run.admitSuspension !== undefined ? { suspensionAdmission: run.admitSuspension } : {})
     }
   });
 
@@ -390,6 +401,7 @@ export async function runView(options: RunViewOptions): Promise<ViewAnswer> {
     source: "view",
     view: partial.context,
     ...(options.admitSession !== undefined ? { admitSession: options.admitSession } : {}),
+    ...(options.admitSuspension !== undefined ? { admitSuspension: options.admitSuspension } : {}),
     ...(options.resolveFlow !== undefined ? { resolveFlow: options.resolveFlow } : {})
   });
   if (view.key === undefined) return answer;

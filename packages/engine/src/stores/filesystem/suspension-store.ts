@@ -10,10 +10,20 @@ import path from "node:path";
 import {
   isTerminalSuspensionStatus,
   matchesSuspensionFilter,
+  type PendingUserSuspension,
+  type PendingUserSuspensionQuery,
   type SuspensionFilter,
   type SuspensionRecord
 } from "@flow-state-dev/core/types";
 import type { SuspensionStore } from "../types";
+import { listPendingForUser, missingRequestStore, type SuspensionRequestReads } from "../pending-user-suspensions";
+
+// FIX-2770 D3.
+/** What a filesystem suspension store is built with, beside its directory. */
+export type FilesystemSuspensionStoreOptions = {
+  /** The request store a user's pending suspensions are joined to. Without it, `listPendingForUser` refuses. */
+  requests?: SuspensionRequestReads;
+};
 
 function encodeFilename(id: string): string {
   return `${encodeURIComponent(id)}.json`;
@@ -22,7 +32,10 @@ function encodeFilename(id: string): string {
 export class FilesystemSuspensionStore implements SuspensionStore {
   private readonly rootDir: string;
 
-  constructor(rootDir: string) {
+  constructor(
+    rootDir: string,
+    private readonly options: FilesystemSuspensionStoreOptions = {}
+  ) {
     this.rootDir = rootDir;
   }
 
@@ -135,8 +148,16 @@ export class FilesystemSuspensionStore implements SuspensionStore {
     }
     return deleted;
   }
+
+  async listPendingForUser(query: PendingUserSuspensionQuery): Promise<PendingUserSuspension[]> {
+    if (this.options.requests === undefined) throw missingRequestStore("createFilesystemSuspensionStore");
+    return listPendingForUser(await this.readAllRecords(), this.options.requests, query);
+  }
 }
 
-export function createFilesystemSuspensionStore(rootDir: string): SuspensionStore {
-  return new FilesystemSuspensionStore(rootDir);
+export function createFilesystemSuspensionStore(
+  rootDir: string,
+  options: FilesystemSuspensionStoreOptions = {}
+): SuspensionStore {
+  return new FilesystemSuspensionStore(rootDir, options);
 }

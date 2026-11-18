@@ -33,7 +33,7 @@ import { ApprovalRenderer } from "./ApprovalRenderer";
 import { QuestionRenderer } from "./QuestionRenderer";
 import { SelectionRenderer } from "./SelectionRenderer";
 import { SchemaFormRenderer } from "./SchemaFormRenderer";
-import { suspensionShape } from "../hooks/useSuspensionForm";
+import { suspensionShape } from "@flow-state-dev/contracts/types/suspension";
 
 // ---------------------------------------------------------------------------
 // Props

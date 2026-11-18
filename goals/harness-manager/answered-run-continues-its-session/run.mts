@@ -66,6 +66,7 @@ import {
   requireSourceRepo,
 } from "../host.mts";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 interface Fixture {
   issue: string;
@@ -105,8 +106,6 @@ const POLL_INTERVAL_MS = 5_000;
  * makes the check assert what it claims: an answer spends no attempt.
  */
 const MAX_ATTEMPTS = 1;
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Every file under `dir` whose text contains `needle`.

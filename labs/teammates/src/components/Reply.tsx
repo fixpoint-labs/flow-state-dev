@@ -13,7 +13,7 @@ export function Reply({ text, label = "reply", defaultExpanded = true, streaming
       <div id={id} hidden={!expanded}>
         {expanded ? <MarkdownText text={text} /> : null}
       </div>
-      {expanded ? null : <p data-reply-preview className="text-sm leading-relaxed text-muted-foreground">{replyPreview(text)}</p>}
+      {expanded ? null : <p data-reply-preview className="text-base leading-relaxed text-muted-foreground">{replyPreview(text)}</p>}
       <button
         type="button"
         aria-expanded={expanded}

@@ -1,6 +1,10 @@
 import { ClientHttpError } from "@flow-state-dev/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useApp, type AppHarness, type AppContext, type NewTeammate, type AppWorker } from "../app";
+import { harnessReadinessViewRef } from "@flow-state-dev/harness-manager/browser";
+import { useView } from "@flow-state-dev/react";
+import type { HireWorkerInput, RosterEntry } from "@flow-state-dev/workforce/browser";
+import { appContextView } from "../../flows/lab-context-ref.mts";
+import { useApp, useAppClient } from "../app";
 import { Conversation } from "./Conversation";
 import { KeysSheet } from "./KeysSheet";
 import { PopupView, type FollowUp, type Popup } from "./Popups";
@@ -8,10 +12,12 @@ import { Switcher } from "./Switcher";
 import { TeammatePanel } from "./TeammatePanel";
 import { WorkersList } from "./WorkersList";
 import { ConnectionScreen, type ConnectionFailure } from "./flow-state/connection-screen";
+import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { readAddress, writeAddress, type Address, type AddressWrite } from "../lib/address";
 import { harnessName } from "../lib/harness";
 import { focusComposer, focusWhenDrawn, useAppKeys } from "../lib/keys";
 import { lookOf as lookOfRow } from "../lib/looks";
+import { displayName, settingOf, takesTasks, useWorkforce } from "../lib/roster";
 
 /**
  * The screen: the teammates on the left, the chosen teammate's one
@@ -20,11 +26,12 @@ import { lookOf as lookOfRow } from "../lib/looks";
  * the worker coding tasks run on is off the list, and each coding task is a
  * row in the panel of the teammate that started it.
  * A task or a message between workers, and a coding task, opens in a popup
- * over the thread, read only and live. The app opens on the first teammate,
+ * over the conversation, read only and live. The app opens on the first teammate,
  * unless the page's address names what was open (`lib/address`): a reload, a
  * link and Back reopen the teammate and the task popup.
  *
- * The list follows the roster (`watchWorkers`): a hire, an edit or a fire,
+ * The list follows the roster (workforce's `watchRoster`, over its roster
+ * view): a hire, an edit or a fire,
  * made here, in another tab or by a worker's turn, shows without a reload. A
  * first read that fails draws the registry's `connection-screen`, which
  * watches again on its own until a read lands. Once the screen is up, a conversation's feed that
@@ -36,6 +43,10 @@ import { lookOf as lookOfRow } from "../lib/looks";
  * the keys. Opening a teammate, however it is opened, puts the cursor in its
  * composer.
  */
+
+// FIX-2624.
+/** The harness kit's readiness view, on the flow it serves it on, read by scope with no session. */
+const READINESS_VIEW = harnessReadinessViewRef("harnesses");
 
 /** What `?` lists: every key the lab has. */
 const KEYS = [
@@ -54,10 +65,12 @@ function failureOf(error: unknown): ConnectionFailure {
 
 export function App() {
   const adapter = useApp();
-  const [workers, setWorkers] = useState<AppWorker[]>([]);
+  const { client, pollIntervalMs } = useAppClient();
+  const workforce = useWorkforce();
+  const [workers, setWorkers] = useState<RosterEntry[]>([]);
   const [sessions, setSessions] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string>();
-  // A task or a message, open in a popup over the thread.
+  // A task or a message, open in a popup over the conversation.
   const [popup, setPopup] = useState<Popup>();
   const [switching, setSwitching] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
@@ -79,9 +92,9 @@ export function App() {
   const addressed = useRef<Popup | undefined>(undefined);
   // The teammates the last landed roster drew, and a pick waiting for a roster: a hire picks its
   // teammate once its row lands; a fire picks from the roster that no longer has the fired one.
-  const landedTalking = useRef<AppWorker[]>([]);
-  const waitingPick = useRef<((talking: AppWorker[]) => boolean) | null>(null);
-  const pickWhenLanded = (pick: (talking: AppWorker[]) => boolean) => {
+  const landedTalking = useRef<RosterEntry[]>([]);
+  const waitingPick = useRef<((talking: RosterEntry[]) => boolean) | null>(null);
+  const pickWhenLanded = (pick: (talking: RosterEntry[]) => boolean) => {
     waitingPick.current = pick(landedTalking.current) ? null : pick;
   };
   const fromAddress = (named: Address) => {
@@ -99,9 +112,9 @@ export function App() {
     const failed = (error: unknown) => {
       if (current && !landed) setUnreachable(failureOf(error));
     };
-    const stop = adapter.watchWorkers((roster) => {
+    const stop = workforce.watchRoster((roster) => {
       const mine = ++latest;
-      const talking = roster.filter((w) => !w.takesTasks);
+      const talking = roster.filter((w) => !takesTasks(w));
       Promise.allSettled(talking.map((w) => adapter.openConversation(w.id))).then((opened) => {
         if (!current || mine !== latest) return;
         // Before the page lands, a conversation that won't open is the lab being unreachable.
@@ -128,30 +141,25 @@ export function App() {
         setPopup((open) => open ?? fromAddress(named));
         setReady(true);
       }, failed);
-    }, failed);
+    }, { onError: failed });
     return () => {
       current = false;
       stop();
     };
-  }, [adapter, attempt]);
+  }, [adapter, workforce, attempt]);
 
   // The watch brings the new row and its conversation; the pick waits for them.
-  // What the lab works on and with, and which harnesses can run: read once, the chips again on Re-check.
-  const [context, setContext] = useState<AppContext>();
-  const [harnesses, setHarnesses] = useState<AppHarness[]>();
-  useEffect(() => {
-    let on = true;
-    void adapter.readContext().then((read) => on && setContext(read), () => undefined);
-    // A failed read draws no chips rather than "checking" forever.
-    void adapter.readHarnesses().then((rows) => on && setHarnesses(rows), () => on && setHarnesses([]));
-    return () => {
-      on = false;
-    };
-  }, [adapter]);
-  const recheck = async () => setHarnesses(await adapter.readHarnesses(true));
+  // What the lab works on and with (its context view), and which harnesses can run (the harness kit's readiness view);
+  // Re-check reads readiness again, checked anew.
+  const context = useView(appContextView, {}, { client, pollIntervalMs }).value;
+  const readiness = useView(READINESS_VIEW, {}, { client, pollIntervalMs });
+  const [rechecked, setRechecked] = useState<HarnessReadinessChipRow[]>();
+  // A failed read draws no chips rather than "checking" forever.
+  const harnesses = rechecked ?? readiness.value ?? (readiness.stale ? [] : undefined);
+  const recheck = async () => setRechecked((await client.view(READINESS_VIEW, { refresh: true })).value);
 
-  const hire = async (teammate: NewTeammate) => {
-    const hired = await adapter.hire(teammate);
+  const hire = async (teammate: HireWorkerInput) => {
+    const hired = await workforce.hire(teammate);
     pickWhenLanded((talking) => {
       if (!talking.some((w) => w.id === hired.id)) return false;
       selectWorker(hired.id);
@@ -159,7 +167,7 @@ export function App() {
     });
   };
   const fire = async (worker: string) => {
-    await adapter.fire(worker);
+    await workforce.fire(worker);
     pickWhenLanded((talking) => {
       if (talking.some((w) => w.id === worker)) return false;
       setSelected(talking[0]?.id);
@@ -168,16 +176,23 @@ export function App() {
   };
 
   // Stable between roster reads, so a memoized entry doesn't redraw for a new function.
-  const nameOf = useCallback((id: string) => workers.find((w) => w.id === id)?.name ?? id, [workers]);
-  const isCoding = useCallback((id: string) => workers.some((w) => w.id === id && w.takesTasks), [workers]);
+  const nameOf = useCallback((id: string) => {
+    const found = workers.find((w) => w.id === id);
+    return found === undefined ? id : displayName(found);
+  }, [workers]);
+  const isCoding = useCallback((id: string) => workers.some((w) => w.id === id && takesTasks(w)), [workers]);
   // A coding worker's harness, for a task line drawn before its row arrives.
   const harnessOf = useCallback((id: string) => {
-    const harness = workers.find((w) => w.id === id)?.harness;
+    const found = workers.find((w) => w.id === id);
+    const harness = found === undefined ? undefined : settingOf(found, "harness");
     return harness === undefined ? undefined : harnessName(harness);
   }, [workers]);
-  const lookOf = useCallback((id: string) => lookOfRow(workers.find((w) => w.id === id) ?? { id, name: id }), [workers]);
-  const teammates = workers.filter((w) => !w.takesTasks);
-  const coders = useMemo(() => workers.filter((w) => w.takesTasks), [workers]);
+  const lookOf = useCallback((id: string) => {
+    const found = workers.find((w) => w.id === id);
+    return lookOfRow(found === undefined ? { id, name: id } : { id, name: displayName(found), icon: settingOf(found, "icon"), color: settingOf(found, "color") });
+  }, [workers]);
+  const teammates = workers.filter((w) => !takesTasks(w));
+  const coders = useMemo(() => workers.filter(takesTasks), [workers]);
   const worker = teammates.find((w) => w.id === selected);
   // A user's pick: a step Back returns from, and the teammate opens with the cursor in its composer.
   const selectWorker = useCallback((id: string) => {

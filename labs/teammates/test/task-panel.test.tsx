@@ -13,7 +13,8 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { afterEach, describe, expect, it } from "vitest";
-import { toBoardTask, type BoardTask, type AppCalls, type AppWorker } from "../src/app";
+import { toBoardTask, type BoardTask, type AppCalls } from "../src/app";
+import { FixtureProvider, rosterEntry } from "./fake-app";
 import { TaskCard } from "../src/components/TaskCard";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 import { lookOf } from "../src/lib/looks";
@@ -41,7 +42,7 @@ const TASKS: BoardTask[] = [
   task("c1", { status: "cancelled", boardStatus: "cancelled" }, { completedAt: NOW - MIN }),
 ];
 
-const worker: AppWorker = { id: "chief", name: "Lead", role: "Routes work", instructions: "", own: false } as AppWorker;
+const worker = rosterEntry({ id: "chief", name: "Lead", description: "Routes work" });
 
 /** Just what the panel watches: one conversation's tasks, and a connection that never went stale. */
 const adapter = {
@@ -50,7 +51,7 @@ const adapter = {
 } as unknown as AppCalls;
 
 function renderPanel(a: AppCalls = adapter) {
-  render(<TeammatePanel adapter={a} worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} isCoding={() => false} onOpen={() => {}} />);
+  render(<FixtureProvider calls={a}><TeammatePanel adapter={a} worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} isCoding={() => false} onOpen={() => {}} /></FixtureProvider>);
   return screen.getByRole("complementary", { name: "Lead's panel" });
 }
 

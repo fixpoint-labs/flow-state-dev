@@ -60,6 +60,7 @@ async function say(on: Server, text: string): Promise<void> {
   const res = await on.router.POST(
     new Request("http://localhost/api/flows/chat/s1/actions/say", {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: "alice", orgId: DEFAULT_ORG_ID, input: { text } })
     }),
     { params: { path: ["chat", "s1", "actions", "say"] } }

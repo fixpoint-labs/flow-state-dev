@@ -236,8 +236,8 @@ export function ComposerShell({
       disabled={disabled}
       placeholder={placeholder}
       aria-label={label}
-      className={`block w-full min-w-0 bg-transparent outline-none placeholder:text-muted-foreground disabled:opacity-60 ${
-        scale === "shift-coordinator" ? "p-4 text-base" : "px-3 py-[11px] text-sm"
+      className={`block w-full min-w-0 bg-transparent text-base outline-none placeholder:text-muted-foreground disabled:opacity-60 ${
+        scale === "shift-coordinator" ? "p-4" : "px-3 py-[11px]"
       }`}
       data-testid={`${testId}-input`}
       data-look="composer-input"
@@ -283,13 +283,13 @@ export function ComposerShell({
           <div className="border-[1.5px] border-foreground bg-card" data-look="composer">
             {strip}
             <div className="flex items-center">
-              {input}
               {attachButton}
+              {input}
               {extra}
               {sendButton}
             </div>
           </div>
-          <div className="font-mono text-[11px] font-medium text-muted-foreground" data-look="composer-footer">
+          <div className="font-mono text-xs font-medium text-muted-foreground" data-look="composer-footer">
             {lead}
             {statusLine}
           </div>
@@ -299,15 +299,15 @@ export function ComposerShell({
           {strip}
           {input}
           <div
-            className="flex flex-wrap items-center justify-between gap-x-3.5 gap-y-1 border-t border-foreground/10 py-1.5 pr-2 pl-3 font-mono text-[11px] font-medium text-muted-foreground"
+            className="flex flex-wrap items-center justify-between gap-x-3.5 gap-y-1 border-t border-foreground/10 py-1.5 pr-2 pl-3 font-mono text-xs font-medium text-muted-foreground"
             data-look="composer-footer"
           >
             <span className="flex min-w-0 flex-wrap items-center gap-3.5">
+              {attachButton}
               {lead}
               {statusLine}
             </span>
             <span className="flex shrink-0 items-center gap-2.5">
-              {attachButton}
               {extra}
               {sendButton}
             </span>

@@ -74,7 +74,7 @@ It comes down to one inventory: three copies would let the closure and a test di
 
 Every rule has one owner; read a row to see where it is built and where it is only used. A
 *uses* cell is a place a child must not decide again. Short names: **inv** is
-`FIX-XXX · one inventory`; **asks** is `FIX-XXX · a user's pending asks`; **t1** to **t3** are
+`FIX-2769 · one inventory`; **asks** is `FIX-2770 · a user's pending asks`; **t1** to **t3** are
 Teammates' people, conversations and task cards; **s1** to **s4** are Shift Manager's Inbox and
 boards, directory, conversations, and the snapshot's deletion.
 
@@ -116,8 +116,10 @@ case of ER-4.
   89 lines left against its 397. t1 removes about 310: the context flow moves to `flows/`, and the
   host imports the packages' `operatorGitHub`, `sqliteScheduleIndex` and `checkCommandsFrom`
   instead of its own copies. A child that can't meet the cap comments up.
-- **The fake app goes with the adapter.** Before it is deleted, t3 writes a ledger mapping each of
-  its scenarios (14 test files use it) to a view test, or to "dropped, because …".
+- **The fake app goes when the last Teammates child merges.** Each of t1, t2 and t3 cuts its own
+  scenarios (14 test files use the fake) into its ledger, mapping each to a view test or to
+  "dropped, because …". Whichever merges last deletes the fake, its `gone` entry and the shared
+  plumbing types. t1 owns `workers.ts`; t2 owns `steps.ts`. Amended by the cross-spec review below.
 - **A size ratchet on the read models is worth its cost** ([ER-4](#who-owns-what)): the allowlist
   stops new findings, but not logic growing inside an allowlisted function.
 - **Defaults for the division.** Teammates' people and conversations children stay separate unless
@@ -134,7 +136,7 @@ case of ER-4.
   FIX-2592, FIX-2616, FIX-2369.
 - **FIX-2756 stays parented but outside the set.** The coordinator decides at the gate whether to
   re-parent it to the project; it stays blocked by this epic.
-- **The closure is filed after the gate**, with the other placeholders, at the owner's word.
+- **The closure was filed after the gate** (FIX-2778), with the rest of the set, at the owner's word.
 
 ## Considered and dropped
 
@@ -208,5 +210,11 @@ inventory is a ratchet.
   and exact-matches user, tenant, organization and today's worker flows, never
   `principalOwnsRequest`; the read returns a projection, never the record. Wording: the measured
   baseline, the delegate shape, how the checks divide the work, the division's defaults.
+
+- **Cross-spec review (2026-11-17)** — the Teammates children run in parallel, so no one child
+  can delete the shared fake app. Each cuts its own scenarios into its ledger; whichever of
+  FIX-2771, FIX-2772 and FIX-2773 merges last deletes the fake, its `gone` entry and the shared
+  plumbing types (`AppCalls`, `AppState`, `Unsubscribe`, `Item`). FIX-2772 owns `steps.ts`;
+  FIX-2771 owns `workers.ts`. A coordinator call, recorded in each child spec.
 
 **Open:** none.

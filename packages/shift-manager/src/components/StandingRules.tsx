@@ -28,8 +28,8 @@ export function StandingRules({ workerId, name, devtoolUrl }: { workerId: string
   return (
     <section className="max-w-2xl space-y-3" data-testid="rules" data-worker-id={workerId} data-version={list?.version ?? ""}>
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="font-mono text-[11px] font-semibold tracking-[0.1em]">RULES</h2>
-        <span className="font-mono text-[11px] text-muted-foreground" data-testid="rules-count">
+        <h2 className="font-mono text-xs font-semibold tracking-[0.1em]">RULES</h2>
+        <span className="font-mono text-xs text-muted-foreground" data-testid="rules-count">
           {list === undefined ? "" : `${list.rules.length} of ${MAX_RULES}`}
         </span>
       </div>
@@ -128,7 +128,7 @@ function RuleRow({ rule, devtoolUrl, busy, edit }: { rule: StandingRule; devtool
           </button>
         </form>
       )}
-      <p className="pl-7 font-mono text-[11px] text-muted-foreground" data-testid="rule-meta">
+      <p className="pl-7 font-mono text-xs text-muted-foreground" data-testid="rule-meta">
         added {new Date(rule.addedAt).toLocaleString()} · <Origin rule={rule} devtoolUrl={devtoolUrl} />
       </p>
     </li>
@@ -162,7 +162,7 @@ function AddRule({ full, busy, add }: { full: boolean; busy: boolean; add: (text
         className="min-w-0 flex-1 border bg-background px-2 py-1 text-sm"
         data-testid="rule-add-input"
       />
-      <span className={`font-mono text-[11px] ${draft.length > MAX_RULE_CHARS ? "text-destructive" : "text-muted-foreground"}`} data-testid="rule-add-chars">
+      <span className={`font-mono text-xs ${draft.length > MAX_RULE_CHARS ? "text-destructive" : "text-muted-foreground"}`} data-testid="rule-add-chars">
         {draft.length}/{MAX_RULE_CHARS}
       </span>
       <button type="submit" disabled={busy || draft.trim() === ""} className="border px-3 py-1 text-sm disabled:opacity-50" data-testid="rule-add">

@@ -54,7 +54,7 @@ const OTHER = "u_other";
 const ORG = "org_goal_a";
 const OTHER_ORG = "org_goal_b";
 /** Who a request is: the user and organization headers this check's principal resolver reads, never the body. */
-const as = (userId: string, orgId: string) => ({ "x-user": userId, "x-org": orgId });
+const as = (userId: string, orgId: string) => ({ "content-type": "application/json", "x-user": userId, "x-org": orgId });
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", ["-c", "user.email=goal@example.com", "-c", "user.name=goal", ...args], { cwd, encoding: "utf8", timeout: 30_000 }).trim();

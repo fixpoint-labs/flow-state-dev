@@ -167,6 +167,14 @@ export interface SubscribeWrite {
   readonly id?: string;
   /** Who made it, kept with the subscription. */
   readonly madeBy?: RoutineMaker;
+  // FIX-2784; FIX-2535 D3.
+  /** Its thread's close reaches it whatever its kinds, screens and cap, then it ends: `followPullRequest`'s. */
+  readonly hearsClose?: true;
+  /**
+   * The task it is made for, when the session's own state names none (a coding run in a session
+   * that works many tasks): that task's failure or cancel ends it. Wins over the session's.
+   */
+  readonly taskId?: string;
   // FIX-2536.
   /** The app's polling, when it polls: an enabled subscription under no tenant makes, or speeds up, the user's poll for its thread. */
   readonly polling?: SubscriptionPolling;
@@ -201,7 +209,14 @@ type Life = "fresh" | "keep" | "resume";
  *
  * `undefined` leaves the subscription as it is.
  */
-function nextEntry(current: SubscriptionResourceState | undefined, wanted: SubscriptionResourceState, life: Life): SubscriptionResourceState | undefined {
+function nextEntry(current: SubscriptionResourceState | undefined, asked: SubscriptionResourceState, life: Life): SubscriptionResourceState | undefined {
+  // A follow stays a follow when its own session writes again on the same thread (a routine on the pull
+  // request it follows lands on the same subscription): its close stays heard and, when the write names no
+  // task, its run's task stays, so that task's failure or cancel still ends it. Only the server sets either.
+  const keepsFollow = current?.hearsClose === true && current.thread === asked.thread && asked.hearsClose !== true;
+  const wanted = keepsFollow
+    ? { ...asked, hearsClose: true as const, ...(asked.taskId === undefined && current.taskId !== undefined ? { taskId: current.taskId } : {}) }
+    : asked;
   if (life === "fresh") return wanted;
   if (life === "resume") {
     if (current === undefined || !isPaused(current) || current.provider !== wanted.provider || current.thread !== wanted.thread) return undefined;
@@ -248,6 +263,7 @@ export const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
   ...(row.outsiders === true ? { outsiders: true as const } : {}),
   ...(row.self === undefined ? {} : { self: row.self }),
   ...(row.unmatched === true ? { unmatched: true as const } : {}),
+  ...(row.hearsClose === true ? { hearsClose: true as const } : {}),
   userId: row.userId,
   orgId: row.orgId,
   ...(row.tenantId === undefined ? {} : { tenantId: row.tenantId }),
@@ -415,7 +431,8 @@ async function writeSubscription(
     sessionId: hears.sessionId,
     flow: flowKind ?? "",
     worker: hears.worker,
-    ...(hears.taskId === undefined ? {} : { taskId: hears.taskId }),
+    ...((write.taskId ?? hears.taskId) === undefined ? {} : { taskId: write.taskId ?? hears.taskId }),
+    ...(write.hearsClose === true ? { hearsClose: true as const } : {}),
     userId: identity.userId,
     orgId: identity.orgId,
     // The tenant its session runs under, so its deliveries reach that session.

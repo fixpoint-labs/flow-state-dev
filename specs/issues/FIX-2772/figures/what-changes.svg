@@ -1,0 +1,89 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="What changes. Before: the conversation screens call Teammates' own calls (conversations, window, files, steps), which reach the server through the lab's session-feed wrapper, the client's live reads with topic, and client.flow calls for send, stop, approve and retry. After: the same screens read through package hooks: react's useSessionFeed for the items, workforce's session turns view (carrying each turn's historyStart, D1) for running, stopped, retryable and the window, the history summary's mark through useResource read by session id (D1), workforce's client for send, stopTurns (leaving a line sent after the press, D2) and retryTurn, and react's approval hook. Gone: the conversation, window and file call interfaces, and 22 allowlist entries; session-feed.ts goes with the last watchFeed caller."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F3E3E1; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A2220; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .screen{ fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .gone  { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .pkg   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:2; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; marker-end:url(#a); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .c-gone{ fill:var(--gone); }
+    .c-code{ fill:var(--code); }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7A828B"/></marker></defs>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <rect class="panel" x="16" y="14" width="446" height="440" rx="6"/>
+  <text class="t-lbl" x="32" y="36">BEFORE</text>
+  <rect class="screen" x="32" y="48" width="414" height="44" rx="5"/>
+  <text class="t-h" x="46" y="68">Conversation, the roster row's status, the composer</text>
+  <text class="t-s" x="46" y="84">useApp().watchConversation · watchConnection · watchWindow · send …</text>
+  <path class="arrow" d="M239,92 L239,110"/>
+  <rect class="gone" x="32" y="112" width="414" height="96" rx="5"/>
+  <text class="t-h c-gone" x="46" y="132">Teammates' own calls in src/app/</text>
+  <text class="t-b" x="46" y="152">conversations.ts · window.ts · files.ts · steps.ts</text>
+  <text class="t-s" x="46" y="170">ConversationCalls · WindowCalls · FileCalls · ConversationView …</text>
+  <text class="t-s" x="46" y="188">one shared AppState: feeds, stops, the turns this page sent</text>
+  <path class="arrow" d="M120,208 L120,236"/>
+  <path class="arrow" d="M239,208 L239,236"/>
+  <path class="arrow" d="M360,208 L360,236"/>
+  <rect class="gone" x="32" y="238" width="128" height="70" rx="5"/>
+  <text class="t-h c-gone" x="44" y="258">session-feed.ts</text>
+  <text class="t-s" x="44" y="276">client sessionFeed</text>
+  <text class="t-s" x="44" y="292">and .subscribe ×3</text>
+  <rect class="gone" x="172" y="238" width="134" height="70" rx="5"/>
+  <text class="t-h c-gone" x="184" y="258">client.live + topic</text>
+  <text class="t-s" x="184" y="276">sessions.requests ×3</text>
+  <text class="t-s" x="184" y="292">sessions.state</text>
+  <rect class="gone" x="318" y="238" width="128" height="70" rx="5"/>
+  <text class="t-h c-gone" x="330" y="258">client.flow(…)</text>
+  <text class="t-s" x="330" y="276">send · abort ·</text>
+  <text class="t-s" x="330" y="292">answer · retry</text>
+  <text class="t-lbl" x="32" y="340">ON THE ALLOWLIST</text>
+  <text class="t-b" x="32" y="360">22 entries: 10 server reaches (client imports,</text>
+  <text class="t-b" x="32" y="378">.flow and .subscribe calls) and 12 hand-written types</text>
+  <text class="t-s" x="32" y="404">one of them App.tsx's ClientHttpError, for a failed roster read</text>
+
+  <rect class="panel" x="478" y="14" width="446" height="440" rx="6"/>
+  <text class="t-lbl" x="494" y="36">AFTER</text>
+  <rect class="screen" x="494" y="48" width="414" height="44" rx="5"/>
+  <text class="t-h" x="508" y="68">The same screens, the same behaviour</text>
+  <text class="t-s" x="508" y="84">hooks in what is left of conversations.ts; entries drawn in src/lib</text>
+  <path class="arrow" d="M590,92 L590,110"/>
+  <path class="arrow" d="M810,92 L810,110"/>
+  <rect class="pkg" x="494" y="112" width="200" height="56" rx="5"/>
+  <text class="t-h c-code" x="506" y="132">react · useSessionFeed</text>
+  <text class="t-s" x="506" y="150">items, runs, connection, earlier</text>
+  <rect class="new" x="708" y="112" width="200" height="56" rx="5"/>
+  <text class="t-h c-code" x="720" y="132">workforce · turns view</text>
+  <text class="t-s" x="720" y="150">+ each turn's historyStart (D1)</text>
+  <rect class="new" x="494" y="180" width="200" height="56" rx="5"/>
+  <text class="t-h c-code" x="506" y="200">react · useResource</text>
+  <text class="t-s" x="506" y="218">+ read by session id (D1)</text>
+  <rect class="new" x="708" y="180" width="200" height="56" rx="5"/>
+  <text class="t-h c-code" x="720" y="200">workforce client</text>
+  <text class="t-s" x="720" y="218">send · stopTurns (D2) · retryTurn</text>
+  <rect class="pkg" x="494" y="248" width="200" height="56" rx="5"/>
+  <text class="t-h c-code" x="506" y="268">react · approval hook</text>
+  <text class="t-s" x="506" y="286">yes or no on a user_approval</text>
+  <rect class="pkg" x="708" y="248" width="200" height="56" rx="5"/>
+  <text class="t-h c-code" x="720" y="268">the client, from the entry</text>
+  <text class="t-s" x="720" y="286">upload; main.tsx builds it</text>
+  <text class="t-lbl" x="494" y="340">ON THE ALLOWLIST</text>
+  <text class="t-b" x="494" y="360">The 22 are gone: 15 deleted, 7 named screen types</text>
+  <text class="t-b" x="494" y="378">with their reason (entries, the view, the divider,</text>
+  <text class="t-b" x="494" y="396">a line's files, a run of steps), as claude-code-style does</text>
+  <text class="t-s" x="494" y="420">thick border: a package change this issue makes</text>
+</svg>

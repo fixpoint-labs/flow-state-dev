@@ -8,7 +8,7 @@ export function StatusBadge({ status, active = status === "running" || status ==
     : active ? "border-info/25 bg-info/10 text-info"
     : "border-border bg-muted/50 text-muted-foreground";
   return (
-    <span data-status-badge className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] font-medium leading-4 tracking-wide uppercase", tone, className)}>
+    <span data-status-badge className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-xs font-medium leading-4 tracking-wide uppercase", tone, className)}>
       <span aria-hidden="true" data-task-dot className={cn("size-1.5 rounded-full bg-current", active && "motion-safe:animate-pulse")} />
       {status}
     </span>

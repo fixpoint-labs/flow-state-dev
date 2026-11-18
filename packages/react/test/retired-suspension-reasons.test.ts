@@ -12,7 +12,7 @@ import { cleanup, renderHook } from "@testing-library/react";
 import type { ItemProvenance, OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 
 import { deriveSuspensions, useSuspensions } from "../src/hooks/useSuspensions";
-import { suspensionShape } from "../src/hooks/useSuspensionForm";
+import { suspensionShape } from "../src";
 import type { SessionView } from "../src/hooks/useSession";
 
 afterEach(cleanup);

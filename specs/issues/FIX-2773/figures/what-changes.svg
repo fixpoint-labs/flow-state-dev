@@ -1,0 +1,70 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="Before and after for Teammates' task cards. Before: the card and its popup call the app's task and run calls in src/app tasks.ts and runs.ts, which stitch four sources: the board's task-list view, copies of each row from the conversation's items, each run session's own copies, and a flow call for the brief; the run's work comes from the session feed, a hand-built request stream with a client import, and a live read on the session topic. Five row types and two call types are written in the app, and a 900-line fake plays all of it for the tests; 12 allowlist entries are this issue's. After: the card reads harness-manager's coding board view, and, for the open popup, its task's answer through the view's taskId input; a re-run reads the brief whole through the Inbox client's get (D1), and the popup reads the react package's session feed and request stream hooks and the recorded work view; board actions and answers go through orchestration's Inbox client. The row type is the view's own. The tests run on a stub server or the lab's own host, and the fake goes."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F3E2E0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A2220; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .gone  { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .pkg   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .scr   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .c-gone{ fill:var(--gone); }
+    .c-code{ fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="before">
+    <rect class="panel" x="16" y="14" width="446" height="412" rx="6"/>
+    <text class="t-lbl" x="32" y="36">BEFORE · MAIN</text>
+    <rect class="scr" x="32" y="48" width="414" height="40" rx="4"/>
+    <text class="t-h" x="44" y="66">Task card and popup</text>
+    <text class="t-s" x="44" y="81">useWatch(adapter.watchTasks) · watchRun · watchWorking · watchReview</text>
+    <rect class="gone" x="32" y="102" width="414" height="150" rx="4"/>
+    <text class="t-h c-gone" x="44" y="122">src/app/tasks.ts · runs.ts (709 lines)</text>
+    <text class="t-b" x="44" y="142">stitches four sources per row</text>
+    <text class="t-s" x="44" y="159">the board's task-list view · the conversation's row copies</text>
+    <text class="t-s" x="44" y="174">each run session's copies · a .flow( call for the brief</text>
+    <text class="t-b" x="44" y="196">builds its own request stream</text>
+    <text class="t-s" x="44" y="213">client imports · a .flow( call · a topic live read</text>
+    <text class="t-b" x="44" y="235">BoardTask, TaskWaiting, TaskActions, TaskAnswer, TaskCalls, …</text>
+    <rect class="gone" x="32" y="266" width="414" height="52" rx="4"/>
+    <text class="t-h c-gone" x="44" y="286">test/fake-app.ts (900 lines)</text>
+    <text class="t-s" x="44" y="304">plays every call for 15 test files</text>
+    <text class="t-lbl" x="32" y="346">ALLOWLIST ENTRIES THIS ISSUE OWNS</text>
+    <text class="t-h c-gone" x="32" y="370">12</text>
+    <text class="t-s" x="58" y="370">6 in tasks.ts · 6 in runs.ts · the fake's file goes last (B1)</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="478" y="14" width="446" height="412" rx="6"/>
+    <text class="t-lbl" x="494" y="36">AFTER</text>
+    <rect class="scr" x="494" y="48" width="414" height="40" rx="4"/>
+    <text class="t-h" x="506" y="66">Task card and popup</text>
+    <text class="t-s" x="506" y="81">thin hooks in tasks.ts: useTasks · useTaskWork</text>
+    <rect class="pkg" x="494" y="102" width="414" height="64" rx="4"/>
+    <text class="t-h c-code" x="506" y="122">harness-manager · coding board view</text>
+    <text class="t-s" x="506" y="139">the row is CodingBoardTask, read with ?. (FIX-2766)</text>
+    <text class="t-s" x="506" y="155">and the open popup's answer, by taskId (D1)</text>
+    <rect class="pkg" x="494" y="176" width="414" height="64" rx="4"/>
+    <text class="t-h c-code" x="506" y="196">react · useSessionFeed · useRequestStream</text>
+    <text class="t-s" x="506" y="213">harness-manager · recorded work view</text>
+    <text class="t-s" x="506" y="229">the run's steps, review, call in flight, plan</text>
+    <rect class="pkg" x="494" y="250" width="414" height="48" rx="4"/>
+    <text class="t-h c-code" x="506" y="270">orchestration · Inbox client</text>
+    <text class="t-s" x="506" y="287">board(at): cancel, steer, release, retry, get, refile · answerOne</text>
+    <text class="t-lbl" x="494" y="326">TESTS</text>
+    <text class="t-s" x="494" y="344">a stub server or the lab's own host, as claude-code-style's</text>
+    <text class="t-lbl" x="494" y="370">ALLOWLIST ENTRIES LEFT FOR THIS JOB</text>
+    <text class="t-h c-code" x="494" y="394">0</text>
+  </g>
+</svg>

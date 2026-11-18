@@ -30,7 +30,8 @@ out of this page's job; see "Left out" below).
   of it. `S/types.ts:85-101`; `T/scoped-mount.spec.ts:32-52`.
 - State the projection writes on each entry it commits: `path`, `hash` (hex SHA-256 of the content) and
   `updatedAt` (ISO time of the last sync). `S/types.ts:45-53`; `S/projection.ts:42-45,463-465`.
-  `entryState(key)` adds or overrides fields, applied last. `S/types.ts:107-117`;
+  `entryState(key)` adds other fields. It cannot replace `path`, `hash`, or `updatedAt`.
+  `S/types.ts:107-130`;
   `T/projection.spec.ts:569-615`. It applies to entries that already existed as well as created ones.
   `T/projection.spec.ts:578-589`.
 - A key starting `_` at the top of a mount is the collection's own bookkeeping: never hydrated, never
@@ -125,8 +126,8 @@ out of this page's job; see "Left out" below).
   `T/scoped-mount.spec.ts:41-65,88-114,116-141`. A scoped run deletes only what it hydrated, never
   another owner's files. `T/scoped-mount.spec.ts:88-114`.
 - W12. `entryState(key)` on a mount: extra state stamped on every entry the projection commits (a title, an
-  author, a timestamp in another shape). Applied last, so it overrides `path`, `hash` and `updatedAt`.
-  `S/types.ts:107-117`; `S/projection.ts:464`; `T/projection.spec.ts:591-615`.
+  author). It does not replace `path`, `hash`, or `updatedAt`; those stay the projection's.
+  `S/types.ts:107-130`; `S/projection.ts:463-466`; `T/projection.spec.ts:591-630`.
 - W13. Identifying the collection. `Mount.collectionId` is required: the same string for two runs addressing
   the same rows, a different one for two that only spell paths alike. `S/types.ts:67-84`.
   `collectionIdFor(collection, principal)` builds it from scope, the scope instance and the pattern;
@@ -303,8 +304,9 @@ out of this page's job; see "Left out" below).
   as hashes: correct (W20), but they are SHA-256 hex digests, not content. A reader may expect content.
 - C3. Existing page: "`put` resolves `undefined` only when there's genuinely nothing to decide — a
   collection's own metadata". Correct. `S/projection.ts:439`.
-- C4. Existing page: "It's applied last, so it can override what the projection chose." Correct.
-  `S/projection.ts:464`.
+- C4. Existing page: "It's applied last, so it can override what the projection chose." No longer true.
+  The projection writes `path`, `hash`, and `updatedAt` after the mount's fields, so a mount cannot
+  replace those three. `S/projection.ts:463-466`.
 - C5. Existing page: contested "Nothing was written for that path, and nothing was lost: the other run's
   write stands, and yours is still in your place to retry." Correct, since a contested decision returns
   before any write. `S/projection.ts:394-397`.

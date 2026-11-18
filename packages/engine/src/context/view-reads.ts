@@ -51,11 +51,12 @@ type BoardReadRecord = { board: string; covers?: string; partition?: string };
  * accessor, or a task board; for a session, also the session itself
  * (`"session"`: its items, metadata, window, journal or record), which flow
  * and lineage it is (`"identity"`), or its requests' statuses (`"turns"`);
- * for the user, the list of their sessions (`"sessions"`).
+ * for the user, the list of their sessions (`"sessions"`) or their pending
+ * suspensions (`"suspensions"`).
  */
 export type RecordedRead =
   | { scope: "session"; sessionId: string; what: "state" | "session" | "identity" | "turns" | ResourceRead | BoardReadRecord }
-  | { scope: "user" | "org"; what: "state" | "sessions" | ResourceRead | BoardReadRecord };
+  | { scope: "user" | "org"; what: "state" | "sessions" | "suspensions" | ResourceRead | BoardReadRecord };
 
 /** A recorder for one run: what it read, and the topics that hear a change to it. */
 export type ReadRecorder = {
@@ -106,11 +107,15 @@ const SESSION_KINDS: readonly ChangeKind[] = ["items", "request", "run", "state"
  * session list changes on a session written whole (made, titled, deleted) or
  * a request's status written, each of which publishes `run` on their user
  * topic. None hears `items`, which a reply publishes once per stored chunk.
+ * The user's pending suspensions change only on a suspension written or
+ * deleted, which publishes `suspension` on their user topic:
+ * never on a turn starting or finishing, which publishes `run` there.
  */
-const PEER_KINDS: Record<"identity" | "turns" | "sessions", readonly ChangeKind[]> = {
+const PEER_KINDS: Record<"identity" | "turns" | "sessions" | "suspensions", readonly ChangeKind[]> = {
   identity: ["run"],
   turns: ["request", "state"],
-  sessions: ["run"]
+  sessions: ["run"],
+  suspensions: ["suspension"]
 };
 
 // FIX-2750 (the partitions).
@@ -140,7 +145,7 @@ function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
       for (const kind of STATE_KINDS[read.scope]) at(scopeTopic).kinds.add(kind);
     } else if (read.what === "session") {
       for (const kind of SESSION_KINDS) at(scopeTopic).kinds.add(kind);
-    } else if (read.what === "identity" || read.what === "turns" || read.what === "sessions") {
+    } else if (read.what === "identity" || read.what === "turns" || read.what === "sessions" || read.what === "suspensions") {
       for (const kind of PEER_KINDS[read.what]) at(scopeTopic).kinds.add(kind);
     } else if ("board" in read.what) {
       const hearing = at({ ...scopeTopic, resource: read.what.board });
@@ -160,7 +165,7 @@ function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
 }
 
 /** The order a hearing lists its kinds in: as `ChangeKind` names them, so an unchanged set compares equal. */
-const KIND_ORDER: readonly ChangeKind[] = ["items", "request", "run", "state", "resource", "board", "resync"];
+const KIND_ORDER: readonly ChangeKind[] = ["items", "request", "run", "state", "resource", "board", "suspension", "resync"];
 
 /** A fresh recorder for one view run. */
 export function createReadRecorder(): ReadRecorder {
@@ -220,6 +225,9 @@ export type ViewDependencies = {
   sessionTurns(sessionId: string): void;
   /** The caller's sessions listed: heard on their user topic's `run`. */
   sessionList(): void;
+  // FIX-2770.
+  /** The caller's pending suspensions read: heard on their user topic's `suspension` only. */
+  userSuspensions(): void;
   // FIX-2625.
   /**
    * A task board read through its task collection, whose ledger is at
@@ -287,6 +295,9 @@ export function createViewDependencies(
     sessionList() {
       record({ scope: "user", what: "sessions" });
     },
+    userSuspensions() {
+      record({ scope: "user", what: "suspensions" });
+    },
     board(board, scope, sessionIds, covers, reach, partition) {
       const at = partition !== undefined ? { partition } : {};
       if (scope === "org") {
@@ -342,6 +353,8 @@ export type SessionReadObserver = {
   turns(sessionId: string): void;
   /** `list` ran, or a one-session verb answered nothing: the caller's sessions, as a whole. */
   list(): void;
+  /** `userSuspensions` ran: the caller's pending suspensions, as a whole. */
+  suspensions(): void;
 };
 
 /** The observer a view run's session reads record through: the dependency surface's rules, never the raw recorder. */
@@ -351,7 +364,8 @@ export function sessionReadObserver(dependencies: ViewDependencies): SessionRead
     state: (id) => dependencies.sessionState(id),
     history: (id) => dependencies.session(id),
     turns: (id) => dependencies.sessionTurns(id),
-    list: () => dependencies.sessionList()
+    list: () => dependencies.sessionList(),
+    suspensions: () => dependencies.userSuspensions()
   };
 }
 
@@ -374,7 +388,8 @@ export function guardViewRequestHost(host: RequestHost, scope: "session" | "user
       read: refuse("read a session"),
       history: refuse("read a session's history"),
       list: refuse("list sessions"),
-      turns: refuse("read a session's turns")
+      turns: refuse("read a session's turns"),
+      userSuspensions: refuse("read pending suspensions")
     };
   }
   mutable.livenessOf = async () => {

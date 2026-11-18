@@ -965,11 +965,6 @@ const EXEMPTIONS = [
     why: "FIX-2696: pages about the Teammates lab, and the Messaging page whose example is that lab, name its Chief of Staff worker and its `teammates.chief-of-staff` id as the lab ships them; FIX-2244 retires the name for Shift Manager's coordinator, not for this lab",
   },
   {
-    path: /^\.changeset\/fix-2614-routines\.md$/,
-    rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "LIST_SCHEDULES_ACTION", "listedScheduleSchema"],
-    why: "FIX-2614: the release note that tells consumers what each retired schedule and subscription name became",
-  },
-  {
     // User docs change only at release (docs/contributing/release-docs.md), so these pages document the
     // released names until then. As FIX-2479 D4's released-quotes: /release-docs rewrites them from the
     // changeset's Docs: line, and deletes this in the same PR.
@@ -1375,6 +1370,12 @@ const EXEMPTIONS = [
     why: "a chat thread in the UI, and a coding harness's own `thread:` option, not a mailbox's",
   },
   {
+    id: "registry-thread-width",
+    terms: ["thread"],
+    strip: /--thread-width\b/g,
+    why: "the ui registry's column-width token (`--thread-width`, which its session overlay reads), set by a lab's theme and used by its screens to size their column: the registry's name for a chat column, not a mailbox's",
+  },
+  {
     id: "codex-thread-option",
     terms: ["thread"],
     where: (path) => path.startsWith("docs/contributing/docs-revamp/pages/catalog/harnesses/codex."),
@@ -1401,8 +1402,9 @@ const EXEMPTIONS = [
     terms: ["thread", "member", "kind"],
     // FIX-2614: an event routine is a subscription, so the routine modules, tests and screen name its thread too.
     // FIX-2651: the service flows that route and deliver to subscriptions moved out of subscriptions/ and share its words.
+    // FIX-2779: the Lab check that a coding task follows its pull request names the subscription's thread.
     where: (path) =>
-      /^packages\/workforce\/(?:src\/subscriptions\/|src\/service-flows\/|src\/routines\/|test\/subscriptions-|test\/routines(?:-seed)?\.test\.ts$)|^packages\/shift-manager\/(?:src\/lib\/routines\.ts|src\/surfaces\/Routines\.tsx|test\/routines-view\.test\.tsx)$/.test(path),
+      /^packages\/workforce\/(?:src\/subscriptions\/|src\/service-flows\/|src\/routines\/|test\/subscriptions-|test\/routines(?:-seed)?\.test\.ts$)|^packages\/shift-manager\/(?:src\/lib\/routines\.ts|src\/surfaces\/Routines\.tsx|test\/routines-view\.test\.tsx|test\/devteam-coder-follows-pull-request\.test\.ts)$/.test(path),
     strip: /\bthreads?\b|\bThreads?(?=[A-Z_]|\b)|(?<=[a-z])Threads?\b|\bmembers?\b|\bMEMBER\b|\bkinds?\b|(?<=\b|_)KINDS\b|(?<=[a-z])Kinds?\b/g,
     why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there (GitHub's `MEMBER` association), and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
   },

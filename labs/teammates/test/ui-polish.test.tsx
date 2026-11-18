@@ -122,7 +122,13 @@ describe("task activity", () => {
     const box = within(popup).getByRole("textbox", { name: "Steer this task" });
     const footer = box.closest("footer")!;
     expect(footer).not.toBeNull();
-    expect(footer.previousElementSibling?.contains(popup.querySelector("[data-step=said]"))).toBe(true);
+    // Anchored like a chat composer: the dialog's last row, outside the scrolling log, with Cancel beside it.
+    expect(popup.lastElementChild).toBe(footer);
+    const log = footer.previousElementSibling!;
+    expect(log.className).toContain("overflow-y-auto");
+    expect(log.contains(box)).toBe(false);
+    expect(log.contains(popup.querySelector("[data-step=said]"))).toBe(true);
+    expect(within(footer).getByRole("button", { name: "Cancel" })).toBeTruthy();
     fireEvent.change(box, { target: { value: "Focus on primary sources" } });
     box.focus();
     act(() => publish(Array.from({ length: 50 }, (_, i) => ({ id: `step-${i}`, kind: "said", text: `Research note ${i}` }))));
@@ -130,6 +136,10 @@ describe("task activity", () => {
     expect((box as HTMLInputElement).value).toBe("Focus on primary sources");
     expect(document.activeElement).toBe(box);
     expect(popup.querySelectorAll("[data-step=said]")).toHaveLength(50);
+    // Every step, the newest included, still sits above the Steer box.
+    const newest = [...popup.querySelectorAll("[data-step=said]")].at(-1)!;
+    expect(newest.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(popup.lastElementChild).toBe(footer);
     expect(footer.className).toContain("shrink-0");
   });
 });
