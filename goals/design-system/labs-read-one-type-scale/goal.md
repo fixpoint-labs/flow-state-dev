@@ -8,7 +8,7 @@
 
 - **Shift Manager** over the run-lab (`packages/shift-manager/test/fixtures/run-lab/`, scripted runs): Shift Coordinator, Tasks (the densest view), two tasks' Sessions found by clicking Tasks' entries, Inbox. Day and night.
 - **Teammates** with its scripted harness (`GOAL_HARNESS=stub`): Chief of Staff's conversation and panel, a coding task filed on its board and opened in its popup, and a second teammate's conversation. A user's line is sent from each conversation's composer (no model answers it). Dark only: the lab has no light theme.
-- **Claude Code-style** with its scripted harness (`CLAUDE_CODE_STYLE_HARNESS=stub`): two sessions on a new project, each with a line sent from the composer, and a task filed on the first session's board, opened as its thread. Light and dark.
+- **Claude Code-style** with its scripted harness (`CLAUDE_CODE_STYLE_HARNESS=stub`): two sessions on a new project, each with a line sent from the composer, and a task filed on the first session's board, opened in its background-task sheet; and a Projects session with a thread filed on its board, opened in the thread's own view (`ThreadView`), whose feed and composer must both draw. Light and dark.
 
 The lines, titles and project are the goal's own; no lab names them. **Held-out:** any other line or task title must pass.
 
@@ -43,3 +43,6 @@ Each failure names its lab, view and variant.
 | 2026-11-18 | same, `GOAL_CONTROL=drop-import:shift-manager` | n/a | FAIL (expected) | c only, Shift Manager only: task messages, the Shift Coordinator's summary and the task composers at 16px, not 17px. |
 | 2026-11-18 | same, `GOAL_CONTROL=drop-import:claude-code-style` | n/a | FAIL (expected) | c only, Claude Code-style only (19 lines, light and dark). |
 | 2026-11-18 | same, `GOAL_BASELINE=ea58bfe54` (main before this change) | n/a | FAIL (expected) | a, b and c in every lab. a: bodies and composers at 14px (Shift Manager 24 lines, Teammates 8, Claude Code-style 13). b: text at 7.5–11.5px (Shift Manager 268 lines, Teammates 44, Claude Code-style 14). c: no type file to move (40, 9, 19). |
+| 2026-11-18 | `claude/project-thread-emkjet` at 200c31270 + this round, `GOAL_ONLY=claude-code-style` | n/a | PASS | The Projects thread view added: 20 feed bodies and 10 composers at 16px, light and dark; at 17px, 28 and 10. |
+| 2026-11-18 | same, `ThreadView`'s composer put back to `text-sm` in the checkout | n/a | FAIL (expected) | a and c, the thread view only: `textarea[Message this task]` at 14px, light and dark. The goal at 200c31270 PASSES this patch: its *thread* view opened the background-task sheet, never `ThreadView`. |
+| 2026-11-18 | same, `GOAL_CONTROL=drop-import:claude-code-style` | n/a | FAIL (expected) | c only, Claude Code-style only (38 lines, light and dark). |

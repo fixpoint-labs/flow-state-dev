@@ -16,11 +16,19 @@
  * `text-[var(--x)]`, `text-[#hex]` and `text-(--x)` paint a colour in
  * Tailwind v4, not a size, and are left alone. There is no allow-list: a glyph
  * drawn at a fixed size in a fixed box takes a reasoned
- * `eslint-disable-next-line` on its line.
+ * `eslint-disable-next-line fsd/no-hardcoded-text-size` on the line above it.
+ * The goal `goals/design-system/labs-read-one-type-scale` reads those lines as
+ * its only exceptions to the 12px floor: the size is a `text-[<n>px]` on the
+ * line right after the comment, and the element drawn at it is `aria-hidden`.
+ * A glyph sized any other way fails that goal.
  */
+
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /** Where the rule reads: the three labs' source, Shift Manager's, and the registry's components. */
 export const TYPE_SCALE_SOURCE = {
+  // A lab or app outside these paths that imports type.css adds its source here, or the rule never reads it.
   files: [
     "labs/*/src/**/*.{ts,tsx}",
     "packages/shift-manager/src/**/*.{ts,tsx}",
@@ -29,21 +37,32 @@ export const TYPE_SCALE_SOURCE = {
   ignores: ["**/*.test.{ts,tsx}", "**/*.stories.tsx"],
 };
 
-/** The steps, smallest first, at the type file's values in px: what a size maps to. */
-const STEPS = [
-  ["text-xs", 12],
-  ["text-sm", 14],
-  ["text-base", 16],
-  ["text-lg", 18],
-  ["text-xl", 22],
-  ["text-2xl", 26],
-];
+/** The design system's type file: where the steps' values live. */
+const TYPE_FILE = fileURLToPath(new URL("../../labs/design-system/type.css", import.meta.url));
+
+/** The steps, smallest first, at the type file's values in px: what a size maps to. Read from the file, so the two never disagree. */
+const STEPS = [...readFileSync(TYPE_FILE, "utf8").matchAll(/--text-(xs|sm|base|lg|\d*xl):\s*([\d.]+)rem;/g)]
+  .map(([, step, rem]) => [`text-${step}`, Number(rem) * 16])
+  .sort((a, b) => a[1] - b[1]);
+if (STEPS.length === 0) throw new Error(`fsd/no-hardcoded-text-size: ${TYPE_FILE} sets no --text-* step in rem`);
+
+/**
+ * Every CSS length unit, so a size in any of them is caught: absolute, font-relative (root ones too),
+ * viewport (with its small, large and dynamic forms) and container-query units.
+ */
+const UNITS = [
+  "px", "cm", "mm", "Q", "in", "pt", "pc",
+  "rem", "em", "rex", "ex", "rcap", "cap", "rch", "ch", "ric", "ic", "rlh", "lh",
+  ...["vw", "vh", "vi", "vb", "vmin", "vmax"].flatMap((u) => [`s${u}`, `l${u}`, `d${u}`, u]),
+  "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax",
+  "%",
+].join("|");
 
 /** A class that hard-codes a font size. Group 1 is the size class itself, for the message. */
 const HARDCODED = new RegExp(
   [
     // `text-[…]` holding a length: a number with a unit, a CSS function, or a `length:` hint.
-    String.raw`(?<![\w-])(text-\[(?:length:[^\]\s]+|-?[\d.]+(?:px|rem|em|pt|%|vw|vh|ch|ex|lh|rlh|vmin|vmax|cqw|cqh)|(?:clamp|calc|min|max)\([^\]\s]*\))\])`,
+    String.raw`(?<![\w-])(text-\[(?:length:[^\]\s]+|-?[\d.]+(?:${UNITS})|(?:clamp|calc|min|max)\([^\]\s]*\))\])`,
     // Tailwind v4's shorthand with a length hint: `text-(length:--x)`.
     String.raw`(?<![\w-])(text-\(length:[^)\s]+\))`,
     // An arbitrary property.

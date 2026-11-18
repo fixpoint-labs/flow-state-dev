@@ -79,6 +79,17 @@ describe("fsd/no-hardcoded-text-size", () => {
     assert.deepEqual(reported(code), ["text-[11px]", "text-[clamp(12px,2vw,16px)]", "text-[length:var(--size)]", "text-(length:--size)", "[font-size:11px]"]);
   });
 
+  it("reports a size in every CSS length unit", () => {
+    const units = [
+      "px", "cm", "mm", "Q", "in", "pt", "pc",
+      "em", "rem", "ex", "rex", "ch", "rch", "cap", "rcap", "ic", "ric", "lh", "rlh",
+      "vw", "svw", "lvw", "dvw", "vh", "dvh", "vi", "svi", "vb", "lvb", "vmin", "dvmin", "vmax", "svmax",
+      "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax", "%",
+    ];
+    const classes = units.map((unit) => `text-[2${unit}]`);
+    assert.deepEqual(reported(`const a = "${classes.join(" ")}";`), classes);
+  });
+
   it("reports fontSize in a JSX style object", () => {
     const messages = lint('export const A = () => <span style={{ fontSize: 11, color: "red" }}>a</span>;\n');
     assert.equal(messages.length, 1);

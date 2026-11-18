@@ -14,8 +14,9 @@
  *   Teammates          Chief of Staff's conversation and panel with a coding task
  *                      on the scripted harness, that task's popup, a second
  *                      teammate's conversation; dark (its only theme)
- *   Claude Code-style  a session's main thread, a task's thread on the scripted
- *                      harness, a second session; light and dark
+ *   Claude Code-style  a session's main thread, its background task's sheet, a
+ *                      Projects session's thread (its feed and composer) on the
+ *                      scripted harness, a second session; light and dark
  *
  * Each lab is built twice from one copy: as written, and with its node_modules'
  * design system swapped for a copy whose `type.css` sets the body step to 17px.
@@ -100,7 +101,10 @@ const COMPOSER = ["[data-look=composer-input]", 'textarea[aria-label^="Message "
 
 // ---- the glyphs the lint lets through ----------------------------------------
 
-/** Every px size a reasoned `eslint-disable-next-line fsd/no-hardcoded-text-size` sets, per lab: the only sizes below the floor b allows. */
+/**
+ * Every px size a reasoned `eslint-disable-next-line fsd/no-hardcoded-text-size` sets, per lab: the only sizes below the floor b allows.
+ * The contract (a `text-[<n>px]` on the next line, on an aria-hidden element) is stated once, in the rule's header.
+ */
 function lintExceptions(lab: LabName, src: string): number[] {
   const sizes: number[] = [];
   const walk = (dir: string): string[] =>
@@ -532,13 +536,32 @@ async function claudeCodeStyle(browser: Browser, built: ReturnType<typeof buildL
       if (id === undefined) throw new Error("setup [Claude Code-style]: no session opened");
       sessions.push(id);
     }
-    // A task on the first session's board, run by the scripted harness: its thread is a main view.
+    // A task on the first session's board, run by the scripted harness: its sheet is a main view.
     await boardOf(fsd).file(sessions[0]!, "Tidy the README", "Put the README's lines in order.");
+    // A Projects session with a thread on its board, run by the scripted harness: the thread's view is a main view.
+    await page.getByRole("tab", { name: "Projects" }).click();
+    const leads = new Set((await fsd.sessions.list({ flowKind: "coordinator", userId: user })).map((s) => s.id));
+    const projects = page.getByRole("region", { name: "Choose a project" });
+    if (!(await projects.isVisible())) await page.getByRole("button", { name: "+ New session" }).click();
+    await projects.getByRole("button", { name: "Type Orchard" }).click();
+    const ask = page.getByRole("textbox", { name: "Message the main session" });
+    await ask.fill("Split the README's work into threads.");
+    await ask.press("Enter");
+    await page.locator("[data-entry=user]").first().waitFor({ timeout: 20_000 });
+    let lead: string | undefined;
+    for (let waited = 0; lead === undefined && waited < 10_000; waited += 250) {
+      lead = (await fsd.sessions.list({ flowKind: "coordinator", userId: user })).find((s) => !leads.has(s.id))?.id;
+      if (lead === undefined) await sleep(250);
+    }
+    if (lead === undefined) throw new Error("setup [Claude Code-style]: no Projects session opened");
+    const filed = await fsd.flow("coordinator").send(taskActionName("createTask", "tasks"), { title: "Order the README", goal: "Put the README's lines in order.", assignee: "desk.thread-coder" }, { sessionId: lead });
+    await filed.wait({ timeoutMs: 60_000 });
     await page.close();
     // No model titles a session, so they are told apart by place: the list keeps the order they were made in.
     const openSession = (which: "first" | "second") => async (page: Page) => {
       if (!page.url().startsWith(lab.origin)) await page.goto(lab.origin);
       await page.keyboard.press("Escape");
+      await page.getByRole("tab", { name: "Sessions" }).click();
       const items = page.locator('nav[aria-label="Sessions"] li button');
       await items.nth(1).waitFor();
       await (which === "first" ? items.first() : items.last()).click();
@@ -547,10 +570,30 @@ async function claudeCodeStyle(browser: Browser, built: ReturnType<typeof buildL
     const views: View[] = [
       { name: "main-session", open: openSession("first") },
       {
+        // Projects mode's thread: ThreadView, a sheet with its own feed and composer. Both must draw, or the view fails setup.
         name: "thread",
         open: async (page) => {
+          if (!page.url().startsWith(lab.origin)) await page.goto(lab.origin);
+          await page.keyboard.press("Escape");
+          await page.getByRole("tab", { name: "Projects" }).click();
+          await page.locator('nav[aria-label="Sessions"] li button').first().click();
+          const board = page.locator('aside[aria-label="Tasks"]');
+          for (const shut of await board.locator('button[aria-expanded="false"]').all()) await shut.click();
+          await board.locator("[data-task-id]").first().click();
+          const sheet = page.locator('[role="dialog"][aria-label^="Task: "]');
+          await sheet.getByRole("textbox", { name: "Message this task" }).waitFor({ timeout: 60_000 });
+          await sheet.locator(BODY).first().waitFor({ timeout: 60_000 });
+        },
+      },
+      {
+        // Session mode's background task: TaskSheet.
+        name: "background-task",
+        open: async (page) => {
           await openSession("first")(page);
-          await page.locator('aside[aria-label="Background tasks"] button').first().click();
+          // A finished task sits under a shut *Done*; open it so the task's row can be clicked.
+          const pane = page.locator('aside[aria-label="Background tasks"]');
+          for (const shut of await pane.locator("details:not([open]) > summary").all()) await shut.click();
+          await pane.locator("li button").first().click();
           await page.locator("[role=dialog]").first().waitFor();
           await page.locator("[role=dialog] [data-entry]").first().waitFor({ timeout: 60_000 }).catch(() => undefined);
         },
