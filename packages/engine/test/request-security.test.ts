@@ -31,6 +31,22 @@ function actionRequest(body?: string, contentType?: string) {
 
 const actionContext = { params: { path: ["security", "actions", "run"] } };
 
+describe("JSON request media type", () => {
+  it.each([undefined, "text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x"])(
+    "refuses a non-empty action body sent as %s",
+    async (contentType) => {
+      const response = await makeRouter().POST(actionRequest("{}", contentType), actionContext);
+      expect(response.status).toBe(415);
+    }
+  );
+  it.each(["application/json", "application/json; charset=utf-8", "Application/JSON"])("accepts %s", async (contentType) => {
+    expect((await makeRouter().POST(actionRequest("{}", contentType), actionContext)).status).toBe(202);
+  });
+  it("accepts an empty body with no content type", async () => {
+    expect((await makeRouter().POST(actionRequest(), actionContext)).status).toBe(202);
+  });
+});
+
 describe("browser fetch metadata", () => {
   it.each(["POST", "PUT", "PATCH", "DELETE"])("refuses cross-site %s before dispatch", async (method) => {
     const request = new Request("http://localhost/api/flows/security/actions/run", {

@@ -208,10 +208,10 @@ export const flowstate = createFlowState({
 A session and every request under it record the instance that created them. Naming that session through a different instance is refused before the action runs, with nothing written:
 
 ```bash
-curl -X POST /api/flows/review-east/s_42/actions/run -d '{"userId":"u1","input":{}}'
+curl -X POST /api/flows/review-east/s_42/actions/run -H "content-type: application/json" -d '{"userId":"u1","input":{}}'
 # 202, s_42 is now review-east's
 
-curl -X POST /api/flows/review-west/s_42/actions/run -d '{"userId":"u1","input":{}}'
+curl -X POST /api/flows/review-west/s_42/actions/run -H "content-type: application/json" -d '{"userId":"u1","input":{}}'
 # 409 { "error": "wrong-instance-session" }
 ```
 

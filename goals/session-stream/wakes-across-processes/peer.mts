@@ -116,6 +116,7 @@ const peer = servePeer({
     const res = await router.POST(
       new Request(`http://localhost/api/flows/chat/${session}/actions/${action}`, {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "alice", orgId: DEFAULT_ORG_ID, input })
       }),
       { params: { path: ["chat", session, "actions", action] } }
