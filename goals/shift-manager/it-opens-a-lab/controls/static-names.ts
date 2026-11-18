@@ -27,10 +27,10 @@ export function createLabReader(clients: Parameters<typeof readerAsWritten>[0]):
     ...reader,
     read: async () => {
       const snapshot = await reader.read();
-      if (snapshot.refused !== undefined || !snapshot.inventory.ok) return snapshot;
+      if (snapshot.refused !== undefined || snapshot.unreachable !== undefined || !snapshot.inventory.ok) return snapshot;
       const stored = new Map(snapshot.inventory.value.workers.map((seat) => [seat.id, seat]));
       const seats = __STATIC_SEATS__
-        .map((row) => toWorker({ ...row, door: stored.get(row.id)?.door ?? null }, ""))
+        .map((row) => toWorker({ ...row, door: stored.get(row.id)?.door ?? null }))
         .filter((s): s is Worker => s !== undefined);
       return { ...snapshot, inventory: { ok: true, value: { ...snapshot.inventory.value, workers: seats } } };
     },

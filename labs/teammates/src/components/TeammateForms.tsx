@@ -1,6 +1,6 @@
 import { isSendKey, useSubmit } from "@flow-state-dev/react";
 import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
-import type { NewTeammate, TeammateEdit } from "../app";
+import type { EditWorkerInput, HireWorkerInput } from "@flow-state-dev/workforce/browser";
 
 function Shell({ label, error, children, onSubmit }: { label: string; error?: string; children: ReactNode; onSubmit: (e: FormEvent) => void }) {
   return (
@@ -32,11 +32,11 @@ const primary = "rounded-sm bg-primary px-2 py-1 font-semibold text-primary-fore
 const plain = "rounded-sm border border-border px-2 py-1 hover:bg-accent";
 
 /** Hire a teammate: its name, the one line Lead reads to know when to ask it, and its instructions. */
-export function HireForm({ onHire, onCancel }: { onHire: (teammate: NewTeammate) => Promise<void>; onCancel: () => void }) {
+export function HireForm({ onHire, onCancel }: { onHire: (teammate: HireWorkerInput) => Promise<void>; onCancel: () => void }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
   const [instructions, setInstructions] = useState("");
-  const { error, busy, submit } = useSubmit(() => onHire({ name: name.trim().toLowerCase(), role: role.trim(), instructions }));
+  const { error, busy, submit } = useSubmit(() => onHire({ id: name.trim().toLowerCase(), description: role.trim(), instructions }));
   return (
     <Shell label="Hire a teammate" error={error} onSubmit={(e) => void submit(e)}>
       <input aria-label="Teammate name" placeholder="name, e.g. tester" value={name} onChange={(e) => setName(e.target.value)} className={field} />
@@ -55,17 +55,18 @@ export function HireForm({ onHire, onCancel }: { onHire: (teammate: NewTeammate)
 }
 
 /**
- * Rename a teammate, replace its instructions, or both. Its next turn reads
+ * Rename a teammate, replace its instructions, or both. A blank name clears
+ * it, so the list shows its id. Its next turn reads
  * them; a turn already running keeps the ones it started with. The page can't
  * read the old instructions back, since they stay on the server, so a blank
  * box keeps them and a filled one replaces them whole.
  */
-export function EditForm({ name, onSave, onCancel }: { name: string; onSave: (edit: TeammateEdit) => Promise<void>; onCancel: () => void }) {
+export function EditForm({ name, onSave, onCancel }: { name: string; onSave: (edit: Omit<EditWorkerInput, "id">) => Promise<void>; onCancel: () => void }) {
   const [newName, setNewName] = useState(name);
   const [instructions, setInstructions] = useState("");
   const renamed = newName.trim() !== name;
   const { error, busy, submit } = useSubmit(() =>
-    onSave({ ...(renamed ? { name: newName.trim() } : {}), ...(instructions.trim() === "" ? {} : { instructions }) }),
+    onSave({ ...(renamed ? { name: newName.trim() === "" ? null : newName.trim() } : {}), ...(instructions.trim() === "" ? {} : { instructions }) }),
   );
   return (
     <Shell label={`Edit ${name}`} error={error} onSubmit={(e) => void submit(e)}>

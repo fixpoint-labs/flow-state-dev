@@ -21,9 +21,11 @@ import { randomBytes } from "node:crypto";
 import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient, projectProgress, PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
 import { routedDeliveries, type RoutedDelivery } from "../../lib/routed-tasks.mts";
+import { isProviderError } from "../../lib/provider.mts";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 import { ENTRY_WRITER_KIND } from "./controls/patches.mts";
 import { ENTRY_WRITER_ACTION } from "./flows/entry-writer.mts";
+import { sleep } from "../../lib/time.mts";
 
 /** One person the run acts as. */
 export interface Person {
@@ -49,7 +51,6 @@ type WorkstreamInput = { id: string; title: string; objectives: string[]; due: s
 const OWNER_RULE = "A resource in an owner-writes collection is written only by the user it belongs to.";
 
 const ROSTER_KIND = "workforce-roster";
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 500);
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const pick = <T,>(list: readonly T[]): T => list[randomBytes(1)[0]! % list.length]!;
@@ -197,8 +198,6 @@ interface Turn {
   providerRetry?: string;
 }
 
-const providerError = (text: string) => /rate.?limit|429|5\d\d |overloaded|timed? ?out|ECONNRESET|fetch failed|provider|gateway|unavailable|stream failed/i.test(text);
-
 /** Say `words` in `sessionId` (on `kind`); a provider error re-runs it once. */
 async function talk(who: Connected, kind: string, sessionId: string, words: string): Promise<Turn> {
   const once = async (): Promise<Turn> => {
@@ -217,7 +216,7 @@ async function talk(who: Connected, kind: string, sessionId: string, words: stri
     return turn;
   };
   let turn = await once();
-  if (turn.status !== "completed" && providerError(turn.reply)) {
+  if (turn.status !== "completed" && isProviderError(turn.reply)) {
     const first = turn.reply;
     turn = await once();
     turn.providerRetry = first.slice(0, 200);

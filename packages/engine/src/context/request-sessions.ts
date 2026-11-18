@@ -34,6 +34,7 @@ import { readonlyStateFilter } from "./readonly-state-filter";
 import { clientVisibleStateKeys } from "./client-visible-state";
 import { resolveRecordOwner } from "./record-owner";
 import { isWriteRecord } from "../resources/default-write-flow";
+import { terminalAtMs } from "../stores/request-ended-at";
 import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
 import type {
   FlowInstance,
@@ -269,6 +270,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     source: request.source,
     startedAtMs: request.startedAtMs,
     ...(request.completedAtMs != null ? { completedAtMs: request.completedAtMs } : {}),
+    ...(terminalAtMs(request) != null ? { endedAtMs: terminalAtMs(request) } : {}),
     updatedAt: request.updatedAt,
     ...(request.result?.error != null ? { error: { code: request.result.error.code, message: request.result.error.message } } : {})
   });

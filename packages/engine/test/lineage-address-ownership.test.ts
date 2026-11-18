@@ -91,6 +91,7 @@ async function createSession(
   const res = await handleCreateSession(
     new Request("http://x/sessions", {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ sessionId, userId })
     }),
     { kind: "create_session", flowKind: flow.kind },

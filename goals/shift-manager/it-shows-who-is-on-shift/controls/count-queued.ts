@@ -3,11 +3,10 @@
  *
  * Built into the control page in place of `src/lib/derive.ts`. Everything is
  * the real module except `workerStates`, whose `held` also takes each worker's
- * queued rows (`pending`, `blocked`). Statuses are left as the real rule gives
+ * queued rows (`pending`, `held`). Statuses are left as the real rule gives
  * them. The goal must fail at "slots equal held rows" on the worker with a
  * queued row.
  */
-import { readStatus } from "../../../../packages/shift-manager/src/lib/columns.ts";
 import {
   allTasks,
   rosterOf,
@@ -28,8 +27,7 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
   const roster = rosterOf(snapshot);
   const seats = new Map([...real.workers].map(([id, state]) => [id, { ...state, held: [...state.held] }]));
   for (const row of allTasks(snapshot)) {
-    const status = readStatus(row.status);
-    if (status !== "pending" && status !== "held") continue;
+    if (row.status !== "pending" && row.status !== "held") continue;
     const owner = workerFor(roster, row);
     if (owner !== undefined) seats.get(owner.id)?.held.push(row);
   }

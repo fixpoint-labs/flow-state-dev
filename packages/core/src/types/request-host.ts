@@ -399,6 +399,9 @@ export type SessionTurn = {
   readonly source: string;
   readonly startedAtMs: number;
   readonly completedAtMs?: number;
+  // FIX-2771.
+  /** When it ended, completed, failed or aborted: a failed turn has no `completedAtMs`. Absent while it runs or waits. */
+  readonly endedAtMs?: number;
   readonly updatedAt: number;
   /** Why it failed, when it did. */
   readonly error?: { readonly code: string; readonly message: string };

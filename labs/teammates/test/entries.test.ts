@@ -5,13 +5,14 @@
  * `user_approval` stop is an approval entry, answered once it resumes. In a
  * popup, only a `sendMessage` that sent something is a sent step. A sent
  * message is replied once its reply is in the log, waited on or not.
- * Its popup reads the session the log says it was delivered to.
  */
 import { describe, expect, it } from "vitest";
 import { noticeMetadata, noticeText, type TaskNotice } from "@flow-state-dev/orchestration/tasks";
 import { delegateAnswerMetadata } from "@flow-state-dev/workforce/browser";
-import { destinationOf, exchangeOf, toBoardTask, toEntries, toSteps, type ConversationEntry } from "../src/app";
+import type { WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
+import { toBoardTask, toEntries, toSteps, type ConversationEntry } from "../src/app";
 import { answerIn } from "../src/components/Popups";
+import { exchangeOf } from "../src/lib/talk";
 
 const CODER = "teammates.claude-code";
 const line = (id: string, text: string, metadata?: Record<string, unknown>) =>
@@ -96,8 +97,11 @@ describe("a session's steps in a popup", () => {
 });
 
 describe("how a sent message stands", () => {
-  const sent = { id: "msg_1", from: "teammates.chief-of-staff", to: "teammates.researcher", text: "Launch date?", at: 1 };
-  const reply = { id: "msg_2", from: sent.to, to: sent.from, text: "Nov 12", at: 2, inReplyTo: "msg_1" };
+  const logEntry = (fields: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResourceState, "id" | "from" | "to" | "text" | "at">): WorkerMessageResourceState => ({
+    exchange: fields.id, fromSession: "s_from", fromFlow: "agent", toSession: "s_to", toFlow: "agent", hop: 1, status: "delivered", ...fields,
+  });
+  const sent = logEntry({ id: "msg_1", from: "teammates.chief-of-staff", to: "teammates.researcher", text: "Launch date?", at: 1 });
+  const reply = logEntry({ id: "msg_2", from: sent.to, to: sent.from, text: "Nov 12", at: 2, inReplyTo: "msg_1" });
 
   it("is replied when a message answers it", () => {
     expect(answerIn([sent], "msg_1")).toBe("working");
@@ -105,27 +109,12 @@ describe("how a sent message stands", () => {
   });
 
   it("is replied when a waited send took the answer as its result: the answer is still a row in the log", () => {
-    expect(answerIn([{ ...sent, replyRequested: true }, reply], "msg_1")).toBe("replied");
+    expect(answerIn([{ ...sent, replyRequested: true as const }, reply], "msg_1")).toBe("replied");
   });
 
   // The framework's "no answer" is a reply row too: it must not read as an answer.
   it("is no answer when the reply is the framework's no answer", () => {
-    expect(answerIn([sent, { ...reply, text: "No answer came back: the turn ended without saying anything.", noAnswer: true }], "msg_1")).toBe("no answer");
-  });
-});
-
-describe("where a sent message's popup looks", () => {
-  const row = (id: string, toSession: string) => ({
-    id, from: "teammates.researcher", to: "teammates.chief-of-staff", text: "Nov 12", exchange: "msg_1", inReplyTo: "msg_1",
-    fromSession: "sess_researcher", fromFlow: "teammates", toSession, toFlow: "teammates", hop: 1, status: "delivered", at: 2,
-  });
-
-  it("reads the session the log says the message landed in, a task's session included", () => {
-    expect(destinationOf([row("msg_0", "sess_other"), row("msg_2", "sess_task_7")], "msg_2")).toBe("sess_task_7");
-  });
-
-  it("has no answer for a message the log doesn't hold yet", () => {
-    expect(destinationOf([row("msg_0", "sess_other")], "msg_2")).toBeUndefined();
+    expect(answerIn([sent, { ...reply, text: "No answer came back: the turn ended without saying anything.", noAnswer: true as const }], "msg_1")).toBe("no answer");
   });
 });
 
@@ -137,7 +126,7 @@ describe("the turn a message's popup shows", () => {
 
   it("follows the turn that took a message over after its first taker died", () => {
     const items = [receipt("c1", "r1"), receipt("c2", "r2"), said("a2", "r2", "Nov 12")];
-    expect(exchangeOf(items, "msg_1").map((s) => s.id)).toEqual(["c2", "a2"]);
+    expect(exchangeOf(items as never, "msg_1").map((s) => s.id)).toEqual(["c2", "a2"]);
   });
 });
 
