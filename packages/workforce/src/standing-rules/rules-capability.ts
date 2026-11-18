@@ -52,29 +52,32 @@ const ACKNOWLEDGE =
   " Tell the user it's done only when the result has `saved: true`. On `saved: false` nothing changed: " +
   "say so, with the `refused` reason, and never say it was saved.";
 
-/** A refusal the model reads: the list as it stands, and a reason that starts `Not saved:`. */
-function notSaved(list: ReturnType<typeof listOutput> | { rules: []; max: number }, refused: string) {
-  return { ...list, saved: false as const, refused };
+/** A refusal the model reads. The prefix lives here, so every refusal starts `Not saved:`. */
+function notSaved(list: ReturnType<typeof listOutput>, reason: string) {
+  return { ...list, saved: false as const, refused: `Not saved: ${reason}` };
+}
+
+function listNow(current: StandingRules | undefined): ReturnType<typeof listOutput> {
+  return current === undefined ? { rules: [], max: MAX_RULES } : listOutput(current);
 }
 
 async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
   // Withheld on an unmarked turn, and a caller that names the tool still can't write.
   if (!isUserTurn(ctx)) {
-    const refused = "Not saved: standing rules change only on a turn a user started; this one can't edit them.";
     const current = await readStandingRules(ctx).catch(() => undefined);
-    return current === undefined ? notSaved({ rules: [], max: MAX_RULES }, refused) : notSaved(listOutput(current), refused);
+    return notSaved(listNow(current), "standing rules change only on a turn a user started; this one can't edit them.");
   }
   let outcome;
   try {
     const { version } = await readStandingRules(ctx);
     outcome = await writeStandingRules(ctx, version, edit, ctx.session.identity.id);
   } catch (error) {
-    const reason = `Not saved: ${error instanceof Error ? error.message : String(error)}`;
+    const message = error instanceof Error ? error.message : String(error);
     const current = await readStandingRules(ctx).catch(() => undefined);
     // An unreadable record is said as such, never shown as an empty list.
-    return current === undefined
-      ? notSaved({ rules: [], max: MAX_RULES }, `${reason} The current rules couldn't be read either; this list is not them.`)
-      : notSaved(listOutput(current), reason);
+    const reason =
+      current === undefined ? `${message} The current rules couldn't be read either; this list is not them.` : message;
+    return notSaved(listNow(current), reason);
   }
   if (!outcome.ok) {
     if (outcome.full === true) {
@@ -84,7 +87,7 @@ async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
         itemVisibility: { client: true, history: false }
       });
     }
-    return notSaved(listOutput(outcome.list), `Not saved: ${outcome.reason}.`);
+    return notSaved(listOutput(outcome.list), `${outcome.reason}.`);
   }
   ctx.emit.message(outcome.line, { agentName: STANDING_RULES_LINE, itemVisibility: { client: true, history: false } });
   return { ...listOutput(outcome.list), saved: true as const, line: outcome.line };
