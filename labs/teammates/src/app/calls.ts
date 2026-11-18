@@ -11,7 +11,10 @@ import { taskCalls, type TaskCalls } from "./tasks";
 import { windowCalls, type WindowCalls } from "./window";
 
 /** Everything the screen reads and writes. */
-export interface AppCalls extends ConversationCalls, FileCalls, WindowCalls, TaskCalls, RunCalls {}
+export interface AppCalls extends ConversationCalls, FileCalls, WindowCalls, TaskCalls, RunCalls {
+  /** Stop what the calls keep watching for their whole life (the roster): whoever made them calls it when done. */
+  close(): void;
+}
 
 /** The calls the app runs on: the package, through one client; `connection` is where it reads a line's files. */
 export function createAppCalls(client: Client = connect(), connection: AppConnection = pageConnection()): AppCalls {
@@ -22,5 +25,6 @@ export function createAppCalls(client: Client = connect(), connection: AppConnec
     ...windowCalls(state),
     ...taskCalls(state),
     ...runCalls(state),
+    close: state.close,
   };
 }

@@ -50,7 +50,9 @@ export function workingFolder(workdir: string | undefined): string {
 
 /** `TEAMMATES_RUN_TIMEOUT_MS`, checked at start; `undefined` when unset. */
 export const runTimeout = (value: string | undefined) => (value === undefined || value.trim() === "" ? undefined : assertPositiveInt("TEAMMATES_RUN_TIMEOUT_MS", Number(value)));
+/** `TEAMMATES_SETUP`: one command, split into words, run with no shell; `undefined` when blank. @throws On a shell operator or a split that fails. */
 export const setupCommand = (value: string | undefined) => setupCommandFrom(value, "TEAMMATES_SETUP");
+/** `TEAMMATES_CHECKS`: `;`-separated commands, each split into words, run with no shell; `undefined` when blank. @throws On a shell operator or a split that fails. */
 export const checkCommands = (value: string | undefined) => checkCommandsFrom(value, "TEAMMATES_CHECKS");
 /** Where a lab run keeps its store by default: `.fsdev/` beside this file. */
 export const defaultStore = () => fileURLToPath(new URL("./.fsdev/teammates.sqlite", import.meta.url));

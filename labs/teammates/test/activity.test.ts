@@ -14,7 +14,7 @@ const session = (fields: Partial<ListedWorkerSession>): ListedWorkerSession => (
   id: "wks_lead", title: "Untitled", worker: "lead", updatedAt: 0, running: false, state: {}, isDefault: true, waiting: [], ...fields,
 });
 const turn = (startedAt: number, completedAt: number | null): ListedTurn => ({
-  id: `t${startedAt}`, action: "respond", status: completedAt === null ? "in_progress" : "completed", source: "http", startedAt, completedAt, error: null,
+  id: `t${startedAt}`, action: "respond", status: completedAt === null ? "in_progress" : "completed", source: "http", startedAt, completedAt, endedAt: completedAt, error: null,
 });
 const line = (activity: ReturnType<typeof activityOf>, now: number) =>
   statusOf("lead", { activity, entries: [], talk: [], tasks: [], now }, (id) => id, () => false).text;
@@ -36,6 +36,12 @@ describe("whether a teammate is busy, and since when", () => {
     expect(activityOf([session({ updatedAt: 9_000 })], [])).toEqual({ running: false, lastActiveAt: 0 });
     expect(activityOf([session({ isDefault: false, running: true })], undefined)).toEqual({ running: false, lastActiveAt: 0 });
     expect(activityOf([], undefined)).toEqual({ running: false, lastActiveAt: 0 });
+  });
+
+  it("ages a failed turn from when it failed, not from when it started", () => {
+    // A failed turn has no completedAt: it ended at 7 min, after starting at 2.
+    const failed: ListedTurn = { ...turn(2 * 60_000, null), status: "failed", endedAt: 7 * 60_000, error: { code: "model", message: "down" } };
+    expect(activityOf([session({})], [failed])).toEqual({ running: false, lastActiveAt: 7 * 60_000 });
   });
 
   it("says nothing until its reads land", () => {

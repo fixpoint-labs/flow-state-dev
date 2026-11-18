@@ -33,7 +33,7 @@ import type { Client, SessionConnectionStatus } from "@flow-state-dev/client";
 import { createElement, type ReactNode } from "react";
 import { CODER_FLOW } from "@flow-state-dev/harness-manager/browser";
 import { taskView } from "@flow-state-dev/orchestration/inbox";
-import { RECEIVED_MESSAGE_DATA_TYPE, SEND_MESSAGE_TOOL, type RosterEntry, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
+import { isOpenMessage, RECEIVED_MESSAGE_DATA_TYPE, SEND_MESSAGE_TOOL, type RosterEntry, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import {
   AppProvider,
   rerunOverrides,
@@ -632,20 +632,24 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
     notify();
     return { id };
   };
-  /** A log row as the worker messages view answers it: answered once a reply names it, delivered to the recipient's conversation. */
+  /** A log row as the worker messages view answers it: delivered once its recipient's conversation read it, answered once a reply names it. */
   const logEntry = (m: AppTalk): WorkerMessageResourceState => {
     const answer = log.find((r) => r.inReplyTo === m.id);
+    const read = worker(m.to).entries.some((e) => e.kind === "received" && e.messageId === m.id);
     return {
-      id: m.id, from: m.from, to: m.to, text: m.text, exchange: m.id, at: m.at, hop: 1, status: "unconfirmed",
+      id: m.id, from: m.from, to: m.to, text: m.text, exchange: m.id, at: m.at, hop: 1, status: read ? "delivered" : "unconfirmed",
       fromSession: worker(m.from).sessionId, fromFlow: "agent", toSession: worker(m.to).sessionId, toFlow: "agent",
       ...(m.inReplyTo === undefined ? {} : { inReplyTo: m.inReplyTo }),
       ...(m.replyRequested === true ? { replyRequested: true as const } : {}),
       ...(answer === undefined ? {} : { answeredBy: answer.id }),
     };
   };
-  /** The worker messages view: the worker's open messages (every row of the double's is on its way), and each id's row and answer. */
+  /** The worker messages view: the worker's open messages, by the view's own rule (`isOpenMessage`), and each id's row and answer. */
   const workerMessages = ({ worker: id, ids = [] }: { worker: string; ids?: string[] }) =>
-    log.filter((m) => m.from === id || m.to === id || ids.includes(m.id) || (m.inReplyTo !== undefined && ids.includes(m.inReplyTo))).sort((a, b) => a.at - b.at).map(logEntry);
+    log
+      .map(logEntry)
+      .filter((m) => ((m.from === id || m.to === id) && isOpenMessage(m)) || ids.includes(m.id) || (m.inReplyTo !== undefined && ids.includes(m.inReplyTo)))
+      .sort((a, b) => a.at - b.at);
   /** A session's items as the server stores them, for a message popup's feed: a turn starts at your line or a received message. */
   const itemsOf = (sessionId: string) => {
     let requestId = "turn-0";
@@ -683,7 +687,7 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
       const w = bySession(sessionId);
       if (w === undefined) return [];
       const running = w.turns.length > 0;
-      return [{ id: `turn:${w.lastActiveAt}`, action: "respond", status: running ? "in_progress" : "completed", source: "user", startedAt: w.lastActiveAt, completedAt: running ? null : w.lastActiveAt, error: null }];
+      return [{ id: `turn:${w.lastActiveAt}`, action: "respond", status: running ? "in_progress" : "completed", source: "user", startedAt: w.lastActiveAt, completedAt: running ? null : w.lastActiveAt, endedAt: running ? null : w.lastActiveAt, error: null }];
     },
     workerMessages,
   };
@@ -857,6 +861,7 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
     hire: async ({ name, role }) => hire({ id: name, description: role }),
     fire: async (workerId) => void (await fire(workerId)),
     roster: () => rosterEntries(),
+    close: () => {},
     rosterWrites,
 
     watchTasks(sessionId, onChange) {

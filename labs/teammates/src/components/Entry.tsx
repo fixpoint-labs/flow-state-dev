@@ -37,7 +37,7 @@ export const Entry = memo(function Entry({
   nameOf,
   lookOf,
   isCoding = () => false,
-  answer = "working",
+  answer,
   onOpenMessage,
   onOpenTask,
   onAnswer,
@@ -220,7 +220,7 @@ function ResultLine({ who, look, entry, onOpen }: { who: string; look?: Look; en
 }
 
 /** A message to another worker: one line, "Messaged researcher", that opens the exchange. */
-function SentLine({ to, look, text, answer, onOpen }: { to: string; look: Look; text: string; answer: AnswerStatus; onOpen?: () => void }) {
+function SentLine({ to, look, text, answer, onOpen }: { to: string; look: Look; text: string; answer: AnswerStatus | undefined; onOpen?: () => void }) {
   return (
     <button
       type="button"

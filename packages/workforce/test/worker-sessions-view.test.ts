@@ -239,6 +239,8 @@ describe("a session's turns", () => {
         [RESPOND_ACTION, "completed"]
       ]);
       expect(value[0]!.startedAt).toBeLessThanOrEqual(value[1]!.startedAt);
+      // When each ended: a completed turn's end is its completion.
+      expect(value.map((turn) => turn.endedAt)).toEqual(value.map((turn) => turn.completedAt));
       expect(value.every((turn) => TURN_ACTIONS.includes(turn.action))).toBe(true);
       // Another user's session answers nothing.
       expect((await h.fsd("bob").view(sessionTurnsViewRef(), { sessionId: main.id })).value).toEqual([]);

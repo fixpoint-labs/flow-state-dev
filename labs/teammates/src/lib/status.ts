@@ -135,7 +135,7 @@ export function answeringStep(entries: readonly ConversationEntry[]): Status | u
 /**
  * Whether a worker is busy, from workforce's views: a turn running in its
  * default conversation (the worker sessions view), and when its last turn
- * ended, else started (the session turns view, whose turns leave the board's
+ * ended (completed, failed or aborted), else started (the session turns view, whose turns leave the board's
  * passes out). Never the session's `updatedAt`, which a board pass moves.
  * Idle with no default conversation yet; `undefined` until the reads land.
  */
@@ -145,7 +145,7 @@ export function activityOf(sessions: readonly ListedWorkerSession[] | undefined,
   if (conversation === undefined) return { running: false, lastActiveAt: 0 };
   if (turns === undefined) return undefined;
   const last = turns.at(-1);
-  return { running: conversation.running, lastActiveAt: last === undefined ? 0 : (last.completedAt ?? last.startedAt) };
+  return { running: conversation.running, lastActiveAt: last === undefined ? 0 : (last.endedAt ?? last.startedAt) };
 }
 
 /** {@link activityOf}, live, for `worker`. */

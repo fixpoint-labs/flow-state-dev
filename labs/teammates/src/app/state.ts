@@ -1,8 +1,6 @@
 /**
- * What the jobs share over one client: the workforce and Inbox clients, one
- * feed per session, each conversation and the flow it runs on, the turns a
- * Stop stops, each task's open holds, and the roster as last read. One per
- * `createAppCalls`; each job's calls read and write it.
+ * What the jobs share over one client: the workforce and Inbox clients, one feed per session, each conversation and
+ * its flow, the turns a Stop stops, each task's open holds, and the roster as last read. One per `createAppCalls`.
  */
 import type { Client } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -11,7 +9,6 @@ import { createInboxClient, type InboxHold } from "@flow-state-dev/orchestration
 import { sessionFeeds, type SessionFeed } from "../lib/session-feed";
 import type { Item } from "./items";
 import type { Unsubscribe } from "./reads";
-
 /** The state every job's calls share, over one client. */
 export interface AppState {
   client: Client;
@@ -29,10 +26,7 @@ export interface AppState {
   runningNow: Map<string, string[]>;
   /** Each conversation's turns this page sent, by request id, in order: a Stop leaves the ones sent after its press. */
   sent: Map<string, string[]>;
-  /**
-   * Each conversation's stop under way: the turns an `interrupt` aborted, until the view's request
-   * read shows every one ended. `wake` tells the conversation's open views to draw again.
-   */
+  /** Each conversation's stop under way: the turns an `interrupt` aborted, until its request read shows each ended; `wake` redraws its views. */
   stops: Map<string, { ids: Set<string> }>;
   stopWatchers: Map<string, Set<() => void>>;
   wake(sessionId: string): void;
@@ -45,6 +39,7 @@ export interface AppState {
   harnesses: Map<string, string>;
   /** The worker's conversation, opened once. */
   conversationOf(worker: string): Promise<{ sessionId: string; flow: string }>;
+  /** Stop the roster watch the first conversation started: whoever made the calls ends them. */ close(): void;
 }
 
 /** The shared state over `client`, with nothing read yet. */
@@ -54,14 +49,19 @@ export function appState(client: Client): AppState {
   const stopWatchers = new Map<string, Set<() => void>>();
   const conversations = new Map<string, { sessionId: string; flow: string }>();
   const flowOfSession = new Map<string, string>();
-
   // The roster, watched from the first conversation opened on: what `workerIds` and `harnesses` hold before its feed is read.
+  // A read that fails before one lands fails that open, as `ensureWorkerSession`'s own roster read would, and the next open watches anew.
   let rosterRead: Promise<void> | undefined;
-  const rosterKnown = () => (rosterRead ??= new Promise<void>((landed) => void workforce.watchRoster((roster) => {
-    state.workerIds = new Set(roster.map((w) => w.id));
-    state.harnesses = new Map(roster.flatMap((w) => (typeof w.settings.harness === "string" ? [[w.id, w.settings.harness] as const] : [])));
-    landed();
-  })));
+  let stopRoster = () => {};
+  const rosterKnown = () => (rosterRead ??= new Promise<void>((landed, failed) => {
+    let read = false;
+    stopRoster = workforce.watchRoster((roster) => {
+      read = true;
+      state.workerIds = new Set(roster.map((w) => w.id));
+      state.harnesses = new Map(roster.flatMap((w) => (typeof w.settings.harness === "string" ? [[w.id, w.settings.harness] as const] : [])));
+      landed();
+    }, { onError: (error) => void (read || (stopRoster(), (rosterRead = undefined), failed(error))) });
+  }));
   const conversationOf = async (worker: string) => {
     const known = conversations.get(worker);
     if (known !== undefined) return known;
@@ -72,7 +72,6 @@ export function appState(client: Client): AppState {
     flowOfSession.set(session.id, session.flowKind);
     return opened;
   };
-
   const state: AppState = {
     client,
     workforce,
@@ -92,6 +91,7 @@ export function appState(client: Client): AppState {
     workerIds: new Set(),
     harnesses: new Map(),
     conversationOf,
+    close: () => stopRoster(),
   };
   return state;
 }

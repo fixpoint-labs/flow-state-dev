@@ -89,6 +89,7 @@ export { checkRepositoryView } from "./projects/check-repository-view-ref";
 export { PROJECTS_FLOW, PROJECTS_PATTERN } from "./projects/project-keys";
 export { listedRoutineSchema, routineMakerSchema, type ListedRoutine, type RoutineMaker } from "./routines/listed-routine";
 export {
+  isOpenMessage,
   WORKER_MESSAGES_PATTERN,
   WORKER_MESSAGES_RESOURCE,
   workerMessageResourceStateSchema,

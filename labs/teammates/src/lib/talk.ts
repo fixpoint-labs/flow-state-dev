@@ -14,13 +14,17 @@ type Message = WorkerMessageResourceState;
 /** It was refused, or nobody took it in time: it will never land. */
 const undelivered = (m: Message) => m.status === "refused" || m.status === "undeliverable";
 
+/** The most lines on screen the worker messages view answers for: the newest ones. An older line shows no status. */
+export const ANSWERED_LINES_MAX = 50;
+
 /**
- * `worker`'s open messages, and the row and answer of each of `ids` (the lines
- * on screen, the newest 50), oldest first, live. `undefined` until the first read lands.
+ * `worker`'s open messages, and the row and answer of each of `ids` (lines on
+ * screen, at most {@link ANSWERED_LINES_MAX}), oldest first, live. `undefined`
+ * until the first read lands.
  */
 export function useTalk(worker: string, ids: readonly string[] = []): Message[] | undefined {
   const { client, pollIntervalMs } = useAppClient();
-  const input = ids.length === 0 ? { worker } : { worker, ids: [...ids].slice(-50) };
+  const input = ids.length === 0 ? { worker } : { worker, ids: [...ids] };
   return useView(workerMessagesViewRef(), input, { client, pollIntervalMs }).value;
 }
 

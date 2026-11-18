@@ -7,7 +7,7 @@
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { WORKER_MESSAGES_PATTERN, WORKER_MESSAGES_RESOURCE, workerMessageResourceStateSchema, type WorkerMessageResourceState } from "./log-row";
+import { isOpenMessage, WORKER_MESSAGES_PATTERN, WORKER_MESSAGES_RESOURCE, workerMessageResourceStateSchema, type WorkerMessageResourceState } from "./log-row";
 
 export * from "./log-row";
 
@@ -18,15 +18,6 @@ export const OPEN_MESSAGES_INDEX = "open";
 // FIX-2771 D1.
 /** The index an answer is found by under the id of the message it answers. */
 export const IN_REPLY_TO_INDEX = "inReplyTo";
-
-/**
- * A message still open: on its way (`unconfirmed`), or asked for a reply that
- * hasn't come (no `answeredBy`) and neither refused nor undeliverable.
- */
-function isOpenMessage(message: WorkerMessageResourceState): boolean {
-  if (message.status === "unconfirmed") return true;
-  return message.replyRequested === true && message.answeredBy === undefined && message.status !== "refused" && message.status !== "undeliverable";
-}
 
 /**
  * The log, at `workforce/messages/*` in the user's scope. Shared across flows:

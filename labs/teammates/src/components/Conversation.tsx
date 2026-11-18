@@ -7,7 +7,7 @@ import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { Look } from "../lib/looks";
 import { displayName, roleOf } from "../lib/roster";
 import { answeringStep, useStatusLine } from "../lib/status";
-import { pendingFor, useTalk } from "../lib/talk";
+import { ANSWERED_LINES_MAX, pendingFor, useTalk } from "../lib/talk";
 import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
@@ -103,8 +103,9 @@ export function Conversation({
   const stale = isFeedStale(connection);
   const mark = useWatch(adapter.watchWindow, sessionId);
   const entries = view?.entries ?? [];
-  // The worker's open messages, and the answers to the lines it sent that are on screen.
-  const talk = useTalk(worker.id, entries.flatMap((e) => (e.kind === "sent" ? [e.messageId] : []))) ?? [];
+  // The worker's open messages, and the answers to the newest lines it sent: an older line shows no status, never a wrong one.
+  const answered = entries.flatMap((e) => (e.kind === "sent" ? [e.messageId] : [])).slice(-ANSWERED_LINES_MAX);
+  const talk = useTalk(worker.id, answered) ?? [];
   const running = view?.running ?? false;
   const pending = pendingFor(worker.id, talk, entries, view?.since);
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
@@ -249,7 +250,7 @@ export function Conversation({
                     nameOf={nameOf}
                     lookOf={lookOf}
                     isCoding={isCoding}
-                    answer={entry.kind === "sent" ? answerIn(talk, entry.messageId) : undefined}
+                    answer={entry.kind === "sent" && answered.includes(entry.messageId) ? answerIn(talk, entry.messageId) : undefined}
                     onOpenMessage={openMessage}
                     onOpenTask={openTask}
                     stillRunning={stillRunningFor(entry)}
