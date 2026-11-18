@@ -36,6 +36,15 @@ export function isLoopbackHost(host: string): boolean {
   return false;
 }
 
+/** Whether an HTTP Host authority names loopback, with an optional port. */
+export function isLoopbackAuthority(authority: string | null): boolean {
+  if (authority === null) return false;
+  const match = /^(\[[^\]]+\]|[^:]+)(?::[0-9]+)?$/.exec(authority);
+  if (match === null) return false;
+  const host = match[1]!.toLowerCase();
+  return isLoopbackHost(host.startsWith("[") ? host.slice(1, -1) : host);
+}
+
 /** Options for {@link assertNetworkBindIsAuthenticated}. */
 export interface NetworkBindGuardOptions {
   /** The host the server is about to bind. */

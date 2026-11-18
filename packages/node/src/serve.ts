@@ -43,7 +43,7 @@ import {
 import { type FlowState } from "@flow-state-dev/engine";
 import { createServerApp } from "./app";
 import { createPageHtmlTransform } from "./page-html";
-import { assertNetworkBindIsAuthenticated, isLoopbackHost } from "./bind-guard";
+import { assertNetworkBindIsAuthenticated, isLoopbackAuthority, isLoopbackHost } from "./bind-guard";
 
 /** Options for {@link serve}. All have sensible defaults for PaaS hosting. */
 export interface ServeOptions {
@@ -299,7 +299,12 @@ export async function serve(
     const onError = (err: Error) => rejectServe(err);
     server = honoServe(
       {
-        fetch: honoApp.fetch,
+        fetch: (request, env) => {
+          if (isLoopbackHost(host) && !isLoopbackAuthority(request.headers.get("host"))) {
+            return new Response("Forbidden", { status: 403 });
+          }
+          return honoApp.fetch(request, env);
+        },
         port,
         hostname: host,
         // Keep Node's native global Request/Response rather than swapping in the

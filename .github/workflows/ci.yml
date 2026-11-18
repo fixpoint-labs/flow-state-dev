@@ -101,6 +101,11 @@ jobs:
       - name: The one-coalescer rule reports its plants
         run: node --test scripts/eslint-rules/one-coalescer.test.mjs
 
+      # The same for the type-scale rule: a hard-coded size planted in each lab,
+      # Shift Manager and the registry must be reported through the repo's config.
+      - name: The text-size rule reports its plants
+        run: node --test scripts/eslint-rules/no-hardcoded-text-size.test.mjs
+
       - name: The lint gate can fail
         run: node --test scripts/lint-gate.test.mjs
 

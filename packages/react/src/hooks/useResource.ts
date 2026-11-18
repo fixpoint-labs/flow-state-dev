@@ -15,8 +15,12 @@
  *
  * A session resource comes from that session's snapshot, as it always has: pass
  * `{ session }`; a session collection's value is its snapshot entry (`count`,
- * `prefetched`), read by entry through the collection hooks. Its writes are
- * that session's flow's actions, so it has no setters here.
+ * `prefetched`), read by entry through the collection hooks. A screen with no
+ * `useSession` view (one on `useSessionFeed`) passes `{ sessionId }` instead:
+ * the session's state is read without its items (`client.sessions.state`), and
+ * read again on the session topic's notice for the resource, and on the
+ * client's timer wherever push can miss one. Its writes are that session's
+ * flow's actions, so it has no setters here.
  */
 import { useCallback, useMemo, useRef } from "react";
 import {
@@ -26,7 +30,8 @@ import {
   type ScopeCollectionHandle,
   type ScopeEntry,
   type ScopeResourceDef,
-  type WireNotice
+  type WireNotice,
+  type WireTopic
 } from "@flow-state-dev/client";
 import { liveRead } from "@flow-state-dev/client/internal";
 import { getPatternPrefix } from "@flow-state-dev/contracts/helpers";
@@ -100,17 +105,17 @@ async function withNamedEntries<TValue>(
   });
 }
 
-/** Read now, and again on each resource notice under `roots` of the caller's user or org topic. */
-function liveScopeDriver(
+/** Read now, and again on each resource notice under `roots` of `on`: the caller's user or org topic, or a session's. */
+function liveDriver(
   client: Pick<Client, "subscribe">,
-  scope: "user" | "org",
+  on: WireTopic,
   roots: readonly string[] | undefined,
   pollIntervalMs: number | undefined
 ): ReadDriver {
   return (read) => {
     const live = liveRead(
       (topics, options) => client.subscribe(topics, options),
-      [scope === "user" ? topic.user() : topic.org()],
+      [on],
       {
         read,
         hear: (notice) => notice.kind === "resource",
@@ -124,12 +129,21 @@ function liveScopeDriver(
 
 /**
  * Read one resource or collection and keep it current. At user or org scope it
- * needs no session; at session scope pass `{ session }`.
+ * needs no session; at session scope pass `{ session }`, or `{ sessionId }`
+ * where the screen has no `useSession` view.
  */
 export function useResource<TDef extends ScopeResourceDef>(
   def: TDef,
   options: {
     session?: SessionView;
+    /**
+     * At session scope, the session to read the resource of, where the screen
+     * has no `useSession` view (one that follows the session with
+     * `useSessionFeed`): its state is read without its items, again on that
+     * session's notice for the resource, and on the client's timer wherever
+     * push can miss a change. Ignored with `session`, and at user or org scope.
+     */
+    sessionId?: string | null;
     /**
      * At session scope, the name the session's flow declares the resource
      * under (its key in the snapshot), when it is not the definition's `ref`,
@@ -138,12 +152,13 @@ export function useResource<TDef extends ScopeResourceDef>(
      */
     key?: string;
     /**
-     * At user or org scope, the client to read and write through, for a host
-     * that holds its own (its user, origin and `fetcher`). Pass a stable
-     * reference. Default: the provider's client.
+     * At user or org scope, or at session scope by `sessionId`, the client to
+     * read (and at user or org scope write) through, for a host that holds its
+     * own (its user, origin and `fetcher`). Pass a stable reference. Default:
+     * the provider's client.
      */
-    client?: Pick<Client, "resource" | "subscribe">;
-    /** At user or org scope, how often to read where push can miss a change, in ms. Default: the client's live-read pace. */
+    client?: Pick<Client, "resource" | "subscribe"> & { sessions?: Pick<Client["sessions"], "state"> };
+    /** At user or org scope, or by `sessionId`, how often to read where push can miss a change, in ms. Default: the client's live-read pace. */
     pollIntervalMs?: number;
   } = {}
 ): UseResourceResult<TDef> {
@@ -155,6 +170,8 @@ export function useResource<TDef extends ScopeResourceDef>(
   const key = options.key ?? def.ref ?? def.pattern ?? "";
   const collection = def.pattern !== undefined;
   const scope = def.scope === "org" ? "org" : "user";
+  // A session resource read by the session's id: only where no `useSession` view hands its snapshot.
+  const sessionId = atSession && options.session === undefined && options.sessionId != null && options.sessionId !== "" ? options.sessionId : undefined;
 
   // The handle reads nothing until called; held per definition.
   const handle = useMemo(
@@ -166,24 +183,46 @@ export function useResource<TDef extends ScopeResourceDef>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [client, atSession, def.scope, key]
   );
-  const roots = useMemo(() => {
-    if (!collection) return [key];
-    const prefix = getPatternPrefix(key);
+  /** The paths a change notice names for a resource stored at `path`: itself, or a collection's static prefix. */
+  const rootsOf = (path: string) => {
+    if (!collection) return [path];
+    const prefix = getPatternPrefix(path);
     return prefix.length > 0 ? [prefix] : undefined;
-  }, [collection, key]);
-  const driver = useMemo(
-    () => (handle === undefined ? undefined : liveScopeDriver(client, scope, roots, pollIntervalMs)),
-    [client, handle, scope, roots, pollIntervalMs]
-  );
+  };
+  const roots = useMemo(() => rootsOf(key), [collection, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A session notice names the resource's stored path (its ref or pattern), never the name a flow
+  // declares it under: `key` is the snapshot's name only, and stands in only for a definition with neither.
+  const storedPath = def.ref ?? def.pattern ?? key;
+  const sessionRoots = useMemo(() => rootsOf(storedPath), [collection, storedPath]); // eslint-disable-line react-hooks/exhaustive-deps
+  const driver = useMemo(() => {
+    if (handle !== undefined) return liveDriver(client, scope === "user" ? topic.user() : topic.org(), roots, pollIntervalMs);
+    return sessionId === undefined ? undefined : liveDriver(client, topic.session(sessionId), sessionRoots, pollIntervalMs);
+  }, [client, handle, scope, sessionId, roots, sessionRoots, pollIntervalMs]);
+  // The snapshot is keyed by the name the flow declares the resource under: the given key, else
+  // the ref or pattern, else (the common case for a collection) the pattern's static prefix.
+  const snapshotNames = [options.key, def.ref, def.pattern, def.pattern === undefined ? undefined : getPatternPrefix(def.pattern)];
+  /** The resource's value in a session snapshot's resources: a single one's `clientData`, a collection's entry. */
+  const valueIn = (resources: Parameters<typeof findSnapshotResource>[0]) => {
+    const found = snapshotNames
+      .filter((name): name is string => name !== undefined && name.length > 0)
+      .map((name) => findSnapshotResource(resources, name, collection ? "collection" : "single"))
+      .find((entry) => entry !== undefined);
+    return (collection ? (found ?? null) : (found?.clientData ?? null)) as TValue | null;
+  };
   // A collection's entries as last read, for this handle, while no other read
   // is out: a notice that names entries re-reads just those over them (FIX-2625).
   const held = useRef<{ handle: unknown; entries: ScopeEntry<TValue>[] } | undefined>(undefined);
   const reading = useRef(0);
   const { data, error, refresh } = useFencedRead<TValue | ScopeEntry<TValue>[] | null>(
-    [handle, scope, key],
+    // `client` too: by `sessionId` there is no handle, and a value one client read is never shown under another.
+    [handle, scope, key, sessionId, client],
     null,
     `Failed to read "${key}"`,
     async (stillCurrent, notice) => {
+      if (sessionId !== undefined) {
+        if (client.sessions === undefined) throw new Error(`useResource: "${key}" by sessionId needs a client with sessions.state`);
+        return valueIn((await client.sessions.state(sessionId, { includeItems: false })).resources);
+      }
       if (handle === undefined) return null;
       if (!("list" in handle)) return (await handle.read()).value;
       const last = held.current?.handle === handle && reading.current === 0 ? held.current.entries : undefined;
@@ -202,7 +241,7 @@ export function useResource<TDef extends ScopeResourceDef>(
         reading.current -= 1;
       }
     },
-    { driver, enabled: handle !== undefined }
+    { driver, enabled: handle !== undefined || sessionId !== undefined }
   );
 
   /** Run a write, then read again: the write's own notice is skipped by the view that sent it. */
@@ -215,17 +254,8 @@ export function useResource<TDef extends ScopeResourceDef>(
     [refresh]
   );
 
-  // The snapshot is keyed by the name the flow declares the resource under: the given key, else
-  // the ref or pattern, else (the common case for a collection) the pattern's static prefix.
-  const snapshotNames = [options.key, def.ref, def.pattern, def.pattern === undefined ? undefined : getPatternPrefix(def.pattern)];
-  const snapshot = snapshotNames
-    .filter((name): name is string => name !== undefined && name.length > 0)
-    .map((name) => findSnapshotResource(options.session?.snapshot?.resources, name, collection ? "collection" : "single"))
-    .find((found) => found !== undefined);
-  if (atSession) {
-    const value = (collection ? (snapshot ?? null) : (snapshot?.clientData ?? null)) as TValue | null;
-    return { value, stale: false } as UseResourceResult<TDef>;
-  }
+  if (sessionId !== undefined) return { value: data, stale: error !== null } as UseResourceResult<TDef>;
+  if (atSession) return { value: valueIn(options.session?.snapshot?.resources), stale: false } as UseResourceResult<TDef>;
   const base = { value: data, stale: error !== null };
   if (handle !== undefined && "list" in handle) {
     return {

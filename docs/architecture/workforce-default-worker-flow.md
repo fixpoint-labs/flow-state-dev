@@ -239,7 +239,11 @@ mark reach the answer as a per-turn `uses` entry, its resource declared statical
 `defaults.historySummary` decides both halves (`defaults: false` turns it off too). An app that
 brings its own summary — a top-level static `uses` capability declaring a resource on core's
 `historySummaryStateSchema`, matched in `catalogWorkerCapabilities`' reading — replaces it, fold
-and section; a dynamic entry is not seen and doubles. Its content is outside the ceiling.
+and section; a dynamic entry is not seen and doubles. Its content is outside the ceiling. Its
+resource is core's one definition at the default name, `historySummaryResource`, which the browser
+entry exports so a screen reads the same resource (`useResource(historySummaryResource, { sessionId })`)
+and draws the "earlier turns summarized" divider beside the session turns view's `historyStart`
+(FIX-2772 D1).
 
 ### C1a — Settings are a default layer, not the only layer
 

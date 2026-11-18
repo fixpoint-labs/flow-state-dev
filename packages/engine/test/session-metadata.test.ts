@@ -461,6 +461,7 @@ describe("an edit and another write to one session at once", () => {
     const res = await router.POST(
       new Request("http://localhost/api/flows/relay/parent/actions/deliver", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "alice", input: { to: "child1" } })
       }),
       { params: { path: ["relay", "parent", "actions", "deliver"] } }
@@ -489,6 +490,7 @@ describe("an edit and another write to one session at once", () => {
     const res = await router.POST(
       new Request("http://localhost/api/flows/relay/parent/actions/deliver", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "alice", input: { to: "child1" } })
       }),
       { params: { path: ["relay", "parent", "actions", "deliver"] } }

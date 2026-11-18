@@ -230,6 +230,52 @@ worktree of the folder, under the lab's `.fsdev/teammates-runs/` (or `TEAMMATES_
 checkout's `.gitignore` must ignore `**/.fsdev/`, where a run keeps its own notes; a run refuses a
 checkout that doesn't. The checkout's own branch and working tree are never changed.
 
+### The host
+
+`host.mts` puts the lab's server together from package pieces, and `fsdev.config.mts` calls its
+`openTeammates` with the variables above. What each piece is for:
+
+- **Lead, researcher and writer** run on the workforce kit's built-in `agent` flow, so each has
+  `sendMessage` and one conversation where messages land. Memory is composed in through `uses`
+  (read) and `afterAnswer` (record each turn). What was said before the history window is kept by
+  the built-in flow, which folds older turns into a summary by default, so the lab wires none of
+  its own. The flow's tool catalog holds web search and fetch, and the working folder's source
+  reads; each worker's `tools:` line picks its own from them. Each teammate's `icon:` and `color:`
+  lines ride on its roster row (`settings` and `showSettings`), so the page draws them.
+- **Claude Code, Codex and Cursor** are the coding workers, one per harness, on the harness kit's
+  coding worker flow (`coder`): it takes the tasks a teammate files and runs each through its
+  worker's harness, in a worktree of the working folder. Before a task starts, the harness's
+  readiness is checked; one this machine isn't set up for fails the task with a sentence that names
+  it and says what to run. A run that committed waits for your review, and the working folder's
+  checks pass first. A shutdown waits for a coding run still going, its checks and judge included.
+- **Readiness** is the harness kit's: put in the workers' context so Lead files coding work only on
+  a ready harness, and served as the `harnesses` flow's `readiness` view, read with no session,
+  which `{ refresh: true }` reads again.
+- **The working folder** is one git checkout the operator names. It is the host's constant run
+  source, so every coding run and every read of the workers' source tools works in it. There are no
+  projects: no worker has a project tool, and nothing a model writes can name another folder. So
+  the operator also names its checks, the commands a coding run's worktree must pass before its
+  task is done, and a setup command each fresh worktree runs first so the checks find what they
+  need. Neither runs through a shell.
+- **The lab's context** is the `lab-context` flow's `context` view (`flows/lab-context.mts`, its ref beside it in `lab-context-ref.mts`), read
+  with no session: the working folder, the model, the default harness, which workers each worker
+  hands work to (read off the workers' files), and, when the folder doesn't ignore `.fsdev/`, the
+  problem a coding run's checkout would be refused with (checked at start, never fatal). The page
+  draws its context strip and first-run lines from it.
+- **Teammates** you hire from the page are rows of your own roster, written through the workforce
+  kit's roster flow; nothing restarts.
+- **Routines:** Lead, researcher and writer hold the routine tools, so you can ask one to follow a
+  GitHub pull request or to do something on a clock, and to list, pause or delete what it follows.
+  A pull request's events are polled (no public URL) on the operator's own GitHub token, for the
+  operator alone (workforce's `operatorGitHub`); `fsdev dev` ticks the polls and the clock routines,
+  each from a SQLite file of its own beside the store.
+- Every request is the lab's own user in the lab's own org, never a user the request names: the
+  operator-only GitHub token is gated on it. A consult of another conversation reads on a smaller
+  model (`intent/utility`).
+
+Durable, on SQLite: a worker message a busy host turned away is sent again on its session's wake,
+and a restart keeps every conversation.
+
 ### Try it
 
 With a working folder whose README says the launch date, ask Lead *"Ask researcher for our
@@ -255,20 +301,25 @@ harness. A scenario the real calls can't show yet is marked to fail with the iss
 
 ## What the screen reads
 
-Everything the screen reads and writes goes through `src/app/`, one file per job, read with `useApp()`,
-and each function names the package call it makes.
+The roster, the lab's context, harness readiness, busy status and worker messages are package views a
+screen reads itself, with `react`'s `useView` over the client `AppProvider` holds (`useAppClient()`), and
+the roster's changes go through workforce's client. Everything else the screen reads and writes still goes
+through `src/app/`, one file per job, read with `useApp()`, and each function names the package call it
+makes.
 
 | On screen | Package piece |
 |---|---|
-| The worker list, sending, the conversation, busy status | the workforce client's `watchRoster()` and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
+| The worker list, sending, the conversation | the workforce client's `watchRoster()` (its roster view) and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
+| Busy status: the dot and the *Idle* age | workforce's worker sessions view (the default conversation, and whether a turn runs in it) and session turns view (when the last turn ended, else started) |
+| The context strip and the harness chips | the lab's `lab-context` view (`flows/lab-context.mts`) and the harness kit's readiness view; *Re-check* reads readiness again with `{ refresh: true }` |
 | A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery`, installed in `src/components/flow-state/`; Retry is the client's `request(id).retry()`, on the newest turn only |
-| Workers messaging each other | `sendMessage`, the received-message item (`workforce:received`), and the message log |
-| Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit` and `fire`, on the roster flow |
+| Workers messaging each other | `sendMessage`, the received-message item (`workforce:received`), and workforce's worker messages view: a worker's open messages, and the row and answer of each line on screen, found through the message log's indexes |
+| Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit`, `reset` and `fire`, on the roster flow |
 | Task lines | the conversation board's rows |
 | Stop, and the stopped line | the request's `abort` for each answering turn; the line is the UI registry's `request-recovery` stopped look, installed in `src/components/flow-state/`, after each request the session's requests list as `aborted`, with the session stream's unfinished runs as its count |
 | A teammate's icon and color | its `WORKER.md`'s `icon:` and `color:` lines, declared on the `agent` flow with `settings` and shown on its `roster()` row with `showSettings` |
-| The status line | the conversation's requests (`listSessionRequests`) and items for what it is answering, the board's rows for a running coding task, the message log for a message waiting on a reply |
-| A message's popup | the recipient's session items: the turn whose received-message item carries the message's id |
+| The status line | the worker sessions view and the conversation's items for what it is answering, the board's rows for a running coding task, the worker messages view for a message waiting on a reply |
+| A message's popup | the session the message's row says it was delivered to, followed with `react`'s `useSessionFeed`: the turn whose received-message item carries the message's id |
 | The working folder | `localWorkspaceHost` with a constant run source, `{ kind: "repo", repo }`, and the folder in `localRepositories`; `projectSourceTools` read it |
 | Coding tasks and their runs | the conversation board's rows assigned to the worker on the coding flow, which the list leaves out; the row's `run` link, read as the run session's items |
 | A task waiting on you, and your answer | the row's holds through the Inbox's `inboxItems` and `taskView`, answered with the Inbox client's `answerOne`; a review drawn by the UI registry's `review-hold`, installed in `src/components/flow-state/`, from the run's stop read by harness-manager's `reviewDetail` |
@@ -276,8 +327,8 @@ and each function names the package call it makes.
 | A run's steps in plain words, in a popup and inline in the conversation | the UI registry's `tool-naming` and `tool-grouping`, installed in `src/components/flow-state/`, over each tool call's name, arguments, status and result: `toolSubject`, `toolStepState` (with `toolOutcome`), `toolRunState`, `withToolState` and `toolRunOpen` |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
 
-The conversation follows its session's stream. Busy status, whether a conversation is answering,
-and the divider read the conversation's requests when one of them changes, and the divider reads the
+The conversation follows its session's stream. Whether a conversation is answering and the divider
+read the conversation's requests when one of them changes, and the divider reads the
 `historySummary` resource when it changes, through `client.subscribe`. A long reply costs them no
 more reads than a short one. On a host whose push can miss a change, such as the SQLite store the
 lab runs on, they also read every 1.5 seconds, as before.

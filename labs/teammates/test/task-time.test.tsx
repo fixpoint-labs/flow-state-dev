@@ -15,13 +15,14 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SessionConnectionStatus } from "@flow-state-dev/client";
-import { toBoardTask, type AppCalls, type AppWorker } from "../src/app";
+import { toBoardTask, type AppCalls } from "../src/app";
+import { FixtureProvider, rosterEntry } from "./fake-app";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 
 afterEach(cleanup);
 
 const MIN = 60_000;
-const worker = { id: "lead", name: "Lead", role: "Runs the team", own: false } as AppWorker;
+const worker = rosterEntry({ id: "lead", name: "Lead", description: "Runs the team" });
 
 /** A board row as `listTasks` answers it. */
 const listed = (id: string, status: string, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }) => ({
@@ -46,7 +47,9 @@ function panel(rows: Record<string, any>[], connection: SessionConnectionStatus 
     watchConnection: (_session: string, emit: (state: SessionConnectionStatus) => void) => (emit(connection), () => {}),
   } as unknown as AppCalls;
   render(
-    <TeammatePanel adapter={adapter} worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} onOpen={() => {}} />,
+    <FixtureProvider calls={adapter}>
+      <TeammatePanel adapter={adapter} worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} onOpen={() => {}} />
+    </FixtureProvider>,
   );
   return screen.getByRole("complementary", { name: "Lead's panel" });
 }

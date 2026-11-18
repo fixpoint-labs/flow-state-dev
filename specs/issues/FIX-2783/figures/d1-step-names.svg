@@ -1,0 +1,100 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, what the labs' components write to size text. Chosen: Tailwind's own size steps, given their values in the design system's type file. Instead of: new role names such as text-body and text-meta. It comes down to the first criterion: an app that installs a registry component needs nothing new with steps, while role names need a new token in the registry first, and an app without it gets unsized text with no error. The price is the second criterion: one step is one role, so the feed and the composer share a size. Third criterion: about 154 class edits against about 1,000. Locks in: in the labs a step means a role and its size comes from the type file. Flips if: the composer must be sized apart from the feed."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">What do the labs' components write to size their text?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Tailwind's steps, valued in the type file</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">New role names: text-body, text-meta</text>
+  </g>
+
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">AN APP INSTALLS</text>
+    <text class="t-lbl" x="32" y="169">A REGISTRY PIECE</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Works with no new token</text>
+    <text class="t-s" x="248" y="179">every Tailwind app already has the steps</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Unsized text, with no error</text>
+    <text class="t-s" x="612" y="179">until the registry adds the role tokens</text>
+  </g>
+
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="222">SIZE APART</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">One step, one role</text>
+    <text class="t-s" x="248" y="241">feed and composer share text-base</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">Any role sized on its own</text>
+    <text class="t-s" x="612" y="241">composer apart from the feed</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="280">EDITS NOW</text>
+    <text class="mark plus" x="228" y="282">+</text>
+    <text class="t-b" x="248" y="281">About 154 class edits</text>
+    <text class="t-s" x="248" y="299">the hard-coded sizes and the body sites</text>
+    <text class="mark minus" x="592" y="282">−</text>
+    <text class="t-b" x="612" y="281">About 1,000 class edits</text>
+    <text class="t-s" x="612" y="299">every text-xs and text-sm, each a judgment</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">In the labs, a step means a role</text>
+    <text class="t-s" x="32" y="389">its size is the type file's, not Tailwind's</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">The composer must be sized apart from the feed</text>
+    <text class="t-s" x="494" y="389">then a role name for that one is added</text>
+  </g>
+</svg>
