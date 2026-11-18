@@ -8,7 +8,7 @@ import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import type { InboxAsk } from "../../src/lib/inbox";
 
 /** harness-manager's `harnessReviewAnswerSchema`, as the engine stores it. */
-export const VERDICT_SCHEMA = {
+const VERDICT_SCHEMA = {
   anyOf: [
     { type: "object", properties: { verdict: { type: "string", const: "accepted" } }, required: ["verdict"], additionalProperties: false },
     {

@@ -32,7 +32,7 @@ type InboxViewItem = InboxItem<InboxAsk>;
 type InboxViewHold = InboxHold<InboxAsk>;
 
 /** How often the view is read again where push can miss a change. */
-export const INBOX_POLL_MS = 30_000;
+const INBOX_POLL_MS = 30_000;
 
 /** The inbox view, as a screen reads it. */
 type InboxRead = {
