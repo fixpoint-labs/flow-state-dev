@@ -46,7 +46,7 @@ export type TaskView<TDetail = unknown> = {
   readonly title: string;
   readonly goal: string | null;
   readonly assignee: string | null;
-  /** The status as stored, read forward (a legacy `blocked` reads `held`). Kept even when it is a word {@link state} doesn't know. */
+  /** The status as stored. Kept even when it is a word {@link state} doesn't know. */
   readonly status: string;
   /** What a person sees it as. */
   readonly state: TaskViewStatus;
