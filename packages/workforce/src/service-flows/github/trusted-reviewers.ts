@@ -13,6 +13,7 @@
  * as failed rather than on its content.
  */
 import type { BlockContext, DeclaredResourceEntry } from "@flow-state-dev/core/types";
+import type { IndexEntry } from "../../subscriptions/rows";
 import type { CustomScreen } from "../../subscriptions/screens";
 import { githubRepositoryOf } from "./provider";
 import { githubLoginId } from "./normalize";
@@ -24,8 +25,11 @@ const WRITES = new Set(["admin", "maintain", "write"]);
 export interface GitHubTrustedReviewersOptions {
   /** The trusted GitHub logins, read when each event arrives. */
   reviewers(ctx: BlockContext): readonly string[] | Promise<readonly string[]>;
-  /** A token that can read the repository's collaborators; none fails the screen. */
-  token(ctx: BlockContext): string | undefined | Promise<string | undefined>;
+  /**
+   * A token that can read the repository's collaborators, for the subscription
+   * being screened (its owner is `entry.userId`, set by the server); none fails the screen.
+   */
+  token(ctx: BlockContext, entry: IndexEntry): string | undefined | Promise<string | undefined>;
   /** GitHub's REST API root. Default `https://api.github.com`. */
   readonly apiUrl?: string;
   /** The `fetch` it calls. Default the global one. */
@@ -54,13 +58,13 @@ export function githubTrustedReviewersScreen(options: GitHubTrustedReviewersOpti
   return {
     describe: "the sender is a trusted reviewer who can write to the repository",
     ...(options.resources === undefined ? {} : { resources: options.resources }),
-    async screen(event, _entry, ctx) {
+    async screen(event, entry, ctx) {
       if (event.sender.role === "bot") return `bot "${event.sender.id}" is never a trusted reviewer`;
       const listed = (await options.reviewers(ctx)).map(githubLoginId);
       if (!listed.includes(event.sender.id)) return `"${event.sender.id}" isn't a trusted reviewer`;
       const repository = event.threads.map(githubRepositoryOf).find((repo) => repo !== undefined);
       if (repository === undefined) return "the event names no repository";
-      const token = await options.token(ctx);
+      const token = await options.token(ctx, entry);
       if (token === undefined || token.length === 0) throw new Error("no token to ask GitHub who can write");
       const res = await (options.fetch ?? fetch)(`${api}/repos/${repository}/collaborators/${encodeURIComponent(event.sender.id)}/permission`, {
         headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" }

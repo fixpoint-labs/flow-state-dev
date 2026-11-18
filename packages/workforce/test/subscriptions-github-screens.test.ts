@@ -88,6 +88,20 @@ describe("githubTrustedReviewersScreen", () => {
     const tokenless = githubTrustedReviewersScreen({ reviewers: () => ["jhoffner"], token: () => undefined, fetch: fakeFetch });
     await expect(tokenless.screen(from("jhoffner"), {} as never, {} as never)).rejects.toThrow(/no token/);
   });
+
+  it("asks for the token for the subscription it screens, so an app lends its token only to the subscriptions it chooses", async () => {
+    // Routing runs as the service, not the subscriber: the subscription's own owner is what decides.
+    const owners: string[] = [];
+    const operatorOnly = githubTrustedReviewersScreen({
+      reviewers: () => ["jhoffner"],
+      token: (_ctx, entry) => (owners.push(entry.userId), entry.userId === "operator" ? "operator-token" : undefined),
+      apiUrl: "https://gh.test/",
+      fetch: fakeFetch,
+    });
+    expect(await operatorOnly.screen(from("jhoffner"), { userId: "operator" } as never, {} as never)).toBeUndefined();
+    await expect(operatorOnly.screen(from("jhoffner"), { userId: "someone-else" } as never, {} as never)).rejects.toThrow(/no token/);
+    expect(owners).toEqual(["operator", "someone-else"]);
+  });
 });
 
 describe("githubLoginsListed", () => {

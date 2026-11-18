@@ -899,7 +899,8 @@ function operatorGitHub(operator: string, token: string | undefined, apiUrl: str
             const content = await document.readContent();
             return githubLoginsListed(content);
           },
-          token: () => token,
+          // Lent only to the operator's own subscriptions: decided on the subscription's owner, since routing runs as the service.
+          token: (_ctx, entry) => (entry.userId === operator ? token : undefined),
           ...(apiUrl === undefined ? {} : { apiUrl }),
           ...(reviewers === undefined ? {} : { resources: { [GITHUB_REVIEWERS_DOC]: reviewers } }),
         }),
