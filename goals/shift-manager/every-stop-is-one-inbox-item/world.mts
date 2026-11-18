@@ -2,8 +2,8 @@
  * The closure's Lab, served by Shift Manager's own command, and what Alice can do and read in it.
  *
  * Alice is DevTeam's Lab owner, signed in with her verified bearer, acting through the shipped
- * clients. Every read a grade rests on is one of hers: Shift Manager's own Inbox snapshot
- * (`createLabReader().read().inbox`), and her board's `getTask` and `listTasks`. The proof file
+ * clients. Every read a grade rests on is one of hers: the inbox view Shift Manager's Inbox
+ * reads (`inboxViewRef`, FIX-2774), and her board's `getTask` and `listTasks`. The proof file
  * is written from inside the Lab's runs (`lab/fsdev.config.mts`); nothing here writes a row.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -18,7 +18,8 @@ import { act as actAs, connect as connectPerson, type Acted, type Connected, typ
 import { LAB_USERS } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { connect as connectShiftManager } from "../../../packages/shift-manager/src/lib/connection.ts";
-import { createLabReader } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { inboxViewRef } from "@flow-state-dev/workforce/browser";
+import { holdsOnYou, taskAsks } from "../../../packages/shift-manager/src/lib/inbox.ts";
 import { CAST, writeTree, type Words } from "./cast.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -112,6 +113,12 @@ export interface Alice {
   row(id: string): Promise<Row | undefined>;
   inbox(): Promise<InboxItem<unknown>[]>;
   itemOf(taskId: string): Promise<InboxItem<unknown> | undefined>;
+  /**
+   * FIX-2774 D2: the asks task `taskId`'s screen draws, from the same view answer as the Inbox
+   * (its run's stops, `taskAsks`, and the questions it holds on you, `holdsOnYou`), and its
+   * Inbox item's holds, each by hold id. `screen` is `null` when the view lists no such row.
+   */
+  taskAndItem(taskId: string): Promise<{ screen: string[] | null; item: string[] }>;
   answer(item: InboxItem<unknown>, answer: unknown, questionId?: string): Promise<string>;
   answerOne(hold: InboxHold<unknown>, answer: unknown): Promise<string>;
   /** `reconcileInbox` over her Inbox against her rows and the task sessions' suspended requests; `undefined` when green. */
@@ -136,11 +143,17 @@ export async function aliceIn(shipped: Shipped, origin: string): Promise<Alice> 
     const read = await act(flow, conversation, "getTask_tasks", { id }, 60_000);
     return read.output?.ok === true ? (read.output.task as Row) : undefined;
   };
-  const inbox = async (): Promise<InboxItem<unknown>[]> => {
-    const snapshot = await createLabReader(client).read();
-    if (!("inbox" in snapshot) || snapshot.inbox === undefined) throw new Error(`Shift Manager's read came back ${show(snapshot)}`);
-    if (!snapshot.inbox.ok) throw new Error(`Shift Manager's Inbox didn't load: ${snapshot.inbox.failure.message}`);
-    return snapshot.inbox.value as InboxItem<unknown>[];
+  // FIX-2774: the Inbox, its count and a task's asks are one answer, the roster flow's inbox view.
+  const view = async () => (await client.view(inboxViewRef, {})).value;
+  const inbox = async (): Promise<InboxItem<unknown>[]> => (await view()).items as InboxItem<unknown>[];
+  const taskAndItem: Alice["taskAndItem"] = async (taskId) => {
+    const { items, tasks } = await view();
+    const row = tasks.find((task) => task.id === taskId);
+    const item = items.find((i) => i.task?.taskId === taskId);
+    const ids = (holds: ReadonlyArray<{ id: string }>) => holds.map((h) => h.id).sort();
+    if (row === undefined) return { screen: null, item: ids(item?.holds ?? []) };
+    const own = holdsOnYou(items, row) ? (item?.holds ?? []).filter((h) => h.source.kind === "task") : [];
+    return { screen: ids([...taskAsks(items, row), ...own]), item: ids(item?.holds ?? []) };
   };
   const inboxClient = createInboxClient(client);
   const call = async (go: () => Promise<unknown>): Promise<string> => {
@@ -168,6 +181,7 @@ export async function aliceIn(shipped: Shipped, origin: string): Promise<Alice> 
     row,
     inbox,
     itemOf: async (taskId) => (await inbox()).find((item) => item.task?.taskId === taskId),
+    taskAndItem,
     answer: (item, answer, questionId) => call(() => inboxClient.answer(item, answer as never, questionId)),
     answerOne: (hold, answer) => call(() => inboxClient.answerOne(hold, answer as never)),
     reconciled: async (closed) => {

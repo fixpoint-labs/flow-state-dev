@@ -1015,24 +1015,6 @@ export interface InternalBlockContext extends BlockContext {
   [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined;
 }
 
-/**
- * Permissive alias for `BlockContext`: session state stays typed, every other
- * slot does not. A resource-declaring ctx is already a plain `BlockContext`.
- * Use this when a helper only reads `ctx.session` and the rest of the
- * context's type arguments would still reject the call. Narrow at the call
- * when the helper needs typed resources.
- */
-export type LooseBlockContext<
-  TSessionState extends object = Record<string, unknown>,
-> = {
-  session: import("./scope").SessionScopeHandle<TSessionState>;
-  user: import("./scope").UserScopeHandle<Record<string, unknown>>;
-  org?: import("./scope").OrgScopeHandle<Record<string, unknown>>;
-  request: import("./scope").RequestScopeHandle<Record<string, unknown>>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  resources: any;
-};
-
 // FIX-413.
 /**
  * Hint communicated from a block's `execute` out to the block_trace emitter.

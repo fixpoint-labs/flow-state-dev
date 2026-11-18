@@ -804,6 +804,7 @@ describe("a run waiting to start", () => {
     await router.POST(
       new Request("http://localhost/api/flows/chat/child1/actions/ping", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "mallory", input: {} })
       }),
       { params: { path: ["chat", "child1", "actions", "ping"] } }
@@ -850,7 +851,7 @@ describe("a run waiting to start", () => {
     await router.POST(
       new Request("http://localhost/api/flows/chat/child1/actions/ping", {
         method: "POST",
-        headers: { "x-org": "org_other" },
+        headers: { "content-type": "application/json", "x-org": "org_other" },
         body: JSON.stringify({ userId: "alice", input: {} })
       }),
       { params: { path: ["chat", "child1", "actions", "ping"] } }
@@ -932,6 +933,7 @@ describe("a run waiting to start", () => {
       const res = await router.POST(
         new Request("http://localhost/api/flows/chat/child1/actions/ping", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ userId: "alice", input: {} })
         }),
         { params: { path: ["chat", "child1", "actions", "ping"] } }
@@ -1258,6 +1260,7 @@ function post(router: Router, action: string, input: unknown): Promise<Response>
   return router.POST(
     new Request(`http://localhost/api/flows/chat/s1/actions/${action}`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: "alice", input })
     }),
     { params: { path: ["chat", "s1", "actions", action] } }

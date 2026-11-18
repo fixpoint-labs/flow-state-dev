@@ -35,6 +35,7 @@ Skipped: K-34 is kept in the sitemap, and the page was already at `bash.md`.
 - After revise round 3, page sha256 b681cd6d7e20: exit 0.
 - After the loop (review): link pass. Repointed links that led to old-site pages or to pages outside the sitemap: `/guides/deploying-to-vercel#7-using-the-bash-tool-on-vercel` to `../../build/deploy/vercel.md`; `/docs/skills/overview` to `../skills.md`. Every link on the page now resolves to a sitemap page. No prose or example changed. Page sha256 287b4f4f55d9.
 - After the loop (review): Codex P2: the capability's default `createState` returns `updatedAt: Date.now()` (packages/tools/src/bash/capability.ts:215-218), which the projection spreads over its ISO `updatedAt` (packages/workspace/src/projection.ts:462-464), so the collection's `z.string()` schema refused every saved file. `bash.ts` now passes `createState: () => ({ updatedAt: new Date().toISOString() })`. Type-check in apps/kitchen-sink/zz-p2, deleted afterwards: only the planted error. 1320 words. Page sha256 5721fa2a57a7.
+- Re-check after the updatedAt fix: `node scripts/check-docs-page.mjs docs/contributing/docs-revamp/pages/catalog/tools/bash.md` exit 0, catalog, 1042 words. The `src/lib/bash.ts` example is `createBashCapability()` with no `createState`. Page sha256 287b4f4f55d9de1f.
 
 ## 5 · Fact check
 
@@ -48,6 +49,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 11: MOAT container cold start "adds a few seconds" / "the few-seconds cold start" / "Cold-starting a MOAT container takes a few seconds". Untrue: The source puts a cold boot at roughly 10-30 seconds. The status message the block shows says a first run can take 30-60 seconds while the image builds. (/home/user/flow-state-dev/packages/tools/src/bash/blocks.ts:594-598, 840-843) The row is recorded corrected.
 - Re-run after the review edit: the edit changed link targets only, so no claim changed. Each new target is a sitemap entry (specs/epics/FIX-2696/SITEMAP/*.md) that covers what the link text names.
 - Re-run after the review edit: projection merge `{ path, hash, updatedAt, ...extra }` (packages/workspace/src/projection.ts:462-464); default createState (packages/tools/src/bash/capability.ts:215-218); `FileEntryState.updatedAt: string` (packages/tools/src/bash/types.ts:66); state validated by `stateSchema.safeParse` (packages/engine/src/resources/normalize-resource-state.ts:58).
+- Re-check after the updatedAt fix: the example no longer returns `updatedAt` from `createState`. The projection writes `path`, `hash`, and `updatedAt` after the mount's extra fields (`packages/workspace/src/projection.ts`), and the capability default `createState` sets `title` only (`packages/tools/src/bash/capability.ts`). A collection schema `updatedAt: z.string()` accepts the saved row.
 
 ## 6 · Depth pass
 

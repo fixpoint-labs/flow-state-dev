@@ -27,10 +27,11 @@ import { shiftManagerRenderers } from "../components/ToolLine";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { ConversationScrollButton } from "../components/flow-state/conversation";
 import { EmptyState, LoadEarlierButton, SectionFailure } from "../components/ui";
-import { asksOfTask, waitsOnYou } from "../lib/derive";
+import { askWord, holdsOnYou, taskAsks, useInbox, type InboxAsk } from "../lib/inbox";
+import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { useLab } from "../lib/lab-data";
 import { useReportFeedState } from "../lib/feed-health";
-import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
+import { collectionOfBoard, describeFailure, type Failure } from "../lib/reads";
 import { RouteLink } from "../components/RouteLink";
 import { isTaskBrief } from "../components/TaskBrief";
 import { followRequest, followSessionItems, readRunRecord, readTaskClaims, taskItems, type OpenRun, type SessionItems } from "../lib/run";
@@ -42,10 +43,11 @@ const STATUS_FOLLOW_AGAIN_MS = 3_000;
 export function TaskSession() {
   const task = useTask();
   const { row, run } = task;
-  const { snapshot } = useLab();
   // A task held on a question for you points at the Inbox; its run's stop for
-  // you shows inline as an ask instead (BR-17).
-  const waiting = waitsOnYou(snapshot, row) && asksOfTask(snapshot, row).length === 0;
+  // you shows inline as an ask instead (BR-17). Both are its Inbox item's (D2).
+  const inbox = useInbox().section;
+  const items = inbox?.ok === true ? inbox.value.items : [];
+  const waiting = holdsOnYou(items, row) && taskAsks(items, row).length === 0;
 
   const body = (() => {
     switch (run.kind) {
@@ -99,9 +101,10 @@ export function TaskSession() {
  * what is shown. The run's request stream reports only its status.
  */
 function RunItems({ run }: { run: OpenRun }) {
-  const { client, snapshot } = useLab();
+  const { client } = useLab();
   const task = useTask();
-  const asks = asksOfTask(snapshot, task.row);
+  const inbox = useInbox().section;
+  const asks = taskAsks(inbox?.ok === true ? inbox.value.items : [], task.row);
   const [stored, setStored] = useState<SessionItems | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
@@ -246,7 +249,7 @@ function RunItems({ run }: { run: OpenRun }) {
               {...(item.type === "message" && item.role === "user" && !isTaskBrief(item) ? feed.mine(item.id) : {})}
             >
               {item.type === "suspension" ? (
-                <PendingAsk ask={asks.find((ask) => ask.item.suspensionId === item.suspensionId)} />
+                <PendingAsk ask={asks.find((ask) => ask.id === item.suspensionId)} />
               ) : (
                 <ItemRenderer item={item} />
               )}
@@ -254,9 +257,9 @@ function RunItems({ run }: { run: OpenRun }) {
           ))}
           {/* An ask the framework raised without this task's stamp is not among the task's items; it waits at the run's end. */}
           {asks
-            .filter((ask) => !shown.items.some((item) => item.type === "suspension" && item.suspensionId === ask.item.suspensionId))
+            .filter((ask) => !shown.items.some((item) => item.type === "suspension" && item.suspensionId === ask.id))
             .map((ask) => (
-              <li key={ask.item.suspensionId} data-testid="session-pending-ask">
+              <li key={ask.id} data-testid="session-pending-ask">
                 <PendingAsk ask={ask} />
               </li>
             ))}
@@ -277,7 +280,7 @@ function RunItems({ run }: { run: OpenRun }) {
  * its ask kind on the highlighter, because it waits on the user, and the one
  * ask card Inbox draws, answered the same way. Otherwise, a way to Inbox.
  */
-function PendingAsk({ ask }: { ask: Ask | undefined }) {
+function PendingAsk({ ask }: { ask: InboxHold<InboxAsk> | undefined }) {
   if (ask === undefined) {
     return (
       <RouteLink to={{ level: "inbox", item: null }} className="text-sm underline">
@@ -286,12 +289,12 @@ function PendingAsk({ ask }: { ask: Ask | undefined }) {
     );
   }
   return (
-    <div data-testid="session-ask" data-suspension-id={ask.item.suspensionId}>
-      <span className="bg-attention px-[5px] py-px font-mono text-[9.5px] font-semibold tracking-[0.12em] text-attention-foreground" data-look="ask-kind">
-        {ask.kind.toUpperCase()}
+    <div data-testid="session-ask" data-suspension-id={ask.id}>
+      <span className="bg-attention px-[5px] py-px font-mono text-xs font-semibold tracking-[0.12em] text-attention-foreground" data-look="ask-kind">
+        {askWord(ask).toUpperCase()}
       </span>
       <div className="mt-1.5">
-        <AskCard ask={ask} />
+        <AskCard hold={ask} />
       </div>
     </div>
   );

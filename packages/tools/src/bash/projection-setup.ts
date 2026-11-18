@@ -22,6 +22,7 @@ import type {
   FlushOutcome,
   Mount as ProjectionMount,
   Place,
+  ProjectedEntryExtra,
   Projection,
 } from "@flow-state-dev/workspace";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
@@ -81,7 +82,7 @@ export function createBashProjection(
   sandbox: Sandbox,
   destination: string,
   mounts: readonly BashMount[],
-  createState?: (relativePath: string) => Partial<JsonObject>,
+  createState?: (relativePath: string) => ProjectedEntryExtra,
 ): Projection {
   return createMountedProjection(createSandboxPlace(sandbox, destination), mounts, createState);
 }
@@ -96,7 +97,7 @@ export function createBashProjection(
 export function createMountedProjection(
   place: Place,
   mounts: readonly BashMount[],
-  createState?: (relativePath: string) => Partial<JsonObject>,
+  createState?: (relativePath: string) => ProjectedEntryExtra,
 ): Projection {
   return createProjection({
     place,

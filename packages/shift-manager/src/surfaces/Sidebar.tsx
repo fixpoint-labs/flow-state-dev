@@ -32,7 +32,8 @@ import { themeLabel, type ThemeLook } from "../lib/theme";
 import type { Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
-import { openTasks, projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { openBoardTasks, useInbox } from "../lib/inbox";
 import { useProjectRead, type WorkstreamEntry } from "../lib/projects";
 import type { Project } from "../lib/reads";
 import { initialsOf } from "../lib/shell";
@@ -66,7 +67,7 @@ function NavItem({
       to={to}
       aria-current={active ? "page" : undefined}
       data-testid={testId}
-      className={`flex w-full items-center gap-[9px] px-[7px] py-1.5 text-left text-[13.5px] ${
+      className={`flex w-full items-center gap-[9px] px-[7px] py-1.5 text-left text-sm ${
         active ? "bg-accent font-bold text-accent-foreground" : "font-medium hover:bg-foreground/6"
       }`}
     >
@@ -121,11 +122,12 @@ function ShiftCoordinatorEntry({ active }: { active: boolean }) {
       to={{ level: "shift-coordinator" }}
       aria-current={active ? "page" : undefined}
       data-testid="nav-shift-coordinator"
-      className={`mb-[5px] flex w-full items-center gap-[9px] border p-[7px] text-left text-[13.5px] font-semibold ${
+      className={`mb-[5px] flex w-full items-center gap-[9px] border p-[7px] text-left text-sm font-semibold ${
         active ? "border-primary bg-primary text-primary-foreground" : "border-foreground/30 bg-card text-foreground hover:border-foreground"
       }`}
     >
       <span
+        // eslint-disable-next-line fsd/no-hardcoded-text-size -- a two-letter glyph drawn to fit its 18px box, not text a user reads.
         className={`flex size-[18px] shrink-0 items-center justify-center border font-mono text-[7.5px] font-semibold ${
           active ? "border-primary-foreground bg-primary-foreground text-primary" : "border-primary bg-primary text-primary-foreground"
         }`}
@@ -229,6 +231,7 @@ function SidebarRail({
       <SidebarToggle collapsed onToggle={onToggle} />
       <div className="mt-2 flex flex-col items-center gap-1">
         <RailItem label="Shift Coordinator" active={route.level === "shift-coordinator"} to={{ level: "shift-coordinator" }} testId="rail-shift-coordinator">
+          {/* eslint-disable-next-line fsd/no-hardcoded-text-size -- a two-letter glyph drawn to fit its 18px box, not text a user reads. */}
           <span className="flex size-[18px] items-center justify-center border border-primary bg-primary font-mono text-[7.5px] font-semibold text-primary-foreground" aria-hidden>
             SC
           </span>
@@ -236,7 +239,7 @@ function SidebarRail({
         <RailItem label="Inbox" active={route.level === "inbox"} to={{ level: "inbox", item: null }} testId="rail-inbox">
           <NavIcon name="inbox" />
           {waiting ? (
-            <span className="absolute -top-0.5 -right-0.5 bg-attention px-[3px] font-mono text-[9px] font-semibold leading-tight text-attention-foreground tabular-nums" data-testid="rail-inbox-count">
+            <span className="absolute -top-0.5 -right-0.5 bg-attention px-[3px] font-mono text-xs font-semibold leading-tight text-attention-foreground tabular-nums" data-testid="rail-inbox-count">
               {inboxCount}
             </span>
           ) : null}
@@ -312,7 +315,7 @@ function ProjectGroup({
           data-testid={`${testId}-toggle`}
           className="flex size-6 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
         >
-          <Meta className={`inline-flex size-3 items-center justify-center text-[11px] transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}>▸</Meta>
+          <Meta className={`inline-flex size-3 items-center justify-center text-xs transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}>▸</Meta>
         </button>
         <div className="min-w-0 flex-1">
           <NavItem
@@ -362,11 +365,11 @@ function StreamItem({ entry, active, to }: { entry: WorkstreamEntry; active: boo
       data-testid="nav-workstream"
       data-owner={entry.owner}
       data-workstream-id={entry.id}
-      className={`flex w-full items-center gap-[7px] px-1.5 py-[5px] text-left text-[13px] ${
+      className={`flex w-full items-center gap-[7px] px-1.5 py-[5px] text-left text-sm ${
         active ? "bg-accent font-semibold text-accent-foreground" : "hover:bg-foreground/6"
       }`}
     >
-      <Meta className="text-[11.5px] text-muted-foreground">#</Meta>
+      <Meta className="text-xs text-muted-foreground">#</Meta>
       <span className="min-w-0 flex-1 truncate" data-look="nav-label">
         {entry.title}
       </span>
@@ -415,9 +418,11 @@ export function Sidebar({
   // The counts dim only while a read the user asked for runs.
   const dim = asking ? ` ${ASKING_CLASS}` : "";
 
-  const inboxCount = loaded === undefined ? "…" : loaded.inbox.ok ? loaded.inbox.value.length : "!";
-  const tasksCount = loaded === undefined ? "…" : openTasks(loaded).length;
-  const waiting = loaded !== undefined && loaded.inbox.ok && loaded.inbox.value.length > 0;
+  // FIX-2774: the Inbox count and the Tasks count are the inbox view's, the same answer those screens list.
+  const inbox = useInbox().section;
+  const inboxCount = inbox === undefined ? "…" : inbox.ok ? inbox.value.items.length : "!";
+  const tasksCount = inbox === undefined ? "…" : inbox.ok ? openBoardTasks(inbox.value).length : "!";
+  const waiting = inbox?.ok === true && inbox.value.items.length > 0;
   // The user's own workers are on their roster, not in the inventory: joined as Roster joins them.
   const roster = useRoster();
   const joined = loaded === undefined ? undefined : withRoster(loaded, roster);
@@ -455,7 +460,7 @@ export function Sidebar({
                 mark={
                   // v2's badge (v2:60): the highlighter only while an ask waits on the user.
                   <span
-                    className={`px-[5px] font-mono text-[10.5px] font-semibold tabular-nums ${waiting ? "bg-attention text-attention-foreground" : "text-muted-foreground"}${dim}`}
+                    className={`px-[5px] font-mono text-xs font-semibold tabular-nums ${waiting ? "bg-attention text-attention-foreground" : "text-muted-foreground"}${dim}`}
                     data-look="meta-count"
                     data-testid="nav-inbox-count"
                     data-waiting={waiting}
@@ -529,7 +534,7 @@ export function Sidebar({
                     aria-current={route.level === "roster" && route.team === team ? "page" : undefined}
                     data-testid="team"
                     data-team={team}
-                    className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[13px] ${
+                    className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm ${
                       route.level === "roster" && route.team === team ? "bg-accent text-accent-foreground" : "hover:bg-foreground/6"
                     }`}
                   >
@@ -570,11 +575,11 @@ export function Sidebar({
             />
           </div>
           <footer
-            className="flex flex-col gap-[9px] border-t border-foreground/20 px-3 pt-2.5 pb-3 font-mono text-[11px] font-medium text-muted-foreground"
+            className="flex flex-col gap-[9px] border-t border-foreground/20 px-3 pt-2.5 pb-3 font-mono text-xs font-medium text-muted-foreground"
             data-testid="sidebar-footer"
             data-look="meta-meta"
           >
-            <p className="text-[10.5px]" data-testid="jump-tip">
+            <p className="text-xs" data-testid="jump-tip">
               <kbd>⌘K</kbd> to go to anything
             </p>
             <p className="flex items-center gap-3">
@@ -588,7 +593,7 @@ export function Sidebar({
                 </>
               )}
               <span
-                className="ml-auto flex size-[22px] shrink-0 items-center justify-center border border-foreground text-[10px] text-foreground"
+                className="ml-auto flex size-[22px] shrink-0 items-center justify-center border border-foreground text-xs text-foreground"
                 title={client.userId}
                 aria-label={`Signed in as ${client.userId}`}
                 data-testid="footer-user"

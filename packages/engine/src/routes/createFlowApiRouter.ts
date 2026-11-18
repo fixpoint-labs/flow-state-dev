@@ -718,6 +718,12 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     // and gives custom transports an unambiguous path.
     const dedicated = await matchDedicated(req);
     if (dedicated !== null) return dedicated;
+    if (
+      ["POST", "PUT", "PATCH", "DELETE"].includes(req.method.toUpperCase()) &&
+      req.headers.get("sec-fetch-site") === "cross-site"
+    ) {
+      return Response.json({ error: "Cross-site mutation refused" }, { status: 403 });
+    }
     return handlers.handle(req, { path: ctx.params.path });
   };
 

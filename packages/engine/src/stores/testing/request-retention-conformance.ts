@@ -98,6 +98,7 @@ async function runReusedIdScenario(stores: StoreRegistry): Promise<{
     const response = await router.POST(
       new Request(`http://localhost/api/flows/${FLOW}/${sessionId}/actions/run`, {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId, orgId: DEFAULT_ORG_ID, requestId, input })
       }),
       { params: { path: [FLOW, sessionId, "actions", "run"] } }

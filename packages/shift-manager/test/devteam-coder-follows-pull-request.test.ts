@@ -253,6 +253,7 @@ describe("the coder follows the pull request its run opens", () => {
         kinds: s.kinds,
         screens: s.screens,
         enabled: s.enabled,
+        taskId: s.taskId,
       })),
     ).toEqual([
       {
@@ -261,6 +262,8 @@ describe("the coder follows the pull request its run opens", () => {
         kinds: ["review", "comment", "check"],
         screens: [{ screen: "allow", ids: ["octo-reviewer"] }],
         enabled: true,
+        // The coder's task: its failure or cancel ends the follow, so a failed run stops hearing its pull request.
+        taskId: task.id,
       },
     ]);
     expect(
@@ -271,6 +274,19 @@ describe("the coder follows the pull request its run opens", () => {
     // Polled: on a laptop no webhook reaches the Lab, so the poll is the only way a review arrives.
     const polls = await storedUnder(lab, "workforce/subscription-polls/");
     expect(polls.map((p) => p.input?.thread)).toEqual([PR_THREAD]);
+  }, 120_000);
+
+  it("ends the follow when the coder's task is cancelled, so a run nobody waits on stops hearing its pull request", async () => {
+    const lab = await openFollowingLab("coder-follow-ends-with-task");
+    const { task, conversation } = await coderOpensPullRequest(lab);
+    // The run's session works the conversation's tasks, not this one alone: the follow names the task itself.
+    const cancelled = await act(lab, "coordinator", conversation, "updateTask_tasks", { id: task.id, status: "cancelled" });
+    expect(cancelled.error).toBeUndefined();
+    const ended = await eventually(async () => {
+      const [follow] = await storedUnder(lab, "workforce/subscriptions/");
+      return follow?.enabled === false ? follow : undefined;
+    }, "the follow on #7 to end");
+    expect({ thread: ended.thread, endedReason: ended.endedReason }).toEqual({ thread: PR_THREAD, endedReason: "task_cancelled" });
   }, 120_000);
 
   it("follows nothing when the Lab lists no reviewers, so no comment on GitHub can steer the run", async () => {

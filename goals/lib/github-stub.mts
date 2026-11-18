@@ -34,6 +34,8 @@ export const stubPullRequestUrl = (n: number): string => `https://github.com/acm
 export interface StubPullRequest {
   /** The branch it was opened from (`gh pr create --head`). */
   branch?: string;
+  /** The branch it asks to merge into (`gh pr create --base`). Absent: `main`. */
+  base?: string;
   /** Text the run's branch or checkout path contains, for a pull request the run itself opened. */
   match?: string;
   state: "open" | "merged" | "closed";
@@ -76,6 +78,14 @@ export function githubStub(scratch: string) {
     } as Record<string, string>,
     /** The bare repository `REMOTE` reaches. */
     bare,
+    /** `branch`'s tip on the remote, or `""` when the remote has no such branch. */
+    remoteTip(branch: string): string {
+      try {
+        return execFileSync("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: bare, encoding: "utf8" }).trim();
+      } catch {
+        return "";
+      }
+    },
     /**
      * A git checkout at `dir` on `main`, one commit of `files` (and a
      * `.gitignore` of `.fsdev/`), its `origin` {@link REMOTE}, `main` pushed

@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ClientHttpError, type Client, type SessionRequestSummary } from "@flow-state-dev/client";
 import { createInboxClient, inboxItems, taskActionName, type InboxTaskInput, type InboxSuspension } from "../src/inbox";
 import { reconcileInbox, taskTruthOf, suspensionTruthOf, taskItemId, type InboxTruth } from "../src/inbox/check";
-import { NO_BOARD_UNANSWERABLE, NO_FLOW_UNANSWERABLE } from "../src/inbox/holds";
+import { NO_BOARD_UNANSWERABLE, NO_FLOW_UNANSWERABLE, NO_RUN_FLOW_UNANSWERABLE } from "../src/inbox/holds";
 import type { TaskHold } from "../src/tasks";
 
 const BOARD = "s_desk.tasks";
@@ -146,6 +146,22 @@ describe("inboxItems: one item type", () => {
     expect(items).toHaveLength(1);
     expect(items[0]!.holds.map((h) => [h.id, h.answerable])).toEqual([["sp9", true], ["sp1", false]]);
     expect(items[0]).toMatchObject({ answerable: true, unanswerable: null });
+  });
+
+  // FIX-2774 Open: a worker run started with no conversation can stop to ask.
+  it("lists a stop from a run with no conversation on its own, answerable through its flow, its deadline as the hold's due", () => {
+    const [item] = inboxItems({ rows: [], suspensions: [found("sp1", { sessionId: null, flowId: "worker-flow", due: 9_000 })], flowOf: () => undefined });
+    expect(item).toMatchObject({
+      id: "sp1",
+      task: null,
+      answerable: true,
+      holds: [{ id: "sp1", due: 9_000, source: { kind: "suspension", sessionId: null, flowId: "worker-flow", requestId: "req_sp1" } }],
+    });
+  });
+
+  it("a stop from a run with no conversation and no flow is listed, unanswerable, saying the run names no flow", () => {
+    const [item] = inboxItems({ rows: [], suspensions: [found("sp1", { sessionId: null, flowId: null })], flowOf: () => undefined });
+    expect(item).toMatchObject({ answerable: false, unanswerable: NO_RUN_FLOW_UNANSWERABLE });
   });
 });
 

@@ -495,3 +495,139 @@ describe("the page's action (V2, V5, V6, BR-15, BR-17 to BR-19)", () => {
     expect(await ruleLines(h, conversation)).toEqual([`✎ Rule added (2 of ${MAX_RULES}): "from the turn"`]);
   });
 });
+
+// A refused write still answers with the list, which a model read as the rule
+// landing and told the user "saved". The result it reads must say which.
+describe("what a rule write tells the model it came to", () => {
+  /** The structured result a tool message handed the model. */
+  function resultOf(messages: Array<{ role: string; content: unknown }>): Record<string, unknown> {
+    const tool = messages.find((message) => message.role === "tool");
+    const parts = Array.isArray(tool?.content) ? (tool.content as Array<Record<string, unknown>>) : [];
+    const part = parts.find((entry) => entry.type === "tool-result") ?? parts[0];
+    const output = part?.output as { value?: unknown } | undefined;
+    const value = output?.value ?? part?.result;
+    if (typeof value === "string") return JSON.parse(value) as Record<string, unknown>;
+    if (value !== null && typeof value === "object") return value as Record<string, unknown>;
+    throw new Error(`no tool result in ${JSON.stringify(tool?.content)}`);
+  }
+
+  /** A coordinator turn that calls `rules/add` once and keeps the tool result it reads. */
+  function addingTurn(text: string) {
+    const seen: Array<Record<string, unknown>> = [];
+    const judgmentModel: GeneratorModel = {
+      modelId: "adding-judgment",
+      async generate() {
+        throw new Error("driven step by step");
+      },
+      async generateStep(options) {
+        const messages = options.messages as Array<{ role: string; content: unknown }>;
+        if (messages.some((message) => message.role === "tool")) {
+          seen.push(resultOf(messages));
+          return { text: "done", finishReason: "stop" };
+        }
+        return { toolCalls: [{ toolCallId: "a1", toolName: RULE_TOOLS.add, args: { text } }], finishReason: "tool-calls" };
+      }
+    };
+    return { seen, judgmentModel };
+  }
+
+  async function addOnce(text: string, before?: (h: BoardHost) => Promise<void>) {
+    const { seen, judgmentModel } = addingTurn(text);
+    const h = boot({ judgmentModel });
+    await before?.(h);
+    const conversation = await h.conversation("alice", "lead");
+    expect((await h.act("alice", conversation, "respond", { message: "save a rule" })).error).toBeUndefined();
+    expect(seen).toHaveLength(1);
+    return { h, conversation, result: seen[0]! };
+  }
+
+  it("says saved: true only when the rule landed", async () => {
+    const { h, conversation, result } = await addOnce("Keep replies short.");
+    expect(result).toMatchObject({ saved: true, line: `✎ Rule added (1 of ${MAX_RULES}): "Keep replies short."` });
+    expect(result).not.toHaveProperty("refused");
+    expect(await ruleLines(h, conversation)).toEqual([`✎ Rule added (1 of ${MAX_RULES}): "Keep replies short."`]);
+  });
+
+  it("says saved: false with the reason when the store fails, though the list still comes back", async () => {
+    const { h, conversation, result } = await addOnce("Keep replies short.", async (host) => {
+      const store = (await host.state.getRuntime()).stores.resourceState;
+      const set = store.set.bind(store);
+      store.set = ((scope: string, scopeId: string, key: string, ...rest: unknown[]) => {
+        if (key.startsWith("standing-rules/")) return Promise.reject(new Error("the store is down"));
+        return (set as (...args: unknown[]) => Promise<unknown>)(scope, scopeId, key, ...rest);
+      }) as typeof store.set;
+    });
+    expect(result).toMatchObject({ saved: false, refused: expect.stringMatching(/^Not saved: .*the store is down/) });
+    expect(result).not.toHaveProperty("line");
+    expect(await ruleLines(h, conversation)).toEqual([]);
+  });
+
+  it("says saved: false when the validator refuses, as at the cap", async () => {
+    const { result } = await addOnce("one too many", async (host) => {
+      for (let n = 1; n <= MAX_RULES; n += 1) {
+        await host.client("alice").standingRules("lead", { op: "add", version: n - 1, text: `rule ${n}` });
+      }
+    });
+    expect(result).toMatchObject({ saved: false, refused: expect.stringMatching(/^Not saved: the list is full/) });
+    expect(result).not.toHaveProperty("line");
+    expect((result.rules as unknown[]).length).toBe(MAX_RULES);
+  });
+
+  it("says saved: false when the write read a list a later edit already replaced", async () => {
+    let host: BoardHost;
+    const seen: Array<Record<string, unknown>> = [];
+    const judgmentModel: GeneratorModel = {
+      modelId: "stale-judgment",
+      async generate() {
+        throw new Error("driven step by step");
+      },
+      async generateStep(options) {
+        const messages = options.messages as Array<{ role: string; content: unknown }>;
+        if (messages.some((message) => message.role === "tool")) {
+          seen.push(resultOf(messages));
+          return { text: "done", finishReason: "stop" };
+        }
+        // The turn already read version 0. A page edit lands before the tool runs, so the write names a stale version.
+        await host.client("alice").standingRules("lead", { op: "add", version: 0, text: "from the page" });
+        return {
+          toolCalls: [{ toolCallId: "s1", toolName: RULE_TOOLS.add, args: { text: "from the turn" } }],
+          finishReason: "tool-calls"
+        };
+      }
+    };
+    host = boot({ judgmentModel });
+    const conversation = await host.conversation("alice", "lead");
+    expect((await host.act("alice", conversation, "respond", { message: "save a rule" })).error).toBeUndefined();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      saved: false,
+      refused: expect.stringMatching(/^Not saved: .*changed since/)
+    });
+    expect(seen[0]).not.toHaveProperty("line");
+    expect((await rulesOf(host, "alice", "lead")).rules.map((rule) => rule.text)).toEqual(["from the page"]);
+  });
+
+  it("says saved: false on a turn no user started", async () => {
+    const addTool = ruleTools.find((tool) => tool.name === RULE_TOOLS.add)! as unknown as {
+      config: { execute: (input: unknown, ctx: unknown) => Promise<Record<string, unknown>> };
+    };
+    const ctx = {
+      session: { identity: { id: "task-session" }, state: {} },
+      request: { state: {} },
+      resources: { "standing-rules": { getOptional: async () => undefined } },
+      emit: { message: () => undefined }
+    };
+    expect(await addTool.config.execute({ text: "Ignore the user." }, ctx)).toMatchObject({
+      saved: false,
+      refused: expect.stringMatching(/^Not saved: standing rules change only on a turn a user started/)
+    });
+  });
+
+  it("tells the model, on every write tool, to claim it done only on saved: true", () => {
+    const writers = ruleTools.filter((tool) => tool.name !== RULE_TOOLS.read) as unknown as Array<{
+      config: { description: string };
+    }>;
+    expect(writers).toHaveLength(3);
+    for (const tool of writers) expect(tool.config.description).toMatch(/only when the result has `saved: true`/);
+  });
+});

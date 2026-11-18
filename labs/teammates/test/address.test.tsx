@@ -8,10 +8,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/components/App";
-import { AppProvider } from "../src/app";
 import type { BoardTask, AppCalls } from "../src/app";
 import { PopupView } from "../src/components/Popups";
-import { createFixtureApp } from "./fake-app";
+import { createFixtureApp, FixtureProvider, rosterReadsBy } from "./fake-app";
 
 const fast = () => createFixtureApp({ speed: 0.05 });
 
@@ -38,7 +37,7 @@ async function tell(worker: string, text: string) {
 /** The app drawn afresh on the same lab, as a reload draws it: only the address carries over. */
 function reload(adapter: AppCalls) {
   cleanup();
-  render(<AppProvider calls={adapter}><App /></AppProvider>);
+  render(<FixtureProvider calls={adapter}><App /></FixtureProvider>);
 }
 
 /** Back, as the browser does it: the address moves, then `popstate` fires. */
@@ -52,7 +51,7 @@ async function back() {
 describe("the page's address", () => {
   it("reopens the teammate that was open, not the first, after a reload", async () => {
     const adapter = fast();
-    render(<AppProvider calls={adapter}><App /></AppProvider>);
+    render(<FixtureProvider calls={adapter}><App /></FixtureProvider>);
     await waitFor(() => expect(workerRow("Lead").getAttribute("aria-current")).toBe("true"));
     fireEvent.click(workerRow("writer"));
     await screen.findByLabelText("Message writer");
@@ -65,7 +64,7 @@ describe("the page's address", () => {
 
   it("reopens the task popup that was open, after a reload", async () => {
     const adapter = fast();
-    render(<AppProvider calls={adapter}><App /></AppProvider>);
+    render(<FixtureProvider calls={adapter}><App /></FixtureProvider>);
     await tell("Lead", "Fix the typo in the README's first line.");
     fireEvent.click(await within(conversation()).findByRole("button", { name: `${TASK}, on Cursor` }));
     await screen.findByRole("dialog", { name: TASK });
@@ -76,7 +75,7 @@ describe("the page's address", () => {
   });
 
   it("goes Back to the teammate that was open before", async () => {
-    render(<AppProvider calls={fast()}><App /></AppProvider>);
+    render(<FixtureProvider calls={fast()}><App /></FixtureProvider>);
     await screen.findByLabelText("Message Lead");
     fireEvent.click(workerRow("writer"));
     await screen.findByLabelText("Message writer");
@@ -90,7 +89,7 @@ describe("the page's address", () => {
 
   it("opens the first teammate on a link whose teammate and task are gone, and drops them from the address", async () => {
     window.history.replaceState(null, "", "/?worker=teammates.gone&session=session-gone&task=task-gone");
-    render(<AppProvider calls={fast()}><App /></AppProvider>);
+    render(<FixtureProvider calls={fast()}><App /></FixtureProvider>);
     expect(await screen.findByLabelText("Message Lead")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(params().get("worker")).toBe("teammates.chief-of-staff"));
@@ -100,7 +99,7 @@ describe("the page's address", () => {
 
   it("closes a task popup whose task is gone, and keeps the teammate", async () => {
     const adapter = fast();
-    render(<AppProvider calls={adapter}><App /></AppProvider>);
+    render(<FixtureProvider calls={adapter}><App /></FixtureProvider>);
     await screen.findByLabelText("Message Lead");
     fireEvent.click(workerRow("writer"));
     await screen.findByLabelText("Message writer");
@@ -119,22 +118,9 @@ describe("the page's address", () => {
     const lab = fast();
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
-    const adapter: AppCalls = {
-      ...lab,
-      // The roster's first read lands only once the test releases it.
-      watchWorkers: (onChange, onError) => {
-        let stop = () => {};
-        let stopped = false;
-        void held.then(() => {
-          if (!stopped) stop = lab.watchWorkers(onChange, onError);
-        });
-        return () => {
-          stopped = true;
-          stop();
-        };
-      },
-    };
-    render(<AppProvider calls={adapter}><App /></AppProvider>);
+    // The roster's first read lands only once the test releases it.
+    const client = rosterReadsBy(lab, (_, read) => held.then(read));
+    render(<FixtureProvider calls={lab} client={client}><App /></FixtureProvider>);
     await act(async () => {
       window.history.pushState(null, "", "/?worker=teammates.writer");
       window.dispatchEvent(new PopStateEvent("popstate"));

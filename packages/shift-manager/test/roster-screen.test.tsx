@@ -14,6 +14,13 @@ import type { LoadedSnapshot } from "../src/lib/derive";
 import { GENERAL_TEAM, inboxSection, toBoardTaskView, toWorker, type Ask, type BoardTaskView, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
 
 let fixture: LabSnapshot;
+
+// FIX-2774: the Inbox, its count, Tasks and a task's asks read the inbox view: here, the view of the fixture snapshot.
+vi.mock("../src/lib/inbox", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/lib/inbox")>();
+  const { viewOfSnapshot } = await import("./helpers/inbox-view");
+  return { ...real, useInbox: () => ({ section: viewOfSnapshot(fixture), stale: false, refresh: () => {} }) };
+});
 /** What the user's roster read answers: their own workers and the standard ones. */
 let rosterRead: () => Promise<
   Array<{ id: string; flow: string; standard: boolean; description: string | null; settings?: Record<string, unknown> }>

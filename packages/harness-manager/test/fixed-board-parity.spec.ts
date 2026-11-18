@@ -10,7 +10,8 @@
  * It was rewritten once, deliberately, when the organization became part of a
  * run's checkout and branch, and again when a run's branch and folder became
  * its short name; a run recorded before either keeps its older place
- * (`org-place.spec.ts`).
+ * (`org-place.spec.ts`). A field added to the record (`landedPullRequests`)
+ * adds a line, and changes none of the keys.
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { relative } from "node:path";

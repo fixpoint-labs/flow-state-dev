@@ -9,8 +9,7 @@
 import { appendFileSync } from "node:fs";
 import { serve } from "@flow-state-dev/node";
 import type { ModelResolver } from "@flow-state-dev/core/types";
-// The labs' test support is a CommonJS module to this process (no `"type": "module"` above it).
-import support from "../../../labs/test-support/contract.ts";
+import { scriptedModels } from "../../../labs/test-support/contract.ts";
 import { openTeammates } from "../../../labs/teammates/host.mts";
 
 const need = (key: string) => {
@@ -20,7 +19,7 @@ const need = (key: string) => {
 };
 const prompts = need("GOAL_PROMPTS");
 
-const model = (support as typeof import("../../../labs/test-support/contract.ts")).scriptedModels(
+const model = scriptedModels(
   {
     "agent-answer": ({ said, step }) => {
       if (step === 0) appendFileSync(prompts, `${JSON.stringify({ said })}\n`);

@@ -28,14 +28,16 @@ import { defineFlow } from "@flow-state-dev/core";
 import type { ViewDefinition } from "@flow-state-dev/core";
 import type { ActionEntry, BlockDefinition, SchedulesConfig } from "@flow-state-dev/core/types";
 import { ROUTINES_VIEW } from "../routines/keys";
-import { defineWorkerInventoryCollection } from "../inventory/collections";
 import { workerMessagesResources } from "../messages/message-log";
+import { defineWorkerMessagesView } from "../messages/worker-messages-view";
 import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
 import type { WorkerInstallation } from "./installation";
 import { defineWorkstreamReportView } from "../projects/workstream-report-view";
-import { ROSTER_FLOW, ROSTER_VIEW, SESSION_TURNS_VIEW, WORKER_SESSIONS_VIEW, WORKER_USAGE_VIEW, WORKSTREAM_REPORT_VIEW } from "./keys";
+import { INBOX_VIEW, ROSTER_FLOW, ROSTER_VIEW, SESSION_TURNS_VIEW, WORKER_MESSAGES_VIEW, WORKER_SESSIONS_VIEW, WORKER_USAGE_VIEW, WORKSTREAM_REPORT_VIEW } from "./keys";
 import { defineSessionTurnsView, defineWorkerSessionsView } from "./session-views";
 import { defineRosterView } from "./roster-view";
+import { defineInboxView } from "./inbox-view";
+import { INVENTORY_RESOURCE, inventoryWorkerEntries } from "../inventory/inventory-resource";
 import { defineWorkerUsageView } from "./worker-usage";
 
 /**
@@ -59,7 +61,7 @@ export function defineWorkerRosterFlow(
       ...installation.resources,
       ...PROJECT_ENTRY_RESOURCES,
       ...workerMessagesResources,
-      inventoryWorkers: defineWorkerInventoryCollection(),
+      [INVENTORY_RESOURCE]: inventoryWorkerEntries,
       ...((routines?.resources ?? {}) as Record<string, never>)
     },
     ...(routines === undefined ? {} : { schedules: routines.schedules }),
@@ -73,6 +75,10 @@ export function defineWorkerRosterFlow(
       // FIX-2725: a user's sessions with a worker, and one session's turns.
       [WORKER_SESSIONS_VIEW]: defineWorkerSessionsView(installation),
       [SESSION_TURNS_VIEW]: defineSessionTurnsView(),
+      // FIX-2771: a worker's open messages, and the answers to the ones on screen.
+      [WORKER_MESSAGES_VIEW]: defineWorkerMessagesView(),
+      // FIX-2774: what waits on the user across their sessions, and every board row.
+      [INBOX_VIEW]: defineInboxView(installation),
       // FIX-2624: a workstream entry's report, which a direct read doesn't serve (it is content).
       [WORKSTREAM_REPORT_VIEW]: defineWorkstreamReportView(),
       // FIX-2624: the user's routines, the app's declared ones joined in.

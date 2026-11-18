@@ -18,6 +18,7 @@ import {
   type Patch,
   type StoredItem,
 } from "../../lib/shift-manager.mts";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 if (CONTROL !== "" && CONTROL !== "page-does-not-save") throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; this goal knows page-does-not-save`);
@@ -45,7 +46,6 @@ const CONTROL_PATCHES: Patch[] = [
   },
 ];
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const RUNNING = new Set(["pending", "queued", "in_progress", "running"]);
 const edges = (reply: string) => reply.trim().replace(/^[*_`"“]+/, "").trim();
 
