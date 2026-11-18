@@ -28,7 +28,7 @@ export const DEFAULT_IDLE_TIMEOUT_MS = 20 * 60_000;
  * past any run that is making progress, so it only ends one that loops while
  * still sending events, which the silence window never stops.
  */
-export const DEFAULT_RUN_CAP_MS = 4 * 60 * 60_000;
+const DEFAULT_RUN_CAP_MS = 4 * 60 * 60_000;
 
 /**
  * A host's cap option as the cap the stops run with: unset is the 4-hour
