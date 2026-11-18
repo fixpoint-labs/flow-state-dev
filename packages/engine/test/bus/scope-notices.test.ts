@@ -258,13 +258,13 @@ describe("the client's resource routes publish the session's topic", () => {
     const ctx = { registry, stores };
 
     const created = await handleCreateCollectionResource(
-      new Request("http://x/sessions/sess_1/resources/notes", { method: "POST", body: JSON.stringify({ topic: "a" }) }),
+      new Request("http://x/sessions/sess_1/resources/notes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ topic: "a" }) }),
       { kind: "create_collection_item", sessionId: "sess_1", ref: "notes" },
       ctx
     );
     await tick();
     const updated = await handleUpdateResourceContent(
-      new Request("http://x/sessions/sess_1/resources/notes/a/content", { method: "PATCH", body: JSON.stringify({ content: "x" }) }),
+      new Request("http://x/sessions/sess_1/resources/notes/a/content", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ content: "x" }) }),
       { kind: "update_resource_content", sessionId: "sess_1", ref: "notes", topic: "a" },
       ctx
     );

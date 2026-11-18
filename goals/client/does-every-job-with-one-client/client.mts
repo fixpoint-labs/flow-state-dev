@@ -24,6 +24,7 @@
  * in-process host also reads GOAL_STORE, GOAL_NOTES_ID and GOAL_LATCH_FILE.
  */
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { sleep } from "../../lib/time.mts";
 
 // Before any other module can capture it.
 const realFetch = globalThis.fetch.bind(globalThis);
@@ -44,7 +45,6 @@ const env = (name: string): string => {
   if (value === undefined || value === "") throw new Error(`${name} is not set`);
   return value;
 };
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 interface Input {
   flow: string;

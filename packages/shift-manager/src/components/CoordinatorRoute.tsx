@@ -28,7 +28,7 @@ export function CoordinatorRoute({ item }: { item: DataItem }) {
   if (data.answeredItself === true) return null;
   return (
     <div
-      className="font-mono text-[11px] text-muted-foreground"
+      className="font-mono text-xs text-muted-foreground"
       data-look="route-record"
       data-testid="coordinator-route"
       data-by={data.by ?? ""}

@@ -580,8 +580,10 @@ describe("the session-mode screen", () => {
     await within(thread()).findByRole("status", OUTSIDE_COMPOSER, SLOW);
     fireEvent.click(within(thread()).getByRole("button", { name: "Stop" }));
     await within(thread()).findByText(/Interrupted by you/, undefined, SLOW);
-    // The working line is gone; the one status left is the stopped line.
-    expect(within(thread()).queryByText(/working ·/)).toBeNull();
+    // The working line goes; the one status left is the stopped line. Waited on, not read once: the
+    // research result the worker takes once its stopped turn ends is a turn of its own, which Stop
+    // never reached and which can show working for a moment. The stopped turn would work for a minute.
+    await waitFor(() => expect(within(thread()).queryByText(/working ·/)).toBeNull(), { timeout: 8_000 });
   });
 
   it("never stops the turn on one Esc, in the composer or when it closes a sheet", async () => {

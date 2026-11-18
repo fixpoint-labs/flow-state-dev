@@ -34,6 +34,7 @@ import { buildShiftManagerPages, startShiftManager, type ServedShiftManager } fr
 import { loadScriptedClients } from "../../../coordinators/files-tasks-down-the-owners-chain/scripted.mts";
 import { items, requests, sessions, taskRows, toolOutput, type StoredTask } from "../../../coordinators/files-tasks-down-the-owners-chain/store.mts";
 import { ALICE, ORG } from "../../../coordinators/task-session-stays-open/lab/people.mts";
+import { sleep } from "../../../lib/time.mts";
 
 const LEG_B = join(REPO_ROOT, "goals", "coordinators", "task-session-stays-open");
 const SCRATCH = goalTmpDir("survives-a-restart-and-runs-once");
@@ -41,7 +42,6 @@ const MODEL = "openai/gpt-5.4-mini";
 const LEG_B_QUESTION = "Which ticket did you draw?";
 const say = (s: string) => console.error(`[j4 ${new Date().toISOString().slice(11, 19)}] ${s}`);
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 600);
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const pick = <T,>(list: readonly T[]): T => list[randomBytes(1)[0]! % list.length]!;
 
 // ---- leg b's brief and regions, read from its own runner -----------------------------

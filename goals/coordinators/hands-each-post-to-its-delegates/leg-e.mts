@@ -258,7 +258,19 @@ async function conversation(worker: string) {
       lines: items.filter((i) => i.type === "message").map((i) => ({ role: i.role, agentName: i.agentName ?? null, text: text(i) })),
       delegates: record?.state?.delegates ?? null,
       fallback: record?.state?.fallback ?? null,
-      ledger: record === undefined ? [] : toRoutedDeliveries(Object.values(await runtime.stores.resourceState.getByPrefix("user", `${ALICE}:~org:${ORG}`, boardRowPrefix(session.id))).map((row) => row.state as Record<string, any>)),
+      ledger:
+        record === undefined
+          ? []
+          : toRoutedDeliveries(
+              Object.values(await runtime.stores.resourceState.getByPrefix("user", `${ALICE}:~org:${ORG}`, boardRowPrefix(session.id))).flatMap(
+                (row) => {
+                  if (typeof row !== "object" || row === null || !("state" in row)) return [];
+                  const state = row.state;
+                  if (typeof state !== "object" || state === null || Array.isArray(state)) return [];
+                  return [state];
+                },
+              ),
+            ),
     };
   };
   return { session, act, read };

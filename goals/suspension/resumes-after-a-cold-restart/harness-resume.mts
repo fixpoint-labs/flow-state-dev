@@ -9,7 +9,8 @@
  * aliases and `@flow-state-dev/*` both resolve. Reports observations on a
  * single `__GOAL__<json>` line; run.mts owns the grading.
  *
- * Not typechecked by `goals/tsconfig.json`. See goals/README.md → "Harnesses".
+ * Excluded from `goals/tsconfig.json`: copied into kitchen-sink, so
+ * `./flows/chat-agent/flow` resolves there and not in goals/.
  */
 import {
   createCheckpointDurabilityProvider,
@@ -22,8 +23,10 @@ import flow from "./flows/chat-agent/flow";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 
 const out = (r: unknown) => console.log("__GOAL__" + JSON.stringify(r));
+const rootDir = process.env.KS_GOAL_DIR;
+if (rootDir === undefined || rootDir === "") throw new Error("KS_GOAL_DIR is not set");
 const stores = createFilesystemStores({
-  rootDir: process.env.KS_GOAL_DIR,
+  rootDir,
   developmentOnly: true,
 });
 
@@ -33,10 +36,13 @@ async function main(): Promise<void> {
     suspensions: stores.suspensions,
     leases: stores.leases,
   });
-  const requestId = process.env.KS_GOAL_REQUEST_ID!;
+  const requestId = process.env.KS_GOAL_REQUEST_ID;
   const sessionId = process.env.KS_GOAL_SESSION_ID;
-  const suspensionId = process.env.KS_GOAL_SUSPENSION_ID!;
+  const suspensionId = process.env.KS_GOAL_SUSPENSION_ID;
   const note = process.env.KS_GOAL_NOTE;
+  if (requestId === undefined || sessionId === undefined || suspensionId === undefined) {
+    throw new Error("KS_GOAL_REQUEST_ID, KS_GOAL_SESSION_ID and KS_GOAL_SUSPENSION_ID are required");
+  }
 
   // Cross-restart persistence proof: the prior runtime's suspension must still
   // be loadable here, and still pending (nobody resolved it before the restart).
@@ -84,6 +90,6 @@ main()
     }),
   )
   .finally(() => {
-    if (typeof stores.close === "function") stores.close();
+    if ("close" in stores && typeof stores.close === "function") stores.close();
     process.exit(0);
   });

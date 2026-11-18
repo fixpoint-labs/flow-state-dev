@@ -245,8 +245,36 @@ describe("sessions.turns in a view", () => {
     const turns = answer.output as Array<Record<string, unknown>>;
     expect(turns).toHaveLength(1);
     expect(turns[0]).toMatchObject({ sessionId: "mine", action: "touch", status: "completed" });
-    expect(Object.keys(turns[0]!).sort()).toEqual(["action", "completedAtMs", "id", "sessionId", "source", "startedAtMs", "status", "updatedAt"]);
+    expect(Object.keys(turns[0]!).sort()).toEqual(["action", "completedAtMs", "endedAtMs", "id", "sessionId", "source", "startedAtMs", "status", "updatedAt"]);
+    expect(turns[0]!.endedAtMs).toBe(turns[0]!.completedAtMs);
     expect(answer.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["request", "state"] }]);
+  });
+
+  // FIX-2771: a failed turn stamps `failedAtMs`, never `completedAtMs`; when it ended is still read.
+  it("answers when a failed turn ended, which a failed turn's record keeps apart from completedAtMs", async () => {
+    const stores = createInMemoryStores();
+    const flow = app();
+    await act(stores, flow, "mine");
+    const [record] = await stores.request.list({ sessionId: "mine" });
+    const { completedAtMs: _completed, ...rest } = record!;
+    await stores.request.set(record!.id, { ...rest, status: "failed", failedAtMs: record!.startedAtMs + 5_000 } as never, "any");
+    const [turn] = (await view(stores, flow, "turns", { ids: ["mine"] })).output as Array<Record<string, unknown>>;
+    expect(turn).toMatchObject({ status: "failed", startedAtMs: record!.startedAtMs, endedAtMs: record!.startedAtMs + 5_000 });
+    expect(turn!.completedAtMs).toBeUndefined();
+  });
+
+  it("answers where a turn's history window began, once earlier turns left it, so a screen can draw the divider", async () => {
+    const stores = createInMemoryStores();
+    const flow = app();
+    await act(stores, flow, "mine");
+    await act(stores, flow, "mine");
+    const [first, second] = (await stores.request.list({ sessionId: "mine" })).sort((a, b) => a.startedAtMs - b.startedAtMs);
+    // The engine records the mark when it opens the window: here, the second turn's started at the first.
+    await stores.request.set(second!.id, { ...second!, historyStart: { requestId: first!.id } }, "any");
+    const turns = (await view(stores, flow, "turns", { ids: ["mine"] })).output as Array<{ id: string; historyStart?: unknown }>;
+    expect(turns.find((turn) => turn.id === second!.id)?.historyStart).toEqual({ requestId: first!.id });
+    // A turn whose window held every turn before it has no mark.
+    expect(turns.find((turn) => turn.id === first!.id)).not.toHaveProperty("historyStart");
   });
 
   it("answers another user's, a refused or a missing session as missing, heard on the caller's own user topic alone", async () => {

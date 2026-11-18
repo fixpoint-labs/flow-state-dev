@@ -27,7 +27,7 @@
  *         1 s; with a task open, the panel reads nothing between notices.
  *   j2  — Shift Manager with nothing written reads nothing for 10 s; a line sent
  *         into a conversation from another client shows within 1 s.
- *   j3  — process 1 dispatch-only on BullMQ, a worker-only process runs A's
+ *   j3  — process 1 enqueue-only on BullMQ, a process-only process runs A's
  *         reply, process 2's view shows it within 1 s and reads no clock.
  *   j4  — the app behind `createNextHandler`: no push, and B catches up within
  *         the hooks' poll interval plus 1 s.
@@ -992,13 +992,13 @@ async function journeyJ3(
     return app;
   };
   try {
-    const p1 = await start(tree, db, "j3-p1", await freePort(), pages, { ...queue, FSD_WORKER_MODE: "dispatch-only" });
-    await start(tree, db, "j3-worker", 0, pages, { ...queue, FSD_WORKER_MODE: "worker-only" });
+    const p1 = await start(tree, db, "j3-p1", await freePort(), pages, { ...queue, FSD_WORKER_MODE: "enqueue-only" });
+    await start(tree, db, "j3-worker", 0, pages, { ...queue, FSD_WORKER_MODE: "process-only" });
     const p2 = await start(tree, db, "j3-p2", await freePort(), pages);
     const context = await userContext(browser, "tok-a");
     contexts.push(context);
     const sA = await newSession(p1.origin, "user-a", "tok-a");
-    const a = await openScreen(context, "A on p1 (dispatch-only)", p1.origin, "user-a", sA);
+    const a = await openScreen(context, "A on p1 (enqueue-only)", p1.origin, "user-a", sA);
     const view = await openScreen(context, "A's session view on p2", p2.origin, "user-a", sA);
     if (!(await until(() => crossedAt(view) !== undefined, 10_000))) failures.push("j3:worker-reply: the view's socket never said crosses: true within 10 s");
     await quiet([a, view]);

@@ -10,8 +10,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/components/App";
-import { AppProvider } from "../src/app";
-import { createFixtureApp } from "./fake-app";
+import { createFixtureApp, FixtureProvider } from "./fake-app";
 
 const fast = (options = {}) => createFixtureApp({ speed: 0.05, ...options });
 
@@ -36,7 +35,7 @@ async function fileCodingTask() {
 
 describe("a coding task's popup answers what its run waits on you for", () => {
   it("answers the run's question, then reviews its commits: Ask for changes runs it again, Accept completes it", async () => {
-    render(<AppProvider calls={fast({ asks: true, review: true })}><App /></AppProvider>);
+    render(<FixtureProvider calls={fast({ asks: true, review: true })}><App /></FixtureProvider>);
     const popup = await fileCodingTask();
 
     const asked = await within(popup).findByRole("region", { name: "Waiting on you" }, { timeout: 2000 });
@@ -64,7 +63,7 @@ describe("a coding task's popup answers what its run waits on you for", () => {
   // The popup opens on the run's latest step, so a hold drawn at the top of the feed is off-screen:
   // what you must act on sits outside the scrolling feed, below it, and the header says you're on.
   it("a pending question or review sits below the scrolling feed, the header says so, and your verdict stays in the log", async () => {
-    render(<AppProvider calls={fast({ asks: true, review: true })}><App /></AppProvider>);
+    render(<FixtureProvider calls={fast({ asks: true, review: true })}><App /></FixtureProvider>);
     const popup = await fileCodingTask();
     const status = () => popup.querySelector("[data-overlay-status]")?.textContent;
     const feedOf = () => popup.querySelector('[data-step="said"]')!.parentElement!;
@@ -107,7 +106,7 @@ describe("a coding task's popup answers what its run waits on you for", () => {
   });
 
   it("control: a run with nothing to ask and no review shows no box and no card, and completes on its own", async () => {
-    render(<AppProvider calls={fast()}><App /></AppProvider>);
+    render(<FixtureProvider calls={fast()}><App /></FixtureProvider>);
     const popup = await fileCodingTask();
     expect(await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 })).toBeTruthy();
     expect(within(popup).queryByRole("region", { name: "Waiting on you" })).toBeNull();
@@ -117,7 +116,7 @@ describe("a coding task's popup answers what its run waits on you for", () => {
 
 describe("accepting a coding task's review says where its work goes", () => {
   it("offers Open a PR and Merge locally; a merge that conflicts shows the error and a Retry, and a PR after it shows its link and what's next", async () => {
-    render(<AppProvider calls={fast({ review: true, lands: true })}><App /></AppProvider>);
+    render(<FixtureProvider calls={fast({ review: true, lands: true })}><App /></FixtureProvider>);
     const popup = await fileCodingTask();
 
     const review = await within(popup).findByRole("region", { name: "Ready for review" }, { timeout: 3000 });
