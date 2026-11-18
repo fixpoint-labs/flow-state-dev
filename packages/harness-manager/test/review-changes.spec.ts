@@ -470,6 +470,8 @@ describe("a coding run that made changes waits for a person's review", () => {
       expect(h.seen[1]).toMatchObject({ resume: "sess_1", request: h.seen[0]!.request });
       expect(h.seen[1]!.prompt).toContain("Keep the old flag name.");
       expect(h.review(again)!.ask.prompt).toContain("2 commits on");
+      // The revision's round starts where the first review left off, so only its own commit is this round's.
+      expect(reviewDetail(await h.reviewData(again))?.round).toEqual({ commits: 1, subjects: ["Change 2"] });
       expect(again.attempts).toBe(1);
 
       await h.answer({ verdict: "accepted" });

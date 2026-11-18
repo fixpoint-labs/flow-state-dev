@@ -3962,8 +3962,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       let lands: LandHow[] = onPullRequest === null ? ways : ["pull-request"];
       // **Where a person looks at the work** (FIX-2782): the task's recorded pull requests, as the settle
       // reads them, and the one open from its branch; each once. Read once, as the ways are.
+      // Only shown on the card: a failed read shows none rather than failing the review.
       const readPullRequests = async (): Promise<ReviewPullRequest[]> => {
-        const recorded = await taskPullRequests(ctx, (await readRunRecord(ctx, state.topic!))?.requestIds ?? [ctx.request.identity.id]);
+        const recorded = await readRunRecord(ctx, state.topic!)
+          .then((record) => taskPullRequests(ctx, record?.requestIds ?? [ctx.request.identity.id]))
+          .catch(() => []);
         const all = [...recorded.flatMap((pr) => (pr.url === null ? [] : [{ number: pr.number, url: pr.url }])), ...(onPullRequest === null ? [] : [{ number: onPullRequest.number, url: onPullRequest.url }])];
         return all.filter((pr, i) => all.findIndex((other) => other.url === pr.url) === i);
       };
@@ -4422,7 +4425,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * steer or follows a stop, so the steer cap bounds them; past it the
    * attempt fails.
    */
-  const stepForSteer = async (ctx: BlockContext, stopped: boolean): Promise<{ prompt: string; again: true } | undefined> => {
+  const stepForSteer = async (ctx: BlockContext, stopped: boolean, afterDecide = false): Promise<{ prompt: string; again: true } | undefined> => {
     const state = managerState(harnessCtxState(ctx));
     const row = await committedRow(ctx);
     // Only this attempt's own row: a task cancelled, finished or claimed again
@@ -4468,6 +4471,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     await showTakenSteers(ctx, take.taken);
     const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
     await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session, steerSteps: loop });
+    // A step after the verdict for a review's "Ask for changes" starts a new round where the reviewed one
+    // ended (FIX-2782), so the next review sets the revision's commits apart from the ones already reviewed.
+    // A mid-run steer step before the next review doesn't, or the revision's own earlier commits would drop out.
+    if (afterDecide && state.decided?.reviewed === "revise" && state.filesOnly !== true) {
+      await ctx.sequencer!.patchState({ roundStart: await headCommit(state.workspacePath!) });
+    }
     // A turn's save points let a place with kept files go (`saveKeptFiles`):
     // the step a steer that came during the verdict adds works in it again,
     // provisioned from what was saved, so its own end saves and holds it too.
@@ -4610,7 +4619,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     uses: [managerCapability],
     execute: async (value: unknown, ctx: BlockContext) => {
       if (managerState(harnessCtxState(ctx)).decided?.settle !== "complete") return value;
-      return (await stepForSteer(ctx, false)) ?? value;
+      return (await stepForSteer(ctx, false, true)) ?? value;
     },
   });
 

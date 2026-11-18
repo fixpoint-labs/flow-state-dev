@@ -325,7 +325,7 @@ export function ReviewHold({
           ) : null}
           {(review.pullRequests?.length ?? 0) > 0 ? (
             <p className="mt-1 flex flex-wrap gap-x-2 text-xs" data-review-pull-requests>
-              {review.pullRequests!.map((pr) => (
+              {(review.pullRequests ?? []).map((pr) => (
                 <a key={pr.url} href={pr.url} target="_blank" rel="noreferrer" className="font-semibold underline">
                   Pull request #{pr.number}
                 </a>
