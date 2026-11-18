@@ -8,7 +8,6 @@ import { FixtureProvider, rosterEntry } from "./fake-app";
 import { STALE_CLASS } from "../src/components/flow-state/connection-banner";
 import { answeringStep } from "../src/lib/status";
 import { lookOf } from "../src/lib/looks";
-import { TestProvider } from "./stub-server";
 
 afterEach(cleanup);
 
