@@ -19,6 +19,7 @@ import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { requests } from "./store.mts";
+import { sleep } from "../../lib/time.mts";
 
 /** The Shift Coordinator's worker id. */
 export const SHIFT_COORDINATOR = "shift-coordinator";
@@ -41,7 +42,6 @@ export async function loadShipped(root: string): Promise<Shipped> {
 }
 
 const RUNNING = new Set(["pending", "queued", "in_progress", "running"]);
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const WORDS = ["heron", "copper", "lantern", "marble", "saffron", "willow", "ember", "glacier", "orchid", "tinsel"];
 const word = () => `${WORDS[randomBytes(1)[0]! % WORDS.length]}${randomBytes(3).toString("hex")}`;

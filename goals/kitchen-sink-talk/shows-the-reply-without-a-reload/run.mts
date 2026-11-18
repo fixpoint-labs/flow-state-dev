@@ -54,6 +54,7 @@ import {
   type KitchenSinkServer,
 } from "../../lib/kitchen-sink.mts";
 import { launchChromium } from "../../lib/playwright.mts";
+import { sleep } from "../../lib/time.mts";
 
 interface Seat {
   kind: string;
@@ -91,8 +92,6 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
  * honours it only in a test-mode build.
  */
 const PAGE_QUERY = CONTROL === "no-live" ? "?goalControl=no-live" : "";
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Load the page, with the control's query, and wait until it can be used. */
 async function openPage(page: Page, origin: string): Promise<void> {

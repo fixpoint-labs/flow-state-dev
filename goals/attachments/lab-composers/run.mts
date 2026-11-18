@@ -236,11 +236,10 @@ await runGoal(async (failures, tell) => {
   const tmHost = await openTeammates({ store: join(SCRATCH, "teammates.sqlite"), model: MODEL, userId: USER_ID, workdir: checkout(join(SCRATCH, "tm-repo")), runsRoot: join(SCRATCH, "tm-runs") });
   const tmFetch = createInProcessFetch(tmHost as never) as never;
   const tmAdapter = () => createAppCalls(createClient({ userId: USER_ID, baseUrl: "", fetcher: tmFetch }), { fetcher: tmFetch });
+  // Opening a conversation reads the roster first, so a line under a worker's name reads as that worker's.
   const tm = tmAdapter();
-  await tm.listWorkers();
   const leadSession = await tm.openConversation(LEAD);
   const freshTm = tmAdapter();
-  await freshTm.listWorkers();
   const lead = await legOf<ConversationView>(
     tm,
     freshTm,

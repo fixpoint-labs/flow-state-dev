@@ -54,7 +54,7 @@ export function RoutedSpecialists({ item }: { item: ContainerItem }) {
         </div>
         <div className="flex items-center gap-2">
           {specialist && !isFinished && (
-            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <UserIcon className="h-2.5 w-2.5" aria-hidden="true" />
               {specialist}
             </span>
@@ -98,7 +98,7 @@ function WorkspaceEntry({ label, value }: { label: string; value: unknown }) {
   if (!isLong) {
     return (
       <li className="flex items-start gap-2">
-        <span className="mt-0.5 shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+        <span className="mt-0.5 shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
           {label}
         </span>
         <span className="text-xs leading-snug">
@@ -112,7 +112,7 @@ function WorkspaceEntry({ label, value }: { label: string; value: unknown }) {
     <li>
       <details className="group">
         <summary className="flex cursor-pointer list-none items-start gap-2">
-          <span className="mt-0.5 shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          <span className="mt-0.5 shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
             {label}
           </span>
           <span className="flex-1 truncate text-xs leading-snug text-muted-foreground">
@@ -148,7 +148,7 @@ function EntryMarkdown({ text }: { text: string }) {
     <div className={cn(
       "prose-none text-xs leading-snug text-muted-foreground",
       "[&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:my-0.5",
-      "[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px]",
+      "[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs",
       "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded-sm [&_pre]:bg-muted [&_pre]:p-2",
       "[&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-2 [&_blockquote]:italic",
     )}>

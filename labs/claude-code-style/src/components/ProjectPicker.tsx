@@ -104,9 +104,9 @@ export function ProjectPicker({
             }}
             className="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm"
           />
-          <p className="text-[11px] text-muted-foreground">A git repository on this machine, as a file:// address. Its committed .gitignore must ignore .fsdev/.</p>
+          <p className="text-xs text-muted-foreground">A git repository on this machine, as a file:// address. Its committed .gitignore must ignore .fsdev/.</p>
           {current === undefined ? null : current.usable ? (
-            <p className="text-[11px] text-muted-foreground" data-testid="repository-disclosure">
+            <p className="text-xs text-muted-foreground" data-testid="repository-disclosure">
               {repositoryDisclosure(current.how)}
             </p>
           ) : (

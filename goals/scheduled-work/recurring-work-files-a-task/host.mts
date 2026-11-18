@@ -37,6 +37,7 @@ import {
 } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { actingAs, hearsMessages, silentLogger, untilIdle, workforceTree, writeGoalReport } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const env = (name: string): string => {
   const value = process.env[name];
@@ -52,7 +53,6 @@ const SECRET = "goal-scheduler-secret";
 const WORK_MS = Number(process.env.GOAL_WORK_MS ?? "1500");
 const OPS = JSON.parse(env("GOAL_OPS")) as Array<Record<string, any>>;
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const doorInput = z.object({ message: z.string() });
 
 // ---- the app ----------------------------------------------------------------

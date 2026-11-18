@@ -35,6 +35,7 @@ import { workforce } from "@flow-state-dev/workforce/kit";
 import { z } from "zod";
 import { REPO_ROOT, goalTmpDir, runGoal, silentLogger, workforceTree } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
+import { sleep } from "../../lib/time.mts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ORG = "acme";
@@ -252,7 +253,6 @@ const runtime = await state.getRuntime();
 const coderFlow = runtime.registry.get("coder");
 if (coderFlow === undefined) throw new Error("setup: the workforce kit serves no coder flow");
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function settled(): Promise<void> {
   const running = (r: { status: string; finalizedAtMs?: number | null }) =>
     r.status === "in_progress" || (r.status !== "suspended" && r.status !== "pending" && r.finalizedAtMs == null);

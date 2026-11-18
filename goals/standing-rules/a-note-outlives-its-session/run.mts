@@ -6,6 +6,7 @@ import { WORKER_ID_STATE_KEY, createWorkforceClient, type StandingRulesActionOut
 import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
 import { labRoutes, startShiftManager, type LabRoutes, type ServedShiftManager, type StoredItem } from "../../lib/shift-manager.mts";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 if (CONTROL !== "" && CONTROL !== "no-rules-context") throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; this goal knows no-rules-context`);
@@ -63,7 +64,6 @@ interface Turn {
   status: string;
 }
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const RUNNING = new Set(["pending", "queued", "in_progress", "running"]);
 
 /** The text of a stored message item. */

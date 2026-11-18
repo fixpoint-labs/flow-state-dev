@@ -17,7 +17,7 @@ import { clockTime } from "../lib/shell";
 function Side({ worker, sessionId, testId }: { worker: string; sessionId: string; testId: string }) {
   return (
     <RouteLink
-      className="font-mono text-[11.5px] font-medium underline-offset-2 hover:underline"
+      className="font-mono text-xs font-medium underline-offset-2 hover:underline"
       to={{ level: "session", sessionId }}
       data-testid={testId}
       data-session-id={sessionId}

@@ -239,6 +239,7 @@ describe("createFlowApiRouter", () => {
     const missingUserResponse = await router.POST(
       new Request("http://localhost/api/flows/demo/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           input: { value: "x" }
         })
@@ -250,6 +251,7 @@ describe("createFlowApiRouter", () => {
     const executeResponse = await router.POST(
       new Request("http://localhost/api/flows/demo/sess_1/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_1",
           input: { value: "ok" }
@@ -320,6 +322,7 @@ describe("createFlowApiRouter", () => {
     const createSessionResponse = await router.POST(
       new Request("http://localhost/api/flows/demo/sessions", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_2"
         })
@@ -381,6 +384,7 @@ describe("createFlowApiRouter", () => {
     const response = await router.POST(
       new Request("http://localhost/api/flows/error-flow/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: "{invalid-json"
       }),
       {
@@ -407,6 +411,7 @@ describe("createFlowApiRouter", () => {
     const executeResponse = await router.POST(
       new Request("http://localhost/api/flows/projected/sess_proj/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_proj",
           orgId: "proj_1",
@@ -515,6 +520,7 @@ describe("createFlowApiRouter", () => {
         // configures no resolver, so it runs under the development default.
         // The subject here is flow-ISOLATED user/org keying, which is
         // unchanged — only the organization's spelling moved.
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_iso_state",
           input: { value: "Ada" }
@@ -584,6 +590,7 @@ describe("createFlowApiRouter", () => {
     const executeResponse = await router.POST(
       new Request("http://localhost/api/flows/declared-content-route/sess_declared/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "user_declared", input: {} })
       }),
       { params: { path: ["declared-content-route", "sess_declared", "actions", "run"] } }
@@ -636,6 +643,7 @@ describe("createFlowApiRouter", () => {
     const executeResponse = await router.POST(
       new Request("http://localhost/api/flows/isolated-resource-route/sess_iso_resource/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_iso_resource",
           input: { value: "Ada" }
@@ -679,6 +687,7 @@ describe("createFlowApiRouter", () => {
     await router.POST(
       new Request("http://localhost/api/flows/pagination/sess_page/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_page",
           input: { value: "ok" }
@@ -756,6 +765,7 @@ describe("createFlowApiRouter", () => {
     await router.POST(
       new Request("http://localhost/api/flows/stateful-cd/sess_cd/actions/increment", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           userId: "user_cd",
           input: { amount: 5 }
@@ -811,6 +821,7 @@ describe("createFlowApiRouter", () => {
     await router.POST(
       new Request("http://localhost/api/flows/stateful-client/sess_sc/actions/increment", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "user_sc", input: { amount: 7 } })
       }),
       { params: { path: ["stateful-client", "sess_sc", "actions", "increment"] } }
@@ -868,6 +879,7 @@ describe("createFlowApiRouter", () => {
     await router.POST(
       new Request("http://localhost/api/flows/res-flow/sess_res/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "user_res", input: { value: "ok" } })
       }),
       { params: { path: ["res-flow", "sess_res", "actions", "run"] } }
@@ -926,6 +938,7 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request("http://localhost/api/flows/org-flow/actions/run", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ userId: "u1", input: { value: "test" } })
         }),
         { params: { path: ["org-flow", "actions", "run"] } }
@@ -943,6 +956,7 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request("http://localhost/api/flows/org-flow/actions/run", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({
             userId: "u1",
             sessionId: "s1",
@@ -1048,6 +1062,7 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request("http://localhost/api/flows/wh-flow/sessions/sess_wh/requests/req_wh/retry", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ inputOverride: { id: "attacker" } })
         }),
         { params: { path: ["wh-flow", "sessions", "sess_wh", "requests", "req_wh", "retry"] } }
@@ -1085,6 +1100,7 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request("http://localhost/api/flows/wh-flow/sessions/sess_wh2/requests/req_wh2/continue", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: "{}"
         }),
         { params: { path: ["wh-flow", "sessions", "sess_wh2", "requests", "req_wh2", "continue"] } }
@@ -1124,6 +1140,7 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request("http://localhost/api/flows/wh-flow/requests/req_wh3/resume", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ suspensionId: "susp_x", action: "approve", data: { ok: true } })
         }),
         { params: { path: ["wh-flow", "requests", "req_wh3", "resume"] } }
@@ -1185,7 +1202,7 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request(
           "http://localhost/api/flows/sched-flow/sessions/sess_sched1/requests/req_sched1/continue",
-          { method: "POST", body: "{}" }
+          { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }
         ),
         { params: { path: ["sched-flow", "sessions", "sess_sched1", "requests", "req_sched1", "continue"] } }
       );
@@ -1223,7 +1240,7 @@ describe("createFlowApiRouter", () => {
       const response = await router.POST(
         new Request(
           "http://localhost/api/flows/sched-flow2/sessions/sess_sched2/requests/req_sched2/continue",
-          { method: "POST", body: "{}" }
+          { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }
         ),
         { params: { path: ["sched-flow2", "sessions", "sess_sched2", "requests", "req_sched2", "continue"] } }
       );

@@ -9,7 +9,7 @@ export function Avatar({ look, size = "md" }: { look: Look; size?: "sm" | "md" }
       aria-hidden
       data-avatar={look.color}
       style={{ color, background: `color-mix(in srgb, ${color} 18%, transparent)` }}
-      className={cn("flex shrink-0 items-center justify-center rounded-full font-bold", size === "md" ? "size-8 text-sm" : "size-5 text-[10px]")}
+      className={cn("flex shrink-0 items-center justify-center rounded-full font-bold", size === "md" ? "size-8 text-sm" : "size-5 text-xs")}
     >
       {look.icon}
     </span>
