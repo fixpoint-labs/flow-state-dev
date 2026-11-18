@@ -9,7 +9,7 @@
  * In the Labs a step is a role:
  *   xs    meta, labels, timestamps, counts, mono ids (the 12px floor)
  *   sm    controls, lists, tables, code
- *   base  the feed's body and the composer, the text a person reads and types
+ *   base  the feed's body and the composer, the text a user reads and types
  *   lg, xl, 2xl  headings
  *
  * A step's line height comes with it; a `leading-*` class still overrides.

@@ -95,7 +95,7 @@ const BODY = [
   "[data-step=given]",
   "[data-step=said]",
 ].join(", ");
-/** What a composer is, in every lab: the field a person types a turn into. */
+/** What a composer is, in every lab: the field a user types a turn into. */
 const COMPOSER = ["[data-look=composer-input]", 'textarea[aria-label^="Message "]', 'textarea[aria-label^="Steer"]'].join(", ");
 
 // ---- the glyphs the lint lets through ----------------------------------------
@@ -445,7 +445,7 @@ async function teammates(browser: Browser, built: ReturnType<typeof buildLab>, o
     const flow = session.flowId ?? session.flowKind;
     const sent = await fsd.flow(flow).send(taskActionName("createTask", "tasks"), { title: "Tidy the README", goal: "Put the README's lines in order.", assignee: "teammates.cursor" }, { sessionId: session.id });
     await sent.wait({ timeoutMs: 60_000 });
-    // A person's line in two conversations, sent from the composer. No model answers; the line stays.
+    // A user's line in two conversations, sent from the composer. No model answers; the line stays.
     const page = await browser.newPage();
     page.setDefaultTimeout(20_000);
     await page.goto(lab.origin);

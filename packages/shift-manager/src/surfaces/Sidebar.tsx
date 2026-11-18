@@ -126,7 +126,7 @@ function ShiftCoordinatorEntry({ active }: { active: boolean }) {
       }`}
     >
       <span
-        // eslint-disable-next-line fsd/no-hardcoded-text-size -- a two-letter glyph drawn to fit its 18px box, not text a person reads.
+        // eslint-disable-next-line fsd/no-hardcoded-text-size -- a two-letter glyph drawn to fit its 18px box, not text a user reads.
         className={`flex size-[18px] shrink-0 items-center justify-center border font-mono text-[7.5px] font-semibold ${
           active ? "border-primary-foreground bg-primary-foreground text-primary" : "border-primary bg-primary text-primary-foreground"
         }`}
@@ -230,7 +230,7 @@ function SidebarRail({
       <SidebarToggle collapsed onToggle={onToggle} />
       <div className="mt-2 flex flex-col items-center gap-1">
         <RailItem label="Shift Coordinator" active={route.level === "shift-coordinator"} to={{ level: "shift-coordinator" }} testId="rail-shift-coordinator">
-          {/* eslint-disable-next-line fsd/no-hardcoded-text-size -- a two-letter glyph drawn to fit its 18px box, not text a person reads. */}
+          {/* eslint-disable-next-line fsd/no-hardcoded-text-size -- a two-letter glyph drawn to fit its 18px box, not text a user reads. */}
           <span className="flex size-[18px] items-center justify-center border border-primary bg-primary font-mono text-[7.5px] font-semibold text-primary-foreground" aria-hidden>
             SC
           </span>
