@@ -57,6 +57,7 @@ import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { JUDGE_MODEL } from "../../../packages/shift-manager/teams/devteam/judge.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["no-filing-project", "no-judge"] as const;
@@ -94,7 +95,6 @@ const LIST_TASKS = "listTasks_tasks";
 const TURN_BUDGET_MS = 10_000;
 const LINE_BUDGET_MS = 60_000;
 const SETTLED = new Set(["completed", "errored", "cancelled"]);
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown, n = 300): string => (JSON.stringify(value) ?? "undefined").slice(0, n);
 
 // ---- the coder's harness: the lab's stub, told what each run does ----------

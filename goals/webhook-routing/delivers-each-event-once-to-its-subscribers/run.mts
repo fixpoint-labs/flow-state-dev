@@ -27,6 +27,7 @@ import { workerRoutineVerbs } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
 import { REPO_ROOT, goalTmpDir, runGoal, silentLogger, workforceTree } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
+import { sleep } from "../../lib/time.mts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ORG = "acme";
@@ -202,7 +203,6 @@ const host: InboundTransportHost = {
   dispatch: (envelope) => runningAs.run(envelope.principal.userId, () => captured!.dispatch(envelope))
 };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Wait until no request is running or unfinalized. */
 async function settled(): Promise<void> {

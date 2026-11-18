@@ -1,3 +1,4 @@
+import { sleep } from "../../lib/time.mts";
 /**
  * Goal check — harness-manager › a run's changes wait for review.
  *
@@ -114,7 +115,6 @@ if (CONTROL !== "" && process.env.GOAL_MODULE_PATCH === undefined) {
   process.exit(failedOn.length > 0 ? 0 : 1);
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown) => JSON.stringify(value);
 
 // ---- the host -----------------------------------------------------------------------

@@ -99,6 +99,7 @@ import {
   createScratchRepo,
   publishArtifact,
 } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { sleep } from "../../lib/time.mts";
 
 stripIntentOverrides();
 
@@ -172,7 +173,6 @@ const FILED_TIMEOUT_MS = 30_000;
 /** How long a control's scripted run has to reach a terminal row state. */
 const CONTROL_SETTLE_TIMEOUT_MS = 120_000;
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ---------------------------------------------------------------------------
 // Reading trees
