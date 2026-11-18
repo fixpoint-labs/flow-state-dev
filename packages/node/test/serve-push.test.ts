@@ -87,7 +87,7 @@ describe("serve() push delivery", () => {
     });
     const off = await start({ push: false });
     expect(await (await fetch(`${off.base}/api/flows/capabilities`)).json()).toEqual({ userStream: false, push: null });
-    expect((await fetch(`${off.base}/api/flows/users/alice/stream`, { method: "POST", body: "{}" })).status).toBe(404);
+    expect((await fetch(`${off.base}/api/flows/users/alice/stream`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status).toBe(404);
   });
 
   it("delivers a change in a session to a socket subscribed through the mint", async () => {
@@ -250,7 +250,7 @@ describe("createServerApp", () => {
     const response = await app.fetch(new Request("http://localhost/api/flows/capabilities"));
     expect(await response.json()).toEqual({ userStream: false, push: null });
     const minted = await app.fetch(
-      new Request("http://localhost/api/flows/users/alice/stream", { method: "POST", body: JSON.stringify({ topics: [] }) })
+      new Request("http://localhost/api/flows/users/alice/stream", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ topics: [] }) })
     );
     expect(minted.status).toBe(404);
   });
