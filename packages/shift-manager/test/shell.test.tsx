@@ -86,6 +86,21 @@ async function openApp(path: string, options: Parameters<typeof openAskLab>[0] =
   return { lab, client };
 }
 
+/**
+ * The shell on the ask-lab in this process, at `http://lab.local`. `installFetch`
+ * wires `fetch` before the first read. The page makes no socket.
+ */
+async function openAppInProcess(
+  path: string,
+  installFetch: (inProcess: ReturnType<typeof createInProcessFetch>) => void,
+) {
+  const opened = await openAskLab();
+  onTestFinished(() => opened.flowState.dispose());
+  installFetch(createInProcessFetch(opened.flowState));
+  (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`http://lab.local${path}`);
+  render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
+}
+
 describe("the sidebar's mark", () => {
   it("is the one theme control: it shows the theme the page is in, and each click moves to the next", async () => {
     const lab = await serveLab((await openAskLab()).flowState);
@@ -160,22 +175,15 @@ describe("the refusal (V2, BR-3)", () => {
 
 describe("a Lab Shift Manager can't reach", () => {
   it("shows what the Lab answered with Retry, not the refusal, and Retry opens the Lab once it answers", async () => {
-    const opened = await openAskLab();
-    onTestFinished(() => opened.flowState.dispose());
-    const inProcess = createInProcessFetch(opened.flowState);
-    // Retry used to call Happy DOM's fetch, which is Node's HTTP client. The
-    // read goes to this Lab in process. A socket opened here fails the test.
+    // Happy DOM's fetch is Node's HTTP client. This read stays in process.
+    // afterEach has drained earlier tests, so the spy sees only this one.
     const sockets = vi.spyOn(net.Socket.prototype, "connect");
     let down = true;
-    const responses: Promise<Response>[] = [];
-    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
-      if (down) return Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 }));
-      const response = inProcess(input, init);
-      responses.push(response);
-      return response;
+    await openAppInProcess("/inbox", (inProcess) => {
+      vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+        down ? Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 })) : inProcess(input, init),
+      );
     });
-    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL("http://lab.local/inbox");
-    render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     const screenEl = await screen.findByTestId("unreachable");
     expect(screen.getByTestId("unreachable-message").textContent).toMatch(/503.*store offline/);
     expect(screen.queryByTestId("refusal")).toBeNull();
@@ -186,22 +194,7 @@ describe("a Lab Shift Manager can't reach", () => {
     // Flush them, so the click can't land on the no-op it starts with.
     await act(async () => {});
     act(() => fireEvent.click(screen.getByTestId("unreachable-retry")));
-    // The click does not return the read. Wait until the responses it started have settled, then look.
-    await act(async () => {
-      let seen = 0;
-      for (let quiet = 0; quiet < 2; ) {
-        if (responses.length === seen) {
-          await new Promise((r) => setTimeout(r, 0));
-          quiet = responses.length === seen ? quiet + 1 : 0;
-          continue;
-        }
-        const batch = responses.slice(seen);
-        seen = responses.length;
-        await Promise.all(batch);
-        quiet = 0;
-      }
-    });
-    expect(screen.getByTestId("sidebar")).toBeTruthy();
+    await screen.findByTestId("sidebar", undefined, { timeout: 5_000 });
     expect(sockets).not.toHaveBeenCalled();
   });
 });
