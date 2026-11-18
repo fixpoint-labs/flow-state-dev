@@ -14,10 +14,11 @@
  * the title case fails.
  */
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
-import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { BoardTask, ConversationEntry } from "../src/app";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import type { ConversationEntry } from "../src/app";
 import { App } from "../src/components/App";
+import { codingRow, hold as openHold } from "./stub-server";
 import { createNotifier, teammateAttention, titleFor, useNotifyToggle } from "../src/lib/attention";
 import { ENDING_SHOWN_MS, needsOf, statusOf, type StatusInputs } from "../src/lib/status";
 import { createFixtureApp, FixtureProvider } from "./fake-app";
@@ -25,11 +26,8 @@ import { createFixtureApp, FixtureProvider } from "./fake-app";
 const NOW = 1_000_000_000;
 const coder = (id: string) => id === "cursor";
 const named = (id: string) => id;
-/** A task, with its row's view carrying when it ended (`completedAt`), as the adapter reads one. */
-const task = (id: string, { completedAt, ...over }: Partial<BoardTask> & { completedAt?: number }): BoardTask => {
-  const t: BoardTask = { id, to: "cursor", title: `Task ${id}`, status: "running", boardStatus: "in_progress", goal: "g", ...over };
-  return { ...t, view: taskView({ id, status: t.boardStatus, title: t.title, goal: t.goal, board: "s1", completedAt }) };
-};
+/** A coding board row, running on `cursor` unless `over` says otherwise. */
+const task = (id: string, over: Partial<CodingBoardTask>): CodingBoardTask => codingRow({ id, assignee: "cursor", title: `Task ${id}`, goal: "g", status: "in_progress", ...over });
 const approval = (resolution?: string): ConversationEntry => ({ kind: "approval", id: "ap", requestId: "q", suspensionId: "s", text: "Publish the draft?", ...(resolution ? { resolution } : {}) });
 const inputs = (over: Partial<StatusInputs>): StatusInputs => ({ activity: { running: false, lastActiveAt: 0 } as StatusInputs["activity"], entries: [], talk: [], tasks: [], now: NOW, ...over });
 const status = (over: Partial<StatusInputs>) => statusOf("writer", inputs(over), named, coder);
@@ -42,18 +40,18 @@ describe("the status line puts what needs you first", () => {
   });
 
   it("a task that waits on you, above the same task running", () => {
-    const asks = task("t1", { waiting: { kind: "question", prompt: "Which branch?", unanswerable: null } });
+    const asks = task("t1", { asks: [openHold("question", "Which branch?")] });
     expect(status({ tasks: [asks] })).toEqual({ text: "Waiting on you: Which branch?", tone: "text-attention", needsYou: true });
     expect(status({ tasks: [task("t1", {})] }).text).toBe("Running coding task: Task t1");
   });
 
   it("a coding task that just ended, for two minutes, a failure in red", () => {
-    const failed = task("t2", { status: "failed", completedAt: NOW - 30_000 });
+    const failed = task("t2", { status: "errored", completedAt: NOW - 30_000 });
     expect(status({ tasks: [failed] })).toEqual({ text: "Coding task failed: Task t2", tone: "text-destructive", needsYou: false });
-    expect(status({ tasks: [task("t3", { status: "done", completedAt: NOW - 1_000 })] })).toEqual({ text: "Coding task finished: Task t3", tone: "text-muted-foreground", needsYou: false });
-    expect(status({ tasks: [task("t3", { status: "done", completedAt: NOW - ENDING_SHOWN_MS })] }).text).toBe("Idle");
+    expect(status({ tasks: [task("t3", { status: "completed", completedAt: NOW - 1_000 })] })).toEqual({ text: "Coding task finished: Task t3", tone: "text-muted-foreground", needsYou: false });
+    expect(status({ tasks: [task("t3", { status: "completed", completedAt: NOW - ENDING_SHOWN_MS })] }).text).toBe("Idle");
     // A teammate's job isn't a coding task, and a withdrawn task doesn't flash.
-    expect(status({ tasks: [task("t4", { to: "researcher", status: "done", completedAt: NOW })] }).text).toBe("Idle");
+    expect(status({ tasks: [task("t4", { assignee: "researcher", status: "completed", completedAt: NOW })] }).text).toBe("Idle");
     expect(status({ tasks: [task("t5", { status: "cancelled", completedAt: NOW })] }).text).toBe("Idle");
   });
 });
@@ -133,8 +131,8 @@ describe("the notifier", () => {
   });
 
   it("a task's second hold on you is a new need, not the first one again", () => {
-    const hold = (holdId: string) => task("t1", { waiting: { kind: "question", prompt: "Which branch?", unanswerable: null, holdId } });
-    const keys = (t: BoardTask) => needsOf({ entries: [], tasks: [t] }).map((n) => n.key);
+    const hold = (holdId: string) => task("t1", { asks: [openHold("question", "Which branch?", { id: holdId })] });
+    const keys = (t: CodingBoardTask) => needsOf({ entries: [], tasks: [t] }).map((n) => n.key);
     expect(keys(hold("h1"))).not.toEqual(keys(hold("h2")));
   });
 });

@@ -1,10 +1,12 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { ChevronRightIcon, TerminalIcon } from "lucide-react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
-import type { BoardTask, AppCalls } from "../app";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { useTasks, type AppCalls } from "../app";
 import type { Look } from "../lib/looks";
 import { displayName, roleOf, useWorkforce } from "../lib/roster";
-import { useNow, useStale, useWatch } from "../lib/use-watch";
+import { useNow, useStale } from "../lib/use-watch";
+import { askOf, harnessOf, modelOf, runTimesOf, taskStatus, titleOf, viewOf, workerOf } from "../lib/task";
 import { clearMark, useCleared } from "../lib/cleared";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -32,7 +34,7 @@ const STATUS_DOT = {
   done: "bg-success",
   failed: "bg-destructive",
   cancelled: "border border-muted-foreground/60",
-} satisfies Record<BoardTask["status"], string>;
+} satisfies Record<ReturnType<typeof taskStatus>, string>;
 
 /**
  * Newest first: by when it ended, else when it first started, else when it
@@ -40,8 +42,8 @@ const STATUS_DOT = {
  * retried task holds its place. A row with no time keeps its board order,
  * after the timed ones.
  */
-function newestFirst(tasks: readonly BoardTask[]): BoardTask[] {
-  const at = (t: BoardTask) => t.view?.times.completedAt ?? t.view?.times.startedAt ?? t.view?.times.createdAt ?? undefined;
+function newestFirst(tasks: readonly CodingBoardTask[]): CodingBoardTask[] {
+  const at = (t: CodingBoardTask) => t.completedAt ?? t.startedAt ?? t.createdAt ?? undefined;
   return tasks
     .map((t, i) => ({ t, i }))
     .sort((a, b) => {
@@ -59,12 +61,12 @@ function newestFirst(tasks: readonly BoardTask[]): BoardTask[] {
  * is something to act on) less those the viewer cleared, then *Done* and
  * *Cancelled*, each collapsed to its count until opened.
  */
-function groupTasks(tasks: readonly BoardTask[], cleared: ReadonlySet<string>) {
-  const of = (status: BoardTask["status"]) => newestFirst(tasks.filter((t) => t.status === status));
+function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<string>) {
+  const of = (status: ReturnType<typeof taskStatus>) => newestFirst(tasks.filter((t) => taskStatus(t) === status));
   const running = of("running");
   const failed = of("failed");
   return {
-    running: [...running.filter((t) => t.waiting !== undefined), ...running.filter((t) => t.waiting === undefined)],
+    running: [...running.filter((t) => askOf(t) !== undefined), ...running.filter((t) => askOf(t) === undefined)],
     failed: failed.filter((t) => !cleared.has(clearMark(t))),
     clearedFailed: failed.filter((t) => cleared.has(clearMark(t))).length,
     ended: [
@@ -113,21 +115,14 @@ export function TeammatePanel({
   onOpen: (popup: Popup) => void;
 }) {
   // The board's read can fail while the conversation's feed is live: its rows are then the last read, and stale too.
-  const [boardStale, setBoardStale] = useState(false);
-  const watchTasks = useCallback(
-    (key: string, onChange: (tasks: BoardTask[]) => void) => {
-      setBoardStale(false);
-      return adapter.watchTasks(key, onChange, setBoardStale);
-    },
-    [adapter],
-  );
-  const tasks = useWatch(watchTasks, sessionId) ?? [];
-  const stale = useStale(adapter, sessionId) || boardStale;
+  const board = useTasks(sessionId);
+  const tasks = board.value ?? [];
+  const stale = useStale(adapter, sessionId) || board.stale;
   const [cleared, clearFailed, restoreCleared] = useCleared(sessionId);
   const { running, failed, clearedFailed, ended } = groupTasks(tasks, cleared);
   // A running clock ticks each second; it holds while the feed is stale, as the status line's age does.
   const now = useNow(1_000, !stale);
-  const counts = taskCounts(tasks.flatMap((t) => (t.view === undefined ? [] : [t.view])));
+  const counts = taskCounts(tasks.map((t) => viewOf(t, sessionId)));
   const [editing, setEditing] = useState(false);
   const workforce = useWorkforce();
   // Every ended group starts collapsed; a click opens it.
@@ -139,18 +134,20 @@ export function TeammatePanel({
   const failedCapped = failed.length > NEWEST_SHOWN;
   const failedShown = failedCapped && !allFailed ? failed.slice(0, NEWEST_SHOWN) : failed;
 
-  const row = (t: BoardTask) => {
-    const coding = isCoding(t.to);
-    const line = taskLine(t, coding, nameOf);
+  const row = (t: CodingBoardTask) => {
+    const coding = isCoding(workerOf(t));
+    const line = taskLine({ title: titleOf(t), to: workerOf(t) }, coding, nameOf);
     const state = taskPresentation(t);
-    const reason = t.status === "failed" || t.status === "cancelled" ? reasonLine(t) : undefined;
+    const status = taskStatus(t);
+    const reason = status === "failed" || status === "cancelled" ? reasonLine(t) : undefined;
+    const runs = { harness: harnessOf(t), model: modelOf(t) };
     return (
       <li key={t.id}>
         <button
           type="button"
           aria-current={t.id === openTask ? "true" : undefined}
-          aria-label={coding ? taskLabel(line, t) : line}
-          data-task={t.status}
+          aria-label={coding ? taskLabel(line, runs) : line}
+          data-task={status}
           onClick={() => onOpen({ kind: "task", sessionId, taskId: t.id })}
           className={cn(
             "flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
@@ -159,16 +156,16 @@ export function TeammatePanel({
             stale && STALE_CLASS,
           )}
         >
-          <span aria-hidden data-task-dot className={cn("mt-[5px] size-2 shrink-0 rounded-full", t.waiting ? "bg-warning" : STATUS_DOT[t.status])} />
+          <span aria-hidden data-task-dot className={cn("mt-[5px] size-2 shrink-0 rounded-full", askOf(t) ? "bg-warning" : STATUS_DOT[status])} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="line-clamp-2 text-[13px] leading-snug" title={line}>
               {coding ? <TerminalIcon aria-hidden className="mr-1 mb-0.5 inline size-3 text-muted-foreground" /> : null}
               {line}
             </span>
             <span className={cn("block truncate text-xs", state.tone, stale && STALE_CLASS)} data-status>
-              {t.waiting ? state.word : <StatusWords task={t} now={now} stale={stale} />}
+              {askOf(t) ? state.word : <StatusWords task={t} sessionId={sessionId} now={now} stale={stale} />}
               {reason ? ` · ${reason}` : ""}
-              {runsOn(t) ? ` · ${runsOn(t)}` : ""}
+              {runsOn(runs) ? ` · ${runsOn(runs)}` : ""}
             </span>
           </span>
         </button>
@@ -208,7 +205,7 @@ export function TeammatePanel({
             Tasks{tasks.length > 0 ? ` (${tasks.length})` : ""}{counts === "" ? "" : ` · ${counts}`}
           </div>
           {tasks.length === 0 ? <p className="px-4 text-xs text-muted-foreground">{displayName(worker)} hasn't started any tasks yet.</p> : null}
-          <CodingSpend tasks={tasks.filter((t) => isCoding(t.to))} />
+          <CodingSpend tasks={tasks.filter((t) => isCoding(workerOf(t)))} />
           <div className="space-y-1">
           {running.length > 0 ? <ul aria-label="Running" className="space-y-px px-2">{running.map(row)}</ul> : null}
           {failed.length > 0 ? (
@@ -324,13 +321,15 @@ function ResetButton({ name, onReset }: { name: string; onReset: () => Promise<v
  * for "running" ("working · 4m 12s", "quiet for 7m"), and an ended one's age
  * follows its status ("done · 12m ago").
  */
-function StatusWords({ task, now, stale }: { task: BoardTask; now: number; stale: boolean }) {
-  if (task.view === undefined) return <>{task.status}</>;
-  const time = <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={(kind) => taskPresentation(task, kind).tone} fallback={task.status} />;
-  if (task.status === "running" || taskSignal(task.view, task.run, now, { stale }) === null) return time;
+function StatusWords({ task, sessionId, now, stale }: { task: CodingBoardTask; sessionId: string; now: number; stale: boolean }) {
+  const view = viewOf(task, sessionId);
+  const run = runTimesOf(task);
+  const status = taskStatus(task);
+  const time = <TaskTime view={view} run={run} now={now} stale={stale} tone={(kind) => taskPresentation(task, kind).tone} fallback={status} />;
+  if (status === "running" || taskSignal(view, run, now, { stale }) === null) return time;
   return (
     <>
-      {task.status} · {time}
+      {status} · {time}
     </>
   );
 }
@@ -343,7 +342,7 @@ function StatusWords({ task, now, stale }: { task: BoardTask; now: number; stale
  * until a coding task has reported spend. (The registry's line never sums; this
  * total is the panel's own.)
  */
-function CodingSpend({ tasks }: { tasks: readonly BoardTask[] }) {
+function CodingSpend({ tasks }: { tasks: readonly CodingBoardTask[] }) {
   const line = codingSpendLine(tasks);
   if (line === "") return null;
   return (
@@ -354,8 +353,8 @@ function CodingSpend({ tasks }: { tasks: readonly BoardTask[] }) {
 }
 
 /** {@link CodingSpend}'s line, or `""` until some task has reported a count or a charge. Exported for its tests. */
-export function codingSpendLine(tasks: readonly BoardTask[]): string {
-  const spent = tasks.flatMap((t) => (t.spend === undefined ? [] : [t.spend]));
+export function codingSpendLine(tasks: readonly Pick<CodingBoardTask, "spend">[]): string {
+  const spent = tasks.flatMap((t) => (t.spend == null ? [] : [t.spend]));
   // Nothing measured yet, only runs that started: no line, never a measured-looking zero.
   if (!spent.some((s) => s.inputTokens !== null || s.outputTokens !== null || s.costUsd != null)) return "";
   const tokens = spent.reduce((sum, s) => sum + (s.inputTokens ?? 0) + (s.outputTokens ?? 0), 0);

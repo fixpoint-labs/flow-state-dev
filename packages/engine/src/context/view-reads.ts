@@ -99,7 +99,9 @@ const SESSION_KINDS: readonly ChangeKind[] = ["items", "request", "run", "state"
 /**
  * The kinds each read of another session, or of the user's sessions, hears.
  * A session's flow and lineage change only when it is deleted or recreated
- * under its id, both of which publish `run` on it. Its requests' statuses
+ * under its id, both of which publish `state` on it (FIX-2773: not `run`,
+ * which every turn starting or ending publishes there, so a board view that
+ * names its conversation would read again on each reply). Its requests' statuses
  * change on a request write, which publishes `request` on it; they vanish
  * with the session, whose delete (and a recreate) publishes `state` on it but
  * leaves its requests in the store. `state`, not `run`: a busy turn's session
@@ -112,7 +114,7 @@ const SESSION_KINDS: readonly ChangeKind[] = ["items", "request", "run", "state"
  * never on a turn starting or finishing, which publishes `run` there.
  */
 const PEER_KINDS: Record<"identity" | "turns" | "sessions" | "suspensions", readonly ChangeKind[]> = {
-  identity: ["run"],
+  identity: ["state"],
   turns: ["request", "state"],
   sessions: ["run"],
   suspensions: ["suspension"]

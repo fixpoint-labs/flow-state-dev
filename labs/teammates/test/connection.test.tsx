@@ -11,9 +11,10 @@
  * it draws the connection screen and reads again until the roster lands.
  */
 import { ClientHttpError } from "@flow-state-dev/client";
-import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/components/App";
+import { codingRow, POPUP_READ, stubServer, TestProvider } from "./stub-server";
 import { useNow } from "../src/lib/use-watch";
 import { createFixtureApp, FixtureProvider, rosterReadsBy } from "./fake-app";
 
@@ -52,11 +53,12 @@ describe("the server going away", () => {
   });
 
   it("greys a running task's dot and stops its pulse in the panel while the feed is stale", async () => {
-    const tasks = [{ filer: "teammates.chief-of-staff", id: "t-1", to: "teammates.researcher", title: "Check the beta numbers", goal: "Check the beta numbers", status: "running" as const, boardStatus: "in_progress" }];
-    const lab = createFixtureApp({ speed: 0.05, tasks });
-    render(<FixtureProvider calls={lab}><App /></FixtureProvider>);
+    const server = stubServer({ board: { "conversation:teammates.chief-of-staff": [codingRow({ id: "t-1", assignee: "teammates.researcher", title: "Check the beta numbers", status: "in_progress" })] } });
+    const lab = createFixtureApp({ speed: 0.05 });
+    render(<TestProvider calls={lab} client={server.client}><App /></TestProvider>);
     const panel = await screen.findByRole("complementary", { name: "Lead's panel" }, FIRST_DRAW);
     const row = () => panel.querySelector<HTMLElement>("[data-task=running]")!;
+    await waitFor(() => expect(row()).not.toBeNull(), POPUP_READ);
     expect(row().className).not.toContain(STALE);
 
     act(() => lab.setConnection("lapsed"));

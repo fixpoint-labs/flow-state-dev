@@ -351,16 +351,17 @@ describe("sessions.read in a user view", () => {
     expect(read.output).toEqual({ flowKind: "desk", state: { workerId: "otto" } });
   });
 
-  it("answers the caller's session and hears its identity on run alone, its state once read", async () => {
+  it("answers the caller's session and hears its identity on state alone (its birth and its delete), never a turn's run", async () => {
     const stores = createInMemoryStores();
     const flow = app();
     await seed(stores, "mine");
     const identity = await view(stores, flow, "identity", { id: "mine" });
     expect(identity.output).toEqual({ flowKind: "desk" });
-    expect(identity.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["run"] }]);
+    // A turn starting or ending publishes `run` on the session, and changes neither its flow nor its lineage.
+    expect(identity.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["state"] }]);
     const withState = await view(stores, flow, "identity", { id: "mine", withState: true });
     expect(withState.output).toEqual({ flowKind: "desk", state: { workerId: "otto" } });
-    expect(withState.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["run", "state"] }]);
+    expect(withState.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["state"] }]);
   });
 
   it("answers nothing for a refused or missing session, heard on the caller's own user topic alone, alike", async () => {

@@ -8,7 +8,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/components/App";
-import type { BoardTask, AppCalls } from "../src/app";
+import type { Client } from "@flow-state-dev/client";
+import { codingRow, stubServer, TestProvider, POPUP_READ } from "./stub-server";
+import type { AppCalls } from "../src/app";
 import { PopupView } from "../src/components/Popups";
 import { createFixtureApp, FixtureProvider, rosterReadsBy } from "./fake-app";
 
@@ -21,23 +23,14 @@ afterEach(() => {
 });
 
 const workers = () => screen.getByRole("navigation", { name: "Workers" });
-const conversation = () => screen.getByRole("main", { name: "Conversation" });
 const workerRow = (name: string) => workers().querySelector<HTMLElement>(`[data-worker="${name}"]`)!;
 const params = () => new URLSearchParams(window.location.search);
 const TASK = "Coding task: Fix the typo in the README's first line";
 
-async function tell(worker: string, text: string) {
-  const box = await screen.findByLabelText(`Message ${worker}`);
-  await act(async () => {
-    fireEvent.change(box, { target: { value: text } });
-    fireEvent.keyDown(box, { key: "Enter" });
-  });
-}
-
-/** The app drawn afresh on the same lab, as a reload draws it: only the address carries over. */
-function reload(adapter: AppCalls) {
+/** The app drawn afresh on the same lab and server, as a reload draws it: only the address carries over. */
+function reload(adapter: AppCalls, client?: Client) {
   cleanup();
-  render(<FixtureProvider calls={adapter}><App /></FixtureProvider>);
+  render(<TestProvider calls={adapter} client={client}><App /></TestProvider>);
 }
 
 /** Back, as the browser does it: the address moves, then `popstate` fires. */
@@ -64,13 +57,20 @@ describe("the page's address", () => {
 
   it("reopens the task popup that was open, after a reload", async () => {
     const adapter = fast();
-    render(<FixtureProvider calls={adapter}><App /></FixtureProvider>);
-    await tell("Lead", "Fix the typo in the README's first line.");
-    fireEvent.click(await within(conversation()).findByRole("button", { name: `${TASK}, on Cursor` }));
-    await screen.findByRole("dialog", { name: TASK });
+    const { client } = stubServer({
+      board: {
+        "conversation:teammates.chief-of-staff": [
+          codingRow({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo in the README's first line", status: "in_progress", detail: { answer: "Fixed the typo.", answerCut: false } }),
+        ],
+      },
+    });
+    render(<TestProvider calls={adapter} client={client}><App /></TestProvider>);
+    const panel = await screen.findByRole("complementary", { name: "Lead's panel" });
+    fireEvent.click(await within(panel).findByRole("button", { name: `${TASK}, on Cursor` }, POPUP_READ));
+    await screen.findByRole("dialog", { name: TASK }, POPUP_READ);
 
-    reload(adapter);
-    const popup = await screen.findByRole("dialog", { name: TASK });
+    reload(adapter, client);
+    const popup = await screen.findByRole("dialog", { name: TASK }, POPUP_READ);
     expect(await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 })).toBeTruthy();
   });
 
@@ -133,14 +133,18 @@ describe("the page's address", () => {
   it("keeps a task popup open when it moves to a task in another conversation and back", async () => {
     // Each conversation's tasks arrive as soon as they are watched, so only a
     // popup that judges one conversation's task by another's rows drops it.
-    const rows: Record<string, BoardTask[]> = {
-      "session-a": [{ id: "task-a", to: "teammates.writer", title: "Draft the notes", goal: "Draft the notes", status: "running", boardStatus: "in_progress" }],
-      "session-b": [{ id: "task-b", to: "teammates.researcher", title: "Look it up", goal: "Look it up", status: "running", boardStatus: "in_progress" }],
-    };
-    const adapter: AppCalls = { ...fast(), watchTasks: (sessionId, onChange) => (onChange(rows[sessionId] ?? []), () => {}) };
+    const { client } = stubServer({
+      board: {
+        "session-a": [codingRow({ id: "task-a", assignee: "teammates.writer", title: "Draft the notes", status: "in_progress" })],
+        "session-b": [codingRow({ id: "task-b", assignee: "teammates.researcher", title: "Look it up", status: "in_progress" })],
+      },
+    });
+    const adapter = fast();
     const missing: string[] = [];
     const draw = (sessionId: string, taskId: string) => (
-      <PopupView adapter={adapter} popup={{ kind: "task", sessionId, taskId }} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} coders={[]} onClose={() => {}} onMissing={() => missing.push(taskId)} />
+      <TestProvider calls={adapter} client={client}>
+        <PopupView adapter={adapter} popup={{ kind: "task", sessionId, taskId }} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} coders={[]} onClose={() => {}} onMissing={() => missing.push(taskId)} />
+      </TestProvider>
     );
     const { rerender } = render(draw("session-a", "task-a"));
     await screen.findByRole("dialog", { name: /draft the notes/i });

@@ -1,8 +1,9 @@
 import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import type { AppContext } from "../../flows/lab-context.mts";
-import type { ConversationEntry, AppCalls } from "../app";
+import { useTasks, type ConversationEntry, type AppCalls } from "../app";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { Look } from "../lib/looks";
 import { displayName, roleOf } from "../lib/roster";
@@ -19,18 +20,22 @@ import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
 import { answerIn, type Popup } from "./Popups";
-import { TaskCard, type TaskLine } from "./TaskCard";
+import { workerOf } from "../lib/task";
+import { TaskCard } from "./TaskCard";
 
 /** A small button in the conversation's header. */
 const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent";
 
 type TaskEntry = Extract<ConversationEntry, { kind: "task" }>;
-const placeholders = new WeakMap<TaskEntry, TaskLine>();
-/** The card a filed task shows until its board row arrives: one object per (reused) entry, so the memoized card skips re-renders. */
-function placeholderOf(entry: TaskEntry, harness: string | undefined): TaskLine {
+const placeholders = new WeakMap<TaskEntry, CodingBoardTask>();
+/**
+ * The card a filed task shows until its board row arrives, as a pending row with what the filing said: one object per
+ * (reused) entry, so the memoized card skips re-renders.
+ */
+function placeholderOf(entry: TaskEntry, harness: string | undefined): CodingBoardTask {
   let task = placeholders.get(entry);
   if (task === undefined) {
-    task = { id: entry.taskId, to: entry.to, title: entry.title, status: "running", ...(harness === undefined ? {} : { harness }) };
+    task = { id: entry.taskId, goal: entry.title, title: entry.title, assignee: entry.to, status: "pending", attempts: 0, asks: [], harness: harness ?? null, review: null, landed: null, error: null, pullRequests: [], runFlow: null, detail: null };
     placeholders.set(entry, task);
   }
   return task;
@@ -108,7 +113,7 @@ export function Conversation({
   const talk = useTalk(worker.id, answered) ?? [];
   const running = view?.running ?? false;
   const pending = pendingFor(worker.id, talk, entries, view?.since);
-  const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
+  const tasks = useTasks(sessionId).value ?? [];
   const status = useStatusLine(adapter, worker.id, sessionId, nameOf, isCoding, stale);
   const [panel, setPanel] = useState<"fire">();
   const delegates = delegatesOf(worker, workers, context);
@@ -154,7 +159,7 @@ export function Conversation({
   // A line is drawn from the filing until the board's row arrives, then from the row, in the same place.
   const taskTile = (entry: TaskEntry) => {
     const task = tasks.find((t) => t.id === entry.taskId) ?? placeholderOf(entry, harnessOf(entry.to));
-    return <TaskCard task={task} nameOf={nameOf} lookOf={lookOf} coding={isCoding(task.to)} onOpen={openTask} />;
+    return <TaskCard task={task} nameOf={nameOf} lookOf={lookOf} coding={isCoding(workerOf(task))} onOpen={openTask} />;
   };
 
   const markAt = mark ? entries.findIndex((e) => e.id === mark.firstVerbatimEntryId) : -1;
