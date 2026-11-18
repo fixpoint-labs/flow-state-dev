@@ -25,7 +25,7 @@ export const readArtifactInputSchema = z.object({
 export const readArtifactOutputSchema = z.object({
   id: z.string(),
   title: z.string(),
-  updatedAt: z.number(),
+  updatedAt: z.union([z.string(), z.number()]),
   extension: z.string().optional(),
   summary: z.string().optional(),
   content: z.string()
@@ -95,7 +95,7 @@ export const writeArtifact = utility.upsertResource({
     return {
       title: input.title,
       ...(ext ? { extension: ext } : {}),
-      updatedAt: Date.now(),
+      updatedAt: new Date().toISOString(),
     };
   },
   content: (input) => input.content,

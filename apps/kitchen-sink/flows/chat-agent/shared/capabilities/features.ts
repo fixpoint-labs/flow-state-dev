@@ -130,7 +130,6 @@ export const bashCap = createBashCapability({
   provider: selectBashProvider(),
   createState: (relativePath) => ({
     title: path.basename(relativePath),
-    updatedAt: Date.now(),
   }),
 });
 

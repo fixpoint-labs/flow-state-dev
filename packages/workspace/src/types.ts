@@ -52,6 +52,19 @@ export type ProjectedEntryState = {
   [key: string]: string;
 };
 
+/**
+ * Fields a mount may add when the projection commits an entry.
+ *
+ * `path`, `hash`, and `updatedAt` belong to the projection. A function that
+ * returns them does not type-check, and a value that arrives anyway is
+ * ignored: the projection's own values are what the collection stores.
+ */
+export type ProjectedEntryExtra = Record<string, unknown> & {
+  path?: never;
+  hash?: never;
+  updatedAt?: never;
+};
+
 /** One collection, projected at one prefix inside the place. */
 export interface Mount {
   /**
@@ -108,13 +121,11 @@ export interface Mount {
    * Extra state to stamp on an entry this projection commits, keyed by the
    * entry's own key.
    *
-   * The projection sets `path`, `hash` and `updatedAt` because it needs them
-   * to do its job. Anything else an application shows about a file — a title,
-   * an author, a timestamp in the shape its UI expects — is the application's
-   * to decide, and it applies last so a mount can override what the
-   * projection chose.
+   * The projection sets `path`, `hash`, and `updatedAt` because it needs them
+   * to do its job, and those values win. Anything else an application shows
+   * about a file — a title, an author — is the application's to add.
    */
-  entryState?: (key: string) => Record<string, unknown>;
+  entryState?: (key: string) => ProjectedEntryExtra;
 }
 
 /**

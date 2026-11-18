@@ -31,7 +31,8 @@ export const artifactStateSchema = z.object({
   title: z.string(),
   summary: z.string().default(""),
   extension: z.string().optional(),
-  updatedAt: z.number()
+  // A number is a row written before the workspace owned this field.
+  updatedAt: z.union([z.string(), z.number()])
 });
 
 type ArtifactState = z.infer<typeof artifactStateSchema>;

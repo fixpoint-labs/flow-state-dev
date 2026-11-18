@@ -11,7 +11,7 @@ import {
 } from "../flows/chat-agent/shared/artifacts";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 
-type ArtifactState = { title: string; summary: string; updatedAt: number };
+type ArtifactState = { title: string; summary: string; updatedAt: string | number };
 
 // Build a minimal flow with the artifacts collection so the execution context
 // creates proper ResourceCollectionRef instances.
