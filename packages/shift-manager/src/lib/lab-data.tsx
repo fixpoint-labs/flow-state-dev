@@ -34,6 +34,12 @@ import { FeedHealthContext, worstFeedState, type ReportFeed } from "./feed-healt
 import { createLabReader, type LabReader, type LabSnapshot } from "./reads";
 import { heard, heardSessionIds, SNAPSHOT_POLL_MS, snapshotPaths, snapshotTopics } from "./snapshot-subscribe";
 
+// FIX-2774 interim: the Inbox, its count, Tasks, the shift summary and a task's asks read the inbox view,
+// but the snapshot still carries its own `asks` and `boards`, read by the roster's workers (`derive.ts`,
+// `Roster.tsx`) and the task route (`task.tsx`); `inbox.ts`'s selectors mirror `derive.ts`'s over the view meanwhile.
+// Until FIX-2775 and FIX-2776 move those screens onto the view and drop the sections, two screens can briefly
+// disagree: an ask can show in the Inbox before it shows beside its worker on the roster, and a run with no conversation shows only there.
+
 /** What a surface reads from the provider. */
 export type LabData = {
   /** Who the Lab is read as, and with what credential. */

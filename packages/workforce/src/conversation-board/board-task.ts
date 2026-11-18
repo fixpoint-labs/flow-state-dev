@@ -49,6 +49,14 @@ export const boardTaskSchema = z.object({
 /** One board task, as {@link boardTaskOf} reads it. */
 export type BoardTask = z.infer<typeof boardTaskSchema>;
 
+/**
+ * Whether a task is finished: completed or cancelled. An errored task is not;
+ * it still needs someone. Shift Manager's DONE column is the same set.
+ */
+export function isFinished(status: string): boolean {
+  return status === "completed" || status === "cancelled";
+}
+
 const text = (value: unknown): string | null => (typeof value === "string" ? value : null);
 const time = (value: unknown): number | null => (typeof value === "number" ? value : null);
 const field = (value: unknown, key: string): unknown =>

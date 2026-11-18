@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import { hearsNotice, type ViewHearing } from "@flow-state-dev/contracts/types/view-hearing";
 import type { WireNotice } from "@flow-state-dev/contracts/types/push-delivery";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import { encodeUserSegment, type FlowInstance } from "@flow-state-dev/core/types";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { bootBoardHost, messageOf, ORG, type BoardHost } from "./conversation-board-harness";
@@ -25,13 +25,13 @@ import { ROSTER_FLOW } from "../src/workers/keys";
 const INBOX = "inbox";
 
 /** The inbox view as `userId` gets it through the HTTP view route: its answer and what it hears. */
-async function inboxOf(h: BoardHost, userId: string) {
+async function inboxOf(h: BoardHost, userId: string, input: { done?: boolean } = {}) {
   const path = [ROSTER_FLOW, "views", INBOX];
   const res = await (await h.router()).POST(
     new Request(`http://localhost/api/flows/${path.join("/")}`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-user": userId },
-      body: JSON.stringify({ userId, input: {} })
+      body: JSON.stringify({ userId, input })
     }),
     { params: { path } }
   );
@@ -263,6 +263,64 @@ describe("the inbox view's boards", () => {
       expect((await inboxOf(h, "alice")).output.tasks).toHaveLength(1);
       await (await h.state.getRuntime()).stores.session.delete(lead);
       expect((await inboxOf(h, "alice")).output.tasks).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("answers no task of another user's, and none filed under another organization, even on the caller's own conversation", async () => {
+    const h = bootBoardHost({ agentAnswer: quiet });
+    try {
+      await seedInventory(h, INVENTORY);
+      // Bob's task, on bob's own conversation.
+      const bobs = await h.conversation("bob", "lead");
+      const filed = await h.act("bob", bobs, "createTask_tasks", { goal: "Bob's brief", assignee: "eng.tasker", held: true });
+      expect(filed.error, messageOf(filed.error)).toBeUndefined();
+      const [bobTask] = await h.rows("bob");
+      // A task in alice's cell for another organization, filed on alice's own live conversation:
+      // only a read of the wrong cell could answer it, since its conversation and partition are hers.
+      const lead = await h.conversation("alice", "lead");
+      const partition = encodeUserSegment(await h.filingOf("alice", lead));
+      const { partition: _bobPartition, ...plant } = bobTask!;
+      const store = (await h.state.getRuntime()).stores.resourceState;
+      await store.set("user", `alice:~org:globex`, `tasks/${partition}/t_globex`, { ...plant, id: "t_globex", goal: "Globex's brief" } as never, "any" as never);
+
+      expect((await inboxOf(h, "alice")).output.tasks).toEqual([]);
+      expect((await inboxOf(h, "bob")).output.tasks.map((task) => task.id)).toEqual([bobTask!.id]);
+      // Control: the same plant in alice's own cell is answered, so the empty list above is the cell, not the plant.
+      await store.set("user", `alice:~org:${ORG}`, `tasks/${partition}/t_globex`, { ...plant, id: "t_globex", goal: "Globex's brief" } as never, "any" as never);
+      expect((await inboxOf(h, "alice")).output.tasks.map((task) => task.id)).toEqual(["t_globex"]);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("what the inbox view reads per run", () => {
+  it("reads no session for a conversation that holds only finished tasks, and answers them only when asked for done ones", async () => {
+    const h = bootBoardHost({ agentAnswer: quiet });
+    try {
+      await seedInventory(h, INVENTORY);
+      const lead = await h.conversation("alice", "lead");
+      const filed = await h.act("alice", lead, "createTask_tasks", { goal: "Shipped", assignee: "eng.tasker", held: true });
+      expect(filed.error, messageOf(filed.error)).toBeUndefined();
+      const [stored] = await h.rows("alice");
+      const { partition, ...task } = stored!;
+      await h.writeRow("alice", decodeURIComponent(partition), { ...task, status: "completed" } as never);
+
+      const sessions = (await h.state.getRuntime()).stores.session;
+      const get = sessions.get.bind(sessions);
+      const reads: string[] = [];
+      sessions.get = (async (key: string, ...rest: unknown[]) => {
+        reads.push(key);
+        return (get as (...args: unknown[]) => unknown)(key, ...rest);
+      }) as typeof sessions.get;
+
+      expect((await inboxOf(h, "alice")).output.tasks).toEqual([]);
+      expect(reads.filter((key) => key.includes(lead)), "a finished task's conversation was read for a view that drops it").toEqual([]);
+      const done = (await inboxOf(h, "alice", { done: true })).output.tasks;
+      expect(done.map((t) => [t.id, t.status])).toEqual([[task.id, "completed"]]);
+      expect(reads.filter((key) => key.includes(lead)).length, "asked for done ones, its board's owner is read").toBeGreaterThan(0);
     } finally {
       await h.dispose();
     }

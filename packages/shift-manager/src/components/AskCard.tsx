@@ -14,6 +14,9 @@
  * A coding run's review is drawn with the registry's review card directly, so
  * it can be handed what the run committed and the judge's verdict, read from
  * the stop's data in the ask's session by harness-manager's browser reader.
+ * Until that read lands the card offers no answer: drawn without the data, a
+ * review offers a plain Accept that lands nothing. A failed read says why, with
+ * Retry.
  */
 import { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -21,6 +24,7 @@ import { SuspensionResolverProvider, type SuspensionResolver } from "@flow-state
 import { reviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { SessionItemsProvider } from "./flow-state/session-items-context";
 import { SuspensionCard } from "./flow-state/suspension-card";
+import { SectionFailure } from "./ui";
 import { ReviewSuspension, takesReviewVerdict } from "./flow-state/review-hold";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { answerOfResolution, sessionOfHold, suspensionOfHold, useInboxAnswer, useReviewData, type InboxAsk } from "../lib/inbox";
@@ -39,7 +43,8 @@ const NO_ITEMS: OutputItem[] = [];
  */
 export function AskCard({ hold, titled = false }: { hold: InboxHold<InboxAsk>; titled?: boolean }) {
   const answer = useInboxAnswer();
-  const data = useReviewData(hold);
+  const review = useReviewData(hold);
+  const data = review.state === "read" ? review.data : undefined;
   const resolve = useMemo<SuspensionResolver>(
     () => async ({ action, data: given }) => {
       await answer(hold, answerOfResolution(hold, action, given));
@@ -60,8 +65,25 @@ export function AskCard({ hold, titled = false }: { hold: InboxHold<InboxAsk>; t
       )}
     </SessionItemsProvider>
   );
+  const ids = { "data-suspension-id": hold.id, "data-session-id": sessionOfHold(hold) ?? undefined };
+  if (review.state === "reading") {
+    return (
+      <div data-testid="ask-card" {...ids}>
+        <p className="text-xs text-muted-foreground" data-testid="ask-review-reading">
+          Reading the review…
+        </p>
+      </div>
+    );
+  }
+  if (review.state === "failed") {
+    return (
+      <div data-testid="ask-card" {...ids}>
+        <SectionFailure what="The review" failure={review.failure} onRetry={review.retry} testId="ask-review-failure" />
+      </div>
+    );
+  }
   return (
-    <div data-testid="ask-card" data-suspension-id={hold.id} data-session-id={sessionOfHold(hold) ?? undefined}>
+    <div data-testid="ask-card" {...ids}>
       {hold.answerable ? (
         <SuspensionResolverProvider resolve={resolve}>{card}</SuspensionResolverProvider>
       ) : (

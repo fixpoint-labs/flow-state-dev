@@ -36,7 +36,8 @@ import { defineWorkstreamReportView } from "../projects/workstream-report-view";
 import { INBOX_VIEW, ROSTER_FLOW, ROSTER_VIEW, SESSION_TURNS_VIEW, WORKER_MESSAGES_VIEW, WORKER_SESSIONS_VIEW, WORKER_USAGE_VIEW, WORKSTREAM_REPORT_VIEW } from "./keys";
 import { defineSessionTurnsView, defineWorkerSessionsView } from "./session-views";
 import { defineRosterView } from "./roster-view";
-import { defineInboxView, INVENTORY_RESOURCE, inventoryWorkers } from "./inbox-view";
+import { defineInboxView } from "./inbox-view";
+import { INVENTORY_RESOURCE, inventoryWorkerEntries } from "../inventory/inventory-resource";
 import { defineWorkerUsageView } from "./worker-usage";
 
 /**
@@ -60,7 +61,7 @@ export function defineWorkerRosterFlow(
       ...installation.resources,
       ...PROJECT_ENTRY_RESOURCES,
       ...workerMessagesResources,
-      [INVENTORY_RESOURCE]: inventoryWorkers,
+      [INVENTORY_RESOURCE]: inventoryWorkerEntries,
       ...((routines?.resources ?? {}) as Record<string, never>)
     },
     ...(routines === undefined ? {} : { schedules: routines.schedules }),

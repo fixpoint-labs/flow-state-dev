@@ -108,6 +108,8 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
     );
   }
   const view = inbox.section.value;
+  // A refresh that failed after a good read: the older list stays, saying it may be out of date and why.
+  const lapsed = inbox.failure !== undefined ? <SectionFailure what="The Inbox's latest read" failure={inbox.failure} onRetry={inbox.refresh} testId="inbox-stale" /> : null;
   const items = view.items;
   const shown = items.filter((item) => matches(filter, item));
   // An older link names a suspension id; it opens the item that holds it.
@@ -138,6 +140,7 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
               counts={Object.fromEntries(FILTERS.map((f) => [f, items.filter((item) => matches(f, item)).length]))}
             />
           </div>
+          {lapsed !== null ? <div className="mx-[18px] mt-3">{lapsed}</div> : null}
         </header>
         {items.length === 0 ? (
           <p className="px-[18px] py-7 text-sm leading-normal text-muted-foreground" data-testid="inbox-empty">

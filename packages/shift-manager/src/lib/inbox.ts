@@ -20,9 +20,10 @@ import { useView } from "@flow-state-dev/react";
 import { createInboxClient, type InboxAnswer, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { inboxViewRef, type InboxSuspensionDetail as InboxAsk, type InboxBoardTask, type InboxViewValue } from "@flow-state-dev/workforce/browser";
 import { isDone } from "./columns";
+import { useReportFeedState } from "./feed-health";
 import { useLab } from "./lab-data";
-import type { Failure, Section } from "./reads";
-import { readSessionItems } from "./run";
+import { describeFailure, type Failure, type Section } from "./reads";
+import { readSessionItems, RunReadError } from "./run";
 
 export type { InboxAsk, InboxBoardTask, InboxViewValue };
 
@@ -40,15 +41,18 @@ type InboxRead = {
   section: Section<InboxViewValue> | undefined;
   /** `true` while the last read failed, though an earlier answer is still drawn. */
   stale: boolean;
+  /** While `stale`, why the latest read failed: the server's reason and status, drawn beside the older answer. */
+  failure: Failure | undefined;
   /** Read the view again now: Retry, R and *as of · refresh*. */
   refresh(): void;
 };
 
 /**
  * The user's inbox view. A failed read with an answer already drawn keeps
- * that answer and says it is `stale`; with none, the section is the failure,
- * the server's reason and status. `enabled: false` reads nothing: the shell
- * reads it only once the Lab let Shift Manager in.
+ * that answer, says it is `stale` and why (`failure`), and tells the page's
+ * connection bar it has lapsed, so an old count never reads as current; with
+ * no answer yet, the section is the failure. `enabled: false` reads nothing:
+ * the shell reads it only once the Lab let Shift Manager in.
  */
 export function useInbox(enabled = true): InboxRead {
   const { client } = useLab();
@@ -57,7 +61,19 @@ export function useInbox(enabled = true): InboxRead {
     () => (value !== undefined ? { ok: true, value } : failure !== undefined ? { ok: false, failure: failure as Failure } : undefined),
     [value, failure],
   );
-  return { section, stale, refresh };
+  const lapsed = value !== undefined && stale && failure !== undefined;
+  useReportFeedState(enabled && value !== undefined ? (lapsed ? "lapsed" : "live") : undefined);
+  return { section, stale, failure: lapsed ? (failure as Failure) : undefined, refresh };
+}
+
+/**
+ * Every task, finished ones too, for Jump to while it is open: `undefined`
+ * until that read lands, or while `enabled` is false (it reads nothing then).
+ */
+export function useInboxTasks(enabled: boolean): readonly InboxBoardTask[] | undefined {
+  const { client } = useLab();
+  const { value } = useView(inboxViewRef, { done: true }, { client, enabled });
+  return value?.tasks;
 }
 
 // BR-15.
@@ -179,30 +195,45 @@ export function useInboxAnswer(): (hold: InboxViewHold | InboxHold<unknown>, ans
   );
 }
 
+/** Where a review's data stands: no read needed, being read, read, or the read failed. */
+export type ReviewData =
+  | { state: "none" }
+  | { state: "reading" }
+  | { state: "read"; data: Record<string, unknown> | undefined }
+  | { state: "failed"; failure: Failure; retry(): void };
+
 /**
- * A review's data (what the run committed and the judge's verdict), which
- * the view's projection never carries: read from the ask's session feed, as
- * the Inbox's detail reads its session. `undefined` until read, for a stop
- * that is no review, and for a run with no conversation.
+ * A review's data (what the run committed, the landing choices offered and the
+ * judge's verdict), which the view's projection never carries: read from the
+ * ask's session feed, as the Inbox's detail reads its session. `none` for a
+ * stop that is no review, and for a run with no conversation, which has no
+ * feed to read. A review is answered only once its data is `read`: answered
+ * without it, the card offers a plain Accept that lands nothing.
  */
-export function useReviewData(hold: InboxViewHold): Record<string, unknown> | undefined {
+export function useReviewData(hold: InboxViewHold): ReviewData {
   const { client } = useLab();
   const sessionId = sessionOfHold(hold);
   const review = hold.ask.kind === "review" && sessionId !== null;
-  const [data, setData] = useState<{ id: string; value: Record<string, unknown> | undefined } | undefined>(undefined);
+  const [attempt, setAttempt] = useState(0);
+  const [read, setRead] = useState<{ id: string; attempt: number; result: ReviewData } | undefined>(undefined);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
   useEffect(() => {
     if (!review) return;
     let live = true;
     readSessionItems(client, sessionId).then(
-      (read) => {
-        const found = read.items.find((item): item is SuspensionItem => item.type === "suspension" && (item as SuspensionItem).suspensionId === hold.id);
-        if (live) setData({ id: hold.id, value: found?.data });
+      (items) => {
+        const found = items.items.find((item): item is SuspensionItem => item.type === "suspension" && (item as SuspensionItem).suspensionId === hold.id);
+        if (live) setRead({ id: hold.id, attempt, result: { state: "read", data: found?.data } });
       },
-      () => undefined,
+      (error: unknown) => {
+        const failure = error instanceof RunReadError ? error.failure : describeFailure(error);
+        if (live) setRead({ id: hold.id, attempt, result: { state: "failed", failure, retry } });
+      },
     );
     return () => {
       live = false;
     };
-  }, [client, review, sessionId, hold.id]);
-  return data?.id === hold.id ? data.value : undefined;
+  }, [client, review, sessionId, hold.id, attempt, retry]);
+  if (!review) return { state: "none" };
+  return read?.id === hold.id && read.attempt === attempt ? read.result : { state: "reading" };
 }

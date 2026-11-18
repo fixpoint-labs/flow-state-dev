@@ -27,7 +27,7 @@ afterEach(() => {
 describe("Inbox draws a coding run's review with the review card", () => {
   it("Accept answers the ask with submit and { verdict: accepted }, and marks its session answered once", async () => {
     render(<AskCard hold={reviewHold(true)} />);
-    expect(screen.getByText("Ready for review")).toBeTruthy();
+    expect(await screen.findByText("Ready for review")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
     await waitFor(() => expect(lab.answers).toHaveLength(1));
     expect(lab.answers).toEqual([{ suspensionId: "susp-1", action: "submit", data: { verdict: "accepted" } }]);
@@ -36,7 +36,7 @@ describe("Inbox draws a coding run's review with the review card", () => {
 
   it("Ask for changes sends the words as a revision", async () => {
     render(<AskCard hold={reviewHold(true)} titled />);
-    fireEvent.change(screen.getByLabelText("What to change"), { target: { value: " Keep the old line. " } });
+    fireEvent.change(await screen.findByLabelText("What to change"), { target: { value: " Keep the old line. " } });
     fireEvent.click(screen.getByRole("button", { name: "Ask for changes" }));
     await waitFor(() => expect(lab.answers).toHaveLength(1));
     expect(lab.answers).toEqual([{ suspensionId: "susp-1", action: "submit", data: { verdict: "revise", words: "Keep the old line." } }]);

@@ -8,15 +8,17 @@
  * It composes pieces that exist, on the server:
  *
  * - the worker flows, read off the inventory and the caller's own roster,
- *   never from input (the view takes none);
+ *   never from input;
  * - the caller's pending asks on those flows, every page of
  *   `sessions.userSuspensions`, heard on the user topic's `suspension` alone;
- * - the whole conversation ledger, every conversation's rows at once, heard on
- *   its resource notices, so a row written from any session re-runs it;
- * - one `sessions.read` per session a suspension sits in or a board is held by, for
- *   its worker, its flow and its board owner's label, heard on that session's
- *   topic alone. Never `sessions.list`, which hears every turn on the user
- *   topic;
+ * - the whole conversation ledger, every conversation's tasks at once, heard on
+ *   its resource notices, so a task written from any session re-runs it. A
+ *   finished task (completed or cancelled) is dropped before anything else is
+ *   read for it, unless the input asks for `done` ones (Jump to, while open);
+ * - one `sessions.read` per session a suspension sits in or a kept task's board
+ *   is held by, each once, for its worker, its flow and its board owner's
+ *   label, heard on that session's topic alone. Never `sessions.list`, which
+ *   hears every turn on the user topic;
  * - orchestration's `inboxItems`, which groups the asks under their tasks.
  *
  * Which asks are listed, and whose they are, is the rule a browser applied
@@ -35,29 +37,23 @@
 import { defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
 import { requireRequestHost, type PeerSessionView, type RequestSessions } from "@flow-state-dev/core/internal";
 import type { BlockContext, BlockDefinition, PendingUserSuspension } from "@flow-state-dev/core/types";
-import { parseBlobRef } from "@flow-state-dev/core/attachments";
-import type { FileContent } from "@flow-state-dev/core/items";
-import { inboxItems, taskActionName, taskHoldSchema, taskView, type InboxItem, type TaskHold, type TaskViewInput } from "@flow-state-dev/orchestration/inbox";
-import { taskSpendViewSchema, withRetiredShapes, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { inboxItems, taskActionName, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { resolveResourceCollection } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
+import { boardTaskOf, boardTaskSchema, isFinished } from "../conversation-board/board-task";
 import { CONVERSATION_LEDGER_ID, conversationLedgerResources } from "../conversation-board/ledger";
 import { filingSessionIdOf, sessionIdOfFiling } from "../conversation-board/filing-session";
-import { defineWorkerInventoryCollection } from "../inventory/collections";
+import { INVENTORY_RESOURCE, inventoryWorkerEntries } from "../inventory/inventory-resource";
 import type { WorkerInstallation } from "./installation";
 import { WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "./keys";
 import { readRosterEntries, rosterResources } from "./roster-view";
 
-/** The most pages of pending asks one run reads: past it the view fails, never a shorter list. */
-const SUSPENSION_PAGES_MAX = 50;
-
 /**
- * The accessor the view reads the organization's worker inventory under, and
- * the one declaration the roster flow declares it with: a block and its flow
- * must name the same one.
+ * The most pages of pending suspensions one run reads: past it the view fails,
+ * never a shorter list. A page is 200, so this is 10,000 waiting at once; it
+ * bounds what each re-run reads.
  */
-export const INVENTORY_RESOURCE = "inventoryWorkers";
-export const inventoryWorkers = defineWorkerInventoryCollection();
+const SUSPENSION_PAGES_MAX = 50;
 
 /** A suspension's detail: the projection the pending-suspensions read answers, and the worker whose run it is. */
 export type InboxSuspensionDetail = Omit<PendingUserSuspension, "sessionId"> & {
@@ -67,134 +63,36 @@ export type InboxSuspensionDetail = Omit<PendingUserSuspension, "sessionId"> & {
   readonly workerId: string | null;
 };
 
-const runLinkSchema = z.object({ sessionId: z.string(), requestId: z.string(), attempt: z.number() });
-
-/** One board row, with the fields a browser reads of it, its board and its board owner's label. */
-const boardTaskSchema = z.object({
-  /** The board's ref: `<sessionId>.tasks`, the conversation that holds it and the collection. */
-  boardRef: z.string(),
-  /** The conversation that holds the board. */
-  ownerSessionId: z.string(),
+/** One board task of the inbox view: the shared board task, and what its board is called. */
+const inboxBoardTaskSchema = boardTaskSchema.extend({
   /** What the board is called on a screen: the workstream the conversation leads, else `@<worker>`, else its id. */
-  owner: z.string(),
-  id: z.string(),
-  /** Never absent: a row filed with none reads its goal here. */
-  title: z.string(),
-  goal: z.string().nullable(),
-  context: z.string().nullable(),
-  attachments: z.array(z.custom<FileContent>((value) => typeof value === "object" && value !== null)),
-  status: z.string(),
-  assignee: z.string().nullable(),
-  priority: z.string().nullable(),
-  labels: z.array(z.string()),
-  deps: z.array(z.string()),
-  /** The run the board linked to the row, or `null`. */
-  run: runLinkSchema.nullable(),
-  error: z.string().nullable(),
-  holds: z.array(z.custom<TaskHold>((value) => typeof value === "object" && value !== null)),
-  steers: z.array(z.object({ id: z.string(), answers: z.string().optional() })),
-  spend: taskSpendViewSchema.nullable(),
-  createdAt: z.number().nullable(),
-  updatedAt: z.number().nullable(),
-  startedAt: z.number().nullable(),
-  completedAt: z.number().nullable()
+  owner: z.string()
 });
 
 const inboxViewSchema = z.object({
-  /** What waits on the user, oldest first: one item per task that holds them, one per ask no task claims. */
+  /** What waits on the user, oldest first: one item per task that holds them, one per suspension no task claims. */
   items: z.array(z.custom<InboxItem<InboxSuspensionDetail>>((value) => typeof value === "object" && value !== null)),
-  /** Every row on the user's conversation boards, in ledger order. */
-  tasks: z.array(boardTaskSchema)
+  /** The tasks on the user's conversation boards, in ledger order: open ones, and finished ones too when `done` asks. */
+  tasks: z.array(inboxBoardTaskSchema)
 });
 
-const inboxViewInputSchema = z.object({}).strict();
+const inboxViewInputSchema = z
+  .object({
+    /** Answer finished tasks too (completed or cancelled). Off by default: only Jump to lists them. */
+    done: z.boolean().optional()
+  })
+  .strict();
 
 /** The inbox view, as {@link defineInboxView} builds it. Import as a type in client code. */
 export type InboxView = ViewDefinition<BlockDefinition<typeof inboxViewInputSchema, typeof inboxViewSchema>, "user">;
 /** What the inbox view answers. */
 export type InboxViewValue = z.infer<typeof inboxViewSchema>;
-/** One board row of the inbox view. */
-export type InboxBoardTask = z.infer<typeof boardTaskSchema>;
+/** One board task of the inbox view. */
+export type InboxBoardTask = z.infer<typeof inboxBoardTaskSchema>;
 
 const text = (value: unknown): string | null => (typeof value === "string" ? value : null);
-const time = (value: unknown): number | null => (typeof value === "number" ? value : null);
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>)[key] : undefined;
-const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []);
-
-/** A row's run link: all three values, or none. */
-function runLinkOf(value: unknown): z.infer<typeof runLinkSchema> | null {
-  const parsed = runLinkSchema.safeParse(value);
-  return parsed.success ? { sessionId: parsed.data.sessionId, requestId: parsed.data.requestId, attempt: parsed.data.attempt } : null;
-}
-
-/** A row's holds, each read against the hold's own shape: one that doesn't parse is none. */
-function holdsOf(value: unknown): TaskHold[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((hold) => {
-    const parsed = taskHoldSchema.safeParse(hold);
-    return parsed.success ? [parsed.data] : [];
-  });
-}
-
-/** A row's steers as the Inbox reads them: each one's id, and the question it answers. */
-function steersOf(value: unknown): Array<{ id: string; answers?: string }> {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((steer) => {
-    const id = text(field(steer, "id"));
-    const answers = text(field(steer, "answers"));
-    return id === null ? [] : [{ id, ...(answers !== null ? { answers } : {}) }];
-  });
-}
-
-/** A row's brief files: each a file part whose `data` is a stored file's reference. */
-function filesOf(value: unknown): FileContent[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((entry): FileContent[] => {
-    const file = entry as Partial<FileContent> | null;
-    if (file?.type !== "file" || typeof file.mediaType !== "string" || typeof file.data !== "string") return [];
-    if (parseBlobRef(file.data) === undefined) return [];
-    return [{ type: "file", mediaType: file.mediaType, data: file.data, ...(typeof file.filename === "string" ? { filename: file.filename } : {}) }];
-  });
-}
-
-/** A row's spend, folded by orchestration's task view; `null` when it has none. */
-function spendOf(boardRef: string, data: unknown): TaskSpendView | null {
-  const spend = field(data, "spend") as TaskViewInput["spend"];
-  if (spend == null) return null;
-  return taskView({ board: boardRef, id: text(field(data, "id")) ?? "", status: text(field(data, "status")) ?? "pending", spend }).spend;
-}
-
-/** A stored ledger row, as a browser reads it, on the board of conversation `owner`. */
-function boardTaskOf(owner: string, ownerLabel: string, taskId: string, stored: unknown): InboxBoardTask {
-  // A row stored `blocked` (orchestration 0.5.0 and earlier) reads as `held`.
-  const data = withRetiredShapes(stored);
-  const boardRef = `${owner}.${CONVERSATION_LEDGER_ID}`;
-  return {
-    boardRef,
-    ownerSessionId: owner,
-    owner: ownerLabel,
-    id: text(field(data, "id")) ?? taskId,
-    title: text(field(data, "title")) ?? text(field(data, "goal")) ?? taskId,
-    goal: text(field(data, "goal")),
-    context: text(field(data, "context")),
-    attachments: filesOf(field(data, "attachments")),
-    status: text(field(data, "status")) ?? "pending",
-    assignee: text(field(data, "assignee")),
-    priority: field(data, "priority") == null ? null : String(field(data, "priority")),
-    labels: strings(field(data, "labels")),
-    deps: strings(field(data, "deps")),
-    run: runLinkOf(field(data, "run")),
-    error: field(data, "error") == null ? null : String(field(data, "error")),
-    holds: holdsOf(field(data, "holds")),
-    steers: steersOf(field(data, "steers")),
-    spend: spendOf(boardRef, data),
-    createdAt: time(field(data, "createdAt")),
-    updatedAt: time(field(data, "updatedAt")),
-    startedAt: time(field(data, "startedAt")),
-    completedAt: time(field(data, "completedAt"))
-  };
-}
 
 /** The request host's session reads: a host that can't read session records refuses by name. */
 function sessionsOf(ctx: BlockContext): RequestSessions {
@@ -209,7 +107,12 @@ async function everyPendingSuspension(sessions: RequestSessions, flowKinds: read
   let page = await sessions.userSuspensions({ flowKinds });
   all.push(...page.suspensions);
   for (let read = 1; page.more; read += 1) {
-    if (read >= SUSPENSION_PAGES_MAX) throw new Error(`The Inbox reads at most ${SUSPENSION_PAGES_MAX} pages of your pending asks, and more are waiting.`);
+    if (read >= SUSPENSION_PAGES_MAX) {
+      throw new Error(
+        `More than ${SUSPENSION_PAGES_MAX} pages of questions and approvals are waiting on you, more than the Inbox lists at once. ` +
+          "Answer or cancel some in their conversations, then press Retry."
+      );
+    }
     page = await sessions.userSuspensions({ flowKinds, ...(page.next !== undefined ? { after: page.next } : {}) });
     all.push(...page.suspensions);
   }
@@ -246,8 +149,8 @@ export function defineInboxView(installation: WorkerInstallation): InboxView {
       name: "workforce-inbox",
       inputSchema: inboxViewInputSchema,
       outputSchema: inboxViewSchema,
-      resources: { ...rosterResources(installation), ...conversationLedgerResources, [INVENTORY_RESOURCE]: inventoryWorkers },
-      execute: async (_input, ctx) => {
+      resources: { ...rosterResources(installation), ...conversationLedgerResources, [INVENTORY_RESOURCE]: inventoryWorkerEntries },
+      execute: async (input, ctx) => {
         const sessions = sessionsOf(ctx);
         const [inventory, roster] = await Promise.all([inventoryOf(ctx), readRosterEntries(ctx, installation)]);
         // The worker flows: the inventory's flows and the caller's own roster flows, read here, never from input.
@@ -259,14 +162,17 @@ export function defineInboxView(installation: WorkerInstallation): InboxView {
         const ledger = resolveResourceCollection(ctx, CONVERSATION_LEDGER_ID);
         const [pending, stored] = await Promise.all([everyPendingSuspension(sessions, flowKinds), ledger === undefined ? [] : ledger.list()]);
 
-        // One read per session a suspension sits in or a board is held by.
+        // Each stored task, mapped once; a finished one is dropped here unless asked for, before any session is read for it.
         const filed = stored.flatMap((entry) => {
           // `tasks/<partition segment>/<task id>`.
           const parts = entry.path.split("/");
           if (parts.length !== 3 || parts[0] !== CONVERSATION_LEDGER_ID) return [];
           const partition = decodeURIComponent(parts[1]!);
-          return [{ partition, holder: sessionIdOfFiling(partition), taskId: parts[2]!, state: entry.state as unknown }];
+          const holder = sessionIdOfFiling(partition);
+          const task = boardTaskOf(`${holder}.${CONVERSATION_LEDGER_ID}`, holder, parts[2]!, entry.state);
+          return input.done === true || !isFinished(task.status) ? [{ partition, holder, task }] : [];
         });
+        // One read per session a suspension sits in or a kept task's board is held by.
         const ids = [...new Set([...pending.flatMap((ask) => (ask.sessionId === undefined ? [] : [ask.sessionId])), ...filed.map((filing) => filing.holder)])];
         const read = await Promise.all(ids.map((id) => sessions.read(id)));
         const found = new Map<string, PeerSessionView>();
@@ -284,7 +190,7 @@ export function defineInboxView(installation: WorkerInstallation): InboxView {
         );
         const tasks = filed
           .filter((filing) => partitions.get(filing.holder) === filing.partition)
-          .map((filing) => boardTaskOf(filing.holder, boardOwnerLabel(filing.holder, found.get(filing.holder)!), filing.taskId, filing.state));
+          .map((filing) => ({ ...filing.task, owner: boardOwnerLabel(filing.holder, found.get(filing.holder)!) }));
 
         // Whose each suspension is: today's rule on its session, or nobody's for a run with no conversation.
         const asks = pending.flatMap((entry): InboxSuspensionDetail[] => {

@@ -35,6 +35,8 @@ export { workerMessagesViewRef } from "./messages/worker-messages-view-ref";
 export type { WorkerMessagesView } from "./messages/worker-messages-view";
 export { inboxViewRef } from "./workers/inbox-view-ref";
 export type { InboxSuspensionDetail, InboxBoardTask, InboxView, InboxViewValue } from "./workers/inbox-view";
+export { boardTaskOf } from "./conversation-board/board-task";
+export type { BoardTask } from "./conversation-board/board-task";
 export { TURN_ACTIONS } from "./workers/turn-actions";
 export {
   deriveWorkerSessionId,

@@ -33,7 +33,7 @@ describe("Inbox's review names the run's commits and the judge's verdict", () =>
   it("control: a stop with no review data names neither", async () => {
     lab = fakeLabClient(undefined);
     render(<AskCard hold={reviewHold(true)} />);
-    expect(screen.getByRole("button", { name: "Accept" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Accept" })).toBeTruthy();
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.queryByText(/commit/)).toBeNull();
     expect(screen.queryByText(/Judge:/)).toBeNull();

@@ -43,7 +43,7 @@ import { Usage } from "./surfaces/Usage";
 import { SessionView } from "./surfaces/SessionView";
 import { isTypingTarget } from "@flow-state-dev/react";
 import { usePanels } from "./lib/panels";
-import { useInbox } from "./lib/inbox";
+import { useInbox, useInboxTasks } from "./lib/inbox";
 
 /**
  * @param devtoolUrl The devtool a task's trace link opens: the one Shift Manager
@@ -67,6 +67,8 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   const route = useRoute();
   // Null is closed; "" opens Jump to, MESSAGE_PREFIX opens it already in message mode.
   const [jumping, setJumping] = useState<string | null>(null);
+  // Jump to lists finished tasks too, so it alone asks the view for them, and only while it is open.
+  const jumpTasks = useInboxTasks(jumping !== null);
   const panels = usePanels(client.userId);
   const { toggleNav, togglePanel } = panels;
   const hasPanel = PANEL_NAMES[route.level] !== undefined;
@@ -87,6 +89,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
       if (e.key === "[") toggleNav();
       else if (e.key === "]" && hasPanel) togglePanel();
       else if (e.key === "r" || e.key === "R") {
+        // Both reads: the inbox view for the Inbox, its count, Tasks and a task's asks; the snapshot for the screens still on it.
         refreshInbox();
         void refresh();
       }
@@ -142,7 +145,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
         ) : (
           levels
         )}
-        {jumping !== null ? <JumpTo snapshot={snapshot} tasks={inbox.section?.ok === true ? inbox.section.value.tasks : undefined} gaps={gaps} client={client} initialQuery={jumping} onClose={() => setJumping(null)} /> : null}
+        {jumping !== null ? <JumpTo snapshot={snapshot} tasks={jumpTasks ?? (inbox.section?.ok === true ? inbox.section.value.tasks : undefined)} gaps={gaps} client={client} initialQuery={jumping} onClose={() => setJumping(null)} /> : null}
       </div>
     </div>
   );
