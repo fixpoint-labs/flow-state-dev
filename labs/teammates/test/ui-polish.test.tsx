@@ -124,7 +124,7 @@ describe("task activity", () => {
     let publish: (steps: SessionStep[]) => void = () => {};
     const task: BoardTask = { id: "task_r", to: "researcher", title: "Find sources", goal: "Find sources", status: "running", boardStatus: "in_progress", runSessionId: "run_r" };
     const adapter = {
-      watchTasks: (_: string, show: (rows: BoardTask[]) => void) => { show([task]); return () => {}; },
+      watchTasks: (_: string, show: (tasks: BoardTask[]) => void) => { show([task]); return () => {}; },
       watchRun: (_: string, show: typeof publish) => { publish = show; show([{ id: "first", kind: "said", text: "Starting research" }]); return () => {}; },
       watchWorking: () => () => {},
       taskActions: () => ({}),
