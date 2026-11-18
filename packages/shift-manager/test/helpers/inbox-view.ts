@@ -39,7 +39,7 @@ export function viewOfSnapshot(snapshot: LabSnapshot | undefined): Section<Inbox
   const tasks = Object.values(loaded.boards).flatMap((board) => (board.ok ? board.value.rows.map((row) => ({ ...row, owner: boardOwnerOf(loaded, row) })) : []));
   const items = loaded.inbox.value.map((item) => ({
     ...item,
-    holds: item.holds.map((hold) => ({ ...hold, ...(hold.detail !== undefined ? { detail: askOf(hold.detail) } : {}) })),
+    holds: item.holds.map(({ detail, ...hold }) => (detail === undefined ? hold : { ...hold, detail: askOf(detail) })),
   }));
   return { ok: true, value: { items, tasks } };
 }
