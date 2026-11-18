@@ -9,7 +9,7 @@
  * Small real windows here; the 20-minute default is graded with a fake clock
  * in `session-turn-deadline.spec.ts`, through the same stop.
  */
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -41,7 +41,7 @@ afterAll(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
-function host(options: { harness: (feeds: HarnessFeeds) => HarnessBlock; idleTimeoutMs: number; runTimeoutMs?: number }) {
+function host(options: { harness: (feeds: HarnessFeeds) => HarnessBlock; idleTimeoutMs?: number; runTimeoutMs?: number }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-silent-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
@@ -55,7 +55,7 @@ function host(options: { harness: (feeds: HarnessFeeds) => HarnessBlock; idleTim
     tenant: undefined,
     phase: { phase: PHASE, buildPrompt: async (run) => `Work on ${run.issue}.`, isDone: async () => true },
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
-    idleTimeoutMs: options.idleTimeoutMs,
+    ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
     ...(options.runTimeoutMs === undefined ? {} : { runTimeoutMs: options.runTimeoutMs }),
     harnessLabel: "the stub harness",
     ownership: { pollMs: 25 },
@@ -118,7 +118,7 @@ function host(options: { harness: (feeds: HarnessFeeds) => HarnessBlock; idleTim
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
   };
-  return { act, until, dispose: () => state.dispose() };
+  return { act, until, taskNow, dispose: () => state.dispose() };
 }
 
 const settled = (task: Task) => task.status === "completed" || task.status === "errored" || task.status === "cancelled";
@@ -153,6 +153,49 @@ describe("a coding run that keeps working is never stopped for how long it has r
       await h.dispose();
     }
   }, 30_000);
+});
+
+// FIX-2794.
+describe("a coding run's default cap on run time", () => {
+  /**
+   * Run a harness that sends an event a minute for five hours, on a fake
+   * clock advanced a minute at a time, until its task settles.
+   */
+  async function fiveHourRun(runTimeoutMs?: number) {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
+    const stub = harnessStub({ steps: Array.from({ length: 300 }, (_, i) => `step ${i + 1}`), stepEveryMs: 60_000 });
+    const h = host({ harness: stub.slot, ...(runTimeoutMs === undefined ? {} : { runTimeoutMs }) });
+    try {
+      await h.act("seed");
+      void h.act("drain");
+      await vi.waitFor(() => expect(stub.runs).toHaveLength(1), { timeout: 15_000 });
+      const startedAt = Date.now();
+      for (let minute = 0; minute < 310; minute += 1) {
+        const now = await h.taskNow();
+        if (now !== undefined && settled(now)) break;
+        await vi.advanceTimersByTimeAsync(60_000);
+      }
+      const ended = await h.until(settled, "the run to end");
+      return { ended, ranFor: Date.now() - startedAt };
+    } finally {
+      vi.useRealTimers();
+      await h.dispose();
+    }
+  }
+
+  it("stops a run still working at 4 hours when the host sets no cap, so a looping run can't spend forever", async () => {
+    const { ended, ranFor } = await fiveHourRun();
+    expect(ended).toMatchObject({ status: "errored", error: "The stub harness ran for 4 hrs, its cap on run time; stopped." });
+    expect(ranFor).toBeGreaterThanOrEqual(4 * 60 * 60_000 - 60_000);
+    expect(ranFor).toBeLessThan(5 * 60 * 60_000);
+  }, 60_000);
+
+  it("lets a run go past 4 hours to its end when the host turns the cap off with runTimeoutMs: 0", async () => {
+    const { ended, ranFor } = await fiveHourRun(0);
+    expect(ended.error).toBeUndefined();
+    expect(ended).toMatchObject({ status: "completed" });
+    expect(ranFor).toBeGreaterThanOrEqual(5 * 60 * 60_000 - 60_000);
+  }, 60_000);
 });
 
 describe("a coding run whose harness goes silent", () => {

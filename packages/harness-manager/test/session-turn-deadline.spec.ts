@@ -147,7 +147,7 @@ describe("a harness session turn's deadline", () => {
   }, 20_000);
 
   // FIX-2794.
-  it("has no wall-clock cap when the host sets none: a harness still sending events at 90 minutes runs to its end", async () => {
+  it("is not stopped for its length short of the cap: a harness still sending events at 90 minutes runs to its end", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
     // One event a minute for an hour and a half: never silent for long, and far past any cap there was.
     const h = host({ steps: { count: 90, everyMs: 60_000 } });
@@ -170,6 +170,54 @@ describe("a harness session turn's deadline", () => {
       await h.dispose();
     }
   }, 30_000);
+
+  // FIX-2794.
+  it("caps a turn at 4 hours when the host sets no cap: a harness still sending events is stopped there, in the cap's words", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
+    // One event a minute for five hours: never silent, so only the default cap can end it early.
+    const h = host({ steps: { count: 300, everyMs: 60_000 } });
+    try {
+      let settled = false;
+      const startedAt = Date.now();
+      const ending = h.turn("s-looping", "do the thing").finally(() => {
+        settled = true;
+      });
+      await vi.waitFor(() => expect(h.stub.runs).toHaveLength(1));
+      for (let minute = 0; minute < 300 && !settled; minute += 1) await vi.advanceTimersByTimeAsync(60_000);
+      const { result, record } = await ending;
+      expect(result.error?.message).toBe("The stub harness ran for 4 hrs, its cap on run time; stopped.");
+      expect(record?.timedOut).toBe(true);
+      expect(record?.stopped).toBe(false);
+      const ranFor = Date.now() - startedAt;
+      expect(ranFor).toBeGreaterThanOrEqual(4 * 60 * 60_000);
+      expect(ranFor).toBeLessThan(5 * 60 * 60_000);
+    } finally {
+      vi.useRealTimers();
+      await h.dispose();
+    }
+  }, 60_000);
+
+  // FIX-2794.
+  it("has no cap when the host turns it off with turnTimeoutMs: 0: a harness still sending events at 5 hours runs to its end", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
+    const h = host({ turnTimeoutMs: 0, steps: { count: 300, everyMs: 60_000 } });
+    try {
+      let settled = false;
+      const startedAt = Date.now();
+      const ending = h.turn("s-uncapped", "do the thing").finally(() => {
+        settled = true;
+      });
+      await vi.waitFor(() => expect(h.stub.runs).toHaveLength(1));
+      for (let minute = 0; minute < 300 && !settled; minute += 1) await vi.advanceTimersByTimeAsync(60_000);
+      const { result, record } = await ending;
+      expect(result.error?.message).toBeUndefined();
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(300 * 60_000);
+      expect(record?.timedOut ?? null).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      await h.dispose();
+    }
+  }, 60_000);
 
   // FIX-2794.
   it("stops a harness that has sent nothing for 20 minutes when the host sets no window, saying so, as a failure and not a stop", async () => {
@@ -211,7 +259,8 @@ describe("a harness session turn's deadline", () => {
   }, 20_000);
 
   it("is refused at build when it is no deadline a timer honours, rather than stopping every turn at once", () => {
-    for (const turnTimeoutMs of [0, -1, Number.NaN, 2 ** 31]) {
+    // `0` is not here: it turns the cap off.
+    for (const turnTimeoutMs of [-1, Number.NaN, 2 ** 31]) {
       expect(() => host({ turnTimeoutMs })).toThrow(/turnTimeoutMs must be a positive whole number/);
     }
     for (const idleTimeoutMs of [0, -1, Number.NaN, 2 ** 31]) {

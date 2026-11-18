@@ -4,8 +4,8 @@
  * gone silent, and, when the host sets one, at a cap on its run time. The
  * step goes on for as long as its harness keeps sending events (`onEvent`),
  * and is stopped once it has sent nothing for the idle window. A run that is
- * still working is never stopped for how long it has run unless the host
- * capped that too; the cap is off by default.
+ * still working is stopped for how long it has run only at the cap: 4 hours
+ * by default, which a host raises, or turns off with `0`.
  *
  * Shared by the manager's coding runs and the session flow's turns, which
  * arm it per step, keyed by request, and read back which stop fired, in the
@@ -14,6 +14,7 @@
 import { formatRunDuration } from "@flow-state-dev/core/harness";
 import type { StepOutcome } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
+import { assertPositiveInt } from "./guards";
 
 /**
  * How long a run may send nothing before it is stopped, when the host names
@@ -21,6 +22,26 @@ import type { BlockContext } from "@flow-state-dev/core/types";
  * test suite, a build) sends nothing until it returns.
  */
 export const DEFAULT_IDLE_TIMEOUT_MS = 20 * 60_000;
+
+/**
+ * The cap on a run's total time when the host names none. Four hours: far
+ * past any run that is making progress, so it only ends one that loops while
+ * still sending events, which the silence window never stops.
+ */
+export const DEFAULT_RUN_CAP_MS = 4 * 60 * 60_000;
+
+/**
+ * A host's cap option as the cap the stops run with: unset is the 4-hour
+ * default, `0` turns the cap off (`undefined`), and anything else must be a
+ * delay a timer honours.
+ *
+ * @throws When the value is neither `0` nor a positive whole number a timer honours.
+ */
+export function resolveRunCap(label: string, value: number | undefined): number | undefined {
+  if (value === undefined) return DEFAULT_RUN_CAP_MS;
+  if (value === 0) return undefined;
+  return assertPositiveInt(label, value);
+}
 
 /** What a run stopped for silence ends with: `No output from Claude Code for 20 mins; stopped.` */
 function idleStopMessage(harness: string, idleTimeoutMs: number): string {

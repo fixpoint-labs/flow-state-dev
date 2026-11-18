@@ -98,8 +98,8 @@
  * event the harness sends (`onEvent`) starts the window again, and a harness
  * that has sent nothing for the whole of it is stopped through the same abort
  * a stop uses, so a harness wedged on a hung tool takes its process down with
- * it. A turn still working is never stopped for how long it has run, unless
- * the host sets a cap on that too (`turnTimeoutMs`, off by default). Either
+ * it. A turn still working is stopped for how long it has run only at the
+ * cap on that (`turnTimeoutMs`, 4 hours by default, `0` for none). Either
  * way the turn ends recorded as `timedOut`, with an error that says which.
  * Time a turn spends waiting on a user's answer about a tool call doesn't
  * count: each harness run the turn resumes starts both again.
@@ -158,7 +158,7 @@ import {
   type CommandCheckOptions,
 } from "./command-check";
 import { assertPositiveInt } from "./guards";
-import { DEFAULT_IDLE_TIMEOUT_MS, runStops, type RunStops } from "./run-stops";
+import { DEFAULT_IDLE_TIMEOUT_MS, resolveRunCap, runStops, type RunStops } from "./run-stops";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import {
   MAX_APPROVAL_STEPS,
@@ -527,7 +527,9 @@ export interface HarnessSessionFlowOptions {
    * A cap on how long the harness may run in one turn, in ms, however busy
    * it is: past it, it is stopped and the turn ends timed out. Time a turn
    * waits on a user's answer about a tool call (`approveTools`) doesn't count:
-   * each run it resumes gets the whole of it. Off by default.
+   * each run it resumes gets the whole of it. Default 4 hours, so a harness
+   * that loops while still sending events can't run forever; `0` turns the
+   * cap off.
    */
   readonly turnTimeoutMs?: number;
   // FIX-2794.
@@ -841,7 +843,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   const deadlines = runStops(
     assertPositiveInt("harnessSessionFlow's idleTimeoutMs", options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS),
     options.harnessLabel,
-    options.turnTimeoutMs === undefined ? undefined : assertPositiveInt("harnessSessionFlow's turnTimeoutMs", options.turnTimeoutMs),
+    resolveRunCap("harnessSessionFlow's turnTimeoutMs", options.turnTimeoutMs),
   );
   const sessionFeeds = harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse, attachedHeads);
   // One working directory per turn, by request id: the turn's brief and its harness both ask

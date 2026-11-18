@@ -117,7 +117,7 @@ import {
 } from "@flow-state-dev/workspace";
 import { NETWORK_CALL_TIMEOUT_MS } from "./timeouts";
 import { MAX_TIMER_MS, assertPositiveInt } from "./guards";
-import { DEFAULT_IDLE_TIMEOUT_MS, runStops } from "./run-stops";
+import { DEFAULT_IDLE_TIMEOUT_MS, resolveRunCap, runStops } from "./run-stops";
 import {
   RUNS,
   assertPlaceAndHeld,
@@ -703,7 +703,9 @@ export interface ManagerOptions {
   idleTimeoutMs?: number;
   /**
    * A cap on the harness run's wall-clock time, in ms, however busy it is.
-   * Off by default: a working run goes on until it ends or goes silent.
+   * Default 4 hours, so a run that loops while still sending events can't
+   * spend forever; `0` turns the cap off, and a working run then goes on
+   * until it ends or goes silent.
    */
   runTimeoutMs?: number;
   /**
@@ -1561,11 +1563,11 @@ function managerState(state: ManagerState | undefined): ManagerState {
  *    working, not stuck, and cancelling it is the same defect.
  * 2. the provisioning budget — one deadline for all of git, see
  *    `WorkspaceConfig.provisionTimeoutMs`.
- * 3. `runTimeoutMs` — the agent. A run capped on time is waited out to its
- *    cap. One with no cap (the default) has no length to wait out: it runs
- *    for as long as it keeps sending events, so the host names how long a
- *    shutdown gives it before cancelling it (`codingDrainBudgetMs` gives it
- *    20 minutes). A shutdown can promise a run that much, not its end.
+ * 3. `runTimeoutMs` — the agent. A run capped on time by its host is waited
+ *    out to its cap. The default cap (4 hours) and no cap (`0`) are not a
+ *    length a shutdown should wait out, so the host names how long a
+ *    shutdown gives the run before cancelling it (`codingDrainBudgetMs` gives
+ *    it 20 minutes). A shutdown can promise a run that much, not its end.
  * 4. the network calls after the agent: the completion check, the prompt
  *    builder, and the branch check for the run's pull requests
  *    (`checkBranchPullRequests`), each bounded by `NETWORK_CALL_TIMEOUT_MS`.
@@ -2013,10 +2015,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // Checked here, before anything is claimed: a timer handed a bad number
   // fails the claimed attempt instead (`assertPositiveInt`).
   const idleTimeoutMs = assertPositiveInt("harnessManager's idleTimeoutMs", options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS);
-  if (runTimeoutMs !== undefined) assertPositiveInt("harnessManager's runTimeoutMs", runTimeoutMs);
+  const runCapMs = resolveRunCap("harnessManager's runTimeoutMs", runTimeoutMs);
 
   // **The run's term is its silence window, not its length.** A run has no
-  // length bound any more (`runTimeoutMs` is an optional cap), so its hold on
+  // length bound short of its cap (4 hours by default, or none), so its hold on
   // the checkout can't be priced by one. What can be: every event the harness
   // sends marks the lock live (`onEvent`), and a run silent for the window is
   // stopped. So the longest a live run's lock goes UNREFRESHED is the window
@@ -3523,7 +3525,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 
   // FIX-2794.
   /** Each running step's stops (silence, and the cap when set), and when its checkout lock was last marked live, by request. */
-  const harnessStops = runStops(idleTimeoutMs, harnessLabel, runTimeoutMs);
+  const harnessStops = runStops(idleTimeoutMs, harnessLabel, runCapMs);
   const lockRefreshedAt = new Map<string, number>();
 
   // BP-031.
