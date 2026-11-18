@@ -28,7 +28,7 @@ import { askMidway } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver, mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "../src/agent-worker-flow";
-import { delegateKey } from "../src/delegates/delegate-list";
+import { isStartable, sessionKeyOf } from "../src/conversation-board/board";
 import { conversationLedgerAt, conversationLedgerResources } from "../src/conversation-board/ledger";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
@@ -90,29 +90,10 @@ const doorInput = z.object({ message: z.string() });
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * The session a row runs in, as the board's one-open-task rule keys it
- * (`conversation-board/board.ts` `sessionKeyOf`). A copy, so this harness
- * can see a row the board would start without exporting that function.
- */
-function sessionKeyOf(task: Pick<Task, "id" | "assignee" | "followUpOf" | "session" | "targetSessionId">): string | undefined {
-  if (task.assignee === undefined) return undefined;
-  if (task.session === "ongoing") {
-    return task.targetSessionId !== undefined ? `id:${task.targetSessionId}` : `delegate:${delegateKey({ worker: task.assignee })}`;
-  }
-  return `task:${JSON.stringify([task.followUpOf ?? task.id, task.assignee])}`;
-}
-
-/** Whether the row holds its session: started and unfinished. A retry waiting to run again does not. */
-function holdsSession(task: Task): boolean {
-  const started = task.startedAt != null || task.attempts > 0;
-  return !isTerminalStatus(task.status) && task.status !== "held" && task.retryPending !== true && started;
-}
-
-/**
- * A pending row the board will start because a finished row on its session
- * released it. A startable row with no finished sibling was never handed to
- * the dispatcher (a wake that was lost, a row written straight into the
- * store), and `settled` must not wait for that one.
+ * A pending task the board will start because a finished task on its session
+ * released it. A startable task with no finished sibling was never handed to
+ * the dispatcher (a wake that was lost, written straight into the store),
+ * and `settled` must not wait for that one.
  */
 function awaitsReleasedSession(tasks: readonly (Task & { partition: string })[]): boolean {
   const byPartition = new Map<string, (Task & { partition: string })[]>();
@@ -125,11 +106,9 @@ function awaitsReleasedSession(tasks: readonly (Task & { partition: string })[])
   for (const group of byPartition.values()) {
     const lookup = (id: string): Task | undefined => group.find((stored) => stored.id === id);
     for (const task of group) {
-      if (task.status !== "pending" || !isClaimable(task, lookup, now)) continue;
+      if (task.status !== "pending" || !isClaimable(task, lookup, now) || !isStartable(task, group)) continue;
       const key = sessionKeyOf(task);
       if (key === undefined) continue;
-      const blocked = group.some((other) => other.id !== task.id && holdsSession(other) && sessionKeyOf(other) === key);
-      if (blocked) continue;
       if (group.some((other) => other.id !== task.id && isTerminalStatus(other.status) && sessionKeyOf(other) === key)) return true;
     }
   }
@@ -474,28 +453,34 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     })) as { output?: any; error?: { message?: string } | unknown; status?: string; requestId?: string };
   };
 
-  /** Every stored task on every session's board, by the partition it is filed in. */
+  /** Tasks stored for one user, by the partition each is filed in. */
+  const tasksUnder = async (userId: string, orgId: string): Promise<Array<Task & { partition: string }>> => {
+    const runtime = await state.getRuntime();
+    const entries = await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${orgId}`, "tasks/");
+    return Object.entries(entries).map(([key, value]) => ({
+      ...(value.state as Task),
+      partition: key.split("/")[1]!
+    }));
+  };
+
+  /** Every stored task on every session's board. */
   const storedTasks = async (): Promise<Array<Task & { partition: string }>> => {
     const runtime = await state.getRuntime();
     const seen = new Set<string>();
     const out: Array<Task & { partition: string }> = [];
     for (const session of await runtime.stores.session.list()) {
-      const scope = `${session.userId}:~org:${session.orgId ?? ORG}`;
+      const orgId = session.orgId ?? ORG;
+      const scope = `${session.userId}\0${orgId}`;
       if (seen.has(scope)) continue;
       seen.add(scope);
-      const entries = await runtime.stores.resourceState.getByPrefix("user", scope, "tasks/");
-      for (const [key, value] of Object.entries(entries)) {
-        const stored = (value as { state?: Task }).state;
-        if (stored == null || typeof stored.id !== "string" || typeof stored.status !== "string") continue;
-        out.push({ ...stored, partition: key.split("/")[1]! });
-      }
+      out.push(...(await tasksUnder(session.userId, orgId)));
     }
     return out;
   };
 
   /**
    * Every request in the store, once none is still running and no pending
-   * row is waiting on a session a finished row released. That row is the
+   * task is waiting on a session a finished task released. That task is the
    * dispatcher's to start, and the request for it may not be written yet.
    */
   const settled = async (timeoutMs = 10_000) => {
@@ -505,41 +490,31 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     // have run, and a task is settled by that check.
     const running = (r: { status: string; finalizedAtMs?: number | null }) =>
       r.status === "in_progress" || (r.status !== "suspended" && r.status !== "pending" && r.finalizedAtMs == null);
-    let waitingOnReleasedSession = false;
+    /** Requests, and whether a released session still owes a start. One read of each. */
+    const quiet = async () => {
+      const all = await (await state.getRuntime()).stores.request.list({});
+      const busy = all.some(running);
+      return { all, pending: busy ? false : await awaitsReleasedSession(await storedTasks()) };
+    };
     for (;;) {
-      const runtime = await state.getRuntime();
-      const all = await runtime.stores.request.list({});
-      waitingOnReleasedSession = false;
-      if (!all.some(running)) {
-        waitingOnReleasedSession = awaitsReleasedSession(await storedTasks());
-        if (!waitingOnReleasedSession) {
-          // Read again after a beat: a dispatch accepted just now may not have
-          // written its request yet.
-          await sleep(20);
-          const again = await runtime.stores.request.list({});
-          const stillWaiting = awaitsReleasedSession(await storedTasks());
-          if (!again.some(running) && !stillWaiting && again.length === all.length) return again;
-          continue;
-        }
-      }
-      if (Date.now() > deadline) {
+      const first = await quiet();
+      if (!first.all.some(running) && !first.pending) {
+        // Read again after a beat: a dispatch accepted just now may not have
+        // written its request yet.
+        await sleep(20);
+        const again = await quiet();
+        if (!again.all.some(running) && !again.pending && again.all.length === first.all.length) return again.all;
+      } else if (Date.now() > deadline) {
         throw new Error(
-          waitingOnReleasedSession ? "a task waiting on a released session was never dispatched" : "a request never finished"
+          first.pending ? "a task waiting on a released session was never dispatched" : "a request never finished"
         );
       }
       await sleep(10);
     }
   };
 
-  /** Every row of `userId`'s conversation ledger, by partition: read from the store, not through the board. */
-  const rows = async (userId: string): Promise<Array<Task & { partition: string }>> => {
-    const runtime = await state.getRuntime();
-    const entries = await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${ORG}`, "tasks/");
-    return Object.entries(entries).map(([key, value]) => ({
-      ...(value.state as Task),
-      partition: key.split("/")[1]!
-    }));
-  };
+  /** Every task of `userId`'s conversation ledger, by partition: read from the store, not through the board. */
+  const rows = async (userId: string) => tasksUnder(userId, ORG);
 
   /** One row, by the partition it was filed in. */
   const row = async (userId: string, partition: string, taskId: string) =>
