@@ -121,6 +121,5 @@ export const { bashCommand, bashReadFile, bashWriteFile } = createBashBlocks({
   provider: selectBashProvider(),
   createState: (relativePath) => ({
     title: path.basename(relativePath),
-    updatedAt: Date.now(),
   }),
 });

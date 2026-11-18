@@ -14,7 +14,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { traceHref } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
 import { Spend } from "../components/flow-state/spend";
-import { asksOfTask, inboxItemIdOf, rosterOf, workerFor, workerLabel, waited, type LoadedSnapshot } from "../lib/derive";
+import { rosterOf, workerFor, workerLabel, waited, type LoadedSnapshot } from "../lib/derive";
+import { askWord, itemIdHolding, taskAsks, useInbox } from "../lib/inbox";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, GENERAL_TEAM, type Failure } from "../lib/reads";
 import type { Route } from "../lib/routes";
@@ -49,8 +50,10 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
   const missingAfter = row === undefined ? [] : row.deps.filter((id) => !task.boardRows.some((r) => r.id === id));
   const blocks = row === undefined ? [] : task.boardRows.filter((r) => r.deps.includes(row.id));
   const taskAt = (id: string): Route => ({ level: "task", boardRef: task.boardRef, taskId: id, tab: "session" });
-  // The oldest ask this task's run waits on: the snapshot holds them oldest first.
-  const ask = asksOfTask(snapshot, row)[0];
+  // D2: the oldest ask this task's run waits on, from its Inbox item, which holds them oldest first.
+  const inbox = useInbox().section;
+  const items = inbox?.ok === true ? inbox.value.items : [];
+  const ask = taskAsks(items, row)[0];
 
   return (
     <div data-testid="task-panel-slot">
@@ -71,13 +74,13 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
         {ask === undefined ? null : (
           <div className="px-4 pt-3.5">
             <RouteLink
-              to={{ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) }}
+              to={{ level: "inbox", item: itemIdHolding(items, ask.id) }}
               className="flex w-full justify-between border border-foreground bg-attention px-2.5 py-2 text-left font-mono text-xs font-medium text-attention-foreground"
               data-testid="inspector-needs"
-              data-suspension-id={ask.item.suspensionId}
+              data-suspension-id={ask.id}
             >
               <span>
-                {ask.kind} waiting {waited(ask.since, Date.now())}
+                {askWord(ask)} waiting {waited(ask.openedAt, Date.now())}
               </span>
               <span>inbox ↗</span>
             </RouteLink>

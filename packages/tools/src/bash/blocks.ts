@@ -50,7 +50,7 @@ import {
   principalFromContext,
   scopeComponents,
 } from "@flow-state-dev/workspace";
-import type { Projection, ScopePrincipal } from "@flow-state-dev/workspace";
+import type { ProjectedEntryExtra, Projection, ScopePrincipal } from "@flow-state-dev/workspace";
 import { createHash } from "node:crypto";
 import { KEEP_MARKER, isScratch } from "./sandbox-place";
 import {
@@ -111,9 +111,10 @@ export interface CreateBashBlocksOptions {
    * Extra resource state to stamp on each file written back to a collection.
    * Receives the workspace-relative path (e.g. `artifacts/notes.md`).
    *
-   * Default: `() => ({})` — relies on schema defaults.
+   * The workspace sets `path`, `hash`, and `updatedAt`. A value returned
+   * for one of those keys is ignored. Default: `() => ({})`.
    */
-  createState?: (relativePath: string) => Partial<JsonObject>;
+  createState?: (relativePath: string) => ProjectedEntryExtra;
 }
 
 // ---------------------------------------------------------------------------
@@ -719,7 +720,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     exclude,
     provider = { type: "local" },
     destination = defaultDestinationFor(options.provider),
-    createState = () => ({}) as Partial<JsonObject>,
+    createState = () => ({}),
   } = options;
 
   assertScopeIsAchievable(provider);

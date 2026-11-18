@@ -16,7 +16,7 @@ export const artifactListContext = async (_input: unknown, ctx: any) => {
   const artifacts = ctx.resources.artifacts as ResourceCollectionRef<{
     title: string;
     summary: string;
-    updatedAt: number;
+    updatedAt: string;
   }>;
   const instances = await artifacts.list();
   if (instances.length === 0) {

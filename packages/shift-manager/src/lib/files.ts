@@ -9,7 +9,6 @@
  * line goes to.
  */
 import type { FileContent } from "@flow-state-dev/core/items";
-import { parseBlobRef } from "@flow-state-dev/core/attachments";
 import { readConnection } from "./connection";
 import { withBearerToken } from "@flow-state-dev/devtool/react";
 import type { AttachmentUploader } from "../components/flow-state/attachments";
@@ -40,15 +39,4 @@ export function flowUploader(
 ): AttachmentUploader | null {
   if (flowId === null || flowId === undefined) return null;
   return { upload: (request) => client.flow(flowId).upload(request) };
-}
-
-/** The stored files a row's field holds, in order: each a file part whose `data` is a stored file's reference. Anything else is left out. */
-export function storedFiles(value: unknown): FileContent[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((entry): FileContent[] => {
-    const file = entry as Partial<FileContent> | null;
-    if (file?.type !== "file" || typeof file.mediaType !== "string" || typeof file.data !== "string") return [];
-    if (parseBlobRef(file.data) === undefined) return [];
-    return [{ type: "file", mediaType: file.mediaType, data: file.data, ...(typeof file.filename === "string" ? { filename: file.filename } : {}) }];
-  });
 }

@@ -51,6 +51,12 @@ vi.mock("../src/lib/connection", async () => {
 });
 const workforce = { watchRoster: () => () => {} };
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
+// FIX-2774: the summary's needs-you numbers read the inbox view, whose own subscription isn't this test's.
+vi.mock("../src/lib/inbox", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/lib/inbox")>();
+  const { viewOfSnapshot } = await import("./helpers/inbox-view");
+  return { ...real, useInbox: () => ({ section: viewOfSnapshot(snapshotOf()), stale: false, refresh: () => {} }) };
+});
 
 let sessions: SessionSummary[] = [];
 let readAt = Date.UTC(2026, 10, 4, 14, 2);

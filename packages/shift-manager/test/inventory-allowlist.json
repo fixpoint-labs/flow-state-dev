@@ -4,7 +4,6 @@
   {"file":"src/lib/action.ts","symbol":"runAction","kind":"flow call"},
   {"file":"src/lib/ask-session.ts","symbol":"compareItemOrder","kind":"client import"},
   {"file":"src/lib/files.ts","symbol":"flowUploader","kind":"flow call"},
-  {"file":"src/lib/lab-data.tsx","symbol":"settled","kind":"flow call"},
   {"file":"src/lib/messages.ts","symbol":"topic","kind":"client import"},
   {"file":"src/lib/projects.ts","symbol":"topic","kind":"client import"},
   {"file":"src/lib/projects.ts","symbol":"viewRef","kind":"client import"},

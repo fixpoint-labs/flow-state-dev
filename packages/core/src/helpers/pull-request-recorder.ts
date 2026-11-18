@@ -42,6 +42,7 @@ import {
   observedPullRequestsCollection,
   writePullRequests,
   type PullRequestCollection,
+  type FollowingRun,
   type PullRequestFollower,
   type PullRequestRecordedCallback,
   type PullRequestRule,
@@ -125,15 +126,15 @@ const followed = new WeakSet<object>();
  * called. A host calls it before the harness runs (a coding task's step) and
  * before its own writes, so a pull request any writer in the request records
  * reaches it, mid-turn. What the follower throws is a status note, never a
- * failed write.
+ * failed write. `run` is handed to the follower with each pull request.
  */
-export function followRecordedPullRequests(ctx: BlockContext, follower: PullRequestFollower | undefined): void {
+export function followRecordedPullRequests(ctx: BlockContext, follower: PullRequestFollower | undefined, run?: FollowingRun): void {
   const response = ctx.response as unknown;
   if (follower === undefined || typeof response !== "object" || response === null || followed.has(response)) return;
   followed.add(response);
   const follow = async (pr: Parameters<PullRequestRecordedCallback>[0]): Promise<void> => {
     try {
-      await follower(ctx, pr);
+      await follower(ctx, pr, run);
     } catch (err) {
       note(ctx, `The pull request ${pr.url} is not being followed: ${err instanceof Error ? err.message : String(err)}`);
     }
