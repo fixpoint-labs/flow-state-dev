@@ -7,6 +7,7 @@
  * canonical `{ GET, POST, PATCH, DELETE }` dispatcher. The public API
  * shape and behavior is unchanged for callers that don't pass `adapters`.
  */
+import { attachNetworkAuthState } from "./network-auth";
 import { attachPushState } from "../push/push-delivery";
 import { attachHostDiskState } from "../blobs/host-disk";
 import type {
@@ -786,6 +787,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   attachPushState(router, handlers.push);
   // Whether its host keeps its disk (FIX-824), for a host adapter to declare.
   attachHostDiskState(router, handlers.hostDisk);
+  attachNetworkAuthState(router, options.registry, options.resolvePrincipal);
   return router;
 }
 

@@ -95,7 +95,7 @@ afterEach(async () => {
 });
 
 async function start(...args: Parameters<typeof serve>): Promise<ServeHandle> {
-  const handle = await serve(...args);
+  const handle = await serve(args[0], { host: "127.0.0.1", ...args[1] });
   handles.push(handle);
   return handle;
 }
@@ -208,7 +208,7 @@ describe("serve — FlowState lifecycle", () => {
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: adapter } },
     });
-    const handle = await serve(fs, { port: 0 });
+    const handle = await serve(fs, { host: "127.0.0.1", port: 0 });
     await fs.ready();
 
     await handle.close();
@@ -225,7 +225,7 @@ describe("serve — FlowState lifecycle", () => {
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: adapter } },
     });
-    const handle = await serve(fs, { port: 0, disposeOnClose: false });
+    const handle = await serve(fs, { host: "127.0.0.1", port: 0, disposeOnClose: false });
     await fs.ready();
 
     await handle.close();

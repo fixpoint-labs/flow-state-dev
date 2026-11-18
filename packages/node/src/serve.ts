@@ -43,7 +43,7 @@ import {
 import { type FlowState } from "@flow-state-dev/engine";
 import { createServerApp } from "./app";
 import { createPageHtmlTransform } from "./page-html";
-import { isLoopbackHost } from "./bind-guard";
+import { assertNetworkBindIsAuthenticated, isLoopbackHost } from "./bind-guard";
 
 /** Options for {@link serve}. All have sensible defaults for PaaS hosting. */
 export interface ServeOptions {
@@ -51,6 +51,8 @@ export interface ServeOptions {
   port?: number;
   /** Host to bind. Default `"0.0.0.0"` (required for most PaaS). */
   host?: string;
+  /** Explicitly permit default-resolver flows on a network interface. */
+  allowUnauthenticated?: boolean;
   /** API mount prefix. Default `"/api/flows"` (matches `createFlowApiRouter`). */
   basePath?: string;
   /** Health endpoint path. Default `"/healthz"`. 200 once ready, 503 before. */
@@ -174,17 +176,19 @@ function resolvePort(port: number | undefined): number {
 /**
  * Stand up a long-lived HTTP server for `app` and resolve once it is listening.
  *
- * The server binds immediately and serves `/healthz` (503 until the router's
+ * Network binds await the authentication guard before listening. Loopback binds
+ * and explicit opt-outs bind immediately and serve `/healthz` (503 until the router's
  * stores finish initializing, 200 after), so PaaS health checks pass during a
  * cold start. Pass a `FlowState` to have `close()` dispose its stores; pass a
  * raw `FlowApiRouter` to manage store lifecycle yourself.
  */
-export function serve(
+export async function serve(
   app: FlowState | FlowApiRouter,
   options: ServeOptions = {},
 ): Promise<ServeHandle> {
   const port = resolvePort(options.port);
   const host = options.host ?? DEFAULT_HOST;
+  await assertNetworkBindIsAuthenticated(app, { host, allowUnauthenticated: options.allowUnauthenticated });
   const staticDir = options.staticDir;
   const shutdownGraceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
   const handleSignals = options.handleSignals ?? true;

@@ -120,7 +120,7 @@ for a worked example.
 
 ## Network-bind authentication guard
 
-`assertNetworkBindIsAuthenticated(app, { host, allowUnauthenticated? })` refuses a
+`serve(app, { host, allowUnauthenticated? })` runs the authentication guard before listening and refuses a
 network bind when any served flow runs on the framework default (unauthenticated)
 principal resolver — exposing it on a network interface would leave it open to
 anyone who can reach the port. It throws for a non-loopback `host` unless
@@ -132,21 +132,19 @@ satisfies it has its whole `/api/flows` surface protected — session, state,
 resource, and request-control routes included — not just its action routes.
 
 ```ts
-import { serve, assertNetworkBindIsAuthenticated } from "@flow-state-dev/node";
+import { serve } from "@flow-state-dev/node";
 import flowstate from "./fsdev.config";
 
 const host = process.env.HOST ?? "0.0.0.0";
 
-// Await the guard before serving — it rejects for a network host with an
-// unauthenticated flow, so serving must not proceed until it resolves.
-await assertNetworkBindIsAuthenticated(flowstate, { host });
+// serve rejects before listening if a flow has no authentication.
 await serve(flowstate, { host });
 ```
 
-`fsdev serve` runs this before it binds. Call it yourself from a hand-written
-entrypoint that adds custom middleware, so a network deploy fails closed the same
-way. It resolves the runtime (`getRuntime()`) to inspect each flow's
-authentication, so on a non-loopback host store initialization happens before the
+`fsdev serve` and `fsdev dev` pass their override to `serve()`. Hand-written
+entrypoints using `serve()` receive the same check automatically. The guard
+resolves the router (`getRouter()`) to read the resolver each flow gets (its own,
+else the host-level `resolvePrincipal`), so on a non-loopback host store initialization happens before the
 port binds — a deliberate fail-fast if the app is misconfigured at boot.
 
 ## Health checks and PaaS deployment
@@ -166,6 +164,7 @@ durable background work). See the deployment guides for the full topology:
 | --- | --- | --- |
 | `port` | `process.env.PORT` then `3000` | Port to bind. |
 | `host` | `"0.0.0.0"` | Host to bind. Keep `0.0.0.0` on a PaaS. |
+| `allowUnauthenticated` | `false` | Explicitly permit default-resolver flows on a network bind. |
 | `basePath` | `"/api/flows"` | Where the flow API is mounted. A custom value replaces `/api/flows`, so the API answers at `<basePath>/…`. Clients pass the same value as `apiPath` (`createClient({ apiPath })`, `<FlowProvider apiPath>`). |
 | `healthPath` | `"/healthz"` | Health endpoint. `200` once ready, `503` before. |
 | `staticDir` | — | Directory served for non-API routes, with `index.html` SPA fallback. |

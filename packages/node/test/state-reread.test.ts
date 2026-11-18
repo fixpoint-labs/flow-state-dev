@@ -49,7 +49,7 @@ describe("a failed request, read back without its items", () => {
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
     });
-    handle = await serve(flowState, { port: 0, handleSignals: false, disposeOnClose: false, shutdownGraceMs: 0 });
+    handle = await serve(flowState, { port: 0, host: "127.0.0.1", handleSignals: false, disposeOnClose: false, shutdownGraceMs: 0 });
     await flowState.ready();
     const client = createClient({ userId: "alice", baseUrl: `http://127.0.0.1:${handle.port}` });
     await client.flow("records").createSession({ sessionId: "s1" });

@@ -23,6 +23,8 @@ export type VercelHandlerInput =
  * Configuration options for `createVercelHandler`.
  */
 export type VercelHandlerOptions = {
+  /** Explicitly permit default-resolver flows in production. */
+  allowUnauthenticated?: boolean;
   /**
    * Callback invoked when a client disconnects and the request signal aborts.
    * Useful for logging or cleanup.
