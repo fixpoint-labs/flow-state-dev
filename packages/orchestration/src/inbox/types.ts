@@ -15,7 +15,7 @@ export type SuspensionHoldSource = {
   readonly kind: "suspension";
   /** The flow that owns the run's session; `null` when the session names none, which leaves the hold unanswerable. */
   readonly flowId: string | null;
-  /** The session the run is parked in; `null` for a run with no conversation (FIX-2774), answered through its flow alone. */
+  /** The session the run is parked in; `null` for a run with no conversation, answered through its flow alone. */
   readonly sessionId: string | null;
   readonly requestId: string;
   readonly suspensionId: string;
@@ -108,7 +108,7 @@ export type InboxTaskInput = {
 
 /** A suspension for the user a reader found in a session. */
 export type InboxSuspension<TDetail = unknown> = {
-  /** The session the run is parked in; `null` for a run with no conversation (FIX-2774). */
+  /** The session the run is parked in; `null` for a run with no conversation. */
   readonly sessionId: string | null;
   /** The flow that owns the session; `null` when it names none. */
   readonly flowId: string | null;

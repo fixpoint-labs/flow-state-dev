@@ -20,7 +20,7 @@ export { taskItemId };
 /** A suspension for the user, as a session's request listing records it. */
 export type SuspensionTruth = {
   readonly suspensionId: string;
-  /** The session its run is parked in; `null` for a run with no conversation (FIX-2774). */
+  /** The session its run is parked in; `null` for a run with no conversation. */
   readonly sessionId: string | null;
   readonly requestId: string;
   /** Whether its request is a task's run (source `task`): its stop lists from that task. */

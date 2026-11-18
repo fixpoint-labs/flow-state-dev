@@ -1,10 +1,10 @@
-// FIX-2774 D1, D2.
+// FIX-2774 D1, D2; one answer for the count and its list: FIX-1662 PLAN S3.
 /**
  * The Inbox, its count, the Tasks board, the shift summary's needs-you
  * numbers and a task's asks, from one answer: workforce's `inbox` view,
  * built on the server from the pending asks and every board's rows. Every
  * screen that draws one of them reads it here, so a count and its list, and a
- * task's asks and its Inbox item, never disagree (FIX-1662 PLAN S3).
+ * task's asks and its Inbox item, never disagree.
  *
  * The view is kept current by the server: a suspension written or answered
  * and a board row written re-run it, and nothing a streamed reply or a turn
