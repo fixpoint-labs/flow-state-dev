@@ -95,13 +95,13 @@ const STATE_KINDS: Record<RecordedRead["scope"], readonly ChangeKind[]> = {
 /** The kinds a read of the session itself hears: its every change but its resources and boards. */
 const SESSION_KINDS: readonly ChangeKind[] = ["items", "request", "run", "state"];
 
-// FIX-2725 D1.
+// FIX-2725 D1; FIX-2773 moved identity off `run`.
 /**
  * The kinds each read of another session, or of the user's sessions, hears.
  * A session's flow and lineage change only when it is deleted or recreated
- * under its id, both of which publish `state` on it (FIX-2773: not `run`,
- * which every turn starting or ending publishes there, so a board view that
- * names its conversation would read again on each reply). Its requests' statuses
+ * under its id, both of which publish `state` on it (not `run`, which every
+ * turn starting or ending publishes there, so a board view that names its
+ * conversation would read again on each reply). Its requests' statuses
  * change on a request write, which publishes `request` on it; they vanish
  * with the session, whose delete (and a recreate) publishes `state` on it but
  * leaves its requests in the store. `state`, not `run`: a busy turn's session
