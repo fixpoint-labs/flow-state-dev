@@ -272,7 +272,8 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     ...(request.completedAtMs != null ? { completedAtMs: request.completedAtMs } : {}),
     ...(terminalAtMs(request) != null ? { endedAtMs: terminalAtMs(request) } : {}),
     updatedAt: request.updatedAt,
-    ...(request.result?.error != null ? { error: { code: request.result.error.code, message: request.result.error.message } } : {})
+    ...(request.result?.error != null ? { error: { code: request.result.error.code, message: request.result.error.message } } : {}),
+    ...(request.historyStart != null ? { historyStart: { requestId: request.historyStart.requestId } } : {})
   });
 
   async function turns(target: string, query?: SessionTurnsQuery): Promise<SessionTurn[] | undefined>;
