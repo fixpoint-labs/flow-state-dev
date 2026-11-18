@@ -312,6 +312,13 @@ function host(options: {
   /** The run session's pull request record (FIX-2268), as a reader of the session reads it. */
   const pullRequests = async (sessionId: string) =>
     Object.keys(await (await runtime()).stores.resourceState.getByPrefix("session", sessionId, `${OBSERVED_PULL_REQUESTS}/`));
+  // The task's run record: user-scoped, keyed by the run's topic on this board.
+  const recordAt = ["user", `${ALICE}:~org:${ORG_ID}`, `runs/${BOARD_ID}/${ISSUE}/${PHASE}`] as const;
+  /** The task's run record, as the manager left it. */
+  const runRecord = async () => (await (await runtime()).stores.resourceState.get(...recordAt))?.state as Record<string, unknown> | undefined;
+  /** Write the task's run record before it runs, as an earlier turn of the task left it. */
+  const seedRunRecord = async (record: Record<string, unknown>) =>
+    (await runtime()).stores.resourceState.set(...recordAt, { taskId: TASK_ID, ...record } as never, "any");
   /** The message items of the run's session, oldest first, as a screen reads them. */
   const runMessages = async (): Promise<Array<{ role?: string; text: string }>> => {
     const sessionId = (await row()).run!.sessionId;
@@ -347,6 +354,8 @@ function host(options: {
     sourceRepo,
     remote,
     pullRequests,
+    runRecord,
+    seedRunRecord,
     runMessages,
     dispose: () => state.dispose(),
   };
@@ -922,8 +931,6 @@ describe("a run on a branch with a pull request already open from it puts its wo
   let ghLog: string;
   // When set, how many more times `pr list` finds #42 open; then it finds none (closed since).
   let listsLeft: string;
-  // When present, the branch listing a run's end makes finds nothing: #42 is not one this task opened.
-  let notOurs: string;
   const ghCalls = () => (existsSync(ghLog) ? readFileSync(ghLog, "utf8").trim().split("\n") : []);
   const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
@@ -933,7 +940,6 @@ describe("a run on a branch with a pull request already open from it puts its wo
     dirs.push(bin);
     ghLog = join(bin, "calls.log");
     listsLeft = join(bin, "lists-left");
-    notOurs = join(bin, "not-ours");
     writeFileSync(
       join(bin, "gh"),
       `#!/usr/bin/env node
@@ -952,14 +958,12 @@ const out =
     : args[0] === "pr" && args[1] === "create"
       ? "https://github.com/acme/widgets/pull/43\\n"
       : args[0] === "api" && /pulls\\?/.test(args[args.length - 1])
-        ? fs.existsSync(${JSON.stringify(notOurs)})
-          ? "[]"
-          : JSON.stringify([{
-              number: 42, html_url: ${JSON.stringify(PR_URL)}, title: "The run's pull request", state: "open", draft: false, merged: false,
-              created_at: new Date().toISOString(),
-              head: { ref: decodeURIComponent(/head=[^&:]*:?([^&]+)/.exec(args[args.length - 1])?.[1] ?? ""), sha: "0", repo: { full_name: "acme/widgets" } },
-              base: { repo: { full_name: "acme/widgets" } },
-            }])
+        ? JSON.stringify([{
+            number: 42, html_url: ${JSON.stringify(PR_URL)}, title: "The run's pull request", state: "open", draft: false, merged: false,
+            created_at: new Date().toISOString(),
+            head: { ref: decodeURIComponent(/head=[^&:]*:?([^&]+)/.exec(args[args.length - 1])?.[1] ?? ""), sha: "0", repo: { full_name: "acme/widgets" } },
+            base: { repo: { full_name: "acme/widgets" } },
+          }])
       : args[0] === "api" && /pulls\\/42$/.test(args[args.length - 1])
         ? JSON.stringify({ number: 42, html_url: ${JSON.stringify(PR_URL)}, state: "open", merged: false, head: { ref: "x", sha: "0" } })
         : "[]";
@@ -974,7 +978,6 @@ process.stdout.write(out);
   });
   afterEach(() => {
     rmSync(listsLeft, { force: true });
-    rmSync(notOurs, { force: true });
   });
   /** Refuse the remote's first `times` pushes, as GitHub refuses one. */
   const refusePushes = (remote: string, times: number) => {
@@ -985,6 +988,10 @@ process.stdout.write(out);
     );
     chmodSync(join(remote, "hooks", "pre-receive"), 0o755);
   };
+  // #42 as the task's record keeps it once a person's accept on the task landed on it.
+  const KEY = "github.com/acme/widgets/42";
+  /** An earlier turn of this task, whose accept a person gave landed on #42. */
+  const acceptedOnto42 = (h: ReturnType<typeof host>) => h.seedRunRecord({ landedPullRequests: [KEY] });
 
   // Jake's report: eng.coder pushed a fix for review feedback to the branch of the pull request it had opened, and
   // was then asked "Open a PR / Merge locally" about it. The work already had its pull request; a second one is never offered.
@@ -992,6 +999,7 @@ process.stdout.write(out);
     const h = host({ script: ["commits"], remote: true, awaitPullRequests: true });
     const calls = ghCalls().length;
     try {
+      await acceptedOnto42(h);
       await h.start();
       const settled = await h.until(
         (t) => h.waiting(t) || openHolds(t).some((hold) => hold.ask.kind === "external"),
@@ -1011,6 +1019,8 @@ process.stdout.write(out);
       expect((await h.statuses()).some((line) => line.startsWith(`Pushed ${branch} to pull request #42`) && line.includes(PR_URL))).toBe(true);
       expect(await h.pullRequests(settled.run!.sessionId!)).toEqual([`${OBSERVED_PULL_REQUESTS}/github.com/acme/widgets/42`]);
       expect(h.seen).toHaveLength(1);
+      // This turn's open of the record kept what the earlier accept landed on.
+      expect((await h.runRecord())?.landedPullRequests).toEqual([KEY]);
     } finally {
       await h.dispose();
     }
@@ -1021,6 +1031,7 @@ process.stdout.write(out);
   it("asks the person when that push is refused, offering that pull request alone, and records their accept", async () => {
     const h = host({ script: ["commits", "no-commit"], remote: true });
     try {
+      await acceptedOnto42(h);
       refusePushes(h.remote, 2);
       await h.start();
       const asked = await h.until(h.waiting, "the review after the refused push");
@@ -1045,20 +1056,31 @@ process.stdout.write(out);
     }
   }, 90_000);
 
-  // A run's branch can be renamed to match any branch with a pull request open: one this task didn't open is someone
-  // else's work, so the host's credentials never push to it without a person saying so.
-  it("asks the person, and pushes nothing, when the pull request open from the branch is not one this task opened", async () => {
-    const h = host({ script: ["commits"], remote: true });
+  // A pull request seen on the branch during the task, or one the coding session opened itself, can be someone
+  // else's: a run's branch can be renamed to match any branch with one open, and the session's record stamps every
+  // pull request on its branch. Only a person's accept makes it the task's; until then the host's credentials push
+  // nothing to it. The person is asked, and their accept still puts the work on it, not on a second one.
+  it("asks the person, and pushes nothing, about an open pull request no accept on this task landed on; their accept reuses it", async () => {
+    const h = host({ script: ["commits"], remote: true, awaitPullRequests: true });
+    const calls = ghCalls().length;
     try {
-      writeFileSync(notOurs, "");
       await h.start();
       const asked = await h.until(h.waiting, "the review");
 
       expect(reviewDetail((await h.stop(h.review(asked)!))?.data)?.lands).toEqual(["pull-request", "merge"]);
       expect(h.review(asked)!.ask.prompt).not.toContain("already open");
       expect((await h.statuses()).some((line) => line.includes("#42") && line.includes("didn't open it"))).toBe(true);
-      const branch = git(h.seen[0]!.cwd, "rev-parse", "--abbrev-ref", "HEAD");
+      const cwd = h.seen[0]!.cwd;
+      const branch = git(cwd, "rev-parse", "--abbrev-ref", "HEAD");
       expect(() => git(h.remote, "rev-parse", "--verify", "--quiet", `refs/heads/${branch}`)).toThrow();
+      expect((await h.runRecord())?.landedPullRequests).toEqual([]);
+
+      // The person accepts: the work goes onto #42, no second pull request, and #42 is now the task's.
+      await h.answer({ verdict: "accepted", land: "pull-request" });
+      await h.until((t) => openHolds(t).some((hold) => hold.ask.kind === "external"), "the wait on #42");
+      expect(git(h.remote, "rev-parse", `refs/heads/${branch}`)).toBe(git(cwd, "rev-parse", "HEAD"));
+      expect(ghCalls().slice(calls).filter((call) => call.startsWith("pr create"))).toEqual([]);
+      expect((await h.runRecord())?.landedPullRequests).toEqual([KEY]);
     } finally {
       await h.dispose();
     }
@@ -1068,6 +1090,7 @@ process.stdout.write(out);
     const h = host({ script: ["commits"], remote: true });
     const calls = ghCalls().length;
     try {
+      await acceptedOnto42(h);
       // Open when the review looks, closed when the landing does.
       writeFileSync(listsLeft, "1");
       await h.start();

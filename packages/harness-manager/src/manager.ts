@@ -2729,21 +2729,32 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // **This task's requests, kept across its turns** (FIX-2578): a pull
       // request on the session's record is the task's when one of them opened
       // it. A record of another task under the same id starts the list over.
+      const sameTask =
+        recorded !== undefined &&
+        recorded.taskId === input.taskId &&
+        (recorded.incarnationId == null || ticket.incarnationId == null || recorded.incarnationId === ticket.incarnationId);
       const requestIds = awaitPullRequests
         ? [
-            ...(recorded !== undefined &&
-            recorded.taskId === input.taskId &&
-            (recorded.incarnationId == null || ticket.incarnationId == null || recorded.incarnationId === ticket.incarnationId)
-              ? (recorded.requestIds ?? []).filter((id) => id !== ctx.request.identity.id)
-              : []),
+            ...(sameTask ? (recorded.requestIds ?? []).filter((id) => id !== ctx.request.identity.id) : []),
             ctx.request.identity.id,
           ].slice(-MAX_TASK_REQUESTS)
         : undefined;
+      // The pull requests an accept on this task landed on (FIX-2781), kept the same
+      // way whether or not this manager waits on pull requests.
+      const landedPullRequests = sameTask ? (recorded.landedPullRequests ?? []) : [];
       await fenced(
         openRunRecord(
           ctx,
           identityOf(ctx, harnessCtxState(ctx)),
-          { workspacePath, branch, childSessionId: ctx.session.identity.id, run, runKey, ...(requestIds !== undefined ? { requestIds } : {}) },
+          {
+            workspacePath,
+            branch,
+            childSessionId: ctx.session.identity.id,
+            run,
+            runKey,
+            landedPullRequests,
+            ...(requestIds !== undefined ? { requestIds } : {}),
+          },
         ),
         "the run record was opened",
       );
@@ -3928,9 +3939,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const ways: LandHow[] = ctx.runOnce === undefined ? await probe() : await ctx.runOnce(`review:lands:${state.steerSteps ?? 0}`, probe);
       // **A branch with a pull request open from it lands there, unasked** (FIX-2781): its
       // commits are pushed to that pull request, which is where a person reviews them, and
-      // neither a second pull request nor a local merge is offered. Only a pull request this
-      // task opened (on its record, from an accept or a run of it): another's, which a run's
-      // branch can be renamed to match, is never pushed to unasked. Asked once, as the ways are.
+      // neither a second pull request nor a local merge is offered. Only a pull request a
+      // person's accept on this task landed on (`landedPullRequests` on its record): one seen
+      // on the branch or opened by the coding session may be someone else's, and is never
+      // pushed to unasked; the person is asked, and an accept still reuses it. Asked once, as the ways are.
       type Probed = { open: ExistingPullRequest | null; unread: string | null; notOurs: ExistingPullRequest | null };
       const probeOpen = async (): Promise<Probed> => {
         if (host.existingPullRequest === undefined || !ways.includes("pull-request")) return { open: null, unread: null, notOurs: null };
@@ -3939,8 +3951,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           const open = await host.existingPullRequest(target);
           if (open === null) return { open: null, unread: null, notOurs: null };
           const link = pullRequestRefFromUrl(open.url);
-          const requestIds = (await readRunRecord(ctx, state.topic!))?.requestIds ?? [ctx.request.identity.id];
-          const ours = link !== null && (await taskPullRequests(ctx, requestIds)).some((pr) => pr.key === pullRequestKey(link));
+          const landed = (await readRunRecord(ctx, state.topic!))?.landedPullRequests ?? [];
+          const ours = link !== null && landed.includes(pullRequestKey(link));
           return ours ? { open, unread: null, notOurs: null } : { open: null, unread: null, notOurs: open };
         } catch (error) {
           return { open: null, unread: error instanceof Error ? error.message : String(error), notOurs: null };
@@ -4088,6 +4100,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             // Asked again with the error and a retry; the feed says so through the review's prompt.
             continue;
           }
+          // Kept on the task's record before the review is written as done, so a
+          // resume (which skips a done review) never loses it.
+          if (outcome.landed.kind === "pull-request") await rememberLandedPullRequest(ctx, state, outcome.landed);
           await reviewed(askedPerson ? "accepted" : null, outcome.landed);
           ctx.emit.status(landedLine(outcome.landed), { transient: false });
           if (outcome.landed.kind === "pull-request") {
@@ -4127,6 +4142,28 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       }
     },
   });
+
+  // FIX-2781.
+  /**
+   * Add a pull request an accept landed on to the task's record, so a later turn
+   * of the task pushes to it unasked. Refused, a later attempt holds the task,
+   * and this one stops as any fenced write's does.
+   */
+  const rememberLandedPullRequest = async (
+    ctx: BlockContext,
+    state: ManagerState,
+    landed: Extract<Landed, { kind: "pull-request" }>,
+  ): Promise<void> => {
+    const link = pullRequestRefFromUrl(landed.url);
+    if (link === null) return;
+    const key = pullRequestKey(link);
+    const known = (await readRunRecord(ctx, state.topic!))?.landedPullRequests ?? [];
+    if (known.includes(key)) return;
+    await fenced(
+      writeRunRecord(ctx, identityOf(ctx, state), { landedPullRequests: [...known, key] }),
+      "the pull request the accept landed on was kept",
+    );
+  };
 
   // FIX-2658.
   /**
