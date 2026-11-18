@@ -22,7 +22,8 @@ import type { Client } from "@flow-state-dev/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { allTasks, shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import type { InboxBoardTask } from "../lib/inbox";
 import { handToShiftCoordinator } from "../lib/outbox";
 import { readProject, type WorkstreamEntry } from "../lib/projects";
 import { navigate, type Route } from "../lib/routes";
@@ -109,12 +110,15 @@ function focusWhenDrawn(selector: string) {
 
 export function JumpTo({
   snapshot,
+  tasks,
   gaps,
   client,
   initialQuery = "",
   onClose,
 }: {
   snapshot: LoadedSnapshot;
+  /** Every board row, from the inbox view; without them, Jump to lists no tasks. */
+  tasks?: readonly InboxBoardTask[];
   /** Reads each project's workstreams when the palette opens; without one, Jump to lists no workstreams. */
   client?: Client;
   gaps: Gaps;
@@ -156,10 +160,10 @@ export function JumpTo({
         to: { level: "roster", team: w.team },
         focus: `[data-testid="roster-worker"][data-worker-id="${w.id.replace(/"/g, '\\"')}"]`,
       })),
-      ...allTasks(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, keywords: [r.id], to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
+      ...(tasks ?? []).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, keywords: [r.id], to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
       ...(snapshot.resources.ok ? snapshot.resources.value : []).map((d): Entry => ({ group: "Resources", label: d.ref, hint: "read-only", keywords: [d.sessionId], to: { level: "resource", sessionId: d.sessionId, ref: d.ref } })),
     ];
-  }, [snapshot, workstreams]);
+  }, [snapshot, workstreams, tasks]);
 
   const needle = query.trim().toLowerCase();
   const matches = (e: Entry) => needle === "" || [e.label, e.hint, ...e.keywords].some((word) => word.toLowerCase().includes(needle));

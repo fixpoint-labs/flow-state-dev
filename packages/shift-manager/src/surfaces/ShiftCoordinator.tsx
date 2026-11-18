@@ -39,7 +39,8 @@ import { clearHandedLine, useHandedLine } from "../lib/outbox";
 import { readDelegates } from "../lib/delegates";
 import { starterLines, type StarterDelegate } from "../lib/first-run";
 import { useWorkforce } from "../lib/workforce";
-import { shiftCoordinatorOf, inboxItemIdOf, workerLabel, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
+import { shiftCoordinatorOf, workerLabel, workerStates, type LoadedSnapshot } from "../lib/derive";
+import { everyAsk, itemIdHolding, openRows, useInbox, workerOfHold } from "../lib/inbox";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { Worker } from "../lib/reads";
@@ -138,11 +139,28 @@ function NeedsYouTag() {
  */
 function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
   const { refresh, asking } = useLab();
-  const retry = () => void refresh();
-  const { inbox, asks, running } = shiftSummary(snapshot);
+  // FIX-2774: what needs the user, the asks and the runs are the inbox view's; *refresh* reads it and the Lab again.
+  const view = useInbox();
+  const retry = () => {
+    view.refresh();
+    void refresh();
+  };
+  if (view.section === undefined) {
+    return (
+      <section aria-label="Shift summary" className="flex flex-col gap-2.5" data-testid="shift-coordinator-summary">
+        <p className="text-sm text-muted-foreground" data-testid="shift-coordinator-summary-loading">
+          Reading what needs you…
+        </p>
+      </section>
+    );
+  }
+  const inbox = view.section;
+  const asks = inbox.ok ? everyAsk(inbox.value.items) : [];
+  const inFlight = inbox.ok ? openRows(inbox.value).filter((row) => row.status === "in_progress") : [];
+  const running = { runs: inFlight.length, workstreams: new Set(inFlight.map((row) => row.ownerSessionId)).size };
   // What needs the user is what Inbox lists: one item per task held on a
   // question, a review or an approval, and per ask no task holds, each once.
-  const needsYou = inbox.ok ? inbox.value.length : 0;
+  const needsYou = inbox.ok ? inbox.value.items.length : 0;
   return (
     <section aria-label="Shift summary" className="flex flex-col gap-2.5" data-testid="shift-coordinator-summary">
       <p className="font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
@@ -162,30 +180,30 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
         ) : (
           <SectionFailure what="What needs you" failure={inbox.failure} onRetry={retry} testId="shift-coordinator-summary-asks-failure" />
         )}
-        {running.ok ? (
-          <p data-testid="shift-coordinator-summary-running" data-runs={running.value.runs} data-workstreams={running.value.workstreams}>
-            {plural(running.value.runs, "run", "runs")} going across {plural(running.value.workstreams, "workstream", "workstreams")}.
+        {inbox.ok ? (
+          <p data-testid="shift-coordinator-summary-running" data-runs={running.runs} data-workstreams={running.workstreams}>
+            {plural(running.runs, "run", "runs")} going across {plural(running.workstreams, "workstream", "workstreams")}.
           </p>
         ) : (
-          <SectionFailure what="What is running" failure={running.failure} onRetry={retry} testId="shift-coordinator-summary-running-failure" />
+          <SectionFailure what="What is running" failure={inbox.failure} onRetry={retry} testId="shift-coordinator-summary-running-failure" />
         )}
       </div>
       <AsOf readAt={snapshot.readAt} onRefresh={retry} testId="shift-coordinator-as-of" />
-      {asks.ok && asks.value.length > 0 ? (
+      {inbox.ok && asks.length > 0 ? (
         <ol className="flex flex-col border border-foreground bg-card" data-testid="shift-coordinator-asks">
-          {asks.value.map((ask, i) => (
+          {asks.map((ask, i) => (
             <li
-              key={ask.item.suspensionId}
+              key={ask.id}
               className={`flex flex-col gap-[9px] px-3.5 py-3 ${i > 0 ? "border-t border-foreground/15" : ""}`}
               data-testid="shift-coordinator-ask"
-              data-suspension-id={ask.item.suspensionId}
+              data-suspension-id={ask.id}
             >
               <div className="flex items-baseline gap-[9px]">
                 <NeedsYouTag />
                 <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
-                  {workerLabel(ask.workerId ?? "unknown worker")} asks{" · "}
+                  {workerLabel(workerOfHold(ask) ?? "unknown worker")} asks{" · "}
                   <RouteLink
-                    to={{ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) }}
+                    to={{ level: "inbox", item: itemIdHolding(inbox.value.items, ask.id) }}
                     className="text-info hover:text-foreground"
                     data-testid="shift-coordinator-ask-open"
                   >
@@ -193,7 +211,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
                   </RouteLink>
                 </p>
               </div>
-              <AskCard ask={ask} />
+              <AskCard hold={ask} />
             </li>
           ))}
         </ol>

@@ -1,0 +1,208 @@
+// FIX-2774 D1, D2.
+/**
+ * The Inbox, its count, the Tasks board, the shift summary's needs-you
+ * numbers and a task's asks, from one answer: workforce's `inbox` view,
+ * built on the server from the pending asks and every board's rows. Every
+ * screen that draws one of them reads it here, so a count and its list, and a
+ * task's asks and its Inbox item, never disagree (FIX-1662 PLAN S3).
+ *
+ * The view is kept current by the server: a suspension written or answered
+ * and a board row written re-run it, and nothing a streamed reply or a turn
+ * elsewhere writes does. It is read again every {@link INBOX_POLL_MS} where
+ * push can miss a change. An answer goes through orchestration's one answer
+ * call; the suspension notice it publishes takes the item away, with no
+ * read of the Lab after it.
+ */
+import { useCallback, useMemo, useState, useEffect } from "react";
+import type { SuspensionItem } from "@flow-state-dev/core/items";
+import type { ResumeAction } from "@flow-state-dev/core/types";
+import { useView } from "@flow-state-dev/react";
+import { createInboxClient, type InboxAnswer, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
+import { inboxViewRef, type InboxAsk, type InboxBoardTask, type InboxViewValue } from "@flow-state-dev/workforce/browser";
+import { isDone } from "./columns";
+import { useLab } from "./lab-data";
+import type { Failure, Section } from "./reads";
+import { readSessionItems } from "./run";
+
+export type { InboxAsk, InboxBoardTask, InboxViewValue };
+
+/** An Inbox item, each suspension hold carrying its ask's detail. */
+type InboxViewItem = InboxItem<InboxAsk>;
+/** One hold of an Inbox item. */
+type InboxViewHold = InboxHold<InboxAsk>;
+
+/** How often the view is read again where push can miss a change. */
+export const INBOX_POLL_MS = 30_000;
+
+/** The inbox view, as a screen reads it. */
+type InboxRead = {
+  /** The view's answer, or why it has none; `undefined` until the first read lands or fails. */
+  section: Section<InboxViewValue> | undefined;
+  /** `true` while the last read failed, though an earlier answer is still drawn. */
+  stale: boolean;
+  /** Read the view again now: Retry, R and *as of · refresh*. */
+  refresh(): void;
+};
+
+/**
+ * The user's inbox view. A failed read with an answer already drawn keeps
+ * that answer and says it is `stale`; with none, the section is the failure,
+ * the server's reason and status. `enabled: false` reads nothing: the shell
+ * reads it only once the Lab let Shift Manager in.
+ */
+export function useInbox(enabled = true): InboxRead {
+  const { client } = useLab();
+  const { value, stale, failure, refresh } = useView(inboxViewRef, {}, { client, pollIntervalMs: INBOX_POLL_MS, enabled });
+  const section = useMemo<Section<InboxViewValue> | undefined>(
+    () => (value !== undefined ? { ok: true, value } : failure !== undefined ? { ok: false, failure: failure as Failure } : undefined),
+    [value, failure],
+  );
+  return { section, stale, refresh };
+}
+
+// BR-15.
+/** The rows Tasks shows: every board's, excluding done ones. */
+export function openRows(value: InboxViewValue): InboxBoardTask[] {
+  return value.tasks.filter((row) => !isDone(row.status));
+}
+
+/**
+ * The Inbox item that shows suspension `suspensionId`: a task's item when its
+ * task holds it, else the ask's own. Its id when the view doesn't list it, so
+ * a link still opens the Inbox.
+ */
+export function itemIdHolding(items: readonly InboxViewItem[], suspensionId: string): string {
+  return items.find((item) => item.holds.some((hold) => hold.id === suspensionId))?.id ?? suspensionId;
+}
+
+/**
+ * The Inbox item a route names: by its id, else, for a link written when an
+ * item's id was its suspension's (`/inbox/<suspensionId>`), the item one of
+ * whose holds that suspension is. `null` when none.
+ */
+export function itemAtRoute(items: readonly InboxViewItem[], id: string | null): InboxViewItem | null {
+  if (id === null) return null;
+  return items.find((item) => item.id === id) ?? items.find((item) => item.holds.some((hold) => hold.id === id)) ?? null;
+}
+
+/** A row's Inbox item, by its board and task; `undefined` when nothing of it waits on the user. */
+function itemOfRow(items: readonly InboxViewItem[], row: Pick<InboxBoardTask, "boardRef" | "id"> | undefined): InboxViewItem | undefined {
+  if (row === undefined) return undefined;
+  return items.find((item) => item.task?.board === row.boardRef && item.task.taskId === row.id);
+}
+
+// FIX-2131.
+/**
+ * Whether a task holds on a question or confirm for you: its Inbox item has a
+ * hold the board keeps on the row. A task waiting on its run's stop for you
+ * shows that stop as an ask instead ({@link taskAsks}).
+ */
+export function holdsOnYou(items: readonly InboxViewItem[], row: Pick<InboxBoardTask, "boardRef" | "id"> | undefined): boolean {
+  return itemOfRow(items, row)?.holds.some((hold) => hold.source.kind === "task") ?? false;
+}
+
+// BR-17; D2.
+/** The stops a task's run waits on you with: its Inbox item's suspension holds, oldest first. */
+export function taskAsks(items: readonly InboxViewItem[], row: Pick<InboxBoardTask, "boardRef" | "id"> | undefined): InboxViewHold[] {
+  return itemOfRow(items, row)?.holds.filter((hold) => hold.source.kind === "suspension") ?? [];
+}
+
+/** Every stop that waits on you, oldest first: each Inbox item's suspension holds. */
+export function everyAsk(items: readonly InboxViewItem[]): InboxViewHold[] {
+  return items.flatMap((item) => item.holds.filter((hold) => hold.source.kind === "suspension")).sort((a, b) => a.openedAt - b.openedAt);
+}
+
+/** The word an ask's kind is drawn with: an input is a question. */
+export function askKindWord(hold: InboxViewHold): "approval" | "review" | "question" | "confirm" {
+  const kind = hold.ask.kind;
+  return kind === "approval" || kind === "review" || kind === "confirm" ? kind : "question";
+}
+
+/** The session a stop waits in, or `null` for a run with no conversation (or a task's own hold). */
+export function sessionOfHold(hold: InboxViewHold): string | null {
+  return hold.source.kind === "suspension" ? hold.source.sessionId : null;
+}
+
+/** The worker a stop asks for: its ask's, when its session names one. */
+export function workerOfHold(hold: InboxViewHold): string | null {
+  return hold.detail?.workerId ?? null;
+}
+
+/**
+ * The suspension a stop's card draws: from the ask's detail, or, when the view
+ * found none for a stop the task's row records, from what the row says of it.
+ * A review's data, which the detail never carries, is `data` when given.
+ */
+export function suspensionOfHold(hold: InboxViewHold, data?: Record<string, unknown>): SuspensionItem {
+  const ask = hold.detail;
+  const kind = hold.ask.kind === "approval" || hold.ask.kind === "review" ? hold.ask.kind : "input";
+  const requestId = hold.source.kind === "suspension" ? hold.source.requestId : "";
+  return {
+    type: "suspension",
+    id: hold.id,
+    suspensionId: hold.id,
+    requestId,
+    status: "completed",
+    suspensionStatus: "pending",
+    reason: kind === "approval" ? "user_approval" : "user_input",
+    kind,
+    message: ask?.message ?? hold.ask.prompt,
+    ...((ask?.title ?? hold.ask.title) !== undefined ? { title: ask?.title ?? hold.ask.title } : {}),
+    allow: ask?.allow !== undefined ? [...ask.allow] : kind === "approval" ? ["approve", "reject"] : ["submit"],
+    ...(ask?.resumeSchema !== undefined ? { resumeSchema: ask.resumeSchema } : {}),
+    ...(ask?.render !== undefined ? { render: ask.render } : {}),
+    ...(hold.due !== undefined ? { expiresAt: hold.due } : {}),
+    ...(data !== undefined ? { data } : {}),
+  } as unknown as SuspensionItem;
+}
+
+/** The answer a card's resolution is, in the shape a stop of this kind takes. */
+export function answerOfResolution(hold: InboxViewHold, action: ResumeAction, data: unknown): InboxAnswer {
+  if (hold.ask.kind === "approval") return { approved: action === "approve", ...(data === undefined ? {} : { data }) };
+  return action === "skip" ? { skipped: true } : { value: data };
+}
+
+/**
+ * Answer one hold through orchestration's one answer call. No read follows:
+ * the server's notice takes the item away. An answer in a session marks it
+ * answered once, for a conversation on screen to read itself back.
+ */
+export function useInboxAnswer(): (hold: InboxViewHold | InboxHold<unknown>, answer: InboxAnswer) => Promise<void> {
+  const { client, noteAnswered } = useLab();
+  const inbox = useMemo(() => createInboxClient(client), [client]);
+  return useCallback(
+    async (hold, answer) => {
+      await inbox.answerOne(hold, answer);
+      if (hold.source.kind === "suspension" && hold.source.sessionId !== null) noteAnswered(hold.source.sessionId);
+    },
+    [inbox, noteAnswered],
+  );
+}
+
+/**
+ * A review's data (what the run committed and the judge's verdict), which
+ * the view's projection never carries: read from the ask's session feed, as
+ * the Inbox's detail reads its session. `undefined` until read, for a stop
+ * that is no review, and for a run with no conversation.
+ */
+export function useReviewData(hold: InboxViewHold): Record<string, unknown> | undefined {
+  const { client } = useLab();
+  const sessionId = sessionOfHold(hold);
+  const review = hold.ask.kind === "review" && sessionId !== null;
+  const [data, setData] = useState<{ id: string; value: Record<string, unknown> | undefined } | undefined>(undefined);
+  useEffect(() => {
+    if (!review) return;
+    let live = true;
+    readSessionItems(client, sessionId).then(
+      (read) => {
+        const found = read.items.find((item): item is SuspensionItem => item.type === "suspension" && (item as SuspensionItem).suspensionId === hold.id);
+        if (live) setData({ id: hold.id, value: found?.data });
+      },
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [client, review, sessionId, hold.id]);
+  return data?.id === hold.id ? data.value : undefined;
+}

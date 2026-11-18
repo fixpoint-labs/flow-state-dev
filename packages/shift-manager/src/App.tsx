@@ -43,6 +43,7 @@ import { Usage } from "./surfaces/Usage";
 import { SessionView } from "./surfaces/SessionView";
 import { isTypingTarget } from "@flow-state-dev/react";
 import { usePanels } from "./lib/panels";
+import { useInbox } from "./lib/inbox";
 
 /**
  * @param devtoolUrl The devtool a task's trace link opens: the one Shift Manager
@@ -60,6 +61,9 @@ export function App({ connection, gaps = GAPS, devtoolUrl, look }: { connection:
 
 function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ThemeLook | undefined }) {
   const { snapshot, refresh, client, health } = useLab();
+  // FIX-2774: the Inbox, Tasks and a task's asks read the inbox view, once the Lab let Shift Manager in; R reads it again too.
+  const inbox = useInbox(snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined);
+  const refreshInbox = inbox.refresh;
   const route = useRoute();
   // Null is closed; "" opens Jump to, MESSAGE_PREFIX opens it already in message mode.
   const [jumping, setJumping] = useState<string | null>(null);
@@ -82,11 +86,14 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
       if (e.repeat || e.metaKey || ((e.ctrlKey || e.altKey) && !altGraph) || isTypingTarget(e.target)) return;
       if (e.key === "[") toggleNav();
       else if (e.key === "]" && hasPanel) togglePanel();
-      else if (e.key === "r" || e.key === "R") void refresh();
+      else if (e.key === "r" || e.key === "R") {
+        refreshInbox();
+        void refresh();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleNav, togglePanel, hasPanel, refresh]);
+  }, [toggleNav, togglePanel, hasPanel, refresh, refreshInbox]);
 
   if (snapshot === undefined) {
     return <p className="p-6 text-sm text-muted-foreground" data-testid="loading">Reading the Lab…</p>;
@@ -135,7 +142,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
         ) : (
           levels
         )}
-        {jumping !== null ? <JumpTo snapshot={snapshot} gaps={gaps} client={client} initialQuery={jumping} onClose={() => setJumping(null)} /> : null}
+        {jumping !== null ? <JumpTo snapshot={snapshot} tasks={inbox.section?.ok === true ? inbox.section.value.tasks : undefined} gaps={gaps} client={client} initialQuery={jumping} onClose={() => setJumping(null)} /> : null}
       </div>
     </div>
   );

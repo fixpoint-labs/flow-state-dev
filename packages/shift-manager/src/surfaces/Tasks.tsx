@@ -10,13 +10,16 @@
  * the row's start, by a clock) and COST (the vendor's charge its runs
  * reported). Columns with no shipped read say who ships them.
  * A failed row carries its error as a line under its title.
+ *
+ * The rows are workforce's inbox view's (`lib/inbox.ts`), the same answer the
+ * Inbox and its count read, each with its board owner's label.
  */
 import { useEffect, useState } from "react";
 import { COLUMNS, columnFor } from "../lib/columns";
-import { boardOwnerOf, openTasks, rosterOf, workerFor, workerLabel, type LoadedSnapshot } from "../lib/derive";
-import type { BoardTaskView } from "../lib/reads";
+import { rosterOf, workerFor, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { openRows, useInbox, type InboxBoardTask } from "../lib/inbox";
 import { navigate, TASK_GROUPINGS, type Route, type TaskGrouping } from "../lib/routes";
-import { elapsed, isQueued, tasksSummary } from "../lib/tasks";
+import { elapsed, isQueued, summaryLine } from "../lib/tasks";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSquare } from "../components/ui";
 import { RouteLink, isPlainClick } from "../components/RouteLink";
 import { useLab } from "../lib/lab-data";
@@ -41,7 +44,7 @@ function useNow(running: boolean): number {
 }
 
 /** A row's task screen, at its session tab. */
-function taskRoute(row: BoardTaskView): Route {
+function taskRoute(row: InboxBoardTask): Route {
   return { level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" };
 }
 
@@ -55,17 +58,17 @@ function streamLabel(holder: string): string {
 
 export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: TaskGrouping; gaps: Gaps }) {
   const { refresh, stale } = useLab();
+  const inbox = useInbox();
   const [showQueued, setShowQueued] = useState(false);
   const roster = rosterOf(snapshot);
-  const all = openTasks(snapshot);
+  const all = inbox.section?.ok === true ? openRows(inbox.section.value) : [];
   const queued = all.filter(isQueued).length;
   const rows = showQueued ? all : all.filter((row) => !isQueued(row));
   // While the server is gone the TIME column stops where the data did.
   const now = useNow(!stale && rows.some((row) => row.status === "in_progress"));
-  const failed = Object.entries(snapshot.boards).filter(([, b]) => !b.ok);
 
-  const keyOf = (row: BoardTaskView): string =>
-    by === "state" ? columnFor(row.status) : by === "worker" ? (workerFor(roster, row)?.id ?? row.assignee ?? "unassigned") : boardOwnerOf(snapshot, row);
+  const keyOf = (row: InboxBoardTask): string =>
+    by === "state" ? columnFor(row.status) : by === "worker" ? (workerFor(roster, row)?.id ?? row.assignee ?? "unassigned") : row.owner;
   const groups =
     by === "state"
       ? OPEN_COLUMNS.map((column) => [column, rows.filter((r) => columnFor(r.status) === column)] as const)
@@ -82,7 +85,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
             </Meta>
           </div>
           <Meta role="control" className="mt-1 block text-muted-foreground" testId="tasks-summary">
-            {tasksSummary(snapshot)}
+            {inbox.section === undefined ? "…" : summaryLine(inbox.section, snapshot)}
           </Meta>
         </div>
         <div className="flex items-center gap-3 font-mono text-[11.5px] font-medium">
@@ -117,16 +120,18 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-[22px] pb-5">
-        {failed.map(([holder, b]) =>
-          b.ok ? null : (
-            <div key={holder} className="mt-3">
-              <SectionFailure what={`The boards of ${holder}`} failure={b.failure} onRetry={() => void refresh()} />
-            </div>
-          ),
-        )}
+        {inbox.section?.ok === false ? (
+          <div className="mt-3">
+            <SectionFailure what="The boards" failure={inbox.section.failure} onRetry={inbox.refresh} />
+          </div>
+        ) : null}
         {!snapshot.inventory.ok ? (
           <SectionFailure what="The boards" failure={snapshot.inventory.failure} onRetry={() => void refresh()} />
-        ) : all.length === 0 ? (
+        ) : inbox.section === undefined ? (
+          <p className="mt-3 text-sm text-muted-foreground" data-testid="tasks-loading">
+            Reading the boards…
+          </p>
+        ) : !inbox.section.ok ? null : all.length === 0 ? (
           <EmptyState title="No tasks in flight" testId="tasks-empty">
             No attached board holds a row that isn't done.
           </EmptyState>
@@ -209,7 +214,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                         —
                       </td>
                       <td className={cn(MONO_CELL, "truncate text-foreground/80")} data-testid="task-row-stream">
-                        {streamLabel(boardOwnerOf(snapshot, row))}
+                        {streamLabel(row.owner)}
                       </td>
                       <td className="truncate py-2 pr-3 text-[13px]" title={worker?.id ?? row.assignee ?? undefined} data-testid="task-row-worker">
                         {workerLabel(worker?.displayName ?? row.assignee ?? "—")}
