@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { defineFlow, defineKit, handler } from '@flow-state-dev/core'
 import { createFlowState, inMemoryStores, runAction } from '@flow-state-dev/engine'
 import { createResponseEmitter } from '@flow-state-dev/engine/host'
+import type { Episode, SemanticFact, WorkingMemoryEntry } from '../../../packages/memory/src/index.ts'
 import { memory, type MemoryFlowBuilder } from '../../../packages/memory/src/kit/index.ts'
 import { runGoal } from '../../lib/index.mts'
 import { z } from 'zod'
@@ -39,9 +40,9 @@ const buildFlow: MemoryFlowBuilder = (mem) => {
     name: 'memory-kit-read',
     uses: [helpers],
     execute: (_input, ctx) => ({
-      working: ctx.cap.workingMemory.items().map((entry) => entry.content),
-      episodic: ctx.cap.episodicMemory.recent().map((episode) => episode.content),
-      semantic: ctx.cap.semanticMemory.allFacts().map((fact) => ({ id: fact.id, content: fact.content, sources: fact.sourceEpisodeIds })),
+      working: ctx.cap.workingMemory.items().map((entry: WorkingMemoryEntry) => entry.content),
+      episodic: ctx.cap.episodicMemory.recent().map((episode: Episode) => episode.content),
+      semantic: ctx.cap.semanticMemory.allFacts().map((fact: SemanticFact) => ({ id: fact.id, content: fact.content, sources: fact.sourceEpisodeIds })),
       digest: ctx.cap.digestMemory.get(),
       digestInstalled: mem.regenerateDigest !== undefined,
       janitorInstalled: mem.janitor !== undefined,
