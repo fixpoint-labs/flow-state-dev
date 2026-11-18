@@ -1,7 +1,8 @@
 /*
  * The lab's stylesheet. Everything the lab draws references a token by name,
  * and the lab holds no colour value of its own: the look is the design-system
- * import, over the registry's `tokens` item.
+ * import, over the registry's `tokens` item. Its text sizes are the design
+ * system's type scale (`type.css`).
  *
  * `sidebar` and `inspector` are the design's two shell surfaces (the left
  * pane, and the right one). They fall back to registry tokens in the base
@@ -9,6 +10,7 @@
  */
 @import "tailwindcss" source(none);
 @import "@flow-state-dev/design-system/shift-manager.css";
+@import "@flow-state-dev/design-system/type.css";
 @import "./components/flow-state/tokens.css";
 @source "./";
 @source "../node_modules/streamdown/dist/*.js";

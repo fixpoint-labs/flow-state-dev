@@ -399,9 +399,14 @@ export type SessionTurn = {
   readonly source: string;
   readonly startedAtMs: number;
   readonly completedAtMs?: number;
+  // FIX-2771.
+  /** When it ended, completed, failed or aborted: a failed turn has no `completedAtMs`. Absent while it runs or waits. */
+  readonly endedAtMs?: number;
   readonly updatedAt: number;
   /** Why it failed, when it did. */
   readonly error?: { readonly code: string; readonly message: string };
+  /** The first turn its history window held, when earlier turns had left it: the request record's mark. */
+  readonly historyStart?: { readonly requestId: string } | null;
 };
 
 /** Which of another session's settled turns {@link RequestSessions.history} reads. */

@@ -119,12 +119,12 @@ export function HarnessTag({ task }: { task: AppTask }) {
   return (
     <>
       {task.harness ? (
-        <span className="shrink-0 rounded-sm bg-muted px-1.5 py-px font-mono text-[10px] text-muted-foreground">
+        <span className="shrink-0 rounded-sm bg-muted px-1.5 py-px font-mono text-xs text-muted-foreground">
           {labels[task.harness] ?? task.harness}
         </span>
       ) : null}
       {notReviewed(task) ? (
-        <span className="shrink-0 rounded-sm border border-warning/60 px-1.5 py-px font-mono text-[10px] text-warning">Not reviewed</span>
+        <span className="shrink-0 rounded-sm border border-warning/60 px-1.5 py-px font-mono text-xs text-warning">Not reviewed</span>
       ) : null}
     </>
   );

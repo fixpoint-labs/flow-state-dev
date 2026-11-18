@@ -132,6 +132,7 @@ async function devtoolResources(root: string): Promise<SnapshotEntry[]> {
   const run = await router.POST(
     new Request(`http://localhost/api/flows/${WORKER}/${SESSION}/actions/run`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: "user_1", input: {} }),
     }),
     { params: { path: [WORKER, SESSION, "actions", "run"] } },

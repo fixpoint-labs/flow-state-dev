@@ -151,7 +151,7 @@ export function ThreadView({
                 onChange={(event) => setText(event.target.value)}
                 onKeyDown={onKeyDown}
                 placeholder={question ? "Answer the task…" : column === "review" ? "What should change…" : "Say something in this task…"}
-                className="block w-full resize-none rounded-lg border border-border/60 bg-card px-3 py-2 text-sm outline-none focus:border-ring"
+                className="block w-full resize-none rounded-lg border border-border/60 bg-card px-3 py-2 text-base outline-none focus:border-ring"
               />
               {failure !== undefined ? (
                 <p role="alert" className="mt-1 text-xs text-destructive">

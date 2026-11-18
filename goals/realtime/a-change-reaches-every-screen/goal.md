@@ -19,7 +19,7 @@
 - `b:no-read-between` — over 10 s from the panel's first `crosses: true` frame, with a task held running, every read the page sends follows a notice frame by less than 1 s.
 - `j2:no-poll` — every scripted run cancelled and no request running anywhere, one task held open on the panel; the lead's conversation (`/s/<id>`), Messages and the panel each send 0 requests over 10 s.
 - `j2:message` — a line sent into the lead's conversation from another client (its door, `respond`) is drawn in the conversation within 1 s of being sent. Samples are 1.5 s apart: the session stream reads at most once a second per connection (FIX-2426), and a sample inside that interval would time the cap.
-- `j3:worker-reply` — process 1 runs `dispatch-only`, a third process `worker-only` (the same host file with `FSD_REDIS_URL`); A's reply, sent from A's page on process 1, shows on A's session view on process 2. The worker's own connection wrote the items; process 1 wrote none.
+- `j3:worker-reply` — process 1 runs `enqueue-only`, a third process `process-only` (the same host file with `FSD_REDIS_URL`); A's reply, sent from A's page on process 1, shows on A's session view on process 2. The worker's own connection wrote the items; process 1 wrote none.
 - `j3:no-timed-read` — 10 s idle after: process 2 logs 0 statements naming the session.
 - `j4:polls` — two processes of a Node stand-in for Next's server (`next-server.mts`) serving the route file's handlers: `GET /capabilities` reports no push, and B shows A's plan and seat (10 samples) under 4000 ms, the hooks' 3 s poll plus 1 s.
 

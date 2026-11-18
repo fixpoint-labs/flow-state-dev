@@ -7,8 +7,7 @@
 import { randomInt } from "node:crypto";
 import { PEOPLE } from "./lab/people.mts";
 import { GRACE_MS, connect, quiet, word, type Acted, type Shipped } from "./scripted.mts";
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+import { sleep } from "../../lib/time.mts";
 
 /** What leg e did, for `run.mts` to grade from the store. */
 export interface LegE {

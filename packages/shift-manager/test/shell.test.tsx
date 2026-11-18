@@ -833,9 +833,10 @@ describe("Shift Coordinator (FIX-1722)", () => {
     // A worker session, so there are asks to read.
     await workerAction(connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID }), "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
     const real = globalThis.fetch;
+    // FIX-2774: what needs you and the boards are the inbox view's: the Lab answers its read with what went wrong.
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
       const url = String(i instanceof Request ? i.url : i);
-      if (/\/resources\/tasks(\?|$)/.test(url) || url.includes("item_types=suspension")) {
+      if (/\/views\/inbox(\?|$)/.test(url)) {
         return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
       }
       return real(i, init);
@@ -845,12 +846,10 @@ describe("Shift Coordinator (FIX-1722)", () => {
     const asks = await screen.findByTestId("shift-coordinator-summary-asks-failure");
     expect(asks.textContent).toMatch(/store offline/);
     expect(within(asks).getByRole("button", { name: "Retry" })).toBeTruthy();
-    // The user's conversation boards are read once, through one of their
-    // sessions whose flow keeps them (a coordinator's, or a delegate's that
-    // takes posts, as the asker does): Tasks names it, with what the Lab answered.
+    // The boards are the same answer: Tasks says what the Lab answered.
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     const board = await screen.findByTestId("section-failure");
-    expect(board.textContent).toMatch(/The boards of (ops\.(desk|side)|s_ops_asker) did not load/);
+    expect(board.textContent).toMatch(/The boards did not load/);
     expect(board.textContent).toMatch(/store offline.*503/);
     expect(within(board).getByRole("button", { name: "Retry" })).toBeTruthy();
   });

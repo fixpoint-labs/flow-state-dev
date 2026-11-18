@@ -91,6 +91,7 @@ import {
   type ModulePatch,
   workforceTree
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const USER = "u_asks_one_way";
 const ORG = "org_asks_one_way";
@@ -172,7 +173,6 @@ type Proof = {
   outcome?: unknown;
   at: number;
 };
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const prove = (proof: Omit<Proof, "at">) => appendFileSync(PROOFS, `${JSON.stringify({ ...proof, at: Date.now() })}\n`, "utf8");
 function readProofs(): Proof[] {
   if (!existsSync(PROOFS)) return [];
