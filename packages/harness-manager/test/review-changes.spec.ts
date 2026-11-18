@@ -875,6 +875,8 @@ describe("a run on a branch with a pull request already open from it puts its wo
   let ghLog: string;
   // When set, how many more times `pr list` finds #42 open; then it finds none (closed since).
   let listsLeft: string;
+  // When present, the branch listing a run's end makes finds nothing: #42 is not one this task opened.
+  let notOurs: string;
   const ghCalls = () => (existsSync(ghLog) ? readFileSync(ghLog, "utf8").trim().split("\n") : []);
   const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
@@ -884,6 +886,7 @@ describe("a run on a branch with a pull request already open from it puts its wo
     dirs.push(bin);
     ghLog = join(bin, "calls.log");
     listsLeft = join(bin, "lists-left");
+    notOurs = join(bin, "not-ours");
     writeFileSync(
       join(bin, "gh"),
       `#!/usr/bin/env node
@@ -901,6 +904,15 @@ const out =
     ? JSON.stringify(listed() ? [{ number: 42, url: ${JSON.stringify(PR_URL)}, baseRefName: "main", isCrossRepository: false }] : [])
     : args[0] === "pr" && args[1] === "create"
       ? "https://github.com/acme/widgets/pull/43\\n"
+      : args[0] === "api" && /pulls\\?/.test(args[args.length - 1])
+        ? fs.existsSync(${JSON.stringify(notOurs)})
+          ? "[]"
+          : JSON.stringify([{
+              number: 42, html_url: ${JSON.stringify(PR_URL)}, title: "The run's pull request", state: "open", draft: false, merged: false,
+              created_at: new Date().toISOString(),
+              head: { ref: decodeURIComponent(/head=[^&:]*:?([^&]+)/.exec(args[args.length - 1])?.[1] ?? ""), sha: "0", repo: { full_name: "acme/widgets" } },
+              base: { repo: { full_name: "acme/widgets" } },
+            }])
       : args[0] === "api" && /pulls\\/42$/.test(args[args.length - 1])
         ? JSON.stringify({ number: 42, html_url: ${JSON.stringify(PR_URL)}, state: "open", merged: false, head: { ref: "x", sha: "0" } })
         : "[]";
@@ -915,6 +927,7 @@ process.stdout.write(out);
   });
   afterEach(() => {
     rmSync(listsLeft, { force: true });
+    rmSync(notOurs, { force: true });
   });
   /** Refuse the remote's first `times` pushes, as GitHub refuses one. */
   const refusePushes = (remote: string, times: number) => {
@@ -984,6 +997,25 @@ process.stdout.write(out);
       await h.dispose();
     }
   }, 90_000);
+
+  // A run's branch can be renamed to match any branch with a pull request open: one this task didn't open is someone
+  // else's work, so the host's credentials never push to it without a person saying so.
+  it("asks the person, and pushes nothing, when the pull request open from the branch is not one this task opened", async () => {
+    const h = host({ script: ["commits"], remote: true });
+    try {
+      writeFileSync(notOurs, "");
+      await h.start();
+      const asked = await h.until(h.waiting, "the review");
+
+      expect(reviewDetail((await h.stop(h.review(asked)!))?.data)?.lands).toEqual(["pull-request", "merge"]);
+      expect(h.review(asked)!.ask.prompt).not.toContain("already open");
+      expect((await h.statuses()).some((line) => line.includes("#42") && line.includes("didn't open it"))).toBe(true);
+      const branch = git(h.seen[0]!.cwd, "rev-parse", "--abbrev-ref", "HEAD");
+      expect(() => git(h.remote, "rev-parse", "--verify", "--quiet", `refs/heads/${branch}`)).toThrow();
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
 
   it("opens nothing when that pull request closed before the push, and asks the person with every way to land", async () => {
     const h = host({ script: ["commits"], remote: true });

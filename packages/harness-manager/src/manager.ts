@@ -45,6 +45,7 @@ import {
   OBSERVED_PULL_REQUESTS,
   observedPullRequestsCollection,
   followRecordedPullRequests,
+  pullRequestKey,
   pullRequestRecordedOf,
   pullRequestRefFromUrl,
   writePullRequests,
@@ -3818,8 +3819,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * its branch has commits over its base, or when they couldn't be read: only
    * a verified zero skips it. The manager's one suspension; questions hold.
    *
-   * A run whose branch already has a pull request open from it is not asked
-   * about: its commits are pushed to that pull request, which is
+   * A run whose branch already has a pull request open from it, one this
+   * task opened, is not asked about: its commits are pushed to that pull
+   * request, which is
    * where a person reviews them, as an accept with `pull-request` lands it,
    * with no review recorded. That landing only ever pushes to that pull
    * request: one that fails asks the person (it is never handed to the coding
@@ -3883,14 +3885,22 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const ways: LandHow[] = ctx.runOnce === undefined ? await probe() : await ctx.runOnce(`review:lands:${state.steerSteps ?? 0}`, probe);
       // **A branch with a pull request open from it lands there, unasked** (FIX-2781): its
       // commits are pushed to that pull request, which is where a person reviews them, and
-      // neither a second pull request nor a local merge is offered. Asked once, as the ways are.
-      const probeOpen = async (): Promise<{ open: ExistingPullRequest | null; unread: string | null }> => {
-        if (host.existingPullRequest === undefined || !ways.includes("pull-request")) return { open: null, unread: null };
+      // neither a second pull request nor a local merge is offered. Only a pull request this
+      // task opened (on its record, from an accept or a run of it): another's, which a run's
+      // branch can be renamed to match, is never pushed to unasked. Asked once, as the ways are.
+      type Probed = { open: ExistingPullRequest | null; unread: string | null; notOurs: ExistingPullRequest | null };
+      const probeOpen = async (): Promise<Probed> => {
+        if (host.existingPullRequest === undefined || !ways.includes("pull-request")) return { open: null, unread: null, notOurs: null };
         try {
           const target = { cwd: state.workspacePath!, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit };
-          return { open: await host.existingPullRequest(target), unread: null };
+          const open = await host.existingPullRequest(target);
+          if (open === null) return { open: null, unread: null, notOurs: null };
+          const link = pullRequestRefFromUrl(open.url);
+          const requestIds = (await readRunRecord(ctx, state.topic!))?.requestIds ?? [ctx.request.identity.id];
+          const ours = link !== null && (await taskPullRequests(ctx, requestIds)).some((pr) => pr.key === pullRequestKey(link));
+          return ours ? { open, unread: null, notOurs: null } : { open: null, unread: null, notOurs: open };
         } catch (error) {
-          return { open: null, unread: error instanceof Error ? error.message : String(error) };
+          return { open: null, unread: error instanceof Error ? error.message : String(error), notOurs: null };
         }
       };
       const probed =
@@ -3898,6 +3908,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // Not knowing is not "none": the feed says so, and the person is asked as without one.
       if (probed.unread !== null) {
         ctx.emit.status(`Couldn't tell whether a pull request is already open from ${state.branch}: ${probed.unread}`, { transient: false });
+      }
+      if (probed.notOurs !== null) {
+        ctx.emit.status(
+          `Pull request #${probed.notOurs.number} is open from ${probed.notOurs.branch}, but this task didn't open it, so nothing was pushed to it unasked.`,
+          { transient: false },
+        );
       }
       let onPullRequest = probed.open;
       let lands: LandHow[] = onPullRequest === null ? ways : ["pull-request"];
