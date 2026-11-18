@@ -73,12 +73,12 @@ function padStream(id: number, entries: number, before: number, padTo: number): 
     startDigits = String(Math.abs(xrefAt)).length;
     xrefAt = padTo - xrefFixed - startDigits;
   }
-  const room = xrefAt - before - frameFixed;
-  let padBytes = room - String(Math.max(room, 0)).length;
-  for (let attempt = 0; attempt < 6 && padBytes + String(Math.max(padBytes, 0)).length !== room; attempt += 1) {
-    padBytes = room - String(Math.max(padBytes, 0)).length;
+  const withDigits = xrefAt - before - frameFixed;
+  let padBytes = withDigits - String(Math.max(withDigits, 0)).length;
+  for (let attempt = 0; attempt < 6 && padBytes + String(Math.max(padBytes, 0)).length !== withDigits; attempt += 1) {
+    padBytes = withDigits - String(Math.max(padBytes, 0)).length;
   }
-  if (String(xrefAt).length !== startDigits || padBytes < 1 || padBytes + String(padBytes).length !== room) {
+  if (String(xrefAt).length !== startDigits || padBytes < 1 || padBytes + String(padBytes).length !== withDigits) {
     throw new Error(`padTo ${padTo} is under the PDF's own size`);
   }
 
