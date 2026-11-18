@@ -144,14 +144,14 @@ export function Tabs<T extends string>({
 export function ScreenTitle({ children, scale = "screen", testId }: { children: ReactNode; scale?: "screen" | "shift-coordinator" | "detail"; testId?: string }) {
   if (scale === "detail") {
     return (
-      <h2 className="text-[26px] leading-[1.15] font-bold tracking-[-0.03em]" data-look="detail-title" data-testid={testId}>
+      <h2 className="text-2xl leading-[1.15] font-bold tracking-[-0.03em]" data-look="detail-title" data-testid={testId}>
         {children}
       </h2>
     );
   }
   return (
     <h1
-      className={`font-bold ${scale === "shift-coordinator" ? "text-[22px] tracking-[-0.03em]" : "text-lg tracking-[-0.02em]"}`}
+      className={`font-bold ${scale === "shift-coordinator" ? "text-xl tracking-[-0.03em]" : "text-lg tracking-[-0.02em]"}`}
       data-look="screen-title"
       data-testid={testId}
     >
@@ -163,11 +163,11 @@ export function ScreenTitle({ children, scale = "screen", testId }: { children: 
 /** v2's mono sizes, by what the text is (v2:30, 42, 60, 74, 107, 220). */
 const META_SIZE = {
   /** A section label: PROJECTS, TEAMS (10px, spaced caps). */
-  label: "text-[10px] tracking-[0.14em]",
+  label: "text-xs tracking-[0.14em]",
   /** A count beside a name (10.5px). */
-  count: "text-[10.5px]",
+  count: "text-xs",
   /** A meta line, a footer, an id (11px). */
-  meta: "text-[11px]",
+  meta: "text-xs",
   /** A control's text: a tab, a field, a button (12px). */
   control: "text-xs",
 } as const;
@@ -206,7 +206,7 @@ export const ASKING_CLASS = "opacity-60 transition-opacity";
  */
 export function AsOf({ readAt, onRefresh, testId }: { readAt: number; onRefresh: () => void; testId?: string }) {
   return (
-    <p className="font-mono text-[11px] font-medium text-muted-foreground" data-testid={testId}>
+    <p className="font-mono text-xs font-medium text-muted-foreground" data-testid={testId}>
       as of <time dateTime={new Date(readAt).toISOString()}>{clockTime(readAt)}</time>
       {" · "}
       <button type="button" className="underline hover:text-foreground" onClick={onRefresh} title="Read the Lab again (R)" data-testid={testId === undefined ? undefined : `${testId}-refresh`}>
@@ -266,7 +266,7 @@ export function StatusWord({ status }: { status: ShiftStatus }) {
  */
 export function PartialMark({ title }: { title: string }) {
   return (
-    <span className="ml-1 border border-dashed border-muted-foreground px-1 text-[10px] text-muted-foreground" title={title} data-testid="partial-mark">
+    <span className="ml-1 border border-dashed border-muted-foreground px-1 text-xs text-muted-foreground" title={title} data-testid="partial-mark">
       partial
     </span>
   );

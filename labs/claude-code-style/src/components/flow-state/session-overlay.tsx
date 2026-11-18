@@ -142,11 +142,11 @@ export function SessionOverlay({ variant, label, title, status, meta, toolbar, o
       >
         <header className="flex min-h-14 shrink-0 items-start gap-3 border-b border-border px-5 py-3">
           <div className="min-w-0 flex-1">
-            <div className="text-[15px] leading-6 font-semibold">{title}</div>
+            <div className="text-base leading-6 font-semibold">{title}</div>
             {meta ? <div className="mt-0.5 min-w-0">{meta}</div> : null}
           </div>
           {status ? (
-            <span data-overlay-status className="shrink-0 pt-1 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+            <span data-overlay-status className="shrink-0 pt-1 font-mono text-xs tracking-widest text-muted-foreground uppercase">
               {status}
             </span>
           ) : null}

@@ -117,6 +117,7 @@ export type {
   ObservedPullRequestState,
   PullRequestCollection,
   PullRequestLink,
+  FollowingRun,
   PullRequestFollower,
   PullRequestRecordedCallback,
   RecordedPullRequest,

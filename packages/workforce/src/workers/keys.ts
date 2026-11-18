@@ -172,6 +172,10 @@ export const WORKER_USAGE_VIEW = "workerUsage";
 /** The workstream report view's name on the roster flow (`defineWorkstreamReportView`). */
 export const WORKSTREAM_REPORT_VIEW = "workstreamReport";
 
+// FIX-2774.
+/** The inbox view's name on the roster flow (`defineInboxView`). */
+export const INBOX_VIEW = "inbox";
+
 // FIX-1802.
 /**
  * The session-state field that names the flow a task session's filer runs

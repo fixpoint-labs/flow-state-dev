@@ -24,7 +24,7 @@ import { workerOf } from "../lib/task";
 import { TaskCard } from "./TaskCard";
 
 /** A small button in the conversation's header. */
-const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent";
+const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-xs tracking-widest uppercase hover:bg-accent";
 
 type TaskEntry = Extract<ConversationEntry, { kind: "task" }>;
 const placeholders = new WeakMap<TaskEntry, CodingBoardTask>();
@@ -180,7 +180,7 @@ export function Conversation({
           </button>
         )}
         {running ? (
-          <span className={cn("flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-info uppercase", stale && STALE_CLASS)}>
+          <span className={cn("flex items-center gap-1.5 font-mono text-xs tracking-widest text-info uppercase", stale && STALE_CLASS)}>
             <span className="size-2 animate-pulse rounded-full bg-info" /> working
           </span>
         ) : null}
@@ -235,7 +235,7 @@ export function Conversation({
               {i === markAt && mark ? (
                 <div role="separator" aria-label={mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"} className="my-2 flex items-center gap-3">
                   <span className="h-px flex-1 bg-border" />
-                  <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+                  <span className="font-mono text-xs tracking-widest text-muted-foreground uppercase">
                     {mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"}
                   </span>
                   <span className="h-px flex-1 bg-border" />

@@ -62,11 +62,10 @@ import { isUserSuspension, suspendForUserKindOf, type ResumeAction } from "@flow
 import { suspensionShape } from "@flow-state-dev/react";
 import { deriveSuspensions } from "@flow-state-dev/react/internal";
 import { PROJECTS_PATTERN, ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
-import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+import { boardTaskOf, createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
-import { createInboxClient, inboxItems, taskActionName, taskHoldSchema, taskView, type BoardActions, type InboxAnswer, type TaskViewInput, type InboxHold, type InboxItem, type InboxTaskInput, type TaskHold } from "@flow-state-dev/orchestration/inbox";
-import { storedFiles } from "./files";
-import { withRetiredShapes, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { createInboxClient, inboxItems, taskActionName, type BoardActions, type InboxAnswer, type InboxHold, type InboxItem, type InboxTaskInput, type TaskHold } from "@flow-state-dev/orchestration/inbox";
+import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 
 /** Why a read did not load. */
 export type Failure = { message: string; httpStatus?: number };
@@ -493,47 +492,12 @@ export function toProject(row: unknown, visibility: ProjectVisibility = "shared"
   };
 }
 
-// BP-030.
-/**
- * A row's run link. Anything short of all three values reads as no link, so a
- * row stored before the link existed, or a malformed one, is *no run*, never a
- * guess.
- */
-function toRunLink(value: unknown): RunLink | null {
-  const sessionId = text(field(value, "sessionId"));
-  const requestId = text(field(value, "requestId"));
-  const attempt = field(value, "attempt");
-  if (sessionId === null || requestId === null || typeof attempt !== "number") return null;
-  return { sessionId, requestId, attempt };
-}
-
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
-// FIX-2133.
-/**
- * The holds a row publishes, each read against the hold's own
- * shape: one that doesn't parse is none, never a guess.
- */
-function toHolds(value: unknown): TaskHold[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((hold) => {
-    const parsed = taskHoldSchema.safeParse(hold);
-    return parsed.success ? [parsed.data] : [];
-  });
-}
-
-/** A row's steers as the Inbox reads them: each one's id, and the question it answers when it answers one. */
-function toSteerAnswers(value: unknown): Array<{ id: string; answers?: string }> {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((steer) => {
-    const id = text(field(steer, "id"));
-    const answers = text(field(steer, "answers"));
-    return id === null ? [] : [{ id, ...(answers !== null ? { answers } : {}) }];
-  });
-}
-
+// FIX-2774: workforce's `boardTaskOf` is the one mapper; the inbox view reads tasks through it too.
+// The snapshot's boards, and this wrapper with them, go with FIX-2775/2776.
 /**
  * A board's task, from what the board publishes.
  *
@@ -542,43 +506,7 @@ function toSteerAnswers(value: unknown): Array<{ id: string; answers?: string }>
  * a title only when it differs from `goal`.
  */
 export function toBoardTaskView(boardRef: string, ownerSessionId: string, topic: string, stored: unknown): BoardTaskView {
-  // A row stored `blocked` (orchestration 0.5.0 and earlier) reads as `held`.
-  const data = withRetiredShapes(stored);
-  return {
-    boardRef,
-    ownerSessionId,
-    id: text(field(data, "id")) ?? topic,
-    title: text(field(data, "title")) ?? text(field(data, "goal")) ?? topic,
-    goal: text(field(data, "goal")),
-    context: text(field(data, "context")),
-    attachments: storedFiles(field(data, "attachments")),
-    status: text(field(data, "status")) ?? "pending",
-    assignee: text(field(data, "assignee")),
-    priority: field(data, "priority") == null ? null : String(field(data, "priority")),
-    labels: strings(field(data, "labels")),
-    deps: strings(field(data, "deps")),
-    run: toRunLink(field(data, "run")),
-    error: field(data, "error") == null ? null : String(field(data, "error")),
-    holds: toHolds(field(data, "holds")),
-    steers: toSteerAnswers(field(data, "steers")),
-    spend: spendOf(boardRef, data),
-    createdAt: time(field(data, "createdAt")),
-    updatedAt: time(field(data, "updatedAt")),
-    startedAt: time(field(data, "startedAt")),
-    completedAt: time(field(data, "completedAt")),
-  };
-}
-
-/**
- * A stored row's spend as orchestration's task view folds it: `null` when
- * it has none, or when the stored ledger can't be read (the view's fold never
- * throws on a row, so one bad write doesn't fail the board's read).
- */
-function spendOf(boardRef: string, data: unknown): TaskSpendView | null {
-  const spend = field(data, "spend") as TaskViewInput["spend"];
-  if (spend == null) return null;
-  const status = text(field(data, "status")) ?? "pending";
-  return taskView({ board: boardRef, id: text(field(data, "id")) ?? "", status, spend }).spend;
+  return boardTaskOf(boardRef, ownerSessionId, topic, stored);
 }
 
 /**

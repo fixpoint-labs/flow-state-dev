@@ -405,6 +405,8 @@ export type SessionTurn = {
   readonly updatedAt: number;
   /** Why it failed, when it did. */
   readonly error?: { readonly code: string; readonly message: string };
+  /** The first turn its history window held, when earlier turns had left it: the request record's mark. */
+  readonly historyStart?: { readonly requestId: string } | null;
 };
 
 /** Which of another session's settled turns {@link RequestSessions.history} reads. */

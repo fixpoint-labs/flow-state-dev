@@ -115,7 +115,7 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="project" data-project-id={projectId} data-visibility={address.visibility}>
       <header className="px-4 pt-3">
-        <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">
+        <p className="text-xs font-semibold tracking-wider text-muted-foreground">
           {address.visibility === "private" ? "PRIVATE PROJECT" : "PROJECT"}
         </p>
         <ScreenTitle testId="project-title">{title}</ScreenTitle>

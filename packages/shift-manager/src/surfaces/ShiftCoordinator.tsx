@@ -39,7 +39,8 @@ import { clearHandedLine, useHandedLine } from "../lib/outbox";
 import { readDelegates } from "../lib/delegates";
 import { starterLines, type StarterDelegate } from "../lib/first-run";
 import { useWorkforce } from "../lib/workforce";
-import { shiftCoordinatorOf, inboxItemIdOf, workerLabel, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
+import { shiftCoordinatorOf, workerLabel, workerStates, type LoadedSnapshot } from "../lib/derive";
+import { everyAsk, itemIdHolding, openBoardTasks, useInbox, workerOfHold } from "../lib/inbox";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { Worker } from "../lib/reads";
@@ -84,7 +85,7 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
   return (
     <header className="flex items-center gap-3" data-testid="shift-coordinator-header">
       <span
-        className="flex size-10 shrink-0 items-center justify-center bg-primary font-mono text-[13px] font-semibold text-primary-foreground"
+        className="flex size-10 shrink-0 items-center justify-center bg-primary font-mono text-sm font-semibold text-primary-foreground"
         data-look="avatar"
         aria-hidden
       >
@@ -93,11 +94,11 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
       <div className="min-w-0">
         <ScreenTitle scale="shift-coordinator">{NAME}</ScreenTitle>
         {working ? (
-          <Meta className="block text-[11.5px] text-muted-foreground" testId="shift-coordinator-sub">
+          <Meta className="block text-xs text-muted-foreground" testId="shift-coordinator-sub">
             working…
           </Meta>
         ) : watching === null ? null : (
-          <Meta className="block text-[11.5px] text-muted-foreground" testId="shift-coordinator-sub">
+          <Meta className="block text-xs text-muted-foreground" testId="shift-coordinator-sub">
             {status === undefined ? null : `${status} · `}
             <span data-testid="shift-coordinator-watching">{watching}</span>
           </Meta>
@@ -122,7 +123,7 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
 function NeedsYouTag() {
   return (
     <span
-      className="shrink-0 border border-foreground bg-attention px-[5px] py-px font-mono text-[9.5px] font-semibold tracking-[0.12em] text-attention-foreground"
+      className="shrink-0 border border-foreground bg-attention px-[5px] py-px font-mono text-xs font-semibold tracking-[0.12em] text-attention-foreground"
       data-look="needs-tag"
     >
       NEEDS YOU
@@ -138,17 +139,34 @@ function NeedsYouTag() {
  */
 function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
   const { refresh, asking } = useLab();
-  const retry = () => void refresh();
-  const { inbox, asks, running } = shiftSummary(snapshot);
+  // FIX-2774: what needs the user, the asks and the runs are the inbox view's; *refresh* reads it and the Lab again.
+  const view = useInbox();
+  const retry = () => {
+    view.refresh();
+    void refresh();
+  };
+  if (view.section === undefined) {
+    return (
+      <section aria-label="Shift summary" className="flex flex-col gap-2.5" data-testid="shift-coordinator-summary">
+        <p className="text-sm text-muted-foreground" data-testid="shift-coordinator-summary-loading">
+          Reading what needs you…
+        </p>
+      </section>
+    );
+  }
+  const inbox = view.section;
+  const asks = inbox.ok ? everyAsk(inbox.value.items) : [];
+  const inFlight = inbox.ok ? openBoardTasks(inbox.value).filter((row) => row.status === "in_progress") : [];
+  const running = { runs: inFlight.length, workstreams: new Set(inFlight.map((row) => row.ownerSessionId)).size };
   // What needs the user is what Inbox lists: one item per task held on a
   // question, a review or an approval, and per ask no task holds, each once.
-  const needsYou = inbox.ok ? inbox.value.length : 0;
+  const needsYou = inbox.ok ? inbox.value.items.length : 0;
   return (
     <section aria-label="Shift summary" className="flex flex-col gap-2.5" data-testid="shift-coordinator-summary">
-      <p className="font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
+      <p className="font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
         SHIFT SUMMARY · FROM SHIFT MANAGER
       </p>
-      <div className={cn("text-base leading-[1.55]", asking && ASKING_CLASS)} data-look="summary-prose" data-asking={asking ? "true" : undefined}>
+      <div className={cn("text-base", asking && ASKING_CLASS)} data-look="summary-prose" data-asking={asking ? "true" : undefined}>
         {inbox.ok ? (
           <p data-testid="shift-coordinator-summary-asks">
             {needsYou === 0 ? (
@@ -162,30 +180,30 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
         ) : (
           <SectionFailure what="What needs you" failure={inbox.failure} onRetry={retry} testId="shift-coordinator-summary-asks-failure" />
         )}
-        {running.ok ? (
-          <p data-testid="shift-coordinator-summary-running" data-runs={running.value.runs} data-workstreams={running.value.workstreams}>
-            {plural(running.value.runs, "run", "runs")} going across {plural(running.value.workstreams, "workstream", "workstreams")}.
+        {inbox.ok ? (
+          <p data-testid="shift-coordinator-summary-running" data-runs={running.runs} data-workstreams={running.workstreams}>
+            {plural(running.runs, "run", "runs")} going across {plural(running.workstreams, "workstream", "workstreams")}.
           </p>
         ) : (
-          <SectionFailure what="What is running" failure={running.failure} onRetry={retry} testId="shift-coordinator-summary-running-failure" />
+          <SectionFailure what="What is running" failure={inbox.failure} onRetry={retry} testId="shift-coordinator-summary-running-failure" />
         )}
       </div>
       <AsOf readAt={snapshot.readAt} onRefresh={retry} testId="shift-coordinator-as-of" />
-      {asks.ok && asks.value.length > 0 ? (
+      {inbox.ok && asks.length > 0 ? (
         <ol className="flex flex-col border border-foreground bg-card" data-testid="shift-coordinator-asks">
-          {asks.value.map((ask, i) => (
+          {asks.map((ask, i) => (
             <li
-              key={ask.item.suspensionId}
+              key={ask.id}
               className={`flex flex-col gap-[9px] px-3.5 py-3 ${i > 0 ? "border-t border-foreground/15" : ""}`}
               data-testid="shift-coordinator-ask"
-              data-suspension-id={ask.item.suspensionId}
+              data-suspension-id={ask.id}
             >
               <div className="flex items-baseline gap-[9px]">
                 <NeedsYouTag />
-                <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
-                  {workerLabel(ask.workerId ?? "unknown worker")} asks{" · "}
+                <p className="min-w-0 font-mono text-xs font-medium text-muted-foreground" data-look="ask-meta">
+                  {workerLabel(workerOfHold(ask) ?? "unknown worker")} asks{" · "}
                   <RouteLink
-                    to={{ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) }}
+                    to={{ level: "inbox", item: itemIdHolding(inbox.value.items, ask.id) }}
                     className="text-info hover:text-foreground"
                     data-testid="shift-coordinator-ask-open"
                   >
@@ -193,7 +211,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
                   </RouteLink>
                 </p>
               </div>
-              <AskCard ask={ask} />
+              <AskCard hold={ask} />
             </li>
           ))}
         </ol>
@@ -268,7 +286,7 @@ function AskLine({ item }: { item: OutputItem }) {
   return (
     <RouteLink to={{ level: "inbox", item: null }} className="flex items-baseline gap-[9px] text-left">
       <NeedsYouTag />
-      <span className="font-mono text-[11px] font-medium text-info" data-look="ask-meta">
+      <span className="font-mono text-xs font-medium text-info" data-look="ask-meta">
         Waiting on you: answer it in Inbox
       </span>
     </RouteLink>
@@ -357,9 +375,9 @@ export function ShiftCoordinatorPanel({ snapshot }: { snapshot: LoadedSnapshot }
     <div className="p-3" data-testid="shift-coordinator-panel">
       {shiftCoordinator !== undefined ? (
         <>
-          <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
+          <p className="px-1 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
           <DelegatesPanel key={shiftCoordinator.id} worker={shiftCoordinator} sessionId={conversation} />
-          <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">TASKS</p>
+          <p className="px-1 pt-4 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">TASKS</p>
           <TasksPanel key={`tasks-${shiftCoordinator.id}`} worker={shiftCoordinator} sessionId={conversation} activeOnly />
         </>
       ) : (
