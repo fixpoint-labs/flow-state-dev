@@ -965,11 +965,6 @@ const EXEMPTIONS = [
     why: "FIX-2696: pages about the Teammates lab, and the Messaging page whose example is that lab, name its Chief of Staff worker and its `teammates.chief-of-staff` id as the lab ships them; FIX-2244 retires the name for Shift Manager's coordinator, not for this lab",
   },
   {
-    path: /^\.changeset\/fix-2614-routines\.md$/,
-    rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "LIST_SCHEDULES_ACTION", "listedScheduleSchema"],
-    why: "FIX-2614: the release note that tells consumers what each retired schedule and subscription name became",
-  },
-  {
     // User docs change only at release (docs/contributing/release-docs.md), so these pages document the
     // released names until then. As FIX-2479 D4's released-quotes: /release-docs rewrites them from the
     // changeset's Docs: line, and deletes this in the same PR.
