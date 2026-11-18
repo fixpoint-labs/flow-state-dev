@@ -6,7 +6,8 @@
  * It logs every call (`GOAL_GH_LOG`), one JSON line each.
  *
  * - `gh pr list --repo R --head B --state open …`: the open pull request on
- *   branch B, as `[{ number, url }]`; a landing asks this before it opens one.
+ *   branch B, as `[{ number, url, baseRefName, isCrossRepository }]` (its
+ *   `base`, default `main`, never from a fork); a landing asks this before it opens one.
  * - `gh pr create --repo R --head owner:B …`: opens one on branch B, numbered
  *   `next` (default 7), open, written back to the state, and prints its link.
  * - `gh api repos/{owner}/{repo}/pulls?head=…`: the branch listing a run's end
@@ -40,13 +41,17 @@ const open = Object.entries(state.prs).filter(([, pr]) => pr.state === "open");
 
 if (args[0] === "pr" && args[1] === "list") {
   const branch = flag("--head");
-  answer(open.filter(([, pr]) => pr.branch === branch).slice(0, 1).map(([n]) => ({ number: Number(n), url: url(n) })));
+  answer(
+    open
+      .filter(([, pr]) => pr.branch === branch)
+      .map(([n, pr]) => ({ number: Number(n), url: url(n), baseRefName: pr.base ?? "main", isCrossRepository: false })),
+  );
 }
 if (args[0] === "pr" && args[1] === "create") {
   const head = flag("--head") ?? "";
   const branch = head.includes(":") ? head.slice(head.indexOf(":") + 1) : head;
   const n = Number(state.next ?? 7);
-  state.prs[n] = { branch, state: "open", title: flag("--title") ?? null };
+  state.prs[n] = { branch, base: flag("--base") ?? "main", state: "open", title: flag("--title") ?? null };
   state.next = n + 1;
   fs.writeFileSync(stateFile, JSON.stringify(state));
   answer(`${url(n)}\n`);
