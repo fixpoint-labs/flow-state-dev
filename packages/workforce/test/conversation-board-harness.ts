@@ -23,11 +23,12 @@ import type { FlowInstance, GeneratorModel } from "@flow-state-dev/core/types";
 import { createFlowState, createInProcessFetch, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import type { SchedulerAdapter } from "@flow-state-dev/engine/host";
 import { createClient } from "@flow-state-dev/client";
-import type { Task } from "@flow-state-dev/orchestration/tasks";
+import { isClaimable, isTerminalStatus, type Task } from "@flow-state-dev/orchestration/tasks";
 import { askMidway } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver, mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "../src/agent-worker-flow";
+import { delegateKey } from "../src/delegates/delegate-list";
 import { conversationLedgerAt, conversationLedgerResources } from "../src/conversation-board/ledger";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
@@ -87,6 +88,53 @@ type TaskRun = {
 const doorInput = z.object({ message: z.string() });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The session a row runs in, as the board's one-open-task rule keys it
+ * (`conversation-board/board.ts` `sessionKeyOf`). A copy, so this harness
+ * can see a row the board would start without exporting that function.
+ */
+function sessionKeyOf(task: Pick<Task, "id" | "assignee" | "followUpOf" | "session" | "targetSessionId">): string | undefined {
+  if (task.assignee === undefined) return undefined;
+  if (task.session === "ongoing") {
+    return task.targetSessionId !== undefined ? `id:${task.targetSessionId}` : `delegate:${delegateKey({ worker: task.assignee })}`;
+  }
+  return `task:${JSON.stringify([task.followUpOf ?? task.id, task.assignee])}`;
+}
+
+/** Whether the row holds its session: started and unfinished. A retry waiting to run again does not. */
+function holdsSession(task: Task): boolean {
+  const started = task.startedAt != null || task.attempts > 0;
+  return !isTerminalStatus(task.status) && task.status !== "held" && task.retryPending !== true && started;
+}
+
+/**
+ * A pending row the board will start because a finished row on its session
+ * released it. A startable row with no finished sibling was never handed to
+ * the dispatcher (a wake that was lost, a row written straight into the
+ * store), and `settled` must not wait for that one.
+ */
+function awaitsReleasedSession(rows: readonly (Task & { partition: string })[]): boolean {
+  const byPartition = new Map<string, (Task & { partition: string })[]>();
+  for (const row of rows) {
+    const list = byPartition.get(row.partition);
+    if (list === undefined) byPartition.set(row.partition, [row]);
+    else list.push(row);
+  }
+  const now = Date.now();
+  for (const group of byPartition.values()) {
+    const lookup = (id: string): Task | undefined => group.find((row) => row.id === id);
+    for (const task of group) {
+      if (task.status !== "pending" || !isClaimable(task, lookup, now)) continue;
+      const key = sessionKeyOf(task);
+      if (key === undefined) continue;
+      const blocked = group.some((other) => other.id !== task.id && holdsSession(other) && sessionKeyOf(other) === key);
+      if (blocked) continue;
+      if (group.some((other) => other.id !== task.id && isTerminalStatus(other.status) && sessionKeyOf(other) === key)) return true;
+    }
+  }
+  return false;
+}
 
 function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], holds: ReadonlyMap<string, Promise<void>>) {
   const turn = handler({
@@ -426,7 +474,30 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     })) as { output?: any; error?: { message?: string } | unknown; status?: string; requestId?: string };
   };
 
-  /** Every request in the store, once none is still running. */
+  /** Every task row on every session's board, by the partition it is filed in. */
+  const taskRows = async (): Promise<Array<Task & { partition: string }>> => {
+    const runtime = await state.getRuntime();
+    const seen = new Set<string>();
+    const out: Array<Task & { partition: string }> = [];
+    for (const session of await runtime.stores.session.list()) {
+      const scope = `${session.userId}:~org:${session.orgId ?? ORG}`;
+      if (seen.has(scope)) continue;
+      seen.add(scope);
+      const entries = await runtime.stores.resourceState.getByPrefix("user", scope, "tasks/");
+      for (const [key, value] of Object.entries(entries)) {
+        const stored = (value as { state?: Task }).state;
+        if (stored == null || typeof stored.id !== "string" || typeof stored.status !== "string") continue;
+        out.push({ ...stored, partition: key.split("/")[1]! });
+      }
+    }
+    return out;
+  };
+
+  /**
+   * Every request in the store, once none is still running and no pending
+   * row is waiting on a session a finished row released. That row is the
+   * dispatcher's to start, and the request for it may not be written yet.
+   */
   const settled = async (timeoutMs = 10_000) => {
     const deadline = Date.now() + timeoutMs;
     // Still running: in progress, or ended but not finalized. A record reads
@@ -434,17 +505,28 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     // have run, and a task is settled by that check.
     const running = (r: { status: string; finalizedAtMs?: number | null }) =>
       r.status === "in_progress" || (r.status !== "suspended" && r.status !== "pending" && r.finalizedAtMs == null);
+    let waitingOnReleasedSession = false;
     for (;;) {
-      const all = await (await state.getRuntime()).stores.request.list({});
+      const runtime = await state.getRuntime();
+      const all = await runtime.stores.request.list({});
+      waitingOnReleasedSession = false;
       if (!all.some(running)) {
-        // Read again after a beat: a dispatch accepted just now may not have
-        // written its request yet.
-        await sleep(20);
-        const again = await (await state.getRuntime()).stores.request.list({});
-        if (!again.some(running) && again.length === all.length) return again;
-        continue;
+        waitingOnReleasedSession = awaitsReleasedSession(await taskRows());
+        if (!waitingOnReleasedSession) {
+          // Read again after a beat: a dispatch accepted just now may not have
+          // written its request yet.
+          await sleep(20);
+          const again = await runtime.stores.request.list({});
+          const stillWaiting = awaitsReleasedSession(await taskRows());
+          if (!again.some(running) && !stillWaiting && again.length === all.length) return again;
+          continue;
+        }
       }
-      if (Date.now() > deadline) throw new Error("a request never finished");
+      if (Date.now() > deadline) {
+        throw new Error(
+          waitingOnReleasedSession ? "a task waiting on a released session was never dispatched" : "a request never finished"
+        );
+      }
       await sleep(10);
     }
   };
