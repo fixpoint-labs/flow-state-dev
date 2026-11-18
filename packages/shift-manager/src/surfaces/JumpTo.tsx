@@ -235,7 +235,7 @@ export function JumpTo({
           ) : (
             <CommandList aria-label="Results" className="max-h-96 p-2">
               {groups.map(([group, entries]) => (
-                <CommandGroup key={group} heading={group.toUpperCase()} className="mb-2 p-0 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:tracking-wider">
+                <CommandGroup key={group} heading={group.toUpperCase()} className="mb-2 p-0 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:tracking-wider">
                   {entries.length === 0 ? <p className="px-2 py-1 text-xs text-muted-foreground">No match.</p> : null}
                   {entries.map((entry) => (
                     <JumpResult key={`${entry.group}:${entry.label}:${entry.hint}:${entry.keywords.join(",")}`} entry={entry} onNavigate={() => went(entry)} />

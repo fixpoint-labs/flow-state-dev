@@ -49,7 +49,7 @@ function taskRoute(row: InboxBoardTask): Route {
 }
 
 /** A mono cell: the id, NOW, STREAM, TIME and COST columns (v2:677-683). */
-const MONO_CELL = "py-2 pr-3 font-mono text-[11.5px] font-medium whitespace-nowrap";
+const MONO_CELL = "py-2 pr-3 font-mono text-xs font-medium whitespace-nowrap";
 
 /** A row's stream as the table writes it: a conversation's `@<worker>` as it is, else `#<workstream>` or `#<conversation id>`. */
 function streamLabel(holder: string): string {
@@ -88,8 +88,8 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
             {inbox.section === undefined ? "…" : summaryLine(inbox.section, snapshot)}
           </Meta>
         </div>
-        <div className="flex items-center gap-3 font-mono text-[11.5px] font-medium">
-          <span className="text-[10.5px] tracking-[0.12em] text-muted-foreground" data-testid="tasks-group-by-label">
+        <div className="flex items-center gap-3 font-mono text-xs font-medium">
+          <span className="text-xs tracking-[0.12em] text-muted-foreground" data-testid="tasks-group-by-label">
             GROUP BY
           </span>
           <div role="tablist" aria-label="Group by" className="flex border border-foreground" data-testid="tasks-group-by">
@@ -148,7 +148,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
               <col className="w-[62px]" />
             </colgroup>
             <thead>
-              <tr className="border-b border-foreground/20 text-left font-mono text-[10px] font-medium tracking-[0.12em] text-muted-foreground" data-testid="tasks-columns">
+              <tr className="border-b border-foreground/20 text-left font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-testid="tasks-columns">
                 <th className="px-2 pt-[9px] pb-[7px] font-medium" aria-label="State" />
                 <th className="pt-[9px] pb-[7px] font-medium">ID</th>
                 <th className="pt-[9px] pb-[7px] font-medium">TASK</th>
@@ -200,7 +200,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                       <td className={cn(MONO_CELL, "truncate text-muted-foreground")} title={row.id} data-testid="task-row-id">
                         {row.id}
                       </td>
-                      <td className="truncate py-2 pr-3 text-[13.5px]" data-testid="task-row-title">
+                      <td className="truncate py-2 pr-3 text-sm" data-testid="task-row-title">
                         <RouteLink to={taskRoute(row)} className="hover:underline" data-testid="task-row-link">
                           {row.title}
                         </RouteLink>
@@ -216,7 +216,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                       <td className={cn(MONO_CELL, "truncate text-foreground/80")} data-testid="task-row-stream">
                         {streamLabel(row.owner)}
                       </td>
-                      <td className="truncate py-2 pr-3 text-[13px]" title={worker?.id ?? row.assignee ?? undefined} data-testid="task-row-worker">
+                      <td className="truncate py-2 pr-3 text-sm" title={worker?.id ?? row.assignee ?? undefined} data-testid="task-row-worker">
                         {workerLabel(worker?.displayName ?? row.assignee ?? "—")}
                       </td>
                       <td className={cn(MONO_CELL, "text-muted-foreground", stale && STALE_CLASS)} data-testid="task-row-time">
