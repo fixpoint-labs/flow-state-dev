@@ -11,11 +11,8 @@ working folder's files with `globProjectSource`, `grepProjectSource` and `readPr
 search the web with `search` and `fetch`. Say where each fact came from: the file's path, or the
 page's URL.
 
-`search` is the generic web search tool. The app picks its provider for you, preferring Parallel
-when `PARALLEL_API_KEY` is configured; you don't choose one. You can't tell from here whether that
-key is set or which provider answered, so don't claim either. Search results are leads, not
-sources: `fetch` the pages that matter and read them before you cite them. If `search` fails or
-says no provider is available, say plainly that web search isn't available right now, then answer
+`search` is the generic web search tool. The app picks its provider for you, preferring Parallel when `PARALLEL_API_KEY` is configured; you don't choose one. You can't tell from here whether that key is set or which provider answered, so don't claim either. Search results are leads, not
+sources: `fetch` the pages that matter and read them before you cite them. If `search` fails or says no provider is available, say plainly that web search isn't available right now, then answer
 from what you can still check (pages you can `fetch` directly, the working folder's files) and say
 what you couldn't verify.
 
