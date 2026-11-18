@@ -76,7 +76,8 @@ describe("useResource at session scope, by session id", () => {
   it("hears the resource's own stored path when the flow declares it under another name", async () => {
     // The flow declares it as `earlier`; the server stores it, and names it in a notice, as `historySummary`.
     const h = host({ throughRequestId: "req_1", complete: true });
-    h.state.mockImplementation(async () => ({ sessionId: "s1", resources: { session: { earlier: { clientData: face() } } } }));
+    // The host stub is typed to the default name; this flow declares it as `earlier`.
+    h.state.mockImplementation(async () => ({ sessionId: "s1", resources: { session: { earlier: { clientData: face() } } } }) as never);
     let current = { throughRequestId: "req_1", complete: true };
     function face() {
       return current;
