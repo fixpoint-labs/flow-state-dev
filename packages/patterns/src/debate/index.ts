@@ -181,6 +181,8 @@ export interface DebateConfig<TOutputSchema extends ZodTypeAny = ZodTypeAny> {
   tools?: ToolsSlot;
   context?: GeneratorSlot<any, any>;
   judgeVisibility?: ItemVisibility;
+  /** Visibility of the emitted verdict annotation. Defaults to client-visible. */
+  verdictVisibility?: ItemVisibility;
   synthesizerVisibility?: ItemVisibility;
   debaterVisibility?: ItemVisibility;
   /**
@@ -216,6 +218,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     tools,
     context,
     judgeVisibility,
+    verdictVisibility = { client: true, history: false },
     synthesizerVisibility,
     debaterVisibility,
     anonymizeTranscript = true,
@@ -364,7 +367,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
           winner: verdict.winner,
           reasoning: verdict.reasoning,
         },
-        { key: "verdict", itemVisibility: { client: true, history: false } },
+        { key: "verdict", itemVisibility: verdictVisibility },
       );
     },
   });

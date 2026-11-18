@@ -67,4 +67,6 @@ export interface ResponseAuditorConfig {
   alwaysRun?: boolean;
   /** Parallel analyzer limit (default: all). */
   maxConcurrency?: number;
+  /** Visibility of surfaced audit annotations. Defaults to client-visible. */
+  annotationVisibility?: import("@flow-state-dev/core").ItemVisibility;
 }

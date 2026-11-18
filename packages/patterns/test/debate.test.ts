@@ -362,6 +362,10 @@ describe("debate", () => {
       winner: "for",
       reasoning: "r",
     });
+    expect((verdicts[0] as any).itemVisibility).toEqual({
+      client: true,
+      history: false,
+    });
   });
 
   it("emits one task per (round, debater) turn", async () => {
