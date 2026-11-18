@@ -432,6 +432,20 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
   });
 });
 
+describe.each(BACKINGS)("a stored status the board does not know (%s)", (_name, makeBacking) => {
+  const stored = { attempts: 0, createdAt: 1_000, updatedAt: 1_000, revision: 1 };
+
+  it("is not claimed, and a release is declined unknown-status, leaving the row as stored", async () => {
+    const { seed } = await makeBacking();
+    const tasks = await seed({ ...stored, id: "t", goal: "t", status: "blocked" } as unknown as Task);
+    expect(tasks.get("t")?.status).toBe("blocked");
+    expect(await tasks.claim("w")).toBeNull();
+    expect(await tasks.release("t")).toMatchObject({ outcome: "declined", reason: "unknown-status" });
+    expect(await tasks.cancel("t", "no longer a status")).toMatchObject({ outcome: "declined", reason: "unknown-status" });
+    expect(tasks.get("t")?.status).toBe("blocked");
+  });
+});
+
 /**
  * A dependency that ends while its dependent is being written, on the
  * resource backing (review finding 1). The dependency check reads the board

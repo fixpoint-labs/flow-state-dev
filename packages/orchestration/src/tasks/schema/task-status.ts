@@ -21,6 +21,13 @@ export const taskStatusSchema = z.enum([
 
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
 
+const TASK_STATUSES: ReadonlySet<string> = new Set(taskStatusSchema.options);
+
+/** True when `status` is one the state machine knows. */
+export function isTaskStatus(status: string): status is TaskStatus {
+  return TASK_STATUSES.has(status);
+}
+
 const TERMINAL_STATUSES = new Set<TaskStatus>(["completed", "errored", "cancelled"]);
 
 /** True when the status is terminal (no further transitions allowed). */
@@ -49,8 +56,9 @@ const ALLOWED_TRANSITIONS: Record<TaskStatus, ReadonlyArray<TaskStatus>> = {
  */
 export function allowedTransitionsFrom(from: TaskStatus): ReadonlyArray<TaskStatus> {
   // A status the table does not know reaches no other status. Indexing
-  // straight into the record made an unmapped value a TypeError inside the
-  // CAS, where callers expect `IllegalTaskTransitionError`.
+  // straight into the record threw a TypeError inside the CAS. A write
+  // against that row is declined `unknown-status` before this runs; the
+  // empty array is what a direct call returns instead of throwing.
   return ALLOWED_TRANSITIONS[from] ?? [];
 }
 

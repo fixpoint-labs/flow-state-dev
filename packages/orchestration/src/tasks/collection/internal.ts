@@ -14,6 +14,7 @@ import type { TaskClaimTicket } from "../claim-ticket";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
 import {
+  isTaskStatus,
   isTerminalStatus,
   isTransitionAllowed,
 } from "../schema/task-status";
@@ -338,10 +339,12 @@ export interface TaskSettingsPatch {
 
 /**
  * The status check the field table leaves: a settings edit lands only on a
- * pending or held row. Which fields a started row still takes is the
- * table's call (`lockedFields`), not this one's.
+ * pending or held row. A status the board does not know is declined
+ * `unknown-status`, and the row is left as stored. Which fields a started
+ * row still takes is the table's call (`lockedFields`), not this one's.
  */
 function settingsDecline(task: Task): TaskWriteDeclineReason | undefined {
+  if (!isTaskStatus(task.status)) return "unknown-status";
   return task.status !== "pending" && task.status !== "held" ? "started" : undefined;
 }
 
@@ -847,6 +850,7 @@ export function transitionDeclineReason(
   now: number,
   changeKind?: TaskChangeKind
 ): TaskWriteDeclineReason | undefined {
+  if (!isTaskStatus(task.status)) return "unknown-status";
   // FIX-2133: a held row settles only by cancel, whoever writes, guarded or
   // not. Its holds close first: an answer, a deadline, or the cancel itself.
   if (
