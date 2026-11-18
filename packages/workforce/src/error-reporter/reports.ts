@@ -286,12 +286,12 @@ export async function readHistory(reports: ResourceCollectionRef, days: readonly
     if (typeof mapped?.reportId === "string") tasks[taskId] = mapped.reportId;
   }
   const ids = new Set([...entries.flatMap((e) => (e.reportId === undefined ? [] : [e.reportId])), ...Object.values(tasks)]);
-  const rows: ReportResourceState[] = [];
+  const found: ReportResourceState[] = [];
   for (const id of ids) {
-    const row = await readReport(reports, id);
-    if (row !== undefined) rows.push(row);
+    const report = await readReport(reports, id);
+    if (report !== undefined) found.push(report);
   }
-  return { hours, reports: rows, tasks };
+  return { hours, reports: found, tasks };
 }
 
 /**
@@ -669,10 +669,10 @@ async function heldOf(reports: ResourceCollectionRef, taskId: string): Promise<O
 /** Add `requests` to a report's joined requests, each once. */
 async function joinHeld(reports: ResourceCollectionRef, reportId: string, requests: readonly OccurrenceIds[]): Promise<void> {
   if (requests.length === 0) return;
-  await updateReport(reports, reportId, (row) => {
-    const known = row.heldRequests ?? [];
+  await updateReport(reports, reportId, (report) => {
+    const known = report.heldRequests ?? [];
     const fresh = requests.filter((r) => !known.some((k) => k.requestId === r.requestId));
-    return fresh.length === 0 ? undefined : { ...row, heldRequests: [...known, ...fresh].slice(-KEPT_OCCURRENCES) };
+    return fresh.length === 0 ? undefined : { ...report, heldRequests: [...known, ...fresh].slice(-KEPT_OCCURRENCES) };
   });
 }
 
@@ -691,16 +691,16 @@ async function countOn(
   const ref = await reports.getOptional(key);
   if (ref === undefined) return undefined;
   const result = await updateStateWith(ref as never, (current: unknown) => {
-    const row = parseRow(current);
-    if (row === undefined || !isLive(row, now)) return { state: current as never, result: undefined };
-    if (seenKey !== undefined && row.seen?.includes(seenKey)) return { state: current as never, result: { commentOwed: false } };
-    const commentOwed = commentOwedOn(row, now, limits);
+    const report = parseRow(current);
+    if (report === undefined || !isLive(report, now)) return { state: current as never, result: undefined };
+    if (seenKey !== undefined && report.seen?.includes(seenKey)) return { state: current as never, result: { commentOwed: false } };
+    const commentOwed = commentOwedOn(report, now, limits);
     const next: ReportResourceState = {
-      ...row,
-      count: row.count + 1,
+      ...report,
+      count: report.count + 1,
       lastSeenAt: now,
-      occurrences: keepNewest(row.occurrences, ids),
-      ...(seenKey === undefined ? {} : { seen: withSeen(row.seen, seenKey) }),
+      occurrences: keepNewest(report.occurrences, ids),
+      ...(seenKey === undefined ? {} : { seen: withSeen(report.seen, seenKey) }),
       ...(commentOwed ? { commentOwed: true } : {})
     };
     return { state: next as never, result: { commentOwed } };

@@ -814,7 +814,7 @@ describe("a task that ended errored", () => {
     await lab.host.settled();
     await lab.reporter.idle();
     await lab.host.settled();
-    const [task] = (await lab.host.rows("alice")).filter((row) => row.status === "errored");
+    const [task] = (await lab.host.rows("alice")).filter((t) => t.status === "errored");
     // The ledger row's owed mark is cleared once the reporter took it.
     expect(owedReports(task!)).toEqual([]);
     const rows = await lab.rows();
@@ -971,20 +971,20 @@ describe("a message the reporter sends", () => {
       );
     const [sent] = await rows();
     expect(sent).toMatchObject({ status: "unconfirmed", reason: "the connection dropped" });
-    let row = sent;
-    for (let i = 0; i < 150 && row?.status !== "delivered"; i += 1) {
+    let entry = sent;
+    for (let i = 0; i < 150 && entry?.status !== "delivered"; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 100));
-      [row] = await rows();
+      [entry] = await rows();
     }
-    expect(row).toMatchObject({ status: "delivered", resent: { n: 1 } });
+    expect(entry).toMatchObject({ status: "delivered", resent: { n: 1 } });
   }, 30_000);
 });
 
 describe("the ledger's owed report", () => {
-  const row = { id: "t1", attempts: 2, metadata: {} } as never;
+  const legacyTask = { id: "t1", attempts: 2, metadata: {} } as never;
 
-  it("is read off a row stored before FIX-2078 only: nothing writes one now", () => {
-    expect(owedReports(row)).toEqual([]);
+  it("is read off a task stored before FIX-2078 only: nothing writes one now", () => {
+    expect(owedReports(legacyTask)).toEqual([]);
     const stored = { id: "t1", attempts: 2, metadata: { "reportOwed:2": { attempt: 2, error: "x" } } } as never;
     expect(owedReports(stored)).toEqual([{ key: "reportOwed:2", marker: { attempt: 2, error: "x" } }]);
   });

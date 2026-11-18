@@ -111,14 +111,14 @@ function shortHash(text: string): string {
 }
 
 /** A report's title: its draft's, else its error's first line. */
-function titleOf(row: ReportResourceState): string {
-  const title = row.draft?.title ?? row.parts.message.split("\n")[0] ?? "";
+function titleOf(report: ReportResourceState): string {
+  const title = report.draft?.title ?? report.parts.message.split("\n")[0] ?? "";
   return title.trim().slice(0, 120) || "an error report";
 }
 
 /** A report's path segment: a few words of its title, then its short hash. Read back by the hash alone, so a new title keeps old paths. */
-function refOf(row: ReportResourceState): string {
-  const words = titleOf(row)
+function refOf(report: ReportResourceState): string {
+  const words = titleOf(report)
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter((w) => w.length > 0)
@@ -126,7 +126,7 @@ function refOf(row: ReportResourceState): string {
     .join("-")
     .slice(0, 40)
     .replace(/-+$/, "");
-  return `${words === "" ? "report" : words}-${shortHash(row.id)}`;
+  return `${words === "" ? "report" : words}-${shortHash(report.id)}`;
 }
 
 const hashOfRef = (ref: string) => ref.slice(ref.lastIndexOf("-") + 1);
@@ -161,30 +161,30 @@ function recordsOf(read: HistoryRead, day: string, viewer: Viewer): ErrorHistory
   }
   const records: ErrorHistoryRecord[] = [];
   for (const [reportId, entries] of byReport) {
-    const row = read.reports.find((r) => r.id === reportId);
-    if (row === undefined) continue;
+    const report = read.reports.find((r) => r.id === reportId);
+    if (report === undefined) continue;
     let visible = entries;
     if (viewer.kind === "user") {
       const own = (e: { userId?: string }) => e.userId === viewer.userId;
-      const admitted = entries.some((e) => e.kind === "occurrence" && own(e)) || row.occurrences.some(own) || (row.heldRequests ?? []).some(own);
+      const admitted = entries.some((e) => e.kind === "occurrence" && own(e)) || report.occurrences.some(own) || (report.heldRequests ?? []).some(own);
       if (!admitted) continue;
       visible = entries.filter((e) => e.kind === "status" || own(e));
     }
     if (visible.length === 0) continue;
     const ownTaskIds = visible.flatMap((e) => (e.taskId === undefined ? [] : [e.taskId]));
-    const taskIds = viewer.kind === "operator" ? [...row.occurrences.flatMap((o) => (o.taskId === undefined ? [] : [o.taskId])), ...ownTaskIds] : ownTaskIds;
+    const taskIds = viewer.kind === "operator" ? [...report.occurrences.flatMap((o) => (o.taskId === undefined ? [] : [o.taskId])), ...ownTaskIds] : ownTaskIds;
     records.push({
       day,
-      ref: refOf(row),
-      title: titleOf(row),
-      error: (row.parts.message.split("\n")[0] ?? "").slice(0, 200),
-      status: statusInWords(row),
-      source: row.source,
-      count: row.count,
-      firstSeen: new Date(row.firstSeenAt).toISOString(),
-      lastSeen: new Date(row.lastSeenAt).toISOString(),
+      ref: refOf(report),
+      title: titleOf(report),
+      error: (report.parts.message.split("\n")[0] ?? "").slice(0, 200),
+      status: statusInWords(report),
+      source: report.source,
+      count: report.count,
+      firstSeen: new Date(report.firstSeenAt).toISOString(),
+      lastSeen: new Date(report.lastSeenAt).toISOString(),
       taskIds: [...new Set(taskIds)],
-      issue: row.issue === undefined ? null : { identifier: row.issue.identifier ?? null, url: row.issue.url },
+      issue: report.issue === undefined ? null : { identifier: report.issue.identifier ?? null, url: report.issue.url },
       entries: [...visible].sort((a, b) => b.at - a.at).slice(0, RECORD_ENTRIES).map(entryView),
       cut
     });

@@ -36,7 +36,7 @@ import {
   readHistory,
   readReport,
   reportsOf,
-  updateReport as updateReportRow,
+  updateReport as updateStoredReport,
   type IntakeDecision,
   type Occurrence,
   type ReportResourceState
@@ -217,7 +217,7 @@ async function secretsFor(ctx: BlockContext, reporter: ErrorReporter): Promise<s
 
 /** Change one report through `updateReport`, a failed history write said in the reporter's log. */
 function reportUpdater(reporter: ErrorReporter) {
-  return (...[reports, id, change]: Parameters<typeof updateReportRow>) => updateReportRow(reports, id, change, { log: (m) => reporter.log(m) });
+  return (...[reports, id, change]: Parameters<typeof updateStoredReport>) => updateStoredReport(reports, id, change, { log: (m) => reporter.log(m) });
 }
 
 /** Hard bound on the dossier handed to a run, in characters of JSON. */
