@@ -18,4 +18,4 @@ import type { sendTurn as realSendTurn } from "../../../../packages/shift-manage
 export * from "../../../../packages/shift-manager/src/lib/send.ts";
 
 /** Read the line as delivered; the worker's door is never called. */
-export const sendTurn: typeof realSendTurn = async () => ({ requestId: "never-sent" });
+export const sendTurn: typeof realSendTurn = async () => ({ requestId: "never-sent", suspended: false, stopped: null });
