@@ -114,8 +114,10 @@ const ITEM_PAGES = 20;
 
 /**
  * The session's message and suspension items from `requestId`, read from the
- * newest page back until one holds the request's items: what a send decides
- * on when its turn ended before the feed showed them. A new line is at the end.
+ * newest page back until they hold the user's line, the page before held
+ * none of the request's items, or the cap: what a send decides on when its
+ * turn ended before the feed showed them. A new line is at the end, but its
+ * turn's replies can fill more than a page after it.
  */
 async function readRequestItems(client: Pick<Client, "sessions">, sessionId: string, requestId: string): Promise<OutputItem[]> {
   const read = (offset: number, limit: number) => client.sessions.state(sessionId, { includeItems: true, itemTypes: ["message", "suspension", "suspension_resume"], offset, limit });
@@ -123,14 +125,18 @@ async function readRequestItems(client: Pick<Client, "sessions">, sessionId: str
   const first = await read(0, ITEM_PAGE);
   const total = first.pagination?.total ?? 0;
   if (total <= ITEM_PAGE) return mine(first.items);
+  const held: OutputItem[] = [];
   let end = total;
   for (let page = 0; page < ITEM_PAGES; page += 1) {
     const offset = Math.max(0, end - ITEM_PAGE);
     const found = mine((await read(offset, end - offset)).items);
-    if (found.length > 0 || offset === 0) return found;
+    // A page with none of the request's items, after one with some, is before the request began.
+    if (found.length === 0 && held.length > 0) return held;
+    held.unshift(...found);
+    if (holdsLine(held, requestId) || offset === 0) return held;
     end = offset;
   }
-  return [];
+  return held;
 }
 
 // FIX-2776 D2.
@@ -226,6 +232,8 @@ export function useDeliverLine() {
   const { value: turns } = useView(turnsView, { sessionId: target ?? "-" }, { client, enabled: target !== null });
   const pending = useRef(new Set<Pending>());
   const inFlight = useRef(false);
+  // Set once the composer closed: a send the server answers after that has no screen to settle it.
+  const closed = useRef(false);
   const [tick, setTick] = useState(0);
 
   const latest = useRef<{ target: string | null; items: readonly OutputItem[] | undefined; feedStopped?: Error | null; turns: readonly ListedTurn[] | undefined }>({ target: null, items: undefined, turns: undefined });
@@ -284,13 +292,14 @@ export function useDeliverLine() {
 
   // A composer that closes mid-send still hears how its line ended (it clears or keeps the stored
   // draft by it): each send still pending is followed on its own, by its session's records, from here.
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    closed.current = false;
+    return () => {
+      closed.current = true;
       for (const send of [...pending.current]) void settleDetached(client, send);
       pending.current.clear();
-    },
-    [client],
-  );
+    };
+  }, [client]);
 
   // A clock only for the deadlines: what a send waits on is pushed.
   useEffect(() => {
@@ -322,7 +331,7 @@ export function useDeliverLine() {
       }
       options.onStarted?.(requestId);
       const settled = new Promise<Delivered>((resolve, reject) => {
-        pending.current.add({
+        const send: Pending = {
           requestId,
           sessionId: to.sessionId,
           ...(options.onHeld === undefined ? {} : { onHeld: options.onHeld }),
@@ -330,13 +339,19 @@ export function useDeliverLine() {
           until: Date.now() + DELIVER_TIMEOUT_MS,
           resolve,
           reject,
-        });
+        };
+        // The composer closed while the send was out: follow it on its own, as one pending at close is.
+        if (closed.current) {
+          void settleDetached(client, send);
+          return;
+        }
+        pending.current.add(send);
         setTick((n) => n + 1);
       });
       return settled.finally(() => {
         inFlight.current = false;
       });
     },
-    [workforce],
+    [client, workforce],
   );
 }

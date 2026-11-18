@@ -114,6 +114,21 @@ describe("a task's entry on its board", () => {
     expect(last().gaveUp).toBe(true);
   });
 
+  // Greptile 4621742279: Retry on a task called missing waits a fresh deadline, and is called missing again
+  // when it passes with the task still not there.
+  it("waits a fresh deadline on Retry once it was called missing, and is called missing again when that passes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    state.tasks = [];
+    draw();
+    await settle();
+    await act(async () => vi.advanceTimersByTimeAsync(MISSING_FOR_MS + 10));
+    expect(last().gaveUp).toBe(true);
+    await act(async () => last().retryRow());
+    expect(last().gaveUp).toBe(false);
+    await act(async () => vi.advanceTimersByTimeAsync(MISSING_FOR_MS + 10));
+    expect(last().gaveUp).toBe(true);
+  });
+
   it("shows the view's failure, never 'no such task', while it has never answered", async () => {
     state.tasks = undefined;
     state.stale = true;

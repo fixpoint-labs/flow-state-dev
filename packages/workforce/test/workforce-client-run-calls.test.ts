@@ -14,7 +14,9 @@
  * Real engine, real HTTP router, the caller a verified user.
  */
 import { describe, expect, it } from "vitest";
+import { createClient } from "@flow-state-dev/client";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
+import { createWorkforceClient } from "../src/workers/client";
 import { bootHost as bootWorkerHost, FIXTURE, ORG } from "./worker-model-harness";
 import { bootHost as bootCoordinatorHost } from "./coordinator-harness";
 
@@ -123,6 +125,33 @@ describe("stopRun", () => {
     await h.settled(id);
     await expect(alice.stopRun(id, requestId)).resolves.toBeUndefined();
     expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+  });
+
+  // Greptile 4621742267: the abort route also answers 409 when an answer resumed a waiting run before the
+  // stop reached it, and records no stop. The run goes on, so the stop must not read as done.
+  it("rejects a 409 whose run still reads in progress, asking for another stop", async () => {
+    const h = workerHost();
+    const alice = h.client("alice");
+    const { id } = await alice.startSession("researcher");
+    void alice.send(id, "wait").catch(() => undefined);
+    const [running] = await until(
+      () => h.stores.request.list({ sessionId: id }),
+      (requests) => requests.some((request) => request.status === "in_progress"),
+    );
+    // The race, as the route answers it: the abort lost to a resume, and the run runs on.
+    const fetcher = h.fetcherFor("alice");
+    const racing = createWorkforceClient(
+      createClient({
+        userId: "alice",
+        fetcher: async (input, init) =>
+          init?.method === "POST" && String(input).endsWith(`/requests/${running!.id}/abort`)
+            ? new Response(JSON.stringify({ error: "resumed before the stop reached it" }), { status: 409, headers: { "content-type": "application/json" } })
+            : fetcher(input, init),
+      }),
+    );
+    await expect(racing.stopRun(id, running!.id)).rejects.toThrow(/Stop it again/);
+    expect((await h.stores.request.get(running!.id))?.status).toBe("in_progress");
+    await alice.stopRun(id, running!.id);
   });
 
   it("refuses another user's run, and the run goes on", async () => {

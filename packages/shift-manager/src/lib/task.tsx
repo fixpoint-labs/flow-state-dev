@@ -182,8 +182,9 @@ export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { board
         ? { message: "This task's board didn't load. Shift Manager reads it again on its own." }
         : undefined;
 
-  // The missing row's deadline: a timer only, from the view's first answer.
+  // The missing row's deadline: a timer only, from the view's first answer, and afresh from each Retry.
   const [missedOut, setMissedOut] = useState(false);
+  const [rowRetries, setRowRetries] = useState(0);
   const missing = row === undefined;
   useEffect(() => {
     if (!missing) setMissedOut(false);
@@ -192,7 +193,7 @@ export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { board
     if (!missing || !boardRead || !conversationBoard) return;
     const timer = setTimeout(() => setMissedOut(true), MISSING_FOR_MS);
     return () => clearTimeout(timer);
-  }, [missing, boardRead, conversationBoard]);
+  }, [missing, boardRead, conversationBoard, rowRetries]);
 
   // ---- the run: the link's session and request, and the flow its session names.
   const link = row?.run ?? null;
@@ -293,6 +294,7 @@ export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { board
     // The view is live: Retry reads the holder's flow again when that failed, and waits a fresh deadline.
     retryRow: () => {
       setMissedOut(false);
+      setRowRetries((n) => n + 1);
       if (holderFlow !== undefined && "failure" in holderFlow) setFlowReads((n) => n + 1);
     },
     run,

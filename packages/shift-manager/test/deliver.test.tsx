@@ -201,4 +201,61 @@ describe("a send the hook can't follow to its end", () => {
     render(<Box />);
     expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("");
   });
+
+  // Greptile 4621742247: a composer that closes while the send itself is still out has nothing pending yet;
+  // the late answer must still be followed to its end, or the delivered line stays in the stored draft.
+  it("settles a send whose composer closed before the server answered it: a delivered line leaves the stored draft", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let answer!: (sent: { requestId: string }) => void;
+    send.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    let ended = false;
+    const requests = vi.fn(async () => [{ id: "q", status: ended ? "completed" : "in_progress" }]);
+    const state = vi.fn(async () => ({ items: ended ? [line("q")] : [], pagination: { total: ended ? 1 : 0 } }));
+    Object.assign(lab.client.sessions, { requests, state });
+    function Box() {
+      const deliver = useDeliverLine();
+      return <TurnComposer testId="t" label="Message" placeholder="" blocked={null} draftKey="conversation:late" send={(message, held, attachments) => deliver({ sessionId: "s1" }, message, { onHeld: held, attachments })} />;
+    }
+    const first = render(<Box />);
+    fireEvent.change(screen.getByTestId("t-input"), { target: { value: "the line" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    first.unmount();
+    ended = true;
+    await act(async () => answer({ requestId: "q" }));
+    await act(async () => vi.advanceTimersByTimeAsync(3_000));
+    render(<Box />);
+    expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("");
+  });
+
+  // Greptile 4621742289: a turn's replies can fill more than the newest page. The read-back goes on to the
+  // page that holds the user's line, not the first page holding any of the turn's items.
+  it("confirms a turn whose replies fill more than a page after its line", async () => {
+    send.mockResolvedValue({ requestId: "q" });
+    const session = [
+      line("p"),
+      reply("p"),
+      line("q"),
+      ...Array.from({ length: 250 }, (_, i) => ({ ...reply("q"), id: `a-q-${i}` })),
+    ];
+    const state = vi.fn(async (_id: string, at: { offset: number; limit: number }) => ({
+      items: session.slice(at.offset, at.offset + at.limit),
+      pagination: { total: session.length },
+    }));
+    Object.assign(lab.client.sessions, { state });
+    const { result, rerender } = renderHook(() => useDeliverLine());
+    let settled: unknown;
+    let failed: unknown;
+    await act(async () => {
+      void result.current({ sessionId: "s1" }, "hello").then(
+        (v) => (settled = v),
+        (e: unknown) => (failed = e),
+      );
+    });
+    turns = [turn("q", "completed")];
+    await act(async () => rerender());
+    await act(async () => {});
+    await act(async () => {});
+    expect(failed).toBeUndefined();
+    expect(settled).toEqual({ requestId: "q", suspended: false, stopped: null });
+  });
 });

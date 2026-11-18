@@ -232,7 +232,8 @@ export interface WorkforceClient {
    * Stop the one run `requestId` of session `sessionId`, through the flow the
    * session runs on: the abort {@link stopTurns} makes for each turn, by id.
    * A run that already ended is no failure. Resolves once the server took the
-   * abort; the run's own status says when it stopped.
+   * abort; the run's own status says when it stopped. Rejects when an answer
+   * resumed the run before the stop reached it, so it still runs: stop it again.
    */
   stopRun(sessionId: string, requestId: string): Promise<void>;
   // FIX-2776 D3.
@@ -611,9 +612,11 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
         .flow(await flowOfSession(sessionId))
         .request(requestId)
         .abort()
-        .catch((error: unknown) => {
-          // A 409 is a run that already ended: its record says how.
+        .catch(async (error: unknown) => {
+          // A 409 is a run that ended meanwhile, or one an answer resumed first: the record decides.
           if ((error as { status?: number }).status !== 409) throw error;
+          const now = (await sessions.requests(sessionId, { limit: RUNNING_TURNS })).find((request) => request.id === requestId);
+          if (now?.status === "in_progress") throw new Error("The run went on before the stop reached it. Stop it again.");
         });
     },
     upload: async (worker, request) => fsd.flow(flowOf(await readRoster(), worker)).upload(request),
