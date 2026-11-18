@@ -93,7 +93,6 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
  */
 const PAGE_QUERY = CONTROL === "no-live" ? "?goalControl=no-live" : "";
 
-
 /** Load the page, with the control's query, and wait until it can be used. */
 async function openPage(page: Page, origin: string): Promise<void> {
   await page.goto(`${origin}/flow-state${PAGE_QUERY}`);

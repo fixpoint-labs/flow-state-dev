@@ -1,4 +1,3 @@
-import { sleep } from "../../lib/time.mts";
 /**
  * Goal check — harness-manager › a tool call waits for approval.
  *
@@ -43,6 +42,7 @@ import { serve } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 import { ALLOW_FOR_RUN, harnessStub, type HarnessStub, type HarnessToolApprovalHook, type StubRun } from "@flow-state-dev/harness-manager";
 import { claudeCodeAgent, type ClaudeCodeAgentOptions } from "@flow-state-dev/claude-code";
 import { claudeCodeEnv } from "../../../packages/shift-manager/teams/devteam/harness.mts";

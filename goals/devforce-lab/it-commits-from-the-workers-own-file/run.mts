@@ -81,7 +81,6 @@ const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/de
 const RUN_TIMEOUT_MS = 10 * 60_000;
 const SETTLE_TIMEOUT_MS = 12 * 60_000;
 
-
 /** Every file under a directory, recursively, as [relative path, contents]. */
 function filesUnder(root: string, prefix = ""): Array<[string, string]> {
   const out: Array<[string, string]> = [];

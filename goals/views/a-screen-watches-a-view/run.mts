@@ -126,7 +126,6 @@ function clientOf(base: string, userId: string): { client: Client; views: Call[]
   return { client, views };
 }
 
-
 async function firstAt<T>(seen: Array<{ at: number; value: T }>, match: (value: T) => boolean, from: number, withinMs: number): Promise<number | undefined> {
   const deadline = Date.now() + withinMs;
   for (;;) {

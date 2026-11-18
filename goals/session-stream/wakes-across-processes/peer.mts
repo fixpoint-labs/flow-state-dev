@@ -103,7 +103,6 @@ const flowState = createFlowState({
 const router: FlowApiRouter = await flowState.getRouter();
 const stores: StoreRegistry = (await flowState.getRuntime()).stores;
 
-
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------

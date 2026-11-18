@@ -119,7 +119,6 @@ type Proof = {
   refused?: string[];
 };
 
-
 function readProofs(): Proof[] {
   if (!existsSync(PROOFS)) return [];
   return readFileSync(PROOFS, "utf8")

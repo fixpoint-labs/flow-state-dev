@@ -98,7 +98,6 @@ function clientOf(base: string, userId: string): { client: Client; views: Call[]
   return { client, views };
 }
 
-
 /** Wait, up to `withinMs`, for `check` to hold; the ms it took, or `undefined`. */
 async function within(check: () => Promise<boolean>, from: number, withinMs = 3_000): Promise<number | undefined> {
   for (;;) {

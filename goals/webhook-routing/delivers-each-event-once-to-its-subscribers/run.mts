@@ -203,7 +203,6 @@ const host: InboundTransportHost = {
   dispatch: (envelope) => runningAs.run(envelope.principal.userId, () => captured!.dispatch(envelope))
 };
 
-
 /** Wait until no request is running or unfinalized. */
 async function settled(): Promise<void> {
   const running = (r: { status: string; finalizedAtMs?: number | null }) =>

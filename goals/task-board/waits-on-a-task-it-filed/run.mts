@@ -123,7 +123,6 @@ if (PHASE === "main" && PATCHES[CONTROL] !== undefined && process.env.GOAL_MODUL
   process.exit(child.status ?? 1);
 }
 
-
 // ---- the scripted turns ----------------------------------------------------------
 
 /**

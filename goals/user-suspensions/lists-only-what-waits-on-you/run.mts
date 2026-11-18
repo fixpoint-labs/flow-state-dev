@@ -136,7 +136,6 @@ const headersOf = (who: Who) => ({ "x-user": who.user, "x-org": who.org, "x-tena
 
 type Row = Record<string, unknown> & { suspensionId: string; requestId: string; flowKind: string; sessionId?: string };
 
-
 await runGoal(async (failures, tell) => {
   const evidence: string[] = [];
   mkdirSync(SCRATCH, { recursive: true });

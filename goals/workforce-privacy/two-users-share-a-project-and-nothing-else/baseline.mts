@@ -16,7 +16,6 @@ import { act, refusal, type Person } from "./people.mts";
 import { messageOf, type RunRecord } from "./record.mts";
 import { sleep } from "../../lib/time.mts";
 
-
 export interface BaselineOptions {
   install: Install;
   browser: Browser;

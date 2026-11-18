@@ -189,7 +189,6 @@ const follower = runtime.registry.get("follower") ?? (() => {
   throw new Error("setup: the workforce kit serves no follower flow");
 })();
 
-
 /** Wait until no request is running or unfinalized. */
 async function settled(): Promise<void> {
   const running = (r: { status: string; finalizedAtMs?: number | null }) =>

@@ -242,7 +242,6 @@ async function openView(on: Server): Promise<View> {
   };
 }
 
-
 function textOf(event: SessionStreamEvent): string | undefined {
   if (event.type !== "session.item" || event.item.type !== "message") return undefined;
   return (event.item.content as Array<{ text?: string }>)[0]?.text;

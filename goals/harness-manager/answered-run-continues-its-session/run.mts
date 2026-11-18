@@ -107,7 +107,6 @@ const POLL_INTERVAL_MS = 5_000;
  */
 const MAX_ATTEMPTS = 1;
 
-
 /**
  * Every file under `dir` whose text contains `needle`.
  *

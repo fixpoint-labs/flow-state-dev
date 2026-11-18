@@ -1,4 +1,3 @@
-import { sleep } from "../../lib/time.mts";
 /**
  * Goal check — harness-manager › a run's changes wait for review.
  *
@@ -48,6 +47,7 @@ import { serve } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createInboxClient, taskActionName, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { commitAll, createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";

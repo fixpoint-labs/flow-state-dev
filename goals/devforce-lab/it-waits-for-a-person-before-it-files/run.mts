@@ -83,7 +83,6 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
 const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/devteam", import.meta.url));
 const EM_SESSION = workerSessionId(fixture.coordinatorSeat);
 
-
 /** What the coder's run "did": write a file and commit it, so the row can settle done. */
 const commitWork = (run: StubRun): void => {
   writeFileSync(join(run.cwd, "NIGHT-MODE.md"), "A night-mode toggle, as the ask named.\n");

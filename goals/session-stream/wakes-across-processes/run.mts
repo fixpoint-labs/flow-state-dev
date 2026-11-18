@@ -103,7 +103,6 @@ async function pair(db: RunningPostgres, tail: boolean): Promise<Pair> {
   return { p1, p2, frames, stop: async () => void (await Promise.all([p1.stop(), p2.stop()])) };
 }
 
-
 function textOf(event: SessionStreamEvent): string | undefined {
   if (event.type !== "session.item" || event.item.type !== "message") return undefined;
   return (event.item.content as Array<{ text?: string }>)[0]?.text;

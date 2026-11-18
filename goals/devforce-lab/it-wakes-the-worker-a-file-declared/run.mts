@@ -121,7 +121,6 @@ const HARNESS_PACKAGES = [
   "@flow-state-dev/cursor",
 ] as const;
 
-
 const sameSet = (seen: readonly string[], wanted: readonly string[]): boolean =>
   seen.length === wanted.length && [...seen].sort().join(",") === [...wanted].sort().join(",");
 

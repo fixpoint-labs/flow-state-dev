@@ -32,7 +32,7 @@ import { createServer } from "node:net";
  * An unused TCP port on 127.0.0.1.
  *
  * Listens on port 0 and returns the port the kernel assigned, then closes.
- * A listen that does not report an address resolves `0`.
+ * Rejects when listen reports no address, so a caller never treats `0` as a port.
  */
 export function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -40,8 +40,13 @@ export function freePort(): Promise<number> {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
-      const port = typeof address === "object" && address !== null ? address.port : 0;
-      server.close(() => resolve(port));
+      server.close(() => {
+        if (typeof address !== "object" || address === null) {
+          reject(new Error("freePort: listen reported no address"));
+          return;
+        }
+        resolve(address.port);
+      });
     });
   });
 }

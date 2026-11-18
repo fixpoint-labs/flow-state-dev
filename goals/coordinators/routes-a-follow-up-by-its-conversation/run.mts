@@ -58,7 +58,6 @@ type Thread = { on: string; opener: string; followUp: string };
 
 type Message = { role: string; text: string };
 
-
 /** The app's model resolver, on the Vercel AI Gateway. */
 async function gatewayResolver(apiKey: string): Promise<ModelResolver> {
   // `goals/` cannot resolve the gateway package; kitchen-sink's node_modules can.

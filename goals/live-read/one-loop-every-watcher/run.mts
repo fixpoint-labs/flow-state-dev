@@ -285,7 +285,6 @@ function mount(on: Host, rosterSession: string): () => void {
   };
 }
 
-
 /** Wait until no watcher has read for `quietMs` (15 s at most). */
 async function quiet(quietMs = 400): Promise<void> {
   const giveUpAt = Date.now() + 15_000;
