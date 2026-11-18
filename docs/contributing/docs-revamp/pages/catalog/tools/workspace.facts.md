@@ -304,8 +304,9 @@ out of this page's job; see "Left out" below).
   as hashes: correct (W20), but they are SHA-256 hex digests, not content. A reader may expect content.
 - C3. Existing page: "`put` resolves `undefined` only when there's genuinely nothing to decide — a
   collection's own metadata". Correct. `S/projection.ts:439`.
-- C4. Existing page: "It's applied last, so it can override what the projection chose." Correct.
-  `S/projection.ts:464`.
+- C4. Existing page: "It's applied last, so it can override what the projection chose." No longer true.
+  The projection writes `path`, `hash`, and `updatedAt` after the mount's fields, so a mount cannot
+  replace those three. `S/projection.ts:463-466`.
 - C5. Existing page: contested "Nothing was written for that path, and nothing was lost: the other run's
   write stands, and yours is still in your place to retry." Correct, since a contested decision returns
   before any write. `S/projection.ts:394-397`.
