@@ -51,10 +51,10 @@ The flows do not change with the host. What changes is the file that mounts the 
 import { serve } from "@flow-state-dev/node";
 import flowstate from "../fsdev.config";
 
-await serve(flowstate, { host: "127.0.0.1" });
+await serve(flowstate);
 ```
 
-`serve` starts a long-lived server for the app. On `127.0.0.1` it binds immediately. On any other host it refuses to listen while a flow still trusts `body.userId`, and a flow registered after startup is refused on the next request. `allowUnauthenticated: true` is the explicit override. `fsdev serve` passes that flag through. [Runtime options](../reference/runtime.md) has the port, health check and shutdown behaviour.
+`serve` starts a long-lived server for the app. It binds every network interface and does not check that your flows have a resolver. `fsdev serve` does the same from the terminal, using `fsdev.config.ts`, and refuses to bind a network address while a flow has none; with `serve`, pass `host: "127.0.0.1"` until one is set. [Runtime options](../reference/runtime.md) has the port, health check and shutdown behaviour.
 
 ## Other ways in
 

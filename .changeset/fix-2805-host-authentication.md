@@ -6,7 +6,7 @@
 "@flow-state-dev/fsdev": patch
 ---
 
-Every host now refuses to serve an app that still trusts `body.userId`, on any `NODE_ENV`, including when it is unset. `serve()` throws before listening on a non-loopback host, and a flow registered after that still gets a 500. Lambda, Next, and Vercel do the same on each request. The 500 body is `Internal server error`; the flow kinds are logged once. A loopback bind (`127.0.0.1`, `localhost`) is unchanged. `allowUnauthenticated: true`, and `fsdev serve` / `fsdev dev --allow-unauthenticated`, is the override.
+FIX-2805: Every host now refuses to serve an app that still trusts `body.userId`, on any `NODE_ENV`, including when it is unset. `serve()` throws before listening on a non-loopback host, and a flow registered after that still gets a 500. Lambda, Next, and Vercel do the same on each request. The 500 body is `Internal server error`; the flow kinds are logged once. A loopback bind (`127.0.0.1`, `localhost`) is unchanged. `allowUnauthenticated: true`, and `fsdev serve` / `fsdev dev --allow-unauthenticated`, is the override.
 
 A network `serve()` initializes stores before the port opens, so `/healthz` is not up during that cold start.
 
