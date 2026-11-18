@@ -6,20 +6,21 @@
  * opens it, and another worker's message lands there. A session at any other
  * id is not this view's. A project's conversation (`project`) is the one
  * `ensureWorkerSession({ worker, projectId })` opens, on its first line. Items are read when the view opens and then
- * followed on the session stream (`followSessionItems`): a line sent here,
+ * followed on the session stream, through the page's one feed for the session (`useSharedSessionFeed`): a line sent here,
  * a reply, another worker's message, each shows as it is stored, from any
  * process, and nothing is read on a clock or on the snapshot's refresh.
  * Nothing is sent until the first read has landed, and a session
  * a line opened here holds nothing the user hasn't seen. A lapse after the
  * first read keeps it on screen; only a failed first read shows.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { SessionConnectionStatus, SessionSummary } from "@flow-state-dev/client";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { SessionSummary } from "@flow-state-dev/client";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { COORDINATOR_FLOW, deriveWorkerSessionId, type ProjectAddressRef } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
 import { useReportFeedState } from "./feed-health";
 import { describeFailure, workerOf, type Failure, type Worker } from "./reads";
-import { followSessionItems, type SessionItems } from "./run";
+import { useSharedSessionFeed } from "./session-feeds";
 import { useWorkforce } from "./workforce";
 
 /** The flow a coordinator worker runs on, whose conversations carry its delegates' answers. */
@@ -109,11 +110,14 @@ export interface WorkerConversation {
   sessionId: string | null;
   /** The session a first line opened here, until the snapshot lists it. */
   opened: string | null;
-  /** What the session stores, once read, for the session shown. */
-  read: SessionItems | undefined;
+  /**
+   * What the session stores, once read, for the session shown: its newest
+   * items, whether it holds older ones, and the call that adds the page before.
+   */
+  read: { items: OutputItem[]; truncated: boolean; loadEarlier?: () => Promise<void> } | undefined;
   /** Why the first read failed; cleared by the next that succeeds. A failed later read keeps the last one. */
   failure: Failure | undefined;
-  /** Follow the session again after a failed first read (Retry). A live follow already brings every change. */
+  /** Retry after a failed first read. The page's feed reads again on its own, so this asks nothing of it. */
   reread(): void;
   /** The conversation's address is still being worked out: nothing is sent until it is. */
   resolving: boolean;
@@ -133,54 +137,24 @@ export function useWorkerConversation(
   pinned?: string,
   project?: ProjectAddressRef
 ): WorkerConversation {
-  const { client } = useLab();
   const workforce = useWorkforce();
   const { id: derived, failure: underived } = useDerivedId(pinned === undefined && project === undefined ? worker : undefined);
   const [opened, setOpened] = useState<string | null>(null);
   const sessionId = pinned ?? conversationAt(sessions, derived ?? null, opened);
   const resolving = pinned === undefined && opened === null && derived === undefined;
-  // The last read that succeeded, and whose session it read. A re-read keeps it
-  // on screen until the new one lands.
-  const [stored, setStored] = useState<{ sessionId: string; read: SessionItems } | undefined>(undefined);
-  const [failure, setFailure] = useState<Failure | undefined>(undefined);
-  // Bumped to follow again: only a follow whose first read failed needs it.
-  const [follows, setFollows] = useState(0);
-  const failed = useRef(false);
-  // The followed feed's connection, for the page's bar; nothing while no session is followed.
-  const [feedState, setFeedState] = useState<SessionConnectionStatus | undefined>(undefined);
-  useReportFeedState(sessionId === null ? undefined : feedState);
-
-  useEffect(() => {
-    if (sessionId === null) return;
-    let closed = false;
-    failed.current = false;
-    setFeedState(undefined);
-    const stop = followSessionItems(client, sessionId, {
-      onRead: (read) => {
-        if (closed) return;
-        failed.current = false;
-        setStored({ sessionId, read });
-        setFailure(undefined);
-      },
-      onFailure: (why) => {
-        if (closed) return;
-        failed.current = true;
-        setFailure(why);
-      },
-      onState: (state) => {
-        if (!closed) setFeedState(state);
-      },
-    });
-    return () => {
-      closed = true;
-      stop();
-    };
-  }, [client, sessionId, follows]);
-
-  // The stream already brings every item stored, a line just sent included; only a failed follow reads again.
-  const reread = useCallback(() => {
-    if (failed.current) setFollows((n) => n + 1);
-  }, []);
+  // The page's one feed for the session: it reconnects on its own, and a lapse keeps what it read.
+  const feed = useSharedSessionFeed(sessionId);
+  useReportFeedState(sessionId === null ? undefined : feed?.state);
+  const items = feed?.items;
+  const hasEarlier = feed?.hasEarlier ?? false;
+  const loadEarlier = feed?.loadEarlier;
+  const read = useMemo(
+    () => (items === undefined ? undefined : { items: [...items], truncated: hasEarlier, ...(hasEarlier && loadEarlier !== undefined ? { loadEarlier } : {}) }),
+    [items, hasEarlier, loadEarlier],
+  );
+  // Only a first read that failed shows: once items landed, a lapse keeps them.
+  const failure = read === undefined && feed?.error != null ? describeFailure(feed.error) : undefined;
+  const reread = useCallback(() => {}, []);
   const ensure = useCallback(async () => {
     if (sessionId !== null) return sessionId;
     const session = await workforce.ensureWorkerSession(project === undefined ? { worker: worker.id } : { worker: worker.id, projectId: project });
@@ -188,7 +162,6 @@ export function useWorkerConversation(
     return session.id;
   }, [sessionId, workforce, worker.id, project]);
 
-  const read = sessionId !== null && stored?.sessionId === sessionId ? stored.read : undefined;
   return {
     sessionId,
     opened,

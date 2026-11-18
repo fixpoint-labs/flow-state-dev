@@ -3,10 +3,10 @@
  * A task's Session tab: the items of the run the task's
  * row names, in stored order, live while the tab is open.
  *
- * The run session's feed: its newest items, then each item its stream brings,
- * with *Load earlier* while it holds older ones. The run's request, through the
- * flow its session names, reports the run's status. Mounted only while the tab
- * is open, so a user reading Brief pays for no stream. A session shared with
+ * The run session's feed, the page's one feed for the session
+ * (`useSharedSessionFeed`): its newest items, then each item its stream brings,
+ * with *Load earlier* while it holds older ones. The run's status is the task's
+ * (`TaskProvider`, from the run's own stream). A session shared with
  * other tasks shows only the items stamped with this task's id (a line its
  * composer sent, and the reply, carry the stamp when the door takes the task),
  * and the lines it sent to a door that keeps no task id, with their replies,
@@ -20,31 +20,28 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { SessionConnectionStatus } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext, useJumpToLatest } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
 import { shiftManagerRenderers } from "../components/ToolLine";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { ConversationScrollButton } from "../components/flow-state/conversation";
 import { EmptyState, LoadEarlierButton, SectionFailure } from "../components/ui";
-import { asksOfTask, waitsOnYou } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { useReportFeedState } from "../lib/feed-health";
+import { asksOfTask, waitsOnYou } from "../lib/derive";
 import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
+import { useSharedSessionFeed } from "../lib/session-feeds";
+import { readTaskClaims, taskItems } from "../lib/task-items";
 import { RouteLink } from "../components/RouteLink";
 import { isTaskBrief } from "../components/TaskBrief";
-import { followRequest, followSessionItems, readRunRecord, readTaskClaims, taskItems, type OpenRun, type SessionItems } from "../lib/run";
-import { useTask } from "../lib/task";
-
-/** How long after a dropped status stream a run still going is followed again. */
-const STATUS_FOLLOW_AGAIN_MS = 3_000;
+import { useTask, type OpenRun } from "../lib/task";
 
 export function TaskSession() {
   const task = useTask();
   const { row, run } = task;
   const { snapshot } = useLab();
   // A task held on a question for you points at the Inbox; its run's stop for
-  // you shows inline as an ask instead (BR-17).
+  // you shows inline as an ask instead (BR-17). FIX-2774 moves both to its Inbox view.
   const waiting = waitsOnYou(snapshot, row) && asksOfTask(snapshot, row).length === 0;
 
   const body = (() => {
@@ -102,66 +99,19 @@ function RunItems({ run }: { run: OpenRun }) {
   const { client, snapshot } = useLab();
   const task = useTask();
   const asks = asksOfTask(snapshot, task.row);
-  const [stored, setStored] = useState<SessionItems | undefined>(undefined);
-  const [failure, setFailure] = useState<Failure | undefined>(undefined);
-  const [attempt, setAttempt] = useState(0);
   const feed = useJumpToLatest();
-  const { reportStatus } = task;
-  // The feed's connection, for the page's bar and stale styling.
-  const [feedState, setFeedState] = useState<SessionConnectionStatus | undefined>(undefined);
-  useReportFeedState(feedState);
-
-  useEffect(() => {
-    let closed = false;
-    setStored(undefined);
-    setFailure(undefined);
-    setFeedState(undefined);
-    const stop = followSessionItems(client, run.sessionId, {
-      onRead: (read) => {
-        if (closed) return;
-        setStored(read);
-        setFailure(undefined);
-      },
-      onFailure: (why) => {
-        if (!closed) setFailure(why);
-      },
-      onState: (state) => {
-        if (!closed) setFeedState(state);
-      },
-    });
-    return () => {
-      closed = true;
-      stop();
-    };
-  }, [client, run.sessionId, attempt]);
-
-  // The run's status, from its request stream. That stream doesn't reconnect: when it drops, the
-  // run's record is read, and a run still going is followed again after a pause. The items stay.
-  const [statusFollows, setStatusFollows] = useState(0);
-  useEffect(() => {
-    let closed = false;
-    let again: ReturnType<typeof setTimeout> | undefined;
-    const followAgain = () => {
-      if (!closed) again = setTimeout(() => setStatusFollows((n) => n + 1), STATUS_FOLLOW_AGAIN_MS);
-    };
-    const stream = followRequest(client, run, {
-      // The items come from the session feed.
-      onItem: () => {},
-      onStatus: reportStatus,
-      onError: () => {
-        readRunRecord(client, run).then((record) => {
-          if (closed) return;
-          reportStatus(record.status, record.endedAtMs);
-          if (record.status === "in_progress") followAgain();
-        }, followAgain);
-      },
-    });
-    return () => {
-      closed = true;
-      clearTimeout(again);
-      stream.close();
-    };
-  }, [client, run, reportStatus, statusFollows]);
+  const [attempt, setAttempt] = useState(0);
+  // The page's one feed for the run session; its connection goes to the page's bar.
+  const session = useSharedSessionFeed(run.sessionId);
+  useReportFeedState(session?.state);
+  const sessionItems = session?.items;
+  const stored = useMemo(
+    () => (sessionItems === undefined ? undefined : { items: [...sessionItems], truncated: session!.hasEarlier, loadEarlier: session!.hasEarlier ? session!.loadEarlier : undefined }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessionItems, session?.hasEarlier, session?.loadEarlier],
+  );
+  // Only a first read that failed shows: the feed reads again on its own, and a lapse keeps what it read.
+  const failure: Failure | undefined = stored === undefined && session?.error != null ? describeFailure(session.error) : undefined;
 
   // A window that starts after the task was claimed holds no `task-change` naming it, and the
   // attribution would drop every step: read the board's claims in this session on their own.
@@ -204,8 +154,8 @@ function RunItems({ run }: { run: OpenRun }) {
   // a keyed snapshot shows its latest version only, and a container with its
   // own renderer draws the items it owns.
   const { renderers } = useFlowContext();
-  const { unstamped } = task;
-  const sentSet = useMemo(() => new Set(unstamped), [unstamped]);
+  // Every line this composer sent shows by its request: a stamping door's turns carry the stamp too.
+  const sentSet = useMemo(() => new Set(task.sent), [task.sent]);
   const shown = useMemo(() => {
     if (stored === undefined) return undefined;
     // The claims only teach the attribution which tasks are this board's; they are never drawn.

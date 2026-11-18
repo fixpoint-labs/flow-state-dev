@@ -22,7 +22,8 @@ export { readCommittedTask } from "./tasks/collection/read-committed";
 export { TaskWriteRefusedError } from "./tasks/collection/refused-write";
 export { resolveTaskCapDefaults, RETRY_BUDGET_NOT_APPLICABLE } from "./tasks/collection/task-caps";
 export { CASCADE_DUE_MS, cascadeEndedAt, DEFAULT_LEASE_DURATION_MS } from "./tasks/collection/internal";
-export { type TaskChangeEvent, type TaskChangeKind, SERVER_ONLY_TASK_FIELDS } from "./tasks/collection/change-event";
+// `TaskChangeKind` is public on `./tasks` (FIX-2776).
+export { type TaskChangeEvent, SERVER_ONLY_TASK_FIELDS } from "./tasks/collection/change-event";
 export type { TaskClaimIdentity } from "./tasks/schema/task";
 export type { TaskWorkerRegistry } from "./tasks/workers/types";
 export { taskClaimTicketSchema } from "./tasks/claim-ticket";

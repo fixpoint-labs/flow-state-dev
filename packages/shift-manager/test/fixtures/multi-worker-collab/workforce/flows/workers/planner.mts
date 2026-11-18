@@ -40,6 +40,7 @@ export function definePlannerFlow(options: PlannerFlowOptions) {
     configSchema: workerConfigSchema(),
     session: { ...installation.session(factory.sessionStateShape), serverOwned: [...factory.serverOwned] },
     resources: { ...installation.resources, ...factory.resources },
+    views: factory.views,
     actions: { ...hearingDoor, ...factory.actions },
     // A task's notice lands as a line in the conversation; nothing here acts on it.
     internal: { actions: factory.entries(hearingDoor.respond.block, () => "fixed") },

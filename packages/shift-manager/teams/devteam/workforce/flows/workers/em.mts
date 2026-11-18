@@ -367,6 +367,8 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     }),
     session: { ...installation.session(factory.sessionStateShape), serverOwned: [...factory.serverOwned] },
     resources: { ...options.resources, ...installation.resources, ...factory.resources },
+    // The board's task list and the delegates, as session views a screen watches (FIX-2776).
+    views: factory.views,
     // The worker is loaded first.
     request: { onStarted: resolveEmWorker },
     actions: {

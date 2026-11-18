@@ -37,8 +37,8 @@ import { useLab } from "../lib/lab-data";
 import { cn } from "../lib/utils";
 import { STALE_CLASS } from "./flow-state/connection-banner";
 import type { Worker } from "../lib/reads";
-import { flowUploader } from "../lib/files";
-import { sendTurn } from "../lib/send";
+import { useDeliverLine } from "../lib/deliver";
+import { useWorkforce } from "../lib/workforce";
 import { clockTime } from "../lib/shell";
 
 /**
@@ -135,7 +135,9 @@ export function Conversation({
   /** Why nothing can be sent here, whatever the worker: the session is read, never written to. */
   readOnly?: string;
 }) {
-  const { client, refresh, answered, snapshot, stale } = useLab();
+  const { refresh, answered, snapshot, stale } = useLab();
+  const workforce = useWorkforce();
+  const deliver = useDeliverLine();
   const conversation = useWorkerConversation(worker, sessions, session, project);
   const inventory = snapshot !== undefined && "inventory" in snapshot && snapshot.inventory?.ok ? snapshot.inventory.value.workers : undefined;
   const known = useMemo(() => knownWorkers(inventory ?? [], sessions), [inventory, sessions]);
@@ -199,20 +201,15 @@ export function Conversation({
       onAutoSend={onAutoSend}
       seed={seed}
       // Through the worker's own flow, whose sign-in its send runs.
-      uploader={flowUploader(client, worker.kind)}
+      uploader={worker.kind === null ? null : { upload: (file) => workforce.upload(worker.id, file) }}
       send={async (message, held, attachments) => {
         const settled = startWork?.();
         feed.sent();
         try {
           // A first line opens the conversation (at the worker's derived address, or linked to `project`) before the door's request runs in it.
           const target = await conversation.ensure();
-          return await sendTurn(client, { sessionId: target, flowId: worker.kind!, door: worker.door! }, message, {
-            onHeld: () => {
-              // The session holds the line: read it back now, so it is drawn while the reply is in flight.
-              reread();
-              held();
-            },
-          }, attachments);
+          // The session's feed draws the line as it lands; `held` says the worker is on it.
+          return await deliver({ sessionId: target }, message, { onHeld: held, attachments });
         } finally {
           // Read the Lab again however it ended. Stopped short, it may have raised an ask Inbox
           // should list; finished, it may have changed the organization, such as a project it

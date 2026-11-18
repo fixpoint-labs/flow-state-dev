@@ -14,7 +14,7 @@ import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GAPS } from "../src/gaps";
 import type { Worker } from "../src/lib/reads";
-import { TurnNotDelivered } from "../src/lib/send";
+import { TurnNotDelivered } from "../src/lib/deliver";
 
 const read = vi.fn();
 const sendTurn = vi.fn();
@@ -25,7 +25,8 @@ const lab = {
   refresh: vi.fn(),
   snapshot: { orgId: "org_1", sessions: [], inventory: { ok: true, value: { workers: [] } } },
 };
-const workforce = { ensureWorkerSession };
+const upload = vi.fn();
+const workforce = { ensureWorkerSession, upload };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
 /**
@@ -34,21 +35,38 @@ vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
  */
 type Follower = { onRead(read: { items: unknown[]; truncated: boolean; loadEarlier?: () => Promise<void> }): void; onFailure(failure: { message: string }): void };
 const follows: Array<{ sessionId: string; to: Follower; closed: boolean }> = [];
-vi.mock("../src/lib/run", async (original) => ({
-  ...(await original<typeof import("../src/lib/run")>()),
-  followSessionItems: (client: unknown, sessionId: string, to: Follower) => {
-    const entry = { sessionId, to, closed: false };
-    follows.push(entry);
-    Promise.resolve(read(client, sessionId)).then(
-      (got) => !entry.closed && to.onRead(got),
-      (error: unknown) => !entry.closed && to.onFailure({ message: error instanceof Error ? error.message : String(error) }),
-    );
-    return () => void (entry.closed = true);
-  },
-}));
+// The page's one feed for a session (`useSharedSessionFeed`), stood in for: its first answer is `read`'s,
+// and a case pushes what the session stream brings. A failure after items landed keeps them, as the feed does.
+vi.mock("../src/lib/session-feeds", async () => {
+  const { useEffect, useState } = await import("react");
+  return {
+    useSharedSessionFeed: (sessionId: string | null) => {
+      const [held, setHeld] = useState<{ sessionId: string; items?: unknown[]; hasEarlier: boolean; loadEarlier: () => Promise<void>; error: Error | null } | undefined>();
+      useEffect(() => {
+        if (sessionId === null) return;
+        const to: Follower = {
+          onRead: (got) => setHeld({ sessionId, items: got.items, hasEarlier: got.truncated, loadEarlier: got.loadEarlier ?? (async () => {}), error: null }),
+          onFailure: (why) => setHeld((was) => (was?.items !== undefined ? was : { sessionId, hasEarlier: false, loadEarlier: async () => {}, error: new Error(why.message) })),
+        };
+        const entry = { sessionId, to, closed: false };
+        follows.push(entry);
+        Promise.resolve(read(lab.client, sessionId)).then(
+          (got) => !entry.closed && to.onRead(got),
+          (error: unknown) => !entry.closed && to.onFailure({ message: error instanceof Error ? error.message : String(error) }),
+        );
+        return () => void (entry.closed = true);
+      }, [sessionId]);
+      return held === undefined || held.sessionId !== sessionId ? undefined : { ...held, state: "live", runs: null, followResponse: () => {} };
+    },
+  };
+});
 /** What the session stream brings to the open follow. */
 const streamed = (items: unknown[]) => act(async () => follows.filter((f) => !f.closed).at(-1)!.to.onRead({ items, truncated: false }));
-vi.mock("../src/lib/send", async (original) => ({ ...(await original<typeof import("../src/lib/send")>()), sendTurn: (...a: unknown[]) => sendTurn(...a) }));
+// The one send path (`useDeliverLine`), stood in for: `sendTurn(client, target, message, options)`.
+vi.mock("../src/lib/deliver", async (original) => ({
+  ...(await original<typeof import("../src/lib/deliver")>()),
+  useDeliverLine: () => (to: unknown, message: string, options: unknown) => sendTurn(lab.client, to, message, options),
+}));
 // A page with no Web Crypto can't hash a derived address: this worker's derivation fails the way it would there.
 const UNHASHABLE = "eng.unhashable";
 vi.mock("@flow-state-dev/workforce/browser", async (original) => {
@@ -62,7 +80,6 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
 
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { Conversation } from "../src/components/Conversation";
-import { flowUploader } from "../src/lib/files";
 import { RECEIVED_MESSAGE_DATA_TYPE, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 
 // The reviewer's conversation: the session at its derived address, where a worker's message lands too.
@@ -299,13 +316,14 @@ describe("an open conversation", () => {
     expect(screen.queryByTestId("rev-composer-blocked")).toBeNull();
   });
 
-  it("follows again on Retry after a first read failed, and stops the follow it replaced", async () => {
+  it("shows a first read's failure, and the session once the feed's own retry lands", async () => {
     read.mockRejectedValueOnce(new Error("down"));
     drawn([session(s1)]);
-    fireEvent.click(await screen.findByRole("button", { name: /retry/i }));
-    await waitFor(() => expect(follows).toHaveLength(2));
-    expect(follows[0]!.closed).toBe(true);
+    expect(await screen.findByTestId("rev-conversation-failure")).toBeTruthy();
+    await streamed([item("i1", "Back.")]);
     await waitFor(() => expect(screen.queryByTestId("rev-conversation-failure")).toBeNull());
+    // One feed for the session throughout: the page's, which reads again on its own.
+    expect(follows).toHaveLength(1);
   });
 
   it("sends nothing into a session the view draws read-only, and says why, whatever the worker", async () => {
@@ -385,7 +403,7 @@ describe("sending", () => {
     drawn([session(s1)]);
     await send("ship it?");
     // To the worker's flow, never an address carrying the worker; the session names the worker.
-    expect(sendTurn.mock.calls[0]![1]).toEqual({ sessionId: s1, flowId: "agent", door: "talk" });
+    expect(sendTurn.mock.calls[0]![1]).toEqual({ sessionId: s1 });
     expect(ensureWorkerSession).not.toHaveBeenCalled();
     expect(sendTurn.mock.calls[0]![2]).toBe("ship it?");
   });
@@ -471,35 +489,16 @@ describe("sending", () => {
 // its sends resolve only when the upload goes through that flow: the Lab-wide
 // upload route runs the host's sign-in, and the send would then find no file.
 describe("a line's files", () => {
-  it("upload through the worker's own flow, not the Lab-wide route", async () => {
-    const viaFlow = vi.fn(async () => ({ type: "file", mediaType: "image/png", filename: "bug.png", data: "fsd-blob:b_viaflow000001" }));
-    const viaLab = vi.fn(async () => ({ type: "file", mediaType: "image/png", filename: "bug.png", data: "fsd-blob:b_vialab0000001" }));
-    const flows: string[] = [];
-    Object.assign(lab.client, { upload: viaLab, flow: (kind: string) => (flows.push(kind), { upload: viaFlow }) });
-    try {
-      drawn([]);
-      const input = screen.getByTestId("rev-composer-input");
-      const shot = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "bug.png", { type: "image/png" });
-      await act(async () => {
-        fireEvent.paste(input, { clipboardData: { items: [{ kind: "file", getAsFile: () => shot }], files: [shot] } });
-      });
-      await waitFor(() => expect(viaFlow).toHaveBeenCalledOnce());
-      expect(viaLab).not.toHaveBeenCalled();
-      expect(flows).toContain("agent");
-    } finally {
-      delete (lab.client as Record<string, unknown>).upload;
-      delete (lab.client as Record<string, unknown>).flow;
-    }
-  });
-  // Inbox's reply and a task's composer upload through the same uploader, named by their target flow.
-  it("go to the flow a composer names, and nowhere while it names none", async () => {
-    const upload = vi.fn(async () => ({ type: "file", mediaType: "image/png", data: "fsd-blob:b_viaflow000001" }) as const);
-    const flows: string[] = [];
-    const client = { flow: (id: string) => (flows.push(id), { upload }) };
-    expect(flowUploader(client, null)).toBeNull();
-    expect(flowUploader(client, undefined)).toBeNull();
-    await flowUploader(client, "coder")!.upload({ data: new Blob(["x"]), mediaType: "image/png" });
-    expect(flows).toEqual(["coder"]);
-    expect(upload).toHaveBeenCalledOnce();
+  it("upload through workforce's upload, by the worker, which goes through the worker's own flow", async () => {
+    upload.mockReset();
+    upload.mockResolvedValue({ type: "file", mediaType: "image/png", filename: "bug.png", data: "fsd-blob:b_viaflow000001" });
+    drawn([]);
+    const input = screen.getByTestId("rev-composer-input");
+    const shot = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "bug.png", { type: "image/png" });
+    await act(async () => {
+      fireEvent.paste(input, { clipboardData: { items: [{ kind: "file", getAsFile: () => shot }], files: [shot] } });
+    });
+    await waitFor(() => expect(upload).toHaveBeenCalledOnce());
+    expect(upload.mock.calls[0]![0]).toBe("eng.reviewer");
   });
 });

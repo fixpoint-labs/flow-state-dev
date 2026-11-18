@@ -23,7 +23,7 @@
  * whose file sets `editsOwnDelegates: true` ({@link
  * WorkerDelegates.toolsCapability}). Those three refuse at the call too.
  */
-import { defineCapability, handler } from "@flow-state-dev/core";
+import { defineCapability, defineView, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { DELEGATES_STATE } from "./delegate-keys";
 import { z } from "zod";
@@ -233,13 +233,12 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     return { list: await readDelegates(ctx.session, defaults), filingSessionId: await filingSessionIdOf(ctx.session) };
   };
   /**
-   * The list as `listDelegates` answers it, each delegate with what it does and
-   * what it takes now, from the roster row the check reads: its worker's
-   * description and what its flow takes. One that fails the check for an add
-   * (fired, or on a flow that takes no task) takes nothing, with no description.
+   * `listed`, each delegate with what it does and what it takes now, from the
+   * roster row the check reads: its worker's description and what its flow
+   * takes. One that fails the check for an add (fired, or on a flow that takes
+   * no task) takes nothing, with no description.
    */
-  const read = async (ctx: BlockContext) => {
-    const listed = listOutput(await list(ctx));
+  const described = async (ctx: BlockContext, listed: ReturnType<typeof listOutput>) => {
     const delegates: Array<DelegateRecord & { description: string | null; takes: DelegateTakes }> = [];
     for (const record of listed.delegates) {
       const checked = await check(ctx, record.worker, "add");
@@ -250,6 +249,18 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
       );
     }
     return { ...listed, delegates };
+  };
+  /** The list as `listDelegates` answers it: read, copying the defaults in on a first read. */
+  const read = async (ctx: BlockContext) => described(ctx, listOutput(await list(ctx)));
+  // FIX-2776 D1.
+  /**
+   * The list as the delegates view answers it: the same records and the same
+   * check as {@link read}, without its first-read write, which a view can't
+   * make. A list never written reads as the defaults it would copy in now.
+   */
+  const peek = async (ctx: BlockContext) => {
+    const list = currentDelegates(ctx.session.state, await ownerDefaults(ctx));
+    return described(ctx, listOutput({ list, filingSessionId: await filingSessionIdOf(ctx.session) }));
   };
 
   /** Throw a refusal, for the actions. */
@@ -333,6 +344,26 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     execute: async (_input, ctx) => read(ctx)
   });
 
+  // FIX-2776 D1.
+  /**
+   * The session's delegates as a session view, `delegates`: what
+   * `listDelegates` answers, read without writing, so a screen watches it
+   * with `useView` and hears every change to the session's list, the
+   * coordinator's own tool's included. A read never pins a list,
+   * `delegates: all`'s or any other: only a change, or the action's or the
+   * tool's read, does.
+   */
+  const view = defineView({
+    scope: "session",
+    block: handler({
+      name: "delegates-view",
+      inputSchema: z.object({}).strict(),
+      outputSchema: delegateReadOutputSchema,
+      ...blockBase,
+      execute: async (_input, ctx) => peek(ctx)
+    })
+  });
+
   // FIX-2083.
   /**
    * The session's delegates as a task sees them, read now: each that takes a
@@ -409,8 +440,13 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     /** The same four as tools: `listDelegates`, `addDelegate`, `removeDelegate`, `setFallback`. The three that change refuse unless the worker manages its own. */
     tools: [listDelegatesTool, addDelegateTool, removeDelegateTool, setFallbackTool] as const,
     /** The delegate tools a model's turn is offered, per call: `listDelegates`, and the three that change only where the worker manages its own. */
-    toolsCapability
+    toolsCapability,
+    /** The delegates as a session view, for the flow's `views` under `delegates` (`DELEGATES_VIEW`). */
+    view
   };
 }
+
+/** The delegates view, as {@link defineWorkerDelegates} builds it. Import as a type in client code. */
+export type DelegatesView = WorkerDelegates["view"];
 
 export type WorkerDelegates = ReturnType<typeof defineWorkerDelegates>;

@@ -20,8 +20,7 @@ import { describeFailure, GENERAL_TEAM, type Failure } from "../lib/reads";
 import type { Route } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import { readRecordedWork, type RecordedWork } from "@flow-state-dev/harness-manager/browser";
-import type { OpenRun } from "../lib/run";
-import { useTask } from "../lib/task";
+import { useTask, type OpenRun } from "../lib/task";
 import type { Gaps } from "../gaps";
 
 function Section({ title, children, testId }: { title: string; children: ReactNode; testId: string }) {
@@ -49,7 +48,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
   const missingAfter = row === undefined ? [] : row.deps.filter((id) => !task.boardRows.some((r) => r.id === id));
   const blocks = row === undefined ? [] : task.boardRows.filter((r) => r.deps.includes(row.id));
   const taskAt = (id: string): Route => ({ level: "task", boardRef: task.boardRef, taskId: id, tab: "session" });
-  // The oldest ask this task's run waits on: the snapshot holds them oldest first.
+  // The oldest ask this task's run waits on: the snapshot holds them oldest first (FIX-2774 moves it to its Inbox view).
   const ask = asksOfTask(snapshot, row)[0];
 
   return (

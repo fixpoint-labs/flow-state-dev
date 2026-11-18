@@ -43,7 +43,6 @@ import { CODER_FLOW } from "../../../packages/shift-manager/teams/devteam/workfo
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { createLabReader } from "../../../packages/shift-manager/src/lib/reads.ts";
-import { sendTurn } from "../../../packages/shift-manager/src/lib/send.ts";
 
 stripIntentOverrides();
 
@@ -208,7 +207,12 @@ await runGoal(async (failures, tell) => {
       return await until(id!, (r) => moved(r) && reviewOf(r)?.id !== reviewId);
     };
     /** A line in the task's session, as its composer sends it: to the coder's door. */
-    const line = (message: string) => sendTurn(client, { sessionId: runSession, flowId: runFlow, door: "respond" }, message);
+    const line = async (message: string) => {
+      const sent = await client.flow(runFlow).send("respond", { message }, { sessionId: runSession });
+      const settled = await sent.result({ timeoutMs: 130_000, pollMs: 250 });
+      if (settled.status === "failed") throw new Error(settled.error?.message ?? "the door refused the line");
+      return settled;
+    };
 
     // ---- a: Open a PR pushes the run's branch, opens PR 7, and the task waits on it.
     const accepted = await openAPr(reviewOf(held).id);

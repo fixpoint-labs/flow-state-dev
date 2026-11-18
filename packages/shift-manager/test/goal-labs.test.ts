@@ -18,7 +18,8 @@ import { connect } from "../src/lib/connection";
 import { collectionOfBoard, createLabReader, GENERAL_TEAM, type Ask, type BoardTaskView } from "../src/lib/reads";
 import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { followRequest, readSessionItems, resolveRunFlow, taskItems } from "../src/lib/run";
+import { followRequest, readSessionItems, resolveRunFlow } from "./helpers/session-reads";
+import { taskItems } from "../src/lib/task-items";
 import { declaredBrowserReadable } from "./helpers/documents";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 

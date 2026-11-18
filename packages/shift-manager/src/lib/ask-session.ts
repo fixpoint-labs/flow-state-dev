@@ -7,8 +7,7 @@
  * Both are read off the session's stored items, ordered the way the store
  * orders them, never the order a read happened to return.
  */
-import { compareItemOrder } from "@flow-state-dev/client";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import { compareItemOrder, type OutputItem } from "@flow-state-dev/core/items";
 
 /** How many tool calls *From the session* shows (v2:624-633). */
 export const FROM_THE_SESSION = 3;

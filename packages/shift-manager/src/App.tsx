@@ -15,7 +15,7 @@
  * which reads again on its own. Once a read has landed, a later failure keeps
  * the shell and draws the connection bar above it instead.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { GAPS, type Gaps } from "./gaps";
 import type { ThemeLook } from "./lib/theme";
 import type { Connection } from "./lib/connection";
@@ -34,6 +34,7 @@ import { WorkerSettingsView } from "./surfaces/WorkerSettings";
 import { SettingsView } from "./surfaces/Settings";
 import { Sidebar } from "./surfaces/Sidebar";
 import { TaskProvider } from "./lib/task";
+import { SessionFeedsProvider } from "./lib/session-feeds";
 import { TaskFrame } from "./surfaces/TaskFrame";
 import { TaskInspector } from "./surfaces/TaskInspector";
 import { Tasks } from "./surfaces/Tasks";
@@ -53,9 +54,17 @@ import { usePanels } from "./lib/panels";
 export function App({ connection, gaps = GAPS, devtoolUrl, look }: { connection: Connection; gaps?: Gaps; devtoolUrl?: string; look?: ThemeLook }) {
   return (
     <LabProvider connection={connection}>
-      <Shell gaps={gaps} devtoolUrl={devtoolUrl} look={look} />
+      <LabSessionFeeds>
+        <Shell gaps={gaps} devtoolUrl={devtoolUrl} look={look} />
+      </LabSessionFeeds>
     </LabProvider>
   );
+}
+
+/** The page's session feeds, one per session a screen shows, through the Lab's client. */
+function LabSessionFeeds({ children }: { children: ReactNode }) {
+  const { client } = useLab();
+  return <SessionFeedsProvider client={client}>{children}</SessionFeedsProvider>;
 }
 
 function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ThemeLook | undefined }) {
@@ -125,7 +134,6 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
           // The task screen and its inspector read one row and one run.
           <TaskProvider
             key={`${route.boardRef}/${route.taskId}`}
-            snapshot={snapshot}
             boardRef={route.boardRef}
             taskId={route.taskId}
             devtoolUrl={devtoolUrl}

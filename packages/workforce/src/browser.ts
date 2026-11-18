@@ -34,6 +34,8 @@ export type { ListedTurn, SessionTurnsView, ListedWorkerSession, WorkerSessionsV
 export { workerMessagesViewRef } from "./messages/worker-messages-view-ref";
 export type { WorkerMessagesView } from "./messages/worker-messages-view";
 export { TURN_ACTIONS } from "./workers/turn-actions";
+export { delegatesViewRef } from "./delegates/delegates-view-ref";
+export type { DelegatesView } from "./delegates/worker-delegates";
 export {
   deriveWorkerSessionId,
   isDerivedWorkerSessionId,

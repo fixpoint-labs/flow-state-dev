@@ -16,11 +16,6 @@ import { toRoutines } from "../src/lib/routines";
 const view = vi.fn();
 /** A send to a collection: `(pattern, verb, input)`. */
 const send = vi.fn();
-const runAction = vi.fn();
-vi.mock("../src/lib/action", async (original) => ({
-  ...(await original<typeof import("../src/lib/action")>()),
-  runAction: (...a: unknown[]) => runAction(...a),
-}));
 const lab = {
   client: {
     userId: "u_1",
@@ -58,7 +53,6 @@ const snapshot = { sessions: [], readAt: 1 } as unknown as LoadedSnapshot;
 const listed = (routines: unknown[]) => ({ value: { routines }, topics: [] });
 
 beforeEach(() => {
-  runAction.mockReset();
   view.mockReset();
   send.mockReset();
   window.history.replaceState(null, "", "/routines");
@@ -88,7 +82,6 @@ describe("the Routines view", () => {
     render(<Routines snapshot={snapshot} />);
     const lines = await screen.findAllByTestId("routine");
     expect(view.mock.calls[0]![0]).toMatchObject({ flow: "workforce-roster", view: "routines" });
-    expect(runAction).not.toHaveBeenCalled();
     expect(lines.map((l) => [l.getAttribute("data-id"), l.getAttribute("data-trigger"), l.getAttribute("data-paused")])).toEqual([
       ["clock:adoption", "clock", "false"],
       ["clock:paused", "clock", "true"],
@@ -117,7 +110,6 @@ describe("the Routines view", () => {
       ["workforce/schedules/*", "pauseRoutine", { id: "clock:paused", paused: false }],
       ["workforce/schedules/*", "deleteRoutine", { id: "clock:adoption" }],
     ]);
-    expect(runAction).not.toHaveBeenCalled();
   });
 
   it("offers an app's routine a pause and no delete, and says why a change was refused", async () => {

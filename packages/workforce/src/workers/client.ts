@@ -21,7 +21,8 @@ import {
   ClientHttpError,
   ResourceWriteError,
   type Client,
-  type SessionSummary
+  type SessionSummary,
+  type UploadRequest
 } from "@flow-state-dev/client";
 import {
   byRecent,
@@ -46,6 +47,7 @@ import { TURN_ACTIONS } from "./turn-actions";
 import { watchView } from "@flow-state-dev/client/internal";
 import { rosterView } from "./roster-view-ref";
 import { STANDING_RULES_ACTION } from "../standing-rules/keys";
+import { ADD_DELEGATE, REMOVE_DELEGATE } from "../delegates/delegate-keys";
 import type { StandingRulesActionInput, StandingRulesActionOutput } from "../standing-rules/rules-action";
 import type { SetWorkProjectOutput } from "../projects/work-project";
 
@@ -203,14 +205,55 @@ export interface WorkforceClient {
   startSession(worker: string, options?: { fields?: Record<string, unknown> }): Promise<SessionSummary>;
   /**
    * Send `message` to the user's session `sessionId` through the worker
-   * flow's door (`respond`), with any uploaded `attachments`. Resolves once
-   * the server took the send. With `{ stream: true }` it resolves to the
-   * send's streamed `Response` instead, for a screen showing the answer as it
-   * is written (a session feed's `followResponse`), and rejects, naming the
-   * status, when the server refused it.
+   * flow's door (`respond`), with any uploaded `attachments`. The client sets
+   * the send's request id, so it is known before the server answers. Resolves
+   * once the server took the send, to `{ requestId }`: what a screen matches
+   * the line and its turn by, or stops it by ({@link stopRun}). With
+   * `{ stream: true }` it resolves to the send's streamed `Response` instead,
+   * for a screen showing the answer as it is written (a session feed's
+   * `followResponse`), and rejects, naming the status, when the server
+   * refused it.
+   *
+   * `taskId`: the task the line is sent from. It goes only to a door that
+   * takes one (the worker inventory's `doorTakesTask` for the session's flow),
+   * which stamps it on the line and its reply; a strict door that takes none
+   * would refuse the key, so it is left out there, and where the inventory
+   * can't be read.
    */
-  send(sessionId: string, message: string, options?: { attachments?: readonly FileContent[] }): Promise<void>;
-  send(sessionId: string, message: string, options: { attachments?: readonly FileContent[]; stream: true }): Promise<Response>;
+  send(sessionId: string, message: string, options?: { attachments?: readonly FileContent[]; taskId?: string }): Promise<{ requestId: string }>;
+  send(
+    sessionId: string,
+    message: string,
+    options: { attachments?: readonly FileContent[]; taskId?: string; stream: true }
+  ): Promise<Response>;
+  // FIX-2776 D3.
+  /**
+   * Stop the one run `requestId` of session `sessionId`, through the flow the
+   * session runs on: the abort {@link stopTurns} makes for each turn, by id.
+   * A run that already ended is no failure. Resolves once the server took the
+   * abort; the run's own status says when it stopped.
+   */
+  stopRun(sessionId: string, requestId: string): Promise<void>;
+  // FIX-2776 D3.
+  /**
+   * Upload one file for a line to `worker`, through the worker's flow, whose
+   * sign-in a send to it runs: the reference a send's `attachments` take. A
+   * first line, with no session yet, uploads this way too. Throws when the
+   * worker isn't on the user's roster.
+   */
+  upload(worker: string, request: UploadRequest): Promise<FileContent>;
+  // FIX-2776 D3.
+  /**
+   * Add `worker` to the delegates of the user's conversation `sessionId`,
+   * with an optional `note` on what it's good at, through the conversation's
+   * `addDelegate` action. Rejects with the coordinator's reason, changing
+   * nothing, for a worker that isn't on the roster, takes no task, or is
+   * already there.
+   */
+  addDelegate(sessionId: string, worker: string, note?: string): Promise<void>;
+  // FIX-2776 D3.
+  /** Take `worker` off the conversation's delegates, through its `removeDelegate` action. */
+  removeDelegate(sessionId: string, worker: string): Promise<void>;
   /**
    * Stop every turn of session `sessionId` running now (its in-progress
    * requests of `TURN_ACTIONS`, oldest first), not one started after. A turn
@@ -269,6 +312,20 @@ function mostRecent<T extends { updatedAt: number; createdAt: number }>(rows: re
 
 /** How many of a session's requests a stop reads: its running turns, and a turn's record after a 409. */
 const RUNNING_TURNS = 50;
+
+/** The worker inventory's collection, read by org scope: which flows' doors take a task. */
+const WORKER_INVENTORY_PATTERN = "inventory/workers/*";
+
+// FIX-2772 D2; FIX-2776.
+/**
+ * A request id for one send, set by the client so the caller knows it before
+ * the server answers. `getRandomValues`, not `randomUUID`: a page served over
+ * plain HTTP from another host has no `randomUUID`.
+ */
+function newRequestId(): string {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(10));
+  return `req_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
 
 /** How often an action run through the client checks whether its request ended, and how long it waits. */
 const ACTION_POLL_MS = 100;
@@ -403,6 +460,35 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
     return session.flowId ?? session.flowKind;
   };
 
+  /** Whether a flow's door takes a task, by flow, once read: the inventory changes only when a Lab boots. */
+  const takesTask = new Map<string, Promise<boolean>>();
+  /**
+   * Whether the door of flow `flowKind` takes a `taskId`, by the worker
+   * inventory's row for it. `false` with no row, or when the inventory can't
+   * be read: the line then goes without the task, which a strict door would
+   * refuse. A failed read is not kept, so the next send reads again.
+   */
+  const doorTakesTask = (flowKind: string): Promise<boolean> => {
+    let pending = takesTask.get(flowKind);
+    if (pending === undefined) {
+      pending = fsd
+        .resource({ scope: "org", pattern: WORKER_INVENTORY_PATTERN })
+        .listAll()
+        .then((entries) =>
+          entries.some((entry) => {
+            const value = entry.value as { kind?: unknown; doorTakesTask?: unknown } | null;
+            return value?.kind === flowKind && value.doorTakesTask === true;
+          })
+        )
+        .catch(() => {
+          takesTask.delete(flowKind);
+          return false;
+        });
+      takesTask.set(flowKind, pending);
+    }
+    return pending;
+  };
+
   /** Run one action in `sessionId` on `flow` and return its output, or reject with the reason it failed. */
   const runIn = async (flow: string, sessionId: string, action: string, input: unknown): Promise<unknown> => {
     const started = await fsd.flow(flow).send(action, input, { sessionId });
@@ -490,17 +576,43 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
       if (fields !== undefined && Object.keys(fields).length > 0) await runIn(flow, created.id, SET_SESSION_FIELDS_ACTION, { worker, fields });
       return created;
     },
-    send: (async (sessionId: string, message: string, sendOptions: { attachments?: readonly FileContent[]; stream?: true } = {}) => {
-      const flow = fsd.flow(await flowOfSession(sessionId));
+    send: (async (
+      sessionId: string,
+      message: string,
+      sendOptions: { attachments?: readonly FileContent[]; taskId?: string; stream?: true } = {}
+    ) => {
+      const session = await sessions.get(sessionId);
+      const flow = fsd.flow(session.flowId ?? session.flowKind);
       const attachments = [...(sendOptions.attachments ?? [])];
+      const taskId = sendOptions.taskId;
+      const input = taskId !== undefined && (await doorTakesTask(session.flowKind)) ? { message, taskId } : { message };
+      const requestId = newRequestId();
       if (sendOptions.stream !== true) {
-        await flow.send(RESPOND_ACTION, { message }, { sessionId, attachments });
-        return;
+        // The server may answer another id for one another principal already holds: its answer names the request.
+        const sent = await flow.send(RESPOND_ACTION, input, { sessionId, attachments, requestId });
+        return { requestId: sent.id };
       }
-      const response = await flow.send(RESPOND_ACTION, { message }, { sessionId, stream: true, attachments });
+      const response = await flow.send(RESPOND_ACTION, input, { sessionId, stream: true, attachments, requestId });
       if (!response.ok) throw new Error(`The send was refused (${response.status}).`);
       return response;
     }) as WorkforceClient["send"],
+    stopRun: async (sessionId, requestId) => {
+      await fsd
+        .flow(await flowOfSession(sessionId))
+        .request(requestId)
+        .abort()
+        .catch((error: unknown) => {
+          // A 409 is a run that already ended: its record says how.
+          if ((error as { status?: number }).status !== 409) throw error;
+        });
+    },
+    upload: async (worker, request) => fsd.flow(flowOf(await readRoster(), worker)).upload(request),
+    addDelegate: async (sessionId, worker, note) => {
+      await runIn(await flowOfSession(sessionId), sessionId, ADD_DELEGATE, note === undefined ? { worker } : { worker, note });
+    },
+    removeDelegate: async (sessionId, worker) => {
+      await runIn(await flowOfSession(sessionId), sessionId, REMOVE_DELEGATE, { worker });
+    },
     stopTurns: async (sessionId) => {
       // The running requests, not a turns view: a view lists a session's newest turns only, and a turn
       // still running behind them is stopped all the same.

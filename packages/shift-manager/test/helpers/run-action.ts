@@ -1,3 +1,4 @@
+// A test helper: the app ran actions this way until FIX-2776 moved it onto package calls.
 /**
  * One action on a session, and its answer read back: how a view runs an action
  * whose output it reads (a coordinator's delegate actions, a session's task
@@ -10,15 +11,15 @@
  */
 import { ClientHttpError } from "@flow-state-dev/client";
 import type { Client, RequestResult, SentRequest } from "@flow-state-dev/client";
-import { newSessionId } from "./ids";
-import { describeFailure } from "./reads";
+import { newSessionId } from "../../src/lib/ids";
+import { describeFailure } from "../../src/lib/reads";
 
 /**
  * An action the Lab answered with a refusal and its reason: a request that
  * ended failed, or a 4xx naming why. Anything else (the Lab out of reach, a
  * 5xx) is thrown as it came, and is something to retry.
  */
-export class ActionRefused extends Error {
+class ActionRefused extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ActionRefused";
@@ -29,7 +30,7 @@ export class ActionRefused extends Error {
  * An action the Lab completed whose answer couldn't be read back. What it did
  * stands.
  */
-export class ActionAnswerUnread extends Error {
+class ActionAnswerUnread extends Error {
   constructor(action: string, cause: unknown) {
     super(`The Lab finished ${action}, but its answer could not be read: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
     this.name = "ActionAnswerUnread";

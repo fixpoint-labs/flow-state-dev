@@ -105,6 +105,9 @@ export {
 // `onChange` itself can apply the same omission; see
 // `collection/change-event.ts` for why it is a deny-list.
 export { toEmittedTask } from "./collection/change-event";
+// The values of the items a board writes: a `task-change`'s kind, and a `task-board-meta`'s value.
+export type { TaskChangeKind } from "./collection/change-event";
+export type { TaskBoardCounts, TaskBoardMeta } from "./board-meta-value";
 
 // Item windowing (FIX-480 §3.1) — substrate utilities for `task.items()`
 // and renderer-side per-task expansion.

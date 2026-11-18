@@ -21,7 +21,7 @@
  * worker flow has no door gets the box disabled, saying so; Approve and Reject are
  * untouched.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import { AskCard } from "../components/AskCard";
 import { TurnComposer } from "../components/TurnComposer";
@@ -33,9 +33,9 @@ import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
-import { readSessionItems, RunReadError } from "../lib/run";
-import { flowUploader } from "../lib/files";
-import { sendTurn, TurnNotDelivered } from "../lib/send";
+import { useSharedSessionFeed } from "../lib/session-feeds";
+import { TurnNotDelivered, useDeliverLine } from "../lib/deliver";
+import { useWorkforce } from "../lib/workforce";
 import { emptyInboxSentence } from "../lib/tasks";
 import { cn } from "../lib/utils";
 import type { Gaps } from "../gaps";
@@ -403,26 +403,24 @@ type AskSessionRead =
 // BR-18.
 /**
  * *From the session* and the user's replies, read from the ask's session.
- * Read when the ask opens and again after each reply is delivered
- * (`reread`), so the reply shows once the session holds it; a Lab refresh for
- * anything else doesn't re-read the session. The component is keyed by the
- * ask, so the ask it reads around never changes under it.
+ * Read from the page's one feed for the ask's session, so a reply shows once
+ * the session holds it, with no read of its own. The component is keyed by
+ * the ask, so the ask it reads around never changes under it.
  */
-function AskSession({ ask, reread }: { ask: Ask; reread: number }) {
-  const { client } = useLab();
-  const [read, setRead] = useState<AskSessionRead | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    let live = true;
-    readSessionItems(client, ask.sessionId).then(
-      (got) => live && setRead({ ok: true, value: askSessionOf(got.items, ask.item), truncated: got.truncated }),
-      (error: unknown) => live && setRead({ ok: false, failure: error instanceof RunReadError ? error.failure : describeFailure(error) }),
-    );
-    return () => {
-      live = false;
-    };
-    // `ask` is fixed for this component's life (keyed by the ask), so the session is the dependency.
-  }, [client, ask.sessionId, reread, attempt]);
+function AskSession({ ask }: { ask: Ask; reread?: number }) {
+  const feed = useSharedSessionFeed(ask.sessionId);
+  const items = feed?.items;
+  const hasEarlier = feed?.hasEarlier ?? false;
+  const error = feed?.error ?? null;
+  const read = useMemo<AskSessionRead | null>(
+    () =>
+      items !== undefined
+        ? { ok: true, value: askSessionOf(items, ask.item), truncated: hasEarlier }
+        : error !== null
+          ? { ok: false, failure: describeFailure(error) }
+          : null,
+    [items, hasEarlier, error, ask.item],
+  );
   if (read === null) {
     return (
       <Meta className="text-muted-foreground" testId="inbox-session-loading">
@@ -431,11 +429,8 @@ function AskSession({ ask, reread }: { ask: Ask; reread: number }) {
     );
   }
   if (!read.ok) {
-    const retry = () => {
-      setRead(null);
-      setAttempt((n) => n + 1);
-    };
-    return <SectionFailure what="The ask's session" failure={read.failure} onRetry={retry} testId="inbox-session-failure" />;
+    // The feed reads again on its own: Retry has nothing more to ask of it.
+    return <SectionFailure what="The ask's session" failure={read.failure} onRetry={() => {}} testId="inbox-session-failure" />;
   }
   const found = read.value;
   return (
@@ -510,6 +505,9 @@ function Reply({
   onDelivered: () => void;
 }) {
   const route = replyRoute(ask, snapshot, gaps);
+  const workforce = useWorkforce();
+  const deliver = useDeliverLine();
+  const workerId = ask.workerId;
   return (
     <div>
       <TurnComposer
@@ -519,12 +517,12 @@ function Reply({
         placeholder={`Reply to ${workerLabel(ask.workerId ?? "this worker")}…`}
         blocked={route.blocked}
         // Through the flow the reply goes to, whose sign-in its send runs.
-        uploader={flowUploader(client, route.blocked === null ? route.flowId : null)}
+        uploader={route.blocked === null && workerId !== null ? { upload: (file) => workforce.upload(workerId, file) } : null}
         send={async (message, held, attachments) => {
           // The box is disabled while blocked; a send that got here anyway
           // must not read as delivered.
           if (route.blocked !== null) throw new TurnNotDelivered("refused", route.blocked);
-          return sendTurn(client, { sessionId: ask.sessionId, flowId: route.flowId, door: route.door }, message, { onHeld: held }, attachments);
+          return await deliver({ sessionId: ask.sessionId }, message, { onHeld: held, attachments });
         }}
         onHeld={onDelivered}
         onDelivered={onDelivered}
