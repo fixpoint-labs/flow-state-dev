@@ -10,7 +10,7 @@
  *   rp  React's `Roster` panel, live, rendered by react-dom over happy-dom, read off the rows it draws
  *   rw  Workforce's `watchRoster`, read off what it reports (it, and tm, read the roster view)
  *   sm  Shift Manager's snapshot, under its real `LabProvider`, counted per snapshot read
- *   tm  the Teammates lab's `watchWorkers`
+ *   tm  the Teammates lab's list's roster watch (`useWorkforce` under its `AppProvider`)
  *   cc  the claude-code-style lab's `watchPins`
  *
  * Alice's other tab writes as an app does, with no roster session: hires
@@ -51,7 +51,8 @@ import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFlows, modulePatchEnv, type ModulePatch } from "../../lib/index.mts";
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
-import { createAppCalls, type AppWorker } from "../../../labs/teammates/src/app/index.ts";
+import { AppProvider as TmAppProvider, createAppCalls } from "../../../labs/teammates/src/app/index.ts";
+import { useWorkforce as useTmWorkforce } from "../../../labs/teammates/src/lib/roster.ts";
 import { AppProvider as CcAppProvider, usePins as useCcPins } from "../../../labs/claude-code-style/src/app/index.ts";
 import { defineFlow } from "@flow-state-dev/core";
 import { appPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
@@ -260,8 +261,16 @@ function mount(on: Host, rosterSession: string): () => void {
   const smRoot: Root = createRoot(smContainer as unknown as Element);
   smRoot.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: tokenOf("sm"), baseUrl: on.base }, children: createElement(Probe) }));
 
-  // Teammates: its roster screen's watch.
-  const stopTm = createAppCalls(clientOf(on, tokenOf("tm"))).watchWorkers((rows: AppWorker[]) => show("tm", rows.filter((row) => row.own === true).map((row) => row.id)));
+  // Teammates: its roster screen's watch, under its provider.
+  function TmRoster() {
+    const workforce = useTmWorkforce();
+    useEffect(() => workforce.watchRoster((rows: RosterEntry[]) => show("tm", rows.filter((row) => !row.standard).map((row) => row.id))), [workforce]);
+    return null;
+  }
+  const tmClient = clientOf(on, tokenOf("tm"));
+  const tmRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
+  tmRoot.render(createElement(TmAppProvider, { calls: createAppCalls(tmClient), client: tmClient, children: createElement(TmRoster) }));
+  const stopTm = () => tmRoot.unmount();
 
   // claude-code-style: your pins, as its screen's `usePins` reads them.
   function CcPins() {

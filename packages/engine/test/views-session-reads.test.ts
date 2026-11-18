@@ -245,8 +245,22 @@ describe("sessions.turns in a view", () => {
     const turns = answer.output as Array<Record<string, unknown>>;
     expect(turns).toHaveLength(1);
     expect(turns[0]).toMatchObject({ sessionId: "mine", action: "touch", status: "completed" });
-    expect(Object.keys(turns[0]!).sort()).toEqual(["action", "completedAtMs", "id", "sessionId", "source", "startedAtMs", "status", "updatedAt"]);
+    expect(Object.keys(turns[0]!).sort()).toEqual(["action", "completedAtMs", "endedAtMs", "id", "sessionId", "source", "startedAtMs", "status", "updatedAt"]);
+    expect(turns[0]!.endedAtMs).toBe(turns[0]!.completedAtMs);
     expect(answer.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["request", "state"] }]);
+  });
+
+  // FIX-2771: a failed turn stamps `failedAtMs`, never `completedAtMs`; when it ended is still read.
+  it("answers when a failed turn ended, which a failed turn's record keeps apart from completedAtMs", async () => {
+    const stores = createInMemoryStores();
+    const flow = app();
+    await act(stores, flow, "mine");
+    const [record] = await stores.request.list({ sessionId: "mine" });
+    const { completedAtMs: _completed, ...rest } = record!;
+    await stores.request.set(record!.id, { ...rest, status: "failed", failedAtMs: record!.startedAtMs + 5_000 } as never, "any");
+    const [turn] = (await view(stores, flow, "turns", { ids: ["mine"] })).output as Array<Record<string, unknown>>;
+    expect(turn).toMatchObject({ status: "failed", startedAtMs: record!.startedAtMs, endedAtMs: record!.startedAtMs + 5_000 });
+    expect(turn!.completedAtMs).toBeUndefined();
   });
 
   it("answers another user's, a refused or a missing session as missing, heard on the caller's own user topic alone", async () => {

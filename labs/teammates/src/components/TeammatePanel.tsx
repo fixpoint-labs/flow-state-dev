@@ -1,7 +1,9 @@
 import { useCallback, useState } from "react";
 import { ChevronRightIcon, TerminalIcon } from "lucide-react";
-import type { BoardTask, AppCalls, AppWorker } from "../app";
+import type { RosterEntry } from "@flow-state-dev/workforce/browser";
+import type { BoardTask, AppCalls } from "../app";
 import type { Look } from "../lib/looks";
+import { displayName, roleOf, useWorkforce } from "../lib/roster";
 import { useNow, useStale, useWatch } from "../lib/use-watch";
 import { clearMark, useCleared } from "../lib/cleared";
 import { taskPresentation } from "../lib/task-presentation";
@@ -100,7 +102,7 @@ export function TeammatePanel({
   onOpen,
 }: {
   adapter: AppCalls;
-  worker: AppWorker;
+  worker: RosterEntry;
   /** The teammate's one conversation: the tasks listed are the ones it filed. */
   sessionId: string;
   /** The task open in the popup, if one is. */
@@ -127,6 +129,7 @@ export function TeammatePanel({
   const now = useNow(1_000, !stale);
   const counts = taskCounts(tasks.flatMap((t) => (t.view === undefined ? [] : [t.view])));
   const [editing, setEditing] = useState(false);
+  const workforce = useWorkforce();
   // Every ended group starts collapsed; a click opens it.
   const [opened, setOpened] = useState<Record<string, boolean>>({});
   // *Done* shows its newest few until *Show all*.
@@ -174,18 +177,18 @@ export function TeammatePanel({
   };
 
   return (
-    <aside aria-label={`${worker.name}'s panel`} className="flex h-full min-h-0 flex-col border-l border-border bg-inspector">
+    <aside aria-label={`${displayName(worker)}'s panel`} className="flex h-full min-h-0 flex-col border-l border-border bg-inspector">
       <section aria-label="Teammate" className="flex flex-col gap-2 border-b border-border px-4 pt-4 pb-3">
         <div className="flex items-center gap-3">
           <Avatar look={lookOf(worker.id)} />
-          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{worker.name}</h2>
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{displayName(worker)}</h2>
         </div>
-        <p className="text-xs text-muted-foreground">{worker.role}</p>
+        <p className="text-xs text-muted-foreground">{roleOf(worker)}</p>
         {editing ? (
           <EditForm
-            name={worker.name}
+            name={displayName(worker)}
             onSave={async (edit) => {
-              await adapter.editTeammate(worker.id, edit);
+              await workforce.edit({ id: worker.id, ...edit });
               setEditing(false);
             }}
             onCancel={() => setEditing(false)}
@@ -195,7 +198,7 @@ export function TeammatePanel({
             <button type="button" onClick={() => setEditing(true)} className={PANEL_BUTTON}>
               Edit
             </button>
-            {worker.edited ? <ResetButton name={worker.name} onReset={() => adapter.resetTeammate(worker.id)} /> : null}
+            {worker.edited ? <ResetButton name={displayName(worker)} onReset={async () => void (await workforce.reset(worker.id))} /> : null}
           </div>
         )}
       </section>
@@ -204,7 +207,7 @@ export function TeammatePanel({
           <div id="tasks-heading" className={cn(HEADING, "px-4 pt-4 pb-2")}>
             Tasks{tasks.length > 0 ? ` (${tasks.length})` : ""}{counts === "" ? "" : ` · ${counts}`}
           </div>
-          {tasks.length === 0 ? <p className="px-4 text-xs text-muted-foreground">{worker.name} hasn't started any tasks yet.</p> : null}
+          {tasks.length === 0 ? <p className="px-4 text-xs text-muted-foreground">{displayName(worker)} hasn't started any tasks yet.</p> : null}
           <CodingSpend tasks={tasks.filter((t) => isCoding(t.to))} />
           <div className="space-y-1">
           {running.length > 0 ? <ul aria-label="Running" className="space-y-px px-2">{running.map(row)}</ul> : null}

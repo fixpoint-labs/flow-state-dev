@@ -31,6 +31,8 @@ export { workerUsageView } from "./workers/worker-usage-ref";
 export type { RosterView } from "./workers/roster-view";
 export { sessionTurnsViewRef, workerSessionsViewRef } from "./workers/session-views-ref";
 export type { ListedTurn, SessionTurnsView, ListedWorkerSession, WorkerSessionsView } from "./workers/session-views";
+export { workerMessagesViewRef } from "./messages/worker-messages-view-ref";
+export type { WorkerMessagesView } from "./messages/worker-messages-view";
 export { TURN_ACTIONS } from "./workers/turn-actions";
 export {
   deriveWorkerSessionId,
@@ -87,6 +89,7 @@ export { checkRepositoryView } from "./projects/check-repository-view-ref";
 export { PROJECTS_FLOW, PROJECTS_PATTERN } from "./projects/project-keys";
 export { listedRoutineSchema, routineMakerSchema, type ListedRoutine, type RoutineMaker } from "./routines/listed-routine";
 export {
+  isOpenMessage,
   WORKER_MESSAGES_PATTERN,
   WORKER_MESSAGES_RESOURCE,
   workerMessageResourceStateSchema,

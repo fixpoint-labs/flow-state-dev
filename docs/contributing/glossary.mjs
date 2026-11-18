@@ -1370,6 +1370,12 @@ const EXEMPTIONS = [
     why: "a chat thread in the UI, and a coding harness's own `thread:` option, not a mailbox's",
   },
   {
+    id: "registry-thread-width",
+    terms: ["thread"],
+    strip: /--thread-width\b/g,
+    why: "the ui registry's column-width token (`--thread-width`, which its session overlay reads), set by a lab's theme and used by its screens to size their column: the registry's name for a chat column, not a mailbox's",
+  },
+  {
     id: "codex-thread-option",
     terms: ["thread"],
     where: (path) => path.startsWith("docs/contributing/docs-revamp/pages/catalog/harnesses/codex."),

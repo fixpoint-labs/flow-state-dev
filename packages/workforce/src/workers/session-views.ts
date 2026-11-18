@@ -110,6 +110,9 @@ const sessionTurnSchema = z.object({
   source: z.string(),
   startedAt: z.number(),
   completedAt: z.number().nullable(),
+  // FIX-2771.
+  /** When it ended, completed, failed or aborted; `null` while it runs or waits. A failed turn has no `completedAt`. */
+  endedAt: z.number().nullable(),
   error: z.object({ code: z.string(), message: z.string() }).nullable()
 });
 
@@ -240,6 +243,7 @@ export function defineSessionTurnsView(): SessionTurnsView {
           source: turn.source,
           startedAt: turn.startedAtMs,
           completedAt: turn.completedAtMs ?? null,
+          endedAt: turn.endedAtMs ?? null,
           error: turn.error ?? null
         }));
       }

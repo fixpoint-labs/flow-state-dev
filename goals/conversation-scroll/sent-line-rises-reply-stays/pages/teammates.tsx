@@ -8,7 +8,9 @@
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import type { AppCalls, AppWorker, ConversationEntry } from "../app";
+import type { Client } from "@flow-state-dev/client";
+import type { RosterEntry } from "@flow-state-dev/workforce/browser";
+import { AppProvider, type AppCalls, type ConversationEntry } from "../app";
 import { Conversation } from "../components/Conversation";
 import { SessionOverlay } from "../components/flow-state/session-overlay";
 import "../styles.css";
@@ -50,7 +52,10 @@ const adapter = new Proxy({} as AppCalls, {
   },
 });
 
-const worker: AppWorker = { id: "helper", name: "Helper", role: "helps out" };
+const worker: RosterEntry = { id: "helper", flow: "agent", standard: true, description: "helps out", name: "Helper", teamName: null, forkedFrom: null, edited: false, settings: {} };
+
+/** The package views the conversation reads (status, worker messages) have no server here: each read waits. */
+const client = { view: () => new Promise(() => undefined), subscribe: () => ({ close: () => undefined }) } as unknown as Client;
 
 function Page() {
   const open = useOpen();
@@ -87,6 +92,8 @@ function Page() {
 exposeGoal();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Page />
+    <AppProvider calls={adapter} client={client}>
+      <Page />
+    </AppProvider>
   </StrictMode>,
 );
