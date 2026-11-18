@@ -678,8 +678,8 @@ describe("reading the history", () => {
     expect(read.content).toContain("https://tracker.example/FIX-9");
   });
 
-  // Deny by default: a title can quote a user's own words, so another member's turn reads nothing of it.
-  it("shows a member only their own failures, and anyone else what an unknown path shows", async () => {
+  // Deny by default: a title can quote a user's own words, so another user's turn reads nothing of it.
+  it("shows a user only their own failures, and anyone else what an unknown path shows", async () => {
     const lab = await openLab();
     await lab.intake({ kind: "task", at: Date.now(), taskId: "task_alice_1", boardId: "board_a", attempt: 1, error: "eng.tasker could not do it", userId: "alice", orgId: ORG, assignee: "eng.tasker" });
     const [hit] = await lab.searchHistory(OPERATOR, { query: "error report" });

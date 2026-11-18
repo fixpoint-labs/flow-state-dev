@@ -295,7 +295,7 @@ export async function readHistory(reports: ResourceCollectionRef, days: readonly
 }
 
 /**
- * A report's status in the words a person reads: `drafting`, `waiting in
+ * A report's status in the words a user reads: `drafting`, `waiting in
  * Inbox`, `approved, filing`, `filed`, `kept, no tracker`, `dismissed` or
  * `issue closed`.
  */
