@@ -12,7 +12,7 @@
 import { handler, utility } from "@flow-state-dev/core";
 import path from "node:path";
 import { z } from "zod";
-import { artifactResources, artifactUpdatedAtSchema } from "./resource";
+import { artifactResources } from "./resource";
 
 // ---------------------------------------------------------------------------
 // Read artifact
@@ -25,7 +25,7 @@ export const readArtifactInputSchema = z.object({
 export const readArtifactOutputSchema = z.object({
   id: z.string(),
   title: z.string(),
-  updatedAt: artifactUpdatedAtSchema,
+  updatedAt: z.string(),
   extension: z.string().optional(),
   summary: z.string().optional(),
   content: z.string()
@@ -47,7 +47,7 @@ export const readArtifact = handler({
   execute: async (input, ctx) => {
     const ref = await ctx.resources.artifacts.getOptional(input.artifactId);
     if (ref === undefined) {
-      return { id: input.artifactId, title: "Not Found", updatedAt: 0, summary: "", content: "" };
+      return { id: input.artifactId, title: "Not Found", updatedAt: new Date(0).toISOString(), summary: "", content: "" };
     }
 
     return {

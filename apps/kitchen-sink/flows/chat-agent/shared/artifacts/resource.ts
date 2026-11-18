@@ -27,16 +27,11 @@ import { DEFAULT_KITCHEN_SINK_MODEL } from "../../../../lib/models";
 // the document body is stored as resource content via writeContent/readContent.
 // The summary field is populated by the reactTo.contentUpdated reaction below
 // after each body write.
-/** A number is a row written before the workspace owned this field. */
-export const artifactUpdatedAtSchema = z.union([z.string(), z.number()]);
-
-export type ArtifactUpdatedAt = z.infer<typeof artifactUpdatedAtSchema>;
-
 export const artifactStateSchema = z.object({
   title: z.string(),
   summary: z.string().default(""),
   extension: z.string().optional(),
-  updatedAt: artifactUpdatedAtSchema
+  updatedAt: z.string()
 });
 
 type ArtifactState = z.infer<typeof artifactStateSchema>;

@@ -9,10 +9,8 @@
 export { artifactsCapability } from "./capability";
 export {
   artifactStateSchema,
-  artifactUpdatedAtSchema,
   artifactsCollection,
   artifactResources,
-  type ArtifactUpdatedAt,
 } from "./resource";
 export {
   readArtifact,

@@ -22,7 +22,6 @@ import {
 } from "@flow-state-dev/react";
 import { createClient, viewRef, type ClientFetch } from "@flow-state-dev/client";
 import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
-import type { ArtifactUpdatedAt } from "@/flows/chat-agent/shared/artifacts";
 import { Button } from "@/components/ui/button";
 import { Menu, MessageSquareText, Package, Plus, RotateCcw, SquareIcon, Users, Wrench, X } from "lucide-react";
 
@@ -365,12 +364,12 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   // loaded lazily via item.fetchContent() when an artifact is opened.
   const artifacts = useMemo(() => {
     return artifactItems.map((item) => {
-      const data = item.clientData as { title: string; summary: string; updatedAt: ArtifactUpdatedAt; extension: string | null; content: string } | undefined;
+      const data = item.clientData as { title: string; summary: string; updatedAt: string; extension: string | null; content: string } | undefined;
       return {
         id: item.topic.replace("artifacts/", ""),
         title: data?.title ?? "Untitled",
         summary: data?.summary ?? "",
-        updatedAt: data?.updatedAt ?? 0,
+        updatedAt: data?.updatedAt ?? "",
         extension: data?.extension ?? null,
         content: data?.content ?? "",
         _handle: item,

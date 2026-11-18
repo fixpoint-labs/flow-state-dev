@@ -7,7 +7,6 @@
  * than threading it into a `context` slot by hand.
  */
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import type { ArtifactUpdatedAt } from "./resource";
 
 /**
  * `ctx: any` because the capability preset context slot is the sole call site —
@@ -17,7 +16,7 @@ export const artifactListContext = async (_input: unknown, ctx: any) => {
   const artifacts = ctx.resources.artifacts as ResourceCollectionRef<{
     title: string;
     summary: string;
-    updatedAt: ArtifactUpdatedAt;
+    updatedAt: string;
   }>;
   const instances = await artifacts.list();
   if (instances.length === 0) {

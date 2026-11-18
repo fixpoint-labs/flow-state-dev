@@ -7,12 +7,11 @@ import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   readArtifact,
   updateArtifact,
-  artifactsCollection,
-  type ArtifactUpdatedAt
+  artifactsCollection
 } from "../flows/chat-agent/shared/artifacts";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 
-type ArtifactState = { title: string; summary: string; updatedAt: ArtifactUpdatedAt };
+type ArtifactState = { title: string; summary: string; updatedAt: string };
 
 // Build a minimal flow with the artifacts collection so the execution context
 // creates proper ResourceCollectionRef instances.
@@ -67,7 +66,7 @@ describe("chat-agent blocks", () => {
     const ref = await artifacts.create("doc-1", {
       title: "Seeded Doc",
       summary: "",
-      updatedAt: 1000,
+      updatedAt: "1970-01-01T00:00:00.000Z",
     });
     await ref.writeContent("Seeded content");
 

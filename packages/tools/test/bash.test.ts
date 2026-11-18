@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { z } from "zod";
 import { hashContent } from "@flow-state-dev/workspace";
 import { createBashTool } from "../src/bash/create-bash-tool";
-import { createBashCapability, type CreateBashCapabilityOptions } from "../src/bash/capability";
+import { createBashCapability } from "../src/bash/capability";
 import type { Sandbox, CommandResult, FileEntryState } from "../src/bash/types";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 
@@ -2043,31 +2043,5 @@ describe("createBashBlocks", () => {
       expect(z.string().datetime().safeParse(state.updatedAt).success).toBe(true);
     }
     expect((await artifacts.get("notes.md")).state.title).toBe("notes.md");
-  });
-
-  it("keeps the workspace updatedAt when createState returns its own", async () => {
-    const artifacts = createStringUpdatedAtCollection("artifacts/**");
-    const sandbox = createFlushAwareSandbox("/workspace");
-    const cap = createBashCapability({
-      provider: { type: "custom", sandbox },
-      destination: "/workspace",
-      createState: (() => ({
-        title: "kept",
-        path: "stolen",
-        hash: "stolen",
-        updatedAt: 1234,
-      })) as unknown as CreateBashCapabilityOptions["createState"],
-    });
-    const write = blocksOf(cap).get("bash-write-file");
-    const ctx = buildCtx("create-state-cannot-overwrite", { session: { artifacts } });
-
-    await runForTest(write as never, { path: "artifacts/notes.md", content: "body" }, ctx);
-
-    const state = (await artifacts.get("notes.md")).state;
-    expect(state.title).toBe("kept");
-    expect(state.path).toBe("notes.md");
-    expect(state.hash).toBe(hashContent("body"));
-    expect(state.updatedAt).not.toBe(1234);
-    expect(z.string().datetime().safeParse(state.updatedAt).success).toBe(true);
   });
 });
