@@ -24,6 +24,7 @@ import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { CAPTURE_OFF, CAPTURE_ON } from "../teams/devteam/memory.mts";
+import { promptWithoutUser } from "./helpers/prompt";
 
 const SHIFT_COORDINATOR = "shift-coordinator";
 const FACT = "the release train leaves on thursdays";
@@ -122,9 +123,7 @@ async function say(lab: Lab, sessionId: string, message: string): Promise<void> 
 
 /** The last judgment step's prompt, without the user's own messages. */
 function lastPrompt(): string {
-  const options = handed.at(-1);
-  expect(options).toBeDefined();
-  return JSON.stringify((options!.messages as Array<{ role?: string }>).filter((m) => m.role !== "user"));
+  return promptWithoutUser(handed.at(-1));
 }
 
 function lastTools(): string[] {
