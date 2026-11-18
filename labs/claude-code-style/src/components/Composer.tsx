@@ -119,7 +119,7 @@ export function Composer({
           onKeyDown={onKeyDown}
           onPaste={attachments.onPaste}
           placeholder="Reply to the main session…"
-          className="block w-full resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
+          className="block w-full resize-none bg-transparent px-3 py-2 text-base outline-none placeholder:text-muted-foreground"
         />
         <div className="flex items-center justify-end gap-2 px-2 pb-2">
           <AttachButton attachments={attachments} className="size-7" />

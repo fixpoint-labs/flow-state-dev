@@ -18,12 +18,12 @@ export function ContextStrip({
   harnesses: HarnessReadinessChipRow[] | undefined;
   onRecheck: () => Promise<unknown>;
 }) {
-  const chip = "rounded-full border border-border px-2 py-0.5 font-mono text-[11px] text-muted-foreground";
+  const chip = "rounded-full border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground";
   return (
     <section aria-label="Working context" className="flex flex-col gap-1 border-b border-border px-6 py-2">
       <div className="flex flex-wrap items-center gap-1.5">
         {context === undefined ? (
-          <span className="text-[11px] text-muted-foreground">Reading the lab's settings…</span>
+          <span className="text-xs text-muted-foreground">Reading the lab's settings…</span>
         ) : (
           <>
             <span className={chip} data-testid="context-folder" title="The working folder: every coding task works in a worktree of it">
@@ -40,7 +40,7 @@ export function ContextStrip({
         <HarnessReadiness rows={harnesses} recheck={onRecheck} />
       </div>
       {context?.folderProblem == null ? null : (
-        <p role="alert" className="text-[11px] text-destructive" data-testid="context-folder-problem">
+        <p role="alert" className="text-xs text-destructive" data-testid="context-folder-problem">
           Coding tasks will fail here: {context.folderProblem}
         </p>
       )}

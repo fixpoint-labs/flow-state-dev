@@ -82,7 +82,7 @@ export function Approval({ item }: { item: SuspensionItem }) {
       {hasDetails ? (
         <details className="mb-2.5 text-xs">
           <summary className="cursor-pointer text-muted-foreground">Details</summary>
-          <pre className="mt-1.5 overflow-x-auto rounded-md bg-muted p-2 text-[11px] whitespace-pre-wrap">
+          <pre className="mt-1.5 overflow-x-auto rounded-md bg-muted p-2 text-xs whitespace-pre-wrap">
             {JSON.stringify(details, null, 2)}
           </pre>
         </details>

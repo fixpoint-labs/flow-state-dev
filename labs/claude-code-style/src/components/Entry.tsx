@@ -22,8 +22,8 @@ function AgentMarkdown({ text, className }: { text: string; className?: string }
   return (
     <MessageResponse
       className={cn(
-        // Reading text: a 1.5 line, 8px between blocks, and list items and headings close to what they belong to. Streamdown's own gaps are for short chat bubbles and run long here.
-        "text-sm leading-normal space-y-2 [&_li]:py-0.5 [&_:is(h1,h2,h3,h4,h5,h6)]:mt-4 [&_:is(h1,h2,h3,h4,h5,h6)]:mb-1",
+        // Reading text at the body step, 8px between blocks, and list items and headings close to what they belong to. Streamdown's own gaps are for short chat bubbles and run long here.
+        "text-base space-y-2 [&_li]:py-0.5 [&_:is(h1,h2,h3,h4,h5,h6)]:mt-4 [&_:is(h1,h2,h3,h4,h5,h6)]:mb-1",
         // Text stays in the column: a long path, link or token breaks where it must, and code wraps instead of scrolling sideways.
         "min-w-0 [overflow-wrap:anywhere] [&_code]:[overflow-wrap:anywhere] [&_code]:whitespace-pre-wrap [&_pre]:whitespace-pre-wrap",
         className,
@@ -85,7 +85,7 @@ export function Entry({
           {entry.files !== undefined ? <MessageFiles files={entry.files} readFile={readFile} /> : null}
           {/* A line of files alone has no words to box. */}
           {entry.text !== "" || entry.files === undefined ? (
-            <div className="max-w-[80%] rounded-xl border border-border/40 bg-accent/50 px-4 py-3 text-sm" data-entry="user">
+            <div className="max-w-[80%] rounded-xl border border-border/40 bg-accent/50 px-4 py-3 text-base" data-entry="user">
               {/* A task's first line is its brief, which can run to paragraphs: held to a few lines. */}
               <Clamp lines={6}>{entry.text}</Clamp>
             </div>
@@ -199,14 +199,14 @@ function ToolRunLine({ run, tasks }: { run: ToolRun; tasks: FeedTasks | undefine
   const [chosen, setChosen] = useState<boolean>();
   if (run.steps.length === 1) {
     return (
-      <div className={cn("truncate font-mono text-[11px] leading-5", stepTone(run.state))} data-entry="tool" data-state={run.state} title={run.label}>
+      <div className={cn("truncate font-mono text-xs leading-5", stepTone(run.state))} data-entry="tool" data-state={run.state} title={run.label}>
         ▸ <StepLine step={{ ...run.steps[0]!, line: run.label }} tasks={tasks} />
       </div>
     );
   }
   const open = chosen ?? toolRunOpen(run.state);
   return (
-    <div className="font-mono text-[11px] leading-5" data-entry="tool" data-state={run.state}>
+    <div className="font-mono text-xs leading-5" data-entry="tool" data-state={run.state}>
       <button
         type="button"
         aria-expanded={open}

@@ -257,7 +257,7 @@ export function App() {
               <PaneHeader className="w-full justify-center border-b-0 px-0">
                 <PanelToggle side="right" name="side panel" keyName="]" collapsed onToggle={slideThen(panels.togglePane)} />
               </PaneHeader>
-              <span className="font-mono text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase [writing-mode:vertical-rl]">
+              <span className="font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground uppercase [writing-mode:vertical-rl]">
                 {PANE_TITLE[pane]}
               </span>
             </div>
