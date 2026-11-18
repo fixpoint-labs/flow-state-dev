@@ -52,7 +52,7 @@ const entryViewSchema = z.object({
 });
 
 /** One report on one UTC day, as a worker reads it. */
-export const errorHistoryRecordSchema = z.object({
+const errorHistoryRecordSchema = z.object({
   day: z.string(),
   ref: z.string(),
   title: z.string(),
@@ -71,7 +71,7 @@ export const errorHistoryRecordSchema = z.object({
   /** Entries that day's hours counted past their cap and did not keep. */
   cut: z.number()
 });
-export type ErrorHistoryRecord = z.infer<typeof errorHistoryRecordSchema>;
+type ErrorHistoryRecord = z.infer<typeof errorHistoryRecordSchema>;
 
 const contentTemplate = parseResourceTemplate(
   [

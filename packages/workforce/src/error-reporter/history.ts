@@ -17,10 +17,10 @@ import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /** The key family's prefix in `error-reports/*`. */
-export const HISTORY_KEY_PREFIX = "log-";
+const HISTORY_KEY_PREFIX = "log-";
 
 /** The entries one hour's record keeps; past it they are counted in `cut`. */
-export const HISTORY_ENTRY_CAP = 250;
+const HISTORY_ENTRY_CAP = 250;
 
 /** How many days of history are kept and read. */
 export const HISTORY_RETENTION_DAYS = 90;
@@ -34,7 +34,7 @@ export const HISTORY_MESSAGE_CHARS = 200;
 const DAY_MS = 24 * 60 * 60_000;
 
 /** One thing the history records: an occurrence the intake took, or a change of a report's status. */
-export const historyEntrySchema = z.object({
+const historyEntrySchema = z.object({
   at: z.number(),
   kind: z.enum(["occurrence", "status"]),
   /** What makes a second append of the same thing a no-op: the occurrence's key, or the report, status and issue. */
@@ -81,7 +81,7 @@ function utcHour(at: number): string {
 }
 
 /** The key of the hour's record `at` falls in. */
-export function historyKey(at: number): string {
+function historyKey(at: number): string {
   return `${HISTORY_KEY_PREFIX}${utcHour(at)}`;
 }
 
