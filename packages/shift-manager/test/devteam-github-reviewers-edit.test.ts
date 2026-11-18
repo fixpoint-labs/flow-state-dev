@@ -174,8 +174,8 @@ describe("the Shift Coordinator changes the trusted GitHub reviewers", () => {
 
   it("not on another user's word", async () => {
     const shown: unknown[] = [];
-    const lab = await open(scripted([set(["jhoffner", "member-login"])], { asked: 0.95, injected: 0.02 }, shown));
-    await say(lab, "Trust member-login as a GitHub reviewer.", "member");
+    const lab = await open(scripted([set(["jhoffner", "teammate"])], { asked: 0.95, injected: 0.02 }, shown));
+    await say(lab, "Trust teammate as a GitHub reviewer.", "outsider");
     expect(await listed(lab)).toEqual(["jhoffner"]);
     expect(shown).toEqual([]);
   }, 120_000);
