@@ -61,9 +61,18 @@ export const pollTimeline: { events: SubscriptionEvent[]; calls: Array<{ userId:
 };
 
 /** The GitHub provider the host is built with: read access by {@link readableBy}, the user's GitHub login `<user>-gh`, and a poll over {@link pollTimeline}. */
+/** A read check a test holds open: while `held` is set, `canRead` says it was reached and waits on it. */
+export const readCheck: { held?: Promise<void>; reached?: () => void } = {};
+
 export const github: SubscriptionProvider = {
   provider: "github",
-  canRead: (thread, ctx: BlockContext) => readableBy((ctx.session.identity as { userId: string }).userId, thread),
+  async canRead(thread, ctx: BlockContext) {
+    if (readCheck.held !== undefined) {
+      readCheck.reached?.();
+      await readCheck.held;
+    }
+    return readableBy((ctx.session.identity as { userId: string }).userId, thread);
+  },
   self: (ctx: BlockContext) => `${(ctx.session.identity as { userId: string }).userId}-gh`,
   async poll(thread, cursor, ctx) {
     const userId = (ctx.session.identity as { userId: string }).userId;
