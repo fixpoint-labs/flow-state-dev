@@ -63,7 +63,7 @@ export function WorkersList({
   useAttention(current, notify.on);
   return (
     <nav aria-label="Workers" className="flex h-full min-h-0 flex-col bg-sidebar">
-      <div className="px-4 pt-4 pb-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">Teammates</div>
+      <div className="px-4 pt-4 pb-2 font-mono text-xs tracking-widest text-muted-foreground uppercase">Teammates</div>
       <div className="flex-1 overflow-y-auto pb-4">
         <ul>
           {workers.map((w) => (
@@ -178,12 +178,12 @@ function WorkerItem({
       <span className={cn("flex flex-col items-end gap-1", stale && STALE_CLASS)}>
         <span aria-label={activity?.running ? "answering" : undefined} className={cn("size-2 rounded-full", activity?.running ? "animate-pulse bg-info" : "bg-transparent")} />
         {status.needsYou ? (
-          <span aria-label="needs you" data-needs-you className="rounded-full bg-attention px-1.5 font-mono text-[10px] font-bold text-attention-foreground">
+          <span aria-label="needs you" data-needs-you className="rounded-full bg-attention px-1.5 font-mono text-xs font-bold text-attention-foreground">
             !
           </span>
         ) : null}
         {unread > 0 ? (
-          <span aria-label={`${unread} unread`} className="min-w-5 rounded-full bg-primary px-1.5 text-center font-mono text-[10px] font-bold text-primary-foreground">
+          <span aria-label={`${unread} unread`} className="min-w-5 rounded-full bg-primary px-1.5 text-center font-mono text-xs font-bold text-primary-foreground">
             {unread}
           </span>
         ) : null}

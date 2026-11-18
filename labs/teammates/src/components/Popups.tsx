@@ -227,7 +227,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
       {/* What a coding task's runs spent, in and out apart, with the vendor's charge when it reported one. */}
       {task?.spend && isCoding(task.to) ? (
         <div data-task-spend>
-          <Spend spend={task.spend} split className="text-[11px]" />
+          <Spend spend={task.spend} split className="text-xs" />
         </div>
       ) : null}
       {/* Why it failed, as an error. How the run got there is below. */}
@@ -326,11 +326,11 @@ function TaskSummary({ adapter, task, steps }: { adapter: AppCalls; task: BoardT
       {shown.length === 0 ? null : (
         <ul aria-label="Files changed" className="flex flex-wrap gap-1">
           {shown.map(({ path }) => (
-            <li key={path} title={path} data-file-chip className="rounded-sm border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+            <li key={path} title={path} data-file-chip className="rounded-sm border border-border px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
               {path.split("/").filter((part) => part !== "").pop() ?? path}
             </li>
           ))}
-          {more > 0 ? <li className="px-1 py-0.5 font-mono text-[10px] text-muted-foreground">+{more} more</li> : null}
+          {more > 0 ? <li className="px-1 py-0.5 font-mono text-xs text-muted-foreground">+{more} more</li> : null}
         </ul>
       )}
     </div>
@@ -522,7 +522,7 @@ function Titled({ look, line }: { look: Look; line: string }) {
 /** What a coding task runs on, as a small tag after its line. */
 export function RunsOn({ on }: { on: string }) {
   return (
-    <span className="shrink-0 rounded-sm border border-border px-1.5 py-0.5 font-mono text-[10px] font-normal text-muted-foreground" data-harness>
+    <span className="shrink-0 rounded-sm border border-border px-1.5 py-0.5 font-mono text-xs font-normal text-muted-foreground" data-harness>
       {on}
     </span>
   );

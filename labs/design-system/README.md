@@ -32,6 +32,28 @@ Design hand-back, kept with the epic spec at `specs/epics/FIX-1649/assets/design
 The goal check `goals/design-system/skins-reused-components-from-one-token-set/` installs the
 registry into a fresh app, loads this stylesheet and reads what a browser paints.
 
+## The type scale
+
+`type.css` gives Tailwind's text steps their sizes for the Labs. Each lab imports it after the
+look; `shift-manager.css` does not, so Kitchen Sink and the docs keep Tailwind's own sizes.
+
+```css
+@import "@flow-state-dev/design-system/type.css";
+```
+
+Components keep writing the steps, and in the Labs each step is a role:
+
+- `text-xs`, 12px on a 16px line: meta, labels, timestamps, counts, mono ids. The floor.
+- `text-sm`, 14 on 20: controls, lists, tables, code.
+- `text-base`, 16 on 26: the feed's body and the composer.
+- `text-lg`, `text-xl`, `text-2xl`, 18, 22 and 26: headings.
+
+A step's line height comes with it; a `leading-*` class still overrides. Change a size here and
+every lab moves. A hard-coded size (`text-[11px]`, `[font-size:…]`, `fontSize` in a style) fails
+the `fsd/no-hardcoded-text-size` lint in the labs, Shift Manager and the registry; a glyph drawn
+to fit a fixed box takes a reasoned `eslint-disable-next-line` on its line. The goal check
+`goals/design-system/labs-read-one-type-scale/` reads the sizes each lab's browser computes.
+
 ## The page register
 
 `shift-manager.css` is the app register. `page.css` is the page register, for brand pages

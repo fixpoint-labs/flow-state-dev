@@ -21,7 +21,7 @@ export function ReceivedMessage({ item }: { item: DataItem }) {
   const asksForReply = data.replyRequested === true;
   return (
     <div data-testid="received-message" data-message-id={data.id ?? ""} data-from={from} data-reply-requested={String(asksForReply)}>
-      <p className="mb-2.5 flex items-baseline gap-2 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
+      <p className="mb-2.5 flex items-baseline gap-2 font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
         {workerLabel(from).toUpperCase()}
         <span className="tracking-normal" data-look="message-time">
           {clockTime(item.ts)}
@@ -44,7 +44,7 @@ export function ReceivedMessage({ item }: { item: DataItem }) {
           Messages ›
         </RouteLink>
       </p>
-      <p className="whitespace-pre-wrap text-sm" data-look="received-message-text">
+      <p className="whitespace-pre-wrap text-base" data-look="received-message-text">
         {data.text ?? ""}
       </p>
     </div>

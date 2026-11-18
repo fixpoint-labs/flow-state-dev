@@ -14,8 +14,8 @@ import { reasonLine, runsOn, taskLabel, taskLine, type Popup } from "./Popups";
 import { EditForm } from "./TeammateForms";
 
 /** The heading over each of the panel's sections. */
-const HEADING = "font-mono text-[10px] tracking-widest text-muted-foreground uppercase";
-const PANEL_BUTTON = "w-fit rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent disabled:opacity-40";
+const HEADING = "font-mono text-xs tracking-widest text-muted-foreground uppercase";
+const PANEL_BUTTON = "w-fit rounded-sm border border-border px-2 py-0.5 font-mono text-xs tracking-widest uppercase hover:bg-accent disabled:opacity-40";
 
 /**
  * How many of *Failed*'s and *Done*'s rows show before *Show all*: the newest
@@ -158,7 +158,7 @@ export function TeammatePanel({
         >
           <span aria-hidden data-task-dot className={cn("mt-[5px] size-2 shrink-0 rounded-full", t.waiting ? "bg-warning" : STATUS_DOT[t.status])} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="line-clamp-2 text-[13px] leading-snug" title={line}>
+            <span className="line-clamp-2 text-sm leading-snug" title={line}>
               {coding ? <TerminalIcon aria-hidden className="mr-1 mb-0.5 inline size-3 text-muted-foreground" /> : null}
               {line}
             </span>
@@ -212,7 +212,7 @@ export function TeammatePanel({
             <div>
               <div className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium">
                 <span className="text-destructive">Failed</span>
-                <span aria-hidden className="rounded-full bg-destructive/15 px-1.5 text-[10px] leading-4 text-destructive tabular-nums">
+                <span aria-hidden className="rounded-full bg-destructive/15 px-1.5 text-xs leading-4 text-destructive tabular-nums">
                   {failed.length}
                 </span>
                 <button
@@ -220,7 +220,7 @@ export function TeammatePanel({
                   aria-label={`Clear failed (${failed.length})`}
                   title="Hide these from this panel. The tasks themselves stay."
                   onClick={() => clearFailed(failed.map(clearMark))}
-                  className="ml-auto text-[11px] font-normal text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  className="ml-auto text-xs font-normal text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 >
                   Clear
                 </button>
@@ -258,7 +258,7 @@ export function TeammatePanel({
                 >
                   <ChevronRightIcon aria-hidden className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
                   <span>{group.label}</span>
-                  <span aria-hidden className="rounded-full bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground tabular-nums">
+                  <span aria-hidden className="rounded-full bg-muted px-1.5 text-xs leading-4 text-muted-foreground tabular-nums">
                     {group.tasks.length}
                   </span>
                 </button>
@@ -344,7 +344,7 @@ function CodingSpend({ tasks }: { tasks: readonly BoardTask[] }) {
   const line = codingSpendLine(tasks);
   if (line === "") return null;
   return (
-    <p className="px-4 pb-2 font-mono text-[10px] text-muted-foreground" data-coding-spend>
+    <p className="px-4 pb-2 font-mono text-xs text-muted-foreground" data-coding-spend>
       {line}
     </p>
   );

@@ -139,7 +139,7 @@ export function Composer({
             onKeyDown={onKeyDown}
             onPaste={attachments.onPaste}
             placeholder={`Message ${workerName}…`}
-            className="block field-sizing-content max-h-48 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted-foreground"
+            className="block field-sizing-content max-h-48 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1 text-base outline-none placeholder:text-muted-foreground"
           />
           {running || stopping ? (
             <button

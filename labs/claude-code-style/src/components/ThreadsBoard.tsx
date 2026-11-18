@@ -98,7 +98,7 @@ export function ThreadsBoard({
                             <span className="flex items-baseline gap-2">
                               <span className="min-w-0 flex-1 truncate text-sm font-medium">{task.title}</span>
                               {task.view !== undefined ? (
-                                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                                <span className="shrink-0 font-mono text-xs text-muted-foreground">
                                   <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={taskSignalTone} />
                                 </span>
                               ) : null}
