@@ -58,12 +58,12 @@ async function capture(h: BoardHost, userId: string) {
   return published;
 }
 
-/** A flow whose sessions take any state: a worker flow when the inventory names its kind, else no worker's. */
-const plainFlow = (kind: string) =>
+/** A flow whose sessions take any state: a worker flow when the inventory names it, else no worker's. */
+const plainFlow = (flowName: string) =>
   defineFlow({
-    kind,
+    kind: flowName,
     session: { stateSchema: z.object({ workerId: z.string().readonly().optional() }) },
-    actions: { respond: { block: handler({ name: `${kind}-respond`, inputSchema: z.object({}), execute: () => ({}) }) } }
+    actions: { respond: { block: handler({ name: `${flowName}-respond`, inputSchema: z.object({}), execute: () => ({}) }) } }
   })() as unknown as FlowInstance;
 
 const quiet = mockGenerator({ script: [{ when: () => true, then: { text: "" } }] });
@@ -86,9 +86,9 @@ describe("the inbox view hears every board row written", () => {
       const published = await capture(h, "alice");
       release();
       await h.settled();
-      const [row] = await h.rows("alice");
-      expect(row?.holds?.length, "the task's run held its row on a question").toBe(1);
-      expect(row!.run!.sessionId).not.toBe(lead);
+      const [task] = await h.rows("alice");
+      expect(task?.holds?.length, "the task's run held its row on a question").toBe(1);
+      expect(task!.run!.sessionId).not.toBe(lead);
       // The hold's write came from the task's session, after the view answered:
       // the view's hearing must cover the ledger notice that write published
       // on the user topic, not only a turn's notice on the board holder's session.
@@ -97,7 +97,7 @@ describe("the inbox view hears every board row written", () => {
       expect(ledgerWrites.filter((notice) => hearsNotice(before.hears, notice))).toEqual(ledgerWrites);
       // And the view, run again, answers the row with its hold.
       const after = await inboxOf(h, "alice");
-      expect(after.output.tasks.map((task) => [task.id, task.holds.length])).toEqual([[row!.id, 1]]);
+      expect(after.output.tasks.map((task) => [task.id, task.holds.length])).toEqual([[task!.id, 1]]);
     } finally {
       release();
       await h.dispose();

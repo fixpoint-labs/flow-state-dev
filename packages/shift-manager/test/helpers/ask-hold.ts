@@ -20,13 +20,13 @@ export const VERDICT_SCHEMA = {
   ],
 };
 
-/** A coder's review stop, as the view lists it; `marked: false` is the same stop with no review kind. */
+/** A coder's review stop, as the view lists it; `marked: false` is the same stop not marked as a review. */
 export function reviewHold(marked = true): InboxHold<InboxAsk> {
-  const kind = marked ? "review" : "input";
+  const variant = marked ? "review" : "input";
   return {
     id: "susp-1",
     source: { kind: "suspension", flowId: "devforce-coder", sessionId: "sess-run", requestId: "req-1", suspensionId: "susp-1" },
-    ask: { kind, prompt: "Review the run's changes" },
+    ask: { kind: variant, prompt: "Review the run's changes" },
     openedAt: 0,
     answerable: true,
     unanswerable: null,
@@ -37,7 +37,7 @@ export function reviewHold(marked = true): InboxHold<InboxAsk> {
       flowId: "devforce-coder",
       sessionId: "sess-run",
       workerId: "eng.coder",
-      kind,
+      kind: variant,
       shape: "form",
       message: "Review the run's changes",
       allow: ["submit"],

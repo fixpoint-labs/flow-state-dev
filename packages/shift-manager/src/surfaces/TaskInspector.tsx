@@ -15,7 +15,7 @@ import { traceHref } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
 import { Spend } from "../components/flow-state/spend";
 import { rosterOf, workerFor, workerLabel, waited, type LoadedSnapshot } from "../lib/derive";
-import { askKindWord, itemIdHolding, taskAsks, useInbox } from "../lib/inbox";
+import { askWord, itemIdHolding, taskAsks, useInbox } from "../lib/inbox";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, GENERAL_TEAM, type Failure } from "../lib/reads";
 import type { Route } from "../lib/routes";
@@ -80,7 +80,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
               data-suspension-id={ask.id}
             >
               <span>
-                {askKindWord(ask)} waiting {waited(ask.openedAt, Date.now())}
+                {askWord(ask)} waiting {waited(ask.openedAt, Date.now())}
               </span>
               <span>inbox ↗</span>
             </RouteLink>

@@ -98,15 +98,15 @@ function snapshot(rows: BoardTaskView[], asks: Ask[] = [], workers: Worker[] = [
 }
 
 /**
- * The inbox view's answer over `rows` and the asks no row claims, as the
+ * The inbox view's answer over `tasks` and the asks no row claims, as the
  * server builds it: orchestration's list over the rows (each answered on its
  * conversation's board) and the asks.
  */
-function viewOf(rows: BoardTaskView[], asks: Array<Pick<InboxAsk, "suspensionId" | "workerId">> = []): InboxViewValue {
+function viewOf(tasks: BoardTaskView[], asks: Array<Pick<InboxAsk, "suspensionId" | "workerId">> = []): InboxViewValue {
   return {
-    tasks: rows.map((r) => ({ ...r, owner: r.ownerSessionId })),
+    tasks: tasks.map((r) => ({ ...r, owner: r.ownerSessionId })),
     items: inboxItems<InboxAsk>({
-      rows: rows.map((r) => ({ ...r, board: r.boardRef, holder: { sessionId: r.ownerSessionId, action: taskActionName("updateTask", "tasks") } })),
+      rows: tasks.map((r) => ({ ...r, board: r.boardRef, holder: { sessionId: r.ownerSessionId, action: taskActionName("updateTask", "tasks") } })),
       suspensions: asks.map((ask) => ({
         sessionId: "s_ask",
         flowId: "agent",
@@ -143,7 +143,7 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
       { id: "eng.idle", workerId: "eng.idle", name: "idle", team: "eng", kind: null },
     ] as unknown as Worker[];
     const asks = [{ workerId: "eng.em", item: { suspensionId: "a1" }, since: 0 }] as unknown as Ask[];
-    const rows = [
+    const tasks = [
       row("A", "in_progress", { assignee: "eng.coder" }),
       // Held on a question for you: running, and one Inbox item of its own (FIX-2131).
       row("B", "in_progress", {
@@ -153,9 +153,9 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
       row("C", "pending"),
       row("D", "completed", { ownerSessionId: "s_other" }),
     ];
-    // Who is on shift is still the snapshot's (FIX-2775); the rows and the Inbox are the view's.
-    const s = snapshot(rows, asks, workers);
-    expect(summaryLine({ ok: true, value: viewOf(rows, [{ suspensionId: "a1", workerId: "eng.em" }]) }, s)).toBe("2 in flight · 2 need you · 2 on shift · 2 streams");
+    // Who is on shift is still the snapshot's (FIX-2775); the tasks and the Inbox are the view's.
+    const s = snapshot(tasks, asks, workers);
+    expect(summaryLine({ ok: true, value: viewOf(tasks, [{ suspensionId: "a1", workerId: "eng.em" }]) }, s)).toBe("2 in flight · 2 need you · 2 on shift · 2 streams");
   });
 
   it("an Inbox link written with a suspension id still opens the task's item that holds it", () => {

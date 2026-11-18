@@ -250,7 +250,7 @@ export function defineInboxView(installation: WorkerInstallation): InboxView {
       execute: async (_input, ctx) => {
         const sessions = sessionsOf(ctx);
         const [inventory, roster] = await Promise.all([inventoryOf(ctx), readRosterEntries(ctx, installation)]);
-        // The worker flows: the inventory's kinds and the caller's own roster flows, read here, never from input.
+        // The worker flows: the inventory's flows and the caller's own roster flows, read here, never from input.
         const ownWorkers = new Map(roster.filter((entry) => !entry.standard).map((entry) => [entry.id, entry.flow]));
         const workerIds = new Set(inventory.map((worker) => worker.id));
         const workerFlows = new Set(inventory.map((worker) => worker.kind));
@@ -260,14 +260,14 @@ export function defineInboxView(installation: WorkerInstallation): InboxView {
         const [pending, stored] = await Promise.all([everyPendingAsk(sessions, flowKinds), ledger === undefined ? [] : ledger.list()]);
 
         // One read per session an ask sits in or a board is held by.
-        const rows = stored.flatMap((entry) => {
+        const filed = stored.flatMap((entry) => {
           // `tasks/<partition segment>/<task id>`.
           const parts = entry.path.split("/");
           if (parts.length !== 3 || parts[0] !== CONVERSATION_LEDGER_ID) return [];
           const partition = decodeURIComponent(parts[1]!);
           return [{ partition, holder: sessionIdOfFiling(partition), taskId: parts[2]!, state: entry.state as unknown }];
         });
-        const ids = [...new Set([...pending.flatMap((ask) => (ask.sessionId === undefined ? [] : [ask.sessionId])), ...rows.map((row) => row.holder)])];
+        const ids = [...new Set([...pending.flatMap((ask) => (ask.sessionId === undefined ? [] : [ask.sessionId])), ...filed.map((filing) => filing.holder)])];
         const read = await Promise.all(ids.map((id) => sessions.read(id)));
         const found = new Map<string, PeerSessionView>();
         ids.forEach((id, at) => {
@@ -277,14 +277,14 @@ export function defineInboxView(installation: WorkerInstallation): InboxView {
         // A conversation's rows: its current incarnation's partition only, and none once it is gone.
         const partitions = new Map<string, string>();
         await Promise.all(
-          [...new Set(rows.map((row) => row.holder))].map(async (holder) => {
+          [...new Set(filed.map((filing) => filing.holder))].map(async (holder) => {
             const session = found.get(holder);
             if (session !== undefined) partitions.set(holder, await filingSessionIdOf({ identity: { id: holder }, lineageId: session.lineageId }));
           })
         );
-        const tasks = rows
-          .filter((row) => partitions.get(row.holder) === row.partition)
-          .map((row) => boardTaskOf(row.holder, boardOwnerLabel(row.holder, found.get(row.holder)!), row.taskId, row.state));
+        const tasks = filed
+          .filter((filing) => partitions.get(filing.holder) === filing.partition)
+          .map((filing) => boardTaskOf(filing.holder, boardOwnerLabel(filing.holder, found.get(filing.holder)!), filing.taskId, filing.state));
 
         // Whose each ask is: today's rule on its session, or nobody's for a run with no conversation.
         const asks = pending.flatMap((entry): InboxAsk[] => {

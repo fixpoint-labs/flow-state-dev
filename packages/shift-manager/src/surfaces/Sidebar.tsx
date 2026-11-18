@@ -33,7 +33,7 @@ import type { Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
 import { projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
-import { openRows, useInbox } from "../lib/inbox";
+import { openBoardTasks, useInbox } from "../lib/inbox";
 import { useProjectRead, type WorkstreamEntry } from "../lib/projects";
 import type { Project } from "../lib/reads";
 import { initialsOf } from "../lib/shell";
@@ -419,7 +419,7 @@ export function Sidebar({
   // FIX-2774: the Inbox count and the Tasks count are the inbox view's, the same answer those screens list.
   const inbox = useInbox().section;
   const inboxCount = inbox === undefined ? "…" : inbox.ok ? inbox.value.items.length : "!";
-  const tasksCount = inbox === undefined ? "…" : inbox.ok ? openRows(inbox.value).length : "!";
+  const tasksCount = inbox === undefined ? "…" : inbox.ok ? openBoardTasks(inbox.value).length : "!";
   const waiting = inbox?.ok === true && inbox.value.items.length > 0;
   // The user's own workers are on their roster, not in the inventory: joined as Roster joins them.
   const roster = useRoster();

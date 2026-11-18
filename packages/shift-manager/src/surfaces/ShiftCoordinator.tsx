@@ -40,7 +40,7 @@ import { readDelegates } from "../lib/delegates";
 import { starterLines, type StarterDelegate } from "../lib/first-run";
 import { useWorkforce } from "../lib/workforce";
 import { shiftCoordinatorOf, workerLabel, workerStates, type LoadedSnapshot } from "../lib/derive";
-import { everyAsk, itemIdHolding, openRows, useInbox, workerOfHold } from "../lib/inbox";
+import { everyAsk, itemIdHolding, openBoardTasks, useInbox, workerOfHold } from "../lib/inbox";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { Worker } from "../lib/reads";
@@ -156,7 +156,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
   }
   const inbox = view.section;
   const asks = inbox.ok ? everyAsk(inbox.value.items) : [];
-  const inFlight = inbox.ok ? openRows(inbox.value).filter((row) => row.status === "in_progress") : [];
+  const inFlight = inbox.ok ? openBoardTasks(inbox.value).filter((row) => row.status === "in_progress") : [];
   const running = { runs: inFlight.length, workstreams: new Set(inFlight.map((row) => row.ownerSessionId)).size };
   // What needs the user is what Inbox lists: one item per task held on a
   // question, a review or an approval, and per ask no task holds, each once.

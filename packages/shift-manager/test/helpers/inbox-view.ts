@@ -36,7 +36,7 @@ export function viewOfSnapshot(snapshot: LabSnapshot | undefined): Section<Inbox
   if (snapshot.unreachable !== undefined) return { ok: false, failure: snapshot.unreachable };
   const loaded = snapshot as LoadedSnapshot;
   if (!loaded.inbox.ok) return { ok: false, failure: loaded.inbox.failure };
-  const tasks = Object.values(loaded.boards).flatMap((board) => (board.ok ? board.value.rows.map((row) => ({ ...row, owner: boardOwnerOf(loaded, row) })) : []));
+  const tasks = Object.values(loaded.boards).flatMap((board) => (board.ok ? board.value.rows.map((task) => ({ ...task, owner: boardOwnerOf(loaded, task) })) : []));
   const items = loaded.inbox.value.map((item) => ({
     ...item,
     holds: item.holds.map(({ detail, ...hold }) => (detail === undefined ? hold : { ...hold, detail: askOf(detail) })),

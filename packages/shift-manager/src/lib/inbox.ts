@@ -62,8 +62,8 @@ export function useInbox(enabled = true): InboxRead {
 
 // BR-15.
 /** The rows Tasks shows: every board's, excluding done ones. */
-export function openRows(value: InboxViewValue): InboxBoardTask[] {
-  return value.tasks.filter((row) => !isDone(row.status));
+export function openBoardTasks(value: InboxViewValue): InboxBoardTask[] {
+  return value.tasks.filter((task) => !isDone(task.status));
 }
 
 /**
@@ -85,10 +85,10 @@ export function itemAtRoute(items: readonly InboxViewItem[], id: string | null):
   return items.find((item) => item.id === id) ?? items.find((item) => item.holds.some((hold) => hold.id === id)) ?? null;
 }
 
-/** A row's Inbox item, by its board and task; `undefined` when nothing of it waits on the user. */
-function itemOfRow(items: readonly InboxViewItem[], row: Pick<InboxBoardTask, "boardRef" | "id"> | undefined): InboxViewItem | undefined {
-  if (row === undefined) return undefined;
-  return items.find((item) => item.task?.board === row.boardRef && item.task.taskId === row.id);
+/** A task's Inbox item, by its board and id; `undefined` when nothing of it waits on the user. */
+function itemOfTask(items: readonly InboxViewItem[], task: Pick<InboxBoardTask, "boardRef" | "id"> | undefined): InboxViewItem | undefined {
+  if (task === undefined) return undefined;
+  return items.find((item) => item.task?.board === task.boardRef && item.task.taskId === task.id);
 }
 
 // FIX-2131.
@@ -97,14 +97,14 @@ function itemOfRow(items: readonly InboxViewItem[], row: Pick<InboxBoardTask, "b
  * hold the board keeps on the row. A task waiting on its run's stop for you
  * shows that stop as an ask instead ({@link taskAsks}).
  */
-export function holdsOnYou(items: readonly InboxViewItem[], row: Pick<InboxBoardTask, "boardRef" | "id"> | undefined): boolean {
-  return itemOfRow(items, row)?.holds.some((hold) => hold.source.kind === "task") ?? false;
+export function holdsOnYou(items: readonly InboxViewItem[], task: Pick<InboxBoardTask, "boardRef" | "id"> | undefined): boolean {
+  return itemOfTask(items, task)?.holds.some((hold) => hold.source.kind === "task") ?? false;
 }
 
 // BR-17; D2.
 /** The stops a task's run waits on you with: its Inbox item's suspension holds, oldest first. */
-export function taskAsks(items: readonly InboxViewItem[], row: Pick<InboxBoardTask, "boardRef" | "id"> | undefined): InboxViewHold[] {
-  return itemOfRow(items, row)?.holds.filter((hold) => hold.source.kind === "suspension") ?? [];
+export function taskAsks(items: readonly InboxViewItem[], task: Pick<InboxBoardTask, "boardRef" | "id"> | undefined): InboxViewHold[] {
+  return itemOfTask(items, task)?.holds.filter((hold) => hold.source.kind === "suspension") ?? [];
 }
 
 /** Every stop that waits on you, oldest first: each Inbox item's suspension holds. */
@@ -112,10 +112,10 @@ export function everyAsk(items: readonly InboxViewItem[]): InboxViewHold[] {
   return items.flatMap((item) => item.holds.filter((hold) => hold.source.kind === "suspension")).sort((a, b) => a.openedAt - b.openedAt);
 }
 
-/** The word an ask's kind is drawn with: an input is a question. */
-export function askKindWord(hold: InboxViewHold): "approval" | "review" | "question" | "confirm" {
-  const kind = hold.ask.kind;
-  return kind === "approval" || kind === "review" || kind === "confirm" ? kind : "question";
+/** The word an ask is drawn with: an input is a question. */
+export function askWord(hold: InboxViewHold): "approval" | "review" | "question" | "confirm" {
+  const asked = hold.ask.kind;
+  return asked === "approval" || asked === "review" || asked === "confirm" ? asked : "question";
 }
 
 /** The session a stop waits in, or `null` for a run with no conversation (or a task's own hold). */
@@ -130,12 +130,12 @@ export function workerOfHold(hold: InboxViewHold): string | null {
 
 /**
  * The suspension a stop's card draws: from the ask's detail, or, when the view
- * found none for a stop the task's row records, from what the row says of it.
+ * found none for a stop the task's entry records, from what the entry says of it.
  * A review's data, which the detail never carries, is `data` when given.
  */
 export function suspensionOfHold(hold: InboxViewHold, data?: Record<string, unknown>): SuspensionItem {
   const ask = hold.detail;
-  const kind = hold.ask.kind === "approval" || hold.ask.kind === "review" ? hold.ask.kind : "input";
+  const variant = hold.ask.kind === "approval" || hold.ask.kind === "review" ? hold.ask.kind : "input";
   const requestId = hold.source.kind === "suspension" ? hold.source.requestId : "";
   return {
     type: "suspension",
@@ -144,11 +144,11 @@ export function suspensionOfHold(hold: InboxViewHold, data?: Record<string, unkn
     requestId,
     status: "completed",
     suspensionStatus: "pending",
-    reason: kind === "approval" ? "user_approval" : "user_input",
-    kind,
+    reason: variant === "approval" ? "user_approval" : "user_input",
+    kind: variant,
     message: ask?.message ?? hold.ask.prompt,
     ...((ask?.title ?? hold.ask.title) !== undefined ? { title: ask?.title ?? hold.ask.title } : {}),
-    allow: ask?.allow !== undefined ? [...ask.allow] : kind === "approval" ? ["approve", "reject"] : ["submit"],
+    allow: ask?.allow !== undefined ? [...ask.allow] : variant === "approval" ? ["approve", "reject"] : ["submit"],
     ...(ask?.resumeSchema !== undefined ? { resumeSchema: ask.resumeSchema } : {}),
     ...(ask?.render !== undefined ? { render: ask.render } : {}),
     ...(hold.due !== undefined ? { expiresAt: hold.due } : {}),

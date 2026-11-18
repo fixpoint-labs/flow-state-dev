@@ -17,7 +17,7 @@
 import { useEffect, useState } from "react";
 import { COLUMNS, columnFor } from "../lib/columns";
 import { rosterOf, workerFor, workerLabel, type LoadedSnapshot } from "../lib/derive";
-import { openRows, useInbox, type InboxBoardTask } from "../lib/inbox";
+import { openBoardTasks, useInbox, type InboxBoardTask } from "../lib/inbox";
 import { navigate, TASK_GROUPINGS, type Route, type TaskGrouping } from "../lib/routes";
 import { elapsed, isQueued, summaryLine } from "../lib/tasks";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSquare } from "../components/ui";
@@ -61,7 +61,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
   const inbox = useInbox();
   const [showQueued, setShowQueued] = useState(false);
   const roster = rosterOf(snapshot);
-  const all = inbox.section?.ok === true ? openRows(inbox.section.value) : [];
+  const all = inbox.section?.ok === true ? openBoardTasks(inbox.section.value) : [];
   const queued = all.filter(isQueued).length;
   const rows = showQueued ? all : all.filter((row) => !isQueued(row));
   // While the server is gone the TIME column stops where the data did.

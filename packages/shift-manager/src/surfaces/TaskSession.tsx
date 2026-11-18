@@ -27,7 +27,7 @@ import { shiftManagerRenderers } from "../components/ToolLine";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { ConversationScrollButton } from "../components/flow-state/conversation";
 import { EmptyState, LoadEarlierButton, SectionFailure } from "../components/ui";
-import { askKindWord, holdsOnYou, taskAsks, useInbox, type InboxAsk } from "../lib/inbox";
+import { askWord, holdsOnYou, taskAsks, useInbox, type InboxAsk } from "../lib/inbox";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { useLab } from "../lib/lab-data";
 import { useReportFeedState } from "../lib/feed-health";
@@ -291,7 +291,7 @@ function PendingAsk({ ask }: { ask: InboxHold<InboxAsk> | undefined }) {
   return (
     <div data-testid="session-ask" data-suspension-id={ask.id}>
       <span className="bg-attention px-[5px] py-px font-mono text-[9.5px] font-semibold tracking-[0.12em] text-attention-foreground" data-look="ask-kind">
-        {askKindWord(ask).toUpperCase()}
+        {askWord(ask).toUpperCase()}
       </span>
       <div className="mt-1.5">
         <AskCard hold={ask} />

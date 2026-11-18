@@ -7,7 +7,7 @@
  */
 import { columnFor } from "./columns";
 import { workerStates, shiftCounts, type LoadedSnapshot } from "./derive";
-import { openRows, type InboxViewValue } from "./inbox";
+import { openBoardTasks, type InboxViewValue } from "./inbox";
 import type { BoardTaskView, Section } from "./reads";
 
 /**
@@ -59,7 +59,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * streams (the conversations holding their boards) the rows in flight run in.
  */
 export function summaryLine(inbox: Section<InboxViewValue>, snapshot: LoadedSnapshot): string {
-  const inFlight = inbox.ok ? openRows(inbox.value).filter((row) => !isQueued(row)) : [];
+  const inFlight = inbox.ok ? openBoardTasks(inbox.value).filter((row) => !isQueued(row)) : [];
   // An Inbox that didn't load says so: a count of 0 would read as all clear.
   const waiting = inbox.ok ? `${inbox.value.items.length} ${inbox.value.items.length === 1 ? "needs" : "need"} you` : "Inbox didn't load";
   const counts = shiftCounts(workerStates(snapshot));
@@ -85,6 +85,6 @@ export function runningSessions(rows: readonly BoardTaskView[]): number {
 
 /** What Inbox says when nothing waits on the user (v2:1354): the sessions still running. */
 export function nothingWaitingSentence(view: InboxViewValue): string {
-  const running = runningSessions(openRows(view));
+  const running = runningSessions(openBoardTasks(view));
   return `Nothing needs you. ${plural(running, "session is", "sessions are")} still running.`;
 }
