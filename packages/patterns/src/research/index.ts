@@ -71,8 +71,14 @@ const researchConfigSchema = z.object({
   }).optional(),
   search: z.custom<SearchConfig>().optional(), fetch: z.custom<FetchConfig>().optional(), crawl: z.custom<CrawlConfig>().optional(),
   maxTasks: z.number().int().positive().default(12),
-  maxAttemptsPerTask: z.number().int().min(2).default(2),
+  /** Total attempts per task, including the first (default 2). Set 1 to disable retries. */
+  maxAttemptsPerTask: z.number().int().min(1).default(2),
   maxIterations: z.number().int().positive().default(3),
+  /**
+   * Shared retry budget across all tasks (default 6); 0 disables retries.
+   * A retry needs both this budget and a remaining per-task attempt.
+   * With maxAttemptsPerTask: 1, a positive budget is valid but unused.
+   */
   maxTotalRetries: z.number().int().nonnegative().default(6),
   /** Advanced overrides for apps that own their retrieval blocks. */
   toolOverrides: z.object({
@@ -202,7 +208,14 @@ export const research = defineKit({
       instructions: `Plan at most ${config.maxTasks} focused research tasks. Prefer primary sources and make dependencies explicit.`,
     });
     const inputSchema = z.object({ question: z.string().min(1) });
+    const resetRetrieval = handler({
+      name: "research-reset-retrieval", inputSchema, sessionStateSchema: researchSessionStateSchema,
+      execute: async (_input, ctx) => {
+        await ctx.session.patchState({ researchRetrievedUrls: [], researchToolAttempts: {} });
+      },
+    });
     const run = sequencer({ name: "research-run", inputSchema })
+      .tap(resetRetrieval)
       .map((input) => ({ goal: input.question })).step(researchBlock);
     return { flows: [defineFlow({
       kind: "research", requireUser: true,
