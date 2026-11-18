@@ -37,8 +37,7 @@ describe("the lab's files", () => {
   it("sends a line's files beside its message, through the worker's door", async () => {
     const lab = fakeClient();
     await appCalls(lab.client).send("s1", "What does this show?", [SHOT]);
-    // The client sets each send's request id, so the line and its turn can be matched (workforce `send`).
-    expect(lab.sends).toEqual([{ action: "respond", input: { message: "What does this show?" }, options: { sessionId: "s1", attachments: [SHOT], requestId: expect.any(String) } }]);
+    expect(lab.sends).toEqual([{ action: "respond", input: { message: "What does this show?" }, options: { sessionId: "s1", requestId: expect.stringMatching(/^req_/), attachments: [SHOT] } }]);
   });
 
   it("uploads through the client, and reads a file's bytes with the page's fetch under its base path", async () => {

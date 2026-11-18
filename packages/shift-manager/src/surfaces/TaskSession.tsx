@@ -243,7 +243,7 @@ function PendingAsk({ ask }: { ask: Ask | undefined }) {
   }
   return (
     <div data-testid="session-ask" data-suspension-id={ask.item.suspensionId}>
-      <span className="bg-attention px-[5px] py-px font-mono text-[9.5px] font-semibold tracking-[0.12em] text-attention-foreground" data-look="ask-kind">
+      <span className="bg-attention px-[5px] py-px font-mono text-xs font-semibold tracking-[0.12em] text-attention-foreground" data-look="ask-kind">
         {ask.kind.toUpperCase()}
       </span>
       <div className="mt-1.5">

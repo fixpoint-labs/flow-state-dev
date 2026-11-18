@@ -85,7 +85,7 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
   return (
     <header className="flex items-center gap-3" data-testid="shift-coordinator-header">
       <span
-        className="flex size-10 shrink-0 items-center justify-center bg-primary font-mono text-[13px] font-semibold text-primary-foreground"
+        className="flex size-10 shrink-0 items-center justify-center bg-primary font-mono text-sm font-semibold text-primary-foreground"
         data-look="avatar"
         aria-hidden
       >
@@ -94,11 +94,11 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
       <div className="min-w-0">
         <ScreenTitle scale="shift-coordinator">{NAME}</ScreenTitle>
         {working ? (
-          <Meta className="block text-[11.5px] text-muted-foreground" testId="shift-coordinator-sub">
+          <Meta className="block text-xs text-muted-foreground" testId="shift-coordinator-sub">
             working…
           </Meta>
         ) : watching === null ? null : (
-          <Meta className="block text-[11.5px] text-muted-foreground" testId="shift-coordinator-sub">
+          <Meta className="block text-xs text-muted-foreground" testId="shift-coordinator-sub">
             {status === undefined ? null : `${status} · `}
             <span data-testid="shift-coordinator-watching">{watching}</span>
           </Meta>
@@ -123,7 +123,7 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
 function NeedsYouTag() {
   return (
     <span
-      className="shrink-0 border border-foreground bg-attention px-[5px] py-px font-mono text-[9.5px] font-semibold tracking-[0.12em] text-attention-foreground"
+      className="shrink-0 border border-foreground bg-attention px-[5px] py-px font-mono text-xs font-semibold tracking-[0.12em] text-attention-foreground"
       data-look="needs-tag"
     >
       NEEDS YOU
@@ -146,10 +146,10 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
   const needsYou = inbox.ok ? inbox.value.length : 0;
   return (
     <section aria-label="Shift summary" className="flex flex-col gap-2.5" data-testid="shift-coordinator-summary">
-      <p className="font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
+      <p className="font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
         SHIFT SUMMARY · FROM SHIFT MANAGER
       </p>
-      <div className={cn("text-base leading-[1.55]", asking && ASKING_CLASS)} data-look="summary-prose" data-asking={asking ? "true" : undefined}>
+      <div className={cn("text-base", asking && ASKING_CLASS)} data-look="summary-prose" data-asking={asking ? "true" : undefined}>
         {inbox.ok ? (
           <p data-testid="shift-coordinator-summary-asks">
             {needsYou === 0 ? (
@@ -183,7 +183,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
             >
               <div className="flex items-baseline gap-[9px]">
                 <NeedsYouTag />
-                <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
+                <p className="min-w-0 font-mono text-xs font-medium text-muted-foreground" data-look="ask-meta">
                   {workerLabel(ask.workerId ?? "unknown worker")} asks{" · "}
                   <RouteLink
                     to={{ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) }}
@@ -269,7 +269,7 @@ function AskLine({ item }: { item: OutputItem }) {
   return (
     <RouteLink to={{ level: "inbox", item: null }} className="flex items-baseline gap-[9px] text-left">
       <NeedsYouTag />
-      <span className="font-mono text-[11px] font-medium text-info" data-look="ask-meta">
+      <span className="font-mono text-xs font-medium text-info" data-look="ask-meta">
         Waiting on you: answer it in Inbox
       </span>
     </RouteLink>
@@ -353,9 +353,9 @@ export function ShiftCoordinatorPanel({ snapshot }: { snapshot: LoadedSnapshot }
     <div className="p-3" data-testid="shift-coordinator-panel">
       {shiftCoordinator !== undefined ? (
         <>
-          <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
+          <p className="px-1 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
           <DelegatesPanel key={shiftCoordinator.id} worker={shiftCoordinator} sessionId={conversation} />
-          <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">TASKS</p>
+          <p className="px-1 pt-4 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">TASKS</p>
           <TasksPanel key={`tasks-${shiftCoordinator.id}`} worker={shiftCoordinator} sessionId={conversation} activeOnly />
         </>
       ) : (

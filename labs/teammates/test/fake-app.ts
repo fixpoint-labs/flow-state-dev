@@ -687,7 +687,7 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
       const w = bySession(sessionId);
       if (w === undefined) return [];
       const running = w.turns.length > 0;
-      return [{ id: `turn:${w.lastActiveAt}`, action: "respond", status: running ? "in_progress" : "completed", source: "user", startedAt: w.lastActiveAt, completedAt: running ? null : w.lastActiveAt, endedAt: running ? null : w.lastActiveAt, error: null }];
+      return [{ id: `turn:${w.lastActiveAt}`, action: "respond", status: running ? "in_progress" : "completed", source: "user", startedAt: w.lastActiveAt, completedAt: running ? null : w.lastActiveAt, endedAt: running ? null : w.lastActiveAt, error: null, historyStart: null }];
     },
     workerMessages,
   };

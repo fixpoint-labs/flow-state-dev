@@ -268,7 +268,7 @@ function Panel({
       ) : (
         <div className="absolute inset-y-0 right-0 z-10 flex w-[43px] flex-col items-center gap-3 border-l bg-inspector pt-2.5" data-testid="right-panel-rail" data-panel={route.level}>
           {handle}
-          <span className="font-mono text-[10px] font-medium tracking-[0.12em] text-muted-foreground [writing-mode:vertical-rl]" data-look="meta-label">
+          <span className="font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground [writing-mode:vertical-rl]" data-look="meta-label">
             {PANEL_NAMES[route.level]}
           </span>
         </div>
