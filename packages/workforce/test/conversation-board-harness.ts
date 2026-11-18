@@ -474,7 +474,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     })) as { output?: any; error?: { message?: string } | unknown; status?: string; requestId?: string };
   };
 
-  /** Every task row on every session's board, by the partition it is filed in. */
+  /** Every stored task on every session's board, by the partition it is filed in. */
   const taskRows = async (): Promise<Array<Task & { partition: string }>> => {
     const runtime = await state.getRuntime();
     const seen = new Set<string>();
