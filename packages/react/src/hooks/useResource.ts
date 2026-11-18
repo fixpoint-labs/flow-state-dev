@@ -183,15 +183,21 @@ export function useResource<TDef extends ScopeResourceDef>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [client, atSession, def.scope, key]
   );
-  const roots = useMemo(() => {
-    if (!collection) return [key];
-    const prefix = getPatternPrefix(key);
+  /** The paths a change notice names for a resource stored at `path`: itself, or a collection's static prefix. */
+  const rootsOf = (path: string) => {
+    if (!collection) return [path];
+    const prefix = getPatternPrefix(path);
     return prefix.length > 0 ? [prefix] : undefined;
-  }, [collection, key]);
+  };
+  const roots = useMemo(() => rootsOf(key), [collection, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A session notice names the resource's stored path (its ref or pattern), never the name a flow
+  // declares it under: `key` is the snapshot's name only, and stands in only for a definition with neither.
+  const storedPath = def.ref ?? def.pattern ?? key;
+  const sessionRoots = useMemo(() => rootsOf(storedPath), [collection, storedPath]); // eslint-disable-line react-hooks/exhaustive-deps
   const driver = useMemo(() => {
     if (handle !== undefined) return liveDriver(client, scope === "user" ? topic.user() : topic.org(), roots, pollIntervalMs);
-    return sessionId === undefined ? undefined : liveDriver(client, topic.session(sessionId), roots, pollIntervalMs);
-  }, [client, handle, scope, sessionId, roots, pollIntervalMs]);
+    return sessionId === undefined ? undefined : liveDriver(client, topic.session(sessionId), sessionRoots, pollIntervalMs);
+  }, [client, handle, scope, sessionId, roots, sessionRoots, pollIntervalMs]);
   // The snapshot is keyed by the name the flow declares the resource under: the given key, else
   // the ref or pattern, else (the common case for a collection) the pattern's static prefix.
   const snapshotNames = [options.key, def.ref, def.pattern, def.pattern === undefined ? undefined : getPatternPrefix(def.pattern)];
@@ -208,7 +214,8 @@ export function useResource<TDef extends ScopeResourceDef>(
   const held = useRef<{ handle: unknown; entries: ScopeEntry<TValue>[] } | undefined>(undefined);
   const reading = useRef(0);
   const { data, error, refresh } = useFencedRead<TValue | ScopeEntry<TValue>[] | null>(
-    [handle, scope, key, sessionId],
+    // `client` too: by `sessionId` there is no handle, and a value one client read is never shown under another.
+    [handle, scope, key, sessionId, client],
     null,
     `Failed to read "${key}"`,
     async (stillCurrent, notice) => {

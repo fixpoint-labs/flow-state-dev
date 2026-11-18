@@ -58,6 +58,36 @@ describe("useResource at session scope, by session id", () => {
     expect(result.current.value).toBeNull();
   });
 
+  it("shows nothing the previous client read once the client changes, even when the new client's read fails", async () => {
+    // Another account on the same page: the session id is the same, the client (its user) is not.
+    const first = host({ throughRequestId: "req_alices", complete: true });
+    const second = host(undefined);
+    second.state.mockRejectedValue(new Error("not yours"));
+    const { result, rerender } = renderHook(({ client }) => useResource(summary, { sessionId: "s1", client }), {
+      initialProps: { client: first.client },
+    });
+    await waitFor(() => expect(result.current.value).toEqual({ throughRequestId: "req_alices", complete: true }));
+    rerender({ client: second.client });
+    await waitFor(() => expect(second.state).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.stale).toBe(true));
+    expect(result.current.value).toBeNull();
+  });
+
+  it("hears the resource's own stored path when the flow declares it under another name", async () => {
+    // The flow declares it as `earlier`; the server stores it, and names it in a notice, as `historySummary`.
+    const h = host({ throughRequestId: "req_1", complete: true });
+    h.state.mockImplementation(async () => ({ sessionId: "s1", resources: { session: { earlier: { clientData: face() } } } }));
+    let current = { throughRequestId: "req_1", complete: true };
+    function face() {
+      return current;
+    }
+    const { result } = renderHook(() => useResource(summary, { sessionId: "s1", key: "earlier", client: h.client }));
+    await waitFor(() => expect(result.current.value).toEqual({ throughRequestId: "req_1", complete: true }));
+    current = { throughRequestId: "req_7", complete: true };
+    await act(async () => h.subscriptions[0]!.options.onChange(notice("historySummary")));
+    await waitFor(() => expect(result.current.value).toEqual({ throughRequestId: "req_7", complete: true }));
+  });
+
   it("reads the new session's when the id changes", async () => {
     const h = host({ throughRequestId: "req_1", complete: true });
     const { rerender } = renderHook(({ id }) => useResource(summary, { sessionId: id, client: h.client }), { initialProps: { id: "s1" } });
