@@ -20,7 +20,7 @@ export function createLabReader(clients: Parameters<typeof readerAsWritten>[0]):
     ...reader,
     read: async () => {
       const snapshot = await reader.read();
-      if (snapshot.refused !== undefined || !snapshot.asks.ok) return snapshot;
+      if (snapshot.refused !== undefined || snapshot.unreachable !== undefined || !snapshot.asks.ok) return snapshot;
       const asks = snapshot.asks.value.map((ask) => ({ ...ask, unanswerable: UNANSWERABLE }));
       return { ...snapshot, asks: { ok: true, value: asks } };
     },

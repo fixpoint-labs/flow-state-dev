@@ -10,9 +10,6 @@
  * ONE process (the in-memory durable store carries the suspension between the
  * phases), and reports raw observations on a single `__GOAL__<json>` line.
  * run.mts owns the grading and the retry policy.
- *
- * Not typechecked by `goals/tsconfig.json` — its imports resolve against
- * apps/kitchen-sink. See goals/README.md → "Harnesses".
  */
 import { createGateway } from "@ai-sdk/gateway";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";

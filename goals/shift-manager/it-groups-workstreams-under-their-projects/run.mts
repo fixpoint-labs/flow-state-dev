@@ -57,7 +57,7 @@
  *
  * Controls (each must fail; the run fails if a swap never fired):
  *
- *   unread    the page's grouping ignores the rows (Vite swap of derive.ts).
+ *   unread    projectsOf returns no projects (Vite swap of derive.ts).
  *             Must fail at "PROJECTS equals the store's rows".
  *   gap-tabs  the project level as it was before projects (Vite swap of
  *             Project.tsx). Must fail at "a project's four tabs".
