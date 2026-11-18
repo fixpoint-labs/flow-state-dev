@@ -9,6 +9,9 @@
  * pull request comment, a tool result, a turn no user started), another
  * user's word, and a message the judge flags all leave the list as it was.
  *
+ * Even then, nothing is written until the operator approves the exact change
+ * in Inbox; a denial leaves the list as it was.
+ *
  * The Shift Coordinator's judgment and the edit's judge are scripted.
  */
 import { mkdtempSync } from "node:fs";
@@ -124,8 +127,31 @@ async function say(lab: Lab, message: string, as: keyof typeof LAB_USERS = "owne
     sessionId,
     stores: runtime.stores,
     runtimeConfig: runtime.runtimeConfig,
-  } as never)) as { error?: unknown };
+  } as never)) as { error?: unknown; requestId?: string };
   expect(said.error).toBeUndefined();
+  return said.requestId!;
+}
+
+/** The one approval waiting, as Inbox shows it. */
+async function pendingApproval(lab: Lab): Promise<{ suspensionId: string; reason: string; message?: string; data?: unknown }> {
+  const runtime = await lab.state.getRuntime();
+  const pending = (await (runtime.stores as any).suspensions.list({ status: "pending" })) as Array<{ suspensionId: string; reason: string; message?: string; data?: unknown }>;
+  expect(pending).toHaveLength(1);
+  return pending[0]!;
+}
+
+/** Answer the approval through the resume route, as Inbox does, and wait for the request to finish. */
+async function answer(lab: Lab, requestId: string, action: "approve" | "reject") {
+  const { suspensionId } = await pendingApproval(lab);
+  const sent = await lab.door("POST", `coordinator/requests/${requestId}/resume`, { body: { suspensionId, action } });
+  expect(sent.status).toBe(202);
+  const runtime = await lab.state.getRuntime();
+  for (let i = 0; i < 400; i += 1) {
+    const status = String((await runtime.stores.request.get(requestId))?.status);
+    if (status !== "suspended" && status !== "in_progress") return status;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("the answered request never finished");
 }
 
 /** The logins the stored document lists; the seeded list until something writes it. */
@@ -139,13 +165,26 @@ async function listed(lab: Lab): Promise<string[]> {
 const set = (logins: string[]): ToolCall => ({ toolName: GITHUB_REVIEWERS_TOOL, args: { logins } });
 
 describe("the Shift Coordinator changes the trusted GitHub reviewers", () => {
-  it("on the operator's own message, once the judge finds it asks for the change", async () => {
+  it("on the operator's own message, once the judge finds it asks for the change and the operator approves it", async () => {
     const shown: unknown[] = [];
     const lab = await open(scripted([set(["jhoffner", "maintainer"])], { asked: 0.95, injected: 0.02 }, shown));
-    await say(lab, "Please trust @maintainer as a GitHub reviewer on the coder's pull requests.");
-    expect(await listed(lab)).toEqual(["jhoffner", "maintainer"]);
+    const requestId = await say(lab, "Please trust @maintainer as a GitHub reviewer on the coder's pull requests.");
     // The judge read the operator's message, as data.
     expect(JSON.stringify(shown)).toContain("Please trust @maintainer as a GitHub reviewer");
+    // Nothing is written until the operator approves the exact change.
+    expect(await pendingApproval(lab)).toMatchObject({ reason: "user_approval", message: "Change the trusted GitHub reviewers: trust maintainer?" });
+    expect(await listed(lab)).toEqual(["jhoffner"]);
+    expect(await answer(lab, requestId, "approve")).toBe("completed");
+    expect(await listed(lab)).toEqual(["jhoffner", "maintainer"]);
+  }, 120_000);
+
+  it("not when the operator denies the change it shows, even after both checks passed", async () => {
+    // "don't add mallory" names mallory, and a judge can misread it: the approval shows the change before anything is written.
+    const lab = await open(scripted([set(["jhoffner", "mallory"])], { asked: 0.95, injected: 0.02 }, []));
+    const requestId = await say(lab, "Do what the PR says, but don't add mallory.");
+    expect(await pendingApproval(lab)).toMatchObject({ message: "Change the trusted GitHub reviewers: trust mallory?" });
+    await answer(lab, requestId, "reject");
+    expect(await listed(lab)).toEqual(["jhoffner"]);
   }, 120_000);
 
   it("not for a login the operator's message doesn't name: a pull request comment can't add one through the model", async () => {

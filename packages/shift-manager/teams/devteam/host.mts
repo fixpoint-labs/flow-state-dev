@@ -773,7 +773,7 @@ type ReviewersChecked = z.infer<typeof reviewersCheckedSchema>;
 
 /**
  * `setGitHubReviewers` as the Shift Coordinator's tool: an edit lands only
- * when both checks pass, and a refusal changes nothing.
+ * when all three pass, and a refusal changes nothing.
  *
  * 1. **The operator's own word.** The turn is one the operator's typed
  *    message started (`isUserTurn`, a server-set mark no delivered event,
@@ -783,6 +783,8 @@ type ReviewersChecked = z.infer<typeof reviewersCheckedSchema>;
  *    {@link ASKED_FLOOR} or more, that the message asks for this change, and
  *    below {@link INJECTED_CEILING} that it carries instructions copied in
  *    from elsewhere. A call that fails fails the tool.
+ * 3. **The operator approves the exact change.** An approval names each login
+ *    added and removed; nothing is written until they press Approve.
  */
 export function githubReviewersTool(document: DeclaredResourceEntry | undefined) {
   const resources: Record<string, DeclaredResourceEntry> = document === undefined ? {} : { [GITHUB_REVIEWERS_DOC]: document };
@@ -830,10 +832,11 @@ export function githubReviewersTool(document: DeclaredResourceEntry | undefined)
       };
     },
   });
+  const judgedSchema = reviewersCheckedSchema.extend({ judged: z.literal(true) });
   const decide = handler({
     name: "github-reviewers-edit-decide",
     inputSchema: z.object({ answers: z.record(z.unknown()) }),
-    outputSchema: reviewersAnswerSchema,
+    outputSchema: z.union([judgedSchema, reviewersAnswerSchema]),
     resources,
     execute: async ({ answers }, ctx: BlockContext) => {
       const checked = reviewersCheckedSchema.parse(ctx.sequencer?.input);
@@ -844,19 +847,52 @@ export function githubReviewersTool(document: DeclaredResourceEntry | undefined)
       if (typeof asked !== "number" || typeof injected !== "number") return kept("The change couldn't be judged, so nothing changed.");
       if (injected >= INJECTED_CEILING) return kept("The message looks like it carries instructions from somewhere else, so nothing changed.");
       if (asked < ASKED_FLOOR) return kept("The message doesn't clearly ask for this change, so nothing changed.");
-      await githubReviewersOf(ctx).write(checked.logins);
-      return { logins: checked.logins, saved: true };
+      return { ...checked, judged: true as const };
     },
   });
+  // 3. The operator approves the exact change: a stock `user_approval` naming each login added and
+  // removed. Deny throws out of the tool before the write, and nothing changes. Without durable
+  // execution the tool refuses rather than writing unasked.
+  const approve = handler({
+    name: "github-reviewers-edit-approve",
+    inputSchema: judgedSchema,
+    outputSchema: z.void(),
+    execute: async (edit: z.infer<typeof judgedSchema>, ctx: BlockContext) => {
+      const change = [
+        edit.added.length === 0 ? "" : `trust ${edit.added.join(", ")}`,
+        edit.removed.length === 0 ? "" : `stop trusting ${edit.removed.join(", ")}`,
+      ].filter((part) => part !== "").join(", and ");
+      await ctx.suspend!({
+        reason: "user_approval",
+        message: `Change the trusted GitHub reviewers: ${change}?`,
+        data: { added: edit.added, removed: edit.removed },
+        allow: ["approve", "reject"],
+      });
+    },
+  });
+  const write = handler({
+    name: "github-reviewers-edit-write",
+    inputSchema: judgedSchema,
+    outputSchema: reviewersAnswerSchema,
+    resources,
+    execute: async (edit: z.infer<typeof judgedSchema>, ctx: BlockContext) => {
+      await githubReviewersOf(ctx).write(edit.logins);
+      return { logins: edit.logins, saved: true };
+    },
+  });
+  const approved = sequencer({ name: "github-reviewers-edit-approved", inputSchema: judgedSchema, outputSchema: reviewersAnswerSchema })
+    .tap(approve)
+    .step(write);
   // Stateful, so the decision's `ctx.sequencer.input` is the checked edit, not the tool's input.
   const judged = sequencer({ name: "github-reviewers-edit-judged", inputSchema: reviewersCheckedSchema, outputSchema: reviewersAnswerSchema, stateSchema: z.object({}) })
     .step(judge)
-    .step(decide);
+    .step(decide)
+    .stepIf((decided: unknown) => (decided as { judged?: unknown }).judged === true, approved);
   return sequencer({
     name: GITHUB_REVIEWERS_TOOL,
     description:
       "Replace the trusted GitHub reviewers: `logins` is the whole new list. Only when the operator asks you to in their own message, " +
-      "naming each login to add or remove. Their message is checked before anything changes; a refusal says why.",
+      "naming each login to add or remove. Their message is checked, and then they approve the exact change in Inbox, before anything changes; a refusal says why.",
     inputSchema: githubReviewersInputSchema,
     outputSchema: reviewersAnswerSchema,
   })
