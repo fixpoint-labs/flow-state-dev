@@ -3969,8 +3969,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       };
       const pullRequests =
         ctx.runOnce === undefined ? await readPullRequests() : await ctx.runOnce(`review:pull-requests:${state.steerSteps ?? 0}`, readPullRequests);
-      // This round's commits, read by `decide`; `null` when the round is the whole branch.
-      const thisRound = decision.round?.verified === true ? { commits: decision.round.count, subjects: decision.round.subjects } : null;
+      // This round's commits, read by `decide`; `null` when the round is the whole branch, or added
+      // nothing, so the card falls back to the branch's commits rather than an empty list.
+      const thisRound = decision.round?.verified === true && decision.round.count > 0 ? { commits: decision.round.count, subjects: decision.round.subjects } : null;
       // A landing the coding session was handed is tried again first, as the
       // person asked it the first time (FIX-2658).
       const pending = state.landing ?? null;

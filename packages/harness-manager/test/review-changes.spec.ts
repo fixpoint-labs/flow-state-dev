@@ -541,6 +541,23 @@ describe("a coding run that made changes waits for a person's review", () => {
     }
   }, 60_000);
 
+  // A round that committed nothing has no work of its own to set apart: an empty round would hide the branch's commits.
+  it("shows the branch's commits when a round on it added none", async () => {
+    const h = host({ script: ["commits-no-session", "no-commit"] });
+    try {
+      await h.start();
+      await h.until(h.waiting, "the first try's review");
+      await h.answer({ verdict: "revise", words: "Rename the flag." });
+      await h.retry();
+      const again = await h.until((t) => t.attempts === 2 && h.waiting(t), "the second try's review");
+      const detail = reviewDetail(await h.reviewData(again));
+      expect(detail).toMatchObject({ commits: 1, subjects: ["Change 1"], round: null });
+      expect(h.review(again)!.ask.prompt).not.toContain("this round");
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
   it("completes a run with no commits with no review", async () => {
     const h = host({ script: ["no-commit"] });
     try {
