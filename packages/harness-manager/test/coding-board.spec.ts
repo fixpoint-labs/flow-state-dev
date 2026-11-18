@@ -217,6 +217,16 @@ describe("the coding board view, for one open task", () => {
     expect(shortRead.find((entry) => entry.id === long!.entry.id)!.detail).toBeNull();
   });
 
+  it("carries no answer while a retried task runs again: the output it kept is its last attempt's", async () => {
+    const { entries, write, read } = await filed(["Fix the build"]);
+    const [{ key, entry }] = entries as [(typeof entries)[number]];
+    // Answered once, then failed and retried: the board keeps the earlier output on the entry.
+    await write(key, { ...entry, status: "in_progress", attempts: 2, output: { answer: "The first attempt's answer." } });
+    expect((await read({ taskId: entry.id }))[0]!.detail).toEqual({ answer: null, answerCut: false });
+    await write(key, { ...entry, status: "completed", attempts: 2, output: { answer: "The second attempt's answer." } });
+    expect((await read({ taskId: entry.id }))[0]!.detail).toEqual({ answer: "The second attempt's answer.", answerCut: false });
+  });
+
   it("names the reason a cancelled task was cancelled with, as it names why a failed one failed", async () => {
     const { entries, write, read } = await filed(["Fix the build"]);
     const [{ key, entry }] = entries as [(typeof entries)[number]];

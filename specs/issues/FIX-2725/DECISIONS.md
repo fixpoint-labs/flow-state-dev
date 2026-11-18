@@ -105,6 +105,7 @@ It comes down to the cost on every list: the fallback reads a message per untitl
   `"absent"` (a birth, so a recreate too) and its `delete` publish `state` on the session as well, so the
   reasoning above holds; `run` is also published by every turn starting or ending, which made a board
   view that names its conversation read again on each reply (the settled-task goal's 0-reads signal).
+  `ViewDependencies.sessionIdentity` (`view-reads.ts`) and `docs/architecture/flows-and-actions.md` say the same.
 - **Heard on what changes it.** `list` on the user topic as `run`. Membership changes are full
   session writes, which publish it; a one-key `patchState` (a work project set, `work-project.ts`)
   publishes nothing there until its request settles, and the request's write then does. `turns`

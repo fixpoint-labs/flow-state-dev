@@ -26,7 +26,7 @@ import { defineView, handler } from "@flow-state-dev/core";
 import { requireRequestHost } from "@flow-state-dev/core/internal";
 import { inboxItems, type InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { listedTaskSchema, readable, taskListEntriesFor } from "@flow-state-dev/orchestration/internal";
-import type { Task } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, type Task } from "@flow-state-dev/orchestration/tasks";
 import { answerTextOf, type WorkerInstallation } from "@flow-state-dev/workforce";
 import {
   conversationLedgerAt,
@@ -156,9 +156,10 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
   });
 }
 
-/** An open task's answer, cut by `getTask`'s own cut so the two never differ. */
+/** An open task's answer once it ended, cut by `getTask`'s own cut so the two never differ. */
 function detailOf(task: Task | undefined): { answer: string | null; answerCut: boolean } {
-  const answer = answerTextOf(task?.output);
+  // Only an ended task's output is its answer: a retried one keeps its last attempt's output while it runs again.
+  const answer = task !== undefined && isTerminalStatus(task.status) ? answerTextOf(task.output) : undefined;
   if (answer === undefined) return { answer: null, answerCut: false };
   const { value, cut } = readable(answer);
   return { answer: value as string, answerCut: cut };

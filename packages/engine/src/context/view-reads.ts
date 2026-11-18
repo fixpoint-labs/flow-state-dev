@@ -218,8 +218,8 @@ export type ViewDependencies = {
   resource(scope: "session" | "user" | "org", name: string, reach: StorageReach): void;
   /** A session itself read (its items, metadata, window, journal or record): heard on its every change. */
   session(sessionId: string): void;
-  // FIX-2725 D1.
-  /** Which flow and lineage another session is: heard on its `run` only. */
+  // FIX-2725 D1, amended by FIX-2773.
+  /** Which flow and lineage another session is: heard on its `state` only, which its birth and its delete publish. */
   sessionIdentity(sessionId: string): void;
   /** Another session's readonly state: heard on its `state`. */
   sessionState(sessionId: string): void;
