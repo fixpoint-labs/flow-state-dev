@@ -7,7 +7,7 @@
  * The two consumers today are a bash sandbox and a host directory a coding run
  * is pointed at; neither of them appears in these types, which is the point.
  */
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { JsonValue, ResourceCollectionRef } from "@flow-state-dev/core/types";
 
 /**
  * What a projection needs from wherever it puts files. Three operations, and
@@ -59,7 +59,7 @@ export type ProjectedEntryState = {
  * returns them does not type-check, and a value that arrives anyway is
  * ignored: the projection's own values are what the collection stores.
  */
-export type ProjectedEntryExtra = Record<string, unknown> & {
+export type ProjectedEntryExtra = Record<string, JsonValue> & {
   path?: never;
   hash?: never;
   updatedAt?: never;

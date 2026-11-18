@@ -12,7 +12,7 @@
 import { handler, utility } from "@flow-state-dev/core";
 import path from "node:path";
 import { z } from "zod";
-import { artifactResources } from "./resource";
+import { artifactResources, artifactUpdatedAtSchema } from "./resource";
 
 // ---------------------------------------------------------------------------
 // Read artifact
@@ -25,7 +25,7 @@ export const readArtifactInputSchema = z.object({
 export const readArtifactOutputSchema = z.object({
   id: z.string(),
   title: z.string(),
-  updatedAt: z.union([z.string(), z.number()]),
+  updatedAt: artifactUpdatedAtSchema,
   extension: z.string().optional(),
   summary: z.string().optional(),
   content: z.string()

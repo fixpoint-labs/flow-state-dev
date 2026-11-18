@@ -18,6 +18,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { ArtifactUpdatedAt } from "@/flows/chat-agent/shared/artifacts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -183,7 +184,7 @@ export type ArtifactDetail = {
   title: string;
   content: string;
   extension: string | null;
-  updatedAt: string | number;
+  updatedAt: ArtifactUpdatedAt;
 };
 
 /**
