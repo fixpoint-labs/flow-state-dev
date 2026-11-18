@@ -698,6 +698,33 @@ describe("the socket session · ids on notices, per scope", () => {
 });
 
 describe("enablePushDelivery", () => {
+  const invalidSecrets = ["", undefined, null, 42, false, {}, Buffer.from("key")];
+
+  it.each(invalidSecrets)("rejects an explicitly configured invalid secret %j", (secret) => {
+    const { router } = app({ push: false });
+    expect(() => enablePushDelivery(router, { secret: secret as string }))
+      .toThrow("enablePushDelivery: `secret` must be a non-empty string.");
+  });
+
+  it.each(invalidSecrets)("rejects a lazy invalid secret %j when minting, including after rotation", async (invalid) => {
+    const { router } = app({ push: false });
+    let secret: unknown = invalid;
+    const getter = vi.fn(() => secret as string);
+    enablePushDelivery(router, { secret: getter });
+    expect(getter).not.toHaveBeenCalled();
+    await expect(mint(router, [])).resolves.toEqual({
+      status: 500,
+      answer: { error: "enablePushDelivery: `secret` must be a non-empty string." }
+    });
+    secret = SECRET;
+    expect((await mint(router, [])).status).toBe(200);
+    secret = invalid;
+    await expect(mint(router, [])).resolves.toEqual({
+      status: 500,
+      answer: { error: "enablePushDelivery: `secret` must be a non-empty string." }
+    });
+  });
+
   it("takes the secret from a function, read when a ticket is signed and checked", async () => {
     let secret = "one";
     const registry = createFlowRegistry();

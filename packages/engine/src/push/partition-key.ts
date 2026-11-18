@@ -29,6 +29,7 @@
  * every board notice wakes every board, as before partitions.
  */
 import { createHmac } from "node:crypto";
+import { assertSecret } from "../transports/auth/assert-secret";
 import type { ViewHearing } from "@flow-state-dev/core";
 
 /** Separates this digest from every other the secret signs (push tickets sign base64url JSON). */
@@ -36,6 +37,7 @@ const DOMAIN = "fsd-board-partition\u0000";
 
 /** The key `partition` goes to a browser as, under `secret`, in `tenantId` (`""` for a single-tenant app). */
 export function boardPartitionKey(secret: string, tenantId: string, partition: string): string {
+  assertSecret(secret, "boardPartitionKey");
   return createHmac("sha256", secret).update(`${DOMAIN}${tenantId}\u0000${partition}`).digest("base64url");
 }
 
