@@ -263,6 +263,20 @@ describe("sessions.turns in a view", () => {
     expect(turn!.completedAtMs).toBeUndefined();
   });
 
+  it("answers where a turn's history window began, once earlier turns left it, so a screen can draw the divider", async () => {
+    const stores = createInMemoryStores();
+    const flow = app();
+    await act(stores, flow, "mine");
+    await act(stores, flow, "mine");
+    const [first, second] = (await stores.request.list({ sessionId: "mine" })).sort((a, b) => a.startedAtMs - b.startedAtMs);
+    // The engine records the mark when it opens the window: here, the second turn's started at the first.
+    await stores.request.set(second!.id, { ...second!, historyStart: { requestId: first!.id } }, "any");
+    const turns = (await view(stores, flow, "turns", { ids: ["mine"] })).output as Array<{ id: string; historyStart?: unknown }>;
+    expect(turns.find((turn) => turn.id === second!.id)?.historyStart).toEqual({ requestId: first!.id });
+    // A turn whose window held every turn before it has no mark.
+    expect(turns.find((turn) => turn.id === first!.id)).not.toHaveProperty("historyStart");
+  });
+
   it("answers another user's, a refused or a missing session as missing, heard on the caller's own user topic alone", async () => {
     // As `read`: a session made later under the id publishes `run` on the
     // caller's user topic, so a single-session view wakes; the id's own topic

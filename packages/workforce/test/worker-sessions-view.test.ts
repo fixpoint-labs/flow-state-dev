@@ -275,6 +275,24 @@ describe("a session's turns", () => {
     }
   }, 20_000);
 
+  it("history-start · names where a turn's history window began once earlier turns left it, and null while none had", async () => {
+    const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: [fallback] }) });
+    try {
+      const main = await h.client("alice").ensureWorkerSession({ worker: "otto" });
+      // The worker reads 50 past turns: the 52nd turn is the first with one out of view, and reads from the second on.
+      for (let n = 0; n < 52; n++) {
+        await h.post("alice", main.id, "respond", { message: `Line ${n}.` }, "agent");
+        await h.settled();
+      }
+      const second = (await h.requestsOf(main.id))[1]!.id;
+      const { value } = await h.fsd("alice").view(sessionTurnsViewRef(), { sessionId: main.id });
+      expect(value.at(-1)!.historyStart).toEqual({ requestId: second });
+      expect(value.slice(0, -1).every((turn) => turn.historyStart === null)).toBe(true);
+    } finally {
+      await h.dispose();
+    }
+  }, 30_000);
+
   it("turn-set · names the four entries that run a session's turn", () => {
     expect([...TURN_ACTIONS].sort()).toEqual(["onMessageReceived", "onTaskSettled", "respond", "routeOn"]);
   });

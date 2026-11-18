@@ -203,21 +203,26 @@ export interface WorkforceClient {
   startSession(worker: string, options?: { fields?: Record<string, unknown> }): Promise<SessionSummary>;
   /**
    * Send `message` to the user's session `sessionId` through the worker
-   * flow's door (`respond`), with any uploaded `attachments`. Resolves once
-   * the server took the send. With `{ stream: true }` it resolves to the
-   * send's streamed `Response` instead, for a screen showing the answer as it
-   * is written (a session feed's `followResponse`), and rejects, naming the
-   * status, when the server refused it.
+   * flow's door (`respond`), with any uploaded `attachments`. The client sets
+   * the turn's request id, so {@link stopTurns} can tell a line sent after a
+   * stop began. Resolves once the server took the send, to that id. With
+   * `{ stream: true }` it resolves to the send's streamed `Response` instead,
+   * for a screen showing the answer as it is written (a session feed's
+   * `followResponse`), and rejects, naming the status, when the server
+   * refused it.
    */
-  send(sessionId: string, message: string, options?: { attachments?: readonly FileContent[] }): Promise<void>;
+  send(sessionId: string, message: string, options?: { attachments?: readonly FileContent[] }): Promise<{ requestId: string }>;
   send(sessionId: string, message: string, options: { attachments?: readonly FileContent[]; stream: true }): Promise<Response>;
   /**
-   * Stop every turn of session `sessionId` running now (its in-progress
-   * requests of `TURN_ACTIONS`, oldest first), not one started after. A turn
-   * that ended meanwhile is no failure; one that went on past the stop (an
-   * answer resumed it first) rejects, asking for another stop. Resolves to
-   * the ids of the turns it stopped, for a screen that shows the stop until
-   * each has ended.
+   * Stop every turn of session `sessionId` running when it reads them (its
+   * in-progress requests of `TURN_ACTIONS`, oldest first), each turn this
+   * client sent before the call among them. It leaves each turn this client
+   * sent after the call began: a follow-up sent straight after Stop runs on.
+   * It reads the running turns once, so another client's turn which starts
+   * after the read may run. A turn that ended meanwhile is no failure; one
+   * that went on past the stop (an answer resumed it first) rejects, asking
+   * for another stop. Resolves to the ids of the turns it stopped, for a
+   * screen that shows the stop until each has ended.
    */
   stopTurns(sessionId: string): Promise<string[]>;
   /** Run the turn `requestId` of session `sessionId` again, through its retry route. */
@@ -269,6 +274,12 @@ function mostRecent<T extends { updatedAt: number; createdAt: number }>(rows: re
 
 /** How many of a session's requests a stop reads: its running turns, and a turn's record after a 409. */
 const RUNNING_TURNS = 50;
+
+/**
+ * A request id for a turn this client sends, in the engine's own form (`req_<ms>_<hex>`): a store
+ * breaks a same-millisecond tie between turns by id, so this one orders as an id the engine made would.
+ */
+const newRequestId = () => `req_${Date.now()}_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 13)}`;
 
 /** How often an action run through the client checks whether its request ended, and how long it waits. */
 const ACTION_POLL_MS = 100;
@@ -398,6 +409,9 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
    * The flow session `sessionId` runs on, as the server records it: the instance that owns it, or its
    * base flow for a session written before instance ownership.
    */
+  /** The turns this client sent, by session, newest last: a stop leaves the ones sent after it began. */
+  const sentTurns = new Map<string, string[]>();
+
   const flowOfSession = async (sessionId: string): Promise<string> => {
     const session = await sessions.get(sessionId);
     return session.flowId ?? session.flowKind;
@@ -491,21 +505,28 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
       return created;
     },
     send: (async (sessionId: string, message: string, sendOptions: { attachments?: readonly FileContent[]; stream?: true } = {}) => {
+      // Named before anything is awaited: a stop that begins after this call leaves the turn.
+      const requestId = newRequestId();
+      sentTurns.set(sessionId, [...(sentTurns.get(sessionId) ?? []), requestId].slice(-RUNNING_TURNS));
       const flow = fsd.flow(await flowOfSession(sessionId));
       const attachments = [...(sendOptions.attachments ?? [])];
       if (sendOptions.stream !== true) {
-        await flow.send(RESPOND_ACTION, { message }, { sessionId, attachments });
-        return;
+        await flow.send(RESPOND_ACTION, { message }, { sessionId, requestId, attachments });
+        return { requestId };
       }
-      const response = await flow.send(RESPOND_ACTION, { message }, { sessionId, stream: true, attachments });
+      const response = await flow.send(RESPOND_ACTION, { message }, { sessionId, requestId, stream: true, attachments });
       if (!response.ok) throw new Error(`The send was refused (${response.status}).`);
       return response;
     }) as WorkforceClient["send"],
     stopTurns: async (sessionId) => {
       // The running requests, not a turns view: a view lists a session's newest turns only, and a turn
       // still running behind them is stopped all the same.
-      const turns = (await sessions.requests(sessionId, { status: "in_progress", limit: RUNNING_TURNS }))
-        .filter((request) => TURN_ACTIONS.includes(request.actionName))
+      // What this client had sent when the stop began: a line it sends while the read is out runs on.
+      const sentBefore = new Set(sentTurns.get(sessionId));
+      const read = await sessions.requests(sessionId, { status: "in_progress", limit: RUNNING_TURNS });
+      const sentAfter = new Set((sentTurns.get(sessionId) ?? []).filter((id) => !sentBefore.has(id)));
+      const turns = read
+        .filter((request) => TURN_ACTIONS.includes(request.actionName) && !sentAfter.has(request.id))
         .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
       const flow = fsd.flow(await flowOfSession(sessionId));
       for (const turn of turns) {

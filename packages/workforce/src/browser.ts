@@ -34,6 +34,12 @@ export type { ListedTurn, SessionTurnsView, ListedWorkerSession, WorkerSessionsV
 export { workerMessagesViewRef } from "./messages/worker-messages-view-ref";
 export type { WorkerMessagesView } from "./messages/worker-messages-view";
 export { TURN_ACTIONS } from "./workers/turn-actions";
+/**
+ * The history summary resource every worker's answer declares (core's, at its default name): what a
+ * screen reads with `useResource(historySummaryResource, { sessionId })` to draw the "earlier turns
+ * summarized" divider beside the turns view's `historyStart`. From core's browser-safe `types` entry.
+ */
+export { historySummaryResource } from "@flow-state-dev/core/types";
 export {
   deriveWorkerSessionId,
   isDerivedWorkerSessionId,
