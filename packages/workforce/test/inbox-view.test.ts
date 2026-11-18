@@ -109,45 +109,45 @@ describe("the inbox view hears every board row written", () => {
  * A pending ask for `userId` in a run of `flowKind`, written as the engine
  * writes one: its request, then its suspension, through the host's stores.
  */
-async function seedAsk(h: BoardHost, ask: { id: string; flowKind: string; userId?: string; sessionId?: string; expiresAt?: number; createdAt?: number }) {
+async function seedSuspension(h: BoardHost, stop: { id: string; flowKind: string; userId?: string; sessionId?: string; expiresAt?: number; createdAt?: number }) {
   const stores = (await h.state.getRuntime()).stores;
-  const userId = ask.userId ?? "alice";
-  const at = ask.createdAt ?? Date.now() - 1_000;
+  const userId = stop.userId ?? "alice";
+  const at = stop.createdAt ?? Date.now() - 1_000;
   await stores.request.set(
-    ask.id,
+    stop.id,
     {
-      id: ask.id,
+      id: stop.id,
       state: {},
       version: 0,
       createdAt: at,
       updatedAt: at,
-      flowKind: ask.flowKind,
-      flowId: ask.flowKind,
+      flowKind: stop.flowKind,
+      flowId: stop.flowKind,
       actionName: "respond",
       userId,
       orgId: ORG,
-      ...(ask.sessionId !== undefined ? { sessionId: ask.sessionId } : {}),
-      source: ask.sessionId === undefined ? "system" : "http",
+      ...(stop.sessionId !== undefined ? { sessionId: stop.sessionId } : {}),
+      source: stop.sessionId === undefined ? "system" : "http",
       status: "suspended",
       startedAtMs: at
     } as never,
     "absent"
   );
   await stores.suspensions.set({
-    suspensionId: `s_${ask.id}`,
-    requestId: ask.id,
-    flowKind: ask.flowKind,
-    flowId: ask.flowKind,
+    suspensionId: `s_${stop.id}`,
+    requestId: stop.id,
+    flowKind: stop.flowKind,
+    flowId: stop.flowKind,
     actionName: "respond",
     userId,
-    ...(ask.sessionId !== undefined ? { sessionId: ask.sessionId } : {}),
+    ...(stop.sessionId !== undefined ? { sessionId: stop.sessionId } : {}),
     reason: "user_approval",
-    message: `May I, ${ask.id}?`,
+    message: `May I, ${stop.id}?`,
     status: "pending",
     blockInstanceId: "b1",
     stepIndex: 0,
     createdAt: at,
-    ...(ask.expiresAt !== undefined ? { expiresAt: ask.expiresAt } : {})
+    ...(stop.expiresAt !== undefined ? { expiresAt: stop.expiresAt } : {})
   } as never);
 }
 
@@ -170,7 +170,7 @@ const INVENTORY = [
 const listed = (items: any[]) => items.map((item) => [item.id, item.holds[0].detail?.workerId ?? null, item.holds[0].source.sessionId ?? null]);
 
 describe("which asks the inbox view lists, and whose they are", () => {
-  it("lists an ask in a worker's session as that worker's, an unnamed one on a worker flow as nobody's, and none elsewhere", async () => {
+  it("lists a suspension in a worker's session as that worker's, an unnamed one on a worker flow as nobody's, and none elsewhere", async () => {
     const h = bootBoardHost({ agentAnswer: quiet, plainFlows: { desk: plainFlow("desk"), other: plainFlow("other") } });
     try {
       await seedInventory(h, [...INVENTORY, { id: "eng.desk", kind: "desk" }]);
@@ -184,10 +184,10 @@ describe("which asks the inbox view lists, and whose they are", () => {
       // A worker the inventory doesn't register, on a worker flow; and a flow no worker runs on.
       const stranger = await made("desk", { workerId: "ghost" });
       const other = await made("other", {});
-      await seedAsk(h, { id: "r_otto", flowKind: "agent", sessionId: otto, createdAt: Date.now() - 3_000 });
-      await seedAsk(h, { id: "r_unnamed", flowKind: "desk", sessionId: unnamed, createdAt: Date.now() - 2_000 });
-      await seedAsk(h, { id: "r_stranger", flowKind: "desk", sessionId: stranger });
-      await seedAsk(h, { id: "r_other", flowKind: "other", sessionId: other });
+      await seedSuspension(h, { id: "r_otto", flowKind: "agent", sessionId: otto, createdAt: Date.now() - 3_000 });
+      await seedSuspension(h, { id: "r_unnamed", flowKind: "desk", sessionId: unnamed, createdAt: Date.now() - 2_000 });
+      await seedSuspension(h, { id: "r_stranger", flowKind: "desk", sessionId: stranger });
+      await seedSuspension(h, { id: "r_other", flowKind: "other", sessionId: other });
       const { output } = await inboxOf(h, "alice");
       expect(listed(output.items)).toEqual([
         ["s_r_otto", "otto", otto],
@@ -198,12 +198,12 @@ describe("which asks the inbox view lists, and whose they are", () => {
     }
   });
 
-  it("lists an ask from a worker run with no conversation once, from no worker, answerable through its flow, its deadline as its due", async () => {
+  it("lists a suspension from a worker run with no conversation once, from no worker, answerable through its flow, its deadline as its due", async () => {
     const h = bootBoardHost({ agentAnswer: quiet });
     try {
       await seedInventory(h, INVENTORY);
       const due = Date.now() + 60_000;
-      await seedAsk(h, { id: "r_alone", flowKind: "agent", expiresAt: due });
+      await seedSuspension(h, { id: "r_alone", flowKind: "agent", expiresAt: due });
       const { output } = await inboxOf(h, "alice");
       expect(listed(output.items)).toEqual([["s_r_alone", null, null]]);
       expect(output.items[0]).toMatchObject({ task: null, answerable: true, holds: [{ due, source: { kind: "suspension", flowId: "agent", requestId: "r_alone" } }] });
@@ -217,10 +217,10 @@ describe("which asks the inbox view lists, and whose they are", () => {
     try {
       await seedInventory(h, INVENTORY);
       const bobs = (await h.create("bob", "agent", { state: { workerId: "otto" } })).body.session!.id;
-      await seedAsk(h, { id: "r_bob", flowKind: "agent", userId: "bob", sessionId: bobs });
-      await seedAsk(h, { id: "r_bob_alone", flowKind: "agent", userId: "bob" });
-      await seedAsk(h, { id: "r_expired", flowKind: "agent", expiresAt: Date.now() - 1 });
-      await seedAsk(h, { id: "r_gone", flowKind: "agent", sessionId: "sess_never_made" });
+      await seedSuspension(h, { id: "r_bob", flowKind: "agent", userId: "bob", sessionId: bobs });
+      await seedSuspension(h, { id: "r_bob_alone", flowKind: "agent", userId: "bob" });
+      await seedSuspension(h, { id: "r_expired", flowKind: "agent", expiresAt: Date.now() - 1 });
+      await seedSuspension(h, { id: "r_gone", flowKind: "agent", sessionId: "sess_never_made" });
       expect((await inboxOf(h, "alice")).output.items).toEqual([]);
       expect(listed((await inboxOf(h, "bob")).output.items).map(([id]) => id).sort()).toEqual(["s_r_bob", "s_r_bob_alone"]);
     } finally {
@@ -245,7 +245,7 @@ describe("the inbox view's boards", () => {
       const run = { sessionId: lead, requestId: "r_run", attempt: 1 };
       const { partition: _partition, ...task } = stored!;
       await h.writeRow("alice", decodeURIComponent(stored!.partition), { ...task, status: "in_progress", run } as never);
-      await seedAsk(h, { id: "r_run", flowKind: "coordinator", sessionId: lead });
+      await seedSuspension(h, { id: "r_run", flowKind: "coordinator", sessionId: lead });
       const again = (await inboxOf(h, "alice")).output;
       expect(again.items.map((item) => [item.id, item.task?.taskId ?? null, item.holds.map((hold: any) => hold.id)])).toEqual([[`task:${lead}.tasks:${taskId}`, taskId, ["s_r_run"]]]);
       expect(again.items[0].holds[0].detail).toMatchObject({ workerId: "lead", sessionId: lead, message: "May I, r_run?" });
@@ -277,7 +277,7 @@ describe("what the inbox view hears", () => {
       const lead = await h.conversation("alice", "lead");
       expect((await h.act("alice", lead, "createTask_tasks", { goal: "Later", assignee: "eng.tasker", held: true })).error).toBeUndefined();
       const otto = (await h.create("alice", "agent", { state: { workerId: "otto" } })).body.session!.id;
-      await seedAsk(h, { id: "r_otto", flowKind: "agent", sessionId: otto });
+      await seedSuspension(h, { id: "r_otto", flowKind: "agent", sessionId: otto });
       const { hears, output } = await inboxOf(h, "alice");
       expect(output.items).toHaveLength(1);
       const user = hears.filter((hearing) => hearing.topic.scope === "user");

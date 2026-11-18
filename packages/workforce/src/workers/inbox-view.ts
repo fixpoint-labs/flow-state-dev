@@ -13,7 +13,7 @@
  *   `sessions.userSuspensions`, heard on the user topic's `suspension` alone;
  * - the whole conversation ledger, every conversation's rows at once, heard on
  *   its resource notices, so a row written from any session re-runs it;
- * - one `sessions.read` per session an ask sits in or a board is held by, for
+ * - one `sessions.read` per session a suspension sits in or a board is held by, for
  *   its worker, its flow and its board owner's label, heard on that session's
  *   topic alone. Never `sessions.list`, which hears every turn on the user
  *   topic;
@@ -22,9 +22,9 @@
  * Which asks are listed, and whose they are, is the rule a browser applied
  * on each listed session before (a session's own worker on that worker's
  * flow, an unnamed worker on a worker flow, or a worker the inventory
- * registers). An ask in a session `sessions.read` doesn't answer (gone, or
+ * registers). A suspension in a session `sessions.read` doesn't answer (gone, or
  * not the caller's) is dropped, as are the rows of a conversation that is
- * gone. An ask from a run with no conversation is listed, attributed to no
+ * gone. A suspension from a run with no conversation is listed, attributed to no
  * worker.
  *
  * A read that fails fails the whole view, never a shorter list: a missing
@@ -49,7 +49,7 @@ import { WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "./keys";
 import { readRosterEntries, rosterResources } from "./roster-view";
 
 /** The most pages of pending asks one run reads: past it the view fails, never a shorter list. */
-const ASK_PAGES_MAX = 50;
+const SUSPENSION_PAGES_MAX = 50;
 
 /**
  * The accessor the view reads the organization's worker inventory under, and
@@ -59,9 +59,9 @@ const ASK_PAGES_MAX = 50;
 export const INVENTORY_RESOURCE = "inventoryWorkers";
 export const inventoryWorkers = defineWorkerInventoryCollection();
 
-/** An ask's detail: the projection the pending-asks read answers, and the worker that asked. */
-export type InboxAsk = Omit<PendingUserSuspension, "sessionId"> & {
-  /** The session the ask waits in; `null` for a run with no conversation. */
+/** A suspension's detail: the projection the pending-suspensions read answers, and the worker whose run it is. */
+export type InboxSuspensionDetail = Omit<PendingUserSuspension, "sessionId"> & {
+  /** The session the suspension waits in; `null` for a run with no conversation. */
   readonly sessionId: string | null;
   /** The worker that asked, when its session names one; `null` otherwise, and for a run with no conversation. */
   readonly workerId: string | null;
@@ -102,7 +102,7 @@ const boardTaskSchema = z.object({
 
 const inboxViewSchema = z.object({
   /** What waits on the user, oldest first: one item per task that holds them, one per ask no task claims. */
-  items: z.array(z.custom<InboxItem<InboxAsk>>((value) => typeof value === "object" && value !== null)),
+  items: z.array(z.custom<InboxItem<InboxSuspensionDetail>>((value) => typeof value === "object" && value !== null)),
   /** Every row on the user's conversation boards, in ledger order. */
   tasks: z.array(boardTaskSchema)
 });
@@ -204,12 +204,12 @@ function sessionsOf(ctx: BlockContext): RequestSessions {
 }
 
 /** Every pending ask of the caller's on `flowKinds`, every page: past the ceiling the view fails, never a shorter list. */
-async function everyPendingAsk(sessions: RequestSessions, flowKinds: readonly string[]): Promise<PendingUserSuspension[]> {
+async function everyPendingSuspension(sessions: RequestSessions, flowKinds: readonly string[]): Promise<PendingUserSuspension[]> {
   const all: PendingUserSuspension[] = [];
   let page = await sessions.userSuspensions({ flowKinds });
   all.push(...page.suspensions);
   for (let read = 1; page.more; read += 1) {
-    if (read >= ASK_PAGES_MAX) throw new Error(`The Inbox reads at most ${ASK_PAGES_MAX} pages of your pending asks, and more are waiting.`);
+    if (read >= SUSPENSION_PAGES_MAX) throw new Error(`The Inbox reads at most ${SUSPENSION_PAGES_MAX} pages of your pending asks, and more are waiting.`);
     page = await sessions.userSuspensions({ flowKinds, ...(page.next !== undefined ? { after: page.next } : {}) });
     all.push(...page.suspensions);
   }
@@ -257,9 +257,9 @@ export function defineInboxView(installation: WorkerInstallation): InboxView {
         const flowKinds = [...new Set([...workerFlows, ...ownWorkers.values()])].sort();
 
         const ledger = resolveResourceCollection(ctx, CONVERSATION_LEDGER_ID);
-        const [pending, stored] = await Promise.all([everyPendingAsk(sessions, flowKinds), ledger === undefined ? [] : ledger.list()]);
+        const [pending, stored] = await Promise.all([everyPendingSuspension(sessions, flowKinds), ledger === undefined ? [] : ledger.list()]);
 
-        // One read per session an ask sits in or a board is held by.
+        // One read per session a suspension sits in or a board is held by.
         const filed = stored.flatMap((entry) => {
           // `tasks/<partition segment>/<task id>`.
           const parts = entry.path.split("/");
@@ -286,13 +286,13 @@ export function defineInboxView(installation: WorkerInstallation): InboxView {
           .filter((filing) => partitions.get(filing.holder) === filing.partition)
           .map((filing) => boardTaskOf(filing.holder, boardOwnerLabel(filing.holder, found.get(filing.holder)!), filing.taskId, filing.state));
 
-        // Whose each ask is: today's rule on its session, or nobody's for a run with no conversation.
-        const asks = pending.flatMap((entry): InboxAsk[] => {
+        // Whose each suspension is: today's rule on its session, or nobody's for a run with no conversation.
+        const asks = pending.flatMap((entry): InboxSuspensionDetail[] => {
           if (entry.sessionId === undefined) return [{ ...entry, sessionId: null, workerId: null }];
           const session = found.get(entry.sessionId);
           if (session === undefined) return [];
           const workerId = text(session.state[WORKER_ID_STATE_KEY]);
-          const ask = (worker: string | null): InboxAsk[] => [{ ...entry, sessionId: entry.sessionId!, workerId: worker, ...(entry.flowId === undefined && session.flowId !== undefined ? { flowId: session.flowId } : {}) }];
+          const ask = (worker: string | null): InboxSuspensionDetail[] => [{ ...entry, sessionId: entry.sessionId!, workerId: worker, ...(entry.flowId === undefined && session.flowId !== undefined ? { flowId: session.flowId } : {}) }];
           if (workerId !== null && ownWorkers.get(workerId) === session.flowKind) return ask(workerId);
           if (!workerFlows.has(session.flowKind)) return [];
           if (workerId === null) return ask(null);
@@ -300,7 +300,7 @@ export function defineInboxView(installation: WorkerInstallation): InboxView {
         });
 
         const flows = new Map([...found].map(([id, session]) => [id, session.flowId ?? null]));
-        const items = inboxItems<InboxAsk>({
+        const items = inboxItems<InboxSuspensionDetail>({
           rows: tasks.map((task) => ({
             ...task,
             board: task.boardRef,

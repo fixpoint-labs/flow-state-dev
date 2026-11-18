@@ -18,7 +18,7 @@ import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { useView } from "@flow-state-dev/react";
 import { createInboxClient, type InboxAnswer, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
-import { inboxViewRef, type InboxAsk, type InboxBoardTask, type InboxViewValue } from "@flow-state-dev/workforce/browser";
+import { inboxViewRef, type InboxSuspensionDetail as InboxAsk, type InboxBoardTask, type InboxViewValue } from "@flow-state-dev/workforce/browser";
 import { isDone } from "./columns";
 import { useLab } from "./lab-data";
 import type { Failure, Section } from "./reads";
