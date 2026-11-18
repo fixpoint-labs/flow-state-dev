@@ -1,8 +1,7 @@
 /**
  * The lab's request views read on a change instead of every 1.5 s:
- * whether a conversation is answering, a worker's busy dot and last activity,
- * and the context-window divider read the conversation's requests on a
- * request notice, and the divider its history summary on that resource's
+ * whether a conversation is answering and the context-window divider read the
+ * conversation's requests on a request notice, and the divider its history summary on that resource's
  * notice too. None reads on `items`: a streaming reply sends one per stored
  * chunk, and a view that read on each would read once per chunk. Wherever
  * push can miss a change, `client.subscribe` reads every 1.5 s, as before.
@@ -17,11 +16,13 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
     createWorkforceClient: () => ({
       ensureWorkerSession: async ({ worker }: { worker: string }) => ({ id: `conv_${worker}`, flowKind: "agent" }),
       roster: async () => [],
+      // The calls' own roster watch, which a conversation's open waits on: an empty roster at once.
+      watchRoster: (onRoster: (entries: unknown[]) => void) => (onRoster([]), () => {}),
     }),
   };
 });
 
-import { createAppCalls, type Activity, type ConversationView, type AppTalk, type Unsubscribe, type WindowMark } from "../src/app";
+import { createAppCalls, type ConversationView, type Unsubscribe, type WindowMark } from "../src/app";
 import { liveOver } from "./live-over";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -30,7 +31,6 @@ function host() {
   const calls: string[] = [];
   let requests: unknown[] = [];
   let summary: unknown;
-  let messages: unknown[] = [];
   let holdRequests: Promise<void> | undefined;
   let requestsFailing = 0;
   const sentIds: string[] = [];
@@ -52,7 +52,6 @@ function host() {
       const status = new URL(url, "http://x").searchParams.get("status");
       return json({ requests: status === null ? requests : requests.filter((r) => (r as { status?: string }).status === status) });
     }
-    if (path.includes("workforceMessages")) return json({ items: messages.map((m) => ({ topic: `workforce/messages/${(m as { id: string }).id}`, clientData: m })) });
     if (path.endsWith("/stream")) {
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
@@ -99,7 +98,6 @@ function host() {
     items: (next: unknown[]) => void (items = next),
     failRequestReads: (n: number) => void (requestsFailing = n),
     summary: (next: unknown) => void (summary = next),
-    messages: (next: unknown[]) => void (messages = next),
     holdRequestReads: () => {
       let release!: () => void;
       holdRequests = new Promise((r) => (release = r));
@@ -218,47 +216,6 @@ describe("a read that failed", () => {
   });
 });
 
-describe("watchActivity", () => {
-  it("waits for the worker's conversation to open, then reads its requests on each request notice", async () => {
-    const h = host();
-    const lab = createAppCalls(h.client);
-    const seen: Activity[] = [];
-    stops.push(lab.watchActivity("eng", (activity) => seen.push(activity)));
-    await settle();
-    // No conversation yet: idle, and nothing to read or hear.
-    expect(seen.at(-1)).toEqual({ running: false, lastActiveAt: 0 });
-    expect(h.count("/requests")).toBe(0);
-
-    await lab.openConversation("eng");
-    await until(() => h.count("/sessions/conv_eng/requests") === 1);
-    expect(h.subscriptions.find((s) => !s.closed)!.topics).toEqual([{ scope: "session", id: "conv_eng" }]);
-
-    chunks(h, "conv_eng");
-    await settle();
-    expect(h.count("/sessions/conv_eng/requests")).toBe(1);
-
-    h.requests([{ id: "r2", actionName: "respond", status: "in_progress", startedAtMs: 7 }]);
-    h.hear({ topic: { scope: "session", id: "conv_eng" }, kind: "request" });
-    await until(() => seen.at(-1)!.running);
-    expect(seen.at(-1)!.lastActiveAt).toBe(7);
-  });
-
-  it("shows nothing from a read still in flight when the watch stopped", async () => {
-    const h = host();
-    const lab = createAppCalls(h.client);
-    await lab.openConversation("eng");
-    const seen: Activity[] = [];
-    const release = h.holdRequestReads();
-    const stop = lab.watchActivity("eng", (activity) => seen.push(activity));
-    await until(() => h.count("/sessions/conv_eng/requests") === 1);
-    stop();
-    release();
-    await settle();
-    expect(seen).toEqual([]);
-    expect(h.subscriptions.every((s) => s.closed)).toBe(true);
-  });
-});
-
 describe("watchWindow", () => {
   it("reads on a request notice and on its history summary's notice, and on nothing else", async () => {
     const h = host();
@@ -278,49 +235,5 @@ describe("watchWindow", () => {
     await until(() => h.count("/sessions/s1/requests") === 2);
     h.hear({ topic: { scope: "session", id: "s1" }, kind: "request" });
     await until(() => h.count("/sessions/s1/requests") === 3);
-  });
-});
-
-describe("watchTalk", () => {
-  const message = (id: string, at: number) => ({
-    id,
-    exchange: id,
-    from: "eng",
-    to: "pm",
-    text: `line ${id}`,
-    at,
-    fromSession: "conv_eng",
-    fromFlow: "agent",
-    toSession: "conv_pm",
-    toFlow: "agent",
-    hop: 1,
-    status: "delivered",
-  });
-
-  it("reads your message log on a notice of it under your user scope, not on a clock; at the old pace where push can miss one", async () => {
-    const h = host();
-    h.messages([message("msg_1", 1)]);
-    const lab = createAppCalls(h.client);
-    await lab.openConversation("eng");
-    const shown: AppTalk[][] = [];
-    stops.push(lab.watchTalk("eng", (talk) => shown.push(talk)));
-    await until(() => shown.length === 1);
-    // The log is the user's: a message sent from any session lands under the user's scope.
-    const sub = h.subscriptions.find((s) => !s.closed && s.topics.some((t) => t.scope === "user"));
-    expect(sub?.topics).toEqual([{ scope: "user" }]);
-    expect(sub?.options.pollIntervalMs).toBe(1_500);
-
-    // Push covers the page: no read on a clock, and none for another resource of the user's.
-    await new Promise((r) => setTimeout(r, 1_700));
-    h.hear({ topic: { scope: "user", resource: "lab-pins" }, kind: "resource" });
-    h.hear({ topic: { scope: "user", resource: "workforce/workers/eng" }, kind: "resource" });
-    await settle();
-    expect(h.count("workforceMessages")).toBe(1);
-
-    h.messages([message("msg_1", 1), message("msg_2", 2)]);
-    h.hear({ topic: { scope: "user", resource: "workforce/messages/msg_2" }, kind: "resource" });
-    await until(() => shown.length === 2);
-    expect(shown[1]!.map((m) => m.id)).toEqual(["msg_1", "msg_2"]);
-    expect(h.count("workforceMessages")).toBe(2);
   });
 });

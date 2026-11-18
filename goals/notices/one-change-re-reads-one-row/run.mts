@@ -53,6 +53,7 @@ import { taskToolViews } from "@flow-state-dev/orchestration/internal";
 import { taskListViewRef } from "@flow-state-dev/orchestration/inbox";
 import { FlowProvider, useResource, useView } from "@flow-state-dev/react";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("notices-one-row");
@@ -259,7 +260,6 @@ function recordingFetch(token: string) {
   return { fetcher, answers, idle: () => out === 0, lastAt: () => lastAt };
 }
 
-const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const BOARD_REF = taskListViewRef(FLOW, BOARD);
 const STATUS_REF = viewRef(FLOW, "byStatus");
 
@@ -293,7 +293,7 @@ async function quiet(recorded: { idle: () => boolean; lastAt: () => number }, qu
   for (;;) {
     if (recorded.idle() && Date.now() - recorded.lastAt() >= quietMs) return;
     if (Date.now() > deadline) throw new Error("setup: the screen never went quiet");
-    await delay(50);
+    await sleep(50);
   }
 }
 
@@ -461,13 +461,13 @@ await runGoal(async (failures, tell) => {
       stopOldStatus();
       oldLive.close();
     });
-    await delay(1_500);
+    await sleep(1_500);
     const oldGraded: string[] = [];
     const oldFailures: string[] = [];
     await send(writer, "hold", { ids: [taskId(1)] }, "writer-11");
     await writer.resource(projects).entry(entryKey(1)).set({ name: "old client sees this" });
     await send(writer, "finish", { id: taskId(2) }, "writer-12");
-    await delay(1_500);
+    await sleep(1_500);
     await quiet(screen.recorded);
     await diffFromStore(oldShown, reader, "edits watched by main's client", oldFailures, oldGraded);
     tell.over("d:old-client · main's screens compared with a whole read", oldGraded);

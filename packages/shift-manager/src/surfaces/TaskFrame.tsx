@@ -20,7 +20,8 @@ import { interruptChordLabel, useInterruptKeys } from "@flow-state-dev/react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor } from "../lib/columns";
-import { asksOfTask, doorOf, doorTakesTaskOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
+import { doorOf, doorTakesTaskOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
+import { taskAsks, useInbox } from "../lib/inbox";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
@@ -74,7 +75,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
       onKeyDown={keys.onKeyDown}
     >
       <header className="px-4 pt-3">
-        <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">
+        <p className="text-xs font-semibold tracking-wider text-muted-foreground">
           TASK ·{" "}
           <RouteLink className="hover:underline" to={{ level: "tasks", by: "state" }}>
             {boardRef}
@@ -160,12 +161,13 @@ function runWord(status: string | undefined): string {
  */
 function Activity({ worker, armed }: { worker: string | null; armed: boolean }) {
   const task = useTask();
-  const { snapshot } = useLab();
+  const inbox = useInbox().section;
   const pending = task.interrupt.kind === "pending";
   const live = task.run.kind === "open" && task.status === "in_progress";
-  const waiting = asksOfTask(snapshot, task.row).length > 0;
+  // D2: the task's asks are its Inbox item's.
+  const waiting = taskAsks(inbox?.ok === true ? inbox.value.items : [], task.row).length > 0;
   return (
-    <div className="flex items-center gap-2 px-[22px] pt-3 font-mono text-[11px] font-medium text-muted-foreground" data-testid="task-activity">
+    <div className="flex items-center gap-2 px-[22px] pt-3 font-mono text-xs font-medium text-muted-foreground" data-testid="task-activity">
       {waiting ? (
         <StateSquare state="needs" className="size-[7px]" />
       ) : live ? (
@@ -255,7 +257,7 @@ function Actions({ gaps }: { gaps: Gaps }) {
           </button>
         ))}
       </span>
-      <p className="w-full text-[11px] text-muted-foreground" data-testid="task-actions-gap">
+      <p className="w-full text-xs text-muted-foreground" data-testid="task-actions-gap">
         {gaps.task.handOff}
       </p>
     </div>
@@ -271,12 +273,12 @@ function Brief({ gaps }: { gaps: Gaps }) {
     <dl className="mx-auto w-full max-w-3xl space-y-3 px-4 py-4 text-sm" data-testid="task-brief">
       {title === null ? null : (
         <div>
-          <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">TITLE</dt>
+          <dt className="text-xs font-semibold tracking-wider text-muted-foreground">TITLE</dt>
           <dd data-testid="brief-title">{title}</dd>
         </div>
       )}
       <div>
-        <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">GOAL</dt>
+        <dt className="text-xs font-semibold tracking-wider text-muted-foreground">GOAL</dt>
         <dd className="whitespace-pre-wrap" data-testid="brief-goal">
           {row?.goal ?? "—"}
         </dd>
@@ -284,20 +286,20 @@ function Brief({ gaps }: { gaps: Gaps }) {
       {row === undefined || row.attachments.length === 0 ? null : (
         // FIX-2522: the brief's files, which every run of the task gets.
         <div>
-          <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">FILES</dt>
+          <dt className="text-xs font-semibold tracking-wider text-muted-foreground">FILES</dt>
           <dd className="flex pt-1" data-testid="brief-files">
             <MessageFiles files={row.attachments} readBase={fileReadBase()} readFile={readStoredFile} />
           </dd>
         </div>
       )}
       <div>
-        <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">CONTEXT AND INPUT</dt>
+        <dt className="text-xs font-semibold tracking-wider text-muted-foreground">CONTEXT AND INPUT</dt>
         <dd className="text-muted-foreground" data-testid="brief-fields-gap" data-gap={gaps.task.briefFields}>
           {gaps.task.briefFields}
         </dd>
       </div>
       <div>
-        <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">ACCEPTANCE CRITERIA</dt>
+        <dt className="text-xs font-semibold tracking-wider text-muted-foreground">ACCEPTANCE CRITERIA</dt>
         <dd className="text-muted-foreground" data-testid="brief-acceptance-gap" data-gap={gaps.task.acceptance}>
           {gaps.task.acceptance}
         </dd>

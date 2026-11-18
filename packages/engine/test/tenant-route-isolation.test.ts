@@ -187,7 +187,7 @@ describe("tenant route isolation (FIX-682)", () => {
       const res = await router.POST(
         new Request("http://localhost/api/flows/demo/sessions/s/requests/req_1/retry", {
           method: "POST",
-          headers: { "x-tenant-id": "globex" },
+          headers: { "content-type": "application/json", "x-tenant-id": "globex" },
           body: "{}"
         }),
         { params: { path: ["demo", "sessions", "s", "requests", "req_1", "retry"] } }
@@ -202,6 +202,7 @@ describe("tenant route isolation (FIX-682)", () => {
       const res = await router.POST(
         new Request("http://localhost/api/flows/demo/sessions/s/requests/req_1/retry", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: "{}"
         }),
         { params: { path: ["demo", "sessions", "s", "requests", "req_1", "retry"] } }
@@ -216,7 +217,7 @@ describe("tenant route isolation (FIX-682)", () => {
       const res = await router.POST(
         new Request("http://localhost/api/flows/demo/sessions/s/requests/req_1/continue", {
           method: "POST",
-          headers: { "x-tenant-id": "globex" },
+          headers: { "content-type": "application/json", "x-tenant-id": "globex" },
           body: "{}"
         }),
         { params: { path: ["demo", "sessions", "s", "requests", "req_1", "continue"] } }
@@ -231,6 +232,7 @@ describe("tenant route isolation (FIX-682)", () => {
       const res = await router.POST(
         new Request("http://localhost/api/flows/demo/sessions/s/requests/req_1/continue", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: "{}"
         }),
         { params: { path: ["demo", "sessions", "s", "requests", "req_1", "continue"] } }

@@ -53,6 +53,7 @@ import { runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts
 import { LAB_TREE, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { BASE_REF, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { claudeCodeHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
+import { sleep } from "../../lib/time.mts";
 
 stripIntentOverrides();
 
@@ -79,8 +80,6 @@ const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/de
 
 const RUN_TIMEOUT_MS = 10 * 60_000;
 const SETTLE_TIMEOUT_MS = 12 * 60_000;
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Every file under a directory, recursively, as [relative path, contents]. */
 function filesUnder(root: string, prefix = ""): Array<[string, string]> {

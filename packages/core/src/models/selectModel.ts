@@ -19,11 +19,11 @@ import type { ProviderPreference } from "./types";
 // ---------------------------------------------------------------------------
 
 /**
- * Loose BlockContext where state access returns `any` instead of `unknown`.
- * Used as the default TCtx for rule callbacks since selectModel is called
- * outside the generator where specific state types aren't available.
+ * `BlockContext` with its state slots widened to `any`.
+ * Default `TCtx` for rule callbacks: `selectModel` runs outside the
+ * generator, where the block's state types are not known.
  */
-type LooseBlockContext = BlockContext<any, any, any, any>;
+type AnyBlockContext = BlockContext<any, any, any, any>;
 
 /**
  * Returns a provider-preference value (provider name or ordered list of
@@ -31,7 +31,7 @@ type LooseBlockContext = BlockContext<any, any, any, any>;
  * {@link ModelSelection}'s `preferProvider` field. Evaluation does not
  * short-circuit — `when` rules below still execute.
  */
-export type PreferProviderRule<TInput = unknown, TCtx = LooseBlockContext> = {
+export type PreferProviderRule<TInput = unknown, TCtx = AnyBlockContext> = {
   preferProvider: (
     input: TInput,
     ctx: TCtx
@@ -41,13 +41,13 @@ export type PreferProviderRule<TInput = unknown, TCtx = LooseBlockContext> = {
 /**
  * Returns a boolean condition. When true, replaces the model with `use`.
  */
-export type WhenRule<TInput = unknown, TCtx = LooseBlockContext> = {
+export type WhenRule<TInput = unknown, TCtx = AnyBlockContext> = {
   when: (input: TInput, ctx: TCtx) => MaybePromise<boolean>;
   use: string | string[];
 };
 
 /** Union of all rule kinds. */
-export type ModelRule<TInput = unknown, TCtx = LooseBlockContext> =
+export type ModelRule<TInput = unknown, TCtx = AnyBlockContext> =
   | PreferProviderRule<TInput, TCtx>
   | WhenRule<TInput, TCtx>;
 
@@ -101,7 +101,7 @@ export function isModelSelection(
  * ])
  * ```
  */
-export function selectModel<TInput = unknown, TCtx extends BlockContext = LooseBlockContext>(
+export function selectModel<TInput = unknown, TCtx extends BlockContext = AnyBlockContext>(
   defaultModel: string | string[],
   rules: ModelRule<TInput, TCtx> | ModelRule<TInput, TCtx>[]
 ): (input: any, ctx: any) => Promise<ModelSelection> {

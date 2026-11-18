@@ -22,7 +22,8 @@ import type { Client } from "@flow-state-dev/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { allTasks, shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import type { InboxBoardTask } from "../lib/inbox";
 import { handToShiftCoordinator } from "../lib/outbox";
 import { readProject, type WorkstreamEntry } from "../lib/projects";
 import { navigate, type Route } from "../lib/routes";
@@ -109,12 +110,15 @@ function focusWhenDrawn(selector: string) {
 
 export function JumpTo({
   snapshot,
+  tasks,
   gaps,
   client,
   initialQuery = "",
   onClose,
 }: {
   snapshot: LoadedSnapshot;
+  /** Every board row, from the inbox view; without them, Jump to lists no tasks. */
+  tasks?: readonly InboxBoardTask[];
   /** Reads each project's workstreams when the palette opens; without one, Jump to lists no workstreams. */
   client?: Client;
   gaps: Gaps;
@@ -156,10 +160,10 @@ export function JumpTo({
         to: { level: "roster", team: w.team },
         focus: `[data-testid="roster-worker"][data-worker-id="${w.id.replace(/"/g, '\\"')}"]`,
       })),
-      ...allTasks(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, keywords: [r.id], to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
+      ...(tasks ?? []).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, keywords: [r.id], to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
       ...(snapshot.resources.ok ? snapshot.resources.value : []).map((d): Entry => ({ group: "Resources", label: d.ref, hint: "read-only", keywords: [d.sessionId], to: { level: "resource", sessionId: d.sessionId, ref: d.ref } })),
     ];
-  }, [snapshot, workstreams]);
+  }, [snapshot, workstreams, tasks]);
 
   const needle = query.trim().toLowerCase();
   const matches = (e: Entry) => needle === "" || [e.label, e.hint, ...e.keywords].some((word) => word.toLowerCase().includes(needle));
@@ -231,7 +235,7 @@ export function JumpTo({
           ) : (
             <CommandList aria-label="Results" className="max-h-96 p-2">
               {groups.map(([group, entries]) => (
-                <CommandGroup key={group} heading={group.toUpperCase()} className="mb-2 p-0 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:tracking-wider">
+                <CommandGroup key={group} heading={group.toUpperCase()} className="mb-2 p-0 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:tracking-wider">
                   {entries.length === 0 ? <p className="px-2 py-1 text-xs text-muted-foreground">No match.</p> : null}
                   {entries.map((entry) => (
                     <JumpResult key={`${entry.group}:${entry.label}:${entry.hint}:${entry.keywords.join(",")}`} entry={entry} onNavigate={() => went(entry)} />

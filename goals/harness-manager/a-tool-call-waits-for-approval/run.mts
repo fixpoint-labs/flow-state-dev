@@ -42,6 +42,7 @@ import { serve } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 import { ALLOW_FOR_RUN, harnessStub, type HarnessStub, type HarnessToolApprovalHook, type StubRun } from "@flow-state-dev/harness-manager";
 import { claudeCodeAgent, type ClaudeCodeAgentOptions } from "@flow-state-dev/claude-code";
 import { claudeCodeEnv } from "../../../packages/shift-manager/teams/devteam/harness.mts";
@@ -122,7 +123,6 @@ if (CONTROL !== "" && process.env.GOAL_MODULE_PATCH === undefined) {
   process.exit(failedOn.length > 0 ? 0 : 1);
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown) => JSON.stringify(value);
 
 // ---- the host -----------------------------------------------------------------------

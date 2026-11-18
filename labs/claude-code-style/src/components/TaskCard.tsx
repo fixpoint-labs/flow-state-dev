@@ -67,7 +67,7 @@ export function TaskDoneRow({ task, selected, onOpen, now }: { task: AppTask; se
       {task.assignee ? <span className="max-w-24 min-w-0 truncate text-muted-foreground">{task.assignee}</span> : null}
       <Spend spend={task.spend} className="min-w-0" />
       {task.view === undefined ? null : (
-        <span className="shrink-0 font-mono text-[10px]">
+        <span className="shrink-0 font-mono text-xs">
           <TaskTime view={task.view} run={task.run} now={now} tone={taskSignalTone} />
         </span>
       )}

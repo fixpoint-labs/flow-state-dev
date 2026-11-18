@@ -68,6 +68,7 @@ describe("no-config fsdev dev answers a no-config fsdev run's stop", () => {
 
     const resumed = await api(`/review/requests/${stop.requestId}/resume`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ suspensionId: stop.suspensionId, action: "approve", userId: DEFAULT_LOCAL_USER_ID }),
     });
     expect(resumed.status).toBeLessThan(300);

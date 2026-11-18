@@ -8,17 +8,20 @@
  * log), or it is idle. Nothing is guessed: with no request, no running task
  * and no open message, it is idle.
  */
-import type { Activity, BoardTask, ConversationEntry, AppCalls, AppTalk, AppWorker } from "../app";
+import { useView } from "@flow-state-dev/react";
+import { sessionTurnsViewRef, workerSessionsViewRef, type ListedTurn, type ListedWorkerSession, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
+import { useAppClient, type BoardTask, type ConversationEntry, type AppCalls } from "../app";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
 import { taskPresentation } from "./task-presentation";
-import { owedRepliesFrom } from "./talk";
+import { owedRepliesFrom, useTalk } from "./talk";
 import { age, useNow, useWatch } from "./use-watch";
 
 /** Everything the line is read from. */
 export interface StatusInputs {
-  activity: Activity | undefined;
+  /** Whether a turn runs in its default conversation, and when its last turn ended or started, in ms (0: none yet). */
+  activity: { running: boolean; lastActiveAt: number } | undefined;
   entries: readonly ConversationEntry[];
-  talk: readonly AppTalk[];
+  talk: readonly WorkerMessageResourceState[];
   tasks: readonly BoardTask[];
   now: number;
 }
@@ -26,7 +29,7 @@ export interface StatusInputs {
 /** How long a coding task's ending stays on the line: long enough for a glance; the panel keeps it after. */
 export const ENDING_SHOWN_MS = 2 * 60_000;
 
-/** An approval's tone: the attention colour, a person must act. A task's tone is `taskPresentation`'s. */
+/** An approval's tone: the attention colour, you must act. A task's tone is `taskPresentation`'s. */
 const NEEDS_OK = "text-attention";
 /** The quiet tone of every other line. */
 const PLAIN = "text-muted-foreground";
@@ -129,12 +132,37 @@ export function answeringStep(entries: readonly ConversationEntry[]): Status | u
   return undefined;
 }
 
+/**
+ * Whether a worker is busy, from workforce's views: a turn running in its
+ * default conversation (the worker sessions view), and when its last turn
+ * ended (completed, failed or aborted), else started (the session turns view, whose turns leave the board's
+ * passes out). Never the session's `updatedAt`, which a board pass moves.
+ * Idle with no default conversation yet; `undefined` until the reads land.
+ */
+export function activityOf(sessions: readonly ListedWorkerSession[] | undefined, turns: readonly ListedTurn[] | undefined): StatusInputs["activity"] {
+  if (sessions === undefined) return undefined;
+  const conversation = sessions.find((s) => s.isDefault);
+  if (conversation === undefined) return { running: false, lastActiveAt: 0 };
+  if (turns === undefined) return undefined;
+  const last = turns.at(-1);
+  return { running: conversation.running, lastActiveAt: last === undefined ? 0 : (last.endedAt ?? last.startedAt) };
+}
+
+/** {@link activityOf}, live, for `worker`. */
+export function useActivity(worker: string): StatusInputs["activity"] {
+  const { client, pollIntervalMs } = useAppClient();
+  const sessions = useView(workerSessionsViewRef(), { worker }, { client, pollIntervalMs }).value;
+  const conversation = sessions?.find((s) => s.isDefault);
+  const turns = useView(sessionTurnsViewRef(), { sessionId: conversation?.id ?? "" }, { client, pollIntervalMs, enabled: conversation !== undefined }).value;
+  return activityOf(sessions, turns);
+}
+
 /** A teammate's status line, its words alone, live. Its age holds while `stale`. */
-export function useStatusLine(adapter: AppCalls, worker: AppWorker, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): string {
+export function useStatusLine(adapter: AppCalls, worker: string, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): string {
   const now = useNow(undefined, !stale);
-  const activity = useWatch(adapter.watchActivity, worker.id);
-  const talk = useWatch(adapter.watchTalk, worker.id) ?? [];
+  const activity = useActivity(worker);
+  const talk = useTalk(worker) ?? [];
   const view = useWatch(adapter.watchConversation, sessionId);
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
-  return statusOf(worker.id, { activity, entries: view?.entries ?? [], talk, tasks, now }, nameOf, isCoding).text;
+  return statusOf(worker, { activity, entries: view?.entries ?? [], talk, tasks, now }, nameOf, isCoding).text;
 }

@@ -17,9 +17,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { spendAfterWrite } from "@flow-state-dev/orchestration/tasks";
 import { toBoardTask } from "../src/app";
 import { App } from "../src/components/App";
-import { AppProvider } from "../src/app";
 import { codingSpendLine } from "../src/components/TeammatePanel";
-import { createFixtureApp } from "./fake-app";
+import { createFixtureApp, FixtureProvider } from "./fake-app";
 
 afterEach(() => {
   cleanup();
@@ -44,20 +43,20 @@ const spendOn = (el: HTMLElement) => el.querySelector("[data-spend]")?.textConte
 
 describe("a coding task's spend", () => {
   it("shows on its line once its run reports: tokens and the vendor's charge", async () => {
-    render(<AppProvider calls={createFixtureApp({ speed: 0.2 })}><App /></AppProvider>);
+    render(<FixtureProvider calls={createFixtureApp({ speed: 0.2 })}><App /></FixtureProvider>);
     const card = await fileCodingTask("Codex");
     expect(spendOn(card)).toBeNull();
     await waitFor(() => expect(spendOn(card)).toBe("14.7k tokens · $0.42"), { timeout: 4000 });
   });
 
   it("shows no dollar figure for a run billed by subscription", async () => {
-    render(<AppProvider calls={createFixtureApp({ speed: 0.2 })}><App /></AppProvider>);
+    render(<FixtureProvider calls={createFixtureApp({ speed: 0.2 })}><App /></FixtureProvider>);
     const card = await fileCodingTask("Claude Code");
     await waitFor(() => expect(spendOn(card)).toBe("9.2k tokens"), { timeout: 4000 });
   });
 
   it("shows in the popup with the model, input and output apart", async () => {
-    render(<AppProvider calls={createFixtureApp({ speed: 0.2 })}><App /></AppProvider>);
+    render(<FixtureProvider calls={createFixtureApp({ speed: 0.2 })}><App /></FixtureProvider>);
     const card = await fileCodingTask("Codex");
     fireEvent.click(card);
     const popup = await screen.findByRole("dialog", { name: TASK });
@@ -67,7 +66,7 @@ describe("a coding task's spend", () => {
   });
 
   it("totals in the teammate's panel across its coding tasks", async () => {
-    render(<AppProvider calls={createFixtureApp({ speed: 0.2 })}><App /></AppProvider>);
+    render(<FixtureProvider calls={createFixtureApp({ speed: 0.2 })}><App /></FixtureProvider>);
     await fileCodingTask("Codex");
     await fileCodingTask("Claude Code");
     const panel = screen.getByRole("complementary", { name: "Lead's panel" });

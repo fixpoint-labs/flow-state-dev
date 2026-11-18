@@ -414,7 +414,7 @@ function TaskPlanHeader({
         {boardStatus !== undefined && boardStatus !== "completed" && (
           <span
             className={cn(
-              "text-[10px] font-medium",
+              "text-xs font-medium",
               boardStatusToneClass(boardStatus)
             )}
           >
@@ -481,10 +481,10 @@ function TaskPlanSection({
   return (
     <div>
       <div className="mb-1 flex items-center gap-1.5">
-        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {group.label}
         </span>
-        <span className="text-[10px] text-muted-foreground/60 tabular-nums">
+        <span className="text-xs text-muted-foreground/60 tabular-nums">
           {group.entries.length}
         </span>
       </div>
@@ -494,7 +494,7 @@ function TaskPlanSection({
             <div key={sub.label}>
               <p
                 className={cn(
-                  "mb-0.5 pl-0.5 text-[10px] font-medium",
+                  "mb-0.5 pl-0.5 text-xs font-medium",
                   sub.assignee === null
                     ? "italic text-muted-foreground/60"
                     : "text-muted-foreground"
@@ -558,7 +558,7 @@ function TaskPlanRow({
 
   const assigneeBadge =
     task.assignee !== undefined ? (
-      <span className="ml-1 shrink-0 rounded-sm bg-muted px-1 text-[10px] font-medium text-muted-foreground/80">
+      <span className="ml-1 shrink-0 rounded-sm bg-muted px-1 text-xs font-medium text-muted-foreground/80">
         {task.assignee}
       </span>
     ) : null;
@@ -566,7 +566,7 @@ function TaskPlanRow({
   const retryBadge =
     entry.kind === "retried" ||
     (typeof task.attempts === "number" && task.attempts > 1) ? (
-      <span className="ml-1 inline-flex shrink-0 items-center gap-0.5 text-[10px] text-warning">
+      <span className="ml-1 inline-flex shrink-0 items-center gap-0.5 text-xs text-warning">
         <RotateCcwIcon className="h-2.5 w-2.5" aria-hidden="true" />
         {task.attempts ?? 1}
       </span>
@@ -617,7 +617,7 @@ function TaskPlanRow({
       {retryBadge}
       {renderTaskAction?.(task)}
       {deps !== null && (
-        <span className="text-[10px] text-muted-foreground/60">
+        <span className="text-xs text-muted-foreground/60">
           ← {deps}
         </span>
       )}
@@ -627,12 +627,12 @@ function TaskPlanRow({
   const banners = (
     <>
       {showError && (
-        <p className="mt-0.5 text-[11px] leading-snug text-destructive/80">
+        <p className="mt-0.5 text-xs leading-snug text-destructive/80">
           {task.error}
         </p>
       )}
       {showFeedback && (
-        <p className="mt-0.5 whitespace-pre-wrap text-[11px] leading-snug text-warning/80">
+        <p className="mt-0.5 whitespace-pre-wrap text-xs leading-snug text-warning/80">
           {task.feedback}
         </p>
       )}
@@ -750,7 +750,7 @@ function TaskOutput({ text }: { text: string }) {
       className={cn(
         "prose-none text-xs leading-snug text-muted-foreground",
         "[&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:my-0.5",
-        "[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px]",
+        "[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs",
         "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded-sm [&_pre]:bg-muted [&_pre]:p-2",
         "[&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-2 [&_blockquote]:italic"
       )}
@@ -951,7 +951,7 @@ function TaskToolItem({ item }: { item: ToolOutputItem }) {
         {summary.resultSummary!.map((r, i) => (
           <li
             key={i}
-            className="truncate text-[10px] text-muted-foreground/70"
+            className="truncate text-xs text-muted-foreground/70"
           >
             {r}
           </li>
@@ -987,7 +987,7 @@ function ReasoningLine({ item }: { item: ReasoningItem }) {
   const text = (item as ReasoningItem & { text?: string }).text ?? "";
   if (text.length === 0) return null;
   return (
-    <p className="whitespace-pre-wrap text-[11px] italic leading-snug text-muted-foreground/70">
+    <p className="whitespace-pre-wrap text-xs italic leading-snug text-muted-foreground/70">
       {text}
     </p>
   );
