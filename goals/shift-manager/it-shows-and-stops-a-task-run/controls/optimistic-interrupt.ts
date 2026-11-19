@@ -1,15 +1,17 @@
 /**
- * Control `optimistic-interrupt`: Interrupt draws *interrupted* without
- * aborting anything.
+ * Control `optimistic-interrupt`: Interrupt aborts nothing.
  *
- * Built into the control page in place of `src/lib/run.ts`. `interruptRun`
- * never calls the abort route and answers as though the record read
- * `aborted`. The goal must fail at "the request reads aborted first".
+ * Built into the control page in place of `src/lib/workforce.ts`. The
+ * workforce client's `stopRun` answers at once and never calls the abort
+ * route, so the run goes on and its record never reads `aborted`. The goal
+ * must fail at "the request reads aborted first".
  */
-import type { InterruptOutcome } from "../../../../packages/shift-manager/src/lib/run.ts";
+import { useMemo } from "react";
+import { useWorkforce as useRealWorkforce } from "../../../../packages/shift-manager/src/lib/workforce.ts";
 
-export * from "../../../../packages/shift-manager/src/lib/run.ts";
+export * from "../../../../packages/shift-manager/src/lib/workforce.ts";
 
-export async function interruptRun(): Promise<InterruptOutcome> {
-  return { kind: "aborted" };
+export function useWorkforce() {
+  const real = useRealWorkforce();
+  return useMemo(() => ({ ...real, stopRun: async () => undefined }), [real]);
 }

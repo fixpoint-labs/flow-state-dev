@@ -39,7 +39,7 @@
  *
  *   static-names     seats written in from the DevTeam tree. Must fail at
  *                    "TEAMS equals the store's seats" on multi-worker-collab.
- *   optimistic-post  the one send path (`send.ts`) reads delivered and
+ *   optimistic-post  the one send path (`deliver.ts`) reads delivered and
  *                    sends nothing. Must fail at "the post is in the stored
  *                    transcript".
  *   unanswerable-asks  every ask is marked unanswerable. Must fail at "an
@@ -138,7 +138,7 @@ function swapFor(control: string): { targets: string[]; with: string } | undefin
     return { targets: [lib("reads.ts")], with: join(HERE, "controls", "static-names.ts") };
   }
   if (control === "optimistic-post") {
-    return { targets: [lib("send.ts")], with: join(HERE, "controls", "optimistic-post.ts") };
+    return { targets: [lib("deliver.ts")], with: join(HERE, "controls", "optimistic-post.ts") };
   }
   if (control === "unanswerable-asks") {
     return { targets: [lib("reads.ts")], with: join(HERE, "controls", "unanswerable-asks.ts") };

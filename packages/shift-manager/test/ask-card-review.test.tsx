@@ -16,6 +16,8 @@ import { fakeLabClient, reviewHold } from "./helpers/ask-hold";
 const lab = fakeLabClient(undefined);
 const noteAnswered = vi.fn();
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client: lab.client, noteAnswered }) }));
+// The card reads the stop's data from the page's feed for the ask's session; its first read is the session's state.
+vi.mock("../src/lib/session-feeds", async () => (await import("./helpers/fake-feed")).fakeFeeds([], () => lab.client.sessions.state()));
 const { AskCard } = await import("../src/components/AskCard");
 
 afterEach(() => {

@@ -8,7 +8,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnComposer } from "../src/components/TurnComposer";
-import { TurnNotDelivered } from "../src/lib/send";
+import { TurnNotDelivered } from "../src/lib/deliver";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import { clearHandedLine, handToShiftCoordinator, useHandedLine } from "../src/lib/outbox";
 import { GAPS as gaps } from "../src/gaps";

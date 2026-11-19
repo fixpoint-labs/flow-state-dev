@@ -7,7 +7,7 @@
  * SSE heartbeats are emitted by `@flow-state-dev/engine` for every live and
  * GET-attach stream — this adapter no longer injects them itself.
  */
-import { declareEphemeralDisk } from "@flow-state-dev/engine/host";
+import { createNetworkAuthGuard, declareEphemeralDisk } from "@flow-state-dev/engine/host";
 import type {
   FlowApiRouter,
   VercelHandlerInput,
@@ -64,6 +64,7 @@ function createHandlerCore(
   options?: VercelHandlerOptions
 ) {
   const onAbort = options?.onAbort;
+  const guard = createNetworkAuthGuard(options?.allowUnauthenticated);
 
   let cachedRouter: FlowApiRouter | Promise<FlowApiRouter> | undefined;
 
@@ -85,7 +86,7 @@ function createHandlerCore(
     return new Response(response.body, { status: response.status, headers });
   }
 
-  return { getRouter, wrapResponse, onAbort };
+  return { getRouter, wrapResponse, onAbort, guard };
 }
 
 /**
@@ -116,7 +117,7 @@ export function createVercelHandler(
   PATCH: CatchAllHandler;
   DELETE: CatchAllHandler;
 } {
-  const { getRouter, wrapResponse, onAbort } = createHandlerCore(app, options);
+  const { getRouter, wrapResponse, onAbort, guard } = createHandlerCore(app, options);
 
   function makeHandler(method: keyof FlowApiRouter): CatchAllHandler {
     return async (req, ctx) => {
@@ -124,6 +125,8 @@ export function createVercelHandler(
         req.signal.addEventListener("abort", () => onAbort(req), { once: true });
       }
       const [router, params] = await Promise.all([getRouter(), ctx.params]);
+      const refused = await guard(router);
+      if (refused !== undefined) return refused;
       const response = await router[method](req, { params });
       return wrapResponse(response);
     };
@@ -159,11 +162,13 @@ export function createVercelBareHandler(
   GET: BareHandler;
   POST: BareHandler;
 } {
-  const { getRouter, wrapResponse } = createHandlerCore(app, options);
+  const { getRouter, wrapResponse, guard } = createHandlerCore(app, options);
 
   function makeBareHandler(method: keyof FlowApiRouter): BareHandler {
     return async (req) => {
       const router = await getRouter();
+      const refused = await guard(router);
+      if (refused !== undefined) return refused;
       const response = await router[method](req, { params: { path: [] } });
       return wrapResponse(response);
     };

@@ -12,10 +12,11 @@
  * already-built router can't inject construction-time hooks.
  */
 import type { FlowState } from "@flow-state-dev/engine";
+import type { VercelHandlerOptions } from "./types";
 import { createVercelHandler } from "./handler";
 
-export function createVercelNextHandler(flowstate: FlowState): ReturnType<
+export function createVercelNextHandler(flowstate: FlowState, options?: VercelHandlerOptions): ReturnType<
   typeof createVercelHandler
 > {
-  return createVercelHandler(() => flowstate.getRouter());
+  return createVercelHandler(() => flowstate.getRouter(), options);
 }

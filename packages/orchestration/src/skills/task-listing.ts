@@ -66,6 +66,11 @@ export const listedTaskSchema = z.object({
    * board's action only, like `spend`.
    */
   leaseUntil: z.number().optional(),
+  // FIX-2776.
+  /** A failed row's error, the rows it waits on, and its brief's files. On the board's action only, like `spend`. */
+  error: taskSchema.shape.error,
+  deps: taskSchema.shape.deps,
+  attachments: taskSchema.shape.attachments,
   ...waitingShape,
   // FIX-2086.
   /** The latest completed follow-up in its chain, by id; read its output with getTask. */

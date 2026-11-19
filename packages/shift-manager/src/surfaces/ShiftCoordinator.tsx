@@ -23,7 +23,7 @@
  * registry's cards (the ask's Approve and Reject, the messages) are drawn as
  * the registry draws them.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { Settings } from "lucide-react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { AskCard } from "../components/AskCard";
@@ -36,9 +36,10 @@ import { ItemRenderer } from "@flow-state-dev/react";
 import { AsOf, ASKING_CLASS, Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { cn } from "../lib/utils";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
-import { readDelegates } from "../lib/delegates";
+import { delegatesViewRef } from "@flow-state-dev/workforce/browser";
+import { useView } from "@flow-state-dev/react";
 import { starterLines, type StarterDelegate } from "../lib/first-run";
-import { useWorkforce } from "../lib/workforce";
+import { useRoster } from "../lib/roster";
 import { shiftCoordinatorOf, workerLabel, workerStates, type LoadedSnapshot } from "../lib/derive";
 import { everyAsk, itemIdHolding, openBoardTasks, useInbox, workerOfHold } from "../lib/inbox";
 import { useLab } from "../lib/lab-data";
@@ -337,28 +338,23 @@ function Talk({
 
 /**
  * The lines the empty conversation offers, from the delegates the coordinator
- * answers for it (the DELEGATES panel's read), by their roster names. Before
- * there is a conversation there are no delegates to read, so the lines name
- * nobody; a read that fails does the same.
+ * holds (the delegates view the DELEGATES panel watches, one read for both),
+ * by their roster names. Before there is a conversation there are no
+ * delegates to read, so the lines name nobody; a read that fails does the same.
  */
 function useStarterLines(worker: Worker, sessions: readonly SessionSummary[]): string[] {
   const { client } = useLab();
-  const workforce = useWorkforce();
   const sessionId = useConversationSession(worker, sessions);
-  const [delegates, setDelegates] = useState<readonly StarterDelegate[]>([]);
-  useEffect(() => {
-    if (sessionId === null || worker.kind !== COORDINATOR_FLOW) return setDelegates([]);
-    let closed = false;
-    Promise.all([readDelegates(client, worker.kind, sessionId), workforce.roster()])
-      .then(([list, roster]) => {
-        const names = new Map(roster.map((entry) => [entry.id, entry.name ?? workerLabel(entry.id)]));
-        if (!closed) setDelegates(list.delegates.map((d) => ({ worker: d.worker, name: names.get(d.worker) ?? workerLabel(d.worker) })));
-      })
-      .catch(() => !closed && setDelegates([]));
-    return () => {
-      closed = true;
-    };
-  }, [client, workforce, worker.kind, sessionId]);
+  const rosterRead = useRoster();
+  const coordinator = sessionId !== null && worker.kind === COORDINATOR_FLOW;
+  const ref = useMemo(() => delegatesViewRef(COORDINATOR_FLOW), []);
+  const { value: list } = useView(ref, {}, { client, enabled: coordinator, ...(sessionId !== null ? { sessionId } : {}) });
+  const delegates = useMemo<readonly StarterDelegate[]>(() => {
+    if (!coordinator || list === undefined) return [];
+    const roster = rosterRead !== undefined && "entries" in rosterRead ? rosterRead.entries : [];
+    const names = new Map(roster.map((entry) => [entry.id, entry.name ?? workerLabel(entry.id)]));
+    return list.delegates.map((d) => ({ worker: d.worker, name: names.get(d.worker) ?? workerLabel(d.worker) }));
+  }, [coordinator, list, rosterRead]);
   return starterLines(delegates);
 }
 

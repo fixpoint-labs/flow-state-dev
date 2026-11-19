@@ -6,9 +6,8 @@
  * - The feed opens on the session's newest items. A task claimed before that
  *   window still shows its newest steps: attribution learns the board's tasks
  *   from its `task-change` claims, read on their own.
- * - Items come from the feed, so the run's request stream carries only its
- *   status. That stream doesn't reconnect; when it drops while the run is still
- *   going, the Session follows the run again, so its status can still settle.
+ * - Items come from the page's one feed for the run session; the run's status
+ *   is the task's (`TaskProvider`, on the run's own stream), not the Session's.
  */
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,7 +21,6 @@ vi.mock("../src/lib/inbox", async (importOriginal) => ({
   useInbox: () => ({ section: undefined, stale: false, refresh: () => {} }),
 }));
 
-const reportStatus = vi.fn();
 const run = { flowId: "agent", sessionId: "s_run", requestId: "req_run" };
 const task = {
   row: undefined,
@@ -31,32 +29,19 @@ const task = {
   gaveUp: false,
   retryRow: vi.fn(),
   retryRun: vi.fn(),
-  reportStatus,
   sent: [] as string[],
-  unstamped: [] as string[],
   boardRef: "conv_1",
   taskId: "t1",
 };
 vi.mock("../src/lib/task", () => ({ useTask: () => task }));
 
-type Follower = { onRead(read: unknown): void; onFailure(failure: unknown): void };
-type RequestFollower = { onItem(item: unknown): void; onStatus(status: string): void; onError(failure: unknown): void };
-const feeds: Follower[] = [];
-const requests: RequestFollower[] = [];
+type Follower = import("./helpers/fake-feed").FakeFeed;
+const { feeds } = vi.hoisted(() => ({ feeds: [] as Follower[] }));
 const readTaskClaims = vi.fn();
-const readRunRecord = vi.fn();
-vi.mock("../src/lib/run", async (original) => ({
-  ...(await original<typeof import("../src/lib/run")>()),
-  followSessionItems: (_client: unknown, _sessionId: string, to: Follower) => {
-    feeds.push(to);
-    return () => {};
-  },
-  followRequest: (_client: unknown, _run: unknown, to: RequestFollower) => {
-    requests.push(to);
-    return { close: () => {} };
-  },
+vi.mock("../src/lib/session-feeds", async () => (await import("./helpers/fake-feed")).fakeFeeds(feeds));
+vi.mock("../src/lib/task-items", async (original) => ({
+  ...(await original<typeof import("../src/lib/task-items")>()),
   readTaskClaims: (...args: unknown[]) => readTaskClaims(...args),
-  readRunRecord: (...args: unknown[]) => readRunRecord(...args),
 }));
 
 import { taskBriefMetadata } from "@flow-state-dev/workforce/browser";
@@ -87,10 +72,7 @@ const claim = {
 
 beforeEach(() => {
   feeds.length = 0;
-  requests.length = 0;
   readTaskClaims.mockReset();
-  readRunRecord.mockReset();
-  reportStatus.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -129,37 +111,6 @@ describe("a task Session that opens on the newest items", () => {
     await act(async () => feeds.at(-1)!.onRead({ items: [claim, step(1)], truncated: false }));
     expect(readTaskClaims).not.toHaveBeenCalled();
     expect(screen.getAllByTestId("session-item").map((el) => el.getAttribute("data-item-id"))).toEqual(["m1"]);
-  });
-});
-
-describe("the run's status after its stream drops", () => {
-  it("follows a run still going again, so its end still reaches the screen", async () => {
-    vi.useFakeTimers();
-    readRunRecord.mockResolvedValue({ status: "in_progress" });
-    render(<TaskSession />);
-    await act(async () => feeds.at(-1)!.onRead({ items: [claim, step(1)], truncated: false }));
-    expect(requests).toHaveLength(1);
-
-    await act(async () => requests[0]!.onError({ message: "the stream dropped" }));
-    expect(reportStatus).toHaveBeenCalledWith("in_progress", undefined);
-    await act(async () => vi.advanceTimersByTimeAsync(3_000));
-    expect(requests).toHaveLength(2);
-
-    await act(async () => requests[1]!.onStatus("completed"));
-    expect(reportStatus).toHaveBeenLastCalledWith("completed");
-    // The items stayed through the drop.
-    expect(screen.getAllByTestId("session-item")).toHaveLength(1);
-  });
-
-  it("doesn't follow a run that the record says has ended", async () => {
-    vi.useFakeTimers();
-    readRunRecord.mockResolvedValue({ status: "completed", endedAtMs: 500 });
-    render(<TaskSession />);
-    await act(async () => feeds.at(-1)!.onRead({ items: [claim, step(1)], truncated: false }));
-    await act(async () => requests[0]!.onError({ message: "the stream dropped" }));
-    await act(async () => vi.advanceTimersByTimeAsync(10_000));
-    expect(reportStatus).toHaveBeenCalledWith("completed", 500);
-    expect(requests).toHaveLength(1);
   });
 });
 
