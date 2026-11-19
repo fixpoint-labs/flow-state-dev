@@ -56,6 +56,8 @@ export interface ScriptedOptions {
   summary?: boolean;
   /** How many roster view reads fail as an unreachable server would, before one lands. */
   unreachableReads?: number;
+  /** Every read of a conversation's items fails, as a server that can't read the session's history does. */
+  historyUnreadable?: boolean;
 }
 
 /** The stand-in: the client the screen reads through, and what a test does to the server behind it. */
@@ -615,6 +617,7 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
         return requests.slice(-(read.limit ?? 20));
       },
       async state(sessionId: string, read: { includeItems?: boolean } = {}) {
+        if (options.historyUnreadable === true && read.includeItems !== false) throw refused(503, "The session's history can't be read.");
         const w = bySession(sessionId);
         const items = w?.items ?? [];
         return {

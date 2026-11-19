@@ -80,6 +80,20 @@ describe("the server going away", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
+  it("says a feed whose history never read has ended and offers Retry, rather than connecting for good", async () => {
+    // Only the session's own history read fails, past the feed's four retries (2, 4, 8 and 16 s); the views still answer.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<ScriptedProvider server={scriptedServer({ speed: 0.05, historyUnreadable: true })}><App /></ScriptedProvider>);
+      await screen.findByLabelText("Message Lead", undefined, FIRST_DRAW);
+      await act(async () => void (await vi.advanceTimersByTimeAsync(31_000)));
+      await waitFor(() => expect(screen.getByTestId("connection-banner").textContent).toContain("The server stopped this feed"));
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("opened with the server down, draws the connection screen, then the lab once a read lands", async () => {
     render(<ScriptedProvider server={scriptedServer({ speed: 0.05, unreachableReads: 1 })}><App /></ScriptedProvider>);
     expect((await screen.findByTestId("unreachable-message")).textContent).toBe("fetch failed");

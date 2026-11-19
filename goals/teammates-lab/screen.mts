@@ -54,7 +54,7 @@ export async function teammatesScreen(client: Client, connection?: AppConnection
       let last: unknown;
       const tell = () => {
         const read = drawn.app.conversations.read(sessionId);
-        if (read === undefined || read === last) return;
+        if (read?.view === undefined || read === last) return;
         last = read;
         on(read.view, read.connection);
       };

@@ -10,7 +10,8 @@ import type { ConversationView, WindowMark } from "./conversation";
 
 /** What a conversation's follower read last. */
 type Followed = {
-  view: ConversationView;
+  /** `undefined` until the history read lands: the connection can already say it gave up. */
+  view: ConversationView | undefined;
   /** Whether its feed still hears the server, in the session feed's words. */
   connection: SessionConnectionStatus;
   /** The divider; `undefined` while the whole conversation is inside the window. */

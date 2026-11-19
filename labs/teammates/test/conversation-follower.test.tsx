@@ -14,6 +14,7 @@ import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import { AppProvider, ConversationFollower, useConversation, useConversationCalls } from "../src/app";
+import type { ConversationView } from "../src/lib/conversation";
 
 afterEach(cleanup);
 
@@ -106,11 +107,11 @@ function host() {
 
 /** Conversation `s1` on `h`, followed, with `screens` screens reading it: what the last one read, and the calls. */
 function follow(h: ReturnType<typeof host>, screens = 1) {
-  const seen: { current?: ReturnType<typeof useConversation>; calls?: ReturnType<typeof useConversationCalls> } = {};
+  const seen: { current?: NonNullable<ReturnType<typeof useConversation>> & { view: ConversationView }; calls?: ReturnType<typeof useConversationCalls> } = {};
   function Screen({ last }: { last: boolean }) {
     const read = useConversation("s1");
     const calls = useConversationCalls();
-    if (last) Object.assign(seen, { current: read, calls });
+    if (last) Object.assign(seen, { current: read?.view === undefined ? undefined : read, calls });
     return null;
   }
   const tree = (children: ReactNode) => createElement(AppProvider, { client: h.client, pollIntervalMs: 50 }, children);

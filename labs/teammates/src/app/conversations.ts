@@ -44,7 +44,9 @@ export function ConversationFollower({ sessionId }: { sessionId: string }): null
   const listed = new Set((turns ?? []).map((t) => t.id));
   const stopEnded = stop?.ids != null && [...stop.ids].every((id) => ended.includes(id) || (!listed.has(id) && listed.size >= TURNS_LISTED));
   const followed = useMemo(() => {
-    if (feed === undefined || items === undefined) return undefined;
+    if (feed === undefined) return undefined;
+    // Before the history lands there is no view yet, but the connection is already news: a read that gave up is `stopped`.
+    if (items === undefined) return { view: undefined, connection: feed.state, mark: undefined, follow: feed.followResponse };
     const read = turns ?? [];
     for (const turn of read) if (turn.status === "aborted") stopped.add(turn.id);
     const workers = new Set((roster ?? []).map((w) => w.id));

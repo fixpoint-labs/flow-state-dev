@@ -96,7 +96,7 @@ function mountScreen(client: Client, connection: AppConnection): Screen {
       let last: unknown;
       const tell = () => {
         const read = conversations.read(id);
-        if (read === undefined || read === last) return;
+        if (read?.view === undefined || read === last) return;
         last = read;
         on({ view: read.view, connection: read.connection });
       };
