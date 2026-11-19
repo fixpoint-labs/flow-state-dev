@@ -119,6 +119,7 @@ Every rule has one owner. A cell that says *uses* is a place a child must not de
 | The resolution (`planProjectMcp` and its connect step) | FIX-2645 and FIX-1986 | FIX-2645 reshapes it and lands first; FIX-1986 calls it for each harness and adds no branch for "no project" |
 | The list of keys a failure is cleaned of | FIX-2645 and FIX-2012 | FIX-2645's plan produces the list; FIX-2012's single rule cleans it. Either can land first |
 | The Teammates lab's host | FIX-2645 and FIX-1986 | FIX-2645 installs Linear there; FIX-1986 makes its default Cursor runs reach it. Neither adds a lab-only MCP path |
+| The connector keys route | FIX-2645 and [FIX-2775](https://linear.app/fixpoint-labs/issue/FIX-2775) ([#5463](https://github.com/fixpoint-labs/flow-state-dev/pull/5463), outside the set) | FIX-2775's workforce PR moves the route into `defineProjectBlocks` and lands first, already in connector names (`ConnectorKeyStatus`, `CONNECTOR_KEYS_PATH`, working names). FIX-2645 renames the rest of the vocabulary around it, owns whether the stored prefix `mcp-credentials/` moves and its migration, and wires the Teammates lab to import the route once that PR merges. The Teammates lab has no projects flow, so the route must be reachable by a host without one; FIX-2775 shapes that export, and FIX-2645 does not build a projects flow only to get it |
 | MCP in both directions | This epic and FIX-2331 | They meet only at the MCP protocol. If one FSD host installs another's workforce server as a connector, that is an ordinary connector. FIX-2331's caller sign-in is not a connector key, and its `workforce_*` tool names do not collide with the `mcp__<connector>__` prefix |
 
 
@@ -145,6 +146,13 @@ Engineering calls, decided under the EM posture and not asked:
   goal (BP-003). Leg a now has a second Teammates user whose calls must carry that user's
   stored key, and the lab-only wiring is a control that must fail. Enforces ER-3; no decision
   moved.
+- **One key route, owned by FIX-2775** (owner, 2026-11-19, on #5010). [FIX-2775 D3](https://github.com/fixpoint-labs/flow-state-dev/pull/5463)
+  moves the key route out of the DevTeam host into `@flow-state-dev/workforce`, so
+  `mcpCredentialsAdapter` no longer stays in `teams/devteam`, and the Teammates lab imports that
+  route instead of serving a copy. One key reader, as ER-2 asks. The connector names land in
+  FIX-2775's move rather than in a rename by FIX-2645 after it: #5463 already names the route in
+  connector vocabulary, and a public export renamed with no alias (BP-034) right after it moves
+  would break its importers twice. Recorded as a [seam](#coordination-seams); no D-card moved.
 
 ## What the end-state POC showed
 
@@ -179,5 +187,7 @@ Run in the author's own context, not by an independent analyst; the coordinator 
   from no parent; FIX-2645 and the closure FIX-2646 filed. FIX-2331 related, not absorbed.
 - **Analysis (Nov 10)** — `allow` moved onto the connector so both routes obey it.
 - **Review round 1 (Nov 10)** — leg a gained a second user and the lab-only control.
+- **Review round 2 (Nov 19)** — the key route is FIX-2775's one workforce route: the Teammates
+  lab imports it, and the connector names land with its move.
 
 **Open: none.**

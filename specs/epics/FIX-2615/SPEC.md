@@ -68,8 +68,9 @@ Everything inside the box is the one model a host gets. The fence is the key rul
 | `@flow-state-dev/codex` | Takes relayed tools through a generic option (ER-5) | `CodexAgentOptions` gains `mcpTools`, the shape `ClaudeCodeAgentOptions.mcpTools` takes, served to the CLI as a local endpoint through `CodexClientOptions.config`; no key in that config (ER-3) | FIX-1986 |
 | `@flow-state-dev/cursor` | The same option, onto the SDK's own slot | `CursorAgentOptions` gains `mcpTools`, mapped to `local.customTools` | FIX-1986 |
 | `@flow-state-dev/mcp` | Maybe: Codex's endpoint, if FIX-1986's spec serves it with the existing transport | `createMcpTransportAdapter`, reused, not changed | FIX-1986 |
-| `@flow-state-dev/shift-manager` · `teams/devteam` | The rename, and Codex and Cursor runs get the relay | `OpenLabOptions.mcpServers` → `connectors` · `FSD_MCP_SERVERS` and the projects' `mcpServers: ["linear"]` follow · `codexHarness` / `cursorHarness` take `mcpTools` as `claudeCodeHarness` does · `mcpCredentialsAdapter` unchanged | FIX-2645 · FIX-1986 |
-| Teammates lab · `labs/teammates/host.mts` | The first consumer with no project | Installs Linear, enables it outside a project, adds the capability to `defineAgentWorkerFlow({ uses })`, passes `mcpTools` to its `claudeCodeAgent`; serves a key route like Shift Manager's so each user stores their own | FIX-2645 |
+| `@flow-state-dev/shift-manager` · `teams/devteam` | The rename, and Codex and Cursor runs get the relay | `OpenLabOptions.mcpServers` → `connectors` · `FSD_MCP_SERVERS` and the projects' `mcpServers: ["linear"]` follow · `codexHarness` / `cursorHarness` take `mcpTools` as `claudeCodeHarness` does · its key route (`mcpCredentialsAdapter`, `MCP_CREDENTIALS_PATH`) leaves for workforce, in the row below, and the host imports it | FIX-2645 · FIX-1986 |
+| `@flow-state-dev/workforce` · `projects/mcp-credentials.ts` | The one connector keys route, moved out of the DevTeam host | `defineProjectBlocks` returns it beside `views`, with `ConnectorKeyStatus` and `CONNECTOR_KEYS_PATH` (working names, in connector vocabulary) · the stored prefix `mcp-credentials/` and its migration stay FIX-2645's | [FIX-2775 D3](https://github.com/fixpoint-labs/flow-state-dev/pull/5463), outside the set |
+| Teammates lab · `labs/teammates/host.mts` | The first consumer with no project | Installs Linear, enables it outside a project, adds the capability to `defineAgentWorkerFlow({ uses })`, passes `mcpTools` to its `claudeCodeAgent`; imports workforce's one connector keys route so each user stores their own, never a copy (ER-2) | FIX-2645 |
 | Teammates lab · same file | Its Cursor (default) and Codex runs reach it | `cursorAgent` / `codexAgent` there take `mcpTools` | FIX-1986 |
 | Contributor docs | The word and the model | `docs/contributing/glossary.mjs` gains `connector` · `docs/architecture/workforce-projects-and-connectors.md` | FIX-2645 |
 
@@ -81,7 +82,7 @@ The reviewed snapshot. Live state is in Linear.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-2645](https://linear.app/fixpoint-labs/issue/FIX-2645) · package · spec | The connector: installed at the host with its address, key route and allowed tools. A project enables connectors from that set; the host enables a set for work with no project. One resolution for workers and runs. The glossary entry, the reference, and the Teammates lab as first consumer | The substance: leg a, and the model the others build on | Backlog |
+| [FIX-2645](https://linear.app/fixpoint-labs/issue/FIX-2645) · package · spec | The connector: installed at the host with its address, how its key is supplied and its allowed tools. A project enables connectors from that set; the host enables a set for work with no project. One resolution for workers and runs. The glossary entry, the reference, and the Teammates lab as first consumer | The substance: leg a, and the model the others build on | Backlog |
 | [FIX-1986](https://linear.app/fixpoint-labs/issue/FIX-1986) · package · spec | Codex and Cursor coding runs get connectors the way Claude Code runs do, with FSD still holding the key | Leg b on every harness. The Teammates lab's default harness is Cursor | Backlog · blocked by FIX-2645 |
 | [FIX-2012](https://linear.app/fixpoint-labs/issue/FIX-2012) · **bug** · direct | One redaction rule: a short key is removed from error reports too | The scan fails without it | Backlog |
 | [FIX-2646](https://linear.app/fixpoint-labs/issue/FIX-2646) · closure · **required** | The QA run on one `main` commit: legs a, b and the scan, each with its control | Proves the whole and finds what falls between the children | Backlog · blocked by the three above |
@@ -98,11 +99,12 @@ flowchart LR
   B --> Z
   K["FIX-2012 · one redaction rule · bug"] --> Z
   N["FIX-2331 · FSD as an MCP server · separate epic"] -.-|"seam only · no edge"| A
+  W["FIX-2775 · the connector keys route · outside the set"] -.->|"the one key route"| A
   classDef done stroke-width:2px
   class R done
 ```
 
-An edge is what one issue hands the next; a dashed input is consumed or a neighbour, never reparented; a heavy border is done. FIX-2645 and FIX-2012 start now, in parallel; FIX-1986 waits for the connector shape; the closure waits for all three. FIX-2331's seam is in [DECISIONS](DECISIONS.md#coordination-seams).
+An edge is what one issue hands the next; a dashed input is consumed or a neighbour, never reparented; a heavy border is done. FIX-2645 and FIX-2012 start now, in parallel; FIX-1986 waits for the connector shape; the closure waits for all three. FIX-2645's Teammates wiring imports FIX-2775's key route, so that part lands after FIX-2775's workforce PR. Both seams are in [DECISIONS](DECISIONS.md#coordination-seams).
 
 ## What stays as it is
 
@@ -123,10 +125,11 @@ An edge is what one issue hands the next; a dashed input is consumed or a neighb
 | [FIX-1762 D1](../../issues/FIX-1762/DECISIONS.md#d1): a project with no repository runs on its own files | **Kept**, and named first-class by [D1](DECISIONS.md#d1) |
 | FIX-2335: the Teammates lab has no projects | **Kept.** [D3](DECISIONS.md#d3) serves it without a project |
 | FIX-1955, FIX-2436: stored keys are `secret` and not model-readable | **Builds on** |
+| [FIX-2775 D3](https://github.com/fixpoint-labs/flow-state-dev/pull/5463) (open): the connector keys route moves from the DevTeam host into `defineProjectBlocks`, in connector names | **Builds on.** FIX-2645's Teammates lab imports it; the set adds no key route ([seam](DECISIONS.md#coordination-seams)) |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| The connector entry: address, key route, allowed tools (FIX-2645) | `ProjectMcpServers` (`{ url, seedEnv }`) and `projectMcpCapability`'s `allow` option | **Extends** both: the same map, renamed, with `allow` moved onto the entry so the coding relay obeys it too |
+| The connector entry: address, how its key is supplied, allowed tools (FIX-2645) | `ProjectMcpServers` (`{ url, seedEnv }`) and `projectMcpCapability`'s `allow` option | **Extends** both: the same map, renamed, with `allow` moved onto the entry so the coding relay obeys it too |
 | The host's set for work with no project (FIX-2645) | `planProjectMcp`, which stops when `runProjectOf` finds no project | **Extends** the plan: one list the host passes, read when there is no project. Same key rule, same client |
 | Codex and Cursor relays (FIX-1986) | `projectMcpTools`' resolver; Cursor's `local.customTools`; `@flow-state-dev/mcp`'s server transport for Codex's local endpoint | **Extends** the resolver. Codex's endpoint is the one new piece, and its spec weighs serving it with the existing transport |
 | The contributor reference (FIX-2645) | `apps/docs/docs/workforce/projects.md`, code comments | **New**: no contributor doc defines a project today |
