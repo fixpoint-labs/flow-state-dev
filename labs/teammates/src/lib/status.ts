@@ -10,8 +10,10 @@
  */
 import { useView } from "@flow-state-dev/react";
 import { sessionTurnsViewRef, workerSessionsViewRef, type ListedTurn, type ListedWorkerSession, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
-import { useAppClient, type BoardTask, type ConversationEntry, type AppCalls } from "../app";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { useAppClient, useTasks, type ConversationEntry, type AppCalls } from "../app";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
+import { holdOf, taskStatus, titleOf, workerOf } from "./task";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom, useTalk } from "./talk";
 import { age, useNow, useWatch } from "./use-watch";
@@ -22,7 +24,7 @@ export interface StatusInputs {
   activity: { running: boolean; lastActiveAt: number } | undefined;
   entries: readonly ConversationEntry[];
   talk: readonly WorkerMessageResourceState[];
-  tasks: readonly BoardTask[];
+  tasks: readonly CodingBoardTask[];
   now: number;
 }
 
@@ -48,7 +50,7 @@ const upperFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const openApproval = (e: ConversationEntry): boolean => e.kind === "approval" && e.resolution === undefined;
 
 /** One thing a teammate needs from you: its key (one per approval, or per hold of a task, for the notifier), what it asks, and, for a task, the task. */
-export type Need = { key: string; text: string } & ({ kind: "approval" } | { kind: "task"; task: BoardTask });
+export type Need = { key: string; text: string } & ({ kind: "approval" } | { kind: "task"; task: CodingBoardTask });
 
 /**
  * What a teammate needs from you, oldest first: each open approval, then each
@@ -58,19 +60,22 @@ export type Need = { key: string; text: string } & ({ kind: "approval" } | { kin
 export function needsOf({ entries, tasks }: Pick<StatusInputs, "entries" | "tasks">): Need[] {
   return [
     ...entries.flatMap((e): Need[] => (e.kind === "approval" && openApproval(e) ? [{ key: `approval:${e.suspensionId}`, text: e.text, kind: "approval" }] : [])),
-    ...tasks.flatMap((t): Need[] => (t.status === "running" && t.waiting !== undefined ? [{ key: `waiting:${t.id}:${t.waiting.holdId ?? ""}`, text: t.waiting.prompt, kind: "task", task: t }] : [])),
+    ...tasks.flatMap((t): Need[] => {
+      const hold = holdOf(t);
+      return taskStatus(t) === "running" && hold !== undefined ? [{ key: `waiting:${t.id}:${hold.id}`, text: hold.ask.prompt, kind: "task", task: t }] : [];
+    }),
   ];
 }
 
-/** When a task ended, as its row's view reads it; absent while it runs, or when the row says nothing. */
-export const endedAt = (t: BoardTask): number | undefined => t.view?.times.completedAt ?? undefined;
+/** When a task ended, as its row reads it; absent while it runs, or when the row says nothing. */
+export const endedAt = (t: Pick<CodingBoardTask, "completedAt">): number | undefined => t.completedAt ?? undefined;
 
 /** The coding tasks that ended (done or failed) in the last {@link ENDING_SHOWN_MS}, newest first. */
-export function freshEndings(tasks: readonly BoardTask[], now: number, isCoding: (id: string) => boolean): BoardTask[] {
+export function freshEndings(tasks: readonly CodingBoardTask[], now: number, isCoding: (id: string) => boolean): CodingBoardTask[] {
   return tasks
     .flatMap((task) => {
       const at = endedAt(task);
-      return (task.status === "done" || task.status === "failed") && isCoding(task.to) && at !== undefined && now - at < ENDING_SHOWN_MS ? [{ task, at }] : [];
+      return (task.status === "completed" || task.status === "errored") && isCoding(workerOf(task)) && at !== undefined && now - at < ENDING_SHOWN_MS ? [{ task, at }] : [];
     })
     .sort((a, b) => b.at - a.at)
     .map(({ task }) => task);
@@ -96,12 +101,12 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
     const given = [...entries].reverse().find((e) => e.kind === "user" || e.kind === "received");
     return plain(given?.kind === "received" ? `Replying to ${nameOf(given.from)}` : "Replying to you");
   }
-  const coding = tasks.find((t) => t.status === "running" && isCoding(t.to));
-  if (coding) return plain(`Running coding task: ${coding.title}`);
+  const coding = tasks.find((t) => taskStatus(t) === "running" && isCoding(workerOf(t)));
+  if (coding) return plain(`Running coding task: ${titleOf(coding)}`);
   const ended = freshEndings(tasks, now, isCoding)[0];
   if (ended) {
     const state = taskPresentation(ended);
-    return { text: `Coding task ${ended.status === "failed" ? state.word : "finished"}: ${ended.title}`, tone: state.tone, needsYou: false };
+    return { text: `Coding task ${ended.status === "errored" ? state.word : "finished"}: ${titleOf(ended)}`, tone: state.tone, needsYou: false };
   }
   const waiting = owedRepliesFrom(worker, [...talk]);
   if (waiting.length > 0) return plain(`Messaging ${waiting.map(nameOf).join(", ")}`);
@@ -163,6 +168,6 @@ export function useStatusLine(adapter: AppCalls, worker: string, sessionId: stri
   const activity = useActivity(worker);
   const talk = useTalk(worker) ?? [];
   const view = useWatch(adapter.watchConversation, sessionId);
-  const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
+  const tasks = useTasks(sessionId).value ?? [];
   return statusOf(worker, { activity, entries: view?.entries ?? [], talk, tasks, now }, nameOf, isCoding).text;
 }

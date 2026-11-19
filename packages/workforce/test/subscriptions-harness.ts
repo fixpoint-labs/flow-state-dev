@@ -164,7 +164,9 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
       if (opened !== null) {
         const number = Number(opened[1]);
         const url = `https://github.com/acme/api/pull/${number}`;
-        await follower(ctx as never, { host: "github.com", owner: "acme", name: "api", number, url, key: `github.com/acme/api/${number}`, state: "open" } as never);
+        // `[run-task:<id>]`: the run works that task, as harness-manager hands the follower a run's task.
+        const runTask = /\[run-task:([^\]]+)\]/.exec(input.message)?.[1];
+        await follower(ctx as never, { host: "github.com", owner: "acme", name: "api", number, url, key: `github.com/acme/api/${number}`, state: "open" } as never, runTask === undefined ? undefined : { taskId: runTask });
       }
       if (input.message.includes("[hold]")) await hold;
       if (input.message.includes("[fail]")) throw new Error("the task failed");

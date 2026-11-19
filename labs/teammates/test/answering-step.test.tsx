@@ -60,7 +60,7 @@ describe("the answering line's step", () => {
     const adapter = {
       watchConversation: (_: string, onChange: (view: ConversationView) => void) => { subscribers.add(onChange); onChange(initial); return () => { subscribers.delete(onChange); }; },
       watchConnection: (_: string, onChange: typeof connect) => { connect = onChange; onChange("live"); return () => {}; },
-      watchWindow: quiet, watchTasks: quiet,
+      watchWindow: quiet,
     } as unknown as AppCalls;
     const worker = rosterEntry({ id: "lead", name: "Lead", description: "Coordinates work" });
     const view = render(<FixtureProvider calls={adapter}><Conversation adapter={adapter} worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} harnessOf={() => undefined} onFire={async () => {}} onOpen={() => {}} /></FixtureProvider>);

@@ -6,20 +6,13 @@
  *
  * Three teammates, each with one conversation, and three hidden coding
  * workers, one per harness (Claude Code, Codex, Cursor). Your first ask to Lead makes it message researcher;
- * researcher looks the fact up and replies. Ask Lead to fix something and Lead
- * starts a coding task on the agent you name, or on Claude Code, which runs in the working folder;
- * one on a harness the double is told isn't set up fails at once, saying so. Told to, a run asks
- * you a question before it edits, and waits for your review once it has committed. A run reports
- * items in its harness's own shape (its tool names and arguments), read into steps by the
- * adapter's own `runSteps`. A task's buttons act on its row as the board would: Cancel stops its
- * run, Steer adds a line the run shows, Retry runs it again as the same task, and Re-run files a new
- * task on another coding worker, refused (`already_open`) while the same work is open there. Ask writer to
- * publish and it waits for your yes first. A line you send starts its own
+ * researcher looks the fact up and replies. The double files no tasks: a
+ * conversation's tasks are read through the coding board view, which a test
+ * serves from `stub-server.ts` or the lab's own host. Ask writer to
  * publish and it waits for your yes first. A line you send starts its own
  * turn at once, beside any the worker is answering, as the worker's door
- * (`respond`, `hold`) starts it on the server. A message from another worker,
- * or a task's result, waits until the worker has no turn running, as the
- * server defers it, then runs.
+ * (`respond`, `hold`) starts it on the server. A message from another worker
+ * waits until the worker has no turn running, as the server defers it, then runs.
  * Lead's conversation starts past the 50-turn history window.
  * `failTurn` leaves a failed turn in a conversation, as an engine `error` item
  * would; Retry runs that turn's line again.
@@ -32,17 +25,11 @@
 import type { Client, SessionConnectionStatus } from "@flow-state-dev/client";
 import { createElement, type ReactNode } from "react";
 import { CODER_FLOW } from "@flow-state-dev/harness-manager/browser";
-import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { isOpenMessage, RECEIVED_MESSAGE_DATA_TYPE, SEND_MESSAGE_TOOL, type RosterEntry, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import {
   AppProvider,
-  rerunOverrides,
-  runSteps,
   type ConversationEntry,
-  type ReviewDetail,
-  type TaskAnswer,
   type AppCalls,
-  type BoardTask,
   type Unsubscribe,
   type WindowMark,
 } from "../src/app";
@@ -61,24 +48,8 @@ export interface FixtureOptions {
   now?: () => number;
   /** Turns past the window are summarized for the worker, not dropped. */
   summary?: boolean;
-  /** Harnesses this machine isn't set up for: a task on one fails at once, saying so. */
-  notSetUp?: string[];
-  /** A coding run asks which line has the typo before it edits, and waits for your answer. */
-  asks?: boolean;
-  /** A coding run holds before its first step until `startRuns()`, so what shows before it reports anything can be read. */
-  held?: boolean;
-  /** A coding run that committed waits for your review: Accept completes it, Ask for changes runs it once more. */
-  review?: boolean;
-  /**
-   * The review offers both ways to land an accept, Open a PR and Merge locally,
-   * as harness-manager's does on a host that can land. A merge conflicts the
-   * first time, and the review is asked again with the error.
-   */
-  lands?: boolean;
   /** How many roster view reads fail as an unreachable server would, before one lands. */
   unreachableReads?: number;
-  /** Board rows already there when the lab opens, each filed by the conversation of the worker `filer` names. */
-  tasks?: (BoardTask & { filer: string })[];
 }
 
 /** The fixture, plus what a test does to its server. */
@@ -103,46 +74,11 @@ export interface FixtureApp extends AppCalls {
   failTurn(sessionId: string, reason: string): void;
   /** Each `retry` the screen made, in order. */
   readonly retries: { sessionId: string; requestId: string }[];
-  /** With `held`, every coding run waiting to start goes on to its first step. */
-  startRuns(): void;
   /** The next line's turn fails at its model call with `reason`, before any reply: the contract tests' failed turn. */
   failNextTurn(reason: string): void;
   /** The next Stop is refused while its turn runs on, as a server that resumed the turn first refuses it. */
   refuseNextStop(): void;
 }
-
-/**
- * Each coding worker's harness, by name, the model its run reports, if it
- * reports one, and what its run spent once it has run its check: Codex on an
- * API key reports a charge; Claude Code on a subscription reports tokens only.
- */
-const HARNESS: Record<string, { name: string; model?: string; spent?: { inputTokens: number; outputTokens: number; costUsd: number | null } }> = {
-  "claude-code": { name: "Claude Code", spent: { inputTokens: 8_000, outputTokens: 1_200, costUsd: null } },
-  codex: { name: "Codex", model: "gpt-5.5-codex", spent: { inputTokens: 12_400, outputTokens: 2_300, costUsd: 0.42 } },
-  cursor: { name: "Cursor" },
-};
-
-/**
- * The tools each harness's run calls to fix the typo, under their own names
- * and arguments: it reads the file, edits it, and runs the docs check.
- */
-const RUN_TOOLS: Record<string, Record<"read" | "edit" | "check", [string, Record<string, unknown>]>> = {
-  "claude-code": {
-    read: ["Read", { file_path: "/work/README.md" }],
-    edit: ["Edit", { file_path: "/work/README.md", old_string: "Relay keps", new_string: "Relay keeps" }],
-    check: ["Bash", { command: "pnpm docs:check", description: "Run the docs check" }],
-  },
-  codex: {
-    read: ["command_execution", { command: "sed -n 1p README.md" }],
-    edit: ["file_change", { changes: [{ path: "/work/README.md", kind: "update" }] }],
-    check: ["command_execution", { command: "cd /work && pnpm docs:check" }],
-  },
-  cursor: {
-    read: ["read", { path: "/work/README.md" }],
-    edit: ["edit", { path: "/work/README.md" }],
-    check: ["shell", { command: "pnpm docs:check" }],
-  },
-};
 
 /** How many turns a worker reads word for word: the agent flow's default. */
 const WINDOW_TURNS = 50;
@@ -159,17 +95,8 @@ const ROSTER: FixtureTeammate[] = [
 const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
 const WRITER = "teammates.writer";
-/** The coding worker a task that names no harness goes to: Lead's default. */
-const DEFAULT_CODER = "teammates.cursor";
 
-type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: AppTalk } | { kind: "result"; task: BoardTask };
-
-/** A board row, and the conversation that filed it. `attempt` counts its runs, so a run a cancel or retry left behind stops. */
-/** A fixture's row: the task, and the times the board keeps for it (its view reads them, as the adapter's does). */
-type FixtureTask = BoardTask & { sessionId: string; attempt?: number; createdAt?: number; completedAt?: number };
-
-/** The board's words for an action on a task that has ended or is still open, as `updateTask` and `retryTask` refuse. */
-const refusal = (task: FixtureTask, verb: string) => `${verb}: task "${task.title}" (${task.id}) is ${task.boardStatus}.`;
+type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: AppTalk };
 
 /** One running turn: its last entry so far, and whether it still runs (a stopped one's steps do nothing). */
 interface FixtureTurn {
@@ -225,20 +152,10 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
   };
   const bySession = (sessionId: string) => [...workers.values()].find((w) => w.sessionId === sessionId);
   const fired = new Set<string>();
-  let tasks: FixtureTask[] = (options.tasks ?? []).map(({ filer, ...task }) => ({ ...task, sessionId: worker(filer).sessionId }));
-  /** Each task's run, as the items its harness reports. */
-  const runs = new Map<string, Record<string, unknown>[]>();
-  const notSetUp = new Set(options.notSetUp ?? []);
   let unreachable = options.unreachableReads ?? 0;
   let connection: SessionConnectionStatus = "live";
   let failNext: string | undefined;
   let refuseStop = false;
-  /** What each run waiting on you is waiting for: the answer it goes on with. */
-  const waits = new Map<string, (answer: TaskAnswer) => void>();
-  /** With `held`, the coding runs waiting on `startRuns()`. */
-  const held = new Set<() => void>();
-  /** Each run's latest review, by its run session. */
-  const reviews = new Map<string, ReviewDetail>();
   /** The worker each open approval belongs to, by suspension id. */
   const approvals = new Map<string, FixtureWorker>();
 
@@ -290,146 +207,7 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
     startDeferred(recipient);
   };
 
-  const updateTask = (id: string, patch: Partial<FixtureTask>) => {
-    tasks = tasks.map((t) => (t.id === id ? { ...t, ...patch } : t));
-    notify();
-  };
-  /** One item of a run, as its harness's block reports it. */
-  const report = (taskId: string, harness: string, item: Record<string, unknown>): Step[1] => () => {
-    runs.set(taskId, [...(runs.get(taskId) ?? []), { id: nextId("item"), status: "completed", provenance: { blockName: `${harness}-agent` }, ...item }]);
-    notify();
-  };
-  const tool = (name: string, args: Record<string, unknown>) => ({ type: "tool_output", toolCall: { name, arguments: JSON.stringify(args) } });
-  const said = (text: string) => ({ type: "message", role: "assistant", content: [{ type: "output_text", text }] });
-
-  /**
-   * `createTask` for coder: a card in the filer's conversation, and a run in the working folder. The
-   * board's row lands a moment after the filing, as the real stream sends it.
-   */
-  const fileTask = (w: FixtureWorker, title: string, to = DEFAULT_CODER): Step[1] => () => {
-    const id = nextId("t");
-    const harness = worker(to).row.harness!;
-    const task: FixtureTask = {
-      id,
-      to,
-      title,
-      goal: title,
-      status: "running",
-      boardStatus: "in_progress",
-      runSessionId: `run:${id}`,
-      runRequestId: `req:${id}`,
-      sessionId: w.sessionId,
-      harness: HARNESS[harness]!.name,
-      createdAt: Date.now(),
-      startedAt: Date.now(),
-    };
-    push(w, { kind: "task", id: nextId("k"), taskId: task.id, title, to });
-    setTimeout(() => {
-      tasks = [...tasks, task];
-      notify();
-    }, 300 * speed);
-    runTask(w, task);
-  };
-
-  /** A coding task's run, on its worker's harness, until it ends, or a cancel or a retry leaves it behind. */
-  const runTask = (w: FixtureWorker, task: FixtureTask) => {
-    const harness = worker(task.to).row.harness!;
-    const attempt = (task.attempt ?? 0) + 1;
-    task.attempt = attempt;
-    if (tasks.some((t) => t.id === task.id)) updateTask(task.id, { attempt });
-    /** The row as it stands now. */
-    const row = () => tasks.find((t) => t.id === task.id);
-    /** This run still owns its task: it wasn't cancelled, nor run again. */
-    const live = () => (row()?.attempt ?? attempt) === attempt && row()?.boardStatus !== "cancelled";
-    const end = (status: "done" | "failed", text: string) => () => {
-      if (!live()) return;
-      const ending = status === "done" ? { result: text } : { error: text };
-      updateTask(task.id, { status, boardStatus: status === "done" ? "completed" : "errored", completedAt: Date.now(), ...ending });
-      w.deferred.push({ kind: "result", task: { ...task, status, ...ending } });
-      startDeferred(w);
-    };
-    // A harness this machine isn't set up for: the task fails before any run, naming it.
-    if (notSetUp.has(harness)) {
-      const name = HARNESS[harness]!.name;
-      setTimeout(end("failed", `${name} isn't set up on this machine: no sign-in found. Sign in to ${name}, then start the task again.`), 400 * speed);
-      return;
-    }
-    const model = HARNESS[harness]!.model;
-    const spent = HARNESS[harness]!.spent;
-    const calls = RUN_TOOLS[harness]!;
-    const call = (which: "read" | "edit" | "check") => report(task.id, harness, tool(...calls[which]));
-    const sleep = async (ms: number) => {
-      await new Promise<void>((resolve) => setTimeout(resolve, ms * speed));
-      // A cancelled or re-run task's old run goes no further.
-      if (!live()) throw new Error("left behind");
-    };
-    /** The task waits on you for `waiting`, until you answer. */
-    let holdCount = 0;
-    const waitOn = (waiting: NonNullable<BoardTask["waiting"]>) =>
-      new Promise<TaskAnswer>((resolve) => {
-        waits.set(task.id, (answer) => {
-          waits.delete(task.id);
-          updateTask(task.id, { waiting: undefined });
-          resolve(answer);
-        });
-        updateTask(task.id, { waiting: { ...waiting, holdId: `hold-${++holdCount}` } });
-      });
-    void (async () => {
-      if (options.held) await new Promise<void>((resolve) => held.add(resolve));
-      await sleep(600);
-      // The run reports its model, if its harness reports one, once it starts.
-      if (model !== undefined) updateTask(task.id, { model });
-      call("read")();
-      await sleep(600);
-      report(task.id, harness, said('The typo is on line 1: "Relay keps".'))();
-      if (options.asks) {
-        const answer = await waitOn({ kind: "question", prompt: "Should I fix only line 1, or every typo?", unanswerable: null });
-        report(task.id, harness, { type: "message", role: "user", content: [{ type: "input_text", text: "text" in answer ? answer.text : "" }] })();
-      }
-      await sleep(600);
-      call("edit")();
-      await sleep(800);
-      call("check")();
-      // What the run spent, as the row's folded view reads it once the run has reported.
-      if (spent !== undefined) updateTask(task.id, { spend: { harness, model: model ?? null, ...spent, unreported: false, live: false } });
-      let landFailed: ReviewDetail["landFailed"] = null;
-      let landed: BoardTask["landed"];
-      for (let commits = 1; options.review; commits++) {
-        const branch = `teammates/${task.id}--change`;
-        reviews.set(task.runSessionId!, {
-          branch,
-          commits,
-          subjects: Array.from({ length: commits }, (_, i) => (i === 0 ? "docs: fix the README typo" : "docs: keep the old wording")).reverse(),
-          judge: { verdict: "done", confidence: 0.91, reason: "The typo on line 1 is fixed." },
-          checks: null,
-          lands: options.lands ? ["pull-request", "merge"] : [],
-          landFailed,
-        });
-        notify();
-        const answer = await waitOn({ kind: "review", prompt: `${commits} commit${commits === 1 ? "" : "s"} on ${branch}`, unanswerable: null });
-        if ("verdict" in answer && answer.verdict === "accepted" && answer.land === "merge") {
-          // Every merge conflicts, the same way each time: asked again, nothing changed.
-          landFailed = { land: "merge", message: "Merging conflicts in README.md, so it was stopped." };
-          commits--;
-          continue;
-        }
-        if ("verdict" in answer && answer.verdict === "accepted") {
-          if (answer.land === "pull-request") landed = { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch, base: "main" };
-          if (answer.land === "merge") landed = { kind: "merge", branch: "main", commit: "c15d6f098abc", checkout: "/work/relay", from: branch };
-          break;
-        }
-        report(task.id, harness, said(`Revising: ${"words" in answer ? answer.words : ""}`))();
-        await sleep(600);
-        call("edit")();
-      }
-      await sleep(400);
-      if (landed !== undefined) updateTask(task.id, { landed });
-      end("done", "Fixed the typo in README.md, line 1.")();
-    })().catch(() => {});
-  };
-
   const script = (w: FixtureWorker, job: Job): Step[] => {
-    if (job.kind === "result") return [[900, say(w, `The coding task is done: "${job.task.result}"`)]];
     if (job.kind === "receive") {
       const { message } = job;
       const from = worker(message.from).row.name;
@@ -445,23 +223,12 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
       approvals.set(suspensionId, w);
       return [[600, () => push(w, { kind: "approval", id: nextId("ap"), requestId: nextId("req"), suspensionId, text: "Publish the draft to the team page?" })]];
     }
-    // A long turn, as the contract's stop scenario asks: two coding tasks, then work that runs until it is stopped.
-    if (w.row.id === LEAD && /\bboth modules\b/i.test(job.text)) {
-      return [
-        [300, fileTask(w, "Fix module A")],
-        [200, fileTask(w, "Fix module B")],
-        [30_000, say(w, "Written up.")],
-      ];
-    }
+    // A long turn, as the contract's stop scenarios ask: work that runs until it is stopped.
+    if (w.row.id === LEAD && /\bboth modules\b/i.test(job.text)) return [[30_000, say(w, "Written up.")]];
     if (w.row.id === LEAD && /\bmeanwhile\b/i.test(job.text)) return [[30_000, say(w, "Drafted.")]];
-    if (w.row.id === LEAD && /\bfix\b/i.test(job.text)) {
-      // The coding agent you name, else the default.
-      const named = ROSTER.find((r) => r.takesTasks && new RegExp(`\\b${r.name}\\b`, "i").test(job.text));
-      const to = named?.id ?? DEFAULT_CODER;
-      return [
-        [800, sayStreamed(w, `Starting a coding task on ${worker(to).row.name} for that. It runs in the background, and its card shows here.`)],
-        [1200, fileTask(w, "Fix the typo in the README's first line", to)],
-      ];
+    // A long answer, written word by word, as a streamed send draws it.
+    if (w.row.id === LEAD && /\bwalk me through\b/i.test(job.text)) {
+      return [[800, sayStreamed(w, "Here is the plan for the post, part by part, so each part has one job. That is the whole plan.")]];
     }
     if (w.row.id === LEAD && !log.some((m) => m.from === LEAD && m.to === RESEARCHER)) {
       return [
@@ -480,10 +247,6 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
     w.lastActiveAt = now();
     if (job.kind === "user") {
       t.last = job.entryId;
-    } else if (job.kind === "result") {
-      const { task } = job;
-      t.last = nextId("r");
-      w.entries = [...w.entries, { kind: "result", id: t.last, taskId: task.id, from: task.to, text: task.result ?? task.error ?? "", title: task.title, ...(task.status === "failed" ? { failed: true } : {}) }];
     } else {
       const { message } = job;
       t.last = nextId("r");
@@ -690,6 +453,8 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
       return [{ id: `turn:${w.lastActiveAt}`, action: "respond", status: running ? "in_progress" : "completed", source: "user", startedAt: w.lastActiveAt, completedAt: running ? null : w.lastActiveAt, endedAt: running ? null : w.lastActiveAt, error: null, historyStart: null }];
     },
     workerMessages,
+    // The double files no tasks: each conversation's coding board is empty (a test serves rows from `stub-server.ts`).
+    codingBoard: () => [],
   };
   const client = {
     userId: "you",
@@ -749,10 +514,6 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
       notify();
     },
     retries,
-    startRuns() {
-      for (const start of [...held]) start();
-      held.clear();
-    },
     failTurn(sessionId, reason) {
       const w = bySession(sessionId);
       if (!w) throw new Error(`no conversation ${sessionId}`);
@@ -828,9 +589,8 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
       return watch(() => {
         const w = bySession(sessionId);
         if (!w) return;
-        // The real adapter's count is the conversation's unfinished runs: here, its tasks still running.
-        const backgroundRunning = tasks.filter((t) => t.sessionId === sessionId && t.status === "running").length;
-        onChange({ entries: w.entries, running: w.turns.length > 0, stopping: w.stopping === true, backgroundRunning });
+        // The real adapter's count is the conversation's unfinished runs: the double runs none in the background.
+        onChange({ entries: w.entries, running: w.turns.length > 0, stopping: w.stopping === true, backgroundRunning: 0 });
       });
     },
 
@@ -863,124 +623,6 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
     roster: () => rosterEntries(),
     close: () => {},
     rosterWrites,
-
-    watchTasks(sessionId, onChange) {
-      // Each row with its view, as the adapter reads one from the board's row (no holds: a fixture's wait is its `waiting`).
-      return watch(() =>
-        onChange(
-          tasks
-            .filter((t) => t.sessionId === sessionId)
-            .map(({ sessionId: _, createdAt, completedAt, ...card }) => ({
-              ...card,
-              view: taskView({ id: card.id, status: card.boardStatus, title: card.title, goal: card.goal, board: sessionId, createdAt, startedAt: card.startedAt, completedAt }),
-            })),
-        ),
-      );
-    },
-
-    watchReview(runSessionId, onChange) {
-      return watch(() => onChange(reviews.get(runSessionId)));
-    },
-
-    /**
-     * What a run recorded, as harness-manager's reader returns it: a Claude Code run's edited
-     * files, one row per path; `files: null` on Codex and Cursor, whose blocks record none.
-     */
-    async recordedWork({ sessionId }) {
-      const task = tasks.find((t) => t.runSessionId === sessionId);
-      if (task?.harness !== HARNESS["claude-code"]!.name) return { plan: null, files: null, pullRequests: null };
-      const edited = (runs.get(task.id) ?? []).flatMap((item) => {
-        const call = (item as { toolCall?: { name?: string; arguments?: string } }).toolCall;
-        return call?.name === "Edit" ? [JSON.parse(call.arguments ?? "{}").file_path as string] : [];
-      });
-      return { plan: null, files: { rows: [...new Set(edited)].map((path) => ({ path, kind: "edited" as const, applied: 1 })), truncated: false }, pullRequests: null };
-    },
-
-    async answerOpenHold(_sessionId, taskId, answer) {
-      const go = waits.get(taskId);
-      if (go === undefined) throw new Error(`This task isn't waiting on you.`);
-      go(answer);
-    },
-
-    taskActions(sessionId) {
-      const filed = (taskId: string) => {
-        const task = tasks.find((t) => t.id === taskId && t.sessionId === sessionId);
-        if (task === undefined) throw new Error(`not_found: no task "${taskId}" on this board.`);
-        return task;
-      };
-      const open = (task: FixtureTask) => ["pending", "held", "in_progress"].includes(task.boardStatus);
-      const filer = () => bySession(sessionId)!;
-      return {
-        async cancel(taskId) {
-          const task = filed(taskId);
-          if (!open(task)) throw new Error(refusal(task, "finished"));
-          waits.delete(taskId);
-          updateTask(taskId, { status: "cancelled", boardStatus: "cancelled", waiting: undefined, completedAt: Date.now() });
-          return [];
-        },
-        async steer(taskId, message) {
-          const task = filed(taskId);
-          if (!open(task)) throw new Error(refusal(task, "finished"));
-          // The run reads the line as one more given to it.
-          report(taskId, worker(task.to).row.harness!, { type: "message", role: "user", content: [{ type: "input_text", text: message }] })();
-        },
-        async release(taskId) {
-          const task = filed(taskId);
-          if (task.boardStatus !== "held") throw new Error(refusal(task, "not_held"));
-          updateTask(taskId, { boardStatus: "pending" });
-        },
-        async retry(taskId) {
-          const task = filed(taskId);
-          if (task.boardStatus !== "errored" && task.boardStatus !== "cancelled") throw new Error(refusal(task, "not_ended"));
-          updateTask(taskId, { status: "running", boardStatus: "in_progress", error: undefined, result: undefined, completedAt: undefined });
-          runTask(filer(), filed(taskId));
-        },
-        async rerun(task, to) {
-          const { assignee, context } = rerunOverrides(task, to) as { assignee: string; context: string };
-          const same = tasks.find((t) => t.sessionId === sessionId && t.to === assignee && open(t) && t.goal === task.goal);
-          if (same !== undefined) {
-            throw new Error(`already_open: task "${same.title}" (${same.id}) is this same work for ${assignee}, and it is still ${same.boardStatus}. Nothing was filed.`);
-          }
-          const id = nextId("t");
-          const harness = worker(assignee).row.harness!;
-          const next: FixtureTask = {
-            id,
-            to: assignee,
-            title: task.title,
-            goal: task.goal,
-            context,
-            status: "running",
-            boardStatus: "in_progress",
-            runSessionId: `run:${id}`,
-            runRequestId: `req:${id}`,
-            sessionId,
-            harness: HARNESS[harness]!.name,
-            createdAt: Date.now(),
-            startedAt: Date.now(),
-          };
-          tasks = [...tasks, next];
-          notify();
-          runTask(filer(), next);
-          return id;
-        },
-      };
-    },
-
-    watchRun(runSessionId, onChange) {
-      const taskId = runSessionId.replace(/^run:/, "");
-      return watch(() => {
-        onChange(runSteps((runs.get(taskId) ?? []) as never));
-      });
-    },
-
-    // The double's runs open no pull request.
-    readPullRequests: async () => [],
-
-    watchWorking(_run, onChange) {
-      // The double's runs report each step as it finishes and record no plan: the line keeps its plain label.
-      onChange({});
-      return () => {};
-    },
 
   };
   return fake;

@@ -189,7 +189,7 @@ function withCurrentId(current: Task | undefined): { current?: { id: string } } 
 }
 
 /** A value as `getTask` returns it: whole, or its JSON cut to {@link READ_OUTPUT_LIMIT}. */
-function readable(value: unknown): { value: unknown; cut: boolean } {
+export function readable(value: unknown): { value: unknown; cut: boolean } {
   const text = typeof value === "string" ? value : (JSON.stringify(value) ?? String(value));
   if (text.length <= READ_OUTPUT_LIMIT) return { value, cut: false };
   return { value: text.slice(0, READ_OUTPUT_LIMIT), cut: true };

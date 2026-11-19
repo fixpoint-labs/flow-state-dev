@@ -148,6 +148,7 @@ const boardRow = (row: Partial<CodingBoardTask>): CodingBoardTask => ({
   error: null,
   pullRequests: [],
   runFlow: null,
+  detail: null,
   ...row,
 });
 

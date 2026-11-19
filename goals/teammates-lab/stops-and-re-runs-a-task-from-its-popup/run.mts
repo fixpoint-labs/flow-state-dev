@@ -60,17 +60,17 @@ const CONTROLS: Record<string, Patch[]> = {
   "other-session": [
     {
       file: "src/app/tasks.ts",
-      from: 'import { answerTextOf } from "@flow-state-dev/workforce/browser";',
-      to: 'import { viewRef } from "@flow-state-dev/client";\nimport { answerTextOf } from "@flow-state-dev/workforce/browser";',
+      from: 'import { useEffect, useMemo, useState } from "react";',
+      to: 'import { viewRef } from "@flow-state-dev/client";\nimport { useEffect, useMemo, useState } from "react";',
       why: "the worker sessions view's ref, for the patch below",
     },
     {
       file: "src/app/tasks.ts",
-      from: "return (await board()).refile(refileEntryOf(whole), rerunOverrides(whole, worker));",
+      from: "return actions.refile(brief, rerunOverrides(task, brief.context, worker));",
       to:
         // FIX-2725: Lead's other conversation, from the roster flow's worker sessions view.
         `const other = ((await client.view(viewRef("workforce-roster", "workerSessions"), { worker: ${JSON.stringify(fixture.filer)} })).value as Array<{ id: string; isDefault: boolean }>).find((s) => !s.isDefault)!; ` +
-        "return inbox.board({ flowId: await flowOf(), sessionId: other.id, board: TASK_BOARD }).refile(refileEntryOf(whole), rerunOverrides(whole, worker));",
+        "return inbox.board({ flowId: await flowOf(), sessionId: other.id, board: TASK_BOARD }).refile(brief, rerunOverrides(task, brief.context, worker));",
       why: "Re-run is bound to a second conversation with Lead, not the one that filed the task",
     },
   ],
