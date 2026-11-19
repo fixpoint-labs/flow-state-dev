@@ -71,6 +71,8 @@ const errorHistoryRecordSchema = z.object({
   taskIds: z.array(z.string()),
   /** The filed issue: the operator's alone, `null` for a user. */
   issue: z.object({ identifier: z.string().nullable(), url: z.string() }).nullable(),
+  /** The report's Inbox item while it waits there, as a Markdown link: the operator's alone, `null` for a user and once it stops waiting. */
+  inbox: z.string().nullable(),
   /** That day's entries the caller may read, newest first, at most 50. */
   entries: z.array(entryViewSchema),
   /** Entries that day's hours counted past their cap and did not keep: the operator's alone, 0 for a user. */
@@ -86,6 +88,7 @@ const contentTemplate = parseResourceTemplate(
     "Error report, {{ state.status }}. Source: {{ state.source }}. Error: {{ state.error }}",
     "Seen {{ state.count }} time(s), first {{ state.firstSeen }}, last {{ state.lastSeen }}.",
     "{% if state.issue %}Issue: {% if state.issue.identifier %}{{ state.issue.identifier }} {% endif %}{{ state.issue.url }}{% endif %}",
+    "{% if state.inbox %}{{ state.inbox }}{% endif %}",
     "{% if state.taskIds.size > 0 %}Tasks: {{ state.taskIds | join: ', ' }}{% endif %}",
     "",
     "## {{ state.day }} (UTC), newest first",
@@ -163,6 +166,9 @@ const entryView = (e: HistoryEntry, withIssue: boolean): z.infer<typeof entryVie
   issue: e.issue === undefined || !withIssue ? null : { identifier: e.issue.identifier ?? null, url: e.issue.url }
 });
 
+/** A report's Inbox item as a Markdown link, or `undefined` when the Lab names no link. */
+type InboxLinkOf = (reportId: string) => string | undefined;
+
 /**
  * One day's records the viewer may read. An occurrence entry is the
  * viewer's when its user is; a status entry belongs to the report, and shows
@@ -172,7 +178,7 @@ const entryView = (e: HistoryEntry, withIssue: boolean): z.infer<typeof entryVie
  * from every user's failures (the drafted title, the report's count, its
  * issue, the hours' cut).
  */
-function recordsOf(read: HistoryRead, day: string, viewer: Viewer): ErrorHistoryRecord[] {
+function recordsOf(read: HistoryRead, day: string, viewer: Viewer, inboxOf: InboxLinkOf): ErrorHistoryRecord[] {
   if (viewer.kind === "none") return [];
   const hours = read.hours.filter((hour) => hour.hour.startsWith(`${day}-`));
   const cut = hours.reduce((sum, hour) => sum + hour.cut, 0);
@@ -218,6 +224,7 @@ function recordsOf(read: HistoryRead, day: string, viewer: Viewer): ErrorHistory
         lastSeen: new Date(report.lastSeenAt).toISOString(),
         taskIds: [...new Set([...report.occurrences.flatMap((o) => (o.taskId === undefined ? [] : [o.taskId])), ...ownTaskIds])],
         issue: report.issue === undefined ? null : { identifier: report.issue.identifier ?? null, url: report.issue.url },
+        inbox: report.status === "previewing" ? (inboxOf(report.id) ?? null) : null,
         entries: entriesShown,
         cut
       });
@@ -239,6 +246,7 @@ function recordsOf(read: HistoryRead, day: string, viewer: Viewer): ErrorHistory
       lastSeen: new Date(timed[0]!.at).toISOString(),
       taskIds: [...new Set(ownTaskIds)],
       issue: null,
+      inbox: null,
       entries: entriesShown,
       cut: 0
     });
@@ -264,12 +272,13 @@ function searchTextOf(record: ErrorHistoryRecord): string {
  *
  * @param read The requested days' hours, with the reports they name.
  * @param request Who reads, and what.
+ * @param inboxOf The link to a waiting report's Inbox item, put on the operator's records alone.
  */
-export function historyRecords(read: HistoryRead, request: HistoryRequest): ErrorHistoryRecord[] {
+export function historyRecords(read: HistoryRead, request: HistoryRequest, inboxOf: InboxLinkOf): ErrorHistoryRecord[] {
   const { viewer, days } = request;
   if (request.ref !== undefined) {
     const hash = hashOfRef(request.ref);
-    return days.flatMap((d) => recordsOf(read, d, viewer)).filter((record) => hashOfRef(record.ref) === hash).slice(0, 1);
+    return days.flatMap((d) => recordsOf(read, d, viewer, inboxOf)).filter((record) => hashOfRef(record.ref) === hash).slice(0, 1);
   }
   const prefix = request.prefix ?? "";
   const terms = (request.search ?? "")
@@ -277,7 +286,7 @@ export function historyRecords(read: HistoryRead, request: HistoryRequest): Erro
     .split(/\W+/)
     .filter((term) => term.length > 0);
   return days
-    .flatMap((d) => recordsOf(read, d, viewer))
+    .flatMap((d) => recordsOf(read, d, viewer, inboxOf))
     .filter((record) => {
       const key = `${record.day}/${record.ref}`;
       return prefix === "" || key === prefix || key.startsWith(`${prefix}/`);

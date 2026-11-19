@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * The screen, on a test double (`fake-app.ts`). These prove the UI only: a list of workers rather
+ * The screen, on the scripted server (`scripted-server.ts`). These prove the UI only: a list of workers rather
  * than sessions, worker talk drawn in both conversations (D1), the open
  * teammate's panel with the tasks its conversation filed, a reply that waits for your turn and shows as pending (D2), and a
  * divider that never calls a window boundary a summary, and a coding job that
@@ -14,22 +14,22 @@ import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { App } from "../src/components/App";
 import { codingTask, POPUP_READ, stubServer, TestProvider, type StubData } from "./stub-server";
 import { TEAMMATE_COLORS } from "../src/lib/looks";
-import { createFixtureApp } from "./fake-app";
+import { scriptedServer } from "./scripted-server";
 
 // The script runs at a twentieth of real time.
-const fast = (options = {}) => createFixtureApp({ speed: 0.05, ...options });
+const fast = (options = {}) => scriptedServer({ speed: 0.05, ...options });
 
-/** Lead's conversation, as the double names it: the board its tasks are filed on. */
+/** Lead's conversation, as the scripted server names it: the board its tasks are filed on. */
 const LEAD = "conversation:teammates.chief-of-staff";
 
 /**
- * The lab on the double, with each conversation's tasks served by a stand-in coding board (and
- * whatever else `data` names: a run's items, its recorded plan): the double files no tasks.
+ * The lab on the scripted server, with each conversation's tasks served by a stand-in coding board (and
+ * whatever else `data` names: a run's items, its recorded plan): the scripted server files no tasks.
  */
 function renderOnBoard(board: Record<string, CodingBoardTask[]>, data: Omit<StubData, "board"> = {}, options = {}) {
   const server = stubServer({ board, ...data });
   const lab = fast(options);
-  render(<TestProvider calls={lab} client={server.client}><App /></TestProvider>);
+  render(<TestProvider server={lab} client={server.client}><App /></TestProvider>);
   return { lab, server };
 }
 
@@ -119,7 +119,7 @@ function layOutFeeds(height: (feed: HTMLElement) => number = () => 5000) {
 
 describe("the teammates screen", () => {
   it("lists teammates, not sessions, and opens on Lead's one conversation", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
     // Coding is a background task, not a teammate: the worker coding tasks run on is not listed.
     for (const coder of ["Claude Code", "Codex", "Cursor"]) expect(workers().querySelector(`[data-worker="${coder}"]`), coder).toBeNull();
@@ -130,7 +130,7 @@ describe("the teammates screen", () => {
   });
 
   it("marks where Lead's word-for-word turns begin, and calls it out of view, not summarized", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     const divider = await screen.findByRole("separator");
     expect(divider.getAttribute("aria-label")).toBe("Earlier turns out of view");
     // 52 turns seeded, 50 in the window: turns 1 and 2 sit before the divider, turn 3 right after it.
@@ -141,13 +141,13 @@ describe("the teammates screen", () => {
   });
 
   it("labels the divider summarized only when the earlier turns were summarized", async () => {
-    render(<TestProvider calls={fast({ summary: true })}><App /></TestProvider>);
+    render(<TestProvider server={fast({ summary: true })}><App /></TestProvider>);
     const divider = await screen.findByRole("separator");
     expect(divider.getAttribute("aria-label")).toBe("Earlier turns summarized");
   });
 
   it("draws Lead's message to researcher in both conversations", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
 
     // Step 2: one line in Lead's conversation, "Messaged researcher", that opens the exchange.
@@ -163,7 +163,7 @@ describe("the teammates screen", () => {
   });
 
   it("opens a message line to the exchange in a popup that fills in live, and closes it with Esc or a click outside", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
     expect(line.querySelector("[data-sent-status]")?.textContent).toBe("working");
@@ -213,7 +213,7 @@ describe("the teammates screen", () => {
   });
 
   it("a pick from ⌘K over a popup closes the popup, so the picked conversation takes the keys", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
     line.focus();
@@ -228,7 +228,7 @@ describe("the teammates screen", () => {
   });
 
   it("an Esc in ⌘K over a popup closes the switcher only, and the popup stays open under it", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
     line.focus();
@@ -242,7 +242,7 @@ describe("the teammates screen", () => {
   });
 
   it("holds researcher's reply as pending while Lead answers you, and lands it after that answer", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     await within(conversation()).findByRole("button", { name: /^Messaged researcher/ });
 
@@ -264,7 +264,7 @@ describe("the teammates screen", () => {
   });
 
   it("answers a line you send while Lead answers at once, beside that answer, and never says it waits", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     await tell("Lead", "Meanwhile, draft the release note.");
     await within(conversation()).findByRole("status", OUTSIDE_COMPOSER);
     // The composer says what a line sent now does.
@@ -278,7 +278,7 @@ describe("the teammates screen", () => {
   });
 
   it("counts what researcher did while you watched Lead as unread, and clears it when you open researcher", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     await waitFor(() => expect(within(workerRow("researcher")).getByLabelText(/unread/).textContent).toBe("3"), { timeout: 2000 });
     fireEvent.click(workerRow("researcher"));
@@ -286,7 +286,7 @@ describe("the teammates screen", () => {
   });
 
   it("has no Talk panel or Talk control: the right pane is the open teammate's panel", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     await screen.findByLabelText("Message Lead");
     expect(screen.queryByRole("complementary", { name: "Talk" })).toBeNull();
     expect(screen.queryByRole("button", { name: /talk/i })).toBeNull();
@@ -481,7 +481,7 @@ describe("the teammates screen", () => {
   });
 
   it("lines the composer up with the message list: one column token, centred", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     const box = await screen.findByLabelText("Message Lead");
     const columns = () => [...conversation().querySelectorAll<HTMLElement>("[data-column]")];
     const capped = (el: HTMLElement) => el.classList.contains("max-w-(--thread-width)") && el.classList.contains("mx-auto");
@@ -498,7 +498,7 @@ describe("the teammates screen", () => {
     // Slow enough to scroll up while the answer is still being written.
     const feeds = layOutFeeds();
     onTestFinished(feeds.restore);
-    render(<TestProvider calls={fast({ speed: 0.5 })}><App /></TestProvider>);
+    render(<TestProvider server={fast({ speed: 0.5 })}><App /></TestProvider>);
     await screen.findByLabelText("Message Lead");
     const scroller = conversation().querySelector<HTMLElement>("[data-scroller]")!;
     const before = entries("assistant");
@@ -528,7 +528,7 @@ describe("the teammates screen", () => {
   it("opens a worker's conversation already at its end, with no scroll to watch, and switching workers does the same", async () => {
     const feeds = layOutFeeds();
     try {
-      render(<TestProvider calls={fast()}><App /></TestProvider>);
+      render(<TestProvider server={fast()}><App /></TestProvider>);
       await screen.findByLabelText("Message Lead");
       await screen.findByRole("separator");
       const first = conversation().querySelector<HTMLElement>("[data-scroller]")!;
@@ -551,7 +551,7 @@ describe("the teammates screen", () => {
   it("opens a message's popup already at its latest step, and leaves it there as the reply arrives", async () => {
     const feeds = layOutFeeds();
     try {
-      render(<TestProvider calls={fast()}><App /></TestProvider>);
+      render(<TestProvider server={fast()}><App /></TestProvider>);
       await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
       const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
       feeds.scrolls.length = 0;
@@ -577,7 +577,7 @@ describe("the teammates screen", () => {
     // Slow enough to look at the answer while it is still being written. The list grows with its text.
     const feeds = layOutFeeds((feed) => 500 + (feed.textContent?.length ?? 0));
     onTestFinished(feeds.restore);
-    render(<TestProvider calls={fast({ speed: 0.5 })}><App /></TestProvider>);
+    render(<TestProvider server={fast({ speed: 0.5 })}><App /></TestProvider>);
     await screen.findByLabelText("Message Lead");
     await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
     const scroller = conversation().querySelector<HTMLElement>("[data-scroller]")!;
@@ -607,8 +607,25 @@ describe("the teammates screen", () => {
     expect(entries("assistant").at(-1)).toBe(streaming);
   });
 
+  it("shows an answer while it is written, from the send's own streamed response", async () => {
+    // The session stream sends the answer only once it is finished, as the server's does: a part-written
+    // answer on screen came through the send's response, which the conversation follows.
+    render(<TestProvider server={fast({ speed: 0.5 })}><App /></TestProvider>);
+    await screen.findByLabelText("Message Lead");
+    await tell("Lead", "Walk me through the launch post.");
+    await waitFor(
+      () => {
+        const last = entries("assistant").at(-1);
+        expect(last?.textContent).toMatch(/^Here is the plan/);
+        expect(last?.textContent).not.toMatch(/That is the whole plan\./);
+      },
+      { interval: 5, timeout: 4_000 },
+    );
+    await within(conversation()).findByText(/That is the whole plan\./, {}, { timeout: 4_000 });
+  });
+
   it("sizes the composer's box to its draft in CSS, so a column that narrows rewraps and regrows it", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     // One line to start; the browser grows the box with its text (and its width) up to the cap, then it scrolls.
     expect(box.getAttribute("rows")).toBe("1");
@@ -618,7 +635,7 @@ describe("the teammates screen", () => {
   });
 
   it("doesn't carry a draft to another worker: switching workers starts an empty box", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     const leadBox = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     fireEvent.change(leadBox, { target: { value: "For Lead only" } });
     fireEvent.click(workerRow("researcher"));
@@ -629,12 +646,8 @@ describe("the teammates screen", () => {
   it("keeps a line whose send fails, says why, and sends it again on Retry", async () => {
     const lab = fast();
     let refuse = true;
-    const adapter = {
-      ...lab,
-      send: (sessionId: string, text: string) =>
-        refuse ? Promise.reject(new Error("the server refused it (401)")) : lab.send(sessionId, text),
-    };
-    render(<TestProvider calls={adapter}><App /></TestProvider>);
+    lab.holdDoor(() => (refuse ? Promise.reject(new Error("the server refused it (401)")) : Promise.resolve()));
+    render(<TestProvider server={lab}><App /></TestProvider>);
     const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     await tell("Lead", "Where is the launch plan?");
     const alert = await within(conversation()).findByRole("alert");
@@ -653,11 +666,8 @@ describe("the teammates screen", () => {
   it("keeps what you typed while a send was in flight once it lands", async () => {
     const lab = fast();
     let land!: () => void;
-    const adapter = {
-      ...lab,
-      send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
-    };
-    render(<TestProvider calls={adapter}><App /></TestProvider>);
+    lab.holdDoor(() => new Promise<void>((resolve) => (land = resolve)));
+    render(<TestProvider server={lab}><App /></TestProvider>);
     const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     await tell("Lead", "first ask");
     expect(box.value).toBe("first ask");
@@ -671,39 +681,36 @@ describe("the teammates screen", () => {
   it("keeps a draft revised after a reload when the send from before the reload lands", async () => {
     const lab = fast();
     let land!: () => void;
-    const adapter = {
-      ...lab,
-      send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
-    };
-    const first = render(<TestProvider calls={adapter}><App /></TestProvider>);
+    lab.holdDoor(() => new Promise<void>((resolve) => (land = resolve)));
+    const first = render(<TestProvider server={lab}><App /></TestProvider>);
     await tell("Lead", "first ask");
     first.unmount();
 
-    const second = render(<TestProvider calls={adapter}><App /></TestProvider>);
+    const second = render(<TestProvider server={lab}><App /></TestProvider>);
     const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     expect(box.value).toBe("first ask");
     fireEvent.change(box, { target: { value: "first ask, revised" } });
     await act(async () => land());
     second.unmount();
 
-    render(<TestProvider calls={lab}><App /></TestProvider>);
+    render(<TestProvider server={lab}><App /></TestProvider>);
     expect(((await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement).value).toBe("first ask, revised");
   });
 
   it("brings an unsent draft back after a reload, for that worker only", async () => {
     const lab = fast();
-    const first = render(<TestProvider calls={lab}><App /></TestProvider>);
+    const first = render(<TestProvider server={lab}><App /></TestProvider>);
     fireEvent.change(await screen.findByLabelText("Message Lead"), { target: { value: "half a thought" } });
     first.unmount();
 
-    render(<TestProvider calls={lab}><App /></TestProvider>);
+    render(<TestProvider server={lab}><App /></TestProvider>);
     expect(((await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement).value).toBe("half a thought");
     fireEvent.click(workerRow("researcher"));
     expect(((await screen.findByLabelText("Message researcher")) as HTMLTextAreaElement).value).toBe("");
   });
 
   it("sends with Cmd+Enter and Ctrl+Enter as well as Enter, and Shift+Enter stays a new line", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: "first line" } });
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
@@ -716,7 +723,7 @@ describe("the teammates screen", () => {
   });
 
   it("doesn't send when Enter ends an input method's composition", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     const box = await screen.findByLabelText("Message Lead");
     fireEvent.change(box, { target: { value: "日本語" } });
     fireEvent.keyDown(box, { key: "Enter", isComposing: true });
@@ -729,7 +736,7 @@ describe("the teammates screen", () => {
   });
 
   it("shows what a worker waits for your yes on, and Approve answers it so its turn carries on", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     await waitFor(() => expect(workerRow("writer")).toBeTruthy());
     fireEvent.click(workerRow("writer"));
     await tell("writer", "Publish the draft.");
@@ -743,7 +750,7 @@ describe("the teammates screen", () => {
   });
 
   it("gives each teammate the icon and color its file sets, the same in the list, the header, a message line and its popup", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
     const look = (worker: HTMLElement) => {
       const avatar = worker.querySelector<HTMLElement>("[data-avatar]")!;
@@ -762,7 +769,7 @@ describe("the teammates screen", () => {
   });
 
   it("gives a teammate whose file sets no look its initial, on a color of the palette", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     await screen.findByLabelText("Message Lead");
     fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
     const form = screen.getByRole("form", { name: "Hire a teammate" });
@@ -775,15 +782,18 @@ describe("the teammates screen", () => {
   });
 
   it("says under each name what the teammate is doing now, live, from its own state", async () => {
-    const { server } = renderOnBoard({ [LEAD]: [] });
+    const { lab, server } = renderOnBoard({ [LEAD]: [] });
     const status = (name: string) => workerRow(name).querySelector("[data-status]")?.textContent;
     const header = () => conversation().querySelector("[data-header-status]")?.textContent;
     await waitFor(() => expect(status("Lead")).toMatch(/^Idle/));
     expect(header()).toMatch(/^Idle/);
 
+    // Lead's turn is held open at its start until both lines have been read: at the tests' pace it runs for 80 ms.
+    const release = lab.holdNextTurn("teammates.chief-of-staff");
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     await waitFor(() => expect(status("Lead")).toBe("Replying to you"), { interval: 5 });
-    expect(header()).toBe("Replying to you");
+    await waitFor(() => expect(header()).toBe("Replying to you"), { interval: 5 });
+    act(() => release());
     // researcher answers the message it was sent, and says whose.
     await waitFor(() => expect(status("researcher")).toBe("Replying to Lead"), { interval: 5, timeout: 2000 });
     await waitFor(() => expect(status("Lead")).toBe("Messaging researcher"), { interval: 5, timeout: 2000 });
@@ -797,7 +807,7 @@ describe("the teammates screen", () => {
   });
 
   it("hires with Cmd+Enter in the instructions and saves new ones with Ctrl+Enter, never from a form that can't send yet", async () => {
-    render(<TestProvider calls={fast()}><App /></TestProvider>);
+    render(<TestProvider server={fast()}><App /></TestProvider>);
     await screen.findByLabelText("Message Lead");
     fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
     const form = screen.getByRole("form", { name: "Hire a teammate" });
@@ -832,7 +842,7 @@ describe("the teammates screen", () => {
     const lab = fast();
     // What the panel hands workforce's client: a reset of the file's teammate, by id.
     const resets = () => lab.rosterWrites.filter((w) => w.action === "reset").map((w) => w.input.id);
-    render(<TestProvider calls={lab} client={server.client}><App /></TestProvider>);
+    render(<TestProvider server={lab} client={server.client}><App /></TestProvider>);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
     expect(await within(panel("Lead")).findByRole("button", { name: "Asked researcher to check the launch date" })).toBeTruthy();
@@ -866,7 +876,7 @@ describe("the teammates screen", () => {
     const lab = fast();
     // What the panel hands workforce's client's edit: the next turn reads it.
     const edits = () => lab.rosterWrites.filter((w) => w.action === "edit").map((w) => w.input);
-    render(<TestProvider calls={lab}><App /></TestProvider>);
+    render(<TestProvider server={lab}><App /></TestProvider>);
     await screen.findByLabelText("Message Lead");
     // A worker from the files has no fire control.
     expect(within(conversation()).queryByRole("button", { name: "Fire" })).toBeNull();

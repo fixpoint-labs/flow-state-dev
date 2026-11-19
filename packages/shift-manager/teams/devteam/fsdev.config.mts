@@ -84,7 +84,7 @@ import { parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/works
 import type { AskFeature } from "./ask.mts";
 import { claudeCodeEnv, codexEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
 import { CHECKOUT } from "./fsd-checkouts.mts";
-import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab, operatorGitHubToken, githubReviewersFromEnv, readDevTeamTree } from "./host.mts";
+import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab, operatorGitHubToken, readDevTeamTree } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
@@ -217,7 +217,6 @@ const lab = await openLab({
   // A routine that follows a GitHub pull request reads GitHub with the operator's token, for the Lab's owner alone.
   githubToken: operatorGitHubToken(),
   // The GitHub logins whose reviews on a coder's pull request reach its run.
-  githubReviewers: githubReviewersFromEnv(),
   // Clock routines and GitHub's polls, each from its own file beside the store.
   scheduleIndexes: { clock: join(dirname(STORE), "devteam-clock.sqlite"), poll: join(dirname(STORE), "devteam-poll.sqlite") },
 });

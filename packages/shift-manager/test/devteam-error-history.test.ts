@@ -158,3 +158,22 @@ describe("asked what was reported", () => {
     expect(seen.at(-1) ?? "").toMatch(HIT);
   });
 });
+
+// The Lab writes the link before any page asks for it, so it can't know the prefix the page
+// is served at: at the root of its origin, or under a proxy's sub-route (`/shift-manager/`,
+// its `<base href>` rewritten to match). The link resolves against that base either way.
+describe("the waiting line's Inbox link", () => {
+  it("opens the report's Inbox item at the root and under a proxy's sub-route", async () => {
+    const opened = await open([], []);
+    const runtime = await opened.state.getRuntime();
+    const requests = (await runtime.stores.request.list({ sessionId: workerSessionId(REPORTER), withItems: true } as never)) as Array<{ items?: Array<Record<string, any>> }>;
+    const lines = requests.flatMap((r) => r.items ?? []).filter((i) => i.type === "message").map((i) => JSON.stringify(i.payload ?? i.content ?? ""));
+    const href = lines.flatMap((line) => [...line.matchAll(/\[Open it in Inbox\]\(([^)\s]+)\)/g)].map((m) => m[1]!))[0];
+    expect(href, lines.join("\n")).toBeDefined();
+    const pending = (await runtime.stores.suspensions.list({ status: "pending" })) as Array<{ sessionId?: string }>;
+    const session = pending.map((s) => s.sessionId ?? "").find((id) => id.startsWith("error-report~"))!;
+    const item = `inbox/${encodeURIComponent(session)}`;
+    expect(new URL(href!, "https://lab.example/").pathname).toBe(`/${item}`);
+    expect(new URL(href!, "https://apps.example/shift-manager/").pathname).toBe(`/shift-manager/${item}`);
+  });
+});

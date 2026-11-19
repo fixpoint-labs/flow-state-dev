@@ -12,12 +12,12 @@ import { createElement, type ReactNode } from "react";
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
-import { useTaskActions, type AppCalls } from "../src/app";
+import { useTaskActions } from "../src/app";
 import { codingTask, TestProvider } from "./stub-server";
 
 /** The board's actions the popup sends, as `useTaskActions` hands them, over `client`. */
 function actionsOn(client: Client) {
-  const wrapper = ({ children }: { children: ReactNode }) => createElement(TestProvider, { calls: {} as AppCalls, client }, children);
+  const wrapper = ({ children }: { children: ReactNode }) => createElement(TestProvider, { client }, children);
   return renderHook(() => useTaskActions("wks_cos"), { wrapper }).result.current;
 }
 

@@ -14,6 +14,8 @@
 
 ## The goal, and how we'll know it's met
 
+> **Amended (Nov 19):** since [FIX-2545](https://linear.app/fixpoint-labs/issue/FIX-2545), the in-memory bus is single-process and keeps no timed read; the rows and signal (3) about two in-memory processes are history ([D1](DECISIONS.md#d1)).
+
 **A change saved in a session reaches every open view of that session as soon as it is saved,
 and a view of a session where nothing changes costs the database nothing, wherever a bus
 carries the change; where none can, views keep today's one-second read and miss nothing.**

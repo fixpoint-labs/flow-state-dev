@@ -13,7 +13,8 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { askSessionOf } from "../src/lib/ask-session";
 import { inboxItems, taskActionName } from "@flow-state-dev/orchestration/inbox";
 import { elapsed, isQueued, nothingWaitingSentence, summaryLine } from "../src/lib/tasks";
-import { itemAtRoute, type InboxAsk, type InboxViewValue } from "../src/lib/inbox";
+import type { InboxAsk, InboxViewValue } from "../src/lib/inbox";
+import { itemAtRoute } from "../src/lib/inbox-list";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import { inboxSection, type Ask, type BoardTaskView, type Worker } from "../src/lib/reads";
 
@@ -102,20 +103,20 @@ function snapshot(rows: BoardTaskView[], asks: Ask[] = [], workers: Worker[] = [
  * server builds it: orchestration's list over the rows (each answered on its
  * conversation's board) and the asks.
  */
-function viewOf(tasks: BoardTaskView[], asks: Array<Pick<InboxAsk, "suspensionId" | "workerId">> = []): InboxViewValue {
+function viewOf(tasks: BoardTaskView[], asks: Array<Pick<InboxAsk, "suspensionId" | "workerId"> & { sessionId?: string }> = []): InboxViewValue {
   return {
     tasks: tasks.map((r) => ({ ...r, owner: r.ownerSessionId })),
     items: inboxItems<InboxAsk>({
       rows: tasks.map((r) => ({ ...r, board: r.boardRef, holder: { sessionId: r.ownerSessionId, action: taskActionName("updateTask", "tasks") } })),
-      suspensions: asks.map((ask) => ({
-        sessionId: "s_ask",
+      suspensions: asks.map(({ sessionId = "s_ask", ...ask }) => ({
+        sessionId,
         flowId: "agent",
         requestId: `req_${ask.suspensionId}`,
         suspensionId: ask.suspensionId,
         kind: "approval",
         prompt: "ok?",
         since: 0,
-        detail: { ...ask, sessionId: "s_ask", requestId: `req_${ask.suspensionId}`, flowKind: "agent", kind: "approval", message: "ok?", createdAt: 0, shape: "approval" } as unknown as InboxAsk,
+        detail: { ...ask, sessionId, requestId: `req_${ask.suspensionId}`, flowKind: "agent", kind: "approval", message: "ok?", createdAt: 0, shape: "approval" } as unknown as InboxAsk,
       })),
       flowOf: () => "coordinator",
     }),
@@ -175,6 +176,21 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
     const item = itemAtRoute(items, "susp_legacy");
     expect(item?.id).toBe(`task:${held.boardRef}:T`);
     expect(itemAtRoute(items, item!.id)).toBe(item);
+    expect(itemAtRoute(items, "nothing")).toBeNull();
+  });
+
+  // A report's link is written before its ask exists, so it names the session the ask will wait in.
+  it("an Inbox link written with a session opens the lone ask waiting in it, found only among the user's own asks", () => {
+    const report = "error-report~fp-0123456789abcdef";
+    const held = row("T", "in_progress", { run: { sessionId: "s_run", requestId: "req_sp_task", attempt: 1 } });
+    const { items } = viewOf([held], [
+      { suspensionId: "sp_report", workerId: "error-reporter", sessionId: report },
+      { suspensionId: "sp_task", workerId: "eng.coder", sessionId: "s_run" },
+    ]);
+    expect(itemAtRoute(items, report)?.id).toBe("sp_report");
+    // Anything else opens what an unknown id opens: another user's report session, one whose ask was answered, a task's run.
+    expect(itemAtRoute(items, "error-report~fp-fedcba9876543210")).toBeNull();
+    expect(itemAtRoute(items, "s_run")).toBeNull();
     expect(itemAtRoute(items, "nothing")).toBeNull();
   });
 

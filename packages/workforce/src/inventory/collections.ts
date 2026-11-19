@@ -43,7 +43,7 @@
  * hides it.
  */
 
-import { defineResourceCollection } from "@flow-state-dev/core";
+import { defineResourceCollection } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /**
@@ -180,3 +180,10 @@ export function defineWorkerInventoryCollection() {
     client: { state: { read: true }, expose: WORKER_INVENTORY_CLIENT_FIELDS },
   });
 }
+
+// FIX-2775.
+/**
+ * The worker inventory's definition, for a browser read: `useResource(workerInventoryResource, { all: true })`
+ * or `client.resource(workerInventoryResource)`, typed by the fields the read publishes.
+ */
+export const workerInventoryResource = defineWorkerInventoryCollection();

@@ -257,7 +257,7 @@ async function beforeAcknowledge(ctx: BlockContext, notice: TaskNotice): Promise
   // A task that failed or was cancelled has nobody left to hear its events:
   // the subscriptions its session made end (FIX-2534, epic ER-7 as amended).
   // A completed task's stay, so its session hears its PR until the PR closes.
-  if (notice.ending === "errored" || notice.ending === "cancelled") await endTaskSubscriptions(ctx, notice.taskId, notice.ending);
+  if (notice.ending === "errored" || notice.ending === "cancelled") await endTaskSubscriptions(ctx, notice.taskId, notice.ending, notice.attempt);
   await reportFailure(ctx, notice);
 }
 

@@ -24,9 +24,9 @@ import {
 import { toolInFlight, type PlanRowNow } from "../components/flow-state/working-status";
 import type { ReviewAnswer } from "../components/flow-state/review-hold";
 import { inboxAnswerOf, rerunOverrides, taskStatus } from "../lib/task";
-import type { Item } from "./items";
+import type { Item } from "../lib/items";
 import { useAppClient } from "./provider";
-import { runSteps } from "./steps";
+import { runSteps } from "../lib/steps";
 
 /** The board a conversation files its tasks on: Workforce's `"tasks"`. */
 const TASK_BOARD = "tasks";

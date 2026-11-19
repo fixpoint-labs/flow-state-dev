@@ -50,7 +50,7 @@ const SECRET = "sk-live-abcdefghijklmnop1234";
 type Prompted = { kind: "draft" | "file" | "comment"; prompt: string; trackerTools: boolean };
 
 /** How the stand-in answers beyond a clean run: a filing that fails `fileFails` times, a comment with no result. */
-type StandIn = { closed?: boolean; trailer?: boolean; fileFails?: number; commentUnreadable?: boolean; draftThrows?: number };
+type StandIn = { closed?: boolean; trailer?: boolean; fileFails?: number; commentUnreadable?: boolean; draftThrows?: number; draftTitle?: string };
 
 /**
  * A harness that answers like one: a JSON draft, a filed issue, or a comment
@@ -74,7 +74,7 @@ function standInHarness(prompts: Prompted[], options: StandIn = {}) {
         const unreadable = failsNow || (kind === "comment" && options.commentUnreadable === true);
         const json =
           kind === "draft"
-            ? { title: "Coordinator fails on a project with no repository", summary: "It throws.", stepsToReproduce: ["Send it work"], expected: "It works", actual: "It throws", suspectedCause: "No repo check", questions: ["Which team?"] }
+            ? { title: options.draftTitle ?? "Coordinator fails on a project with no repository", summary: "It throws.", stepsToReproduce: ["Send it work"], expected: "It works", actual: "It throws", suspectedCause: "No repo check", questions: ["Which team?"] }
             : kind === "file"
               ? { url: "https://tracker.example/FIX-9", identifier: "FIX-9" }
               : { closed: options.closed === true };
@@ -149,6 +149,8 @@ type Lab = {
   intake: (occurrence: Record<string, unknown>) => Promise<unknown>;
   /** Start a report's run again, as a restart does. */
   rerun: (reportId: string) => Promise<void>;
+  /** Run the reporter's line entry in `sessionId` as `userId`, as the reporter's `say` does. */
+  line: (userId: string, sessionId: string, input: { text: string; forOperator?: string }) => Promise<void>;
   /** Search the error history as `userId` would through `searchResources`: the uris and snippets. */
   searchHistory: (userId: string, input: { query: string; prefix?: string }, orgId?: string) => Promise<Array<{ uri: string; snippet: string }>>;
   /** Read one history record as `userId` would through `readResourceContent`: its content, or the tool's error. */
@@ -170,7 +172,7 @@ async function openLab(
   options: Partial<ErrorReporterOptions> & StandIn & { agentAnswer?: ReturnType<typeof mockGenerator>; hostRun?: (run: ErrorReporterHost["run"]) => ErrorReporterHost["run"] } = {}
 ): Promise<Lab> {
   const prompts: Prompted[] = [];
-  const { agentAnswer, closed, trailer, fileFails, commentUnreadable, draftThrows, hostRun, ...reporterOptions } = options;
+  const { agentAnswer, closed, trailer, fileFails, commentUnreadable, draftThrows, draftTitle, hostRun, ...reporterOptions } = options;
   const reporter = createErrorReporter({
     worker: "error-reporter",
     operator: { userId: OPERATOR, orgId: ORG },
@@ -192,7 +194,7 @@ async function openLab(
       [ERROR_REPORTER_FLOW]: defineErrorReporterFlow({
         reporter,
         installation,
-        harness: standInHarness(prompts, { closed, trailer, fileFails, commentUnreadable, draftThrows }),
+        harness: standInHarness(prompts, { closed, trailer, fileFails, commentUnreadable, draftThrows, draftTitle }),
         mcpTools: trackerTools,
         agent: { catalog: { searchResources: resourceSearchTools().searchResources, readResourceContent: readResourceContentTool() } }
       })
@@ -310,6 +312,10 @@ async function openLab(
       const result = await host.act(userId, sessionId, "readResourceContent", { uri }, HISTORY_READER, orgId);
       return result.error === undefined ? { content: String((result.output as { content?: unknown }).content) } : { error: messageOf(result.error) };
     },
+    line: async (userId, sessionId, input) => {
+      const result = await bound.run({ flowKind: ERROR_REPORTER_FLOW, action: "line", input, userId, orgId: ORG, sessionId, source: "internal" });
+      expect(result.error, result.error).toBeUndefined();
+    },
     rerun: async (reportId) => {
       const result = await bound.run({ flowKind: ERROR_REPORTER_FLOW, action: "report", input: {}, userId: OPERATOR, orgId: ORG, sessionId: `${REPORT_SESSION_PREFIX}${reportId}`, source: "http" });
       expect(result.error, result.error).toBeUndefined();
@@ -334,7 +340,9 @@ describe("a request that settled failed", () => {
     expect(asks).toHaveLength(1);
     expect(asks[0]!.reason).toBe("user_input");
     expect(asks[0]!.title).toBe("Error report: Coordinator fails on a project with no repository");
-    expect(asks[0]!.message).toBe("Seen 1 time. File it?\n\n**Questions**\n\n- Which team?");
+    // Where it came from and how often, in its own words, so Inbox shows them with no error-report knowledge.
+    expect(asks[0]!.message).toBe("From a failed request (breaker / respond) · seen 1 time. File it?\n\n**Questions**\n\n- Which team?");
+    expect(asks[0]!.data).toMatchObject({ source: "request", count: 1 });
 
     await lab.answer(asks[0]!, { decision: "file", instructions: "Put it in the Platform team" });
     expect(lab.prompts.map((p) => p.kind)).toEqual(["draft", "file"]);
@@ -734,6 +742,26 @@ describe("reading the history", () => {
     expect((await lab.readHistory(OPERATOR, hit!.uri)).content).toContain("req_held_1");
   });
 
+  it("links the operator to a waiting report's Inbox item, and a user who failed the same way to nothing they can't open", async () => {
+    const lab = await openLab({ inboxLink });
+    await lab.breaks("disk is full");
+    const [report] = await lab.rows();
+    const [mine] = await lab.searchHistory(OPERATOR, { query: "error report" });
+    const operator = (await lab.readHistory(OPERATOR, mine!.uri)).content!;
+    expect(operator).toContain(`[Open it in Inbox](/inbox/${encodeURIComponent(`${REPORT_SESSION_PREFIX}${report!.id}`)})`);
+    expect(readText(operator)).not.toMatch(FINGERPRINT);
+    const [theirs] = await lab.searchHistory("alice", { query: "error report" });
+    const alice = (await lab.readHistory("alice", theirs!.uri)).content!;
+    expect(alice).toContain("waiting in Inbox");
+    expect(alice).not.toContain("/inbox/");
+
+    // Once filed, it waits nowhere: the record names the issue, and no Inbox link.
+    await lab.answer((await lab.asks())[0]!, { decision: "file" });
+    const filed = (await lab.readHistory(OPERATOR, mine!.uri)).content!;
+    expect(filed).toContain("FIX-9 https://tracker.example/FIX-9");
+    expect(filed).not.toContain("/inbox/");
+  });
+
   it("writes nothing when read", async () => {
     const lab = await openLab();
     await lab.breaks("disk is full");
@@ -836,6 +864,137 @@ describe("reading the history", () => {
     const lab = await openLab();
     await lab.breaks("disk is full");
     expect(await lab.searchHistory(OPERATOR, { query: "error report" }, "other-org")).toEqual([]);
+  });
+});
+
+/** A fingerprint, as a report's id spells it. */
+const FINGERPRINT = /fp-[0-9a-f]{8,}/;
+/** What a user reads of a line: its text with every link's address taken out. A bare URL is text, and stays. */
+const readText = (text: string) => text.replace(/\]\([^)]*\)/g, "]").replace(/href="[^"]*"/g, "");
+const inboxLink: ErrorReporterOptions["inboxLink"] = ({ sessionId }) => `/inbox/${encodeURIComponent(sessionId)}`;
+
+describe("the line when a report starts waiting in Inbox", () => {
+  it("names the title, where it came from and the count, and links the operator to the report's Inbox item", async () => {
+    const lab = await openLab({ inboxLink });
+    await lab.breaks("the queue is full");
+    const [report] = await lab.rows();
+    const waiting = (await lab.conversationLines()).filter((line) => line.includes("Inbox"));
+    expect(waiting).toEqual([
+      `Waiting in your Inbox: **Coordinator fails on a project with no repository**, from a failed request (breaker / respond), seen 1 time. [Open it in Inbox](/inbox/${encodeURIComponent(`${REPORT_SESSION_PREFIX}${report!.id}`)})`
+    ]);
+    expect(readText(waiting[0]!)).not.toMatch(FINGERPRINT);
+  });
+
+  // A host may bind the reporter to a conversation that isn't the operator's: the line's own entry decides what it shows there.
+  it("writes, in a conversation that is not the operator's, the words with no link it couldn't open", async () => {
+    const lab = await openLab({ inboxLink });
+    const forOperator = "Waiting in your Inbox: **a title**. [Open it in Inbox](/inbox/x)";
+    await lab.open(ERROR_REPORTER_FLOW, "s_alice-reporter", "alice", { workerId: "error-reporter" });
+    await lab.line("alice", "s_alice-reporter", { text: "An error report is waiting in the operator's Inbox.", forOperator });
+    await lab.line(OPERATOR, CONVERSATION, { text: "An error report is waiting in the operator's Inbox.", forOperator });
+    expect((await lab.host.messages("s_alice-reporter")).map((m) => m.text)).toEqual(["An error report is waiting in the operator's Inbox."]);
+    expect(await lab.conversationLines()).toEqual([forOperator]);
+  });
+
+  it("says where it waits with no link when the Lab names none", async () => {
+    const lab = await openLab();
+    await lab.breaks("the queue is full");
+    const waiting = (await lab.conversationLines()).filter((line) => line.includes("Inbox"));
+    expect(waiting).toEqual(["Waiting in your Inbox: **Coordinator fails on a project with no repository**, from a failed request (breaker / respond), seen 1 time."]);
+  });
+
+  it("is not written for a report the Lab files without asking: nothing waits", async () => {
+    const lab = await openLab({ inboxLink, preview: { autoFile: ["request"] } });
+    await lab.breaks("the queue is full");
+    const lines = await lab.conversationLines();
+    expect(lines).toContainEqual(expect.stringContaining("Filed FIX-9"));
+    expect(lines.filter((line) => line.includes("Inbox"))).toEqual([]);
+  });
+});
+
+// A report's title and where it came from are text others wrote: a drafted title quotes the error,
+// a task's title or goal is its creator's. Written into a Markdown line, an image in it would be
+// fetched and a link in it would sit beside the line's own; each is shown as the characters typed.
+describe("text others wrote, in the Markdown about a report", () => {
+  const WRITTEN = "![x](https://attacker.example/i) x) [Open it in Inbox](https://attacker.example)";
+  /** `WRITTEN` with every punctuation mark escaped: Markdown shows it as typed, with no image and no link of its own. */
+  const LITERAL = String.raw`\!\[x\]\(https\:\/\/attacker\.example\/i\) x\) \[Open it in Inbox\]\(https\:\/\/attacker\.example\)`;
+  /** The links and images a Markdown text opens: each `[` or `![` no backslash escapes. */
+  const opened = (text: string) => [...text.matchAll(/(?<!\\)!?\[[^\]]*\]\([^)]*\)/g)].map((m) => m[0]);
+
+  it("keeps a drafted title's image and link as text in the waiting line: its Inbox link is the line's only link", async () => {
+    const lab = await openLab({ inboxLink, draftTitle: WRITTEN });
+    await lab.breaks("the queue is full");
+    const [report] = await lab.rows();
+    const link = `[Open it in Inbox](/inbox/${encodeURIComponent(`${REPORT_SESSION_PREFIX}${report!.id}`)})`;
+    const waiting = (await lab.conversationLines()).filter((line) => line.startsWith("Waiting in your Inbox"));
+    expect(waiting).toEqual([`Waiting in your Inbox: **${LITERAL}**, from a failed request (breaker / respond), seen 1 time. ${link}`]);
+    expect(opened(waiting[0]!)).toEqual([link]);
+  });
+
+  it("keeps a task's goal as text where the waiting line and the preview's question say where the report came from", async () => {
+    const lab = await openLab({ inboxLink });
+    const conv = await lab.host.conversation("alice");
+    const added = await lab.host.act("alice", conv, "createTask_tasks", { goal: `${WRITTEN} [fail]`, assignee: "eng.tasker" });
+    expect(added.error, messageOf(added.error)).toBeUndefined();
+    await lab.host.settled();
+    await lab.reporter.idle();
+    await lab.host.settled();
+    // The goal's first 80 characters, which here are `WRITTEN` whole.
+    const from = `a failed task (${LITERAL})`;
+    const waiting = (await lab.conversationLines()).filter((line) => line.startsWith("Waiting in your Inbox"));
+    expect(waiting).toHaveLength(1);
+    expect(waiting[0]).toContain(`, from ${from}, seen 1 time.`);
+    expect(opened(waiting[0]!)).toEqual([expect.stringMatching(/^\[Open it in Inbox\]\(\/inbox\//)]);
+    const [ask] = await lab.asks();
+    expect(ask!.message).toBe(`From ${from} · seen 1 time. File it?\n\n**Questions**\n\n- Which team?`);
+    expect(opened(ask!.message)).toEqual([]);
+  });
+
+  it("keeps a drafted title as text in the line that says it was filed", async () => {
+    const lab = await openLab({ draftTitle: WRITTEN, preview: { autoFile: ["request"] } });
+    await lab.breaks("the queue is full");
+    const filed = (await lab.conversationLines()).filter((line) => line.startsWith("Filed"));
+    expect(filed).toEqual([`Filed FIX-9: ${LITERAL} https://tracker.example/FIX-9`]);
+  });
+});
+
+describe("no fingerprint in what a user reads", () => {
+  // Every model-facing answer and every line about a report: a fingerprint in any of them becomes a reply's handle on it.
+  it("holds across a report's whole life: its answers, its history record, and every line from waiting to filed to commented", async () => {
+    const seen: unknown[] = [];
+    const lab = await openLab({ agentAnswer: scriptedReads(seen), inboxLink, limits: { commentEveryMs: 0 } });
+    const call = async (tool: string, args: Record<string, unknown>) => {
+      const turn = await lab.host.act(OPERATOR, CONVERSATION, "respond", { message: `call ${tool} ${JSON.stringify(args)}` }, ERROR_REPORTER_FLOW);
+      expect(turn.error, messageOf(turn.error)).toBeUndefined();
+      await lab.reporter.idle();
+      return JSON.stringify(seen.at(-1));
+    };
+    const read: string[] = [];
+    read.push(await call("reportProblem", { description: "Checkout total wrong after coupon" }));
+    read.push(await call("reportProblem", { description: "Checkout total wrong after coupon" }));
+    const [hit] = await lab.searchHistory(OPERATOR, { query: "error report" });
+    read.push((await lab.readHistory(OPERATOR, hit!.uri)).content!);
+    await lab.answer((await lab.asks())[0]!, { decision: "file" });
+    read.push(await call("reportProblem", { description: "Checkout total wrong after coupon" }));
+    read.push((await lab.readHistory(OPERATOR, hit!.uri)).content!);
+    const lines = await lab.conversationLines();
+    // The journey reached each line it should: waiting, filed, commented.
+    for (const said of ["Waiting in your Inbox", "Filed FIX-9", "Commented on FIX-9"]) expect(lines).toContainEqual(expect.stringContaining(said));
+    for (const text of [...read, ...lines]) expect(readText(text), text).not.toMatch(FINGERPRINT);
+  });
+
+  it("files a report whose draft is gone under its error's first line, not its id", async () => {
+    const lab = await openLab({ fileFails: 1 });
+    await lab.breaks("the queue is full");
+    await lab.answer((await lab.asks())[0]!, { decision: "file" });
+    const [owed] = await lab.rows();
+    const runtime = await lab.host.state.getRuntime();
+    const { draft: _gone, ...undrafted } = owed!;
+    await runtime.stores.resourceState.set("org", ORG, `error-reports/${owed!.id}`, undrafted, "any");
+    await lab.rerun(owed!.id);
+    const filed = (await lab.conversationLines()).filter((line) => line.startsWith("Filed"));
+    expect(filed).toEqual(["Filed FIX-9: the queue is full https://tracker.example/FIX-9"]);
   });
 });
 
@@ -1021,6 +1180,44 @@ describe("a user reporting a problem", () => {
     expect(rows[0]).toMatchObject({ source: "manual", status: "previewing", description: "The board shows a task as done that never ran" });
     expect(await lab.asks()).toHaveLength(1);
     expect(lab.prompts.map((p) => p.kind)).toEqual(["draft"]);
+  });
+
+  // The model repeats what the tool hands it: a fingerprint there became the reply's only handle on the report.
+  const reportsVia = async (lab: Lab, seen: unknown[], userId: string, sessionId: string, description: string) => {
+    const turn = await lab.host.act(userId, sessionId, "respond", { message: `call reportProblem ${JSON.stringify({ description })}` }, ERROR_REPORTER_FLOW);
+    expect(turn.error, messageOf(turn.error)).toBeUndefined();
+    await lab.reporter.idle();
+    return seen.at(-1) as Record<string, unknown>;
+  };
+
+  it("answers that the report is drafting and will wait in Inbox, and a repeat of a waiting one by its title and Inbox link, never a fingerprint", async () => {
+    const seen: unknown[] = [];
+    const lab = await openLab({ agentAnswer: scriptedReads(seen), inboxLink });
+    const first = await reportsVia(lab, seen, OPERATOR, CONVERSATION, "Checkout total wrong after coupon");
+    expect(first).toMatchObject({ status: "drafting", waitsIn: "Inbox" });
+    expect(JSON.stringify(first)).not.toMatch(FINGERPRINT);
+
+    const again = await reportsVia(lab, seen, OPERATOR, CONVERSATION, "Checkout total wrong after coupon");
+    const [report] = await lab.rows();
+    expect(again).toMatchObject({
+      status: "waiting in Inbox",
+      title: "Coordinator fails on a project with no repository",
+      inbox: `[Open it in Inbox](/inbox/${encodeURIComponent(`${REPORT_SESSION_PREFIX}${report!.id}`)})`
+    });
+    // The key may sit in the link's address; nothing else the model reads holds it.
+    expect(readText(JSON.stringify(again))).not.toMatch(FINGERPRINT);
+  });
+
+  it("gives a user who is not the operator the words with no link and no title: the question waits in the operator's Inbox, which they can't open", async () => {
+    const seen: unknown[] = [];
+    const lab = await openLab({ agentAnswer: scriptedReads(seen), inboxLink });
+    await reportsVia(lab, seen, OPERATOR, CONVERSATION, "Checkout total wrong after coupon");
+    await lab.open(ERROR_REPORTER_FLOW, "s_alice-reporter", "alice", { workerId: "error-reporter" });
+    const theirs = await reportsVia(lab, seen, "alice", "s_alice-reporter", "Checkout total wrong after coupon");
+    expect(theirs).toMatchObject({ status: "waiting in the operator's Inbox" });
+    expect(theirs.inbox).toBeUndefined();
+    expect(theirs.title).toBeUndefined();
+    expect(JSON.stringify(theirs)).not.toMatch(FINGERPRINT);
   });
 });
 

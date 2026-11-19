@@ -1,0 +1,96 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="What changes. Before: Teammates (toEntries, items.ts, steps.ts), Shift Manager (callRuns and the message-call line in Conversation and ToolLine) and Claude Code-style (entriesOf, withStopped) each turn a conversation's items into their own lines, and Teammates and Claude Code-style each keep a copy of the engine's retry list with a sync test. React's ItemsRenderer only groups tool calls and draws approvals. After: the three apps call React's conversationLines with the session's items and turns, with each turn carrying retryable, stamped by the engine from its own retry rule, and draw through the renderer registry. Workforce writes sent, task and result as data items beside received and registers a renderer for each; an app's own renderer for a dataType wins."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F3E3E1; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A2220; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .gone  { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .pkg   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:2; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .c-gone{ fill:var(--gone); }
+    .c-code{ fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="before">
+    <rect class="panel" x="16" y="14" width="446" height="412" rx="6"/>
+    <text class="t-lbl" x="32" y="36">BEFORE · EACH APP DECODES ITEMS</text>
+    <rect class="app" x="32" y="50" width="130" height="34" rx="5"/>
+    <text class="t-h" x="44" y="72">Teammates</text>
+    <rect class="app" x="174" y="50" width="130" height="34" rx="5"/>
+    <text class="t-h" x="186" y="72">Shift Manager</text>
+    <rect class="app" x="316" y="50" width="130" height="34" rx="5"/>
+    <text class="t-h" x="322" y="72" style="font-size:12px">Claude Code-style</text>
+    <path class="arrow" d="M97,84 L97,104"/><path class="arrow" d="M239,84 L239,104"/><path class="arrow" d="M381,84 L381,104"/>
+    <rect class="gone" x="32" y="106" width="130" height="150" rx="5"/>
+    <text class="t-h c-gone" x="44" y="126">toEntries</text>
+    <text class="t-s" x="44" y="144">items.ts · steps.ts</text>
+    <text class="t-s" x="44" y="162">failed · stopped · steps</text>
+    <text class="t-s" x="44" y="180">sent · task · result</text>
+    <text class="t-s" x="44" y="198">task-change join</text>
+    <text class="t-s" x="44" y="230">retry list copy</text>
+    <text class="t-s" x="44" y="246">+ sync test</text>
+    <rect class="gone" x="174" y="106" width="130" height="150" rx="5"/>
+    <text class="t-h c-gone" x="186" y="126">callRuns</text>
+    <text class="t-s" x="186" y="144">UNDRAWN · ToolLine</text>
+    <text class="t-s" x="186" y="162">message-call line</text>
+    <text class="t-s" x="186" y="180">no failed or stopped</text>
+    <text class="t-s" x="186" y="198">line at all</text>
+    <rect class="gone" x="316" y="106" width="130" height="150" rx="5"/>
+    <text class="t-h c-gone" x="328" y="126">entriesOf</text>
+    <text class="t-s" x="328" y="144">withStopped</text>
+    <text class="t-s" x="328" y="162">failed · stopped · steps</text>
+    <text class="t-s" x="328" y="180">result · brief</text>
+    <text class="t-s" x="328" y="230">retry list copy</text>
+    <text class="t-s" x="328" y="246">+ sync test</text>
+    <rect class="pkg" x="32" y="280" width="414" height="58" rx="5"/>
+    <text class="t-h" x="44" y="302">react · ItemsRenderer</text>
+    <text class="t-s" x="44" y="322">groups tool calls, draws approvals; knows nothing of turns</text>
+    <rect class="pkg" x="32" y="352" width="414" height="58" rx="5"/>
+    <text class="t-h" x="44" y="374">engine · PUBLIC_REENTRY_SOURCES</text>
+    <text class="t-s" x="44" y="394">the list the two copies are pinned to</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="478" y="14" width="446" height="412" rx="6"/>
+    <text class="t-lbl" x="494" y="36">AFTER · ONE MODEL, REGISTERED RENDERERS</text>
+    <rect class="app" x="494" y="50" width="130" height="34" rx="5"/>
+    <text class="t-h" x="506" y="72">Teammates</text>
+    <rect class="app" x="636" y="50" width="130" height="34" rx="5"/>
+    <text class="t-h" x="648" y="72">Shift Manager</text>
+    <rect class="app" x="778" y="50" width="130" height="34" rx="5"/>
+    <text class="t-h" x="784" y="72" style="font-size:12px">Claude Code-style</text>
+    <path class="arrow" d="M559,84 L559,104"/><path class="arrow" d="M701,84 L701,104"/><path class="arrow" d="M843,84 L843,104"/>
+    <rect class="new" x="494" y="106" width="414" height="70" rx="5"/>
+    <text class="t-h c-code" x="506" y="128">react · conversationLines(items, turns)</text>
+    <text class="t-s" x="506" y="146">user · assistant · failed (Retry) · stopped · steps · approval · data</text>
+    <text class="t-s" x="506" y="164">ItemsRenderer draws the lines through the registry</text>
+    <path class="arrow" d="M600,176 L600,198"/><path class="arrow" d="M800,176 L800,198"/>
+    <rect class="pkg" x="494" y="200" width="200" height="70" rx="5"/>
+    <text class="t-h" x="506" y="222">engine · each turn</text>
+    <text class="t-s" x="506" y="240">carries retryable, from</text>
+    <text class="t-s" x="506" y="256">the route's own rule</text>
+    <rect class="new" x="708" y="200" width="200" height="70" rx="5"/>
+    <text class="t-h c-code" x="720" y="222">renderer registry</text>
+    <text class="t-s" x="720" y="240">by kind or dataType</text>
+    <text class="t-s" x="720" y="256">an app's entry wins</text>
+    <path class="arrow" d="M808,270 L808,292"/>
+    <rect class="new" x="494" y="294" width="414" height="116" rx="5"/>
+    <text class="t-h c-code" x="506" y="316">workforce · writes its lines as data items</text>
+    <text class="t-s" x="506" y="336">workforce:sent · workforce:task · workforce:result</text>
+    <text class="t-s" x="506" y="352">beside workforce:received, which already works this way</text>
+    <text class="t-s" x="506" y="376">workforceRenderers on workforce/react, one per dataType</text>
+    <text class="t-s" x="506" y="394">no renderer, no line</text>
+  </g>
+</svg>

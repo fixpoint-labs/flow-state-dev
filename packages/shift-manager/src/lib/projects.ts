@@ -78,7 +78,7 @@ export type ProjectSetup = {
 };
 
 /** The view the Lab's projects flow names its setup on. */
-export const PROJECT_SETUP_VIEW = "projectSetup";
+const PROJECT_SETUP_VIEW = "projectSetup";
 
 
 /**

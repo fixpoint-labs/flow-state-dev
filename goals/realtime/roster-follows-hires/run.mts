@@ -63,7 +63,7 @@ import { ROUTE_MODEL } from "../../../apps/kitchen-sink/lib/models.ts";
 import * as generated from "../../../apps/kitchen-sink/workforce/workforce.gen.ts";
 import { LabProvider } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { useRoster } from "../../../packages/shift-manager/src/lib/roster.ts";
-import { AppProvider as TeammatesProvider, createAppCalls } from "../../../labs/teammates/src/app/index.ts";
+import { AppProvider as TeammatesProvider } from "../../../labs/teammates/src/app/index.ts";
 import { roleOf, useWorkforce } from "../../../labs/teammates/src/lib/roster.ts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -247,7 +247,7 @@ function mountViews(on: Host, user: "alice" | "bob"): Views {
   const tmClient = clientOf(on, tokens.tm);
   const tmContainer = happy.document.createElement("div");
   const tmRoot: Root = createRoot(tmContainer as unknown as Element);
-  tmRoot.render(createElement(TeammatesProvider, { calls: createAppCalls(tmClient), client: tmClient, children: createElement(TmProbe) }));
+  tmRoot.render(createElement(TeammatesProvider, { client: tmClient, children: createElement(TmProbe) }));
 
   let closed = false;
   return {

@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/components/App";
 import { TaskCard } from "../src/components/TaskCard";
 import { lookOf } from "../src/lib/looks";
-import { createFixtureApp } from "./fake-app";
+import { scriptedServer } from "./scripted-server";
 import { codingTask, hold, Refused, stubServer, TestProvider, type Posted, POPUP_READ } from "./stub-server";
 
 afterEach(() => {
@@ -102,7 +102,7 @@ function playRun({ asks = false, review = true, lands = false } = {}) {
   });
   if (!asks) carryOn();
   window.history.replaceState(null, "", `/?worker=${LEAD}&session=${BOARD}&task=t1`);
-  render(<TestProvider calls={createFixtureApp({ speed: 0.05 })} client={server.client}><App /></TestProvider>);
+  render(<TestProvider server={scriptedServer({ speed: 0.05 })} client={server.client}><App /></TestProvider>);
   return { popup: screen.findByRole("dialog", { name: TASK }, POPUP_READ), server };
 }
 

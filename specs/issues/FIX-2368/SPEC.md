@@ -48,7 +48,7 @@ named assertion.
 | **Signal** | Every `<leg>:<assertion>` in [the signal table](#the-signal) passes. Each "within 1 s" is 5 samples, all within 1 s, none retried ([below](DECISIONS.md#decided-not-asked)) |
 | **Input** | Two `serve()` processes (`child_process.fork`) over one Postgres the script starts (`initdb`, `pg_ctl`) or `FSD_DB_URL`, through FIX-2427's bootstrap moved into `goals/lib`, with `log_statement = all` and each process's `application_name` set; Chromium through `goals/lib/playwright.mts`, one browser context per user; users A and B in org 1, C in org 2 |
 | **Anti-game** | Assert on what each page shows and on the read requests and WebSocket frames the page itself makes, never on `publish` calls. Two processes, not two registries. The real Postgres bus, never the crossing double. The run sets no poll, timer or timed-read switch: what is off is off by default. The fixture app's source hashes the same on today's `main` and on the pinned commit, printed |
-| **Control that must fail** | `memory-bus` (both processes on the in-memory bus): **`a:org-state`**, **`a:org-row`**, which miss the 1 s; B may still update at the hook's poll pace ([below](DECISIONS.md#decided-not-asked)) · `no-request-publish` (the bus child's write wrapper publishes nothing, FIX-2426's `no-publish` patch): **`d:plain-reply`**, while a passes · `skip-check` (FIX-2428's: the mint grants every topic): **`c:refused`** · today's `main` (the parent of FIX-2426's implementation merge; `9fd46b6` at drafting): every `a:` assertion and **`b:no-read-between`** |
+| **Control that must fail** | `memory-bus` (both processes on the in-memory bus): **`a:org-state`**, **`a:org-row`**, which miss the 1 s; B never updates, since the in-memory bus is single-process (FIX-2545) and keeps no timer ([below](DECISIONS.md#decided-not-asked)) · `no-request-publish` (the bus child's write wrapper publishes nothing, FIX-2426's `no-publish` patch): **`d:plain-reply`**, while a passes · `skip-check` (FIX-2428's: the mint grants every topic): **`c:refused`** · today's `main` (the parent of FIX-2426's implementation merge; `9fd46b6` at drafting): every `a:` assertion and **`b:no-read-between`** |
 
 ### The signal
 
@@ -136,7 +136,7 @@ children that each passed on a double.
 wrong: a slow goal nobody re-runs.
 
 1. **[D2](DECISIONS.md#d2) · Shift Manager and the labs are graded on a scratch copy with the
-   store swapped to Postgres,** not as shipped on SQLite and not through a new Lab option. If
+   store swapped to Postgres** (since the Nov 19 amendment, Shift Manager only; the labs follow in FIX-2843), not as shipped on SQLite and not through a new Lab option. If
    wrong: the apps we run day to day still poll, and the run says they don't.
 2. **[D1](DECISIONS.md#d1) · One run where the legs collide, on the real bus, not the children's
    checks side by side.** If wrong: a longer run whose failures are harder to split.

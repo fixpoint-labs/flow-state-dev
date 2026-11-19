@@ -3,17 +3,14 @@ import { useSessionFeed } from "@flow-state-dev/react";
 import type { RosterEntry, WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import type { CodingBoardTask, ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import {
-  commandsRun,
-  runSummaryLine,
   useAppClient,
   usePullRequestLinks,
   useRecordedFiles,
   useTaskActions,
   useTaskDetail,
   useTaskWork,
-  type AppCalls,
-  type SessionStep,
 } from "../app";
+import { commandsRun, runSummaryLine, type SessionStep } from "../lib/steps";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
 import { waitsFor, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, titleOf, workerOf } from "../lib/task";
@@ -21,7 +18,6 @@ import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";
-import { useWatch } from "../lib/use-watch";
 import { Avatar } from "./Avatar";
 import { ErrorBody } from "./flow-state/error";
 import { MarkdownText } from "./flow-state/message-response";
@@ -142,8 +138,7 @@ export interface FollowUp {
 const followUpText = (task: CodingBoardTask) => `Follow up on "${titleOf(task)}": `;
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
-export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
-  adapter: AppCalls;
+export function PopupView({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
   popup: Popup;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;

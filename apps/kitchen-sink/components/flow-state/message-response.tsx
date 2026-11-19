@@ -8,7 +8,9 @@
  * still streaming. It parses raw HTML in Markdown by default (its `raw` rehype
  * plugin, then sanitized); {@link MarkdownText} drops that plugin, so HTML in
  * the text shows as text and never becomes an element, and allows no image
- * source, so an image the text names is never fetched.
+ * source, so an image the text names is never fetched. Both resolve a
+ * relative link against the page's base (`<base href>`), as the browser
+ * resolves one, so `./inbox/x` stays under the prefix an app is served at.
  */
 import type { ComponentProps } from "react";
 import { memo } from "react";
@@ -23,6 +25,28 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
 const streamdownPlugins = { cjk, code, math, mermaid };
 
+const { raw: _raw, harden, ...withoutRaw } = defaultRehypePlugins;
+const [hardenPlugin, hardenOptions] = harden as Extract<typeof harden, readonly unknown[]>;
+
+/**
+ * Streamdown's harden with `overrides`, resolving a relative link against the
+ * page's base rather than the origin's root. Read when drawn, since the base
+ * is the page's (no document while rendering on a server).
+ */
+function hardenAtPage(overrides: Record<string, unknown> = {}): typeof harden {
+  const defaultOrigin = typeof document === "undefined" ? undefined : document.baseURI;
+  return [hardenPlugin, { ...hardenOptions, defaultOrigin, ...overrides }];
+}
+
+/**
+ * Streamdown's rehype plugins without `raw`, so HTML stays text, and with
+ * harden allowing no image source, so an image in the text is never fetched.
+ * Sanitize and harden's link rules stay as Streamdown sets them.
+ */
+function textOnlyHtml(): typeof harden[] {
+  return [...Object.values(withoutRaw), hardenAtPage({ allowedImagePrefixes: [], allowDataImages: false })];
+}
+
 /** Streamdown with the registry's plugins and spacing. Re-renders only when its text changes. */
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
@@ -34,6 +58,7 @@ export const MessageResponse = memo(
         className
       )}
       plugins={streamdownPlugins}
+      rehypePlugins={Object.values({ ...defaultRehypePlugins, harden: hardenAtPage() })}
       {...props}
     />
   ),
@@ -41,18 +66,6 @@ export const MessageResponse = memo(
 );
 
 MessageResponse.displayName = "MessageResponse";
-
-/**
- * Streamdown's rehype plugins without `raw`, so HTML stays text, and with
- * harden allowing no image source, so an image in the text is never fetched.
- * Sanitize and harden's link rules stay as Streamdown sets them.
- */
-const { raw: _raw, harden, ...textOnlyHtml } = defaultRehypePlugins;
-const [hardenPlugin, hardenOptions] = harden as Extract<typeof harden, readonly unknown[]>;
-const TEXT_ONLY_HTML: typeof harden[] = [
-  ...Object.values(textOnlyHtml),
-  [hardenPlugin, { ...hardenOptions, allowedImagePrefixes: [], allowDataImages: false }],
-];
 
 /** What a one-line text keeps: inline Markdown. Anything else is unwrapped to its text. */
 const INLINE_ELEMENTS = ["strong", "em", "del", "code", "a"];
@@ -69,14 +82,14 @@ export function MarkdownText({ text, className, inline = false }: { text: string
   return inline ? (
     <MessageResponse
       className={cn("truncate whitespace-nowrap [&_p]:inline", className)}
-      rehypePlugins={TEXT_ONLY_HTML}
+      rehypePlugins={textOnlyHtml()}
       allowedElements={INLINE_ELEMENTS}
       unwrapDisallowed
     >
       {text}
     </MessageResponse>
   ) : (
-    <MessageResponse className={className} rehypePlugins={TEXT_ONLY_HTML} disallowedElements={NO_IMAGES} unwrapDisallowed>
+    <MessageResponse className={className} rehypePlugins={textOnlyHtml()} disallowedElements={NO_IMAGES} unwrapDisallowed>
       {text}
     </MessageResponse>
   );

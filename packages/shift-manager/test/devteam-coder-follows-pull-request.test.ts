@@ -15,7 +15,13 @@
  *    subscribed to that pull request for reviews, comments and CI, and the
  *    thread is polled, because a Lab on a laptop has no public URL to push to.
  *    Nothing subscribes the coordinator's conversation.
- * 2. A GitHub event routine listing the `interest` screen is saved, not
+ * 2. Only a trusted reviewer reaches the run (FIX-2789): a login the
+ *    `github-reviewers` document lists that can write to the repository,
+ *    asked of GitHub when the comment arrives. A listed login without write
+ *    access, an unlisted one and a bot don't, and the operator's edit to the
+ *    list applies to the next comment with no restart. The run acts on what
+ *    it hears with Bash and a push, so this is who can steer it.
+ * 3. A GitHub event routine listing the `interest` screen is saved, not
  *    refused with `no_interest_model`.
  *
  * GitHub's REST API is a local stub (`githubApiUrl`); best fit is scripted;
@@ -33,9 +39,13 @@ import type {
   ModelResolver,
 } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createInboundTransportHost } from "@flow-state-dev/engine/host";
+import { routeServiceEvent } from "@flow-state-dev/engine/internal";
+import type { SubscriptionEvent } from "@flow-state-dev/core/types";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
 import {
+  GITHUB_REVIEWERS_FLOW,
   LAB_ORG_ID,
   LAB_USER_ID,
   openLab,
@@ -51,6 +61,10 @@ const PR_THREAD = "github:acme/storefront#7";
 const REPO_THREAD = "github:acme/storefront";
 
 const dirs: string[] = [];
+/** Each login's permission on acme/storefront, as GitHub answers it. */
+const PERMISSIONS: Record<string, string> = { jhoffner: "admin", reader: "read", maintainer: "write" };
+/** Every permission GitHub was asked, with the token it was asked with. */
+const permissionAsks: string[] = [];
 const PATH = process.env.PATH;
 let api: Server;
 let apiUrl: string;
@@ -69,15 +83,20 @@ process.stdout.write(JSON.stringify(path.includes("/pulls?") ? [pr] : pr));
   );
   chmodSync(join(bin, "gh"), 0o755);
   process.env.PATH = `${bin}${delimiter}${PATH ?? ""}`;
-  // GitHub's REST API, as the routines' provider reads it with the operator's token: the repository is readable.
+  // GitHub's REST API, as the routines' provider reads it with the operator's token: the repository is readable,
+  // and each login's permission on it is what PERMISSIONS says (none: not a collaborator).
   api = createServer((req, res) => {
-    const path = (req.url ?? "").split("?")[0];
+    const path = (req.url ?? "").split("?")[0]!;
+    const asked = /^\/repos\/acme\/storefront\/collaborators\/([^/]+)\/permission$/.exec(path)?.[1];
+    if (asked !== undefined) permissionAsks.push(`${asked} ${req.headers.authorization}`);
     const body =
       path === "/repos/acme/storefront"
         ? { full_name: "acme/storefront" }
         : path === "/user"
           ? { login: "jake" }
-          : undefined;
+          : asked !== undefined && PERMISSIONS[asked] !== undefined
+            ? { permission: PERMISSIONS[asked], role_name: PERMISSIONS[asked] }
+            : undefined;
     res.writeHead(body === undefined ? 404 : 200, {
       "content-type": "application/json",
     });
@@ -167,10 +186,7 @@ async function eventually<T>(
   }
 }
 
-async function openFollowingLab(
-  name: string,
-  githubReviewers: readonly string[] = ["Octo-Reviewer"],
-): Promise<Lab> {
+async function openFollowingLab(name: string): Promise<Lab> {
   const remote = createBareRemote(name, {
     seed: { "README.md": "storefront\n" },
   });
@@ -189,7 +205,6 @@ async function openFollowingLab(
     ],
     githubToken: "operator-token",
     githubApiUrl: apiUrl,
-    githubReviewers,
   });
   return opened;
 }
@@ -245,7 +260,7 @@ describe("the coder follows the pull request its run opens", () => {
     const { task, conversation } = await coderOpensPullRequest(lab);
     const subscriptions = await storedUnder(lab, "workforce/subscriptions/");
     // Exactly one: the run's own session on #7. Never the coordinator's conversation, never the whole repository.
-    // Only the listed reviewers are heard: the run acts on what it hears, with Bash and a push.
+    // Only a trusted reviewer is heard: the run acts on what it hears, with Bash and a push.
     expect(
       subscriptions.map((s) => ({
         session: s.sessionId,
@@ -260,7 +275,7 @@ describe("the coder follows the pull request its run opens", () => {
         session: task.run.sessionId,
         thread: PR_THREAD,
         kinds: ["review", "comment", "check"],
-        screens: [{ screen: "allow", ids: ["octo-reviewer"] }],
+        screens: [{ screen: "custom", name: "github-reviewers" }],
         enabled: true,
         // The coder's task: its failure or cancel ends the follow, so a failed run stops hearing its pull request.
         taskId: task.id,
@@ -288,11 +303,105 @@ describe("the coder follows the pull request its run opens", () => {
     }, "the follow on #7 to end");
     expect({ thread: ended.thread, endedReason: ended.endedReason }).toEqual({ thread: PR_THREAD, endedReason: "task_cancelled" });
   }, 120_000);
+});
 
-  it("follows nothing when the Lab lists no reviewers, so no comment on GitHub can steer the run", async () => {
-    const lab = await openFollowingLab("coder-follows-no-one", []);
+let commentSeq = 0;
+/** A comment on #7, as GitHub's normalizer gives it. */
+function commentFrom(login: string, role: SubscriptionEvent["sender"]["role"] = "member"): SubscriptionEvent {
+  commentSeq += 1;
+  return {
+    provider: "github",
+    threads: [REPO_THREAD, PR_THREAD],
+    kind: "comment",
+    object: { id: `comment-${commentSeq}`, version: 1 },
+    sender: { id: login, name: login, role },
+    audience: "public",
+    title: "Comment on #7",
+    text: `Please rename the badge (${login}).`,
+    labels: [],
+    url: `${PR_URL}#issuecomment-${commentSeq}`,
+    received: Date.now(),
+    at: Date.now(),
+  };
+}
+
+/** Route one GitHub event as an ingestion would: the verdict on the run's follow, and whether it was delivered to the run. */
+async function routeGitHub(lab: Lab, event: SubscriptionEvent) {
+  const runtime = await lab.state.getRuntime();
+  const host = createInboundTransportHost({
+    registry: runtime.registry,
+    stores: runtime.stores,
+    runtimeConfig: runtime.runtimeConfig,
+    resolvePrincipal: async () => null,
+  } as never);
+  const routed = await routeServiceEvent(host, {
+    flowKind: "github-service",
+    entry: "routeSubscriptionEvent",
+    input: event,
+    principal: { userId: "service:github", orgId: LAB_ORG_ID },
+  });
+  expect(routed.error, JSON.stringify(routed.error)).toBeUndefined();
+  const runs = (await Promise.all(routed.ownerRuns.map((run) => run.finished))) as { output?: { act?: string } }[];
+  const [verdict] = (routed.output as { verdicts: { subscription: string; pass: boolean; reason: string; failed?: true }[] }).verdicts;
+  // Delivered: the follow's own delivery, run as the operator, sent the comment on to the run.
+  return { verdict, delivered: runs.some((run) => run.output?.act === "sent") };
+}
+
+describe("who can steer the coder through its pull request", () => {
+  it("only a listed login that can write: not one that can't, not an unlisted one, never a bot", async () => {
+    const lab = await openFollowingLab("coder-trusted-reviewers");
     await coderOpensPullRequest(lab);
-    expect(await storedUnder(lab, "workforce/subscriptions/")).toEqual([]);
+    permissionAsks.length = 0;
+    // jhoffner: listed in the document the tree seeds, and an admin on the repository.
+    expect(await routeGitHub(lab, commentFrom("jhoffner"))).toMatchObject({ verdict: { pass: true }, delivered: true });
+    expect(permissionAsks).toContain("jhoffner Bearer operator-token");
+    // The operator lists two more; reader can only read.
+    const set = await act(lab, GITHUB_REVIEWERS_FLOW, `reviewers-${globalThis.crypto.randomUUID()}`, "setGitHubReviewers", { logins: ["jhoffner", "reader", "ci-bot"] });
+    expect(set.error).toBeUndefined();
+    const refused = [
+      await routeGitHub(lab, commentFrom("reader")),
+      await routeGitHub(lab, commentFrom("stranger")),
+      await routeGitHub(lab, commentFrom("ci-bot", "bot")),
+    ];
+    expect(refused.map((r) => [r.verdict?.pass, r.verdict?.reason, r.delivered])).toEqual([
+      [false, 'custom:github-reviewers: "reader" can\'t write to acme/storefront', false],
+      [false, 'custom:github-reviewers: "stranger" isn\'t a trusted reviewer', false],
+      // The sender screen drops an untrusted bot first; the reviewers screen never passes one either.
+      [false, expect.stringMatching(/bot "ci-bot"/), false],
+    ]);
+  }, 120_000);
+
+  it("reads the list for each comment: the operator's edit applies to the next one, with no restart", async () => {
+    const lab = await openFollowingLab("coder-reviewers-edit");
+    await coderOpensPullRequest(lab);
+    const session = `reviewers-${globalThis.crypto.randomUUID()}`;
+    expect((await routeGitHub(lab, commentFrom("maintainer"))).verdict).toMatchObject({ pass: false, reason: 'custom:github-reviewers: "maintainer" isn\'t a trusted reviewer' });
+    expect((await act(lab, GITHUB_REVIEWERS_FLOW, session, "setGitHubReviewers", { logins: ["jhoffner", "maintainer"] })).error).toBeUndefined();
+    expect(await routeGitHub(lab, commentFrom("maintainer"))).toMatchObject({ verdict: { pass: true }, delivered: true });
+    expect((await act(lab, GITHUB_REVIEWERS_FLOW, session, "setGitHubReviewers", { logins: ["maintainer"] })).error).toBeUndefined();
+    expect((await routeGitHub(lab, commentFrom("jhoffner"))).verdict).toMatchObject({ pass: false, reason: 'custom:github-reviewers: "jhoffner" isn\'t a trusted reviewer' });
+  }, 120_000);
+
+  it("lets no one but the operator change the list", async () => {
+    const lab = await openFollowingLab("coder-reviewers-operator-only");
+    await coderOpensPullRequest(lab);
+    const runtime = await lab.state.getRuntime();
+    const other = (await runAction({
+      orgId: LAB_ORG_ID,
+      flow: runtime.registry.get(GITHUB_REVIEWERS_FLOW) as FlowInstance,
+      actionName: "setGitHubReviewers",
+      input: { logins: ["mallory"] },
+      userId: "u_someone_else",
+      sessionId: `reviewers-${globalThis.crypto.randomUUID()}`,
+      stores: runtime.stores,
+      runtimeConfig: runtime.runtimeConfig,
+    } as never)) as { error?: unknown };
+    expect(other.error).toMatchObject({ blockName: "set-github-reviewers" });
+    // The list is as the tree seeded it: jhoffner still steers, mallory doesn't.
+    expect((await routeGitHub(lab, commentFrom("jhoffner"))).verdict).toMatchObject({ pass: true });
+    PERMISSIONS.mallory = "admin";
+    expect((await routeGitHub(lab, commentFrom("mallory"))).verdict).toMatchObject({ pass: false, reason: 'custom:github-reviewers: "mallory" isn\'t a trusted reviewer' });
+    delete PERMISSIONS.mallory;
   }, 120_000);
 });
 

@@ -21,6 +21,9 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 <a name="d1"></a>
 ## D1 · The timed read turns off only on a bus that says it crosses processes; the in-memory bus keeps it
 
+> **Superseded (Nov 19) by [FIX-2545](https://linear.app/fixpoint-labs/issue/FIX-2545).** The owner took the flip below: the in-memory bus is single-process by decision and reports that it crosses, so it keeps no timed read. Two processes need a bus that crosses (Postgres). This decision's "in-memory bus keeps it" and the spec's two-in-memory-processes row and signal (3) are history. The goal's `c:fallback` runs on a Postgres bus with no tail pool, so it still checks the fallback and still passes.
+
+
 | | |
 |---|---|
 | **Instead of** | An app option that declares "this app runs on one process," which would let the in-memory bus turn the timer off too |
@@ -141,5 +144,6 @@ with no fresh analyst in this dispatch: weaker than the skill asks.
   narrowed notices, the session stream filters by kind; lineage-shared resources a stated limit.
 - **Amended (Nov 2, #4511)** — one test-only crossing double named for the three goal checks
   that need a bus that crosses on one process.
+- **Superseded (Nov 19)** — D1 flipped by FIX-2545: the in-memory bus is single-process and keeps no timed read (FIX-2368's closure amendment).
 
 **Open: none.**

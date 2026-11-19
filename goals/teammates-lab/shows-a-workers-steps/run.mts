@@ -2,9 +2,9 @@
  * Goal check: in the Teammates lab, a worker's tool steps show in its
  * conversation during its turn, and fold once the turn is done (FIX-2393).
  * On a real model, against `fsdev dev --app @flow-state-dev/teammates`, graded
- * on the lab's own conversation entries: its adapter's `watchConversation`,
- * which reads the session through the client's `sessionFeed`, the surface
- * the conversation draws.
+ * on the lab's own conversation entries: what its conversation's follower
+ * reads (react's `useSessionFeed` and workforce's session turns view, under
+ * the lab's provider), the surface the conversation draws.
  *
  * Signals, per run:
  *   - steps during the turn: a view the conversation showed before the answer
@@ -12,8 +12,8 @@
  *   - folded after: once the answer lands and the turn ends, every run of
  *     steps in the turn reads done (or failed) and closed, and none is running.
  *
- * Control (`GOAL_CONTROL=popup-only`, same command): the adapter draws no
- * steps in the conversation, as before; *steps during the turn* must FAIL.
+ * Control (`GOAL_CONTROL=popup-only`, same command): the conversation's
+ * entries draw no steps, as before; *steps during the turn* must FAIL.
  *
  * Run: pnpm tsx goals/teammates-lab/shows-a-workers-steps/run.mts
  */
@@ -34,8 +34,9 @@ import {
   stopProcessGroup,
   type ModulePatch,
 } from "../../lib/index.mts";
-import { createAppCalls, type ConversationEntry, type ConversationView } from "../../../labs/teammates/src/app/index.ts";
+import type { ConversationEntry, ConversationView } from "../../../labs/teammates/src/lib/conversation.ts";
 import { sleep, startTeammates } from "../lab.mts";
+import { teammatesScreen } from "../screen.mts";
 
 const fixture = loadFixture<{ worker: string; path: string; line: string; decoys: Record<string, string>; asks: string[] }>(import.meta.url);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -49,14 +50,14 @@ const SETTLE_MS = 3_000;
 /** The `popup-only` control: the conversation draws no tool steps, as before FIX-2393; the popup still does. */
 const POPUP_ONLY: ModulePatch[] = [
   {
-    module: "labs/teammates/src/app/conversations.ts",
+    module: "labs/teammates/src/lib/conversation.ts",
     from: String.raw`const step = toolStep\(item, ended\);`,
-    to: "continue;",
+    to: "return;",
   },
 ];
 if (!["", "popup-only"].includes(CONTROL)) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"`);
 
-// The adapter runs in this process, so the control re-runs this file with the patch applied as it loads.
+// The screen half runs in this process, so the control re-runs this file with the patch applied as it loads.
 if (CONTROL === "popup-only" && process.env.GOAL_MODULE_PATCH === undefined) {
   const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
   mkdirSync(SCRATCH, { recursive: true });
@@ -115,13 +116,13 @@ await runGoal(async (failures, tell) => {
     const value = `ORCHID-${randomInt(1000, 9999)}`;
     const lab = await startTeammates(dir, USER, {}, seedWorkdir(join(dir, "workdir"), value));
     try {
-      const adapter = createAppCalls(createClient({ userId: USER, baseUrl: lab.origin }));
-      const sessionId = await adapter.openConversation(fixture.worker);
+      const screen = await teammatesScreen(createClient({ userId: USER, baseUrl: lab.origin }));
+      const sessionId = await screen.calls.open(fixture.worker);
       const seen: Seen[] = [];
-      const stop = adapter.watchConversation(sessionId, (view) => seen.push({ at: Date.now(), view }));
+      const stop = screen.watch(sessionId, (view) => seen.push({ at: Date.now(), view }));
       const ask = fixture.asks[randomInt(0, fixture.asks.length)]!;
       try {
-        await adapter.send(sessionId, ask);
+        await screen.calls.send(sessionId, ask);
         // The turn is over once the conversation says it isn't answering and has held still a while.
         const until = Date.now() + TURN_MS;
         while (Date.now() < until) {
@@ -131,6 +132,7 @@ await runGoal(async (failures, tell) => {
         }
       } finally {
         stop();
+        screen.close();
       }
       const final = seen[seen.length - 1]?.view;
       if (final === undefined || !afterAsk(final, ask, value).asked) throw new Error(`run ${n}: the conversation never showed the question`);

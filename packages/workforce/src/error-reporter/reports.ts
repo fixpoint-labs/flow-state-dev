@@ -321,6 +321,36 @@ export function statusInWords(row: Pick<ReportResourceState, "status" | "issue">
   }
 }
 
+/**
+ * Text others wrote (a drafted title, a task's goal), made literal for a line
+ * of Markdown: every ASCII punctuation mark backslash-escaped and each run of
+ * whitespace one space, so it shows as typed: no image is fetched and no
+ * link hides its address behind words. A bare address in it stays the address
+ * (a renderer may still make it clickable). Escapes rather than a code span,
+ * which a backtick in it would close.
+ */
+export function markdownLiteral(text: string): string {
+  return text.replace(/\s+/g, " ").replace(/[!-/:-@[-`{-~]/g, "\\$&");
+}
+
+/**
+ * Where a report came from, in plain words, as Markdown: a failed task and its
+ * title, a failed request and its flow and action, a user's words, or a burst.
+ * The names in it are {@link markdownLiteral}.
+ */
+export function sourceInWords(report: Pick<ReportResourceState, "source" | "parts" | "task" | "storm">): string {
+  switch (report.source) {
+    case "task":
+      return `a failed task (${markdownLiteral((report.task?.title ?? report.task?.goal ?? report.parts.actionName).split("\n")[0]!.slice(0, 80))})`;
+    case "request":
+      return `a failed request (${markdownLiteral(report.parts.flowKind)} / ${markdownLiteral(report.parts.actionName)})`;
+    case "manual":
+      return "a problem a user described";
+    case "storm":
+      return `a burst of ${report.storm?.entries.length ?? 0} failures`;
+  }
+}
+
 /** The key families that hold reports; every other key in the collection is bookkeeping or history. */
 const REPORT_KEY_PREFIXES = ["fp-", "storm-"] as const;
 

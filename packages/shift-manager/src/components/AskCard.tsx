@@ -27,7 +27,8 @@ import { SuspensionCard } from "./flow-state/suspension-card";
 import { SectionFailure } from "./ui";
 import { ReviewSuspension, takesReviewVerdict } from "./flow-state/review-hold";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
-import { answerOfResolution, sessionOfHold, suspensionOfHold, useInboxAnswer, useReviewData, type InboxAsk } from "../lib/inbox";
+import { answerOfResolution, suspensionOfHold, useInboxAnswer, useReviewData, type InboxAsk } from "../lib/inbox";
+import { sessionOfHold } from "../lib/inbox-list";
 
 /**
  * The registry's cards read their resolution from the session's items. An ask

@@ -11,7 +11,12 @@
  * client instead of the provider's. A collection's notice that names entries it shows
  * re-reads just those entries. It is written through the flow its `runBy` names,
  * at the version read, and read again once the write settles. A collection's
- * value is its first page of entries, and its setters name an entry.
+ * value is its first page of entries, and its setters name an entry. With
+ * `all` it is every entry (`listAll()`), kept whole: a notice's named entries
+ * are read and merged in, new or held, and the list is read again only when a
+ * notice names none, or an entry read fails. A user or org result says why its
+ * last read failed (`failure`, `useView`'s own type) and reads again on
+ * `refresh()`.
  *
  * A session resource comes from that session's snapshot, as it always has: pass
  * `{ session }`; a session collection's value is its snapshot entry (`count`,
@@ -28,18 +33,20 @@ import {
   type Client,
   type CollectionSnapshotEntry,
   type ScopeCollectionHandle,
+  type ScopeEntryHandle,
   type ScopeEntry,
   type ScopeResourceDef,
   type WireNotice,
   type WireTopic
 } from "@flow-state-dev/client";
 import { liveRead } from "@flow-state-dev/client/internal";
-import { getPatternPrefix } from "@flow-state-dev/contracts/helpers";
+import { extractBareTopic, getPatternPrefix } from "@flow-state-dev/contracts/helpers";
 import type { JsonValue } from "@flow-state-dev/core/types";
 import type { SessionView } from "./useSession";
 import { useClient } from "../internal/useClient";
 import { useFencedRead, type ReadDriver } from "../internal/useFencedRead";
 import { findSnapshotResource } from "../internal/findSnapshotResource";
+import { failureOf, type ViewReadFailure } from "../internal/readFailure";
 
 /** The client type a definition brands, or `JsonValue`. */
 type ClientValue<TDef> = TDef extends { ClientType: infer C } ? C : JsonValue;
@@ -51,16 +58,25 @@ type ResourceValue<TValue> = {
   stale: boolean;
 };
 
+// FIX-2775 D2.
+/** What a user or org read adds: why it failed, and a read on demand, as `useView`'s. */
+type ScopeRead = {
+  /** Why the last read failed, while `stale`; absent otherwise. `useView`'s own type. */
+  failure?: ViewReadFailure;
+  /** Read again now (a Retry, a refresh key). */
+  refresh(): void;
+};
+
 /** A single user or org resource: its value, and its writes. */
-export type UseScopeResourceResult<TValue> = ResourceValue<TValue> & {
+export type UseScopeResourceResult<TValue> = ResourceValue<TValue> & ScopeRead & {
   /** Store `value` at the version read; rejects with `stale_version` if another write landed first. */
   set: (value: TValue) => Promise<{ version: number }>;
   /** Apply `updater` to the stored value, re-applying it on a stale version (three times at most). */
   update: (updater: (value: TValue) => TValue) => Promise<{ version: number }>;
 };
 
-/** A user or org collection: its first page of entries, and writes by entry. */
-export type UseScopeCollectionResult<TValue> = ResourceValue<ScopeEntry<TValue>[]> & {
+/** A user or org collection: its first page of entries (every entry, with `all`), and writes by entry. */
+export type UseScopeCollectionResult<TValue> = ResourceValue<ScopeEntry<TValue>[]> & ScopeRead & {
   set: (entry: string, value: TValue) => Promise<{ version: number }>;
   /** `updater` gets `null` for an entry that is absent. */
   update: (entry: string, updater: (value: TValue | null) => TValue) => Promise<{ version: number }>;
@@ -76,33 +92,60 @@ export type UseResourceResult<TDef> = TDef extends { scope: "session" }
     ? UseScopeCollectionResult<ClientValue<TDef>>
     : UseScopeResourceResult<ClientValue<TDef>>;
 
-/** The most entries a collection's value holds: one page of the entries route. */
+/** One page of the entries route: the most a first-page value holds, and the page size `all` asks for. */
 const ENTRY_PAGE = 200;
 
-// FIX-2625.
+/** How a collection is read: its first page, or (`all`) every entry, under `topicPrefix` when given. */
+type CollectionRead = { all: boolean; topicPrefix: string | undefined };
+
+// FIX-2625, FIX-2775 D2.
 /**
  * `held` with the entries `notice` names read again, one by one, or
- * `undefined` to read the collection whole: a notice with no ids, or one
- * naming an entry `held` doesn't show (a new entry's place in storage-key
- * order, and whether it fits the page, are the list's to say). A named entry
- * that is gone is dropped, unless `held` is a full page: then the entry after
- * the page moves in, which only the list can say, so it reads whole.
+ * `undefined` to read the collection whole: a notice with no ids, or a failed
+ * entry read under `all`.
+ *
+ * On the first page, a notice naming an entry `held` doesn't show reads whole
+ * too (a new entry's place in storage-key order, and whether it fits the page,
+ * are the list's to say), and so does a named entry gone from a full page (the
+ * entry after the page moves in, which only the list can say); a named entry
+ * gone from a shorter page is dropped. Under `all` every entry is held, so a
+ * new one is placed in storage-key order and a gone one is dropped, and only
+ * the named entries under `topicPrefix` are read.
  */
 async function withNamedEntries<TValue>(
   handle: ScopeCollectionHandle<TValue>,
   held: readonly ScopeEntry<TValue>[],
-  notice: WireNotice | null
+  notice: WireNotice | null,
+  { all, topicPrefix }: CollectionRead
 ): Promise<ScopeEntry<TValue>[] | undefined> {
-  const ids = notice?.kind === "resource" ? notice.ids : undefined;
-  if (ids === undefined || ids.length === 0) return undefined;
-  if (!ids.every((id) => held.some((entry) => entry.storageKey === id))) return undefined;
-  const read = new Map(await Promise.all(ids.map(async (id) => [id, await handle.entry(id).read()] as const)));
-  if (held.length >= ENTRY_PAGE && [...read.values()].some((now) => now.value === null)) return undefined;
-  return held.flatMap((entry) => {
+  const named = notice?.kind === "resource" ? notice.ids : undefined;
+  if (named === undefined || named.length === 0) return undefined;
+  const ids = all && topicPrefix !== undefined ? named.filter((id) => id.startsWith(topicPrefix)) : named;
+  if (ids.length === 0) return [...held];
+  const isHeld = (id: string) => held.some((entry) => entry.storageKey === id);
+  if (!all && !ids.every(isHeld)) return undefined;
+  let read: Map<string, Awaited<ReturnType<ScopeEntryHandle<TValue>["read"]>>>;
+  try {
+    read = new Map(await Promise.all(ids.map(async (id) => [id, await handle.entry(id).read()] as const)));
+  } catch (error) {
+    // Under `all`, an entry read that failed reads the collection whole instead.
+    if (all) return undefined;
+    throw error;
+  }
+  if (!all && held.length >= ENTRY_PAGE && [...read.values()].some((now) => now.value === null)) return undefined;
+  const merged = held.flatMap((entry) => {
     const now = read.get(entry.storageKey);
     if (now === undefined) return [entry];
     return now.value === null ? [] : [{ ...entry, value: now.value, version: now.version }];
   });
+  // Under `all` (the only way a read entry is not held here), a new entry's place is its storage-key order.
+  for (const [storageKey, now] of read) {
+    if (isHeld(storageKey) || now.value === null) continue;
+    const at = merged.findIndex((entry) => entry.storageKey > storageKey);
+    const added = { topic: extractBareTopic(handle.key, storageKey), storageKey, value: now.value, version: now.version };
+    merged.splice(at === -1 ? merged.length : at, 0, added);
+  }
+  return merged;
 }
 
 /** Read now, and again on each resource notice under `roots` of `on`: the caller's user or org topic, or a session's. */
@@ -160,15 +203,30 @@ export function useResource<TDef extends ScopeResourceDef>(
     client?: Pick<Client, "resource" | "subscribe"> & { sessions?: Pick<Client["sessions"], "state"> };
     /** At user or org scope, or by `sessionId`, how often to read where push can miss a change, in ms. Default: the client's live-read pace. */
     pollIntervalMs?: number;
+    // FIX-2775 D2.
+    /**
+     * At user or org scope, a collection's value is every one of its entries,
+     * page after page (`listAll()`), not its first page. Ignored for a single
+     * resource and at session scope.
+     */
+    all?: boolean;
+    /**
+     * With `all`, only the entries whose storage key starts with this
+     * (`listAll({ topicPrefix })`), and only change notices that may touch
+     * them are heard: a project's workstreams hear only their own project.
+     */
+    topicPrefix?: string;
   } = {}
 ): UseResourceResult<TDef> {
   type TValue = ClientValue<TDef>;
   const built = useClient();
   const client = options.client ?? built;
-  const { pollIntervalMs } = options;
+  const { pollIntervalMs, all = false } = options;
   const atSession = def.scope === "session";
   const key = options.key ?? def.ref ?? def.pattern ?? "";
   const collection = def.pattern !== undefined;
+  // Only a collection read whole narrows by prefix; a single resource ignores both options.
+  const topicPrefix = all && collection ? options.topicPrefix : undefined;
   const scope = def.scope === "org" ? "org" : "user";
   // A session resource read by the session's id: only where no `useSession` view hands its snapshot.
   const sessionId = atSession && options.session === undefined && options.sessionId != null && options.sessionId !== "" ? options.sessionId : undefined;
@@ -189,7 +247,10 @@ export function useResource<TDef extends ScopeResourceDef>(
     const prefix = getPatternPrefix(path);
     return prefix.length > 0 ? [prefix] : undefined;
   };
-  const roots = useMemo(() => rootsOf(key), [collection, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Under a `topicPrefix`, its whole segments are the root: a prefix that ends mid-segment
+  // (`projects/a-`) narrows to the segment above it, since the path rule matches by segment.
+  const narrowed = topicPrefix === undefined || topicPrefix.lastIndexOf("/") <= 0 ? undefined : topicPrefix.slice(0, topicPrefix.lastIndexOf("/"));
+  const roots = useMemo(() => (narrowed !== undefined ? [narrowed] : rootsOf(key)), [collection, key, narrowed]); // eslint-disable-line react-hooks/exhaustive-deps
   // A session notice names the resource's stored path (its ref or pattern), never the name a flow
   // declares it under: `key` is the snapshot's name only, and stands in only for a definition with neither.
   const storedPath = def.ref ?? def.pattern ?? key;
@@ -209,13 +270,14 @@ export function useResource<TDef extends ScopeResourceDef>(
       .find((entry) => entry !== undefined);
     return (collection ? (found ?? null) : (found?.clientData ?? null)) as TValue | null;
   };
-  // A collection's entries as last read, for this handle, while no other read
-  // is out: a notice that names entries re-reads just those over them (FIX-2625).
-  const held = useRef<{ handle: unknown; entries: ScopeEntry<TValue>[] } | undefined>(undefined);
+  // A collection's entries as last read, for this handle read this way, while no other
+  // read is out: a notice that names entries re-reads just those over them (FIX-2625).
+  const how = useMemo<CollectionRead>(() => ({ all, topicPrefix }), [all, topicPrefix]);
+  const held = useRef<{ handle: unknown; how: CollectionRead; entries: ScopeEntry<TValue>[] } | undefined>(undefined);
   const reading = useRef(0);
-  const { data, error, refresh } = useFencedRead<TValue | ScopeEntry<TValue>[] | null>(
+  const { data, error, cause, refresh } = useFencedRead<TValue | ScopeEntry<TValue>[] | null>(
     // `client` too: by `sessionId` there is no handle, and a value one client read is never shown under another.
-    [handle, scope, key, sessionId, client],
+    [handle, scope, key, sessionId, client, how],
     null,
     `Failed to read "${key}"`,
     async (stillCurrent, notice) => {
@@ -225,14 +287,16 @@ export function useResource<TDef extends ScopeResourceDef>(
       }
       if (handle === undefined) return null;
       if (!("list" in handle)) return (await handle.read()).value;
-      const last = held.current?.handle === handle && reading.current === 0 ? held.current.entries : undefined;
+      const last = held.current?.handle === handle && held.current.how === how && reading.current === 0 ? held.current.entries : undefined;
       reading.current += 1;
       try {
         const entries =
-          (last !== undefined ? await withNamedEntries(handle, last, notice) : undefined) ??
-          (await handle.list({ limit: ENTRY_PAGE })).items;
+          (last !== undefined ? await withNamedEntries(handle, last, notice, how) : undefined) ??
+          (all
+            ? await handle.listAll({ limit: ENTRY_PAGE, ...(topicPrefix === undefined ? {} : { topicPrefix }) })
+            : (await handle.list({ limit: ENTRY_PAGE })).items);
         // Only the read in play is a baseline: one a newer read superseded is older than what's shown.
-        if (stillCurrent()) held.current = { handle, entries };
+        if (stillCurrent()) held.current = { handle, how, entries };
         return entries;
       } catch (error) {
         if (stillCurrent()) held.current = undefined;
@@ -256,7 +320,7 @@ export function useResource<TDef extends ScopeResourceDef>(
 
   if (sessionId !== undefined) return { value: data, stale: error !== null } as UseResourceResult<TDef>;
   if (atSession) return { value: valueIn(options.session?.snapshot?.resources), stale: false } as UseResourceResult<TDef>;
-  const base = { value: data, stale: error !== null };
+  const base = { value: data, stale: error !== null, ...(error !== null ? { failure: failureOf(cause) } : {}), refresh };
   if (handle !== undefined && "list" in handle) {
     return {
       ...base,

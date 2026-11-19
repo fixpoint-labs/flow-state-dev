@@ -26,6 +26,8 @@ import {
   SUBSCRIPTION_CURSORS_RESOURCE,
   SUBSCRIPTION_INDEX_PATTERN,
   SUBSCRIPTION_INDEX_RESOURCE,
+  SUBSCRIPTION_TASK_ENDINGS_PATTERN,
+  SUBSCRIPTION_TASK_ENDINGS_RESOURCE,
   SUBSCRIPTIONS_PATTERN,
   SUBSCRIPTIONS_RESOURCE
 } from "./keys";
@@ -221,11 +223,31 @@ const subscriptionIndexCollection = defineResourceCollection({
   stateSchema: threadIndexResourceStateSchema
 });
 
+/** A task's ending, as the sweep that ended its subscriptions marked it. */
+const subscriptionTaskEndingSchema = z.object({
+  ending: z.enum(["errored", "cancelled"]),
+  at: z.number(),
+  /** The attempt that ended, when the sweep knew it: a later attempt's subscribe isn't ended by it. */
+  attempt: z.number().int().nonnegative().optional()
+});
+
+type SubscriptionTaskEnding = z.infer<typeof subscriptionTaskEndingSchema>;
+
+/** The task endings, at `workforce/subscription-task-endings/*` in the user's scope. Server-only. */
+const subscriptionTaskEndingsCollection = defineResourceCollection({
+  pattern: SUBSCRIPTION_TASK_ENDINGS_PATTERN,
+  scope: "user",
+  flowIsolation: false,
+  prefetchMode: "lazy",
+  stateSchema: subscriptionTaskEndingSchema
+});
+
 /** The flow resources a flow that subscribes, delivers or ends subscriptions declares. */
 export const subscriptionResources = {
   [SUBSCRIPTIONS_RESOURCE]: subscriptionsCollection,
   [SUBSCRIPTION_CURSORS_RESOURCE]: subscriptionCursorsCollection,
-  [SUBSCRIPTION_INDEX_RESOURCE]: subscriptionIndexCollection
+  [SUBSCRIPTION_INDEX_RESOURCE]: subscriptionIndexCollection,
+  [SUBSCRIPTION_TASK_ENDINGS_RESOURCE]: subscriptionTaskEndingsCollection
 } as const;
 
 function declared<T extends JsonObject>(ctx: BlockContext, name: string): ResourceCollectionRef<T> {
@@ -241,6 +263,12 @@ export const subscriptionsOf = (ctx: BlockContext) => declared<SubscriptionResou
 
 /** The running user's cursors. */
 export const subscriptionCursorsOf = (ctx: BlockContext) => declared<SubscriptionCursor>(ctx, SUBSCRIPTION_CURSORS_RESOURCE);
+
+/** The running user's task endings. */
+export const subscriptionTaskEndingsOf = (ctx: BlockContext) => declared<SubscriptionTaskEnding>(ctx, SUBSCRIPTION_TASK_ENDINGS_RESOURCE);
+
+/** A task id as a task-ending row's key: one path segment. */
+export const taskEndingKeyOf = (taskId: string) => encodeURIComponent(taskId);
 
 /** The running org's thread index. */
 export const subscriptionIndexOf = (ctx: BlockContext) => declared<ThreadIndexResourceState>(ctx, SUBSCRIPTION_INDEX_RESOURCE);
