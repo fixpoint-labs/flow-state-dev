@@ -1,14 +1,16 @@
-// FIX-1989; FIX-2624.
+// FIX-1989; FIX-2624; FIX-2845.
 /**
  * The user's message log: Workforce's `workforce/messages/*`, read by user
  * scope with no session. Another user's messages are not in it.
+ *
+ * The screen reads the newest page and asks for older pages as it scrolls.
+ * A notice that names messages merges those messages in.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import { topic, type LiveRead } from "@flow-state-dev/client";
-import { getPatternPrefix } from "@flow-state-dev/core/types";
+import { useEffect, useRef } from "react";
+import { useResource } from "@flow-state-dev/react";
 import { WORKER_MESSAGES_PATTERN, workerMessageResourceStateSchema, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
-import { describeFailure, readEveryScopeEntry, type Failure } from "./reads";
+import type { Failure } from "./reads";
 
 export type { WorkerMessageResourceState };
 
@@ -54,57 +56,49 @@ export function firstLine(text: string): string {
   return line.trim();
 }
 
+/** The log, as `useResource` reads it: newest page first, at user scope. */
+const workerMessages = { scope: "user" as const, pattern: WORKER_MESSAGES_PATTERN };
+
 /**
  * The log, read when the view opens, again on each Lab read (`readAt`), and on
  * each notice of a message under the user's scope; wherever push can miss a
- * change, every {@link MESSAGES_POLL_MS} instead (`client.live`). A later read
- * keeps the last rows until it lands, and a failed later read keeps them; only
- * a failed first read shows. The live read tries a failed one again on its own.
+ * change, every {@link MESSAGES_POLL_MS}. The newest page comes first.
+ * `loadOlder()` fetches the next older page. A notice that names messages
+ * merges those messages in. A later read keeps the last rows until it lands,
+ * and a failed later read keeps them; only a failed first read shows.
  * `rows` is `null` when no flow of the Lab declares the log (a 404): it keeps
  * no roster for the user.
  */
-export function useMessages(
-  readAt: number,
-): { rows: WorkerMessageResourceState[] | null | undefined; failure: Failure | undefined; reread: () => void } {
+export function useMessages(readAt: number): {
+  rows: WorkerMessageResourceState[] | null | undefined;
+  failure: Failure | undefined;
+  reread: () => void;
+  /** Whether an older page of the log can be loaded. */
+  hasOlder: boolean;
+  /** Fetch the next older page. No-op when `hasOlder` is false. */
+  loadOlder: () => void;
+} {
   const { client } = useLab();
-  const [rows, setRows] = useState<WorkerMessageResourceState[] | null | undefined>(undefined);
-  const [failure, setFailure] = useState<Failure | undefined>(undefined);
-  const live = useRef<LiveRead | null>(null);
-  useEffect(() => {
-    // The log is the user's: a message sent from any session writes its row under the user's scope.
-    const watching = client.live([topic.user()], {
-      read: () =>
-        readEveryScopeEntry(client, "user", WORKER_MESSAGES_PATTERN)
-          .then(toMessages)
-          .then(
-            (value): WorkerMessageResourceState[] | null => value,
-            (error: unknown) => {
-              if (describeFailure(error).httpStatus === 404) return null;
-              throw error;
-            },
-          ),
-      onValue: (value) => {
-        setRows(value);
-        setFailure(undefined);
-      },
-      onError: (error) => setFailure(describeFailure(error)),
-      hear: (notice) => notice.kind === "resource",
-      paths: [getPatternPrefix(WORKER_MESSAGES_PATTERN)],
-      pollIntervalMs: MESSAGES_POLL_MS,
-    });
-    live.current = watching;
-    return () => {
-      watching.close();
-      if (live.current === watching) live.current = null;
-    };
-  }, [client]);
-  // A Lab read reads it again too; the live read's own first read covers the one it opened on.
+  // The log is the user's: a message sent from any session writes its row under the user's scope.
+  const log = useResource(workerMessages, { newest: true, client, pollIntervalMs: MESSAGES_POLL_MS });
+  // A Lab read reads the open window again; the hook's own first read covers the one it opened on.
   const readAtSeen = useRef(readAt);
   useEffect(() => {
     if (readAtSeen.current === readAt) return;
     readAtSeen.current = readAt;
-    live.current?.refresh();
-  }, [readAt]);
-  const reread = useCallback(() => live.current?.refresh(), []);
-  return { rows, failure: rows === undefined ? failure : undefined, reread };
+    log.refresh();
+  }, [readAt, log.refresh]);
+  const rows =
+    log.value === null
+      ? log.failure?.httpStatus === 404
+        ? null
+        : undefined
+      : toMessages(log.value.map((entry) => ({ clientData: entry.value })));
+  return {
+    rows,
+    failure: rows === undefined ? log.failure : undefined,
+    reread: log.refresh,
+    hasOlder: log.hasOlder,
+    loadOlder: log.loadOlder
+  };
 }

@@ -2,22 +2,48 @@
 /** Messages: both sides, newest first, grouped by exchange; a sent message is its own tool line. */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ClientHttpError } from "@flow-state-dev/client";
-import { liveRead } from "@flow-state-dev/client/internal";
+import { ClientHttpError, createClient, type ClientFetch } from "@flow-state-dev/client";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import { firstLine, exchangesOf, toMessages, type WorkerMessageResourceState } from "../src/lib/messages";
 import { parseRoute, pathFor } from "../src/lib/routes";
 
-const readPages = vi.fn();
-vi.mock("@flow-state-dev/client", async (original) => ({
-  ...(await original<typeof import("@flow-state-dev/client")>()),
-  readEveryCollectionPage: (...a: unknown[]) => readPages(...a),
-}));
-const resource = vi.fn((def: { scope: string; pattern?: string }) => ({ ...def, list: vi.fn() }));
-// The client's own live read, over a subscription that hears nothing: each view reads once on open.
-const live = (topics: Parameters<typeof liveRead>[1], options: Parameters<typeof liveRead>[2]) => liveRead(() => ({ close: () => {} }), topics, options);
-const lab = { client: { userId: "u_1", resources: {}, resource, live }, refresh: vi.fn() };
+/** The log the screen reads, and a failure the next list throws. */
+const held: { rows: WorkerMessageResourceState[]; fail?: Error; lists: string[] } = { rows: [], lists: [] };
+
+const fetcher: ClientFetch = async (input) => {
+  const url = new URL(String(input), "http://x");
+  if (held.fail !== undefined) throw held.fail;
+  if (!url.pathname.endsWith("/entries")) throw new Error(`unrouted ${url.pathname}`);
+  held.lists.push(url.search);
+  const limit = Number(url.searchParams.get("limit") ?? 50);
+  const cursor = url.searchParams.get("cursor");
+  const newest = url.searchParams.get("order") === "newest";
+  const ranked = [...held.rows].sort((a, b) => (newest ? b.at - a.at || a.id.localeCompare(b.id) : a.id.localeCompare(b.id)));
+  const start =
+    cursor === null
+      ? 0
+      : ranked.findIndex((row) => (newest ? JSON.stringify([row.at, `workforce/messages/${row.id}`]) === cursor : `workforce/messages/${row.id}` === cursor)) + 1;
+  const page = ranked.slice(Math.max(start, 0), Math.max(start, 0) + limit);
+  const last = page.at(-1);
+  const nextCursor =
+    start + limit < ranked.length && last !== undefined
+      ? newest
+        ? JSON.stringify([last.at, `workforce/messages/${last.id}`])
+        : `workforce/messages/${last.id}`
+      : undefined;
+  return new Response(
+    JSON.stringify({
+      items: page.map((row) => ({ topic: row.id, storageKey: `workforce/messages/${row.id}`, value: row, version: 1 })),
+      ...(nextCursor === undefined ? {} : { nextCursor })
+    }),
+    { status: 200, headers: { "content-type": "application/json" } }
+  );
+};
+
+const real = createClient({ userId: "u_1", baseUrl: "", fetcher });
+const resource = vi.fn(real.resource.bind(real));
+const lab = { client: { userId: "u_1", resource, subscribe: () => ({ close() {} }) }, refresh: vi.fn() };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
 import { Messages } from "../src/surfaces/Messages";
@@ -43,7 +69,9 @@ const other = row({ id: "msg_c", from: "helper-a", to: "helper-b", at: 2_000, st
 const snapshot = { sessions: [], readAt: 1 } as unknown as LoadedSnapshot;
 
 beforeEach(() => {
-  readPages.mockReset();
+  held.rows = [];
+  held.fail = undefined;
+  held.lists = [];
   resource.mockClear();
   window.history.replaceState(null, "", "/messages");
 });
@@ -67,10 +95,10 @@ describe("the message log, as exchanges", () => {
 
 describe("the Messages view", () => {
   it("lists every message with both sides, read by user scope with no session, and opens either side's session", async () => {
-    readPages.mockResolvedValue([ask, answer, other].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
+    held.rows = [ask, answer, other];
     render(<Messages snapshot={snapshot} />);
     const lines = await screen.findAllByTestId("message");
-    expect(resource).toHaveBeenCalledWith({ scope: "user", pattern: "workforce/messages/*" });
+    expect(resource.mock.calls[0]?.[0]).toEqual({ scope: "user", pattern: "workforce/messages/*" });
     expect(lines.map((l) => `${l.getAttribute("data-from")}>${l.getAttribute("data-to")}`)).toEqual([
       "coordinator>researcher",
       "researcher>coordinator",
@@ -88,7 +116,7 @@ describe("the Messages view", () => {
   it("says a message is on its way until its recipient takes it, and when it couldn't be delivered", async () => {
     const onItsWay = row({ id: "msg_d", from: "researcher", to: "helper-a", at: 4_000, status: "unconfirmed" });
     const gaveUp = row({ id: "msg_e", from: "researcher", to: "helper-b", at: 5_000, status: "undeliverable", reason: "it couldn't be delivered within 1440 minutes" });
-    readPages.mockResolvedValue([onItsWay, gaveUp].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
+    held.rows = [onItsWay, gaveUp];
     render(<Messages snapshot={snapshot} />);
     const lines = await screen.findAllByTestId("message");
     const status = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).getByTestId("message-status").textContent;
@@ -101,7 +129,7 @@ describe("the Messages view", () => {
     const onPerson = row({ id: "msg_g", from: "researcher", to: "helper-b", at: 7_000, status: "unconfirmed", replyRequested: true, queuedBehind: "user" });
     const answered = row({ id: "msg_h", from: "researcher", to: "coordinator", at: 8_000, replyRequested: true, deadlineAt: 68_000, answeredBy: "msg_x" });
     const late = row({ id: "msg_i", from: "researcher", to: "coordinator", at: 9_000, replyRequested: true, deadlineAt: 10_000, waitEndedAt: 10_000, answeredBy: "msg_y" });
-    readPages.mockResolvedValue([waiting, onPerson, answered, late, ask].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
+    held.rows = [waiting, onPerson, answered, late, ask];
     render(<Messages snapshot={snapshot} />);
     const lines = await screen.findAllByTestId("message");
     const replyState = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).queryByTestId("message-reply-state")?.textContent;
@@ -114,21 +142,45 @@ describe("the Messages view", () => {
   });
 
   it("says so when there are none", async () => {
-    readPages.mockResolvedValue([]);
+    held.rows = [];
     render(<Messages snapshot={snapshot} />);
     expect((await screen.findByTestId("messages-empty")).textContent).toContain("No messages yet");
   });
 
   it("says this Lab keeps no log when no flow declares it", async () => {
-    readPages.mockRejectedValue(new ClientHttpError("Request failed (404) Not Found", { status: 404, body: { error: "unknown_resource" } }));
+    held.fail = new ClientHttpError("Request failed (404) Not Found", { status: 404, body: { error: "unknown_resource" } });
     render(<Messages snapshot={snapshot} />);
     expect((await screen.findByTestId("messages-empty")).textContent).toContain("keeps no roster");
   });
 
   it("says what the Lab answered when the log didn't load", async () => {
-    readPages.mockRejectedValue(new Error("store offline"));
+    held.fail = new Error("store offline");
     render(<Messages snapshot={snapshot} />);
     await waitFor(() => expect(screen.getByTestId("messages-failure").textContent).toContain("store offline"));
+  });
+
+  it("shows the newest page of a log past one page, and loads older messages on scroll", async () => {
+    held.rows = Array.from({ length: 250 }, (_, i) =>
+      row({ id: `msg_${String(i).padStart(3, "0")}`, from: "researcher", to: "coordinator", at: 1_000 + i, text: `line ${i}` })
+    );
+    render(<Messages snapshot={snapshot} />);
+    const first = await screen.findAllByTestId("message");
+    expect(first).toHaveLength(200);
+    expect(first[0]!.getAttribute("data-message-id")).toBe("msg_249");
+    expect(first[199]!.getAttribute("data-message-id")).toBe("msg_050");
+    expect(screen.queryByTestId("messages-failure")).toBeNull();
+    expect(held.lists.every((search) => search.includes("order=newest"))).toBe(true);
+    expect(held.lists.some((search) => search.includes("manifest=1"))).toBe(false);
+
+    const scroller = screen.getByTestId("messages-scroller");
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 4000 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 400 });
+    scroller.scrollTop = 3600;
+    act(() => fireEvent.scroll(scroller));
+    await waitFor(() => expect(screen.getAllByTestId("message")).toHaveLength(250));
+    const shown = screen.getAllByTestId("message").map((line) => line.getAttribute("data-message-id"));
+    expect(shown[0]).toBe("msg_249");
+    expect(shown[249]).toBe("msg_000");
   });
 
   it("is at /messages, and a session at /s/<id>", () => {

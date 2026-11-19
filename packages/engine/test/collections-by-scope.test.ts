@@ -133,6 +133,40 @@ describe("a direct read of a collection's entries", () => {
     expect(second.nextCursor).toBeUndefined();
   });
 
+  // FIX-2845.
+  it("lists a collection's manifest as storage keys and versions, with no values and a higher page ceiling", async () => {
+    const { router, stores } = buildRouter([threadsFlow()]);
+    await seed(stores, "user", alice, "drafts/a", { title: "A", body: "secret", score: 9 });
+    await seed(stores, "user", alice, "drafts/b", { title: "B", body: "", score: 0 });
+    await seed(stores, "user", alice, "drafts/c", { title: "C", body: "", score: 0 });
+    // A value page stops at 200. A manifest page is keys and versions, so a much larger page is one read.
+    const refused = await get(router, ["resources", "user", "drafts/*", "entries"], alice, "?limit=201");
+    expect(refused.status).toBe(400);
+    const wide = await list(router, "user", "drafts/*", alice, "?manifest=1&limit=10000&topicPrefix=drafts/b");
+    expect(wide.items).toEqual([{ storageKey: "drafts/b", version: 1 }]);
+    expect(wide.items[0]).not.toHaveProperty("value");
+    const first = await list(router, "user", "drafts/*", alice, "?manifest=1&limit=2");
+    expect(first.items).toEqual([
+      { storageKey: "drafts/a", version: 1 },
+      { storageKey: "drafts/b", version: 1 }
+    ]);
+    const second = await list(router, "user", "drafts/*", alice, `?manifest=1&limit=2&cursor=${encodeURIComponent(first.nextCursor!)}`);
+    expect(second.items).toEqual([{ storageKey: "drafts/c", version: 1 }]);
+    expect(second.nextCursor).toBeUndefined();
+  });
+
+  it("pages entries newest first by each entry's at, then loads the older page", async () => {
+    const { router, stores } = buildRouter([threadsFlow()]);
+    await seed(stores, "user", alice, "drafts/a", { title: "A", body: "", score: 0, at: 1_000 });
+    await seed(stores, "user", alice, "drafts/b", { title: "B", body: "", score: 0, at: 3_000 });
+    await seed(stores, "user", alice, "drafts/c", { title: "C", body: "", score: 0, at: 2_000 });
+    const first = await list(router, "user", "drafts/*", alice, "?order=newest&limit=2");
+    expect(first.items.map((item) => item.storageKey)).toEqual(["drafts/b", "drafts/c"]);
+    const older = await list(router, "user", "drafts/*", alice, `?order=newest&limit=2&cursor=${encodeURIComponent(first.nextCursor!)}`);
+    expect(older.items.map((item) => item.storageKey)).toEqual(["drafts/a"]);
+    expect(older.nextCursor).toBeUndefined();
+  });
+
   it("ignores a userId forged in the query under a resolver, and answers a caller it doesn't sign in as an unused key", async () => {
     const { router, stores } = buildRouter([threadsFlow()]);
     await seed(stores, "user", bob, "drafts/b", { title: "B", body: "", score: 0 });

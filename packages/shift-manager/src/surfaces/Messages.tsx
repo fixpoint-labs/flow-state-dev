@@ -7,7 +7,7 @@
  * waiting, answered, or, when its sender waited, answered after
  * the wait ended.
  */
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
 import { workerLabel, type LoadedSnapshot } from "../lib/derive";
 import { firstLine, exchangesOf, useMessages, type WorkerMessageResourceState } from "../lib/messages";
@@ -82,18 +82,31 @@ function MessageLine({ row }: { row: WorkerMessageResourceState }) {
 }
 
 export function Messages({ snapshot }: { snapshot: LoadedSnapshot }) {
-  const { rows, failure, reread } = useMessages(snapshot.readAt);
+  const { rows, failure, reread, hasOlder, loadOlder } = useMessages(snapshot.readAt);
   const exchanges = useMemo(() => (rows == null ? [] : exchangesOf(rows)), [rows]);
+  const scroller = useRef<HTMLDivElement>(null);
+  // Older pages load as the reader reaches the end of the ones already shown.
+  const onScroll = () => {
+    const el = scroller.current;
+    if (el === null || !hasOlder) return;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) loadOlder();
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="messages">
       <header className="border-b border-foreground/20 px-[22px] py-3.5" data-testid="messages-header">
         <ScreenTitle>Messages</ScreenTitle>
         <Meta role="control" className="mt-1 block text-muted-foreground" testId="messages-summary">
-          {rows === undefined ? "Reading…" : rows === null ? "No message log" : `${rows.length} ${rows.length === 1 ? "message" : "messages"} between your workers, newest first`}
+          {rows === undefined
+            ? "Reading…"
+            : rows === null
+              ? "No message log"
+              : hasOlder
+                ? `${rows.length} newest ${rows.length === 1 ? "message" : "messages"}, scroll for older`
+                : `${rows.length} ${rows.length === 1 ? "message" : "messages"} between your workers, newest first`}
         </Meta>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-[22px] py-3">
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-[22px] py-3" data-testid="messages-scroller" onScroll={onScroll}>
         {failure !== undefined ? (
           <SectionFailure what="Messages" failure={failure} onRetry={reread} testId="messages-failure" />
         ) : rows === null ? (

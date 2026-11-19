@@ -101,17 +101,85 @@ export async function handleReadScopeResource(
 
 const ENTRY_LIST_DEFAULT_LIMIT = 50;
 const ENTRY_LIST_MAX_LIMIT = 200;
+/** A manifest page is a storage key and a version, so one page can name far more entries than a value page. */
+const ENTRY_MANIFEST_MAX_LIMIT = 10_000;
+
+/** A stored entry the list pages, before the client projection. */
+type ListedEntry = { storageKey: string; state: JsonObject; version: number };
+
+/** When the entry was sent, when its state carries a finite `at`. Undated entries page after every dated one. */
+function sentAt(state: JsonObject): number | null {
+  const at = state["at"];
+  return typeof at === "number" && Number.isFinite(at) ? at : null;
+}
+
+/** Newest first: a later `at` first, undated entries after every dated one, storage key ascending to break a tie. */
+function compareNewest(a: ListedEntry, b: ListedEntry): number {
+  const left = sentAt(a.state);
+  const right = sentAt(b.state);
+  if (left !== null && right !== null && left !== right) return right - left;
+  if (left !== null && right === null) return -1;
+  if (left === null && right !== null) return 1;
+  return a.storageKey < b.storageKey ? -1 : a.storageKey > b.storageKey ? 1 : 0;
+}
+
+/** The cursor of a newest-first page: the last entry's `at` (null when it has none) and its storage key. */
+type NewestMark = { at: number | null; storageKey: string };
+
+function parseNewestCursor(cursor: string): NewestMark | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cursor);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed) || parsed.length !== 2 || typeof parsed[1] !== "string") return undefined;
+  const at = parsed[0];
+  if (at !== null && (typeof at !== "number" || !Number.isFinite(at))) return undefined;
+  return { at, storageKey: parsed[1] };
+}
+
+/** Whether `entry` is strictly older than `mark` in {@link compareNewest} order. */
+function afterNewest(entry: ListedEntry, mark: NewestMark): boolean {
+  const at = sentAt(entry.state);
+  if (mark.at !== null && at !== null) {
+    if (at !== mark.at) return at < mark.at;
+    return entry.storageKey > mark.storageKey;
+  }
+  if (mark.at !== null && at === null) return true;
+  if (mark.at === null && at !== null) return false;
+  return entry.storageKey > mark.storageKey;
+}
 
 /**
- * GET /resources/:scope/:key/entries?limit=&cursor=&topicPrefix=
+ * A version that moves when a projected entry's state moves. A projected
+ * collection has no stored version (the value read reports 0), so the manifest
+ * cannot tell a change from an unchanged row without one derived from the state.
+ */
+function contentVersion(state: JsonObject): number {
+  const text = JSON.stringify(state);
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const version = hash >>> 0;
+  return version === 0 ? 1 : version;
+}
+
+/**
+ * GET /resources/:scope/:key/entries?limit=&cursor=&topicPrefix=&manifest=&order=
  * GET /resources/:scope/:key/entries/:entry
  *
  * The caller's entries of a user or org collection, as the client sees them,
  * each with its version: one cursor-paged page (the cursor is the last storage
  * key returned), or one entry (`null` when absent, or not the caller's to
- * read). Gated by `client.state.read`, as the session-addressed list is. A
- * projected collection reads through its app source, with a context built
- * from the caller instead of a session.
+ * read). `manifest=1` returns each entry's storage key and version and no
+ * value, and accepts a much larger page. `order=newest` pages by each entry's
+ * `at`, newest first, and the cursor is that order's place. Gated by
+ * `client.state.read`, as the session-addressed list is. A projected collection
+ * reads through its app source, with a context built from the caller instead
+ * of a session.
  */
 export async function handleReadScopeEntries(
   request: Request,
@@ -167,17 +235,31 @@ export async function handleReadScopeEntries(
     if (projected !== undefined) {
       if (!ownerKeyAdmits(config, storageKey, caller.userId)) return jsonResponse(200, null);
       const state = await readExternalCollectionState(config, extractBareTopic(config.pattern, storageKey), projected);
-      return jsonResponse(200, state === undefined ? null : await shaped(storageKey, state, 0));
+      return jsonResponse(200, state === undefined ? null : await shaped(storageKey, state, contentVersion(state)));
     }
     const found = await readEntry(ctx.stores, address, caller, storageKey);
     return jsonResponse(200, found === undefined ? null : await shaped(storageKey, found.state, found.version));
   }
 
   const url = new URL(request.url);
+  const manifest = url.searchParams.get("manifest") === "1";
+  const order = url.searchParams.get("order");
+  if (order !== null && order !== "newest") {
+    return jsonResponse(400, { error: "invalid_order", message: `order must be "newest"` });
+  }
+  if (order === "newest" && (manifest || projected !== undefined)) {
+    return jsonResponse(400, {
+      error: "invalid_order",
+      message: manifest
+        ? "A manifest is paged in storage-key order."
+        : "A projected collection is paged by its source, not by newest."
+    });
+  }
+  const maxLimit = manifest ? ENTRY_MANIFEST_MAX_LIMIT : ENTRY_LIST_MAX_LIMIT;
   const limitParam = url.searchParams.get("limit");
   const limit = limitParam !== null ? Number.parseInt(limitParam, 10) : ENTRY_LIST_DEFAULT_LIMIT;
-  if (!Number.isInteger(limit) || limit < 1 || limit > ENTRY_LIST_MAX_LIMIT) {
-    return jsonResponse(400, { error: "invalid_limit", message: `limit must be 1–${ENTRY_LIST_MAX_LIMIT}` });
+  if (!Number.isInteger(limit) || limit < 1 || limit > maxLimit) {
+    return jsonResponse(400, { error: "invalid_limit", message: `limit must be 1–${maxLimit}` });
   }
   const cursor = url.searchParams.get("cursor") ?? undefined;
   const topicPrefix = url.searchParams.get("topicPrefix") ?? undefined;
@@ -187,19 +269,36 @@ export async function handleReadScopeEntries(
       { limit, ...(cursor !== undefined ? { cursor } : {}), ...(topicPrefix !== undefined ? { prefix: topicPrefix } : {}) },
       projected
     );
-    const items = await Promise.all(
-      hits
-        .filter((hit) => ownerKeyAdmits(config, hit.storageKey, caller.userId))
-        .map((hit) => shaped(hit.storageKey, hit.state as JsonObject, 0))
-    );
+    const admittedHits = hits.filter((hit) => ownerKeyAdmits(config, hit.storageKey, caller.userId));
+    const items = manifest
+      ? admittedHits.map((hit) => ({ storageKey: hit.storageKey, version: contentVersion(hit.state as JsonObject) }))
+      : await Promise.all(admittedHits.map((hit) => shaped(hit.storageKey, hit.state as JsonObject, contentVersion(hit.state as JsonObject))));
     return jsonResponse(200, { items, ...(nextCursor !== undefined ? { nextCursor } : {}) });
   }
-  const after = (await readEntries(ctx.stores, address, caller))
-    .filter((found) => topicPrefix === undefined || found.storageKey.startsWith(topicPrefix))
-    .filter((found) => cursor === undefined || found.storageKey > cursor);
+  const matched = (await readEntries(ctx.stores, address, caller)).filter(
+    (found) => topicPrefix === undefined || found.storageKey.startsWith(topicPrefix)
+  );
+  let after: ListedEntry[];
+  let nextCursor: string | undefined;
+  if (order === "newest") {
+    const mark = cursor === undefined ? undefined : parseNewestCursor(cursor);
+    if (cursor !== undefined && mark === undefined) {
+      return jsonResponse(400, { error: "invalid_cursor", message: "cursor is not a newest-page cursor" });
+    }
+    const ordered = [...matched].sort(compareNewest);
+    after = mark === undefined ? ordered : ordered.filter((found) => afterNewest(found, mark));
+    const page = after.slice(0, limit);
+    const last = page[page.length - 1];
+    nextCursor = after.length > limit && last !== undefined ? JSON.stringify([sentAt(last.state), last.storageKey]) : undefined;
+    const items = await Promise.all(page.map((found) => shaped(found.storageKey, found.state, found.version)));
+    return jsonResponse(200, { items, ...(nextCursor !== undefined ? { nextCursor } : {}) });
+  }
+  after = matched.filter((found) => cursor === undefined || found.storageKey > cursor);
   const page = after.slice(0, limit);
-  const items = await Promise.all(page.map((found) => shaped(found.storageKey, found.state, found.version)));
-  const nextCursor = after.length > limit ? page[page.length - 1]!.storageKey : undefined;
+  nextCursor = after.length > limit ? page[page.length - 1]!.storageKey : undefined;
+  const items = manifest
+    ? page.map((found) => ({ storageKey: found.storageKey, version: found.version }))
+    : await Promise.all(page.map((found) => shaped(found.storageKey, found.state, found.version)));
   return jsonResponse(200, { items, ...(nextCursor !== undefined ? { nextCursor } : {}) });
 }
 

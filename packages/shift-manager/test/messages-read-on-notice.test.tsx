@@ -12,7 +12,6 @@
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClientHttpError, type WireNotice, type WireTopic } from "@flow-state-dev/client";
-import { liveRead } from "@flow-state-dev/client/internal";
 
 type Opened = { topics: readonly WireTopic[]; pollIntervalMs?: number; onChange: (notice: WireNotice | null) => void; closed: boolean };
 const opened: Opened[] = [];
@@ -40,16 +39,28 @@ const message = (id: string, at: number) => ({
 let logged = [message("msg_1", 1)];
 let failWith: Error | undefined;
 let logReads = 0;
+let entryReads = 0;
 const client = {
   userId: "u_1",
   resource: () => ({
+    key: "workforce/messages/*",
+    scope: "user" as const,
     list: async () => {
       logReads += 1;
       if (failWith !== undefined) throw failWith;
-      return { items: logged.map((m) => ({ topic: m.id, storageKey: `workforce/messages/${m.id}`, value: m })) };
+      const ranked = [...logged].sort((a, b) => b.at - a.at);
+      return { items: ranked.map((m) => ({ topic: m.id, storageKey: `workforce/messages/${m.id}`, value: m, version: 1 })) };
     },
+    entry: (id: string) => ({
+      read: async () => {
+        entryReads += 1;
+        if (failWith !== undefined) throw failWith;
+        const found = logged.find((m) => id === m.id || id === `workforce/messages/${m.id}`);
+        return found === undefined ? { value: null, version: 0 } : { value: found, version: 1 };
+      }
+    })
   }),
-  live: (topics: readonly WireTopic[], options: Parameters<typeof liveRead>[2]) => liveRead(subscribe as never, topics, options),
+  subscribe,
 };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client }) }));
 
@@ -71,6 +82,7 @@ beforeEach(() => {
   logged = [message("msg_1", 1)];
   failWith = undefined;
   logReads = 0;
+  entryReads = 0;
 });
 afterEach(() => {
   cleanup();
@@ -95,12 +107,14 @@ describe("the message log", () => {
     expect(sub?.pollIntervalMs).toBe(5_000);
 
     logged = [message("msg_1", 1), message("msg_2", 2)];
-    hear(resource("workforce/messages/msg_2"));
-    await waitFor(() => expect(ids()).toEqual(["msg_1", "msg_2"]));
-    expect(logReads).toBe(2);
+    hear({ topic: { scope: "user", resource: "workforce/messages/msg_2" }, kind: "resource", ids: ["workforce/messages/msg_2"] });
+    await waitFor(() => expect(ids()).toEqual(["msg_2", "msg_1"]));
+    // A named message is one entry read. The page is not listed again.
+    expect(logReads).toBe(1);
+    expect(entryReads).toBe(1);
 
     view.rerender(<Probe readAt={2} />);
-    await waitFor(() => expect(logReads).toBe(3));
+    await waitFor(() => expect(logReads).toBe(2));
   });
 
   it("keeps the last messages when a later read fails; only a failed first read shows", async () => {
