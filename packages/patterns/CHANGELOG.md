@@ -1,5 +1,113 @@
 # @flow-state-dev/patterns
 
+## 0.3.0
+
+### Minor Changes
+
+- e505adf: Structured content is one item kind, `data`, emitted with `ctx.emit.data(dataType, value, { key? })` (FIX-2738). The `component` item kind is removed, with no alias: a "component" is now a `dataType` with a renderer registered for it.
+
+  **Breaking.**
+
+  - **core / engine:** `ctx.emit.component` is removed. `ctx.emit.data(dataType, value, options?)` emits `{ type: "data", dataType, value, key? }`. Options are `key` (keyed snapshot: id `item_data_keyed:<key>`, one entry per request and key, `value` replaced), `itemVisibility`, `agentName` and `transient` (default `false`, persisted). Migrate `ctx.emit.component(name, data, opts)` to `ctx.emit.data(name, data, opts)`.
+  - **contracts / core:** `ComponentItem` is removed from the `OutputItem` union; `DataItem` replaces it. With no `itemVisibility` a data item reaches the client and never model history (`{ client: true, history: false }`); `itemVisibility` overrides both. With `history: true`, a turn's history replays it as one assistant line, `[dataType] <value as JSON>`. A reader filters `item.type === "data"` and `item.dataType`, and reads `item.value` (not `item.data`).
+  - **react:** `RendererRegistry.data` holds item renderers, keyed by `dataType`. A data item with no renderer there renders nothing, never the JSON fallback, so it stays invisible in the UI and readable by code. `renderers.component` no longer draws items: it holds only the renderers a `suspension` item names with `render.component`. Move `renderers={{ component: { x: X } }}` to `renderers={{ data: { x: X } }}`; `X` receives `{ item: DataItem }`. Keyed data items dedup per request and key, and a container renderer manages the data items it owns. `useContainerItems` reads a container's `state` from its latest data item whose `dataType` is the container's `component`; `componentsByKey` is renamed `dataByKey`, with no alias.
+  - **testing:** `testItems(items).components()` is removed; use `testItems(items).data(dataType?)`.
+  - **orchestration:** `task-change`, `task-board-meta`, `task-board-recorder-failure` and `goal-seek-loop-termination` are data items. The constants are renamed, with no alias: `TASK_CHANGE_DATA_TYPE`, `TASK_BOARD_META_DATA_TYPE`, `TASK_BOARD_RECORDER_FAILURE_DATA_TYPE`, `GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE`. The recorder-failure and termination records reach no client.
+  - **workforce:** `coordinator-route` and `workforce:received` are data items; `RECEIVED_MESSAGE_COMPONENT` is renamed `RECEIVED_MESSAGE_DATA_TYPE`, with no alias. An app renderer for either moves to `renderers.data` and reads `item.value`.
+  - **patterns:** debate's `debate-turn`, `debate-turn-pending`, `debate-decision` and `debate-verdict`, event actors' `rb-entry`, routed specialists' `routedSpecialists` snapshot and the response auditor's `audit-annotation` are data items. An app renderer for one moves to `renderers.data` and reads `item.value`.
+  - **ui registry:** the generative `link-card` and `info-card` tools emit data items, and their renderers register under `renderers.data`.
+  - **devtool / shift-manager:** draw data items; the devtool's component item view is gone.
+
+  **Stored sessions.** A request stored before this can hold `component` items. The request store reads each one back as a data item (`component` → `dataType`, `data` → `value`, same status and key), in a record and in a replayed or resumed stream, so every reader sees data items. A keyed item's id reads back as `item_data_keyed:<key>`, so a resumed request's next snapshot of that key replaces it. This applies on every entry that runs flows (`createFlowState`, `createFlowApiRouter`, `runAction`, `fsdev run`, `dev` and `chat`); host code reading a store directly, past those entries, sees the stored shape. Nothing is rewritten in the store.
+
+  Docs: apps/docs/docs/streaming/emitting-items.md (one item kind for structured content: `ctx.emit.data`, `value`, keyed snapshots, default visibility, drawing through `renderers.data`; remove every `ctx.emit.component` section), apps/docs/docs/streaming/overview.md and apps/docs/docs/configuration/blocks.md (emitter tables), apps/docs/docs/client/react.md, apps/docs/docs/api/react.md and packages/react/README.md (`renderers.data`, `renderers.component` for suspensions only, `useContainerItems` `dataByKey`), packages/core/README.md (emitters), apps/docs/docs/orchestration/task-board.md, apps/docs/docs/orchestration/task-substrate.md, apps/docs/docs/sequencers/wait-for-condition.md and packages/orchestration/README.md (task records are data items, renamed constants), apps/docs/docs/patterns/plan-and-execute.md, apps/docs/docs/patterns/response-auditor.md, apps/docs/docs/patterns/event-actors.md and packages/patterns/README.md (pattern records are data items, renderers go under `data`), apps/docs/docs/ui/flow-aware-components.md and packages/ui/README.md (generative cards and the chat registry use the `data` slot), apps/docs/docs/workforce/coordinators.md, packages/workforce/README.md and packages/shift-manager/README.md (routing records and received messages are data items, renamed constant), apps/docs/docs/api/testing.md, apps/docs/docs/testing/testing-flows.md, apps/docs/docs/testing/overview.md and packages/testing/README.md (`testItems().data()`, `components()` removed).
+
+- 7a2bb7e: **Breaking:** the benchmark adapters move to a new subpath, `@flow-state-dev/patterns/benchmark`: `defaultBenchmarkRegistry`, `sharedDefaultWorker`, `supervisorBenchmarkAdapter`, `planAndExecuteBenchmarkAdapter`, `parallelTasksBenchmarkAdapter`, `roundRobinBenchmarkAdapter`, `debateBenchmarkAdapter` and `routedSpecialistsBenchmarkAdapter` are no longer on the root, with no alias; change the import to `from "@flow-state-dev/patterns/benchmark"`. Its types come from `@flow-state-dev/testing/benchmark`, so patterns lists `@flow-state-dev/testing` as an optional peer dependency: install it when you import `patterns/benchmark` (FIX-2460).
+
+  Docs: packages/patterns/README.md (the benchmark section imports from `@flow-state-dev/patterns/benchmark` and names the optional `@flow-state-dev/testing` peer), apps/docs/docs/testing/benchmarks.md (its two `import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns"` blocks become `from "@flow-state-dev/patterns/benchmark"`), apps/docs/guides/choosing-patterns-with-benchmarks.md (the same, in its one import block), apps/docs/docs/api/benchmarks.md (the registry's home is `@flow-state-dev/patterns/benchmark`), apps/docs/docs/api/package-roots.md (add `patterns/benchmark` to the subpaths in patterns' row)
+
+- 670c07a: **Breaking:** two subpaths are renamed to kebab-case, matching the others: import from `@flow-state-dev/patterns/routed-specialists` (was `/routedSpecialists`) and `@flow-state-dev/patterns/event-actors` (was `/eventActors`). The root also stops re-exporting the names no app or docs page imported from it; each keeps its home on its pattern's subpath. From `@flow-state-dev/patterns/response-auditor`: `responseAuditor` and all its schemas, types and helpers. From `/plan-and-execute`: `evaluatorVerdictSchema` and `EvaluatorVerdict`. From `/routed-specialists`: `createDispatchSpecialist`, `createCheckLoop`, `routedSpecialistsControlSchema`, `RoutedSpecialistsControlState`, `ControllerOutput`. From `/event-actors`: `createEventActorsWorkspaceResource`, `eventActorsWorkspaceStateSchema`, `EventActorsWorkspaceState`. From `/round-robin`: `roundRobinContributionsStateSchema` and the `RoundRobinState`, `RoundRobinContributionEntry`, `RoundRobinContributionsState`, `RoundRobinRefereeOutput`, `RoundRobinRefereeCritique`, `RoundRobinFinalShape` types. From `/debate`, under their subpath names: `createJudge`, `createSynthesize`, `createInitTranscript`, `createRecordArgument`, `formatTranscriptForJudge` (were the root's `createDebateJudge`, `createDebateSynthesize`, `createDebateInitTranscript`, `createDebateRecordArgument`, `formatDebateTranscriptForJudge`) and the `DebateState`, `DebateContributionEntry`, `DebateVerdict`, `DebateTranscriptState`, `DebateRawOutput` types. There are no deprecated aliases: an old import fails to compile (FIX-2459).
+
+  Docs: packages/patterns/README.md, apps/docs/docs/patterns/event-actors.md, apps/docs/docs/patterns/routed-specialists.md (import from `/event-actors` and `/routed-specialists`; in the patterns README, replace the Task Board section's copy of the `taskBoard` docs with a link to the task-board docs page)
+
+- de09b77: **Breaking:** 1,107 exports are removed from the roots of the published `@flow-state-dev/*` packages, with no deprecated aliases, so importing one from a package root no longer compiles; some of them are still exported from another entry of the same package (FIX-2562).
+
+### Patch Changes
+
+- Updated dependencies [04812f3]
+- Updated dependencies [61efa05]
+- Updated dependencies [ec99b11]
+- Updated dependencies [4b4a7d4]
+- Updated dependencies [8e111c9]
+- Updated dependencies [d30f516]
+- Updated dependencies [f888e69]
+- Updated dependencies [2cb6326]
+- Updated dependencies [2876f11]
+- Updated dependencies [84b912d]
+- Updated dependencies [a27cf26]
+- Updated dependencies [9dde49f]
+- Updated dependencies [77a6c9b]
+- Updated dependencies [aa28006]
+- Updated dependencies [e3ca793]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [e505adf]
+- Updated dependencies [5b2bd16]
+- Updated dependencies [fe85f56]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [78daf33]
+- Updated dependencies [4394069]
+- Updated dependencies [5c7de6e]
+- Updated dependencies [c7ce9ff]
+- Updated dependencies [95d9686]
+- Updated dependencies [1600ca1]
+- Updated dependencies [6b360fa]
+- Updated dependencies [e5a9596]
+- Updated dependencies [556aabe]
+- Updated dependencies [41dcd7e]
+- Updated dependencies [e238e18]
+- Updated dependencies [e9722ee]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [b43424c]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [0e0df19]
+- Updated dependencies [80175df]
+- Updated dependencies [b9bb900]
+- Updated dependencies [fabd6a7]
+- Updated dependencies [de09b77]
+- Updated dependencies [6407fbf]
+- Updated dependencies [c82adfa]
+- Updated dependencies [aa45e92]
+- Updated dependencies [546603f]
+- Updated dependencies [4a6643c]
+- Updated dependencies [246f0ba]
+- Updated dependencies [4698256]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [714e98f]
+- Updated dependencies [1e58902]
+- Updated dependencies [81c145c]
+- Updated dependencies [3e7d5f3]
+- Updated dependencies [5ce9228]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [298aae0]
+- Updated dependencies [13e3970]
+- Updated dependencies [c9d33ff]
+- Updated dependencies [bb95ce1]
+- Updated dependencies [1970b12]
+- Updated dependencies [c36ffa0]
+- Updated dependencies [23bac7e]
+- Updated dependencies [1f46aaf]
+- Updated dependencies [b5b52b9]
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/orchestration@0.7.0
+  - @flow-state-dev/testing@0.4.0
+
 ## 0.2.2
 
 ### Patch Changes

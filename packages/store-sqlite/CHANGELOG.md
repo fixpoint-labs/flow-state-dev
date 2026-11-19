@@ -1,5 +1,126 @@
 # @flow-state-dev/store-sqlite
 
+## 0.5.0
+
+### Minor Changes
+
+- 04812f3: A server block can read the running user's pending asks across every session in one call, `sessions.userSuspensions({ flowKinds })`, and a view that reads it wakes only when a suspension changes (FIX-2770).
+
+  - **engine (breaking for custom stores):** `SuspensionStore` has a new required method, `listPendingForUser(query)`: one query that joins each suspension to its request and applies the user, tenant, organization, flow, pending status, expiry and waits-on-a-person checks inside it, returning rows built with `projectUserSuspension`. A custom suspension store gets a type error until it implements it; run `createPendingUserSuspensionsConformanceTests` from `@flow-state-dev/engine/testing` against it. `createInMemorySuspensionStore({ requests })` and `createFilesystemSuspensionStore(rootDir, { requests })` take the request store they join to; built without it, the method throws a `FlowStateConfigError`. `createInMemoryStores` and `createFilesystemStores` pass it for you.
+  - **core:** the request host's `sessions` gains `userSuspensions({ flowKinds, after? })`: the principal's pending suspensions on 0 to 50 named flow kinds (more throws `FlowStateConfigError`), oldest first, 200 a page, with `more` and a `next` cursor `{ createdAt, requestId, suspensionId }` to pass back as `after`. Each row carries the ids, flow, session, kind, card shape, title, message, allowed actions, schema, render and times, never the run's `stepInput`, `resumeData` or `data`. A user or session view may call it; an org view may not.
+  - **contracts / client:** a new change kind, `"suspension"`, published on a user's topic when a suspension waiting on them is written or deleted (never for a wait gate or an outside event's stop). A client that switches over every `ChangeKind` gets a new case.
+  - **core:** `suspensionShape`, `SuspensionShape` and `USER_SUSPENSION_REASONS` (every stored reason that waits on a person) are exported from `@flow-state-dev/core/types`, beside `isUserSuspension`, along with `projectUserSuspension` and the row and query types a store builds. `@flow-state-dev/react` still exports `suspensionShape`, `SuspensionShape`, `SchemaField` and `SuspensionValueKind`, the same functions and types it had.
+  - **contracts:** the card shape and schema analysis (`suspensionShape`, `analyzeResumeSchema`) and `USER_SUSPENSION_REASONS` live on the `@flow-state-dev/contracts/types/suspension` subpath, which core and react re-export from.
+
+  Docs: packages/core/README.md (request host section: `sessions.userSuspensions`), packages/engine/README.md (the store method an adapter implements), apps/docs/docs/api/client.md (the `suspension` notice kind)
+
+- ffbe992: An app can follow and drive its users' worker sessions through package hooks and calls, with no stream, subscription or flow address of its own (FIX-2757).
+
+  - **client:** a session feed's snapshot has `historyLoaded`, `true` once the history read has landed, so an empty session can be told from one still being read. `request(id).stream({ reconnect: true })` keeps following until the request ends: a failed connection opens again after the client's backoff (1 s, doubling, at most 30 s), resuming after the last event, without reporting it; five empty answers in a row (a request that already ended) or a 401, 403 or 404 still end it with `onError`, and `close()` ends it, a reconnect waiting on its backoff included. A user or org collection's handle has `listAll()`, every entry page after page, stopping with `CollectionReadStoppedError` on a repeated cursor or past 1,000 pages.
+  - **react:** `useSessionFeed(sessionId, { itemTypes, client })` follows one session live (its items once the history lands, `[]` for an empty session even while its stream is still connecting; its unfinished runs and connection state, `loadEarlier`, and `followResponse` for a streamed send). `useRequestStream` takes `reconnect: true`, handed to the client's stream above, a `client` of the host's own, and asks for no flow while `enabled: false`. `useResource` takes `client` and `pollIntervalMs` at user and org scope.
+  - **workforce:** the workforce client opens a new session with a worker (`startSession(worker, { fields })`, writing the app's session fields at open), sends to it (`send`, or `send(..., { stream: true })` for the streamed `Response`), each on the instance of its flow that owns the session, stops its running turns (`stopTurns`, resolving to the ids it stopped) and runs a failed turn again (`retryTurn`). `operatorGitHub({ operator, token })` and `operatorGitHubToken()` give a single-user host GitHub routines on the operator's own token, for the operator alone.
+  - **harness-manager:** each coding board row names `runFlow`, the flow its run's session runs on, so a screen reads that run's own stream without looking the session up.
+  - **workspace:** `sessionRepositorySource({ field, repositories, check })` is the run source for a host whose sessions each work in one repository a session field names; `listedRepository` maps a path or `file://` remote to the listed repository it is. `setupCommandFrom(value, setting)` reads a setup command from a setting, beside `checkCommandsFrom`.
+  - **store-sqlite:** `sqliteScheduleIndex({ filename })` is a schedule index on a SQLite file of its own.
+
+  Docs: packages/client/README.md (the session feed snapshot's `historyLoaded`; `request(id).stream`'s `reconnect`; a collection handle's `listAll`), packages/react/README.md (`useSessionFeed`; `useRequestStream`'s `reconnect` and `client`; `useResource`'s `client` and `pollIntervalMs`), packages/workforce/README.md (the client's `startSession`, `send`, `stopTurns`, `retryTurn`; `operatorGitHub`), packages/harness-manager/README.md (the coding board row's `runFlow`), packages/workspace/README.md (`sessionRepositorySource`, `listedRepository`, `setupCommandFrom`), packages/store-sqlite/README.md (`sqliteScheduleIndex`)
+
+- de09b77: **Breaking:** 1,107 exports are removed from the roots of the published `@flow-state-dev/*` packages, with no deprecated aliases, so importing one from a package root no longer compiles; some of them are still exported from another entry of the same package (FIX-2562).
+- 95f3cce: **Breaking:** each store package's root carries what an app author imports, and a new `./host` entry carries what a host or adapter author builds with (FIX-2452). Nothing is deleted, and there are no aliases: an import from the root of a name that moved fails to compile with "has no exported member". Change the import path to `/host`.
+
+  - **`@flow-state-dev/store-sqlite`** keeps `sqliteStores`, `SQLiteStoreOptions` and `createSQLiteScheduleIndex`. Moved to **`@flow-state-dev/store-sqlite/host`**: `createSQLiteStores`, `SQLiteStoreRegistry`, the per-store constructors (`createSQLiteSessionStore`, `createSQLiteRequestStore`, `createSQLiteUserStore`, `createSQLiteOrgStore`, `createSQLiteActiveRequestRegistry`, `createSQLiteCheckpointStore`, `createSQLiteTraceStore`, `createSQLiteSuspensionStore`, `createSQLiteLeaseStore`, `createSQLiteWakeStore`), `SQLiteTraceStoreOptions`, `CreateSQLiteRequestStoreOptions`, `initializeSchema`, `initializeSchemaDDL` and `applyConnectionPragmas`.
+  - **`@flow-state-dev/store-postgres`** keeps `postgresStores`, `PostgresStoreOptions`, `PoolConfig` and `createPostgresScheduleIndex`. Moved to **`@flow-state-dev/store-postgres/host`**: `createPostgresStores`, `PostgresStoreRegistry`, the per-store constructors (`createPostgresSessionStore`, `createPostgresRequestStore`, `createPostgresUserStore`, `createPostgresOrgStore`, `createPostgresActiveRequestRegistry`, `createPostgresContentStore`, `createPostgresResourceStateStore`, `createPostgresCheckpointStore`, `createPostgresSuspensionStore`, `createPostgresLeaseStore`, `createPostgresWakeStore`), `initializeSchema`, `createPgPoolTx`, `QueryExecutor`, `TxClient` and `PostgresBus`.
+  - **`@flow-state-dev/engine`** keeps the adapters `inMemoryStores` and `filesystemStores`, and `StoreAdapter`, `StoresConfig`, `CapabilitySlot` and `CapabilitySlotMap`. Moved to **`@flow-state-dev/engine/host`**: the registry factories `createInMemoryStores` and `createFilesystemStores`, and the per-store constructors (`createInMemorySessionStore`, `createInMemoryRequestStore`, `createInMemoryUserStore`, `createInMemoryOrgStore`, `createInMemoryContentStore`, `createInMemoryResourceStateStore`, `createInMemoryTraceStore`, `createInMemorySuspensionStore`, `createInMemoryLeaseStore`, `createInMemoryWakeStore`, and the `createFilesystem…Store` constructors for session, request, user, org, content, resource state, trace and wake).
+
+  The two `initializeSchema` functions, one per store package, are no longer both on a package root.
+
+  Docs: FIX-2452. packages/store-sqlite/README.md and packages/store-postgres/README.md: the root's names, then a _For host and adapter authors_ section listing `./host` and its names. packages/engine/README.md: the store factories and per-store constructors listed under `@flow-state-dev/engine/host`, `inMemoryStores` and `filesystemStores` on the root. packages/vercel/README.md and packages/fsdev/README.md: any `createPostgresStores` or `createSQLiteStores` import comes from `/host`. `server/schedule-index.md` and `streaming/trace-channel.md`: the `./host` import paths. The package-roots page: the store-sqlite and store-postgres rows (the root for app authors, `./host` for host and adapter authors, the rule `engine/host` follows), and engine's row names its store factories on `engine/host`.
+
+### Patch Changes
+
+- f89e8a5: The SQLite and Postgres request stores no longer keep a finished request's items in memory for the life of the server (FIX-2676).
+
+  - **store-sqlite, store-postgres:** while a request runs, the store remembers what it last wrote for each item so the next write carries only what changed. That memory is now dropped once the request's run has ended, however it ended. Before, writes after the terminal status (`request.onFinished`, side-chain work, request-end hooks, the observer's own trace with trace observability on) or a failed terminal write left a serialized copy of the request's whole item log behind.
+  - **engine:** `RequestStore` gains an optional `releaseItemTracking(requestId)`. The runtime calls it once the last live run of a request in the process has ended. A custom store that keeps per-request item state in memory implements it to drop that state; a store that keeps none omits it.
+
+  Docs: packages/engine/README.md and apps/docs custom-store pages, if they list the `RequestStore` methods: add the optional `releaseItemTracking`.
+
+- Updated dependencies [04812f3]
+- Updated dependencies [61efa05]
+- Updated dependencies [ec99b11]
+- Updated dependencies [4b4a7d4]
+- Updated dependencies [8e111c9]
+- Updated dependencies [d30f516]
+- Updated dependencies [f888e69]
+- Updated dependencies [2cb6326]
+- Updated dependencies [2876f11]
+- Updated dependencies [a27cf26]
+- Updated dependencies [77a6c9b]
+- Updated dependencies [5e55476]
+- Updated dependencies [81b1693]
+- Updated dependencies [aa28006]
+- Updated dependencies [e3ca793]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [e505adf]
+- Updated dependencies [5b2bd16]
+- Updated dependencies [819c2a5]
+- Updated dependencies [fe85f56]
+- Updated dependencies [f89e8a5]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [21d31bc]
+- Updated dependencies [44b199d]
+- Updated dependencies [5549fd1]
+- Updated dependencies [cf185b3]
+- Updated dependencies [c7ce9ff]
+- Updated dependencies [c487501]
+- Updated dependencies [95d9686]
+- Updated dependencies [1600ca1]
+- Updated dependencies [6b360fa]
+- Updated dependencies [3973e1f]
+- Updated dependencies [41dcd7e]
+- Updated dependencies [ae56d59]
+- Updated dependencies [e238e18]
+- Updated dependencies [a63b662]
+- Updated dependencies [e9722ee]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [74a7b9d]
+- Updated dependencies [b43424c]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [42980e4]
+- Updated dependencies [de09b77]
+- Updated dependencies [2e7c92f]
+- Updated dependencies [c82adfa]
+- Updated dependencies [aa45e92]
+- Updated dependencies [8ccec52]
+- Updated dependencies [546603f]
+- Updated dependencies [4a6643c]
+- Updated dependencies [246f0ba]
+- Updated dependencies [4698256]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [714e98f]
+- Updated dependencies [95f3cce]
+- Updated dependencies [0454257]
+- Updated dependencies [1e58902]
+- Updated dependencies [81c145c]
+- Updated dependencies [13e3970]
+- Updated dependencies [ec1fdf9]
+- Updated dependencies [1970b12]
+- Updated dependencies [c36ffa0]
+- Updated dependencies [23bac7e]
+- Updated dependencies [1f46aaf]
+- Updated dependencies [b5b52b9]
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/engine@0.6.0
+  - @flow-state-dev/scheduled@0.4.0
+
 ## 0.4.0
 
 ### Minor Changes
