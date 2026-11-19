@@ -31,7 +31,7 @@
 
 **Controls:** each runs this file again; the three patches are applied as the processes load (`goals/lib/module-patch.mts`).
 - `GOAL_CONTROL=memory-bus` — FIX-2427's `no-bus`: the Postgres adapter backs no bus, so each process gets the in-memory one. Must FAIL `a:org-state` and `a:org-row`. (Since FIX-2545 the in-memory bus says it crosses, so B keeps no timer and never updates, rather than updating at the poll pace the spec expected.)
-- `GOAL_CONTROL=no-request-publish` — FIX-2426's `no-publish` on today's module: the request and session store wrappers send no notice (scope-state, resource and board notices share the queue and still go). Must FAIL `d:plain-reply` (and `j3:worker-reply`), with leg a passing.
+- `GOAL_CONTROL=no-request-publish` — FIX-2426's `no-publish` on today's module: the request and session store wrappers send no notice (scope-state, resource and board notices share the queue and still go). Must FAIL `d:plain-reply` (and `j3:worker-reply`), with leg a passing. Since FIX-2841 it also fails `j2:message`: Shift Manager's line is a request item, so with request notices cut it never shows.
 - `GOAL_CONTROL=skip-check` — FIX-2428's: the mint grants every session topic. Must FAIL `c:refused`.
 - `GOAL_CONTROL=main-before` — today's `main`: the parent of FIX-2426's implementation merge (`db498b976`), extracted to scratch and installed, with `app/` copied in unchanged. Must FAIL every `a:` assertion and `b:no-read-between`.
 
