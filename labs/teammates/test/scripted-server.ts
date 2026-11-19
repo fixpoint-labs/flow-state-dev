@@ -37,10 +37,10 @@ import {
 import { AppProvider } from "../src/app";
 import type { AppConnection } from "../src/lib/files";
 
-/** A worker as the stand-in keeps it: what its roster row says, flattened. */
+/** A worker as the stand-in keeps it: what its roster entry says, flattened. */
 type ScriptedTeammate = { id: string; name: string; role: string; takesTasks?: boolean; own?: boolean; edited?: boolean; harness?: string; icon?: string; color?: string };
 
-/** A message in the stand-in's log: what the worker messages view reads of a log row. */
+/** A message in the stand-in's log: what the worker messages view reads of a log entry. */
 type Message = { id: string; from: string; to: string; text: string; inReplyTo?: string; replyRequested?: boolean; at: number };
 
 /** A stored item, as the server stores one. */
@@ -134,7 +134,7 @@ interface Turn {
 }
 
 interface ScriptedWorker {
-  row: ScriptedTeammate;
+  teammate: ScriptedTeammate;
   sessionId: string;
   items: StoredItem[];
   turns: Turn[];
@@ -172,7 +172,7 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
   const uploads = new Map<string, Blob>();
 
   const workers = new Map<string, ScriptedWorker>(
-    ROSTER.map((row) => [row.id, { row, sessionId: `conversation:${row.id}`, items: [], turns: [], lastActiveAt: now(), deferred: [] }]),
+    ROSTER.map((teammate) => [teammate.id, { teammate, sessionId: `conversation:${teammate.id}`, items: [], turns: [], lastActiveAt: now(), deferred: [] }]),
   );
   const worker = (id: string): ScriptedWorker => {
     const found = workers.get(id);
@@ -236,11 +236,11 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
   };
 
   /**
-   * `sendMessage`: a call in the sender's conversation, a row in the log, and a
+   * `sendMessage`: a call in the sender's conversation, an entry in the log, and a
    * turn deferred for the recipient. A send that isn't an answer asks for one.
    */
   const sendMessage = (w: ScriptedWorker, t: Turn, to: string, text: string, inReplyTo?: string): Step[1] => () => {
-    const message: Message = { id: nextId("m"), from: w.row.id, to, text, inReplyTo, ...(inReplyTo ? {} : { replyRequested: true }), at: now() };
+    const message: Message = { id: nextId("m"), from: w.teammate.id, to, text, inReplyTo, ...(inReplyTo ? {} : { replyRequested: true }), at: now() };
     log.push(message);
     store(w, t.id, sentOf(message));
     const recipient = worker(to);
@@ -251,15 +251,15 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
   const script = (w: ScriptedWorker, t: Turn, job: Job): Step[] => {
     if (job.kind === "receive") {
       const { message } = job;
-      const from = worker(message.from).row.name;
+      const from = worker(message.from).teammate.name;
       if (message.inReplyTo) return [[900, say(w, t, `${from} answered: "${message.text}" I've worked it into the plan.`)]];
-      if (w.row.id === RESEARCHER) {
+      if (w.teammate.id === RESEARCHER) {
         return [[700, say(w, t, "Looking it up in the plan doc.")], [4000, sendMessage(w, t, message.from, "Nov 12, per the plan doc.", message.id)]];
       }
       return [[700, say(w, t, "On it.")], [2000, sendMessage(w, t, message.from, "Done. It's in the doc.", message.id)]];
     }
     // writer waits for your yes before it publishes: `suspendForUser` with an approval.
-    if (w.row.id === WRITER && /\bpublish\b/i.test(job.text)) {
+    if (w.teammate.id === WRITER && /\bpublish\b/i.test(job.text)) {
       return [
         [
           600,
@@ -272,20 +272,20 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
       ];
     }
     // A long turn, as the contract's stop scenarios ask: work that runs until it is stopped.
-    if (w.row.id === LEAD && /\bboth modules\b/i.test(job.text)) return [[30_000, say(w, t, "Written up.")]];
-    if (w.row.id === LEAD && /\bmeanwhile\b/i.test(job.text)) return [[30_000, say(w, t, "Drafted.")]];
+    if (w.teammate.id === LEAD && /\bboth modules\b/i.test(job.text)) return [[30_000, say(w, t, "Written up.")]];
+    if (w.teammate.id === LEAD && /\bmeanwhile\b/i.test(job.text)) return [[30_000, say(w, t, "Drafted.")]];
     // A long answer, written word by word, as a streamed send draws it.
-    if (w.row.id === LEAD && /\bwalk me through\b/i.test(job.text)) {
+    if (w.teammate.id === LEAD && /\bwalk me through\b/i.test(job.text)) {
       return [[800, sayStreamed(w, t, "Here is the plan for the post, part by part, so each part has one job. That is the whole plan.")]];
     }
-    if (w.row.id === LEAD && !log.some((m) => m.from === LEAD && m.to === RESEARCHER)) {
+    if (w.teammate.id === LEAD && !log.some((m) => m.from === LEAD && m.to === RESEARCHER)) {
       return [
         [800, say(w, t, "Asking researcher now. An outline:\n1 · the problem\n2 · what ships\n3 · how to try it")],
         [600, sendMessage(w, t, RESEARCHER, "What's our launch date?")],
       ];
     }
     // Lead thinks longer than researcher looks a fact up, so a reply can arrive while you talk to Lead.
-    return [[w.row.id === LEAD ? 6000 : 900, say(w, t, `Noted: "${job.text}" I've folded it into the plan.`)]];
+    return [[w.teammate.id === LEAD ? 6000 : 900, say(w, t, `Noted: "${job.text}" I've folded it into the plan.`)]];
   };
 
   /** A turn for `job`, started now, beside any already running; `id` is the request id the door was sent with. */
@@ -411,20 +411,20 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
 
   // Workforce's roster writes and reads, as its roster flow answers them.
   const rosterEntries = (): RosterEntry[] =>
-    [...workers.values()].filter((w) => !fired.has(w.row.id)).map(({ row }) => ({
-      id: row.id,
-      flow: row.takesTasks ? CODER_FLOW : "agent",
-      standard: row.own !== true,
-      description: row.role,
-      name: row.name,
+    [...workers.values()].filter((w) => !fired.has(w.teammate.id)).map(({ teammate }) => ({
+      id: teammate.id,
+      flow: teammate.takesTasks ? CODER_FLOW : "agent",
+      standard: teammate.own !== true,
+      description: teammate.role,
+      name: teammate.name,
       teamName: null,
       forkedFrom: null,
-      edited: row.edited === true,
-      settings: { ...(row.harness === undefined ? {} : { harness: row.harness }), ...(row.icon === undefined ? {} : { icon: row.icon }), ...(row.color === undefined ? {} : { color: row.color }) },
+      edited: teammate.edited === true,
+      settings: { ...(teammate.harness === undefined ? {} : { harness: teammate.harness }), ...(teammate.icon === undefined ? {} : { icon: teammate.icon }), ...(teammate.color === undefined ? {} : { color: teammate.color }) },
     }));
   const hire = ({ id, description }: { id: string; description?: string }) => {
     if (workers.has(id) && !fired.has(id)) throw new Error(`"${id}" is already on your roster`);
-    workers.set(id, { row: { id, name: id, role: description ?? "", own: true }, sessionId: `conversation:${id}`, items: [], turns: [], lastActiveAt: now(), deferred: [] });
+    workers.set(id, { teammate: { id, name: id, role: description ?? "", own: true }, sessionId: `conversation:${id}`, items: [], turns: [], lastActiveAt: now(), deferred: [] });
     fired.delete(id);
     notify();
     return { id, flow: "agent" };
@@ -432,28 +432,28 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
   // As the workforce's edit: a file's teammate becomes the user's copy, under the same id; a null name clears it.
   const edit = ({ id, name }: { id: string; name?: string | null }) => {
     const w = worker(id);
-    if (name !== undefined) w.row = { ...w.row, name: name === null ? id.slice(id.lastIndexOf(".") + 1) : name };
-    if (!w.row.own) w.row = { ...w.row, edited: true };
+    if (name !== undefined) w.teammate = { ...w.teammate, name: name === null ? id.slice(id.lastIndexOf(".") + 1) : name };
+    if (!w.teammate.own) w.teammate = { ...w.teammate, edited: true };
     notify();
     return { id, flow: "agent" };
   };
   const reset = (id: string) => {
     const w = worker(id);
-    const file = ROSTER.find((row) => row.id === id);
+    const file = ROSTER.find((teammate) => teammate.id === id);
     if (file === undefined) throw new Error(`"${id}" isn't a standard worker`);
-    if (!w.row.edited) throw new Error(`You haven't edited "${id}"`);
-    w.row = file;
+    if (!w.teammate.edited) throw new Error(`You haven't edited "${id}"`);
+    w.teammate = file;
     notify();
     return { id };
   };
   const fire = (id: string) => {
-    if (!worker(id).row.own) throw new Error(`"${id}" is a standard worker`);
+    if (!worker(id).teammate.own) throw new Error(`"${id}" is a standard worker`);
     // Its conversation stays readable, so it keeps its place here and leaves the roster.
     fired.add(id);
     notify();
     return { id };
   };
-  /** A log row as the worker messages view answers it: delivered once its recipient's conversation read it, answered once a reply names it. */
+  /** A log entry as the worker messages view answers it: delivered once its recipient's conversation read it, answered once a reply names it. */
   const logEntry = (m: Message): WorkerMessageResourceState => {
     const answer = log.find((r) => r.inReplyTo === m.id);
     const read = worker(m.to).items.some((item) => item.type === "data" && item.dataType === RECEIVED_MESSAGE_DATA_TYPE && item.value?.id === m.id);
@@ -465,7 +465,7 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
       ...(answer === undefined ? {} : { answeredBy: answer.id }),
     };
   };
-  /** The worker messages view: the worker's open messages, by the view's own rule (`isOpenMessage`), and each id's row and answer. */
+  /** The worker messages view: the worker's open messages, by the view's own rule (`isOpenMessage`), and each id's entry and answer. */
   const workerMessages = ({ worker: id, ids = [] }: { worker: string; ids?: string[] }) =>
     log
       .map(logEntry)
@@ -510,7 +510,7 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
     // Only a teammate has a conversation; it runs while a turn of its does.
     workerSessions: ({ worker: id }) => {
       const w = workers.get(id);
-      return w === undefined || w.row.takesTasks
+      return w === undefined || w.teammate.takesTasks
         ? []
         : [{ id: w.sessionId, title: "Untitled", worker: id, updatedAt: w.lastActiveAt, running: w.turns.some((t) => t.status === "in_progress"), state: {}, isDefault: true, waiting: [] }];
     },
@@ -520,16 +520,16 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
     codingBoard: () => [],
   };
 
-  const summaryRow = (w: ScriptedWorker) => ({ id: w.sessionId, flowKind: "agent", userId: "you", updatedAt: w.lastActiveAt, createdAt: 1, state: {} });
+  const sessionSummary = (w: ScriptedWorker) => ({ id: w.sessionId, flowKind: "agent", userId: "you", updatedAt: w.lastActiveAt, createdAt: 1, state: {} });
   /** A request summary, as the session's requests read lists one. */
-  const requestRow = (t: Turn) => ({ id: t.id, actionName: t.action, status: t.status, source: t.source, startedAtMs: t.startedAt });
+  const requestSummary = (t: Turn) => ({ id: t.id, actionName: t.action, status: t.status, source: t.source, startedAtMs: t.startedAt });
   const flow = (address: string) => ({
     identity: async () => ({ userId: "you", orgId: "org" }),
-    // A worker's conversation is at its own id here, whatever the client derived: the one row the screen opens.
+    // A worker's conversation is at its own id here, whatever the client derived: the one conversation the screen opens.
     createSession: async ({ state = {} }: { state?: Record<string, unknown> } = {}) => {
-      const w = [...workers.values()].find((candidate) => Object.values(state).includes(candidate.row.id));
+      const w = [...workers.values()].find((candidate) => Object.values(state).includes(candidate.teammate.id));
       if (w === undefined) throw refused(400, `no worker in ${JSON.stringify(state)}`);
-      return summaryRow(w);
+      return sessionSummary(w);
     },
     async send(action: string, input: { message?: string }, sendOptions: { sessionId: string; requestId?: string; stream?: boolean; attachments?: FileContent[] }) {
       if (action !== RESPOND) throw refused(404, `the stand-in's ${address} has no action "${action}"`);
@@ -604,15 +604,15 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
     upload,
     sessions: {
       async get(sessionId: string) {
-        return summaryRow(ofSession(sessionId));
+        return sessionSummary(ofSession(sessionId));
       },
       // No conversation is listed at the client's derived address: an open always makes it, here at its own id.
       async list() {
         return [];
       },
       async requests(sessionId: string, read: { status?: string; limit?: number } = {}) {
-        const rows = ofSession(sessionId).turns.filter((t) => read.status === undefined || t.status === read.status).map(requestRow);
-        return rows.slice(-(read.limit ?? 20));
+        const requests = ofSession(sessionId).turns.filter((t) => read.status === undefined || t.status === read.status).map(requestSummary);
+        return requests.slice(-(read.limit ?? 20));
       },
       async state(sessionId: string, read: { includeItems?: boolean } = {}) {
         const w = bySession(sessionId);
@@ -738,7 +738,7 @@ export function rosterReadsBy(server: ScriptedServer, answer: (call: number, rea
   return { ...server.client, view } as unknown as Client;
 }
 
-/** A roster row as workforce's roster view answers it, for a screen drawn without the stand-in: a standard teammate on the agent flow unless `fields` say otherwise. */
+/** A roster entry as workforce's roster view answers it, for a screen drawn without the stand-in: a standard teammate on the agent flow unless `fields` say otherwise. */
 export const rosterEntry = (fields: Partial<RosterEntry> & { id: string }): RosterEntry => ({
   flow: "agent", standard: true, description: null, name: null, teamName: null, forkedFrom: null, edited: false, settings: {}, ...fields,
 });
