@@ -233,6 +233,11 @@ describe("the thread key and the follower", () => {
     expect(Object.keys(followPullRequest({ providers: [] }).resources ?? {})).toContain("workforceSubscriptions");
   });
 
+  it("refuses the removed `allow` option, naming `screens`, rather than following with no screen at all", () => {
+    // Dropped quietly, an old caller's reviewer list would become "anyone the sender screen passes".
+    expect(() => followPullRequest({ providers: [], allow: ["reviewer"] } as never)).toThrow(/no longer takes `allow`.*`screens`/);
+  });
+
   // A pull request the branch check first finds already closed or merged has had its closing
   // event, which ended only the subscriptions there were then: one made now would never end.
   it("doesn't subscribe to a pull request recorded already closed or merged, and still subscribes to an open one", async () => {

@@ -60,6 +60,12 @@ the verdict shape is unchanged.
 
 It comes down to a hidden model: anything async can await one.
 
+> **Amended 2026-11-17 (FIX-2789, product owner's call).** A custom screen may be async and gets the
+> block context: `(event, entry, ctx) => string | undefined | Promise<…>`, with the `resources` it
+> reads declared on the screen. A trusted-reviewers screen has to read a list kept as a document and ask
+> GitHub who can write, on each event. The rule that held D2 still holds: a screen never asks a model;
+> the evaluator stays routing's only one. A rejection, like a throw, refuses as `custom:<name>: failed`.
+
 <details>
 <summary><b>Decided, not asked</b> — engineering calls</summary>
 
