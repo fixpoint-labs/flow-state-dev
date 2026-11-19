@@ -17,6 +17,7 @@
  * heartbeat probes that don't need a principal).
  */
 import { timingSafeEqual } from "node:crypto";
+import { assertSecret } from "./assert-secret";
 import { PrincipalResolutionError } from "../errors";
 import type {
   PrincipalResolutionContext,
@@ -54,11 +55,7 @@ export interface CreateBearerSecretPrincipalResolverOptions {
 export function createBearerSecretPrincipalResolver(
   options: CreateBearerSecretPrincipalResolverOptions
 ): PrincipalResolver {
-  if (typeof options.secret !== "string" || options.secret.length === 0) {
-    throw new Error(
-      "createBearerSecretPrincipalResolver: `secret` must be a non-empty string."
-    );
-  }
+  assertSecret(options.secret, "createBearerSecretPrincipalResolver");
   if (
     typeof options.principal?.userId !== "string" ||
     options.principal.userId.length === 0
