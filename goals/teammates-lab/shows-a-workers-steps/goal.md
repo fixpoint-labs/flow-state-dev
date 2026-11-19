@@ -34,7 +34,7 @@ file check reads the step's own words, not the tool's name.
 **Model:** real: `openai/gpt-6-luna` (the lab's default), through the AI Gateway. No coding harness
 runs.
 
-**Run:** `pnpm tsx goals/teammates-lab/shows-a-workers-steps/run.mts` (needs `AI_GATEWAY_API_KEY`,
+**Run:** `pnpm tsx --tsconfig "$PWD/labs/teammates/tsconfig.json" goals/teammates-lab/shows-a-workers-steps/run.mts` (the lab's tsconfig resolves its `@/` imports, by an absolute path the lab it starts inherits; needs `AI_GATEWAY_API_KEY`,
 and the lab's pages built: `pnpm --filter @flow-state-dev/teammates build`).
 
 **Controls:** on the same command:
@@ -50,3 +50,4 @@ and the lab's pages built: `pnpm --filter @flow-state-dev/teammates build`).
 | 2026-11-04 | f3b19ba4 + this change | openai/gpt-6-luna | PASS 3/3 | Each run showed "Read …/releases/next/plan.md" in 35 to 40 views before the answer; after, one run per turn, done and closed ("Searched the code and read a file") |
 | 2026-11-04 | f3b19ba4 + this change | openai/gpt-6-luna | control `popup-only`: FAIL as required | All 3 runs: no view held a run of steps, before or after the answer |
 | 2026-11-04 | 9c4c98d1 + control pattern fix | openai/gpt-6-luna | PASS 1/1, control `popup-only` FAIL 1/1 | Re-run after the adapter call became `toolStep(item, ended)`; the control's pattern follows it |
+| 2026-11-19 | FIX-2772 part 2 (conversation on package hooks) | openai/gpt-6-luna | PASS 1/1, control `popup-only` FAIL 1/1 | Graded on the conversation follower's views; the control now patches `src/lib/conversation.ts` with `return;` (`continue;` no longer parsed inside `drawEntry`) |

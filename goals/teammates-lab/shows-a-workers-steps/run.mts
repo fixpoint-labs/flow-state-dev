@@ -52,7 +52,7 @@ const POPUP_ONLY: ModulePatch[] = [
   {
     module: "labs/teammates/src/lib/conversation.ts",
     from: String.raw`const step = toolStep\(item, ended\);`,
-    to: "continue;",
+    to: "return;",
   },
 ];
 if (!["", "popup-only"].includes(CONTROL)) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"`);
