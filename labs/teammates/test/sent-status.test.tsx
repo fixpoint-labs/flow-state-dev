@@ -9,10 +9,11 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import type { WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
-import type { AppCalls, ConversationEntry } from "../src/app";
+import type { ConversationEntry } from "../src/lib/conversation";
 import { Conversation } from "../src/components/Conversation";
 import { lookOf } from "../src/lib/looks";
-import { FixtureProvider, rosterEntry } from "./fake-app";
+import { rosterEntry } from "./scripted-server";
+import { standInFollower, TestProvider } from "./stub-server";
 
 afterEach(cleanup);
 
@@ -37,17 +38,12 @@ describe("a sent line's status", () => {
       },
       subscribe: () => ({ close: () => {} }),
     } as unknown as Client;
-    const quiet = () => () => {};
-    const adapter = {
-      watchConversation: (_: string, onChange: (view: unknown) => void) => (onChange({ entries, running: false, stopping: false, backgroundRunning: 0 }), () => {}),
-      watchConnection: (_: string, onChange: (state: string) => void) => (onChange("live"), () => {}),
-      watchWindow: quiet,
-      watchTasks: quiet,
-    } as unknown as AppCalls;
+    const { Follower } = standInFollower("s1", { entries, running: false, stopping: false, backgroundRunning: 0 });
     const view = render(
-      <FixtureProvider calls={adapter} client={client}>
-        <Conversation adapter={adapter} worker={rosterEntry({ id: LEAD, name: "Lead" })} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} harnessOf={() => undefined} onFire={async () => {}} onOpen={() => {}} />
-      </FixtureProvider>,
+      <TestProvider client={client}>
+        <Follower />
+        <Conversation worker={rosterEntry({ id: LEAD, name: "Lead" })} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} harnessOf={() => undefined} onFire={async () => {}} onOpen={() => {}} />
+      </TestProvider>,
     );
     const statusOf = (id: string) => [...view.container.querySelectorAll("[data-sent-status]")].find((s) => s.closest("button")?.getAttribute("aria-label")?.endsWith(`: ${id}`))?.textContent;
     await waitFor(() => expect(statusOf("m50")).toBe("replied"));

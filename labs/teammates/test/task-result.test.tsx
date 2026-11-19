@@ -14,7 +14,6 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AppCalls } from "../src/app";
 import { PopupView } from "../src/components/Popups";
 import { lookOf } from "../src/lib/looks";
 import { codingTask, stubServer, TestProvider } from "./stub-server";
@@ -29,10 +28,9 @@ const doneRow = (answer: string | null, fields: Partial<CodingBoardTask> = {}) =
 
 const openTask = (row: CodingBoardTask) => {
   const server = stubServer({ board: { wks_cos: [row] } });
-  const calls = {} as AppCalls;
   render(
-    <TestProvider calls={calls} client={server.client}>
-      <PopupView adapter={calls} popup={{ kind: "task", sessionId: "wks_cos", taskId: "task_r" }} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} coders={[]} onClose={() => {}} />
+    <TestProvider client={server.client}>
+      <PopupView popup={{ kind: "task", sessionId: "wks_cos", taskId: "task_r" }} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} coders={[]} onClose={() => {}} />
     </TestProvider>,
   );
   return { popup: screen.getByRole("dialog"), server };

@@ -293,30 +293,35 @@ task, the run shows its steps, and the result lands in Lead's conversation.
 The goal check drives all of this in a browser:
 [`goals/teammates-lab/a-worker-talks-to-another-while-you-talk`](../../goals/teammates-lab/a-worker-talks-to-another-while-you-talk/goal.md).
 
-The screen tests run on a test double, `test/fake-app.ts`. The contract tests in `test/contract/`
-run five scenarios (a task's result, a failed turn, a held question and its answer, a cancelled
-task, a lapsed connection) against the double and against the real calls over the lab's own
-server (`host.mts`), in process, with only the model scripted and coding runs on the scripted
-harness. A scenario the real calls can't show yet is marked to fail with the issue that adds it.
+The screen tests run on a scripted server, `test/scripted-server.ts`: a stand-in at the client
+that stores items and answers the package views, so every line the screen draws goes through
+`src/app/`'s hooks and the real client. The contract tests in `test/contract/` run their
+scenarios (a task's result, a line sent mid-turn, a failed turn and its Retry, a held question
+and its answer, a cancelled task, a stopped turn, a line with files, a lapsed connection) through
+those hooks against the scripted server and against the lab's own server (`host.mts`), in
+process, with only the model scripted and coding runs on the scripted harness. A scenario the lab
+can't show yet is marked to fail with the issue that adds it.
 
 ## What the screen reads
 
-The roster, the lab's context, harness readiness, busy status and worker messages are package views a
-screen reads itself, with `react`'s `useView` over the client `AppProvider` holds (`useAppClient()`), and
-the roster's changes go through workforce's client. Everything else the screen reads and writes still goes
-through `src/app/`, one file per job, read with `useApp()`, and each function names the package call it
-makes.
+Every read is a package hook and every write a package client's call, over the one client
+`AppProvider` holds (`useAppClient()`). The roster, the lab's context, harness readiness, busy status
+and worker messages are package views a screen reads with `react`'s `useView`, and the roster's
+changes go through workforce's client. A conversation is read once for every screen on it, by its
+follower (`ConversationFollower`, in `src/app/conversations.ts`): its items on `react`'s
+`useSessionFeed`, its turns on workforce's session turns view, and the history summary through
+`useResource` by session id. Its writes go through workforce's client (`useConversationCalls`).
 
 | On screen | Package piece |
 |---|---|
-| The worker list, sending, the conversation | the workforce client's `watchRoster()` (its roster view) and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
+| The worker list, sending, the conversation | the workforce client's `watchRoster()` (its roster view), `ensureWorkerSession` and `send` (the flow's `respond`), the session's items on `useSessionFeed`, and workforce's session turns view for whether it is answering |
 | Busy status: the dot and the *Idle* age | workforce's worker sessions view (the default conversation, and whether a turn runs in it) and session turns view (when the last turn ended, else started) |
 | The context strip and the harness chips | the lab's `lab-context` view (`flows/lab-context.mts`) and the harness kit's readiness view; *Re-check* reads readiness again with `{ refresh: true }` |
-| A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery`, installed in `src/components/flow-state/`; Retry is the client's `request(id).retry()`, on the newest turn only |
+| A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery`, installed in `src/components/flow-state/`; Retry is the workforce client's `retryTurn`, on the newest turn only, and only for a turn the session turns view names as one the engine retries |
 | Workers messaging each other | `sendMessage`, the received-message item (`workforce:received`), and workforce's worker messages view: a worker's open messages, and the row and answer of each line on screen, found through the message log's indexes |
 | Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit`, `reset` and `fire`, on the roster flow |
 | Task lines | the conversation board's rows |
-| Stop, and the stopped line | the request's `abort` for each answering turn; the line is the UI registry's `request-recovery` stopped look, installed in `src/components/flow-state/`, after each request the session's requests list as `aborted`, with the session stream's unfinished runs as its count |
+| Stop, and the stopped line | the workforce client's `stopTurns`: each turn running when it reads them, and each line you sent before the press; a line you send after it runs on. The line is the UI registry's `request-recovery` stopped look, installed in `src/components/flow-state/`, after each turn the session turns view lists as `aborted`, with the session stream's unfinished runs as its count |
 | A teammate's icon and color | its `WORKER.md`'s `icon:` and `color:` lines, declared on the `agent` flow with `settings` and shown on its `roster()` row with `showSettings` |
 | The status line | the worker sessions view and the conversation's items for what it is answering, the board's rows for a running coding task, the worker messages view for a message waiting on a reply |
 | A message's popup | the session the message's row says it was delivered to, followed with `react`'s `useSessionFeed`: the turn whose received-message item carries the message's id |
@@ -325,13 +330,13 @@ makes.
 | A task waiting on you, and your answer | the row's holds through the Inbox's `inboxItems` and `taskView`, answered with the Inbox client's `answerOne`; a review drawn by the UI registry's `review-hold`, installed in `src/components/flow-state/`, from the run's stop read by harness-manager's `reviewDetail` |
 | A task's buttons | the Inbox client's `board(at)` on the conversation that filed it (`cancel`, `steer`, `release`, `retry`, and `refile` for a re-run), drawn by the UI registry's `task-actions`, with a failed task's error drawn by its `error` (`ErrorBody`), both installed in `src/components/flow-state/` |
 | A run's steps in plain words, in a popup and inline in the conversation | the UI registry's `tool-naming` and `tool-grouping`, installed in `src/components/flow-state/`, over each tool call's name, arguments, status and result: `toolSubject`, `toolStepState` (with `toolOutcome`), `toolRunState`, `withToolState` and `toolRunOpen` |
-| The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
+| Approving what a worker asks | `react`'s `useApproval` on the `user_approval` stop, through the conversation's flow |
+| The divider and its *summarized* label | the latest turn's `historyStart` on workforce's session turns view, and the history summary resource (workforce's `historySummaryResource`), read with `useResource` by session id |
 
-The conversation follows its session's stream. Whether a conversation is answering and the divider
-read the conversation's requests when one of them changes, and the divider reads the
-`historySummary` resource when it changes, through `client.subscribe`. A long reply costs them no
-more reads than a short one. On a host whose push can miss a change, such as the SQLite store the
-lab runs on, they also read every 1.5 seconds, as before.
+The conversation follows its session's stream. Its turns view and the history summary read again
+when the server says they changed, and on a host whose push can miss a change, such as the SQLite
+store the lab runs on, every 1.5 seconds as well. A long reply costs them no more reads than a
+short one.
 
 `color:` names one of the lab's palette, `blue`, `green`, `amber`, `rose`, `violet` or `teal`,
 each a `--teammate-*` token in the theme. A teammate whose file sets neither line, such as one you

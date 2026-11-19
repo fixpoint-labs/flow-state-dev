@@ -17,7 +17,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/components/App";
-import { createFixtureApp } from "./fake-app";
+import { scriptedServer } from "./scripted-server";
 import { codingTask, stubServer, TestProvider, type Posted, POPUP_READ } from "./stub-server";
 
 afterEach(() => {
@@ -63,7 +63,7 @@ function onBoard(rows: CodingBoardTask[]) {
 /** The task's popup, opened by its address over the stand-in board. */
 function openTask(server: ReturnType<typeof onBoard>, taskId = "t1") {
   window.history.replaceState(null, "", `/?worker=${LEAD}&session=${BOARD}&task=${taskId}`);
-  render(<TestProvider calls={createFixtureApp({ speed: 0.05 })} client={server.client}><App /></TestProvider>);
+  render(<TestProvider server={scriptedServer({ speed: 0.05 })} client={server.client}><App /></TestProvider>);
   return screen.findByRole("dialog", { name: TASK }, POPUP_READ);
 }
 
@@ -92,7 +92,7 @@ describe("a coding task's popup has its buttons", () => {
   it("starts the row afresh when the popup moves to another task, so a draft never carries to it", async () => {
     const server = onBoard([coding("t1", "cursor"), coding("t2", "codex", { title: "Bump the version" })]);
     window.history.replaceState(null, "", `/?worker=${LEAD}&session=${BOARD}&task=t2`);
-    render(<TestProvider calls={createFixtureApp({ speed: 0.05 })} client={server.client}><App /></TestProvider>);
+    render(<TestProvider server={scriptedServer({ speed: 0.05 })} client={server.client}><App /></TestProvider>);
     const popup = await screen.findByRole("dialog", { name: "Coding task: Bump the version" }, POPUP_READ);
     await waitFor(() => expect(buttons(popup)).toEqual(["Cancel", "Steer"]), { timeout: 2000 });
     fireEvent.change(within(popup).getByLabelText("Steer this task"), { target: { value: "Meant for Codex." } });

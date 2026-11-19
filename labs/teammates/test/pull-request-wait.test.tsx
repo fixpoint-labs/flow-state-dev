@@ -9,7 +9,6 @@
  */
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AppCalls } from "../src/app";
 import { PopupView, PULL_REQUEST_HINT } from "../src/components/Popups";
 import { lookOf } from "../src/lib/looks";
 import { codingTask, stubServer, TestProvider } from "./stub-server";
@@ -23,10 +22,9 @@ const waitingRow = codingTask({ id: "t-7", status: "in_progress", assignee: "cod
 
 function drawPopup(task = waitingRow) {
   const { client } = stubServer({ board: { s1: [task] }, recorded: { "run-7": { pullRequests: [{ number: 7, url: URL_7, title: "Add a welcome line" }] } } });
-  const calls = {} as AppCalls;
   render(
-    <TestProvider calls={calls} client={client}>
-      <PopupView adapter={calls} popup={{ kind: "task", sessionId: "s1", taskId: task.id }} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => true} coders={[]} onClose={() => {}} />
+    <TestProvider client={client}>
+      <PopupView popup={{ kind: "task", sessionId: "s1", taskId: task.id }} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => true} coders={[]} onClose={() => {}} />
     </TestProvider>,
   );
   return screen.findByRole("dialog");

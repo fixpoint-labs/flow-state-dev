@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ChevronRightIcon, TerminalIcon } from "lucide-react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import { useTasks, type AppCalls } from "../app";
+import { useTasks } from "../app";
 import type { Look } from "../lib/looks";
 import { displayName, roleOf, useWorkforce } from "../lib/roster";
 import { useNow, useStale } from "../lib/use-watch";
@@ -94,7 +94,6 @@ function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<stri
  * by state. At the foot, a place for its routines, empty for now.
  */
 export function TeammatePanel({
-  adapter,
   worker,
   sessionId,
   openTask,
@@ -103,7 +102,6 @@ export function TeammatePanel({
   isCoding,
   onOpen,
 }: {
-  adapter: AppCalls;
   worker: RosterEntry;
   /** The teammate's one conversation: the tasks listed are the ones it filed. */
   sessionId: string;
@@ -117,7 +115,7 @@ export function TeammatePanel({
   // The board's read can fail while the conversation's feed is live: its rows are then the last read, and stale too.
   const board = useTasks(sessionId);
   const tasks = board.value ?? [];
-  const stale = useStale(adapter, sessionId) || board.stale;
+  const stale = useStale(sessionId) || board.stale;
   const [cleared, clearFailed, restoreCleared] = useCleared(sessionId);
   const { running, failed, clearedFailed, ended } = groupTasks(tasks, cleared);
   // A running clock ticks each second; it holds while the feed is stale, as the status line's age does.

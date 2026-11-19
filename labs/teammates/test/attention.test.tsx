@@ -16,12 +16,12 @@
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import type { ConversationEntry } from "../src/app";
+import type { ConversationEntry } from "../src/lib/conversation";
 import { App } from "../src/components/App";
 import { codingTask, hold as openHold } from "./stub-server";
 import { createNotifier, teammateAttention, titleFor, useNotifyToggle } from "../src/lib/attention";
 import { ENDING_SHOWN_MS, needsOf, statusOf, type StatusInputs } from "../src/lib/status";
-import { createFixtureApp, FixtureProvider } from "./fake-app";
+import { scriptedServer, ScriptedProvider } from "./scripted-server";
 
 const NOW = 1_000_000_000;
 const coder = (id: string) => id === "cursor";
@@ -158,7 +158,7 @@ describe("a teammate waiting on your yes, on screen", () => {
       { permission: "granted", requestPermission: async () => "granted" },
     );
     vi.stubGlobal("Notification", Fake);
-    render(<FixtureProvider calls={createFixtureApp({ speed: 0.05 })}><App /></FixtureProvider>);
+    render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
     await waitFor(() => expect(row("writer")).toBeTruthy());
     await act(async () => fireEvent.click(within(workers()).getByRole("checkbox", { name: "Notify me" })));
     expect((within(workers()).getByRole("checkbox", { name: "Notify me" }) as HTMLInputElement).checked).toBe(true);

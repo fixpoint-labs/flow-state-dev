@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { HireWorkerInput, RosterEntry } from "@flow-state-dev/workforce/browser";
-import { useTasks, type AppCalls } from "../app";
+import { useConversation, useTasks } from "../app";
 import type { Look } from "../lib/looks";
 import { teammateAttention, supported, useAttention, useNotifyToggle, type TeammateAttention } from "../lib/attention";
 import { useStable } from "../lib/stable";
@@ -8,7 +8,7 @@ import { displayName } from "../lib/roster";
 import { freshEndings, needsOf, statusOf, useActivity } from "../lib/status";
 import { useTalk } from "../lib/talk";
 import { useSeen } from "../lib/unread";
-import { useNow, useStale, useWatch } from "../lib/use-watch";
+import { useNow, useStale } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
@@ -30,7 +30,6 @@ const unreadable = (entries: { kind: string }[]) => entries.filter((e) => e.kind
  * desktop notification while the tab is in the background.
  */
 export function WorkersList({
-  adapter,
   workers,
   sessions,
   selected,
@@ -42,7 +41,6 @@ export function WorkersList({
   hiring,
   onHiring,
 }: {
-  adapter: AppCalls;
   /** The teammates: the workers you can talk to. */
   workers: RosterEntry[];
   sessions: Record<string, string>;
@@ -72,7 +70,6 @@ export function WorkersList({
           {workers.map((w) => (
             <li key={w.id}>
               <WorkerItem
-                adapter={adapter}
                 worker={w}
                 nameOf={nameOf}
                 look={lookOf(w.id)}
@@ -114,7 +111,6 @@ export function WorkersList({
 }
 
 function WorkerItem({
-  adapter,
   worker,
   nameOf,
   look,
@@ -126,7 +122,6 @@ function WorkerItem({
   onSeen,
   onReport,
 }: {
-  adapter: AppCalls;
   worker: RosterEntry;
   nameOf: (id: string) => string;
   look: Look;
@@ -139,11 +134,11 @@ function WorkerItem({
   onReport: (worker: string, attention: TeammateAttention) => void;
 }) {
   // A row whose conversation's feed lost the server greys its status, and its age stops.
-  const stale = useStale(adapter, sessionId);
+  const stale = useStale(sessionId);
   const now = useNow(undefined, !stale);
   const activity = useActivity(worker.id);
   const talk = useTalk(worker.id) ?? [];
-  const view = useWatch(adapter.watchConversation, sessionId);
+  const view = useConversation(sessionId)?.view;
   const count = view ? unreadable(view.entries) : undefined;
   // The open conversation is seen as it grows; a worker never seen starts with nothing unread.
   useEffect(() => {

@@ -1,15 +1,15 @@
-import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
+import { FlowProvider, useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import type { AppContext } from "../../flows/lab-context.mts";
-import { useTasks, type ConversationEntry, type AppCalls } from "../app";
+import { useAppClient, useConversation, useConversationCalls, useTasks } from "../app";
+import type { ConversationEntry } from "../lib/conversation";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { Look } from "../lib/looks";
 import { displayName, roleOf } from "../lib/roster";
 import { answeringStep, useStatusLine } from "../lib/status";
 import { ANSWERED_LINES_MAX, pendingFor, useTalk } from "../lib/talk";
-import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
@@ -60,7 +60,6 @@ function placeholderOf(entry: TaskEntry, harness: string | undefined): CodingBoa
  * background work still runs while nothing came after it.
  */
 export function Conversation({
-  adapter,
   worker,
   sessionId,
   nameOf,
@@ -77,7 +76,6 @@ export function Conversation({
   onRecheck,
   onViewTasks,
 }: {
-  adapter: AppCalls;
   worker: RosterEntry;
   /** The roster as read: an empty conversation names the worker's delegates from it. */
   workers?: readonly RosterEntry[];
@@ -102,11 +100,15 @@ export function Conversation({
   /** Show where this conversation's tasks are listed. */
   onViewTasks?: () => void;
 }) {
-  const view = useWatch(adapter.watchConversation, sessionId);
+  const calls = useConversationCalls();
+  const followed = useConversation(sessionId);
+  const view = followed?.view;
   // What the conversation's feed last heard from the server; a stale one greys the status and stops its clock.
-  const connection = useWatch(adapter.watchConnection, sessionId) ?? "connecting";
+  const connection = followed?.connection ?? "connecting";
   const stale = isFeedStale(connection);
-  const mark = useWatch(adapter.watchWindow, sessionId);
+  const mark = followed?.mark;
+  // The flow the conversation runs on: what an approval's answer goes through (react's `useApproval`).
+  const flow = useAppClient().conversations.flows.get(sessionId);
   const entries = view?.entries ?? [];
   // The worker's open messages, and the answers to the newest lines it sent: an older line shows no status, never a wrong one.
   const answered = entries.flatMap((e) => (e.kind === "sent" ? [e.messageId] : [])).slice(-ANSWERED_LINES_MAX);
@@ -114,7 +116,7 @@ export function Conversation({
   const running = view?.running ?? false;
   const pending = pendingFor(worker.id, talk, entries, view?.since);
   const tasks = useTasks(sessionId).value ?? [];
-  const status = useStatusLine(adapter, worker.id, sessionId, nameOf, isCoding, stale);
+  const status = useStatusLine(worker.id, sessionId, nameOf, isCoding, stale);
   const [panel, setPanel] = useState<"fire">();
   const delegates = delegatesOf(worker, workers, context);
   // A starter line picked from the empty conversation: the composer takes it as its text, and nothing is sent.
@@ -141,8 +143,8 @@ export function Conversation({
   const [stopRefused, setStopRefused] = useState<string>();
   const stop = useCallback(() => {
     setStopRefused(undefined);
-    adapter.interrupt(sessionId).catch((error: unknown) => setStopRefused(error instanceof Error ? error.message : String(error)));
-  }, [adapter, sessionId]);
+    calls.stop(sessionId).catch((error: unknown) => setStopRefused(error instanceof Error ? error.message : String(error)));
+  }, [calls, sessionId]);
   // On the document, so the keys work wherever focus is; a popup's Esc arrives already spent.
   const keys = useInterruptKeys({ enabled: running && !stopping, onInterrupt: stop, target: "document" });
   // The count belongs to the newest stopped line, while no later turn has started.
@@ -209,83 +211,84 @@ export function Conversation({
           </button>
         </div>
       ) : null}
-      <div ref={feed.ref} data-scroller className="relative flex-1 overflow-y-auto px-6 pt-4 pb-10">
-        <div data-column className="mx-auto flex max-w-(--thread-width) flex-col gap-3">
-          <LoadEarlier load={view?.loadEarlier} />
-          {entries.length === 0 ? (
-            <div className="mt-24 flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
-              <p data-testid="conversation-empty">{emptyLine(worker, delegates)}</p>
-              <ul aria-label="Starter lines" className="flex flex-col gap-1.5">
-                {starterLines(worker, delegates).map((line) => (
-                  <li key={line}>
-                    <button
-                      type="button"
-                      onClick={() => setSeed({ text: line, at: Date.now() })}
-                      className="rounded-full border border-border bg-card px-3 py-1 text-xs text-foreground hover:bg-muted"
-                    >
-                      {line}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {entries.map((entry, i) => (
-            <Fragment key={entry.id}>
-              {i === markAt && mark ? (
-                <div role="separator" aria-label={mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"} className="my-2 flex items-center gap-3">
-                  <span className="h-px flex-1 bg-border" />
-                  <span className="font-mono text-xs tracking-widest text-muted-foreground uppercase">
-                    {mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"}
-                  </span>
-                  <span className="h-px flex-1 bg-border" />
-                </div>
-              ) : null}
-              <div
-                className={cn(i < markAt && "opacity-60")}
-                data-in-window={markAt < 0 || i >= markAt ? "true" : "false"}
-                {...(entry.kind === "user" ? feed.mine(entry.id) : {})}
-              >
-                {entry.kind === "task" ? (
-                  taskTile(entry)
-                ) : (
-                  <Entry
-                    entry={entry}
-                    workerName={displayName(worker)}
-                    nameOf={nameOf}
-                    lookOf={lookOf}
-                    isCoding={isCoding}
-                    answer={entry.kind === "sent" && answered.includes(entry.messageId) ? answerIn(talk, entry.messageId) : undefined}
-                    onOpenMessage={openMessage}
-                    onOpenTask={openTask}
-                    stillRunning={stillRunningFor(entry)}
-                    onViewTasks={onViewTasks}
-                    readFile={adapter.readFile}
-                    {...(entry.kind === "approval" ? { onAnswer: (approve: boolean) => adapter.answerApproval(sessionId, entry, approve) } : {})}
-                    // Retry only the newest turn, and not while one runs: the engine runs a failed request again as a new one.
-                    {...(entry.kind === "failed" && entry.retryable && !running ? { onRetry: () => adapter.retry(sessionId, entry.requestId) } : {})}
-                  />
-                )}
+      <FlowProvider flowKind={flow}>
+        <div ref={feed.ref} data-scroller className="relative flex-1 overflow-y-auto px-6 pt-4 pb-10">
+          <div data-column className="mx-auto flex max-w-(--thread-width) flex-col gap-3">
+            <LoadEarlier load={view?.loadEarlier} />
+            {entries.length === 0 ? (
+              <div className="mt-24 flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
+                <p data-testid="conversation-empty">{emptyLine(worker, delegates)}</p>
+                <ul aria-label="Starter lines" className="flex flex-col gap-1.5">
+                  {starterLines(worker, delegates).map((line) => (
+                    <li key={line}>
+                      <button
+                        type="button"
+                        onClick={() => setSeed({ text: line, at: Date.now() })}
+                        className="rounded-full border border-border bg-card px-3 py-1 text-xs text-foreground hover:bg-muted"
+                      >
+                        {line}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
-            </Fragment>
-          ))}
-          {answering ? (
-            <div role="status" data-chat-activity className={cn("w-fit rounded-lg border border-border bg-card px-3 py-2 text-xs", step?.tone ?? "text-muted-foreground", stale && STALE_CLASS)}>
-              {step === undefined ? `${displayName(worker)} is answering…` : `${displayName(worker)} · ${step.text}…`}
-            </div>
-          ) : null}
-          {pending.map((m) => (
-            <div
-              key={m.id}
-              data-pending={m.id}
-              className="w-fit rounded-md border border-dashed border-attention bg-attention/15 px-3 py-1.5 font-mono text-xs text-foreground"
-            >
-              ← {nameOf(m.from)} {m.inReplyTo ? "replied" : "sent a message"} · {displayName(worker)} reads it {running ? "after this turn" : "next"}
-            </div>
-          ))}
+            ) : null}
+            {entries.map((entry, i) => (
+              <Fragment key={entry.id}>
+                {i === markAt && mark ? (
+                  <div role="separator" aria-label={mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"} className="my-2 flex items-center gap-3">
+                    <span className="h-px flex-1 bg-border" />
+                    <span className="font-mono text-xs tracking-widest text-muted-foreground uppercase">
+                      {mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"}
+                    </span>
+                    <span className="h-px flex-1 bg-border" />
+                  </div>
+                ) : null}
+                <div
+                  className={cn(i < markAt && "opacity-60")}
+                  data-in-window={markAt < 0 || i >= markAt ? "true" : "false"}
+                  {...(entry.kind === "user" ? feed.mine(entry.id) : {})}
+                >
+                  {entry.kind === "task" ? (
+                    taskTile(entry)
+                  ) : (
+                    <Entry
+                      entry={entry}
+                      workerName={displayName(worker)}
+                      nameOf={nameOf}
+                      lookOf={lookOf}
+                      isCoding={isCoding}
+                      answer={entry.kind === "sent" && answered.includes(entry.messageId) ? answerIn(talk, entry.messageId) : undefined}
+                      onOpenMessage={openMessage}
+                      onOpenTask={openTask}
+                      stillRunning={stillRunningFor(entry)}
+                      onViewTasks={onViewTasks}
+                      readFile={calls.readFile}
+                      // Retry only the newest turn, and not while one runs: the engine runs a failed request again as a new one.
+                      {...(entry.kind === "failed" && entry.retryable && !running ? { onRetry: () => calls.retry(sessionId, entry.requestId) } : {})}
+                    />
+                  )}
+                </div>
+              </Fragment>
+            ))}
+            {answering ? (
+              <div role="status" data-chat-activity className={cn("w-fit rounded-lg border border-border bg-card px-3 py-2 text-xs", step?.tone ?? "text-muted-foreground", stale && STALE_CLASS)}>
+                {step === undefined ? `${displayName(worker)} is answering…` : `${displayName(worker)} · ${step.text}…`}
+              </div>
+            ) : null}
+            {pending.map((m) => (
+              <div
+                key={m.id}
+                data-pending={m.id}
+                className="w-fit rounded-md border border-dashed border-attention bg-attention/15 px-3 py-1.5 font-mono text-xs text-foreground"
+              >
+                ← {nameOf(m.from)} {m.inReplyTo ? "replied" : "sent a message"} · {displayName(worker)} reads it {running ? "after this turn" : "next"}
+              </div>
+            ))}
+          </div>
+          <ConversationScrollButton feed={feed} className="size-8" />
         </div>
-        <ConversationScrollButton feed={feed} className="size-8" />
-      </div>
+      </FlowProvider>
       <Composer
         sessionId={sessionId}
         workerName={displayName(worker)}
@@ -297,11 +300,11 @@ export function Conversation({
         seed={seed}
         prefill={prefill}
         onPrefilled={onPrefilled}
-        uploader={adapter}
+        uploader={calls}
         onSend={(text, attachments) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();
-          return adapter.send(sessionId, text, attachments);
+          return calls.send(sessionId, text, attachments);
         }}
       />
     </main>

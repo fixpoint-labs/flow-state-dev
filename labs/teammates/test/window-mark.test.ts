@@ -6,7 +6,7 @@
  * the worker remembers turns it dropped.
  */
 import { describe, expect, it } from "vitest";
-import { toEntries, windowMarkOf } from "../src/app";
+import { toEntries, windowMarkOf } from "../src/lib/conversation";
 
 const user = (requestId: string) => ({ id: `${requestId}_you`, requestId, type: "message", role: "user", content: [{ text: `you in ${requestId}` }] });
 const answer = (requestId: string) => ({ id: `${requestId}_lead`, requestId, type: "message", role: "assistant", content: [{ text: `lead in ${requestId}` }] });

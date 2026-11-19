@@ -11,9 +11,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import type { WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import { App } from "../src/components/App";
-import type { ConversationEntry } from "../src/app";
+import type { ConversationEntry } from "../src/lib/conversation";
 import { pendingFor } from "../src/lib/talk";
-import { createFixtureApp, FixtureProvider } from "./fake-app";
+import { scriptedServer, ScriptedProvider } from "./scripted-server";
 
 const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
@@ -52,7 +52,7 @@ describe("which messages to a worker are still pending", () => {
 
 describe("a waited send's answer, on the screen", () => {
   it("draws no pending line under your newer message, during or after Lead's turn", async () => {
-    const lab = createFixtureApp({ speed: 0.05 });
+    const lab = scriptedServer({ speed: 0.05 });
     // What Jake saw: researcher's answers to Lead's waited sends, delivered as the sends' results.
     const waited = [1, 2, 3, 4].map((n) => ({ ...reply, id: `msg_waited_${n}`, inReplyTo: `msg_ask_${n}`, at: n, status: "delivered" as const }));
     const client = {
@@ -62,7 +62,7 @@ describe("a waited send's answer, on the screen", () => {
         return ref.view === "workerMessages" && input.worker === LEAD ? { ...read, value: [...waited, ...(read.value as unknown[])] } : read;
       },
     } as unknown as Client;
-    render(<FixtureProvider calls={lab} client={client}><App /></FixtureProvider>);
+    render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
     const conversation = () => screen.getByRole("main", { name: "Conversation" });
     const box = await screen.findByLabelText("Message Lead");
     await act(async () => {

@@ -1,10 +1,10 @@
-import type { FileContent } from "@flow-state-dev/core/items";
+import type { FileContent, SuspensionItem } from "@flow-state-dev/core/items";
 import { memo } from "react";
-import type { ConversationEntry } from "../app";
+import type { ConversationEntry } from "../lib/conversation";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import type { AnswerStatus } from "./Popups";
-import { useSubmit } from "@flow-state-dev/react";
+import { useApproval } from "@flow-state-dev/react";
 import { MessageFiles } from "./flow-state/message";
 import { MarkdownText } from "./flow-state/message-response";
 import { RequestRecovery } from "./flow-state/request-recovery";
@@ -21,7 +21,8 @@ import { ToolRun } from "./ToolRun";
  * above them, a thumbnail per image and a chip for anything else (the
  * registry's `MessageFiles`, its bytes read by `readFile`). A worker that waits for your
  * yes (`suspendForUser` with an approval) is a card with Approve and Deny until
- * you answer. The tool calls a turn makes show inline as it makes them, a run
+ * you answer, answered by react's `useApproval` through the flow the
+ * conversation's `FlowProvider` names. The tool calls a turn makes show inline as it makes them, a run
  * of them as one line that is open while it runs and folds once it is done.
  * A failed turn is the registry's `request-recovery` line under the worker's
  * name, with its reason; `onRetry` draws its Retry, so pass it only for the
@@ -40,7 +41,6 @@ export const Entry = memo(function Entry({
   answer,
   onOpenMessage,
   onOpenTask,
-  onAnswer,
   onRetry,
   stillRunning,
   onViewTasks,
@@ -59,7 +59,6 @@ export const Entry = memo(function Entry({
   onOpenMessage?: (entry: Extract<ConversationEntry, { kind: "sent" }>) => void;
   /** Open the task a result came from. */
   onOpenTask?: (taskId: string) => void;
-  onAnswer?: (approve: boolean) => Promise<void>;
   /** Run a failed turn again. */
   onRetry?: () => Promise<void>;
   /** For a stopped turn's line: the background work still running, when this line may say it. */
@@ -152,33 +151,26 @@ export const Entry = memo(function Entry({
     case "steps":
       return <ToolRun steps={entry.steps} run={entry} />;
     case "approval":
-      return <ApprovalCard workerName={workerName} text={entry.text} resolution={entry.resolution} onAnswer={onAnswer} />;
+      return <ApprovalCard workerName={workerName} entry={entry} />;
   }
 });
 
 /** What a worker waits on you for. Once answered it says how. */
-function ApprovalCard({
-  workerName,
-  text,
-  resolution,
-  onAnswer,
-}: {
-  workerName: string;
-  text: string;
-  resolution?: string;
-  onAnswer?: (approve: boolean) => Promise<void>;
-}) {
-  const { error, busy, submit } = useSubmit((approve: boolean) => onAnswer?.(approve) ?? Promise.resolve());
+function ApprovalCard({ workerName, entry }: { workerName: string; entry: Extract<ConversationEntry, { kind: "approval" }> }) {
+  const { text, resolution } = entry;
+  // The stop the entry was drawn from, as far as answering it reads one: which stop, its turn, and that it is the user's.
+  const stop = { type: "suspension", id: entry.id, requestId: entry.requestId, suspensionId: entry.suspensionId, reason: "user_approval", message: text } as SuspensionItem;
+  const { error, isResolving: busy, approve, reject } = useApproval(stop, { isResolved: resolution !== undefined });
   return (
     <section aria-label={`${workerName} asks`} data-entry="approval" className="max-w-[85%] rounded-md border border-attention bg-attention/10 px-3 py-2 text-sm">
       <div className="font-mono text-xs tracking-widest text-attention uppercase">{workerName} asks · {resolution ?? "waiting for you"}</div>
       <p className="mt-0.5 whitespace-pre-wrap">{text}</p>
       {resolution === undefined ? (
         <div className="mt-2 flex gap-2 text-xs">
-          <button type="button" disabled={busy} onClick={() => void submit(undefined, true)} className="rounded-sm bg-primary px-2 py-1 font-semibold text-primary-foreground disabled:opacity-40">
+          <button type="button" disabled={busy} onClick={approve} className="rounded-sm bg-primary px-2 py-1 font-semibold text-primary-foreground disabled:opacity-40">
             Approve
           </button>
-          <button type="button" disabled={busy} onClick={() => void submit(undefined, false)} className="rounded-sm border border-border px-2 py-1 hover:bg-accent disabled:opacity-40">
+          <button type="button" disabled={busy} onClick={reject} className="rounded-sm border border-border px-2 py-1 hover:bg-accent disabled:opacity-40">
             Deny
           </button>
         </div>

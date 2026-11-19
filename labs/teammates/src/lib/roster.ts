@@ -5,9 +5,8 @@
  * settings its file shows. Writes go through workforce's client
  * (`useWorkforce`), over the app's one client.
  */
-import { useMemo } from "react";
 import { CODER_FLOW } from "@flow-state-dev/harness-manager/browser";
-import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workforce/browser";
+import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import { useAppClient } from "../app";
 
 /** The name the user reads: its own, else its id's last part. */
@@ -22,8 +21,5 @@ export const takesTasks = (w: RosterEntry): boolean => w.flow === CODER_FLOW;
 /** A setting its file shows on its row (`icon`, `color`, a coding worker's `harness`), when it is a string. */
 export const settingOf = (w: RosterEntry, key: string): string | undefined => (typeof w.settings[key] === "string" ? (w.settings[key] as string) : undefined);
 
-/** Workforce's client over the app's one client: hire, edit, reset and fire, and the roster's own watch. */
-export function useWorkforce() {
-  const { client } = useAppClient();
-  return useMemo(() => createWorkforceClient(client), [client]);
-}
+/** Workforce's client over the app's one client, the one a conversation sends and stops through: hire, edit, reset and fire, and the roster's own watch. */
+export const useWorkforce = () => useAppClient().workforce;

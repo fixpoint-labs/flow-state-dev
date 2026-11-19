@@ -8,13 +8,15 @@
  * answered done, or as `answer` says. The screen still reads through
  * `src/app/` and the real client; only the host behind them is stood in for.
  * `TestProvider` puts a tree under the lab's provider on a client over it,
- * with the calls a test hands it.
+ * merged with the scripted server's when a test hands it one.
  */
-import { createElement, type ReactNode } from "react";
-import { createClient, type Client, type ClientFetch } from "@flow-state-dev/client";
+import { createElement, useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { createClient, type Client, type ClientFetch, type SessionConnectionStatus } from "@flow-state-dev/client";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
-import { AppProvider, type AppCalls } from "../src/app";
+import { AppProvider, useAppClient } from "../src/app";
+import type { ConversationView, WindowMark } from "../src/lib/conversation";
+import type { ScriptedServer } from "./scripted-server";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
@@ -203,58 +205,104 @@ export function stubServer(data: StubData = {}) {
 }
 
 /**
- * The lab's provider for a test: its calls, on `client` (a stand-in server's, or none). A double's calls
- * that carry a client of their own (`fake-app.ts`, which answers the roster and its other package views)
- * keep it, and the stand-in answers what the double leaves to it: the coding board and the recorded work
- * views, a task's run sessions and flows, and their resources. With no client at all, an empty stand-in.
+ * The lab's provider for a test, on `client` (a stand-in server's, or none). With the scripted server
+ * (`scripted-server.ts`, which answers the roster, the conversations and their other package views) it
+ * keeps that one's client and connection, and the stand-in answers what the scripted one leaves to it:
+ * the coding board and the recorded work views, a task's run sessions and flows, its board's actions, and
+ * their resources. With neither, an empty stand-in.
  */
-export function TestProvider({ calls, client, children }: { calls: AppCalls; client?: Client; children?: ReactNode }) {
-  const own = (calls as { client?: Client }).client;
-  const merged = own === undefined ? (client ?? emptyClient(calls)) : client === undefined ? own : mergedClient(own, client);
-  return createElement(AppProvider, { calls, client: merged, pollIntervalMs: 100 }, children);
+export function TestProvider({ server, client, children }: { server?: ScriptedServer; client?: Client; children?: ReactNode }) {
+  const merged = server === undefined ? (client ?? EMPTY()) : client === undefined ? server.client : mergedClient(server, client);
+  return createElement(AppProvider, { client: merged, connection: server?.connection, pollIntervalMs: 100 }, children);
 }
 
 /** One merged client per pair, so a provider that draws again keeps its client. */
-const merges = new WeakMap<Client, WeakMap<Client, Client>>();
-function mergedClient(own: Client, stand: Client): Client {
-  const known = merges.get(own)?.get(stand);
+const merges = new WeakMap<ScriptedServer, WeakMap<Client, Client>>();
+function mergedClient(server: ScriptedServer, stand: Client): Client {
+  const known = merges.get(server)?.get(stand);
   if (known !== undefined) return known;
-  /** The double's conversations are `conversation:<worker>`: every other session is the stand-in's. */
-  const ofDouble = (sessionId: unknown) => typeof sessionId === "string" && sessionId.startsWith("conversation:");
+  const own = server.client;
+  /** The scripted conversations are `conversation:<worker>`: every other session is the stand-in's. */
+  const ofScripted = (sessionId: unknown) => typeof sessionId === "string" && sessionId.startsWith("conversation:");
   const sessions = new Proxy(own.sessions, {
-    get: (target, key) => {
-      if (key === "get") return stand.sessions.get.bind(stand.sessions);
-      return (sessionId: unknown, ...rest: unknown[]) => {
-        const from = (ofDouble(sessionId) ? target : stand.sessions) as unknown as Record<PropertyKey, (...args: unknown[]) => unknown>;
-        return from[key]!(sessionId, ...rest);
-      };
+    // A list is the scripted server's: it is what workforce's client reads to open a conversation.
+    get: (target, key) => (sessionId: unknown, ...rest: unknown[]) => {
+      const from = (key === "list" || ofScripted(sessionId) ? target : stand.sessions) as unknown as Record<PropertyKey, (...args: unknown[]) => unknown>;
+      return from[key]!(sessionId, ...rest);
     },
   });
+  /**
+   * A flow's handle: a conversation's door (`respond`), its opening and its turns' aborts and retries are
+   * the scripted server's; a board's actions (the Inbox client's posts) and a task's requests, the stand-in's.
+   */
+  const flow = (address: string) => {
+    const scripted = own.flow(address) as unknown as Record<string, (...args: unknown[]) => unknown>;
+    const stood = stand.flow(address) as unknown as Record<string, (...args: unknown[]) => unknown>;
+    return new Proxy(stood, {
+      get: (target, key) => {
+        if (key === "send") return (action: unknown, ...rest: unknown[]) => (action === "respond" ? scripted : target).send!(action, ...rest);
+        if (key === "createSession" || key === "identity") return scripted[key];
+        if (key === "request") {
+          return (id: string) => {
+            const mine = own.flow(address).request(id) as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+            const theirs = stand.flow(address).request(id) as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+            // A scripted turn's request is the scripted server's; one it doesn't know is the stand-in's.
+            return new Proxy(theirs, {
+              get: (handle, verb) =>
+                typeof mine[verb as string] === "function"
+                  ? (...args: unknown[]) => mine[verb as string]!(...args).catch((error: { status?: number }) => (error?.status === 404 ? handle[verb as string]!(...args) : Promise.reject(error)))
+                  : handle[verb as string],
+            });
+          };
+        }
+        return target[key as string];
+      },
+    });
+  };
   const merged = {
     ...own,
     view: (ref: { view: string }, input: unknown, options?: unknown) =>
       (ref.view === "codingBoard" || ref.view === "recordedWork" ? stand : own).view(ref as never, input as never, options as never),
-    // Both: the double's notices wake a read at once, and the stand-in, a host with no push socket, has each read on its pace too.
+    // Both: the scripted server's notices wake a read at once, and the stand-in, a host with no push socket, has each read on its pace too.
     subscribe: (topics: unknown, options: unknown) => {
       const subscriptions = [own.subscribe(topics as never, options as never), stand.subscribe(topics as never, options as never)];
       return { close: () => subscriptions.forEach((subscription) => subscription.close()) };
     },
     sessions,
-    flow: stand.flow.bind(stand),
+    flow,
     resources: stand.resources,
   } as unknown as Client;
-  if (!merges.has(own)) merges.set(own, new WeakMap());
-  merges.get(own)!.set(stand, merged);
+  if (!merges.has(server)) merges.set(server, new WeakMap());
+  merges.get(server)!.set(stand, merged);
   return merged;
 }
 
-/** One empty server per calls double, so a provider that draws again keeps its client. */
-const empties = new WeakMap<object, Client>();
-const emptyClient = (calls: AppCalls): Client => {
-  let client = empties.get(calls);
-  if (client === undefined) {
-    client = stubServer().client;
-    empties.set(calls, client);
+/** An empty stand-in, once: a provider that draws again keeps its client. */
+let empty: Client | undefined;
+const EMPTY = (): Client => (empty ??= stubServer().client);
+
+/**
+ * A conversation's follower stood in for, for a screen test that draws the views it names:
+ * `Follower` publishes them for `sessionId` as the real follower (`ConversationFollower`) publishes
+ * what it read, and `show` and `connect` change what it publishes. The screen's own hooks read it;
+ * only the reads behind the follower are skipped.
+ */
+export function standInFollower(sessionId: string, view: ConversationView, connection: SessionConnectionStatus = "live", mark?: WindowMark) {
+  let current = { view, connection, mark, follow: (_response: Response) => {} };
+  const tells = new Set<() => void>();
+  const set = (next: Partial<typeof current>) => {
+    current = { ...current, ...next };
+    tells.forEach((tell) => tell());
+  };
+  const subscribe = (tell: () => void) => {
+    tells.add(tell);
+    return () => void tells.delete(tell);
+  };
+  function Follower(): null {
+    const { conversations } = useAppClient();
+    const read = useSyncExternalStore(subscribe, () => current);
+    useEffect(() => conversations.publish(sessionId, read), [conversations, read]);
+    return null;
   }
-  return client;
-};
+  return { Follower, show: (next: ConversationView) => set({ view: next }), connect: (next: SessionConnectionStatus) => set({ connection: next }) };
+}

@@ -26,10 +26,11 @@ import type { ReactNode } from "react";
 import type { Client } from "@flow-state-dev/client";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { commandsRun, runSummaryLine, runSteps, useRecordedFiles, type AppCalls } from "../src/app";
+import { useRecordedFiles } from "../src/app";
+import { commandsRun, runSummaryLine, runSteps } from "../src/lib/steps";
 import { App } from "../src/components/App";
 import { attemptDurationMs } from "../src/lib/task";
-import { createFixtureApp } from "./fake-app";
+import { scriptedServer } from "./scripted-server";
 import { codingTask, stubServer, TestProvider, type StubData, POPUP_READ } from "./stub-server";
 
 afterEach(() => {
@@ -110,7 +111,7 @@ const finished = (harness: "claude-code" | "codex", fields: Partial<CodingBoardT
 function openByAddress(row: CodingBoardTask, data: Omit<StubData, "board"> = {}) {
   window.history.replaceState(null, "", `/?worker=${LEAD}&session=conversation:${LEAD}&task=${row.id}`);
   const server = stubServer({ board: { [`conversation:${LEAD}`]: [row] }, items: { "run-1": ran(row.harness === "codex" ? "codex" : "claude-code") }, ...data });
-  render(<TestProvider calls={createFixtureApp({ speed: 0.05 })} client={server.client}><App /></TestProvider>);
+  render(<TestProvider server={scriptedServer({ speed: 0.05 })} client={server.client}><App /></TestProvider>);
   return screen.findByRole("dialog", { name: TASK }, POPUP_READ);
 }
 
@@ -175,7 +176,7 @@ describe("the files a popup reads", () => {
       },
     } as unknown as Client;
     const task = (requestId: string, status: string) => codingTask({ id: "t1", assignee: "w", title: "T", status, run: { sessionId: "run:t1", requestId, attempt: 1 } });
-    const wrapper = ({ children }: { children: ReactNode }) => <TestProvider calls={{} as AppCalls} client={client}>{children}</TestProvider>;
+    const wrapper = ({ children }: { children: ReactNode }) => <TestProvider client={client}>{children}</TestProvider>;
     const { result, rerender } = renderHook(({ t }) => useRecordedFiles(t), { initialProps: { t: task("req-1", "errored") }, wrapper });
     await waitFor(() => expect(result.current?.rows.map((r) => r.path)).toEqual(["a.ts"]));
     rerender({ t: task("req-2", "in_progress") });
@@ -200,7 +201,7 @@ describe("a filed task's popup, opened by its address", () => {
   const open = (task: CodingBoardTask, worker = LEAD) => {
     window.history.replaceState(null, "", `/?worker=${worker}&session=conversation:${LEAD}&task=${task.id}`);
     const server = stubServer({ board: { [`conversation:${LEAD}`]: [task] } });
-    render(<TestProvider calls={createFixtureApp({ speed: 0.05 })} client={server.client}><App /></TestProvider>);
+    render(<TestProvider server={scriptedServer({ speed: 0.05 })} client={server.client}><App /></TestProvider>);
     return screen.findByRole("dialog", { name: "Asked writer to draft the PM role" }, POPUP_READ);
   };
 

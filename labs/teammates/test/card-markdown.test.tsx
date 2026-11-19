@@ -9,7 +9,6 @@
 import { cleanup, render, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import type { AppCalls } from "../src/app";
 import { PopupView } from "../src/components/Popups";
 import { lookOf } from "../src/lib/looks";
 import { codingTask, hold, stubServer, TestProvider } from "./stub-server";
@@ -22,11 +21,10 @@ const STRONG = '[data-streamdown="strong"]';
 /** One task on a stand-in board, with no run: all the popup reads. Its action row is never pressed. */
 function drawTask(task: CodingBoardTask) {
   const { client } = stubServer({ board: { s1: [task] } });
-  const calls = {} as AppCalls;
   render(
-    <TestProvider calls={calls} client={client}>
+    <TestProvider client={client}>
     <PopupView
-      adapter={calls}
+     
       popup={{ kind: "task", sessionId: "s1", taskId: "t1" }}
       nameOf={(id) => id}
       lookOf={(id) => lookOf({ id, name: id })}

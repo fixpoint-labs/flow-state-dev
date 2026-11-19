@@ -76,7 +76,7 @@ import {
   type ModulePatch,
   workforceTree
 } from "../../lib/index.mts";
-import { AppProvider as TeammatesProvider, useTaskDetail, useTasks, type AppCalls } from "../../../labs/teammates/src/app/index.ts";
+import { AppProvider as TeammatesProvider, useTaskDetail, useTasks } from "../../../labs/teammates/src/app/index.ts";
 import { watchMergedBoard } from "./merged-view.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -354,7 +354,7 @@ function teammatesOn(on: Host, conversation: string, open?: string) {
     return null;
   }
   const root = createRoot(happy.document.createElement("div") as unknown as Element);
-  root.render(createElement(TeammatesProvider, { calls: {} as AppCalls, client: t.client, pollIntervalMs: PACE.teammates }, open === undefined ? createElement(Cards) : createElement(Popup, { taskId: open })));
+  root.render(createElement(TeammatesProvider, { client: t.client, pollIntervalMs: PACE.teammates }, open === undefined ? createElement(Cards) : createElement(Popup, { taskId: open })));
   return { shown, reads: () => t.counted.reads, close: () => root.unmount() };
 }
 

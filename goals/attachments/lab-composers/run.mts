@@ -5,9 +5,9 @@
  *   Host:   each lab's own host (`labs/claude-code-style/host.mts`,
  *           `labs/teammates/host.mts`), in this process, on a SQLite store in
  *           a scratch folder, driven through the calls each lab's page makes
- *           (the Claude Code-style lab's `src/app/` calls, the Teammates
- *           adapter): `upload` for each file, then `send` with the
- *           references beside the line.
+ *           (each lab's `src/app/` calls; the Teammates lab's under its
+ *           provider, with a follower on Lead's conversation): `upload` for
+ *           each file, then `send` with the references beside the line.
  *   Input:  two fresh PNGs, a random word drawn on each. The line names
  *           neither word.
  *   Legs:   the Claude Code-style lab's main session and the Teammates lab's
@@ -33,7 +33,8 @@ import { openClaudeCodeStyle } from "../../../labs/claude-code-style/host.mts";
 import { appCalls } from "../../../labs/claude-code-style/src/app/index.ts";
 import { entriesOf as ccsEntriesOf, THREAD_ITEMS, type Item as CcsItem, type ThreadEntry } from "../../../labs/claude-code-style/src/lib/thread-entries.ts";
 import { openTeammates } from "../../../labs/teammates/host.mts";
-import { createAppCalls, type ConversationView } from "../../../labs/teammates/src/app/index.ts";
+import type { ConversationView } from "../../../labs/teammates/src/lib/conversation.ts";
+import { teammatesScreen } from "../../teammates-lab/screen.mts";
 import {
   REPO_ROOT,
   RUN_STAMP,
@@ -63,7 +64,7 @@ const WORDS = [
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS: Record<string, { patches: ModulePatch[] }> = {
-  // Each adapter's send carries the line alone, as on main before this change.
+  // Each lab's send carries the line alone, as on main before this change.
   "drop-attachments": {
     patches: ["labs/claude-code-style/src/app/calls.ts", "labs/teammates/src/app/conversations.ts"].flatMap((module) => [
       { module, from: String.raw`attachments: \[\.\.\.attachments\] \}\);`, to: "attachments: [] });" },
@@ -235,15 +236,16 @@ await runGoal(async (failures, tell) => {
   // --- The Teammates lab: Lead, a generator teammate ------------------------
   const tmHost = await openTeammates({ store: join(SCRATCH, "teammates.sqlite"), model: MODEL, userId: USER_ID, workdir: checkout(join(SCRATCH, "tm-repo")), runsRoot: join(SCRATCH, "tm-runs") });
   const tmFetch = createInProcessFetch(tmHost as never) as never;
-  const tmAdapter = () => createAppCalls(createClient({ userId: USER_ID, baseUrl: "", fetcher: tmFetch }), { fetcher: tmFetch });
-  // Opening a conversation reads the roster first, so a line under a worker's name reads as that worker's.
-  const tm = tmAdapter();
-  const leadSession = await tm.openConversation(LEAD);
-  const freshTm = tmAdapter();
+  // The lab's screen half, as a page holds it: its provider over a client, and a follower per conversation watched.
+  const tmScreen = () => teammatesScreen(createClient({ userId: USER_ID, baseUrl: "", fetcher: tmFetch }), { fetcher: tmFetch });
+  const tm = await tmScreen();
+  const leadSession = await tm.calls.open(LEAD);
+  const freshTm = await tmScreen();
+  const lab = (screen: typeof tm) => ({ ...screen.calls, screen });
   const lead = await legOf<ConversationView>(
-    tm,
-    freshTm,
-    (adapter, on) => (adapter as ReturnType<typeof tmAdapter>).watchConversation(leadSession, on),
+    lab(tm),
+    lab(freshTm),
+    (adapter, on) => (adapter as ReturnType<typeof lab>).screen.watch(leadSession, (view) => on(view)),
     (view) => view.entries,
     (view) => view.running,
     leadSession,
@@ -269,6 +271,8 @@ await runGoal(async (failures, tell) => {
   failures.push("blocked: the coding legs wait on a filed task carrying its turn's files (FIX-2522); the generator legs above ran");
 
   await (ccsHost as unknown as { dispose?: () => Promise<void> }).dispose?.();
+  tm.close();
+  freshTm.close();
   await (tmHost as unknown as { dispose?: () => Promise<void> }).dispose?.();
   return {
     failures,

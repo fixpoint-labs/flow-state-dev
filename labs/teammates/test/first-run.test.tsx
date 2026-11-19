@@ -13,7 +13,7 @@ import { CODER_FLOW } from "@flow-state-dev/harness-manager/browser";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import { App } from "../src/components/App";
 import { delegatesOf, emptyLine, starterLines } from "../src/lib/first-run";
-import { createFixtureApp, FixtureProvider, rosterEntry } from "./fake-app";
+import { scriptedServer, ScriptedProvider, rosterEntry } from "./scripted-server";
 
 afterEach(() => {
   cleanup();
@@ -48,7 +48,7 @@ describe("the first run's lines", () => {
 
 describe("the context strip", () => {
   it("shows the folder, model and harness the server read, and the harness chips with their remedy", async () => {
-    render(<FixtureProvider calls={createFixtureApp({ speed: 0.05 })}><App /></FixtureProvider>);
+    render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
     const strip = await screen.findByRole("region", { name: "Working context" });
     await waitFor(() => expect(within(strip).getByTestId("context-folder").textContent).toBe("folder /work/launch-site"));
     expect(within(strip).getByTestId("context-model").textContent).toBe("model openai/gpt-6-luna");
@@ -58,7 +58,7 @@ describe("the context strip", () => {
   });
 
   it("warns when a coding run's checkout of the folder would be refused", async () => {
-    const lab = createFixtureApp({ speed: 0.05 });
+    const lab = scriptedServer({ speed: 0.05 });
     // The lab-context view answers the problem a coding run's checkout of the folder would be refused with.
     const client = {
       ...lab.client,
@@ -67,25 +67,25 @@ describe("the context strip", () => {
         return ref.view === "context" ? { ...read, value: { ...(read.value as object), folderProblem: "the repository does not ignore .fsdev/ask" } } : read;
       },
     } as unknown as Client;
-    render(<FixtureProvider calls={lab} client={client}><App /></FixtureProvider>);
+    render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
     expect((await screen.findByTestId("context-folder-problem")).textContent).toContain("does not ignore .fsdev/ask");
   });
 });
 
 describe("an empty conversation", () => {
   it("offers starter lines; a click fills the composer and sends nothing", async () => {
-    const lab = createFixtureApp({ speed: 0.05 });
-    let sends = 0;
-    render(<FixtureProvider calls={{ ...lab, send: async (...args) => (sends++, lab.send(...args)) }}><App /></FixtureProvider>);
+    const lab = scriptedServer({ speed: 0.05 });
+    render(<ScriptedProvider server={lab}><App /></ScriptedProvider>);
     // A teammate hired now has an empty conversation.
     await screen.findByRole("region", { name: "Working context" });
     const hired = await lab.hire({ name: "scout", role: "Finds facts.", instructions: "Find facts." });
     cleanup();
-    render(<FixtureProvider calls={{ ...lab, send: async (...args) => (sends++, lab.send(...args)) }}><App /></FixtureProvider>);
+    render(<ScriptedProvider server={lab}><App /></ScriptedProvider>);
     fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${hired.id}`) }));
     const lines = await screen.findByRole("list", { name: "Starter lines" });
     fireEvent.click(within(lines).getByRole("button", { name: "What can you help me with?" }));
     await waitFor(() => expect((screen.getByLabelText(`Message ${hired.id}`) as HTMLTextAreaElement).value).toBe("What can you help me with?"));
-    expect(sends).toBe(0);
+    // Nothing reached the worker flow's door.
+    expect(lab.sends).toHaveLength(0);
   });
 });

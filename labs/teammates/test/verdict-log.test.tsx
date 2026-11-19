@@ -9,7 +9,6 @@
  */
 import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AppCalls } from "../src/app";
 import { placeDecisions, PopupView, type Popup } from "../src/components/Popups";
 import { lookOf } from "../src/lib/looks";
 import { codingTask, hold, stubServer, TestProvider } from "./stub-server";
@@ -30,12 +29,11 @@ const task = (id: string, review = false) =>
     ...(review ? { asks: [hold("review", "Review the change.", { taskId: id })] } : {}),
   });
 
-const calls = {} as AppCalls;
 const view = (client: Parameters<typeof TestProvider>[0]["client"], taskId: string) => {
   const popup: Popup = { kind: "task", sessionId: SESSION, taskId };
   return (
-    <TestProvider calls={calls} client={client}>
-      <PopupView adapter={calls} popup={popup} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => true} coders={[]} onClose={() => {}} />
+    <TestProvider client={client}>
+      <PopupView popup={popup} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => true} coders={[]} onClose={() => {}} />
     </TestProvider>
   );
 };

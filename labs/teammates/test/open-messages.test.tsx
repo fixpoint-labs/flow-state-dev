@@ -4,14 +4,14 @@
  * its way, or one asked to be answered and not answered yet), as workforce's
  * view does: once Lead's message to researcher is answered, nothing of that
  * exchange is open, Lead's line goes back to idle, and no pending line stays.
- * The double answers through the same rule as the view (`isOpenMessage`), so a
+ * The scripted server answers through the same rule as the view (`isOpenMessage`), so a
  * screen drawn on it can't lean on closed messages the server never sends.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { workerMessagesViewRef } from "@flow-state-dev/workforce/browser";
 import { App } from "../src/components/App";
-import { createFixtureApp, FixtureProvider } from "./fake-app";
+import { scriptedServer, ScriptedProvider } from "./scripted-server";
 
 afterEach(() => {
   cleanup();
@@ -23,8 +23,8 @@ const LEAD = "teammates.chief-of-staff";
 
 describe("the open messages the screen reads", () => {
   it("drop an exchange once it is answered, so Lead reads idle with nothing pending", async () => {
-    const lab = createFixtureApp({ speed: 0.05 });
-    render(<FixtureProvider calls={lab}><App /></FixtureProvider>);
+    const lab = scriptedServer({ speed: 0.05 });
+    render(<ScriptedProvider server={lab}><App /></ScriptedProvider>);
     const box = await screen.findByLabelText("Message Lead");
     await act(async () => {
       fireEvent.change(box, { target: { value: "Ask researcher for our launch date, and help me outline the post." } });
