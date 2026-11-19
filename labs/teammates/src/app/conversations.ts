@@ -40,9 +40,11 @@ export function ConversationFollower({ sessionId }: { sessionId: string }): null
   const items = feed?.items as unknown as Item[] | undefined;
   const ended = useMemo(() => (turns ?? []).filter((t) => t.status !== "in_progress").map((t) => t.id), [turns]);
   // A stop ends once the turns show every turn it stopped ended. A full view (its newest fifty) that doesn't list
-  // one has left it out as older; one listing fewer hasn't read it yet.
+  // one has left it out only when the turn started before the view's oldest; otherwise the view hasn't read it yet.
   const listed = new Set((turns ?? []).map((t) => t.id));
-  const stopEnded = stop?.ids != null && [...stop.ids].every((id) => ended.includes(id) || (!listed.has(id) && listed.size >= TURNS_LISTED));
+  const oldest = turns !== undefined && turns.length >= TURNS_LISTED ? Math.min(...turns.map((t) => t.startedAt)) : undefined;
+  const olderThanView = (id: string) => !listed.has(id) && oldest !== undefined && (stop?.startedAt?.get(id) ?? Infinity) < oldest;
+  const stopEnded = stop?.ids != null && [...stop.ids].every((id) => ended.includes(id) || olderThanView(id));
   const followed = useMemo(() => {
     if (feed === undefined) return undefined;
     // Before the history lands there is no view yet, but the connection is already news: a read that gave up is `stopped`.
@@ -110,13 +112,18 @@ export function useConversationCalls() {
         const reading = { ids: null };
         conversations.setStop(sessionId, reading);
         let ids: ReadonlySet<string>;
+        let startedAt: ReadonlyMap<string, number>;
         try {
-          ids = new Set(await workforce.stopTurns(sessionId));
+          // Beside the stop, the running turns' starts, read with it: a stopped turn the turns view never lists is
+          // over once it started before the view's oldest turn. `stopTurns` takes its own snapshot of what was sent first.
+          const [stopped, running] = await Promise.all([workforce.stopTurns(sessionId), client.sessions.requests(sessionId, { status: "in_progress", limit: TURNS_LISTED })]);
+          ids = new Set(stopped);
+          startedAt = new Map(running.flatMap((r) => (r.startedAtMs === undefined ? [] : [[r.id, r.startedAtMs] as const])));
         } catch (error) {
           conversations.setStop(sessionId, undefined, reading);
           throw error;
         }
-        conversations.setStop(sessionId, ids.size === 0 ? undefined : { ids }, reading);
+        conversations.setStop(sessionId, ids.size === 0 ? undefined : { ids, startedAt }, reading);
       },
       /** Run a failed turn again, as a new request the engine links to `requestId`. */
       retry: (sessionId: string, requestId: string): Promise<void> => workforce.retryTurn(sessionId, requestId),

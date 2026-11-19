@@ -133,6 +133,10 @@ interface Turn {
   live: boolean;
   /** The line it answers, for a retry. */
   text?: string;
+  /** The send's own streamed response, when the line was sent `{ stream: true }`: what is written, as it is written. */
+  response?: { push(event: string, data: Record<string, unknown>): void; close(): void };
+  /** An answer is still being written into the response, which closes once it is done. */
+  writing?: boolean;
 }
 
 interface ScriptedWorker {
@@ -224,17 +228,28 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
 
   const say = (w: ScriptedWorker, t: Turn, text: string): Step[1] => () => void store(w, t.id, said(text));
 
-  /** An answer written word by word, as a streamed send draws it: the same item, growing, then finished. */
+  /**
+   * An answer written word by word, as the server writes one: each word on the send's streamed response (its
+   * `item.added`, then a `content.delta` a word), and the session stream's one finished copy once it is done.
+   */
   const sayStreamed = (w: ScriptedWorker, t: Turn, text: string): Step[1] => () => {
     const words = text.split(" ");
     const item = store(w, t.id, { ...said(words[0]!), status: words.length > 1 ? "in_progress" : "completed" });
+    t.writing = words.length > 1;
+    t.response?.push("item.added", { item: { ...item, content: [{ type: "output_text", text: words[0] }] } });
     const draw = (count: number) => {
       // A stopped turn writes no more; one that ended meanwhile still finishes what it was writing.
       if (t.status === "aborted") return;
-      rewrite(w, item.id, { ...said(words.slice(0, count).join(" ")), status: count < words.length ? "in_progress" : "completed" });
-      if (count < words.length) setTimeout(() => draw(count + 1), 60 * speed);
+      t.response?.push("content.delta", { itemId: item.id, contentIndex: 0, delta: ` ${words[count - 1]}` });
+      const done = count >= words.length;
+      rewrite(w, item.id, { ...said(words.slice(0, count).join(" ")), status: done ? "completed" : "in_progress" });
+      if (!done) setTimeout(() => draw(count + 1), 60 * speed);
+      else {
+        t.writing = false;
+        t.response?.close();
+      }
     };
-    setTimeout(() => draw(2), 60 * speed);
+    if (t.writing) setTimeout(() => draw(2), 60 * speed);
   };
 
   /**
@@ -332,6 +347,8 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
     if (t.status !== "in_progress") return;
     t.live = false;
     t.status = status;
+    // The send's response ends with its turn, unless an answer is still being written into it.
+    if (!t.writing || status === "aborted") t.response?.close();
     t.endedAt = now();
     w.lastActiveAt = now();
     notify();
@@ -537,8 +554,29 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
       if (action !== RESPOND) throw refused(404, `the stand-in's ${address} has no action "${action}"`);
       await gate?.(String(input.message ?? ""));
       const t = door(sendOptions.sessionId, String(input.message ?? ""), sendOptions.attachments ?? [], sendOptions.requestId);
-      // The answer comes on the session's stream here: the door's own response carries none.
-      return sendOptions.stream === true ? json({ requestId: t.id }) : { id: t.id };
+      if (sendOptions.stream !== true) return { id: t.id };
+      // The send's own response: what the turn writes as it writes it, until the turn ends.
+      const encoder = new TextEncoder();
+      let sequence = 0;
+      // Open until the turn closes it, or the page stops reading it (a closed feed cancels it).
+      let open = true;
+      const body = new ReadableStream<Uint8Array>({
+        cancel() {
+          open = false;
+        },
+        start(controller) {
+          t.response = {
+            push: (event, data) => {
+              if (open) controller.enqueue(encoder.encode(`id: ${++sequence}\nevent: ${event}\ndata: ${JSON.stringify({ type: event, sequence_number: sequence, ...data })}\n\n`));
+            },
+            close: () => {
+              if (open) controller.close();
+              open = false;
+            },
+          };
+        },
+      });
+      return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
     },
     request: (id: string) => ({
       async abort() {
@@ -636,7 +674,8 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
         streams.set(sessionId, open.add(handlers));
         // The runs, named on connect: the stand-in runs no background work.
         queueMicrotask(() => handlers.onRuns?.({ runs: [] }));
-        const heard = () => bySession(sessionId)?.items.forEach((item) => handlers.onItem({ item }));
+        // The session stream sends an item once it is finished: one being written is the send's response's.
+        const heard = () => bySession(sessionId)?.items.forEach((item) => void (item.status === "in_progress" || handlers.onItem({ item })));
         listeners.add(heard);
         return {
           close: () => {

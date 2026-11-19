@@ -607,6 +607,23 @@ describe("the teammates screen", () => {
     expect(entries("assistant").at(-1)).toBe(streaming);
   });
 
+  it("shows an answer while it is written, from the send's own streamed response", async () => {
+    // The session stream sends the answer only once it is finished, as the server's does: a part-written
+    // answer on screen came through the send's response, which the conversation follows.
+    render(<TestProvider server={fast({ speed: 0.5 })}><App /></TestProvider>);
+    await screen.findByLabelText("Message Lead");
+    await tell("Lead", "Walk me through the launch post.");
+    await waitFor(
+      () => {
+        const last = entries("assistant").at(-1);
+        expect(last?.textContent).toMatch(/^Here is the plan/);
+        expect(last?.textContent).not.toMatch(/That is the whole plan\./);
+      },
+      { interval: 5, timeout: 4_000 },
+    );
+    await within(conversation()).findByText(/That is the whole plan\./, {}, { timeout: 4_000 });
+  });
+
   it("sizes the composer's box to its draft in CSS, so a column that narrows rewraps and regrows it", async () => {
     render(<TestProvider server={fast()}><App /></TestProvider>);
     const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
@@ -765,7 +782,9 @@ describe("the teammates screen", () => {
   });
 
   it("says under each name what the teammate is doing now, live, from its own state", async () => {
-    const { server } = renderOnBoard({ [LEAD]: [] });
+    // Slow enough that Lead's turn (its answer, then its message to researcher) outlasts a read of its state
+    // under a full suite's load: at the screen tests' usual pace it runs for 80 ms.
+    const { server } = renderOnBoard({ [LEAD]: [] }, {}, { speed: 0.2 });
     const status = (name: string) => workerRow(name).querySelector("[data-status]")?.textContent;
     const header = () => conversation().querySelector("[data-header-status]")?.textContent;
     await waitFor(() => expect(status("Lead")).toMatch(/^Idle/));

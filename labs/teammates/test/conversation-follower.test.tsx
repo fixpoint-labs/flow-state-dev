@@ -193,6 +193,23 @@ describe("a Stop of a turn older than the turns view's fifty", () => {
   });
 });
 
+describe("a Stop of a turn newer than a full turns view's last read", () => {
+  it("still says stopping until the view lists it ended", async () => {
+    const h = host();
+    // Fifty turns fill the view; r9 started after its last read, so the full view is behind, not past it.
+    h.turns(Array.from({ length: 50 }, (_, i) => turn(`d${i}`, "completed", 10 + i)));
+    h.running([{ id: "r9", actionName: "respond", status: "in_progress", startedAtMs: 100 }]);
+    const seen = follow(h);
+    await waitFor(() => expect(seen.current?.view.entries).toHaveLength(1));
+    await seen.calls!.stop("s1");
+    expect(h.aborted).toEqual(["r9"]);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(seen.current!.view.stopping).toBe(true);
+    h.turns([...Array.from({ length: 49 }, (_, i) => turn(`d${i + 1}`, "completed", 11 + i)), turn("r9", "aborted", 100)]);
+    await waitFor(() => expect(seen.current!.view.stopping).toBe(false));
+  });
+});
+
 describe("a stopped line", () => {
   it("stays once its turn leaves the turns read", async () => {
     const h = host();

@@ -20,8 +20,8 @@ type Followed = {
   follow: (response: Response) => void;
 };
 
-/** A Stop under way: the turns it stopped, `null` while it reads which. */
-type Stop = { ids: ReadonlySet<string> | null };
+/** A Stop under way: the turns it stopped, `null` while it reads which, and when each started, where the read said. */
+type Stop = { ids: ReadonlySet<string> | null; startedAt?: ReadonlyMap<string, number> };
 
 /** Each conversation's shared reads and Stop, by session id, with one change signal for `useSyncExternalStore`. */
 export function conversationStore() {
