@@ -47,6 +47,9 @@ processes for its own leg. Then that leg drops out of the collision and is grade
 | **Because** | DevTeam's and the Teammates lab's configs build `sqliteStores` themselves. SQLite's bus doesn't cross, so under [FIX-2429's call](../FIX-2429/DECISIONS.md#decided-not-asked) Shift Manager's board keeps its 3 s timer while a task is open, and leg b's "no read between notices" can never pass there. The epic's *not done if* already reads "still polls … with the Postgres bus configured". Grading a scratch copy with only the store line changed tests Shift Manager's and the labs' own views on the bus that crosses. `buildShiftManagerCopy` already patches copies in scratch, so it needs no product change. A Lab option would be product surface no person has asked for |
 | **Locks in** | The run proves the views on Postgres. As shipped, the labs still read every 3 s while a task is open, and the report says so in one line |
 
+Since the Nov 19 amendment the closure grades only Shift Manager on this copy; the Teammates and
+claude-code-style labs follow in [FIX-2843](https://linear.app/fixpoint-labs/issue/FIX-2843).
+
 ![D2: where Shift Manager and the labs are graded. Chosen: a scratch copy with the store swapped to Postgres, beside as shipped on SQLite. Decides it: the bus that crosses, which leg b's no read between notices needs. Price: the labs as we run them day to day still poll while a task is open](figures/d2-scratch-postgres.svg)
 
 It comes down to the bus: on SQLite the board polls by an approved design, so leg b can't pass.
