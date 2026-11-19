@@ -342,10 +342,8 @@ describe("what the inbox view hears", () => {
       expect(user.flatMap((hearing) => hearing.kinds)).not.toContain("run");
       expect(hears.flatMap((hearing) => hearing.kinds)).not.toContain("items");
       // A session it read is heard on that session's topic alone, for what names its worker, flow and lineage.
-      expect(hears.filter((hearing) => hearing.topic.scope === "session").map((hearing) => hearing.kinds)).toEqual([
-        ["run", "state"],
-        ["run", "state"]
-      ]);
+      // Its identity is heard on `state`, not `run` (FIX-2725 D1, amended by FIX-2773).
+      expect(hears.filter((hearing) => hearing.topic.scope === "session").map((hearing) => hearing.kinds)).toEqual([["state"], ["state"]]);
     } finally {
       await h.dispose();
     }

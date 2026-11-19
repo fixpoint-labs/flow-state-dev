@@ -5,13 +5,11 @@
 import type { Client } from "@flow-state-dev/client";
 import { conversationCalls, type ConversationCalls } from "./conversations";
 import { connect, fileCalls, pageConnection, type AppConnection, type FileCalls } from "./files";
-import { runCalls, type RunCalls } from "./runs";
 import { appState } from "./state";
-import { taskCalls, type TaskCalls } from "./tasks";
 import { windowCalls, type WindowCalls } from "./window";
 
 /** Everything the screen reads and writes. */
-export interface AppCalls extends ConversationCalls, FileCalls, WindowCalls, TaskCalls, RunCalls {
+export interface AppCalls extends ConversationCalls, FileCalls, WindowCalls {
   /** Stop what the calls keep watching for their whole life (the roster): whoever made them calls it when done. */
   close(): void;
 }
@@ -23,8 +21,6 @@ export function createAppCalls(client: Client = connect(), connection: AppConnec
     ...conversationCalls(state),
     ...fileCalls(client, connection),
     ...windowCalls(state),
-    ...taskCalls(state),
-    ...runCalls(state),
     close: state.close,
   };
 }

@@ -17,14 +17,17 @@
  *
  * No action runs here. A task's harness is what its run reported, else its
  * worker's `harness:` setting from the roster. Review, landing and error come
- * from the row, read on the server and cut to those fields.
+ * from the row, read on the server and cut to those fields. With a `taskId`
+ * in the input, the row it names also carries its answer (`detail`), cut as
+ * `getTask` cuts output: the read an open task's popup makes. No other row,
+ * and no read without one, carries an answer, so the board stays bounded.
  */
 import { defineView, handler } from "@flow-state-dev/core";
 import { requireRequestHost } from "@flow-state-dev/core/internal";
 import { inboxItems, type InboxHold } from "@flow-state-dev/orchestration/inbox";
-import { listedTaskSchema, taskListEntriesFor } from "@flow-state-dev/orchestration/internal";
-import type { Task } from "@flow-state-dev/orchestration/tasks";
-import type { WorkerInstallation } from "@flow-state-dev/workforce";
+import { listedTaskSchema, readable, taskListEntriesFor } from "@flow-state-dev/orchestration/internal";
+import { isTerminalStatus, type Task } from "@flow-state-dev/orchestration/tasks";
+import { answerTextOf, type WorkerInstallation } from "@flow-state-dev/workforce";
 import {
   conversationLedgerAt,
   conversationLedgerResources,
@@ -51,16 +54,23 @@ const codingTaskSchema = listedTaskSchema.extend({
   review: z.enum(["accepted", "deadline"]).nullable(),
   /** Where an accepted run's work went, once it landed. */
   landed: landedWorkSchema.nullable(),
-  /** Why its last attempt failed; only on a failed task. */
+  /** Why its last attempt failed, or the reason it was cancelled with; `null` otherwise. */
   error: z.string().nullable(),
   /** The numbers of the pull requests it waits on to merge or close; their links are the recorded work view's. */
   pullRequests: z.array(z.number().nullable()),
   /** The flow its run's session runs on, where that run's own stream is read; `null` with no run, or once its session is gone. */
   runFlow: z.string().nullable(),
+  /**
+   * Only on the row the input's `taskId` names, `null` on every other: what it
+   * came back with (a teammate's text, a coding run's `answer`), cut as
+   * `getTask` cuts output, with `answerCut` set when it was.
+   */
+  detail: z.object({ answer: z.string().nullable(), answerCut: z.boolean() }).nullable(),
 });
 
 const codingBoardSchema = z.array(codingTaskSchema);
-const codingBoardInputSchema = z.object({ sessionId: z.string().min(1) });
+/** With `taskId`, every row still comes back, with `detail` filled only on the one it names: an open task's read. */
+const codingBoardInputSchema = z.object({ sessionId: z.string().min(1), taskId: z.string().min(1).optional() });
 
 /** One task of the coding board. */
 export type CodingBoardTask = z.infer<typeof codingTaskSchema>;
@@ -135,14 +145,24 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
             harness,
             review,
             landed: landedOf(output.landed) ?? null,
-            error: entry.status === "errored" && typeof task?.error === "string" ? task.error : null,
+            error: (entry.status === "errored" || entry.status === "cancelled") && typeof task?.error === "string" ? task.error : null,
             pullRequests: wait === null ? [] : wait.pullRequests.map((pullRequest) => pullRequest.number),
             runFlow: task?.run?.sessionId === undefined ? null : (flows.get(task.run.sessionId) ?? null),
+            detail: entry.id === input.taskId ? detailOf(task) : null,
           };
         });
       },
     }),
   });
+}
+
+/** An open task's answer once it ended, cut by `getTask`'s own cut so the two never differ. */
+function detailOf(task: Task | undefined): { answer: string | null; answerCut: boolean } {
+  // Only an ended task's output is its answer: a retried one keeps its last attempt's output while it runs again.
+  const answer = task !== undefined && isTerminalStatus(task.status) ? answerTextOf(task.output) : undefined;
+  if (answer === undefined) return { answer: null, answerCut: false };
+  const { value, cut } = readable(answer);
+  return { answer: value as string, answerCut: cut };
 }
 
 /** The coding board view, as {@link codingBoardView} builds it. Import as a type in client code. */
