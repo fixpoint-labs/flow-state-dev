@@ -222,10 +222,11 @@ export function useResource<TDef extends ScopeResourceDef>(
   const built = useClient();
   const client = options.client ?? built;
   const { pollIntervalMs, all = false } = options;
-  const topicPrefix = all ? options.topicPrefix : undefined;
   const atSession = def.scope === "session";
   const key = options.key ?? def.ref ?? def.pattern ?? "";
   const collection = def.pattern !== undefined;
+  // Only a collection read whole narrows by prefix; a single resource ignores both options.
+  const topicPrefix = all && collection ? options.topicPrefix : undefined;
   const scope = def.scope === "org" ? "org" : "user";
   // A session resource read by the session's id: only where no `useSession` view hands its snapshot.
   const sessionId = atSession && options.session === undefined && options.sessionId != null && options.sessionId !== "" ? options.sessionId : undefined;

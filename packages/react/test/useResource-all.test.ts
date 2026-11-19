@@ -222,3 +222,31 @@ describe("useResource's failure and refresh()", () => {
     expect(result.current.failure).toBeUndefined();
   });
 });
+
+describe("useResource on a single resource, given the collection options", () => {
+  it("still hears its own path: `all` and `topicPrefix` narrow nothing for a single resource", async () => {
+    const pins = { scope: "org" as const, ref: "pins", ClientType: { name: "" } };
+    let reads = 0;
+    const fetcher = vi.fn<ClientFetch>(async (input) => {
+      if (new URL(String(input), "http://x").pathname !== "/api/flows/resources/org/pins") throw new Error(`unrouted ${String(input)}`);
+      reads += 1;
+      return json({ value: { name: `read ${reads}` }, version: reads });
+    });
+    const real = createClient({ userId: "alice", baseUrl: "", fetcher });
+    const heard: SubscribeOptions[] = [];
+    const client = {
+      resource: real.resource.bind(real) as typeof real.resource,
+      subscribe: (_topics: readonly WireTopic[], options: SubscribeOptions) => {
+        heard.push(options);
+        return { close() {} };
+      }
+    };
+    renderHook(() => useResource(pins, { all: true, topicPrefix: "projects/p1/", client }));
+    await waitFor(() => expect(reads).toBe(1));
+    // A change to `pins` itself: the resource reads again.
+    await act(async () => {
+      for (const options of heard) options.onChange({ topic: { scope: "org", resource: "pins" }, kind: "resource" } as WireNotice);
+    });
+    await waitFor(() => expect(reads).toBe(2));
+  });
+});
