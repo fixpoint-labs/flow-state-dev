@@ -31,7 +31,7 @@ export const artifactStateSchema = z.object({
   title: z.string(),
   summary: z.string().default(""),
   extension: z.string().optional(),
-  updatedAt: z.number()
+  updatedAt: z.string()
 });
 
 type ArtifactState = z.infer<typeof artifactStateSchema>;

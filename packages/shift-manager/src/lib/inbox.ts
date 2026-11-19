@@ -13,7 +13,7 @@
  * call; the suspension notice it publishes takes the item away, with no
  * read of the Lab after it.
  */
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { useCallback, useMemo } from "react";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { useView } from "@flow-state-dev/react";
@@ -23,7 +23,7 @@ import { isDone } from "./columns";
 import { useReportFeedState } from "./feed-health";
 import { useLab } from "./lab-data";
 import { describeFailure, type Failure, type Section } from "./reads";
-import { readSessionItems, RunReadError } from "./run";
+import { useRetrySessionFeed, useSharedSessionFeed } from "./session-feeds";
 
 export type { InboxAsk, InboxBoardTask, InboxViewValue };
 
@@ -211,29 +211,20 @@ export type ReviewData =
  * without it, the card offers a plain Accept that lands nothing.
  */
 export function useReviewData(hold: InboxViewHold): ReviewData {
-  const { client } = useLab();
   const sessionId = sessionOfHold(hold);
   const review = hold.ask.kind === "review" && sessionId !== null;
-  const [attempt, setAttempt] = useState(0);
-  const [read, setRead] = useState<{ id: string; attempt: number; result: ReviewData } | undefined>(undefined);
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
-  useEffect(() => {
-    if (!review) return;
-    let live = true;
-    readSessionItems(client, sessionId).then(
-      (items) => {
-        const found = items.items.find((item): item is SuspensionItem => item.type === "suspension" && (item as SuspensionItem).suspensionId === hold.id);
-        if (live) setRead({ id: hold.id, attempt, result: { state: "read", data: found?.data } });
-      },
-      (error: unknown) => {
-        const failure = error instanceof RunReadError ? error.failure : describeFailure(error);
-        if (live) setRead({ id: hold.id, attempt, result: { state: "failed", failure, retry } });
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [client, review, sessionId, hold.id, attempt, retry]);
-  if (!review) return { state: "none" };
-  return read?.id === hold.id && read.attempt === attempt ? read.result : { state: "reading" };
+  // The page's one feed for the ask's session; a feed whose read gave up is opened anew on Retry.
+  const feed = useSharedSessionFeed(review ? sessionId : null);
+  const retry = useRetrySessionFeed(review ? sessionId : null);
+  const items = feed?.items;
+  const error = feed?.error ?? null;
+  return useMemo((): ReviewData => {
+    if (!review) return { state: "none" };
+    if (items !== undefined) {
+      const found = items.find((item): item is SuspensionItem => item.type === "suspension" && (item as SuspensionItem).suspensionId === hold.id);
+      return { state: "read", data: found?.data };
+    }
+    if (error !== null) return { state: "failed", failure: describeFailure(error), retry };
+    return { state: "reading" };
+  }, [review, items, error, hold.id, retry]);
 }

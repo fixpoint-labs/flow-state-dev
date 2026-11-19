@@ -5,14 +5,13 @@
  */
 import { topic, type SessionConnectionStatus } from "@flow-state-dev/client";
 import type { FileContent } from "@flow-state-dev/core/items";
-import { delegateAnswerOf, RECEIVED_MESSAGE_DATA_TYPE, SEND_MESSAGE_TOOL } from "@flow-state-dev/workforce/browser";
+import { answerTextOf, delegateAnswerOf, RECEIVED_MESSAGE_DATA_TYPE, SEND_MESSAGE_TOOL } from "@flow-state-dev/workforce/browser";
 import { parseNotice } from "@flow-state-dev/orchestration/tasks";
 import { stableList } from "../lib/stable";
 import { filesOf, parseArgs, sentTo, textOf, type Item } from "./items";
 import { isRequest, logFailedRead, POLL_MS, QUIET_ACTIONS, type Unsubscribe } from "./reads";
 import type { AppState } from "./state";
 import { stepRun, toolStep, type SessionStep, type StepRun } from "./steps";
-import { boardCopies, toBoardTask } from "./tasks";
 
 /** One entry of a worker's conversation, in the order it happened. */
 export type ConversationEntry =
@@ -83,7 +82,8 @@ export function toEntries(
   retryableTurns: ReadonlySet<string> = new Set(),
   stopped: readonly string[] = [],
 ): ConversationEntry[] {
-  const copies = boardCopies(items);
+  // The latest copy of each board row the items carry (`task-change`): what a task's ending line says.
+  const copies = new Map(items.flatMap((item) => (item.type === "data" && item.dataType === "task-change" && item.value?.task?.id ? [[item.value.task.id as string, item.value.task as Record<string, any>] as const] : [])));
   const entries: ConversationEntry[] = [];
   /** The turn the last run of steps belongs to: a run never spans two. */
   let runTurn: unknown;
@@ -112,17 +112,16 @@ export function toEntries(
       const notice = parseNotice(item);
       const taskId = notice?.taskId ?? delegateAnswerOf(item)?.taskId ?? "";
       const copy = copies.get(taskId);
-      const task = copy === undefined ? undefined : toBoardTask(copy);
       // An answer is a finished task, never one drawn as failed.
-      const cancelled = task?.status === "cancelled";
-      const failed = notice !== undefined && task?.status !== "done" && !cancelled;
+      const cancelled = copy?.status === "cancelled";
+      const failed = notice !== undefined && copy?.status !== "completed" && !cancelled;
       entries.push({
         kind: "result",
         id: item.id,
         taskId,
         from: item.agentName,
-        text: task?.result ?? task?.error ?? textOf(item),
-        ...(task?.title === undefined ? {} : { title: task.title }),
+        text: answerTextOf(copy?.output) ?? (typeof copy?.error === "string" ? copy.error : undefined) ?? textOf(item),
+        ...(copy === undefined ? {} : { title: copy.title ?? copy.goal ?? copy.id }),
         ...(failed ? { failed: true } : {}),
         ...(cancelled ? { cancelled: true } : {}),
       });

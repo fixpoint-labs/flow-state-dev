@@ -30,6 +30,7 @@ export type {
   FlushReport,
   Mount,
   Place,
+  ProjectedEntryExtra,
   ProjectedEntryState,
 } from "./types";
 export { claimKey, createClaimRegistry, sharedClaimRegistry } from "./claims";

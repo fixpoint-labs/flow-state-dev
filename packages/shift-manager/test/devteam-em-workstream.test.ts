@@ -26,7 +26,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { encodeUserSegment, type GeneratorModel, type ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { runAction } from "../src/lib/action";
+import { runAction } from "./helpers/run-action";
 import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
 import { readEntryReport, readProject, type ProjectAddress } from "../src/lib/projects";

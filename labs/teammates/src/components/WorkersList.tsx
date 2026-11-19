@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { HireWorkerInput, RosterEntry } from "@flow-state-dev/workforce/browser";
-import type { AppCalls } from "../app";
+import { useTasks, type AppCalls } from "../app";
 import type { Look } from "../lib/looks";
 import { teammateAttention, supported, useAttention, useNotifyToggle, type TeammateAttention } from "../lib/attention";
 import { useStable } from "../lib/stable";
@@ -151,7 +151,7 @@ function WorkerItem({
   }, [count, selected, seen, onSeen]);
   const unread = count !== undefined && seen !== undefined ? Math.max(0, count - seen) : 0;
 
-  const taskList = useWatch(adapter.watchTasks, sessionId);
+  const taskList = useTasks(sessionId).value;
   const tasks = taskList ?? [];
   // Loaded once its conversation and its tasks have arrived; a teammate with no conversation yet has nothing to load.
   const loaded = sessionId === undefined || (view !== undefined && taskList !== undefined);

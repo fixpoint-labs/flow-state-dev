@@ -49,6 +49,7 @@ import {
   pullRequestRecordedOf,
   pullRequestRefFromUrl,
   writePullRequests,
+  type FollowingRun,
   type PullRequestCollection,
   type PullRequestFollower,
   harnessRunInputSchema,
@@ -1555,6 +1556,12 @@ async function recordLandedPullRequest(ctx: BlockContext, landed: Extract<Landed
   } catch (error) {
     ctx.emit.status(`The pull request was not recorded: ${error instanceof Error ? error.message : String(error)}`, { transient: false });
   }
+}
+
+/** The run a follower is handed: the task it works, so that task's failure or cancel ends what the follower made. */
+function followingRun(ctx: { sequencer?: { state?: unknown } | undefined }): FollowingRun {
+  const taskId = harnessCtxState(ctx)?.taskId;
+  return taskId == null ? {} : { taskId };
 }
 
 /** Read the manager's state, or throw rather than derive a wrong directory. */
@@ -3116,7 +3123,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const state = managerState(harnessCtxState(ctx));
       const identity = identityOf(ctx, harnessCtxState(ctx));
       const succeeded = handle.status === "completed";
-      followRecordedPullRequests(ctx, onPullRequestRecorded);
+      followRecordedPullRequests(ctx, onPullRequestRecorded, followingRun(ctx));
       await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
       /**
@@ -3446,7 +3453,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       await holdWork(ctx).catch(() => undefined);
       await saveKeptFiles(ctx).catch(() => undefined);
       // A failed run's pull requests are still its own.
-      followRecordedPullRequests(ctx, onPullRequestRecorded);
+      followRecordedPullRequests(ctx, onPullRequestRecorded, followingRun(ctx));
       await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
       const reason = error instanceof Error ? error.message : String(error);
@@ -4106,7 +4113,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           await reviewed(askedPerson ? "accepted" : null, outcome.landed);
           ctx.emit.status(landedLine(outcome.landed), { transient: false });
           if (outcome.landed.kind === "pull-request") {
-            followRecordedPullRequests(ctx, onPullRequestRecorded);
+            followRecordedPullRequests(ctx, onPullRequestRecorded, followingRun(ctx));
             await recordLandedPullRequest(ctx, outcome.landed);
           }
           return input;
@@ -4423,7 +4430,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // (a steer's stop, or the task's end) composes in beside it.
       abortSignal: (ctx) => {
         // Before the harness starts recording, so a pull request it opens is followed mid-turn.
-        followRecordedPullRequests(ctx, onPullRequestRecorded);
+        followRecordedPullRequests(ctx, onPullRequestRecorded, followingRun(ctx));
         const deadline = AbortSignal.timeout(runTimeoutMs);
         // Armed for every step: a run may offer a live steer once it starts.
         const steer = watchForSteers(ctx);

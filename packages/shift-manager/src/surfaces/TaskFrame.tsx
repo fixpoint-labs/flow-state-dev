@@ -10,7 +10,7 @@
  *
  * What the screen reads is held by {@link TaskProvider}; this file only draws
  * it. The screen writes three ways: the abort behind Interrupt, the
- * composer's message, which goes through the one send path (`lib/send.ts`),
+ * composer's message, which goes through the one send path (`lib/deliver.ts`),
  * and the task actions, the board's own through the reader's `taskActions`.
  *
  * The keyboard stop is deliberate: Esc twice within the window, or Cmd/Ctrl+.
@@ -20,12 +20,13 @@ import { interruptChordLabel, useInterruptKeys } from "@flow-state-dev/react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor } from "../lib/columns";
-import { doorOf, doorTakesTaskOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
+import { doorOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
 import { taskAsks, useInbox } from "../lib/inbox";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
-import { sendTurn } from "../lib/send";
+import { useDeliverLine } from "../lib/deliver";
+import { useWorkforce } from "../lib/workforce";
 import { holderSessionOf, isConversationBoard, useTask } from "../lib/task";
 import { distinctTitle, legacyTaskDraftKey, taskDraftKey } from "../lib/tasks";
 import { TurnComposer } from "../components/TurnComposer";
@@ -35,7 +36,7 @@ import { cn } from "../lib/utils";
 import { STALE_CLASS } from "../components/flow-state/connection-banner";
 import { ErrorBody } from "../components/flow-state/error";
 import { MessageFiles } from "../components/flow-state/message";
-import { fileReadBase, flowUploader, readStoredFile } from "../lib/files";
+import { fileReadBase, readStoredFile } from "../lib/files";
 import { TaskActions } from "../components/flow-state/task-actions";
 
 export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
@@ -117,7 +118,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
         )}
       </div>
       <Activity worker={worker} armed={keys.armed} />
-      <Composer gaps={gaps} worker={worker} />
+      <Composer gaps={gaps} worker={worker} workerId={found?.id ?? row?.assignee ?? null} />
     </div>
   );
 }
@@ -315,9 +316,11 @@ function Brief({ gaps }: { gaps: Gaps }) {
  * board's. Says why when it can't. A finished task takes a message too; what
  * it does is the door's call.
  */
-function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
+function Composer({ gaps, worker, workerId }: { gaps: Gaps; worker: string | null; workerId: string | null }) {
   const task = useTask();
-  const { client, snapshot, refresh } = useLab();
+  const { snapshot, refresh } = useLab();
+  const workforce = useWorkforce();
+  const deliver = useDeliverLine();
   const { row } = task;
   const workers =
     snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined
@@ -325,8 +328,6 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
       : rosterOf(snapshot).workers;
   const flowId = task.run.kind === "open" ? task.run.run.flowId : undefined;
   const door = flowId === undefined ? null : doorOf(workers, flowId);
-  // A door that takes the task's id stamps the line and its reply with it, so the Session finds them after a reload.
-  const stamps = flowId !== undefined && doorTakesTaskOf(workers, flowId);
   const blocked =
     row === undefined
       ? "This task isn't on its board yet."
@@ -347,15 +348,16 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
       label={`Message ${worker ?? "this worker"}`}
       placeholder={`Message ${worker ?? "this worker"}…`}
       blocked={blocked}
-      // Through the run's own flow, whose sign-in its send runs.
-      uploader={flowUploader(client, flowId)}
+      // Through the worker's own flow, whose sign-in its send runs.
+      uploader={workerId === null || flowId === undefined ? null : { upload: (file) => workforce.upload(workerId, file) }}
       // No `held`: the draft stays until the door turn ends. The Session follows the request from `onStarted`.
       // A file found after the task started goes here, as a line to its run, not into its brief (FIX-2522 D1).
+      // The task's id goes only to a door that stamps it on the line and its reply: workforce's `send` decides.
       send={async (message, _held, attachments) => {
-        const target = { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! };
-        const sent = await sendTurn(client, stamps ? { ...target, taskId: task.taskId } : target, message, {
-          onStarted: (requestId) => task.noteSent(requestId, stamps),
-        }, attachments);
+        const sent = await deliver({ sessionId: row!.run!.sessionId, taskId: task.taskId }, message, {
+          attachments,
+          onStarted: (requestId) => task.noteSent(requestId),
+        });
         // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
         if (sent.suspended) void refresh();
         return sent;

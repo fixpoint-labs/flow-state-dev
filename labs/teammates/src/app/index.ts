@@ -23,25 +23,15 @@
  * | `conversations.ts` | `retry`             | the request's `retry()` on the conversation's flow: a failed turn again      |
  * | `window.ts`        | `watchWindow`       | the last answering request's `historyStart`, and the session's `historySummary` |
  * |                    |                     | on each request notice and each notice of that resource                      |
- * | `tasks.ts`         | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
- * |                    |                     | and the board's task-list view (`taskListViewRef`), on each notice of the     |
- * |                    |                     | topics its answer names                                                       |
- * |                    |                     | and each linked run's session, where the run writes its row (its holds)      |
- * |                    |                     | and `taskView` with the Inbox's holds (`inboxItems`), for what it waits on |
- * |                    |                     | you for, and what its runs spent (the harness and model they reported)       |
- * | `tasks.ts`         | `answerOpenHold`    | the Inbox client's `answerOne`, on the task's open question or review         |
- * | `tasks.ts`         | `taskActions`       | the Inbox client's `board(at)` on the conversation that filed the task, its   |
- * |                    |                     | `"tasks"` board: cancel, steer, release, retry, and `refile` for a re-run      |
- * | `runs.ts`          | `watchReview`       | the run's review stop, read by harness-manager's browser `reviewDetail`        |
- * | `runs.ts`          | `watchRun`          | the items of the session the task names as its run, each tool call      |
- * |                    |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
- * | `runs.ts`          | `watchWorking`      | the run session's items and its run request's own stream (which sends a call |
- * |                    |                     | as it starts), for the tool call in flight (the UI registry's               |
- * |                    |                     | `working-status`), and harness-manager's browser `readRecordedWork`, for the |
- * |                    |                     | plan its harness recorded, read on each write to it                          |
  *
  * What the jobs share (the clients, one feed per session, each conversation's
  * flow) is one `AppState` (`state.ts`) per `createAppCalls` (`calls.ts`).
+ *
+ * A conversation's tasks are read by hooks, not calls (`tasks.ts`), through
+ * the client `AppProvider` holds (`useAppClient()`): harness-manager's coding board view
+ * (`useTasks`; `useTaskDetail` for the open popup's one task and its answer),
+ * a task's run session and its run request's stream, harness-manager's
+ * recorded work view, and the Inbox client's `board(at)` and `answerOne`.
  * Every watch reads on a change; at `POLL_MS` only wherever push can miss one.
  *
  * A received message is drawn from its own item (`workforce:received`), which
@@ -57,5 +47,4 @@ export type { Unsubscribe } from "./reads";
 export { answeringOf, RETRYABLE_SOURCES, toEntries, type ConversationEntry, type ConversationView } from "./conversations";
 export { commandsRun, runSteps, runSummaryLine, stepRun, toSteps, type SessionStep, type StepRun } from "./steps";
 export { windowMarkOf, windowReadOf, type WindowMark } from "./window";
-export { attemptDurationMs, holdsOfTasks, inboxAnswerOf, rerunOverrides, toBoardTask, type BoardTask, type TaskAnswer } from "./tasks";
-export { reviewOf, type ReviewDetail, type WorkingNow } from "./runs";
+export { usePullRequestLinks, useRecordedFiles, useTaskActions, useTaskDetail, useTaskWork, useTasks } from "./tasks";

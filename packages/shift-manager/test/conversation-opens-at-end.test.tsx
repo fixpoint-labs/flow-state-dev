@@ -13,6 +13,9 @@ import { toWorker } from "../src/lib/reads";
 vi.mock("../src/lib/lab-data", () => ({
   useLab: () => ({ client: { userId: "alice" }, refresh: async () => undefined, answered: undefined }),
 }));
+// The send path and the workforce client: this view sends nothing.
+vi.mock("../src/lib/deliver", async (original) => ({ ...(await original<typeof import("../src/lib/deliver")>()), useDeliverLine: () => async () => ({ requestId: "q", suspended: false, stopped: null }) }));
+vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => ({}) }));
 vi.mock("../src/lib/conversation", () => ({
   senderOf: () => undefined,
   knownWorkers: () => new Set<string>(),

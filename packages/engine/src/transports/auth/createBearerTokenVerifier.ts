@@ -13,11 +13,13 @@
  *     parsed payload. Asymmetric algorithms are out of scope here; hosts
  *     using RS256/ES256 plug in a JWKS verifier of their choice.
  *
- * Both helpers throw nothing — invalid input returns `null`. The host
+ * Invalid tokens return `null`; constructing a JWT verifier with an invalid
+ * secret throws. The host
  * decides whether `null` becomes `PrincipalResolutionError` or a fall-back
  * to `defaultUserId`.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { assertSecret } from "./assert-secret";
 
 const BEARER_SCHEME = /^bearer\s+/i;
 
@@ -89,6 +91,8 @@ export type Hs256JwtVerifier = (token: string | null | undefined) => JwtPayload 
 export function createHs256JwtVerifier(
   options: CreateHs256JwtVerifierOptions
 ): Hs256JwtVerifier {
+  const secret = options.secret;
+  assertSecret(secret, "createHs256JwtVerifier");
   const issuer = options.issuer === undefined
     ? undefined
     : Array.isArray(options.issuer)
@@ -118,7 +122,7 @@ export function createHs256JwtVerifier(
       return null;
     }
 
-    const expectedSig = createHmac("sha256", options.secret)
+    const expectedSig = createHmac("sha256", secret)
       .update(`${headerB64}.${payloadB64}`)
       .digest();
     const givenSig = base64UrlToBuffer(signatureB64);

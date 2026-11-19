@@ -7,7 +7,8 @@
  * landing the run offered (no pull request, no merge). So until the read
  * lands the card offers no answer, and a failed read says why, with Retry.
  *
- * The session read is a promise the test settles.
+ * The session read is the first read of the page's feed for the ask's
+ * session, a promise the test settles; Retry opens that feed anew.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +27,8 @@ const client = {
   flow: () => ({ request: () => ({ answer: async (body: unknown) => void answers.push(body) }) }),
 };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client, noteAnswered: () => {} }) }));
+// The card reads the stop's data from the page's feed for the ask's session; its first read is the session's state.
+vi.mock("../src/lib/session-feeds", async () => (await import("./helpers/fake-feed")).fakeFeeds([], () => client.sessions.state()));
 const { AskCard } = await import("../src/components/AskCard");
 
 afterEach(() => {
