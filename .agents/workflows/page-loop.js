@@ -468,6 +468,12 @@ if (SKIP && !target.exists) {
   return { status: 'blocked', page: A.page, path: PATH, reason: `${A.page} is ${plan.status} in the sitemap, so the draft is skipped, and there is no page at ${PATH} yet. Put the existing page there first.` }
 }
 const ENTRY = `SITEMAP ENTRY ${A.page} (the page plan):\n${plan.entry}`
+// A Reference page is where other pages' depth passes moved their mechanism (`## Reference rows`
+// in each record, `<row> → <id>`). The script can't read files, so passes 1 and 3 are told where
+// the rows are; without this a Reference page is written from scratch and the rows are lost.
+const INCOMING = plan.type === 'reference'
+  ? `\n\nOther pages' depth passes moved rows to ${A.page}. List them with \`grep -rhE --include=*.record.md -e '→ ${A.page}( \\(corrected by pass 5\\))?$' docs/contributing/docs-revamp/pages\`. Each row is a claim: check it against the code, carry every true one, and name in the fact sheet each one you drop and why.`
+  : ''
 
 // --- Passes 1 to 3 ------------------------------------------------------------------------------
 
@@ -477,7 +483,7 @@ const facts = await agent(
 
 Write ${FACTS}: every fact the page "${TITLE}" (${plan.type}) will state, each with file and line, citing only what a fact sheet may cite. If the page is about something that stores data, answer the four questions for each stored part. Do not write the page.
 
-${ENTRY}`,
+${ENTRY}${INCOMING}`,
   { label: 'pass-1', phase: 'Write', schema: FACTS_SCHEMA, agentType: 'docs-writer', model: WRITER },
 )
 if (!facts) return failed('pass 1')
@@ -505,7 +511,7 @@ if (!SKIP) {
 
 Write ${PATH}, a ${plan.type} page titled "${TITLE}" with \`type: ${plan.type}\` and that title in its frontmatter. Open by saying what the thing is, what it is for and why it has this shape (the problem it solves and the idea behind it), before any specifics; open on a situation only when the page's idea answers a problem the reader has had, and never invent a person or a story to introduce a structure, a list of parts or a definition. Where the page teaches with examples, carry one example through it. Write the opening and the outline first, and start again if the opening needs a framework term to make sense. Aim well under the budget (about 700 words of prose for a concept page) and state nothing that is not on the fact sheet ${FACTS}. Draw the figures the entry briefs.
 
-${ENTRY}`,
+${ENTRY}${INCOMING}`,
     { label: 'pass-3', phase: 'Write', schema: DRAFT_SCHEMA, agentType: 'docs-writer', model: WRITER },
   )
   if (!draft) return failed('pass 3')
