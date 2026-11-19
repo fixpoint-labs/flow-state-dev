@@ -14,7 +14,9 @@
  * starts is refused, and settles it the same way.
  *
  * Each notice is said once, in this session, and a task that failed for good
- * is reported to the Error Reporter once, under this session's own board.
+ * is reported to the Error Reporter once, under this session's own board,
+ * before its notice is settled: a report the intake didn't take leaves the
+ * notice owed and the wake kept, as a notice entry leaves it.
  */
 import { requestHostOf } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -69,19 +71,22 @@ async function settleOwedNotices(ctx: BlockContext, detail: string): Promise<voi
   const tasks = ledger.list();
   for (const task of tasks) {
     for (const notice of owedNotices(task, ledger.collectionId, tasks, filerOf)) {
-      await ledger.patchMetadata(task.id, { ...clearNotice(notice), ...undeliverableRecord(notice, detail, Date.now()) });
-      ctx.emit.message(`The conversation that filed task "${task.title ?? task.goal}" couldn't be told it ${notice.ending}: ${detail}`);
       // Its notice entry reports a final failure; it will never run, so the
       // report goes from here, under the board the task is on: this session's.
+      // First, as the notice entry does: a report the intake didn't take
+      // leaves the notice owed, and the scan unfinished, so it goes again.
       if (notice.ending === "errored") {
-        await sendTaskReport(
+        const outcome = await sendTaskReport(
           ctx,
           task,
           { attempt: notice.attempt, error: notice.error ?? "" },
           { boardId: CONVERSATION_LEDGER_ID, partition },
           "conversation-board-refused-session"
         );
+        if (outcome === "not-taken") throw new Error(`the Error Reporter didn't take task "${task.id}"'s failure`);
       }
+      await ledger.patchMetadata(task.id, { ...clearNotice(notice), ...undeliverableRecord(notice, detail, Date.now()) });
+      ctx.emit.message(`The conversation that filed task "${task.title ?? task.goal}" couldn't be told it ${notice.ending}: ${detail}`);
     }
   }
 }

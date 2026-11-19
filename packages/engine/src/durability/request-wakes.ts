@@ -54,8 +54,8 @@ export function noteWakeOwed(store: WakeStore, dueAt: number): void {
  * the internal entry it names, in its session, as its owner, the way the
  * dispatch seam starts a dispatched request. Resolves once the host accepted
  * it; rejects when the host refused or failed to. `onStarted` receives the
- * run's completion and a way to abort it, so a host that closes its stores can
- * wait for it, for a while.
+ * run's completion, the wake's clear on a refusal included, and a way to abort
+ * it, so a host that closes its stores can wait for both, for a while.
  *
  * A run refused at its start for good ({@link isTerminalStartRefusal}) clears
  * the wake it fired, at the version the fire read, and says so once: its
@@ -80,8 +80,8 @@ export async function fireWakeThrough(
     metadata: { wake: { entry: wake.entry, dueAt: wake.dueAt } },
     signal: controller.signal
   });
-  onStarted?.({ finished: handle.finished, abort: () => controller.abort() });
-  void handle.finished.then(undefined, async (error: unknown) => {
+  // Never rejects: a refusal's clear (or its failure) is logged here.
+  const cleanup = handle.finished.then(undefined, async (error: unknown) => {
     const store = host.stores.wakes;
     if (!isTerminalStartRefusal(error) || store === undefined) return;
     try {
@@ -109,6 +109,10 @@ export async function fireWakeThrough(
       });
     }
   });
+  // The run's completion as a host waits for it: the run, then the clear its
+  // refusal starts, so a host closing its stores doesn't cut the clear off and
+  // leave the wake to fire on the next host.
+  onStarted?.({ finished: cleanup.then(() => handle.finished), abort: () => controller.abort() });
   if (handle.accepted !== undefined) await handle.accepted;
 }
 

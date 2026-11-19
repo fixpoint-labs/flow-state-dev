@@ -14,6 +14,7 @@ import { z } from "zod";
 import { continueRequest, createFlowRegistry, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { recordRequestStop } from "../src/execution/record-request-stop";
 
 describe("a request whose start fails", () => {
   it("is recorded failed, with the startup error, never left in_progress", async () => {
@@ -40,6 +41,30 @@ describe("a request whose start fails", () => {
     expect(JSON.stringify(records[0]!.result)).toContain("this turn can't run");
     // Nothing left registered for the stale sweep to find.
     expect(await stores.activeRequests.listAll()).toEqual([]);
+  });
+
+  it("ends aborted, not failed, when a stop was accepted while it started", async () => {
+    // Why: `/abort` told its caller the request stopped. A `failed` written
+    // after that would contradict what the caller was told.
+    const stores = createInMemoryStores();
+    const stopThenThrow = handler({
+      name: "stop-then-throw",
+      inputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        const record = await stores.request.get(ctx.request.identity.id);
+        expect((await recordRequestStop(stores.request, record!)).kind).not.toBe("gone");
+        throw new Error("unwound after the stop");
+      }
+    });
+    const flow = defineFlow({
+      kind: "startup-stopped",
+      request: { onStarted: stopThenThrow },
+      actions: { run: { inputSchema: z.object({}), block: handler({ name: "noop", inputSchema: z.any(), execute: async () => ({}) }) } }
+    })({ id: "startup-stopped" });
+
+    await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", sessionId: "s1", stores, runtimeConfig: {} }).catch(() => undefined);
+
+    expect((await stores.request.list()).map((record) => record.status)).toEqual(["aborted"]);
   });
 });
 

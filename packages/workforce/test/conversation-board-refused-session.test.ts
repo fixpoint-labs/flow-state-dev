@@ -100,44 +100,74 @@ describe("a refused session's board debts", () => {
     expect(settles).toEqual([]);
   });
 
+  /**
+   * A fired worker's task session (a session with a board above) whose own
+   * board owes an errored notice, and one refused turn of it. What the
+   * session's board then holds for the piece, and the turn's error.
+   */
+  async function refusedTurnOwingAFailure(host: BoardHost, taken: Array<Record<string, unknown>>) {
+    expect((await host.hire("alice", { id: "my.tasker", flow: "tasker", instructions: "Mine." })).error).toBeUndefined();
+    const conv = await host.conversation("alice", "desk");
+    const convFiling = await host.filingOf("alice", conv);
+    expect((await host.act("alice", conv, "addDelegate", { worker: "my.tasker" })).error).toBeUndefined();
+    await file(host, "alice", conv, { goal: "work it [slow:150]", assignee: "my.tasker" });
+    for (let i = 0; i < 100 && host.runs.length === 0; i += 1) await new Promise((r) => setTimeout(r, 10));
+    const taskSession = host.runs[0]!.sessionId;
+    await host.settled();
+    const record = await (await host.state.getRuntime()).stores.session.get(taskSession);
+    const ownFiling = await filingSessionIdOf({ identity: { id: taskSession }, ...(record?.lineageId != null ? { lineageId: record.lineageId } : {}) });
+    expect(ownFiling).not.toBe(convFiling);
+    expect((await host.fire("alice", "my.tasker")).error).toBeUndefined();
+    // A piece the task session filed on its own board failed for good, and its notice is owed there.
+    const [template] = await host.rows("alice");
+    const piece: Task = {
+      ...template!,
+      id: "task_piece_failed",
+      goal: "the piece",
+      status: "errored",
+      filer: { sessionId: taskSession },
+      metadata: { "noticeOwed:1:errored": { attempt: 1, ending: "errored", error: "the piece broke" } }
+    } as Task;
+    await host.writeRow("alice", ownFiling, piece);
+    taken.length = 0;
+    // Any turn of the task session is refused, and settles what its board owes it.
+    const turn = await host.act("alice", taskSession, "respond", { message: "still there?" }, "tasker");
+    await host.settled();
+    const metadata = (await host.row("alice", ownFiling, piece.id))?.metadata ?? {};
+    return { metadata, ownFiling, pieceId: piece.id, error: messageOf(turn.error) };
+  }
+
   it("report a task that failed for good once, under the board it is on, from a session with a board above", async () => {
     const taken: Array<Record<string, unknown>> = [];
     const host = bootBoardHost({ plainFlows: { [ERROR_REPORTER_INTAKE_FLOW]: recordingIntake(taken) } });
     try {
-      expect((await host.hire("alice", { id: "my.tasker", flow: "tasker", instructions: "Mine." })).error).toBeUndefined();
-      const conv = await host.conversation("alice", "desk");
-      const convFiling = await host.filingOf("alice", conv);
-      expect((await host.act("alice", conv, "addDelegate", { worker: "my.tasker" })).error).toBeUndefined();
-      await file(host, "alice", conv, { goal: "work it [slow:150]", assignee: "my.tasker" });
-      for (let i = 0; i < 100 && host.runs.length === 0; i += 1) await new Promise((r) => setTimeout(r, 10));
-      const taskSession = host.runs[0]!.sessionId;
-      await host.settled();
-      const record = await (await host.state.getRuntime()).stores.session.get(taskSession);
-      const ownFiling = await filingSessionIdOf({ identity: { id: taskSession }, ...(record?.lineageId != null ? { lineageId: record.lineageId } : {}) });
-      expect(ownFiling).not.toBe(convFiling);
-      expect((await host.fire("alice", "my.tasker")).error).toBeUndefined();
-      // A piece the task session filed on its own board failed for good, and its notice is owed there.
-      const [template] = await host.rows("alice");
-      const piece: Task = {
-        ...template!,
-        id: "task_piece_failed",
-        goal: "the piece",
-        status: "errored",
-        filer: { sessionId: taskSession },
-        metadata: { "noticeOwed:1:errored": { attempt: 1, ending: "errored", error: "the piece broke" } }
-      } as Task;
-      await host.writeRow("alice", ownFiling, piece);
-      taken.length = 0;
-      // Any turn of the task session is refused, and settles what its board owes it.
-      await host.act("alice", taskSession, "respond", { message: "still there?" }, "tasker");
-      await host.settled();
-      expect((await host.row("alice", ownFiling, piece.id))?.metadata?.["noticeUndeliverable:1:errored"]).toMatchObject({
-        detail: "its worker was fired"
-      });
-      const reports = taken.filter((occurrence) => occurrence.taskId === piece.id);
+      const { metadata, ownFiling, pieceId } = await refusedTurnOwingAFailure(host, taken);
+      expect(metadata["noticeUndeliverable:1:errored"]).toMatchObject({ detail: "its worker was fired" });
+      const reports = taken.filter((occurrence) => occurrence.taskId === pieceId);
       expect(reports.map((occurrence) => occurrence.partition)).toEqual([ownFiling]);
     } finally {
       await host.dispose();
     }
   });
+
+  it("keep a failure owed when the Error Reporter doesn't take its report, so it goes again", async () => {
+    // Why: the notice is the only record that the failure is still to be
+    // reported. Settled before the intake took it, the failure is lost.
+    const host = bootBoardHost({ plainFlows: { [ERROR_REPORTER_INTAKE_FLOW]: refusingIntake() } });
+    try {
+      const { metadata, error } = await refusedTurnOwingAFailure(host, []);
+      expect(metadata["noticeOwed:1:errored"]).toMatchObject({ attempt: 1, ending: "errored" });
+      expect(metadata["noticeUndeliverable:1:errored"] ?? null).toBeNull();
+      // Not the refusal: an ordinary failure, so the wake is kept and the next refused turn tries again.
+      expect(error).toContain("couldn't all be settled yet");
+    } finally {
+      await host.dispose();
+    }
+  });
 });
+
+/** An Error Reporter flow whose intake entry is missing: every report is refused, and none is taken. */
+function refusingIntake(): FlowInstance {
+  const flow = defineFlow({ kind: ERROR_REPORTER_INTAKE_FLOW, actions: {}, internal: { actions: {} } } as never);
+  return (flow as unknown as (options: { id: string }) => FlowInstance)({ id: ERROR_REPORTER_INTAKE_FLOW });
+}

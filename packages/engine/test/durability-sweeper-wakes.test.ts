@@ -205,6 +205,24 @@ describe("a fired wake whose run is refused at its start", () => {
     expect(await stores.wakes!.get({ sessionId: "s1", entry: "dispatch" })).toBeNull();
   });
 
+  it("is cleared before the run a host waits on at shutdown counts as finished", async () => {
+    // Why: a host drains the runs its fired wakes started before it closes its
+    // stores. A clear still in flight then would be cut off, and the refused
+    // wake would fire again on the next host.
+    const stores = createInMemoryStores();
+    await stores.wakes!.owe(wake({ landBy: Date.now() - 1 }));
+    const realClear = stores.wakes!.clear.bind(stores.wakes!);
+    stores.wakes!.clear = async (key, version) => {
+      await sleep(50);
+      return realClear(key, version);
+    };
+    const host = hostEndingWith(stores, refusal);
+    let finished: Promise<unknown> | undefined;
+    await runTick(tickArgs(stores, (w) => fireWakeThrough(host, w, (run) => (finished = run.finished))));
+    await finished!.catch(() => undefined);
+    expect(await stores.wakes!.get({ sessionId: "s1", entry: "dispatch" })).toBeNull();
+  });
+
   it("keeps a debt owed since the fire: only the wake the fire read is cleared", async () => {
     const stores = createInMemoryStores();
     await stores.wakes!.owe(wake());

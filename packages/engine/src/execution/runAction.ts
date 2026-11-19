@@ -2415,12 +2415,34 @@ async function runActionAttempt<
     // settled, as the other endings do. A hook's failure is logged, never in
     // place of the startup error.
     await drainRequestSideChainPool(ctx);
+    // A stop accepted while the startup observers ran (`/abort` answered the
+    // caller that it stopped) ends the request `aborted`, as the main path's
+    // failure does, never `failed` over the stop the caller was told of
+    // (FIX-2849). The same proof the main path reads: this process delivered
+    // the stop, or the record holds it for this incarnation.
+    const stopRecord = await options.stores.request.get(requestId).catch(() => undefined);
+    const stopAccepted =
+      deliveredAbort ||
+      (stopRecord?.abortRequested === true && resolveRequestIncarnation(stopRecord) === currentIncarnation);
     const endFailure = await requestEndRegistryOf(ctx)?.run(
-      { status: "failed", error: { message: startupError instanceof Error ? startupError.message : String(startupError) } },
+      stopAccepted
+        ? { status: "aborted" }
+        : { status: "failed", error: { message: startupError instanceof Error ? startupError.message : String(startupError) } },
       { requestId, logger }
     );
     if (endFailure !== undefined) {
-      logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", { requestId, status: "failed", error: endFailure.message });
+      logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", { requestId, status: stopAccepted ? "aborted" : "failed", error: endFailure.message });
+    }
+    if (stopAccepted) {
+      await options.stores.request.flushItems(requestId);
+      terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "aborted" }, {
+        abortedAt: Date.now(),
+        items: itemsToPersist(),
+        heartbeatsUntilFinalized: false
+      });
+      ctx.requestRuntime.status = "aborted";
+      await response.emitRequestStatus("aborted");
+      throw startupError;
     }
     // FIX-2849: a refused start is terminal. A fresh request ends `failed`:
     // left `in_progress`, the stale sweep would mark it interrupted and bring
