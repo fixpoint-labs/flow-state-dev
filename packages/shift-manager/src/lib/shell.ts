@@ -1,9 +1,9 @@
 /**
  * Small derivations the sidebar and Shift Coordinator draw in design v2's form:
  * the user's initials in the footer (v2:110), a clock time on a line
- * (v2:135), the day a feed's marker names, and the lines Shift Coordinator offers to start a message with
- * (v2:174). Each is drawn from what the Lab already holds; none invents a
- * value the Lab doesn't.
+ * (v2:135), the lines Shift Coordinator offers to start a message with
+ * (v2:174), and the day a feed's day marker names. Each is drawn from what
+ * the Lab already holds; none invents a value the Lab doesn't.
  */
 
 /**
@@ -20,12 +20,15 @@ export function initialsOf(userId: string): string {
   return letters.toUpperCase();
 }
 
-/** A time of day as 24-hour `HH:MM`, in the page's time zone. */
+/**
+ * A time of day as 24-hour `HH:MM`, in the page's time zone. Not the zone a feed's
+ * day turns over in ({@link feedDay}, New York): the two differ outside New York.
+ */
 export function clockTime(epochMs: number): string {
   return new Date(epochMs).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-/** The zone a feed's day turns over in, wherever the page is opened. */
+/** The zone a feed's day turns over in, wherever the page is opened. Line times ({@link clockTime}) stay in the page's zone. */
 const FEED_TIME_ZONE = "America/New_York";
 const dayKeyFormat = new Intl.DateTimeFormat("en-CA", { timeZone: FEED_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
 const dayLabelFormat = new Intl.DateTimeFormat("en-US", { timeZone: FEED_TIME_ZONE, weekday: "long", month: "long", day: "numeric", year: "numeric" });

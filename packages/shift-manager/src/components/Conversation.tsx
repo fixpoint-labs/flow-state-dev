@@ -19,13 +19,13 @@
  * under it. It is exported for a screen that shows a named state in the same
  * column; split the feed or the composer out when a second view needs them apart.
  */
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { OutputItem, ToolOutputItem } from "@flow-state-dev/core/items";
 import { RECEIVED_MESSAGE_DATA_TYPE, type ProjectAddressRef } from "@flow-state-dev/workforce/browser";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
-import { callRuns, shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
+import { callRuns, shiftManagerRenderers, ToolLineGroup, type CallRunSegment } from "./ToolLine";
 import { isTaskBrief } from "./TaskBrief";
 import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlierButton, SectionFailure } from "./ui";
@@ -47,33 +47,54 @@ import { clockTime, feedDay, feedDayLabel } from "../lib/shell";
  */
 const UNDRAWN = new Set<string>(["state_change", "resource_change", "suspension_resume", "continuation"]);
 
-/** When a feed segment was written: a run of tool calls by its first call. */
-function segmentTs(segment: ReturnType<typeof callRuns>[number]): number {
-  return segment.kind === "group" ? segment.items[0]!.ts : segment.item.ts;
-}
+/** A feed row: a segment, or a marker where the feed crosses into a new New York day. */
+export type FeedRow = CallRunSegment | { kind: "day"; ts: number };
 
 /**
- * The day marker above `shown[index]`, when it is the first entry of a new New York day:
- * a hairline either side of the date, in the feed's mono label voice. None above the
- * feed's first entry, which has no earlier day to part from.
+ * The feed's segments with a day marker above the first entry of each new New York day
+ * ({@link feedDay}). A run of calls that crosses midnight is split there, so the marker
+ * sits between the two days' calls. None above the first entry: it has no earlier day to
+ * part from, so a read that starts today shows none until Load earlier brings yesterday in.
  */
-function dayMarker(shown: ReturnType<typeof callRuns>, index: number, testId: string): ReactNode {
-  if (index === 0) return null;
-  const ts = segmentTs(shown[index]!);
-  if (feedDay(segmentTs(shown[index - 1]!)) === feedDay(ts)) return null;
-  const label = feedDayLabel(ts);
+export function withDayMarkers(segments: readonly CallRunSegment[]): FeedRow[] {
+  const rows: FeedRow[] = [];
+  let day: string | undefined;
+  /** Whether `ts` starts a new day after the one before it; moves `day` on. */
+  const crosses = (ts: number) => {
+    const was = day;
+    day = feedDay(ts);
+    return was !== undefined && day !== was;
+  };
+  for (const segment of segments) {
+    if (segment.kind === "item") {
+      if (crosses(segment.item.ts)) rows.push({ kind: "day", ts: segment.item.ts });
+      rows.push(segment);
+      continue;
+    }
+    let run: ToolOutputItem[] = [];
+    for (const call of segment.items) {
+      if (crosses(call.ts)) {
+        if (run.length > 0) rows.push({ kind: "group", items: run });
+        rows.push({ kind: "day", ts: call.ts });
+        run = [];
+      }
+      run.push(call);
+    }
+    rows.push({ kind: "group", items: run });
+  }
+  return rows;
+}
+
+/** The line a feed draws where it crosses into a new day: the date between two hairlines, in the label's mono voice. */
+function DayMarker({ ts, testId }: { ts: number; testId: string }) {
+  const day = feedDay(ts);
   return (
-    <li
-      role="separator"
-      aria-label={label}
-      className="my-2 flex items-center gap-3 font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground"
-      data-testid={`${testId}-day-marker`}
-      data-day={feedDay(ts)}
-      data-look="day-marker"
-    >
-      <span className="h-px flex-1 bg-border" aria-hidden />
-      <time dateTime={feedDay(ts)}>{label.toUpperCase()}</time>
-      <span className="h-px flex-1 bg-border" aria-hidden />
+    <li data-testid={`${testId}-day-marker`} data-day={day} data-look="day-marker">
+      <div role="separator" aria-label={feedDayLabel(ts)} className="my-2 flex items-center gap-3 font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground uppercase">
+        <span className="h-px flex-1 bg-border" aria-hidden />
+        <time dateTime={day}>{feedDayLabel(ts)}</time>
+        <span className="h-px flex-1 bg-border" aria-hidden />
+      </div>
     </li>
   );
 }
@@ -185,18 +206,21 @@ export function Conversation({
     if (answeredHere !== undefined) reread();
   }, [answeredHere, reread]);
 
-  // A run of tool calls stays one segment: the feed draws it as one quiet line. Items it never draws
+  // A run of tool calls stays one segment: the feed draws it as one quiet line, split only where a
+  // new day's marker goes between its calls. Items it never draws
   // are left out, so a session holding only those (a standing-rules read writes a state change into
   // it before any line is sent) counts as empty.
   const shown = useMemo(
     () =>
       read === undefined
         ? []
-        : callRuns(
-            buildItemRenderStream(
-              read.items.filter((item) => !UNDRAWN.has(item.type)),
-              shiftManagerRenderers,
-              { groupToolCalls: true },
+        : withDayMarkers(
+            callRuns(
+              buildItemRenderStream(
+                read.items.filter((item) => !UNDRAWN.has(item.type)),
+                shiftManagerRenderers,
+                { groupToolCalls: true },
+              ),
             ),
           ),
     [read],
@@ -298,24 +322,21 @@ export function Conversation({
             <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
               <LoadEarlierButton load={read.loadEarlier} testId={`${testId}-load-earlier`} />
               <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
-                {shown.map((segment, index) => {
-                  // A line where the feed crosses into a new day, above that day's first entry.
-                  const marker = dayMarker(shown, index, testId);
+                {shown.map((segment) => {
+                  if (segment.kind === "day") return <DayMarker key={`day/${segment.ts}`} ts={segment.ts} testId={testId} />;
                   if (segment.kind === "group") {
                     const first = segment.items[0]!;
                     return (
-                      <Fragment key={`${first.requestId}/${first.id}`}>
-                        {marker}
-                        <li
-                          data-testid={`${testId}-item`}
-                          data-item-id={first.id}
-                          data-request-id={first.requestId}
-                          data-item-type="tool_output"
-                          data-role=""
-                        >
-                          <ToolLineGroup items={segment.items} />
-                        </li>
-                      </Fragment>
+                      <li
+                        key={`${first.requestId}/${first.id}`}
+                        data-testid={`${testId}-item`}
+                        data-item-id={first.id}
+                        data-request-id={first.requestId}
+                        data-item-type="tool_output"
+                        data-role=""
+                      >
+                        <ToolLineGroup items={segment.items} />
+                      </li>
                     );
                   }
                   const item = segment.item;
@@ -325,34 +346,32 @@ export function Conversation({
                   const own = received ? undefined : renderItem?.(item);
                   const sender = item.type === "message" && role === "assistant" ? senderOf(worker, item, known) : undefined;
                   return (
-                    <Fragment key={`${item.requestId}/${item.id}`}>
-                      {marker}
-                      <li
-                        data-testid={`${testId}-item`}
-                        data-item-id={item.id}
-                        data-request-id={item.requestId}
-                        data-item-type={item.type}
-                        data-role={role}
-                        {...(item.type === "message" && role === "user" && !isTaskBrief(item) ? feed.mine(item.id) : {})}
-                      >
-                        {item.type === "message" && role === "assistant" ? (
-                          // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
-                          <p className="mb-2.5 flex items-baseline gap-2 font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
-                            {(sender ?? name).toUpperCase()}
-                            <span className="tracking-normal" data-look="message-time">
-                              {clockTime(item.ts)}
-                            </span>
-                          </p>
-                        ) : null}
-                        {own !== undefined ? (
-                          own
-                        ) : (
-                          <div data-look="registry-item">
-                            <ItemRenderer item={item} />
-                          </div>
-                        )}
-                      </li>
-                    </Fragment>
+                    <li
+                      key={`${item.requestId}/${item.id}`}
+                      data-testid={`${testId}-item`}
+                      data-item-id={item.id}
+                      data-request-id={item.requestId}
+                      data-item-type={item.type}
+                      data-role={role}
+                      {...(item.type === "message" && role === "user" && !isTaskBrief(item) ? feed.mine(item.id) : {})}
+                    >
+                      {item.type === "message" && role === "assistant" ? (
+                        // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
+                        <p className="mb-2.5 flex items-baseline gap-2 font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
+                          {(sender ?? name).toUpperCase()}
+                          <span className="tracking-normal" data-look="message-time">
+                            {clockTime(item.ts)}
+                          </span>
+                        </p>
+                      ) : null}
+                      {own !== undefined ? (
+                        own
+                      ) : (
+                        <div data-look="registry-item">
+                          <ItemRenderer item={item} />
+                        </div>
+                      )}
+                    </li>
                   );
                 })}
               </ol>

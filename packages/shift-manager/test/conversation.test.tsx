@@ -91,7 +91,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
 });
 
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
-import { Conversation } from "../src/components/Conversation";
+import { Conversation, withDayMarkers } from "../src/components/Conversation";
 import { RECEIVED_MESSAGE_DATA_TYPE, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 
 // The reviewer's conversation: the session at its derived address, where a worker's message lands too.
@@ -219,7 +219,9 @@ describe("what a view of its own draws", () => {
     drawn([session(s1)]);
     await screen.findByTestId("rev-items");
     const markers = screen.getAllByTestId("rev-day-marker");
-    expect(markers.map((m) => m.textContent)).toEqual(["THURSDAY, NOVEMBER 19, 2026"]);
+    // Natural case in the DOM and to a screen reader; the capitals are CSS.
+    expect(markers.map((m) => m.textContent)).toEqual(["Thursday, November 19, 2026"]);
+    expect(screen.getByRole("separator", { name: "Thursday, November 19, 2026" })).toBeTruthy();
     // It sits between the last entry of the 18th and the first of the 19th.
     const order = [...screen.getByTestId("rev-items").children].map((li) => li.getAttribute("data-item-id") ?? li.getAttribute("data-testid"));
     expect(order).toEqual(["a", "b", "rev-day-marker", "c"]);
@@ -533,5 +535,40 @@ describe("a line's files", () => {
     });
     await waitFor(() => expect(upload).toHaveBeenCalledOnce());
     expect(upload.mock.calls[0]![0]).toBe("eng.reviewer");
+  });
+});
+
+describe("where the feed's day markers go", () => {
+  const msg = (id: string, ts: number) => ({ kind: "item", item: { id, requestId: "r", type: "message", role: "assistant", ts } }) as never;
+  const call = (id: string, ts: number) => ({ id, requestId: "r", type: "tool_output", ts }) as never;
+  const shape = (rows: ReturnType<typeof withDayMarkers>) =>
+    rows.map((row) => (row.kind === "day" ? "|" : row.kind === "item" ? row.item.id : row.items.map((c) => c.id).join("+")));
+
+  it("draws none above the feed's first entry: a read that starts today has no earlier day to part from", () => {
+    expect(shape(withDayMarkers([msg("a", Date.UTC(2026, 10, 19, 13, 0)), msg("b", Date.UTC(2026, 10, 19, 14, 0))]))).toEqual(["a", "b"]);
+  });
+
+  it("splits a run of calls that crosses New York midnight, so the marker sits between the two days' calls", () => {
+    const rows = withDayMarkers([
+      { kind: "group", items: [call("x", Date.UTC(2026, 10, 19, 4, 50)), call("y", Date.UTC(2026, 10, 19, 4, 58)), call("z", Date.UTC(2026, 10, 19, 5, 2))] },
+      msg("m", Date.UTC(2026, 10, 19, 13, 0)),
+    ]);
+    expect(shape(rows)).toEqual(["x+y", "|", "z", "m"]);
+  });
+
+  it("marks a run of calls that is the new day's first entry", () => {
+    const rows = withDayMarkers([msg("a", Date.UTC(2026, 10, 18, 23, 0)), { kind: "group", items: [call("x", Date.UTC(2026, 10, 19, 13, 0))] }]);
+    expect(shape(rows)).toEqual(["a", "|", "x"]);
+  });
+
+  it("turns the day at New York midnight across the fall-back change, where New York is UTC-4 before and UTC-5 after", () => {
+    // 2026-11-01: 23:30 EDT on Oct 31 is 03:30 UTC; 00:30 EDT on Nov 1 is 04:30 UTC; 23:30 EST on Nov 1 is 04:30 UTC on the 2nd.
+    const rows = withDayMarkers([
+      msg("oct31", Date.UTC(2026, 10, 1, 3, 30)),
+      msg("nov1-early", Date.UTC(2026, 10, 1, 4, 30)),
+      msg("nov1-late", Date.UTC(2026, 10, 2, 4, 30)),
+      msg("nov2", Date.UTC(2026, 10, 2, 5, 30)),
+    ]);
+    expect(shape(rows)).toEqual(["oct31", "|", "nov1-early", "nov1-late", "|", "nov2"]);
   });
 });
