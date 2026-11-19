@@ -224,14 +224,14 @@ const subscriptionIndexCollection = defineResourceCollection({
 });
 
 /** A task's ending, as the sweep that ended its subscriptions marked it. */
-export const subscriptionTaskEndingSchema = z.object({
+const subscriptionTaskEndingSchema = z.object({
   ending: z.enum(["errored", "cancelled"]),
   at: z.number(),
   /** The attempt that ended, when the sweep knew it: a later attempt's subscribe isn't ended by it. */
   attempt: z.number().int().nonnegative().optional()
 });
 
-export type SubscriptionTaskEnding = z.infer<typeof subscriptionTaskEndingSchema>;
+type SubscriptionTaskEnding = z.infer<typeof subscriptionTaskEndingSchema>;
 
 /** The task endings, at `workforce/subscription-task-endings/*` in the user's scope. Server-only. */
 const subscriptionTaskEndingsCollection = defineResourceCollection({
