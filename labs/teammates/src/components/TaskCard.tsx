@@ -1,14 +1,12 @@
 import { memo } from "react";
-import type { BoardTask } from "../app";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { harnessOf, modelOf, taskStatus, titleOf, workerOf } from "../lib/task";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import { Spend } from "./flow-state/spend";
 import { RunsOn, runsOn, taskLabel, taskLine } from "./Popups";
-
-/** What a task's line draws: a board row's task, or a filed task's stand-in before its row is read. */
-export type TaskLine = Pick<BoardTask, "id" | "to" | "title" | "status" | "harness" | "model" | "spend" | "landed" | "waiting">;
 
 /**
  * A task a conversation filed, as one line in the thread: what was asked of
@@ -22,22 +20,24 @@ export const TaskCard = memo(function TaskCard({
   coding = false,
   onOpen,
 }: {
-  task: TaskLine;
+  /** The board's row, or a filed task's stand-in before its row is read. */
+  task: CodingBoardTask;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   /** It is a coding task: a background task, not a teammate's. */
   coding?: boolean;
   onOpen: (taskId: string) => void;
 }) {
-  const line = taskLine(task, coding, nameOf);
-  const on = coding ? runsOn(task) : undefined;
+  const line = taskLine({ title: titleOf(task), to: workerOf(task) }, coding, nameOf);
+  const runs = { harness: harnessOf(task), model: modelOf(task) };
+  const on = coding ? runsOn(runs) : undefined;
   const state = taskPresentation(task);
   return (
     <button
       type="button"
       data-entry="task"
-      data-status={task.status}
-      aria-label={coding ? taskLabel(line, task) : line}
+      data-status={taskStatus(task)}
+      aria-label={coding ? taskLabel(line, runs) : line}
       onClick={() => onOpen(task.id)}
       className="flex w-full max-w-[85%] items-center gap-2 rounded-md border border-border bg-card/60 px-3 py-1.5 text-left text-sm hover:bg-accent"
     >
@@ -46,11 +46,11 @@ export const TaskCard = memo(function TaskCard({
           ⚙
         </span>
       ) : (
-        <Avatar look={lookOf(task.to)} size="sm" />
+        <Avatar look={lookOf(workerOf(task))} size="sm" />
       )}
       <span className="min-w-0 flex-1 truncate">{line}</span>
       {on === undefined ? null : <RunsOn on={on} />}
-      {task.landed === undefined ? null : (
+      {task.landed == null ? null : (
         <span data-task-landed={task.landed.kind} className="shrink-0 text-xs text-muted-foreground">
           {task.landed.kind === "pull-request" ? `PR #${task.landed.number}` : `merged into ${task.landed.branch}`}
         </span>

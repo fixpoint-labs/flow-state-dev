@@ -34,6 +34,7 @@ export {
   taskActionName,
   taskListViewRef,
   type BoardActions,
+  type BoardTaskRead,
   type BoardAt,
   type InboxClient,
   type RefileOverrides,

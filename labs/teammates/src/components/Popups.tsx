@@ -1,10 +1,22 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useSessionFeed } from "@flow-state-dev/react";
 import type { RosterEntry, WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
-import { attemptDurationMs, commandsRun, runSummaryLine, useAppClient, type BoardTask, type AppCalls, type SessionStep, type WorkingNow } from "../app";
-import type { RecordedWork } from "@flow-state-dev/harness-manager/browser";
+import type { CodingBoardTask, ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import {
+  commandsRun,
+  runSummaryLine,
+  useAppClient,
+  usePullRequestLinks,
+  useRecordedFiles,
+  useTaskActions,
+  useTaskDetail,
+  useTaskWork,
+  type AppCalls,
+  type SessionStep,
+} from "../app";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
+import { waitsFor, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, titleOf, workerOf } from "../lib/task";
 import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -35,7 +47,7 @@ export function taskLine(task: { title: string; to: string }, coding: boolean, n
 }
 
 /** A failed or cancelled task's reason, its first line only; the popup has the whole. */
-export function reasonLine(task: Pick<BoardTask, "error">): string | undefined {
+export function reasonLine(task: Pick<CodingBoardTask, "error">): string | undefined {
   const line = task.error?.split("\n").find((l) => l.trim() !== "")?.trim();
   return line === "" ? undefined : line;
 }
@@ -57,8 +69,8 @@ export const taskLabel = (line: string, task: { harness?: string; model?: string
  * `harness:` differs from the harness of the worker the task was filed for.
  * A task that isn't a coding task, or whose worker's harness isn't known, has none.
  */
-function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly RosterEntry[]): { id: string; harness: string }[] {
-  const own = coders.find((w) => w.id === task.to);
+function rerunTargets(task: Pick<CodingBoardTask, "assignee">, coders: readonly RosterEntry[]): { id: string; harness: string }[] {
+  const own = coders.find((w) => w.id === workerOf(task));
   const ownHarness = own === undefined ? undefined : settingOf(own, "harness");
   if (ownHarness === undefined) return [];
   return coders.flatMap((w) => {
@@ -74,20 +86,9 @@ export const PULL_REQUEST_HINT = "Merged? Say so here and I'll check.";
  * *PR open · #7*, each number a link to its pull request once its run
  * session's record is read, and the line that says how to wake the task.
  */
-export function PullRequestOpen({ adapter, task }: { adapter: AppCalls; task: BoardTask }) {
-  const [links, setLinks] = useState<ReadonlyMap<number, string>>(new Map());
-  const numbers = (task.pullRequests ?? []).flatMap((pr) => (pr.number === null ? [] : [pr.number]));
-  const key = numbers.join(",");
-  useEffect(() => {
-    if (task.runSessionId === undefined) return;
-    let current = true;
-    void adapter.readPullRequests(task.runSessionId).then((rows) => {
-      if (current) setLinks(new Map(rows.map((row) => [row.number, row.url])));
-    });
-    return () => {
-      current = false;
-    };
-  }, [adapter, task.runSessionId, key]);
+function PullRequestOpen({ task }: { task: Pick<CodingBoardTask, "pullRequests" | "run"> }) {
+  const numbers = task.pullRequests.flatMap((n) => (n === null ? [] : [n]));
+  const links = usePullRequestLinks(task.run?.sessionId, numbers.join(","));
   return (
     <section aria-label="Pull request" data-step="pull-request" className="flex flex-col gap-0.5 text-sm">
       <span data-testid="pull-request-wait">
@@ -138,7 +139,7 @@ export interface FollowUp {
 }
 
 /** What a follow-up puts in the filer's composer: the task by its title, and room for what to do next. */
-const followUpText = (task: Pick<BoardTask, "title">) => `Follow up on "${task.title}": `;
+const followUpText = (task: CodingBoardTask) => `Follow up on "${titleOf(task)}": `;
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
 export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
@@ -157,7 +158,7 @@ export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, fo
 }) {
   return popup.kind === "task" ? (
     // Keyed by conversation: a switch never judges the task against the last conversation's rows.
-    <TaskPopup key={popup.sessionId} adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} followUp={followUp} onClose={onClose} onMissing={onMissing} />
+    <TaskPopup key={popup.sessionId} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} followUp={followUp} onClose={onClose} onMissing={onMissing} />
   ) : (
     <MessagePopup popup={popup} nameOf={nameOf} lookOf={lookOf} onClose={onClose} />
   );
@@ -170,8 +171,7 @@ export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, fo
  * Release while held, Retry and a Re-run per other harness once it failed or
  * was cancelled. The board decides each; the row shows its words.
  */
-function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
-  adapter: AppCalls;
+function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
   popup: Extract<Popup, { kind: "task" }>;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
@@ -181,20 +181,25 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
   onClose: () => void;
   onMissing?: () => void;
 }) {
-  const actions = useMemo(() => adapter.taskActions(popup.sessionId), [adapter, popup.sessionId]);
-  const tasks = useWatch(adapter.watchTasks, popup.sessionId);
+  const actions = useTaskActions(popup.sessionId);
+  // The popup's own read of the board: every row, and this task's with its answer.
+  const tasks = useTaskDetail(popup.sessionId, popup.taskId).value;
   const task = tasks?.find((t) => t.id === popup.taskId);
   const missing = tasks !== undefined && task === undefined;
   useEffect(() => {
     if (missing) onMissing?.();
   }, [missing, onMissing]);
-  const steps = useWatch(adapter.watchRun, task?.runSessionId) ?? [];
-  const line = task ? taskLine(task, isCoding(task.to), nameOf) : "Task";
+  const work = useTaskWork(task);
+  const steps = work.steps;
+  const to = task === undefined ? "" : workerOf(task);
+  const coding = task !== undefined && isCoding(to);
+  const line = task ? taskLine({ title: titleOf(task), to }, coding, nameOf) : "Task";
   // A teammate's task carries its look; a coding task is nobody's.
-  const on = task ? runsOn(task) : undefined;
+  const harness = task === undefined ? undefined : harnessOf(task);
+  const on = task === undefined ? undefined : runsOn({ harness, model: modelOf(task) });
   const title =
-    task && !isCoding(task.to) ? (
-      <Titled look={lookOf(task.to)} line={line} />
+    task && !coding ? (
+      <Titled look={lookOf(to)} line={line} />
     ) : (
       <span className="flex items-center gap-2">
         {line}
@@ -202,43 +207,42 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
       </span>
     );
   // A coding task says what it starts on from the moment it is filed, before its run reports anything.
-  const starting = task?.harness !== undefined && isCoding(task.to) ? `Starting on ${task.harness}…` : task?.runSessionId ? "Starting…" : "Not started yet.";
+  const starting = harness !== undefined && coding ? `Starting on ${harness}…` : task?.run?.sessionId ? "Starting…" : "Not started yet.";
   // A coding task's re-runs, one per other harness on the roster.
   const rerun: TaskRerunOption[] =
-    task === undefined || !isCoding(task.to)
-      ? []
-      : rerunTargets(task, coders).map((worker) => ({ label: harnessName(worker.harness), run: () => actions.rerun(task, worker.id) }));
+    task === undefined || !coding ? [] : rerunTargets(task, coders).map((worker) => ({ label: harnessName(worker.harness), run: () => actions.rerun(task, worker.id) }));
   // A verdict you gave here stays in the feed, after the steps it was given over.
   // Each is kept with the task and run it was given on: Back can move this popup to another task, and a run's steps can be read again.
   const [given, setGiven] = useState<readonly Decision[]>([]);
-  const run = `${task?.id}:${task?.runSessionId}`;
+  const run = `${task?.id}:${task?.run?.sessionId}`;
   const decided = (answer: ReviewAnswer) => setGiven((all) => [...all, { id: `decision-${all.length}`, run, after: steps.length, text: decisionLine(answer) }]);
   const decisions = placeDecisions(given.filter((d) => d.run === run), steps.length);
-  const waiting = task?.waiting?.kind;
+  const waiting = task === undefined ? undefined : waitsFor(task);
+  const status = task === undefined ? undefined : taskStatus(task);
   // What waits on you is held below the feed, which opens on the latest step, so it can't scroll out of view.
   const pinned =
     task && waiting === "review" ? (
-      <TaskReview adapter={adapter} sessionId={popup.sessionId} task={task} onAnswered={decided} />
+      <TaskReview task={task} review={work.review} answer={actions.answer} onAnswered={decided} />
     ) : task && waiting === "question" ? (
-      <QuestionPopup adapter={adapter} sessionId={popup.sessionId} task={task} />
+      <QuestionPopup task={task} answer={actions.answer} />
     ) : null;
-  const waitsOnPullRequest = task?.boardStatus === "in_progress" && task.pullRequests !== undefined;
-  const status = waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : waitsOnPullRequest ? "PR open" : task?.status;
+  const waitsOnPullRequest = task?.status === "in_progress" && task.pullRequests.length > 0;
+  const answer = task?.detail?.answer ?? undefined;
   return (
-    <SessionOverlay variant="modal" label={line} title={title} status={status} onClose={onClose} footer={pinned}>
+    <SessionOverlay variant="modal" label={line} title={title} status={waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : waitsOnPullRequest ? "PR open" : status} onClose={onClose} footer={pinned}>
       {/* Its run is done and its work is a pull request: open until it merges or closes. The Steer box wakes it to check. */}
-      {task !== undefined && waitsOnPullRequest ? <PullRequestOpen adapter={adapter} task={task} /> : null}
-      {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
+      {task !== undefined && waitsOnPullRequest ? <PullRequestOpen task={task} /> : null}
+      {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} steer rerun={rerun} />}
       {/* What a coding task's run changed, what it ran and how long it took, without opening a step. */}
-      {task && isCoding(task.to) ? <TaskSummary adapter={adapter} task={task} steps={steps} /> : null}
-      {task && task.status !== "running" ? <TaskOutcomeActions task={task} followUp={followUp} /> : null}
+      {task && coding ? <TaskSummary task={task} steps={steps} /> : null}
+      {task && status !== "running" ? <TaskOutcomeActions task={task} followUp={followUp} /> : null}
       {/* What a coding task's runs spent, in and out apart, with the vendor's charge when it reported one. */}
-      {task?.spend && isCoding(task.to) ? (
+      {task?.spend && coding ? (
         <div data-task-spend>
           <Spend spend={task.spend} split className="text-xs" />
         </div>
       ) : null}
-      {/* Why it failed, as an error. How the run got there is below. */}
+      {/* Why it failed, or the reason it was cancelled with, as an error. How the run got there is below. */}
       {task?.error ? (
         <section aria-label="Error" role="alert" data-step="error" className="flex flex-col gap-1 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           <ErrorBody message={task.error} />
@@ -259,23 +263,24 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
         );
       })}
       {/* The run's result is its last entry. */}
-      {task?.result || task?.landed ? (
+      {task && (answer || task.landed) ? (
         // The box's border takes the task's colour from the lab's one reader of it; the words keep the body colour.
         <section aria-label="Result" data-step="result" data-tone={taskPresentation(task).word} className={cn("rounded-md border border-dashed border-current px-3 py-2 text-sm", taskPresentation(task).tone)}>
           <div className="text-foreground">
-            {task.result ? <MarkdownText text={task.result} /> : null}
-            {task.landed === undefined ? null : <LandedOutcome landed={task.landed} />}
+            {answer ? <MarkdownText text={answer} /> : null}
+            {task.detail?.answerCut ? <p className="mt-1 text-xs text-muted-foreground">The answer is longer than this; only its first 20,000 characters show.</p> : null}
+            {task.landed == null ? null : <LandedOutcome landed={task.landed} />}
           </div>
         </section>
-      ) : task?.status === "done" ? (
+      ) : task && status === "done" ? (
         // Done with nothing written is not a plain success: say so, where the result would be.
         <section aria-label="No result" data-step="no-result" className="rounded-md border border-dashed border-warning/60 bg-warning/10 px-3 py-2 text-sm">
-          {isCoding(task.to) ? "The coding task" : nameOf(task.to)} finished without writing a result. Its steps below show what it did.
+          {coding ? "The coding task" : nameOf(to)} finished without writing a result. Its steps below show what it did.
         </section>
       ) : null}
       {/* The live line ends the feed while it runs: until its first step, the line above says it is starting; a task waiting on you isn't working. */}
-      {task?.status === "running" && task.waiting === undefined && !waitsOnPullRequest && task.runSessionId !== undefined && steps.length > 0 ? (
-        <WorkingLine adapter={adapter} task={task} runSessionId={task.runSessionId} />
+      {task && status === "running" && holdOf(task) === undefined && !waitsOnPullRequest && task.run?.sessionId !== undefined && steps.length > 0 ? (
+        <StreamingIndicator message={workingStatus({ ...work.working, note: task.statusNote })} since={attemptStartedAt(task)} />
       ) : null}
     </SessionOverlay>
   );
@@ -284,43 +289,16 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
 /** How many file chips show before the rest fold into "+N more". */
 const CHIPS_SHOWN = 8;
 
-/**
- * What a run's harness recorded touching, read through harness-manager's
- * reader by the run's session and request; read again when the task's status
- * changes, so an ended task shows all of it. `undefined` until read, or when
- * the read fails: the line then goes without files rather than say a wrong count.
- */
-export function useRecordedFiles(adapter: AppCalls, task: BoardTask): RecordedWork["files"] | undefined {
-  const { runSessionId: sessionId, runRequestId: requestId, status } = task;
-  // Kept with the run it was read for: a retry's new run never shows the last attempt's files.
-  const run = sessionId === undefined || requestId === undefined ? undefined : `${sessionId}\n${requestId}`;
-  const [read, setRead] = useState<{ run: string; files: RecordedWork["files"] }>();
-  useEffect(() => {
-    if (run === undefined || sessionId === undefined || requestId === undefined) return;
-    let live = true;
-    adapter
-      .recordedWork({ sessionId, requestId })
-      .then((work) => {
-        if (live) setRead({ run, files: work.files });
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [adapter, run, sessionId, requestId, status]);
-  return read !== undefined && read.run === run ? read.files : undefined;
-}
-
 /** "Edited 2 files · ran 5 commands · 2m 14s", and a chip per file the run recorded, named by its file name. */
-function TaskSummary({ adapter, task, steps }: { adapter: AppCalls; task: BoardTask; steps: readonly SessionStep[] }) {
-  const files = useRecordedFiles(adapter, task) ?? null;
+function TaskSummary({ task, steps }: { task: CodingBoardTask; steps: readonly SessionStep[] }) {
+  const files = useRecordedFiles(task) ?? null;
   // One per path (a steer or a review's changes record the path again), and only a path an edit landed on:
   // one whose every attempt failed was tried, not edited.
   const rows = [...new Map((files?.rows ?? []).filter((row) => row.applied !== 0).map((row) => [row.path, row])).values()];
   // A retry runs in the same session: only this run's commands.
   const line = runSummaryLine({
     files: files === null ? null : { count: rows.length, truncated: files.truncated },
-    commands: commandsRun(steps, task.runRequestId),
+    commands: commandsRun(steps, task.run?.requestId),
     durationMs: attemptDurationMs(task),
   });
   if (line === "") return null;
@@ -346,8 +324,8 @@ function TaskSummary({ adapter, task, steps }: { adapter: AppCalls; task: BoardT
 }
 
 /** Once a task ended: Copy its result (else its error), and ask the worker that filed it to follow up. */
-function TaskOutcomeActions({ task, followUp }: { task: BoardTask; followUp?: FollowUp }) {
-  const text = task.result ?? task.error;
+function TaskOutcomeActions({ task, followUp }: { task: CodingBoardTask; followUp?: FollowUp }) {
+  const text = task.detail?.answer ?? task.error ?? undefined;
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -381,26 +359,11 @@ function TaskOutcomeActions({ task, followUp }: { task: BoardTask; followUp?: Fo
   );
 }
 
-/**
- * The live line at the end of a running task's feed: the most specific thing
- * it is doing now (the tool call in flight, the plan step in progress, its
- * last note), else "Working...", with how long it has been running.
- */
-function WorkingLine({ adapter, task, runSessionId }: { adapter: AppCalls; task: BoardTask; runSessionId: string }) {
-  const requestId = task.runRequestId;
-  const watch = useCallback<(sessionId: string, onChange: (now: WorkingNow) => void) => () => void>(
-    (sessionId, onChange) => adapter.watchWorking({ sessionId, ...(requestId === undefined ? {} : { requestId }) }, onChange),
-    [adapter, requestId],
-  );
-  const now = useWatch(watch, runSessionId);
-  return <StreamingIndicator message={workingStatus({ ...now, note: task.note })} since={task.startedAt} />;
-}
-
 /** A review verdict given in this popup on one task's run (`run`), placed after the steps it was given over (`after` of them). */
 type Decision = { id: string; run: string; after: number; text: string };
 
-/** Each verdict no earlier than the one before it and no later than the steps there are now, so no step is drawn twice. */
-const placeDecisions = (decisions: readonly Decision[], count: number): Decision[] => {
+/** Each verdict no earlier than the one before it and no later than the steps there are now, so no step is drawn twice. Exported for its test. */
+export const placeDecisions = (decisions: readonly Decision[], count: number): Decision[] => {
   let at = 0;
   return decisions.map((d) => ({ ...d, after: (at = Math.min(count, Math.max(at, d.after))) }));
 };
@@ -409,41 +372,44 @@ const placeDecisions = (decisions: readonly Decision[], count: number): Decision
 const decisionLine = (answer: ReviewAnswer) => (answer.verdict === "accepted" ? "Accepted" : `Asked for changes: ${answer.words}`);
 
 /** A coding run's review, with the registry's card: its commits and the judge's verdict, and Accept or Ask for changes. */
-function TaskReview({ adapter, sessionId, task, onAnswered }: {
-  adapter: AppCalls;
-  sessionId: string;
-  task: BoardTask;
+function TaskReview({ task, review, answer, onAnswered }: {
+  task: CodingBoardTask;
+  /** The run's latest review stop, read from its session; `undefined` until it is read. */
+  review: ReviewDetail | undefined;
+  /** Answers the hold the board's row holds now. */
+  answer: (task: CodingBoardTask, answer: ReviewAnswer) => Promise<void>;
   /** The answer went through. */
   onAnswered: (answer: ReviewAnswer) => void;
 }) {
-  const review = useWatch(adapter.watchReview, task.runSessionId);
+  const hold = holdOf(task);
   return (
     <ReviewHold
       review={review}
-      prompt={review === undefined ? task.waiting?.prompt : undefined}
-      answer={async (answer) => {
-        await adapter.answerOpenHold(sessionId, task.id, answer);
-        onAnswered(answer);
+      prompt={review === undefined ? hold?.ask.prompt : undefined}
+      answer={async (verdict) => {
+        await answer(task, verdict);
+        onAnswered(verdict);
       }}
-      unanswerable={task.waiting?.unanswerable ?? null}
-      holdId={task.waiting?.holdId ?? null}
+      unanswerable={hold?.unanswerable ?? null}
+      holdId={hold?.id ?? null}
     />
   );
 }
 
 /** A question the task's run asked you, with a box for your answer; the run goes on with it. */
-function QuestionPopup({ adapter, sessionId, task }: { adapter: AppCalls; sessionId: string; task: BoardTask }) {
+function QuestionPopup({ task, answer }: { task: CodingBoardTask; answer: (task: CodingBoardTask, answer: { text: string }) => Promise<void> }) {
   const [words, setWords] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const unanswerable = task.waiting?.unanswerable ?? null;
+  const hold = holdOf(task);
+  const unanswerable = hold?.unanswerable ?? null;
   const send = async () => {
     const text = words.trim();
     if (text === "" || pending) return;
     setPending(true);
     setError(null);
     try {
-      await adapter.answerOpenHold(sessionId, task.id, { text });
+      await answer(task, { text });
       setWords("");
     } catch (failed) {
       setError(failed instanceof Error ? failed.message : String(failed));
@@ -454,7 +420,7 @@ function QuestionPopup({ adapter, sessionId, task }: { adapter: AppCalls; sessio
   return (
     <section aria-label="Waiting on you" data-step="question" className="rounded-md border border-warning/60 bg-warning/10 px-3 py-2 text-sm">
       <div className="font-semibold">Waiting on you</div>
-      {task.waiting?.prompt ? <MarkdownText className="mt-0.5" text={task.waiting.prompt} /> : null}
+      {hold?.ask.prompt ? <MarkdownText className="mt-0.5" text={hold.ask.prompt} /> : null}
       {unanswerable !== null ? (
         <p className="mt-1.5 text-xs text-muted-foreground">{unanswerable}</p>
       ) : (
