@@ -20,12 +20,12 @@
  * column; split the feed or the composer out when a second view needs them apart.
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { OutputItem, ToolOutputItem } from "@flow-state-dev/core/items";
 import { RECEIVED_MESSAGE_DATA_TYPE, type ProjectAddressRef } from "@flow-state-dev/workforce/browser";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
-import { callRuns, shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
+import { callRuns, shiftManagerRenderers, ToolLineGroup, type CallRunSegment } from "./ToolLine";
 import { isTaskBrief } from "./TaskBrief";
 import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlierButton, SectionFailure } from "./ui";
@@ -39,13 +39,65 @@ import { STALE_CLASS } from "./flow-state/connection-banner";
 import type { Worker } from "../lib/reads";
 import { useDeliverLine } from "../lib/deliver";
 import { useWorkforce } from "../lib/workforce";
-import { clockTime } from "../lib/shell";
+import { clockTime, feedDay, feedDayLabel } from "../lib/shell";
 
 /**
  * Items the feed never draws: `ItemRenderer` paints nothing for them. Keep in step with
  * `NON_RENDERABLE_TYPES` in `@flow-state-dev/react`'s `ItemRenderer.ts`.
  */
 const UNDRAWN = new Set<string>(["state_change", "resource_change", "suspension_resume", "continuation"]);
+
+/** A feed row: a segment, or a marker where the feed crosses into a new New York day. */
+export type FeedRow = CallRunSegment | { kind: "day"; ts: number };
+
+/**
+ * The feed's segments with a day marker above the first entry of each new New York day
+ * ({@link feedDay}). A run of calls that crosses midnight is split there, so the marker
+ * sits between the two days' calls. None above the first entry: it has no earlier day to
+ * part from, so a read that starts today shows none until Load earlier brings yesterday in.
+ */
+export function withDayMarkers(segments: readonly CallRunSegment[]): FeedRow[] {
+  const rows: FeedRow[] = [];
+  let day: string | undefined;
+  /** Whether `ts` starts a new day after the one before it; moves `day` on. */
+  const crosses = (ts: number) => {
+    const was = day;
+    day = feedDay(ts);
+    return was !== undefined && day !== was;
+  };
+  for (const segment of segments) {
+    if (segment.kind === "item") {
+      if (crosses(segment.item.ts)) rows.push({ kind: "day", ts: segment.item.ts });
+      rows.push(segment);
+      continue;
+    }
+    let run: ToolOutputItem[] = [];
+    for (const call of segment.items) {
+      if (crosses(call.ts)) {
+        if (run.length > 0) rows.push({ kind: "group", items: run });
+        rows.push({ kind: "day", ts: call.ts });
+        run = [];
+      }
+      run.push(call);
+    }
+    rows.push({ kind: "group", items: run });
+  }
+  return rows;
+}
+
+/** The line a feed draws where it crosses into a new day: the date between two hairlines, in the label's mono voice. */
+function DayMarker({ ts, testId }: { ts: number; testId: string }) {
+  const day = feedDay(ts);
+  return (
+    <li data-testid={`${testId}-day-marker`} data-day={day} data-look="day-marker">
+      <div role="separator" aria-label={feedDayLabel(ts)} className="my-2 flex items-center gap-3 font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground uppercase">
+        <span className="h-px flex-1 bg-border" aria-hidden />
+        <time dateTime={day}>{feedDayLabel(ts)}</time>
+        <span className="h-px flex-1 bg-border" aria-hidden />
+      </div>
+    </li>
+  );
+}
 
 /** v2's scrolling column (v2:122-180): padded 36/32, `max-w-[720px]`, with the composer pinned under it. */
 export function ConversationFrame({
@@ -154,18 +206,21 @@ export function Conversation({
     if (answeredHere !== undefined) reread();
   }, [answeredHere, reread]);
 
-  // A run of tool calls stays one segment: the feed draws it as one quiet line. Items it never draws
+  // A run of tool calls stays one segment: the feed draws it as one quiet line, split only where a
+  // new day's marker goes between its calls. Items it never draws
   // are left out, so a session holding only those (a standing-rules read writes a state change into
   // it before any line is sent) counts as empty.
   const shown = useMemo(
     () =>
       read === undefined
         ? []
-        : callRuns(
-            buildItemRenderStream(
-              read.items.filter((item) => !UNDRAWN.has(item.type)),
-              shiftManagerRenderers,
-              { groupToolCalls: true },
+        : withDayMarkers(
+            callRuns(
+              buildItemRenderStream(
+                read.items.filter((item) => !UNDRAWN.has(item.type)),
+                shiftManagerRenderers,
+                { groupToolCalls: true },
+              ),
             ),
           ),
     [read],
@@ -268,6 +323,7 @@ export function Conversation({
               <LoadEarlierButton load={read.loadEarlier} testId={`${testId}-load-earlier`} />
               <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
                 {shown.map((segment) => {
+                  if (segment.kind === "day") return <DayMarker key={`day/${segment.ts}`} ts={segment.ts} testId={testId} />;
                   if (segment.kind === "group") {
                     const first = segment.items[0]!;
                     return (
