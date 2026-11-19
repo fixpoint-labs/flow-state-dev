@@ -26,6 +26,7 @@
  */
 import type { BlockContext, SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 import { ROUTINE_CADENCES } from "../routines/keys";
 import { ensurePollSchedule, type SubscriptionPolling } from "./poll";
 import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
@@ -465,7 +466,12 @@ async function writeSubscription(
   // so one of the two always sees the other: this one ends it as the sweep would have.
   if (moved.now.enabled && moved.now.taskId !== undefined) {
     const ended = (await subscriptionTaskEndingsOf(ctx).getOptional(taskEndingKeyOf(moved.now.taskId)))?.state;
-    if (ended !== undefined) {
+    // A retry runs the same task again: an ending marked by an earlier attempt than the one
+    // subscribing is not this attempt's. Without a claim (a subscribe made for the task from
+    // outside its run) any mark counts.
+    const running = currentWorkerClaim(ctx);
+    const current = running?.taskId === moved.now.taskId ? running.attempt : undefined;
+    if (ended !== undefined && (ended.attempt == null || current === undefined || ended.attempt >= current)) {
       await endSubscription(ctx, id, ended.ending === "errored" ? "task_errored" : "task_cancelled");
       return { refused: `ended: its task was already ${ended.ending === "errored" ? "failed" : "cancelled"}, so it ended with it.` };
     }
@@ -567,10 +573,17 @@ async function endSubscription(ctx: BlockContext, id: string, reason: Subscripti
  * ending before it sweeps, so a subscribe for the task that commits after the
  * sweep ends too.
  */
-export async function endTaskSubscriptions(ctx: BlockContext, taskId: string, ending: "errored" | "cancelled"): Promise<number> {
+export async function endTaskSubscriptions(
+  ctx: BlockContext,
+  taskId: string,
+  ending: "errored" | "cancelled",
+  attempt?: number
+): Promise<number> {
   const reason: SubscriptionEnd = ending === "errored" ? "task_errored" : "task_cancelled";
   // The mark first, then the sweep: a subscribe still in flight reads the mark once it commits (FIX-2788).
-  await subscriptionTaskEndingsOf(ctx).getOrCreate(taskEndingKeyOf(taskId), { ending, at: Date.now() });
+  // The latest ending wins: a retried task that ends again marks how it ended this time.
+  // The latest ending wins, with its attempt: a retry's own subscribe isn't ended by an earlier attempt's.
+  await subscriptionTaskEndingsOf(ctx).upsert(taskEndingKeyOf(taskId), { ending, at: Date.now(), ...(attempt === undefined ? {} : { attempt }) });
   let ended = 0;
   // Every subscription in the cell: the collection filters by key prefix only,
   // and a subscription's key names its session and thread, not its task.

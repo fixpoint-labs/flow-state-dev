@@ -85,6 +85,34 @@ describe("a task's subscriptions", () => {
   });
 
   // FIX-2788.
+  it("follow again once a cancelled task is retried: the earlier ending doesn't end the retry's", async () => {
+    // A retry runs the same task in the same session: its subscribe is live work, not a race the
+    // cancel's sweep missed.
+    let open!: () => void;
+    const host = bootSubscriptionsHost({ hold: new Promise<void>((resolve) => (open = resolve)) });
+    try {
+      const conv = await host.conversation("alice", "lead");
+      const filed = await host.act("alice", conv, "createTask_tasks", { goal: `open the PR [subscribe:${PR}] [hold]`, assignee: "eng.follower" });
+      expect(filed.error, messageOf(filed.error)).toBeUndefined();
+      for (let i = 0; i < 500 && (await host.subscriptionRows("alice")).length === 0; i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+      const [first] = await host.subscriptionRows("alice");
+      const cancelled = await host.act("alice", conv, "updateTask_tasks", { id: first!.taskId, status: "cancelled" });
+      expect(cancelled.error, messageOf(cancelled.error)).toBeUndefined();
+      open();
+      await host.settled();
+      expect((await host.subscriptionRows("alice")).map((r) => r.endedReason)).toEqual(["task_cancelled"]);
+      const retried = await host.act("alice", conv, "retryTask_tasks", { id: first!.taskId });
+      expect(retried.error, messageOf(retried.error)).toBeUndefined();
+      await host.settled();
+      const live = (await host.subscriptionRows("alice")).filter((r) => r.enabled);
+      expect(live.map((r) => [r.taskId, r.thread])).toEqual([[first!.taskId, PR]]);
+      await host.route(event({ text: "a review on the retried task's PR" }));
+      expect(await host.heard(live[0]!.sessionId)).toHaveLength(1);
+    } finally {
+      await host.dispose();
+    }
+  });
+
   it("end when the task was cancelled while its subscribe still waited on the read check", async () => {
     // A subscribe in flight when the cancel's sweep runs: the sweep finds no subscription yet, and
     // the write that lands after it must not leave a cancelled task's session hearing its PR.
