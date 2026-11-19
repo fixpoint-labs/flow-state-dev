@@ -12,7 +12,6 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { CODER_FLOW, type CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AppCalls } from "../src/app";
 import { PopupView } from "../src/components/Popups";
 import { attemptStartedAt } from "../src/lib/task";
 import { codingTask, hold, stubServer, TestProvider, type StubData } from "./stub-server";
@@ -43,10 +42,9 @@ const RUNNING: CodingBoardTask = codingTask({
 function open(task: CodingBoardTask = RUNNING, extra: Omit<StubData, "board"> = {}) {
   const data: StubData = { board: { conversation: [task] }, items: { "run-1": [said, test("in_progress")] }, ...extra };
   const server = stubServer(data);
-  const calls = {} as AppCalls;
   render(
-    <TestProvider calls={calls} client={server.client}>
-      <PopupView adapter={calls} popup={{ kind: "task", sessionId: "conversation", taskId: task.id }} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => true} coders={[]} onClose={() => {}} />
+    <TestProvider client={server.client}>
+      <PopupView popup={{ kind: "task", sessionId: "conversation", taskId: task.id }} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => true} coders={[]} onClose={() => {}} />
     </TestProvider>,
   );
   const setTask = (next: Partial<CodingBoardTask>) => (data.board!.conversation![0] = { ...data.board!.conversation![0]!, ...next });

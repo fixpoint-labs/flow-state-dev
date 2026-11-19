@@ -51,7 +51,7 @@ import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFlows, modulePatchEnv, type ModulePatch } from "../../lib/index.mts";
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
-import { AppProvider as TmAppProvider, createAppCalls } from "../../../labs/teammates/src/app/index.ts";
+import { AppProvider as TmAppProvider } from "../../../labs/teammates/src/app/index.ts";
 import { useWorkforce as useTmWorkforce } from "../../../labs/teammates/src/lib/roster.ts";
 import { AppProvider as CcAppProvider, usePins as useCcPins } from "../../../labs/claude-code-style/src/app/index.ts";
 import { defineFlow } from "@flow-state-dev/core";
@@ -269,7 +269,7 @@ function mount(on: Host, rosterSession: string): () => void {
   }
   const tmClient = clientOf(on, tokenOf("tm"));
   const tmRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
-  tmRoot.render(createElement(TmAppProvider, { calls: createAppCalls(tmClient), client: tmClient, children: createElement(TmRoster) }));
+  tmRoot.render(createElement(TmAppProvider, { client: tmClient, children: createElement(TmRoster) }));
   const stopTm = () => tmRoot.unmount();
 
   // claude-code-style: your pins, as its screen's `usePins` reads them.

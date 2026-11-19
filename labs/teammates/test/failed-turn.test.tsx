@@ -13,10 +13,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/components/App";
 import { PUBLIC_REENTRY_SOURCES } from "@flow-state-dev/engine";
-import { RETRYABLE_SOURCES, toEntries, type ConversationEntry } from "../src/app";
+import { RETRYABLE_SOURCES, toEntries, type ConversationEntry } from "../src/lib/conversation";
 import { Entry } from "../src/components/Entry";
 import { lookOf } from "../src/lib/looks";
-import { createFixtureApp, FixtureProvider } from "./fake-app";
+import { scriptedServer, ScriptedProvider } from "./scripted-server";
 
 afterEach(() => {
   cleanup();
@@ -104,12 +104,12 @@ describe("the line a failed turn draws", () => {
 });
 
 describe("the conversation", () => {
-  it("shows a failed turn's line and retries only the newest through the adapter", async () => {
-    const lab = createFixtureApp({ speed: 0.05 });
-    const sessionId = await lab.openConversation(LEAD);
+  it("shows a failed turn's line and retries only the newest through workforce's client", async () => {
+    const lab = scriptedServer({ speed: 0.05 });
+    const sessionId = lab.conversationOf(LEAD);
     lab.failTurn(sessionId, "first failed");
     lab.failTurn(sessionId, "AI_GATEWAY_API_KEY is not set");
-    render(<FixtureProvider calls={lab}><App /></FixtureProvider>);
+    render(<ScriptedProvider server={lab}><App /></ScriptedProvider>);
     await waitFor(() => expect(screen.getAllByTestId("request-recovery")).toHaveLength(2));
     const lines = screen.getAllByTestId("request-recovery");
     expect(lines.map((line) => line.textContent?.includes("Retry"))).toEqual([false, true]);

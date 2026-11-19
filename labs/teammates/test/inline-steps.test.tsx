@@ -7,7 +7,7 @@
  */
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { toEntries, type ConversationEntry } from "../src/app";
+import { toEntries, type ConversationEntry } from "../src/lib/conversation";
 import { Entry } from "../src/components/Entry";
 import { lookOf } from "../src/lib/looks";
 

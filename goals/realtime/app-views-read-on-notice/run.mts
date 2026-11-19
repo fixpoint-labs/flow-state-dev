@@ -7,9 +7,10 @@
  * driven directly with real clients (Node's `fetch` and `WebSocket`): the
  * claude-code-style lab's thread (its running turn) and pins (its `useThread`
  * and `usePins`, under its own `LabProvider`), the Teammates
- * lab's conversation (whether it is answering), its divider and its Talk
- * lines (`useTalk`, workforce's worker messages view, under its
- * `AppProvider`), and Shift Manager's worker
+ * lab's conversation (whether it is answering, from workforce's session turns
+ * view), its divider (the history summary, by `useResource` with the session's
+ * id), both read by the conversation's follower, and its Talk lines (`useTalk`,
+ * workforce's worker messages view), under its `AppProvider`, and Shift Manager's worker
  * conversation (the client's `sessionFeed`, which its shared session feed holds), its message log
  * (`useMessages`), a project's entries (`useProjectRead`) and a task screen
  * waiting on its run's link (`TaskProvider`), the last three under the real
@@ -62,7 +63,8 @@ import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFl
 import { appPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 import { PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
 import { AppProvider as CcAppProvider, usePins as useCcPins, useThread as useCcThread, type ThreadView } from "../../../labs/claude-code-style/src/app/index.ts";
-import { AppProvider as TmAppProvider, createAppCalls, type ConversationView } from "../../../labs/teammates/src/app/index.ts";
+import { AppProvider as TmAppProvider, ConversationFollower as TmConversationFollower, useConversation as useTmConversation } from "../../../labs/teammates/src/app/index.ts";
+import type { ConversationView } from "../../../labs/teammates/src/lib/conversation.ts";
 import { useTalk } from "../../../labs/teammates/src/lib/talk.ts";
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
@@ -337,7 +339,21 @@ function mountViews(on: Host, sessionId: string) {
   );
   const tm = clientOf(on);
   const tmConversation = record<ConversationView>();
-  const tmWindowReads = clientOf(on);
+  // Teammates' conversation under its provider: its one follower, as the page mounts one per teammate, and what it read.
+  function TmConversationProbe() {
+    const view = useTmConversation(sessionId)?.view;
+    useEffect(() => {
+      if (view !== undefined) tmConversation.push({ at: Date.now(), value: view });
+    }, [view]);
+    return null;
+  }
+  const tmRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
+  tmRoot.render(
+    createElement(TmAppProvider, {
+      client: tm.client,
+      children: [createElement(TmConversationFollower, { key: "follower", sessionId }), createElement(TmConversationProbe, { key: "probe" })],
+    }),
+  );
   const sm = clientOf(on);
   const smItems = record<{ items: readonly OutputItem[]; truncated: boolean }>();
   const talk = clientOf(on);
@@ -353,7 +369,7 @@ function mountViews(on: Host, sessionId: string) {
     return null;
   }
   const talkRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
-  talkRoot.render(createElement(TmAppProvider, { calls: createAppCalls(talk.client), client: talk.client, children: createElement(TalkProbe) }));
+  talkRoot.render(createElement(TmAppProvider, { client: talk.client, children: createElement(TalkProbe) }));
   // Shift Manager under its real provider: a project's entries, as its view reads them.
   const smToken = `tok-sm-${(mounts += 1)}`;
   const smReads: Read[] = [];
@@ -389,8 +405,7 @@ function mountViews(on: Host, sessionId: string) {
   smRoot.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: smToken, baseUrl: on.base }, children: createElement(ProjectProbe) }));
   const stops = [
     () => ccRoot.unmount(),
-    createAppCalls(tm.client).watchConversation(sessionId, (value) => tmConversation.push({ at: Date.now(), value })),
-    createAppCalls(tmWindowReads.client).watchWindow(sessionId, () => {}),
+    () => tmRoot.unmount(),
     // Shift Manager's conversation reads its session through one shared feed: the client's `sessionFeed`.
     (() => {
       const feed = sessionFeed(sm.client, sessionId);
@@ -408,7 +423,6 @@ function mountViews(on: Host, sessionId: string) {
     () => talkRoot.unmount(),
     () => smRoot.unmount(),
   ];
-  const requestReads = (reads: Read[]) => reads.filter((r) => r.url.includes("/requests"));
   // The Claude Code-style thread reads its turns through workforce's session turns view.
   const turnReads = (reads: Read[]) => reads.filter((r) => r.url.includes("/views/sessionTurns"));
   // One project read lists its entries by the project's one prefix.
@@ -421,14 +435,15 @@ function mountViews(on: Host, sessionId: string) {
     reads: {
       "claude-code-style thread (running turn)": () => turnReads(cc.reads),
       "claude-code-style pins": () => pinsClient.reads,
-      "Teammates conversation (answering)": () => requestReads(tm.reads),
-      "Teammates divider": () => tmWindowReads.reads,
+      "Teammates conversation (answering)": () => turnReads(tm.reads),
+      // The divider's own read: the session's state without its items, for the history summary's mark.
+      "Teammates divider": () => tm.reads.filter((r) => r.url.includes("/state") && r.url.includes("include_items=false")),
       "Shift Manager conversation": () => sm.reads,
       "Teammates Talk": () => talk.reads.filter((r) => r.url.includes("/views/workerMessages")),
       "Shift Manager project entries": entryReads,
       "Shift Manager message log": logReads,
     } as Record<string, () => Read[]>,
-    all: [cc.reads, pinsClient.reads, tm.reads, tmWindowReads.reads, sm.reads, talk.reads, smReads],
+    all: [cc.reads, pinsClient.reads, tm.reads, sm.reads, talk.reads, smReads],
     close: () => stops.forEach((stop) => stop()),
   };
 }

@@ -2,9 +2,11 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SessionConnectionStatus } from "@flow-state-dev/client";
-import { stepRun, toEntries, type ConversationEntry, type ConversationView, type AppCalls, type SessionStep } from "../src/app";
+import { toEntries, type ConversationEntry, type ConversationView } from "../src/lib/conversation";
+import { stepRun, type SessionStep } from "../src/lib/steps";
 import { Conversation } from "../src/components/Conversation";
-import { FixtureProvider, rosterEntry } from "./fake-app";
+import { rosterEntry } from "./scripted-server";
+import { standInFollower, TestProvider } from "./stub-server";
 import { STALE_CLASS } from "../src/components/flow-state/connection-banner";
 import { answeringStep } from "../src/lib/status";
 import { lookOf } from "../src/lib/looks";
@@ -52,18 +54,10 @@ describe("the answering line's step", () => {
   });
 
   it("updates the answering line while preserving inline tools and hides it when answer text starts", () => {
-    const subscribers = new Set<(view: ConversationView) => void>();
-    const show = (view: ConversationView) => subscribers.forEach((onChange) => onChange(view));
-    let connect: (state: SessionConnectionStatus) => void = () => {};
     const initial: ConversationView = { entries: [steps({ ...read, id: "earlier", state: "completed" }, read)], running: true, stopping: false, backgroundRunning: 0 };
-    const quiet = () => () => {};
-    const adapter = {
-      watchConversation: (_: string, onChange: (view: ConversationView) => void) => { subscribers.add(onChange); onChange(initial); return () => { subscribers.delete(onChange); }; },
-      watchConnection: (_: string, onChange: typeof connect) => { connect = onChange; onChange("live"); return () => {}; },
-      watchWindow: quiet,
-    } as unknown as AppCalls;
+    const { Follower, show, connect } = standInFollower("s1", initial);
     const worker = rosterEntry({ id: "lead", name: "Lead", description: "Coordinates work" });
-    const view = render(<FixtureProvider calls={adapter}><Conversation adapter={adapter} worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} harnessOf={() => undefined} onFire={async () => {}} onOpen={() => {}} /></FixtureProvider>);
+    const view = render(<TestProvider><Follower /><Conversation worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} harnessOf={() => undefined} onFire={async () => {}} onOpen={() => {}} /></TestProvider>);
     const line = () => view.container.querySelector("[data-chat-activity]");
     expect(line()?.textContent).toBe("Lead · reading a file…");
     expect(view.container.querySelector("details")?.open).toBe(true);

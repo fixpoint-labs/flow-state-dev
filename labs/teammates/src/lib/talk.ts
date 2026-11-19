@@ -1,13 +1,15 @@
 /**
  * What the screen shows of worker talk, from workforce's worker messages view
  * (a worker's open messages, and the rows and answers of the lines on screen)
- * joined with a conversation (`watchConversation`), and what the recipient did
+ * joined with a conversation (`useConversation`), and what the recipient did
  * with one message, read from the turn of its conversation that read it.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { useView } from "@flow-state-dev/react";
 import { RECEIVED_MESSAGE_DATA_TYPE, workerMessagesViewRef, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
-import { toSteps, useAppClient, type ConversationEntry, type SessionStep } from "../app";
+import { useAppClient } from "../app";
+import type { ConversationEntry } from "./conversation";
+import { toSteps, type SessionStep } from "./steps";
 
 type Message = WorkerMessageResourceState;
 

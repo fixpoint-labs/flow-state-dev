@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
-import { toEntries } from "../src/app";
+import { toEntries } from "../src/lib/conversation";
 import { pendingFor } from "../src/lib/talk";
 
 const LEAD = "teammates.chief-of-staff";

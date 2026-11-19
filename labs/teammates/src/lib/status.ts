@@ -11,12 +11,13 @@
 import { useView } from "@flow-state-dev/react";
 import { sessionTurnsViewRef, workerSessionsViewRef, type ListedTurn, type ListedWorkerSession, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import { useAppClient, useTasks, type ConversationEntry, type AppCalls } from "../app";
+import { useAppClient, useConversation, useTasks } from "../app";
+import type { ConversationEntry } from "./conversation";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
 import { holdOf, taskStatus, titleOf, workerOf } from "./task";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom, useTalk } from "./talk";
-import { age, useNow, useWatch } from "./use-watch";
+import { age, useNow } from "./use-watch";
 
 /** Everything the line is read from. */
 export interface StatusInputs {
@@ -163,11 +164,11 @@ export function useActivity(worker: string): StatusInputs["activity"] {
 }
 
 /** A teammate's status line, its words alone, live. Its age holds while `stale`. */
-export function useStatusLine(adapter: AppCalls, worker: string, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): string {
+export function useStatusLine(worker: string, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): string {
   const now = useNow(undefined, !stale);
   const activity = useActivity(worker);
   const talk = useTalk(worker) ?? [];
-  const view = useWatch(adapter.watchConversation, sessionId);
+  const view = useConversation(sessionId)?.view;
   const tasks = useTasks(sessionId).value ?? [];
   return statusOf(worker, { activity, entries: view?.entries ?? [], talk, tasks, now }, nameOf, isCoding).text;
 }

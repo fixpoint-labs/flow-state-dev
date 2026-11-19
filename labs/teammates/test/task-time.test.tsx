@@ -17,11 +17,10 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it } from "vitest";
 import type { SessionConnectionStatus } from "@flow-state-dev/client";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import type { AppCalls } from "../src/app";
-import { rosterEntry } from "./fake-app";
+import { rosterEntry } from "./scripted-server";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 import { runTimesOf, viewOf } from "../src/lib/task";
-import { codingTask, stubServer, TestProvider, type StubData } from "./stub-server";
+import { codingTask, standInFollower, stubServer, TestProvider, type StubData } from "./stub-server";
 
 afterEach(cleanup);
 
@@ -43,10 +42,12 @@ const listed = (id: string, status: string, times: { updatedAt: number; startedA
 
 async function panel(rows: CodingBoardTask[], connection: SessionConnectionStatus = "live", data: StubData = {}) {
   const { client } = stubServer(Object.assign(data, { board: { s1: rows } }));
-  const adapter = { watchConnection: (_session: string, emit: (state: SessionConnectionStatus) => void) => (emit(connection), () => {}) } as unknown as AppCalls;
+  // Only the conversation's connection, which a stale feed greys the panel by.
+  const { Follower } = standInFollower("s1", { entries: [], running: false, stopping: false, backgroundRunning: 0 }, connection);
   render(
-    <TestProvider calls={adapter} client={client}>
-      <TeammatePanel adapter={adapter} worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} onOpen={() => {}} />
+    <TestProvider client={client}>
+      <Follower />
+      <TeammatePanel worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} onOpen={() => {}} />
     </TestProvider>,
   );
   const shown = screen.getByRole("complementary", { name: "Lead's panel" });
