@@ -1,6 +1,6 @@
 /**
  * Shift Manager's reads and sends, scripted. The goal page's build swaps
- * `src/lib/{lab-data,conversation,send,task,run}.ts` for the modules in
+ * `src/lib/{lab-data,conversation,deliver,task,task-items,session-feeds}.ts(x)` for the modules in
  * `fakes/`, which keep every other export of the real module and replace
  * only what talks to the Lab: the conversation and the run come from
  * `script.ts`, and a line sent goes into it.

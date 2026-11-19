@@ -66,7 +66,7 @@ export type Roster = { workers: readonly Worker[] };
  * not published to a browser, and a declared assignee-to-worker map
  * arrives in a later release.
  */
-export function workerFor(roster: Roster, row: BoardTaskView): Worker | undefined {
+export function workerFor(roster: Roster, row: Pick<BoardTaskView, "assignee">): Worker | undefined {
   if (row.assignee === null) return undefined;
   const exact = roster.workers.find((worker) => worker.id === row.assignee);
   if (exact !== undefined) return exact;
@@ -177,7 +177,7 @@ export function inboxItemAt(snapshot: LoadedSnapshot, id: string | null): InboxI
  * for you (an approval, a review) shows that stop as an ask instead
  * ({@link asksOfTask}). `false` while the snapshot or its Inbox isn't read.
  */
-export function waitsOnYou(snapshot: LabSnapshot | undefined, row: BoardTaskView | undefined): boolean {
+export function waitsOnYou(snapshot: LabSnapshot | undefined, row: Pick<BoardTaskView, "boardRef" | "id"> | undefined): boolean {
   if (snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || row === undefined || !snapshot.inbox.ok) return false;
   return snapshot.inbox.value.some(
     (item) => item.task?.board === row.boardRef && item.task.taskId === row.id && item.holds.some((hold) => hold.source.kind === "task"),
@@ -191,7 +191,7 @@ export function waitsOnYou(snapshot: LabSnapshot | undefined, row: BoardTaskView
  * the very request the link names. Empty while the snapshot or its asks
  * aren't read.
  */
-export function asksOfTask(snapshot: LabSnapshot | undefined, row: BoardTaskView | undefined): Ask[] {
+export function asksOfTask(snapshot: LabSnapshot | undefined, row: Pick<BoardTaskView, "id" | "run"> | undefined): Ask[] {
   if (snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || !snapshot.asks.ok || row?.run == null) return [];
   const { sessionId, requestId } = row.run;
   return snapshot.asks.value.filter(

@@ -23,7 +23,7 @@
  * untouched. An ask from a run with no conversation names no worker and has
  * no session to read or reply into: its box is disabled, saying so.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import { AskCard } from "../components/AskCard";
 import { TurnComposer } from "../components/TurnComposer";
@@ -32,14 +32,13 @@ import { askSessionOf, type SessionCall, type SessionReply } from "../lib/ask-se
 import { doorOf, rosterOf, waited, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import type { InboxHold, InboxAnswer, InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
-import { useLab } from "../lib/lab-data";
 import { describeFailure, type Failure } from "../lib/reads";
 import { itemAtRoute, sessionOfHold, useInbox, useInboxAnswer, workerOfHold, type InboxAsk } from "../lib/inbox";
 import { navigate } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
-import { readSessionItems, RunReadError } from "../lib/run";
-import { flowUploader } from "../lib/files";
-import { sendTurn, TurnNotDelivered } from "../lib/send";
+import { useRetrySessionFeed, useSharedSessionFeed } from "../lib/session-feeds";
+import { TurnNotDelivered, useDeliverLine } from "../lib/deliver";
+import { useWorkforce } from "../lib/workforce";
 import { nothingWaitingSentence } from "../lib/tasks";
 import { cn } from "../lib/utils";
 import type { Gaps } from "../gaps";
@@ -88,7 +87,6 @@ function itemFrom(item: InboxItem): string {
 }
 
 export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; itemId: string | null; gaps: Gaps }) {
-  const { client } = useLab();
   const inbox = useInbox();
   const [filter, setFilter] = useState<Filter>("All");
   // Bumped when a reply is delivered, so the ask's session is read again then.
@@ -205,7 +203,6 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
             hold={selected.holds[0]!}
             snapshot={snapshot}
             gaps={gaps}
-            client={client}
             replies={replies}
             onDelivered={() => setReplies((n) => n + 1)}
           />
@@ -220,14 +217,12 @@ function AskDetail({
   hold: selected,
   snapshot,
   gaps,
-  client,
   replies,
   onDelivered,
 }: {
   hold: InboxViewHold;
   snapshot: LoadedSnapshot;
   gaps: Gaps;
-  client: ReturnType<typeof useLab>["client"];
   replies: number;
   onDelivered: () => void;
 }) {
@@ -255,7 +250,6 @@ function AskDetail({
                   hold={selected}
                   snapshot={snapshot}
                   gaps={gaps}
-                  client={client}
                   onDelivered={onDelivered}
                 />
               </div>
@@ -396,31 +390,25 @@ type AskSessionRead =
 // BR-18.
 /**
  * *From the session* and the user's replies, read from the ask's session.
- * Read when the ask opens and again after each reply is delivered
- * (`reread`), so the reply shows once the session holds it; a Lab refresh for
- * anything else doesn't re-read the session. The component is keyed by the
- * ask, so the ask it reads around never changes under it.
+ * Read from the page's one feed for the ask's session, so a reply shows once
+ * the session holds it, with no read of its own. The component is keyed by
+ * the ask, so the ask it reads around never changes under it.
  */
-function AskSession({ hold, reread }: { hold: InboxViewHold; reread: number }) {
-  const { client } = useLab();
+function AskSession({ hold }: { hold: InboxViewHold; reread?: number }) {
   const sessionId = sessionOfHold(hold)!;
-  const [read, setRead] = useState<AskSessionRead | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    let live = true;
-    readSessionItems(client, sessionId).then(
-      (got) => {
-        // The stop as the session holds it, where *From the session* is read around.
-        const stop = got.items.find((item) => item.type === "suspension" && (item as SuspensionItem).suspensionId === hold.id);
-        if (live) setRead({ ok: true, value: stop === undefined ? null : askSessionOf(got.items, stop), truncated: got.truncated });
-      },
-      (error: unknown) => live && setRead({ ok: false, failure: error instanceof RunReadError ? error.failure : describeFailure(error) }),
-    );
-    return () => {
-      live = false;
-    };
-    // `hold` is fixed for this component's life (keyed by the ask), so the session is the dependency.
-  }, [client, sessionId, reread, attempt]);
+  const feed = useSharedSessionFeed(sessionId);
+  const retry = useRetrySessionFeed(sessionId);
+  const items = feed?.items;
+  const hasEarlier = feed?.hasEarlier ?? false;
+  const error = feed?.error ?? null;
+  const read = useMemo<AskSessionRead | null>(() => {
+    if (items !== undefined) {
+      // The stop as the session holds it, where *From the session* is read around.
+      const stop = items.find((item) => item.type === "suspension" && (item as SuspensionItem).suspensionId === hold.id);
+      return { ok: true, value: stop === undefined ? null : askSessionOf(items, stop), truncated: hasEarlier };
+    }
+    return error !== null ? { ok: false, failure: describeFailure(error) } : null;
+  }, [items, hasEarlier, error, hold.id]);
   if (read === null) {
     return (
       <Meta className="text-muted-foreground" testId="inbox-session-loading">
@@ -429,10 +417,7 @@ function AskSession({ hold, reread }: { hold: InboxViewHold; reread: number }) {
     );
   }
   if (!read.ok) {
-    const retry = () => {
-      setRead(null);
-      setAttempt((n) => n + 1);
-    };
+    // A feed whose read gave up is opened anew.
     return <SectionFailure what="The ask's session" failure={read.failure} onRetry={retry} testId="inbox-session-failure" />;
   }
   const found = read.value;
@@ -502,17 +487,17 @@ function Reply({
   hold,
   snapshot,
   gaps,
-  client,
   onDelivered,
 }: {
   hold: InboxViewHold;
   snapshot: LoadedSnapshot;
   gaps: Gaps;
-  client: ReturnType<typeof useLab>["client"];
   onDelivered: () => void;
 }) {
   const route = replyRoute(hold, snapshot, gaps);
   const worker = workerOfHold(hold);
+  const workforce = useWorkforce();
+  const deliver = useDeliverLine();
   return (
     <div>
       <TurnComposer
@@ -522,12 +507,12 @@ function Reply({
         placeholder={`Reply to ${workerLabel(worker ?? "this worker")}…`}
         blocked={route.blocked}
         // Through the flow the reply goes to, whose sign-in its send runs.
-        uploader={flowUploader(client, route.blocked === null ? route.flowId : null)}
+        uploader={route.blocked === null && worker !== null ? { upload: (file) => workforce.upload(worker, file) } : null}
         send={async (message, held, attachments) => {
           // The box is disabled while blocked; a send that got here anyway
           // must not read as delivered.
           if (route.blocked !== null) throw new TurnNotDelivered("refused", route.blocked);
-          return sendTurn(client, { sessionId: route.sessionId, flowId: route.flowId, door: route.door }, message, { onHeld: held }, attachments);
+          return await deliver({ sessionId: route.sessionId }, message, { onHeld: held, attachments });
         }}
         onHeld={onDelivered}
         onDelivered={onDelivered}

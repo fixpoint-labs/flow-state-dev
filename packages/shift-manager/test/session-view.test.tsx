@@ -22,14 +22,7 @@ const lab = {
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => ({ ensureWorkerSession: vi.fn() }) }));
 // The conversation follows its session: its first answer is `read`'s.
-vi.mock("../src/lib/run", async (original) => ({
-  ...(await original<typeof import("../src/lib/run")>()),
-  followSessionItems: (client: unknown, sessionId: string, to: { onRead(read: unknown): void }) => {
-    let closed = false;
-    void Promise.resolve(read(client, sessionId)).then((got) => !closed && to.onRead(got));
-    return () => void (closed = true);
-  },
-}));
+vi.mock("../src/lib/session-feeds", async () => (await import("./helpers/fake-feed")).fakeFeeds([], (sessionId) => read(lab.client, sessionId)));
 
 import { SessionView } from "../src/surfaces/SessionView";
 

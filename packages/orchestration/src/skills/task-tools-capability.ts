@@ -1078,6 +1078,10 @@ function listedTaskEntries(tasks: readonly Task[], board: readonly Task[], claim
     ...(claimless && t.completedAt !== undefined ? { completedAt: t.completedAt } : {}),
     ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
     ...(claimless && t.leaseUntil != null ? { leaseUntil: t.leaseUntil } : {}),
+    // FIX-2776: what a task's screen draws from the board's view alone; a model reads them with getTask.
+    ...(claimless && t.error !== undefined ? { error: t.error } : {}),
+    ...(claimless && t.deps !== undefined && t.deps.length > 0 ? { deps: t.deps } : {}),
+    ...(claimless && t.attachments !== undefined && t.attachments.length > 0 ? { attachments: t.attachments } : {}),
     ...waitingOf(t),
     ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),
   }));

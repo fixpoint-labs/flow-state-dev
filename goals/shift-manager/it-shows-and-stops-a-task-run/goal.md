@@ -27,11 +27,11 @@
 
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-shows-and-stops-a-task-run/run.mts`
 
-**Controls:** each rebuilds Shift Manager with one module swapped for a module under `controls/` (`src/lib/run.ts` unless it says otherwise). The build fails if the swap never fired.
+**Controls:** each rebuilds Shift Manager with one module swapped for a module under `controls/` (`src/lib/task-items.ts`, the run's flow and items, unless it says otherwise). The build fails if the swap never fired. FIX-2776 moved the screen onto package hooks and deleted `src/lib/run.ts`, which these controls used to swap; each now swaps the module that took its job.
 
-- `GOAL_CONTROL=worker-session`: the Session reads the newest other session on the run's flow, or on any flow when the run's flow has no other, and follows no stream. Must fail at **items equal the run session's**.
-- `GOAL_CONTROL=optimistic-interrupt`: Interrupt draws *interrupted* without calling abort. Must fail at **the request reads aborted first**.
-- `GOAL_CONTROL=board-flow`: every run is opened through the board's flow (the lead's), not the flow its session names. Must fail at **items equal the run session's** on every run row, since no run is on the lead's flow.
+- `GOAL_CONTROL=worker-session` (swaps `src/lib/session-feeds.tsx`): the Session's feed follows the newest other session on the run's flow, or on any flow when the run's flow has no other. Must fail at **items equal the run session's**.
+- `GOAL_CONTROL=optimistic-interrupt` (swaps `src/lib/workforce.ts`): Interrupt's `stopRun` answers without calling abort, so the run's record never reads `aborted`. Must fail at **the request reads aborted first**.
+- `GOAL_CONTROL=board-flow`: every run is opened through the board's flow (the lead's), not the flow its session names. Must fail at **the request reads aborted first** on every running row: the run's stream and its stop go through that flow, and no run is on the lead's. Since FIX-2776 the Session's items come from the run session's feed, which names no flow, so this control no longer reaches **items equal the run session's**; **worker-session** keeps that leg.
 - `GOAL_CONTROL=wrong-board` (swaps `src/lib/reads.ts`): the frame's action row is built against board id `"plan"`, not `"tasks"`. Must fail at **release**, **cancel** and both **retry** legs, each row unchanged, with the refusal on the page.
 - `GOAL_CONTROL=no-error-body` (swaps the `error` registry copy): `ErrorBody` draws nothing. Must fail at **error**, on the frame and on the Tasks row. The action row has no part in drawing an error, so `wrong-board` can't redden that leg.
 

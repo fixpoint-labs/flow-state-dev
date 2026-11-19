@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { toBlobRef } from "@flow-state-dev/core/attachments";
 import { TurnComposer } from "../src/components/TurnComposer";
-import { TurnNotDelivered } from "../src/lib/send";
+import { TurnNotDelivered } from "../src/lib/deliver";
 import { legacyTaskDraftKey, taskDraftKey } from "../src/lib/tasks";
 
 afterEach(() => {
@@ -431,6 +431,25 @@ describe("a line's files", () => {
     expect(send).toHaveBeenCalledTimes(2);
     expect(send.mock.calls[1]![2].map((f) => f.filename)).toEqual(["bug.png"]);
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+  });
+
+  // FIX-2776: a project Stream's first line opens its session, and its draft moves from the project's key
+  // to the session's. The text always moved; the files went with the old key, and the line lost them.
+  it("move with the draft when its key moves to the one that replaced it, and go with the line", async () => {
+    const client = uploader();
+    const send = vi.fn(async (_message: string, _held: () => void, _files: FileContent[]) => undefined);
+    const composer = (draftKey: string, legacyDraftKey?: string) => (
+      <TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} uploader={client} send={send} draftKey={draftKey} legacyDraftKey={legacyDraftKey} />
+    );
+    const { rerender } = render(composer("project:shared/p1"));
+    const input = screen.getByTestId("t-input") as HTMLInputElement;
+    await act(async () => paste(input, [png("one.png"), png("two.png")]));
+    fireEvent.change(input, { target: { value: "first line" } });
+    // The project's session is found: the draft's key moves, naming the one it replaced.
+    rerender(composer("session:s1", "project:shared/p1"));
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    expect(send.mock.calls[0]![2].map((f) => f.filename)).toEqual(["one.png", "two.png"]);
   });
 
   it("are refused by name in a composer with nowhere to upload them", async () => {

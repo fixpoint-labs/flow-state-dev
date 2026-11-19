@@ -10,7 +10,7 @@
  * lab's conversation (whether it is answering), its divider and its Talk
  * lines (`useTalk`, workforce's worker messages view, under its
  * `AppProvider`), and Shift Manager's worker
- * conversation (`followSessionItems`, the hook's follow), its message log
+ * conversation (the client's `sessionFeed`, which its shared session feed holds), its message log
  * (`useMessages`), a project's entries (`useProjectRead`) and a task screen
  * waiting on its run's link (`TaskProvider`), the last three under the real
  * `LabProvider`, rendered by react-dom over happy-dom. Each view has its own
@@ -44,7 +44,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createClient, type Client } from "@flow-state-dev/client";
+import { createClient, sessionFeed, type Client } from "@flow-state-dev/client";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
@@ -64,7 +65,6 @@ import { AppProvider as CcAppProvider, usePins as useCcPins, useThread as useCcT
 import { AppProvider as TmAppProvider, createAppCalls, type ConversationView } from "../../../labs/teammates/src/app/index.ts";
 import { useTalk } from "../../../labs/teammates/src/lib/talk.ts";
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
-import { followSessionItems, type SessionItems } from "../../../packages/shift-manager/src/lib/run.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { useProjectRead } from "../../../packages/shift-manager/src/lib/projects.ts";
 import { useMessages } from "../../../packages/shift-manager/src/lib/messages.ts";
@@ -339,7 +339,7 @@ function mountViews(on: Host, sessionId: string) {
   const tmConversation = record<ConversationView>();
   const tmWindowReads = clientOf(on);
   const sm = clientOf(on);
-  const smItems = record<SessionItems>();
+  const smItems = record<{ items: readonly OutputItem[]; truncated: boolean }>();
   const talk = clientOf(on);
   const tmTalk = record<{ id: string }[]>();
   // Teammates' Talk lines under its provider: the worker's open messages, as its screen reads them.
@@ -391,7 +391,20 @@ function mountViews(on: Host, sessionId: string) {
     () => ccRoot.unmount(),
     createAppCalls(tm.client).watchConversation(sessionId, (value) => tmConversation.push({ at: Date.now(), value })),
     createAppCalls(tmWindowReads.client).watchWindow(sessionId, () => {}),
-    followSessionItems(sm.client, sessionId, { onRead: (value) => smItems.push({ at: Date.now(), value }), onFailure: () => {} }),
+    // Shift Manager's conversation reads its session through one shared feed: the client's `sessionFeed`.
+    (() => {
+      const feed = sessionFeed(sm.client, sessionId);
+      let last: readonly OutputItem[] | undefined;
+      const stop = feed.subscribe(({ items, hasEarlier, historyLoaded }) => {
+        if (!historyLoaded || items === last) return;
+        last = items;
+        smItems.push({ at: Date.now(), value: { items, truncated: hasEarlier } });
+      });
+      return () => {
+        stop();
+        feed.close();
+      };
+    })(),
     () => talkRoot.unmount(),
     () => smRoot.unmount(),
   ];
@@ -472,7 +485,7 @@ async function taskScreen(on: Host, writer: Client) {
     const { snapshot } = useLab();
     const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot : undefined;
     if (loaded === undefined || !loaded.sessions.some((session) => session.id === conversation.id)) return null;
-    return createElement(TaskProvider, { snapshot: loaded, boardRef: conversationBoardRef(conversation.id), taskId, children: createElement(Shown) });
+    return createElement(TaskProvider, { boardRef: conversationBoardRef(conversation.id), taskId, children: createElement(Shown) });
   }
   const root: Root = createRoot(happy.document.createElement("div") as unknown as Element);
   root.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: token, baseUrl: on.base }, children: createElement(Screen) }));
@@ -488,8 +501,8 @@ async function taskScreen(on: Host, writer: Client) {
   }
   return {
     shown,
-    // One read of the conversation's board, the task screen's own (its snapshot reads only on a notice).
-    boardReads: () => reads.filter((r) => r.url.includes(`/resources/tasks`)),
+    // One read of the conversation's board: the task screen's view of it, or the snapshot's (which reads only on a notice).
+    boardReads: () => reads.filter((r) => r.url.includes(`/resources/tasks`) || r.url.includes("/views/listTasks_tasks")),
     all: reads,
     async dispatch(): Promise<number> {
       await act("updateTask_tasks", { id: taskId, deps: [] });

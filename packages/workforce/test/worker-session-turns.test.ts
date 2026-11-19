@@ -162,7 +162,8 @@ describe("a stop and a line sent while it reads the running turns", () => {
       flow: () => ({
         send: async (_action: string, _input: unknown, options: { requestId?: string }) => {
           sent.push(options.requestId!);
-          return { ok: true };
+          // As the client's `send`: it resolves to the request it started.
+          return { id: options.requestId! };
         },
         request: (id: string) => ({ abort: async () => void aborted.push(id), retry: async () => undefined }),
       }),

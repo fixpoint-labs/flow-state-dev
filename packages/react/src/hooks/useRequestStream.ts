@@ -99,8 +99,29 @@ export type UseRequestStreamResult = {
   /** True when the main execution chain has completed but background work tasks are still running. */
   readonly isFinishing: boolean;
   readonly lastEventId?: string;
+  /**
+   * When the request ended, in ms: the time of the status event that ended it
+   * (`completed`, `failed`, `aborted`, `incomplete` or `interrupted`).
+   * `undefined` while it runs or waits (`suspended`). A screen that follows
+   * one request by id, rather than a session's latest turn, reads its end
+   * time here: no session read names it.
+   */
+  readonly completedAt?: number;
   close: () => void;
 };
+
+/** The statuses a request ends on; `in_progress` and `suspended` haven't ended. */
+const ENDED: ReadonlySet<RequestStatus> = new Set<RequestStatus>(["completed", "failed", "aborted", "incomplete", "interrupted"]);
+
+/** The time of the status event `store`'s current status came from, when that status ended the request. */
+function endedAt(store: RequestStreamStore): number | undefined {
+  if (!ENDED.has(store.status)) return undefined;
+  for (let i = store.statusEvents.length - 1; i >= 0; i -= 1) {
+    const event = store.statusEvents[i]!;
+    if (event.status === store.status) return typeof event.ts === "number" ? event.ts : undefined;
+  }
+  return undefined;
+}
 
 function passesTypeFilter(
   item: OutputItem,
@@ -153,6 +174,7 @@ export function useRequestStream(
 
   const [items, setItems] = useState<OutputItem[]>([]);
   const [status, setStatus] = useState<RequestStatus>("in_progress");
+  const [completedAt, setCompletedAt] = useState<number | undefined>(undefined);
   // Transport error or manual close — distinct from a terminal request status.
   const [ended, setEnded] = useState(false);
 
@@ -172,6 +194,7 @@ export function useRequestStream(
     store.flushDeltas();
     setItems(store.getSorted());
     setStatus(store.status);
+    setCompletedAt(endedAt(store));
   }, []);
 
   const scheduleFlush = useCallback(() => {
@@ -206,6 +229,7 @@ export function useRequestStream(
     store.clear();
     setItems([]);
     setStatus("in_progress");
+    setCompletedAt(undefined);
     setEnded(false);
 
     const callbacks = {
@@ -304,6 +328,7 @@ export function useRequestStream(
     currentStatus,
     isStreaming,
     isFinishing,
+    ...(completedAt === undefined ? {} : { completedAt }),
     get lastEventId() {
       return handleRef.current?.lastEventId;
     },

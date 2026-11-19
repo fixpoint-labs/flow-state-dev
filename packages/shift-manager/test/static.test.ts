@@ -133,16 +133,16 @@ describe("V8", () => {
     const sites = (files: string[], read: (f: string) => string) =>
       files.filter((f) => read(f).split("\n").some((line) => SEND.test(line))).map((f) => relative(src, f)).sort();
     const read = (f: string) => readFileSync(f, "utf8");
-    // An action whose answer a view reads goes through `action.ts`, and a line
-    // to a worker goes through `send.ts`.
-    expect(sites(code, read)).toEqual(["lib/action.ts", "lib/send.ts"]);
-    // The door is the one the inventory names, never an action name of Shift Manager's own.
-    const sendLines = read(join(src, "lib/send.ts")).split("\n").filter((line) => SEND.test(line));
+    // A line to a worker goes through `deliver.ts`, through workforce's `send` (FIX-2776), which
+    // sends it to the worker flow's door; Shift Manager names no action of its own.
+    expect(sites(code, read)).toEqual(["lib/deliver.ts"]);
+    const sendLines = read(join(src, "lib/deliver.ts")).split("\n").filter((line) => SEND.test(line));
     expect(sendLines).toHaveLength(1);
-    expect(sendLines[0]).toContain("send(target.door,");
+    expect(sendLines[0]).toContain("workforce.send(to.sessionId,");
     // Every composer that talks to a worker sends through it.
     for (const file of ["surfaces/TaskFrame.tsx", "surfaces/Inbox.tsx", "components/Conversation.tsx"]) {
-      expect(read(join(src, file)), file).toContain("sendTurn(client,");
+      expect(read(join(src, file)), file).toContain("useDeliverLine()");
+      expect(read(join(src, file)), file).toContain("await deliver(");
     }
     // Planted: a composer that sends to a named action is caught.
     const planted = join(src, "surfaces/Planted.tsx");
@@ -169,12 +169,13 @@ describe("V8", () => {
   });
 
   it("makes no write from the task screen but the abort, the one send path and the board's own task actions (ER-15, D2)", () => {
-    const taskFiles = ["lib/run.ts", "lib/task.tsx", "surfaces/TaskFrame.tsx", "surfaces/TaskSession.tsx", "surfaces/TaskInspector.tsx"];
+    const taskFiles = ["lib/task.tsx", "lib/task-items.ts", "surfaces/TaskFrame.tsx", "surfaces/TaskSession.tsx", "surfaces/TaskInspector.tsx"];
     const WRITES = /\.(send|resume|answer|retry|continue|delete|updateMetadata)\(|\b(postLine|createCollectionResource|updateCollectionResource|deleteCollectionResource|createSession|retryRequest|continueRequest)\b|method:\s*"(POST|PUT|PATCH|DELETE)"/;
     const writes = (text: string) =>
       text.split("\n").filter((line) => WRITES.test(line) || (/\.request\([^)]*\)\.abort\(/.test(line) && !/await actions\.request\(run\.requestId\)\.abort\(\)/.test(line)));
     for (const file of taskFiles) expect(writes(readFileSync(join(src, file), "utf8")), file).toEqual([]);
-    expect(readFileSync(join(src, "lib/run.ts"), "utf8")).toContain("await actions.request(run.requestId).abort()");
+    // The abort is one run's stop, through workforce (FIX-2776 D3).
+    expect(readFileSync(join(src, "lib/task.tsx"), "utf8")).toContain("await workforce.stopRun(openRun.sessionId, openRun.requestId)");
     // The header's action row changes the task only through the board's own
     // actions, the reader's `taskActions`, handed to the registry's row whole.
     expect(readFileSync(join(src, "surfaces/TaskFrame.tsx"), "utf8")).toContain("reader.taskActions(");

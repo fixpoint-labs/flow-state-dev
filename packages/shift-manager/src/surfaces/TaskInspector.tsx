@@ -21,8 +21,7 @@ import { describeFailure, GENERAL_TEAM, type Failure } from "../lib/reads";
 import type { Route } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import { readRecordedWork, type RecordedWork } from "@flow-state-dev/harness-manager/browser";
-import type { OpenRun } from "../lib/run";
-import { useTask } from "../lib/task";
+import { useTask, type OpenRun } from "../lib/task";
 import type { Gaps } from "../gaps";
 
 function Section({ title, children, testId }: { title: string; children: ReactNode; testId: string }) {

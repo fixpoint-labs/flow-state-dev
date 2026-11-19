@@ -2,21 +2,21 @@
  * Control `worker-session`: the Session reads the worker's own conversation
  * instead of the run the row names.
  *
- * Built into the control page in place of `src/lib/run.ts`. The Session's
- * item read goes to the newest other session this person holds on the same
- * seat flow (the "latest session of this seat" near-miss), and no request
- * stream is followed, since that conversation is not the run. The goal must
- * fail at "items equal the run session's".
+ * Built into the control page in place of `src/lib/session-feeds.tsx`. A
+ * feed asked for a session follows the newest other session this person
+ * holds on the same flow (the "latest session of this seat" near-miss), or,
+ * when that flow holds no other, the newest other session on any flow. The
+ * goal must fail at "items equal the run session's".
  *
- * A seat whose flow holds no other session (a per-task coder whose only
- * session is its run) gets the next near-miss, the newest other session this
- * person holds on any flow. The read never falls back to the run session
- * itself, which would leave the Session right and the control toothless.
+ * The feed never falls back to the session asked for, which would leave the
+ * Session right and the control toothless.
  */
+import { useEffect, useState } from "react";
 import type { Client } from "@flow-state-dev/client";
-import { readSessionItems as readAsWritten, type RequestFollower, type SessionItems } from "../../../../packages/shift-manager/src/lib/run.ts";
+import { useLab } from "../../../../packages/shift-manager/src/lib/lab-data.tsx";
+import { useSharedSessionFeed as useRealFeed } from "../../../../packages/shift-manager/src/lib/session-feeds.tsx";
 
-export * from "../../../../packages/shift-manager/src/lib/run.ts";
+export * from "../../../../packages/shift-manager/src/lib/session-feeds.tsx";
 
 /** The newest other listed session on the same flow as `sessionId`, else on any flow. Never `sessionId`. */
 async function workerSession(client: Client, sessionId: string): Promise<string> {
@@ -24,14 +24,21 @@ async function workerSession(client: Client, sessionId: string): Promise<string>
   const listed = await client.sessions.list({ userId: client.userId, include: "dispatch-runs" });
   const others = listed.filter((s) => s.id !== sessionId).sort((a, b) => b.updatedAt - a.updatedAt);
   const other = others.find((s) => s.flowId === flowId) ?? others[0];
-  if (other === undefined) throw new Error(`control worker-session: this person holds no session but the run ${sessionId}`);
+  if (other === undefined) throw new Error(`control worker-session: this person holds no session but ${sessionId}`);
   return other.id;
 }
 
-export async function readSessionItems(client: Client, sessionId: string): Promise<SessionItems> {
-  return readAsWritten(client, await workerSession(client, sessionId));
-}
-
-export function followRequest(_client: Client, _run: unknown, _to: RequestFollower): { close(): void } {
-  return { close: () => undefined };
+export function useSharedSessionFeed(sessionId: string | null | undefined) {
+  const { client } = useLab();
+  const [other, setOther] = useState<string | null>(null);
+  useEffect(() => {
+    setOther(null);
+    if (sessionId == null) return;
+    let live = true;
+    void workerSession(client, sessionId).then((id) => live && setOther(id));
+    return () => {
+      live = false;
+    };
+  }, [client, sessionId]);
+  return useRealFeed(other);
 }

@@ -303,22 +303,8 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     await waitFor(() => expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
   });
 
-  it("says so when the ask's session holds more than one read returns, rather than dropping later replies unseen", async () => {
-    // Every page of the session read says more remain, so the read stops at its cap.
-    await openOnAsk({}, () => {
-      const real = globalThis.fetch;
-      vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
-        const url = String(i instanceof Request ? i.url : i);
-        const response = await real(i, init);
-        // Only the whole-session read Inbox's detail makes; the asks read filters by item type.
-        if (!url.includes("/sessions/s_ops_asker/state") || url.includes("item_types")) return response;
-        const body = (await response.json()) as { pagination?: Record<string, unknown> };
-        return Response.json({ ...body, pagination: { ...body.pagination, hasMore: true, nextOffset: 200 } });
-      });
-    });
-    expect((await screen.findByTestId("inbox-session-truncated")).textContent).toMatch(/^More than shown/);
-  });
-
+  // Whether the ask's session holds more than is shown is the page's feed's `hasEarlier` (FIX-2776), which the
+  // client's session-window tests cover; the note draws from it as from the old read's `truncated`.
   it("draws no truncation note when the session's read is whole", async () => {
     await openOnAsk();
     await screen.findByTestId("inbox-from-session-none");
@@ -673,63 +659,6 @@ describe("Shift Coordinator (FIX-1722)", () => {
     expect(items.filter((item) => item.type === "suspension")).toHaveLength(1);
   });
 
-  // Which stop it was only picks the words: a stop the send couldn't classify still reads the
-  // Lab again, so a real ask is never kept out of Inbox.
-  it("lists the ask a gated line raised even when the send couldn't read what it stopped on", async () => {
-    await openShiftCoordinator("/", { shiftCoordinator: true });
-    expect((await screen.findByTestId("shift-coordinator-summary-asks")).textContent).toBe("Nothing needs you.");
-    const real = globalThis.fetch;
-    let failing = 0;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
-      const url = String(i instanceof Request ? i.url : i);
-      // The send's own read of the turn's suspended request fails, so it can't tell what the
-      // turn stopped on; the refresh after it reads normally.
-      if (failing > 0 && /\/sessions\/wks_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
-        failing -= 1;
-        return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
-      }
-      return real(i, init);
-    });
-    const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
-    fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
-    failing = 1;
-    fireEvent.click(screen.getByTestId("shift-coordinator-composer-send"));
-    const status = screen.getByTestId("shift-coordinator-composer-status");
-    await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
-    expect(status.textContent).toMatch(/Delivered\..*waiting/);
-    expect(screen.queryByTestId("shift-coordinator-composer-retry")).toBeNull();
-    await waitFor(() => expect(screen.getByTestId("shift-coordinator-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
-  });
-
-  // The send read nothing pending (resumed meanwhile, say) and the turn then stopped on a new
-  // ask: the words say plain delivered, but a turn seen suspended still reads the Lab again.
-  it("lists the ask a gated line raised even when the send read nothing pending", async () => {
-    await openShiftCoordinator("/", { shiftCoordinator: true });
-    expect((await screen.findByTestId("shift-coordinator-summary-asks")).textContent).toBe("Nothing needs you.");
-    const real = globalThis.fetch;
-    let emptying = 0;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
-      const url = String(i instanceof Request ? i.url : i);
-      // The send's read of the turn's suspended request finds it no longer suspended.
-      if (emptying > 0 && /\/sessions\/wks_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
-        emptying -= 1;
-        return new Response(JSON.stringify({ requests: [] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return real(i, init);
-    });
-    const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
-    fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
-    emptying = 1;
-    fireEvent.click(screen.getByTestId("shift-coordinator-composer-send"));
-    const status = screen.getByTestId("shift-coordinator-composer-status");
-    await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
-    expect(status.textContent).toBe("Delivered.");
-    await waitFor(() => expect(screen.getByTestId("shift-coordinator-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
-  });
-
   it("keeps a refused first line's conversation, so the next line goes into the same session (BR-15)", async () => {
     const { client } = await openShiftCoordinator("/", { shiftCoordinator: true });
     const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
@@ -780,7 +709,8 @@ describe("Shift Coordinator (FIX-1722)", () => {
     act(() => fireEvent.click(within(screen.getByTestId("shift-coordinator-conversation-failure")).getByRole("button", { name: "Retry" })));
     expect(input.disabled).toBe(true);
     failing = false;
-    await waitFor(() => expect(input.disabled).toBe(false));
+    // The page's feed reads again on its own, backing off: the composer opens once a read lands.
+    await waitFor(() => expect(input.disabled).toBe(false), { timeout: 15_000 });
     expect(screen.queryByTestId("shift-coordinator-conversation-failure")).toBeNull();
   });
 

@@ -50,6 +50,7 @@ import { z } from "zod";
 import { PLAN_WAITING_STATE } from "./plan";
 import { DELEGATE_SERVER_OWNED, delegateStateShape, type DelegateRecord } from "../delegates/delegate-list";
 import { defineWorkerDelegates, soleTaskDelegate, type TaskDelegates } from "../delegates/worker-delegates";
+import { DELEGATES_VIEW } from "../delegates/delegate-keys";
 import type { InferredWork } from "../coordinator/coordinator-keys";
 import { INFERRED_FORWARD_METADATA, messageHopStateShape, RECEIVED_FORWARD_STATE, turnForwardOf } from "../messages/hop";
 import { workerMessagesResources } from "../messages/message-log";
@@ -270,8 +271,11 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     /** The task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. A manager's. */
     actions: managerActions,
     // FIX-2623.
-    /** The task list as a session view, `listTasks_tasks`, for the flow's `views`. */
-    views: board.views,
+    /**
+     * The task list as a session view, `listTasks_tasks`, and the delegates as
+     * one, `delegates`, for the flow's `views`.
+     */
+    views: { ...board.views, [DELEGATES_VIEW]: delegates.view },
     /** The ledger, the chain records and the message log, for the flow's `resources`. */
     resources: { ...board.resources, ...workerMessagesResources },
     /** The session state the delegates, the board and worker messages keep, for `installation.session(...)`. */

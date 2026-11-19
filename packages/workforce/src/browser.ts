@@ -38,6 +38,8 @@ export type { InboxSuspensionDetail, InboxBoardTask, InboxView, InboxViewValue }
 export { boardTaskOf } from "./conversation-board/board-task";
 export type { BoardTask } from "./conversation-board/board-task";
 export { TURN_ACTIONS } from "./workers/turn-actions";
+export { delegatesViewRef } from "./delegates/delegates-view-ref";
+export type { DelegatesView } from "./delegates/worker-delegates";
 /**
  * The history summary resource every worker's answer declares (core's, at its default name): what a
  * screen reads with `useResource(historySummaryResource, { sessionId })` to draw the "earlier turns
