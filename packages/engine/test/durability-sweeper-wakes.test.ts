@@ -170,7 +170,8 @@ describe("a fired wake whose run is refused at its start", () => {
     // pass in the session clears it. A session whose every start is refused
     // never runs that pass, so without this the wake fires every 30 s forever.
     const stores = createInMemoryStores();
-    await stores.wakes!.owe(wake());
+    // Past its fence: no writer that owed it can still be landing.
+    await stores.wakes!.owe(wake({ landBy: Date.now() - 1 }));
     const host = hostEndingWith(stores, refusal);
     let fires = 0;
     await runTick(tickArgs(stores, async (w) => {
@@ -179,6 +180,28 @@ describe("a fired wake whose run is refused at its start", () => {
     }));
     await sleep(10);
     expect(fires).toBe(1);
+    expect(await stores.wakes!.get({ sessionId: "s1", entry: "dispatch" })).toBeNull();
+  });
+
+  it("is kept until its fence when refused inside it, then cleared by the fire past it", async () => {
+    // Why: a writer owes the wake before it writes its debt, and the fence is
+    // how long that write may take. Cleared at once, a debt written after the
+    // refused fire would be left with no wake, never paid.
+    const stores = createInMemoryStores();
+    // A fence past the sweep's own retry, so the refusal has to keep the wake to it.
+    const landBy = Date.now() + 200;
+    await stores.wakes!.owe(wake({ landBy }));
+    const host = hostEndingWith(stores, refusal);
+    await runTick({ ...tickArgs(stores, (w) => fireWakeThrough(host, w)) });
+    await sleep(10);
+    const kept = await stores.wakes!.get({ sessionId: "s1", entry: "dispatch" });
+    expect(kept).not.toBeNull();
+    expect(kept!.dueAt).toBeGreaterThanOrEqual(landBy);
+    // Past the fence, the fire is refused again, and the wake is cleared.
+    await sleep(250);
+    await stores.wakes!.move(kept!, kept!.version, Date.now() - 1);
+    await runTick(tickArgs(stores, (w) => fireWakeThrough(host, w)));
+    await sleep(10);
     expect(await stores.wakes!.get({ sessionId: "s1", entry: "dispatch" })).toBeNull();
   });
 

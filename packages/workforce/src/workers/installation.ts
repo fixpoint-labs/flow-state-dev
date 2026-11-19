@@ -48,7 +48,7 @@ import {
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
 import { taskChainSchema } from "../conversation-board/chain";
-import { settleFiredSession } from "../conversation-board/fired-session";
+import { settleRefusedSession } from "../conversation-board/refused-session";
 import { SESSION_BOARD_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
@@ -229,19 +229,23 @@ export interface RosterWorker {
  * names another flow, names something the installation no longer registers,
  * or runs on a flow kept for standard workers. The row and the session stay
  * for a fix. Its `code` tells the engine the refusal is for good, so the wake
- * that started the turn is cleared rather than fired again. A fired worker's
- * session settles what its board owes it, and lets its wake go, before this is
- * thrown (`../conversation-board/fired-session`).
+ * that started the turn is cleared rather than fired again. The session
+ * settles what its board owes it, and lets its wake go, before this is thrown
+ * (`../conversation-board/refused-session`).
  */
 export class WorkerTurnRefusedError extends Error {
   readonly code = "worker-turn-refused";
+  /** Whether the session's worker was fired: its row is gone from the roster. */
+  readonly fired: boolean;
 
   constructor(
     readonly workerId: string | undefined,
-    message: string
+    message: string,
+    options: { readonly fired?: boolean } = {}
   ) {
     super(message);
     this.name = "WorkerTurnRefusedError";
+    this.fired = options.fired === true;
   }
 }
 
@@ -847,6 +851,28 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     return collection;
   };
 
+  // FIX-2849.
+  /**
+   * {@link resolveWorker}, and a refused session is terminal: before the
+   * refusal is thrown, what the session's board owes it is settled and its
+   * wake let go, since its pass never runs again (`../conversation-board/refused-session`).
+   * When that can't be done in full, the turn fails with an error that is not
+   * the refusal, so the engine keeps the wake and the next turn tries again.
+   */
+  const resolveWorkerSettlingRefusals = async (ctx: WorkerTurnContext, flowKind: string): Promise<ResolvedWorker> => {
+    try {
+      return await resolveWorker(ctx, flowKind);
+    } catch (error) {
+      if (!(error instanceof WorkerTurnRefusedError) || !isBlockContext(ctx)) throw error;
+      const detail = error.fired ? "its worker was fired" : `its worker can't run there: ${error.message}`;
+      const unsettled = await settleRefusedSession(ctx, detail);
+      if (unsettled !== undefined) {
+        throw new Error(`${error.message} What this session is owed couldn't all be settled yet, so the next turn tries again: ${unsettled}`);
+      }
+      throw error;
+    }
+  };
+
   const resolveWorker = async (ctx: WorkerTurnContext, flowKind: string): Promise<ResolvedWorker> => {
     const workerId = (ctx.session.state as Record<string, unknown>)[WORKER_ID_STATE_KEY];
     if (typeof workerId !== "string" || workerId.length === 0) {
@@ -867,10 +893,9 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     const collection = workerCollection(ctx, "resolveWorker");
     const found = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
     if (found.found === "none") {
-      // A refused session is terminal (FIX-2849): what its board owes it is
-      // settled and its wake let go here, since its pass never runs again.
-      if (isBlockContext(ctx)) await settleFiredSession(ctx);
-      refuse(`Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`);
+      throw new WorkerTurnRefusedError(workerId, `Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`, {
+        fired: true
+      });
     }
     if (found.found === "unreadable") refuse(`Worker "${workerId}" can't run: ${found.problem}.`);
     const worker = found as Exclude<typeof found, { found: "none" } | { found: "unreadable" }>;
@@ -1017,7 +1042,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       );
       return { ...session, [SESSION_REQUEST_END_HOOK]: workerRequestEnd } as never;
     },
-    resolveWorker,
+    resolveWorker: resolveWorkerSettlingRefusals,
     standardWorker: (id) => standard.get(id),
     standardWorkers: () => [...standard.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     workerFlows,

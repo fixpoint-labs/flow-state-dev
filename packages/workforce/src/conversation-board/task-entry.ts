@@ -39,7 +39,7 @@
  *   task's ending stands. A thrown send, or any other refusal, leaves it owed
  *   for the conversation's next touch of its board. A conversation whose
  *   worker was fired accepts the send and then refuses to run it: the refused
- *   turn settles the notice undeliverable there (`./fired-session`), and this
+ *   turn settles the notice undeliverable there (`./refused-session`), and this
  *   session never hears of that refusal.
  * - **Its pieces**. A turn that files pieces on the task
  *   session's own board leaves its task running when it ends, with no lease

@@ -60,7 +60,9 @@ export function noteWakeOwed(store: WakeStore, dueAt: number): void {
  * A run refused at its start for good ({@link isTerminalStartRefusal}) clears
  * the wake it fired, at the version the fire read, and says so once: its
  * session will refuse every run, so its pass, the only thing that clears the
- * wake, never runs. A debt owed since the fire keeps its wake.
+ * wake, never runs. A debt owed since the fire keeps its wake. So does one
+ * still inside its fence (`landBy`): it fires once more, past the fence, and
+ * is cleared then, so a writer landing its debt late can't lose its wake.
  */
 // FIX-2849: the terminal-refusal clear.
 export async function fireWakeThrough(
@@ -83,7 +85,16 @@ export async function fireWakeThrough(
     const store = host.stores.wakes;
     if (!isTerminalStartRefusal(error) || store === undefined) return;
     try {
-      // `move` keeps the version, so this is the wake as the fire left it.
+      // Inside its fence, a writer that owed this wake may still be landing
+      // its debt: the wake is kept until the fence, as a pass's settle keeps
+      // it, and the fire past it, refused again, clears it.
+      const now = Date.now();
+      if (now < wake.landBy) {
+        const kept = await store.get(wake);
+        // `move` keeps the version, so this is the wake as the fire left it.
+        if (kept !== null && kept.version === wake.version && kept.dueAt < wake.landBy) await store.move(wake, wake.version, wake.landBy);
+        return;
+      }
       if (!(await store.clear(wake, wake.version))) return;
       logRuntimeEvent(host.logger, "warn", "[flow-state] a wake's run was refused for good, so the wake was cleared", {
         sessionId: wake.sessionId,

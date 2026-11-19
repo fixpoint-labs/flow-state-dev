@@ -28,7 +28,10 @@ const file = async (host: BoardHost, userId: string, conv: string, input: Record
 
 describe("a fired worker's conversation, owed a notice", () => {
   it("fires its wake at most once, then the wake is cleared, and leaves no request in_progress", async () => {
-    const host = bootBoardHost({ durable: true });
+    // A short lease, so a wake's fence (how long a writer may take to land its
+    // debt) has passed by the time the wake falls due, as it has on a real
+    // host once a debt is old. Inside the fence the wake fires once more.
+    const host = bootBoardHost({ durable: true, staleSweep: { intervalMs: 500, thresholdMs: 1_500 } });
     try {
       await host.state.getRouter();
       const hired = await host.hire("alice", {
