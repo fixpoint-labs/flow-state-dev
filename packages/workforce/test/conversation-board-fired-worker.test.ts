@@ -58,9 +58,9 @@ describe("a fired worker's conversation, owed a notice", () => {
       expect(requests.filter((request) => request.status === "in_progress")).toEqual([]);
       expect(await wakeOf()).toBeNull();
       // The task ended after the firing: its notice is settled, not left owed for a pass that never runs.
-      const row = await host.row("alice", filing, filed.taskId!);
-      expect(row?.metadata?.["noticeOwed:1:completed"]).toBeNull();
-      expect(row?.metadata?.["noticeUndeliverable:1:completed"]).toMatchObject({ detail: "its worker was fired" });
+      const task = await host.row("alice", filing, filed.taskId!);
+      expect(task?.metadata?.["noticeOwed:1:completed"]).toBeNull();
+      expect(task?.metadata?.["noticeUndeliverable:1:completed"]).toMatchObject({ detail: "its worker was fired" });
     } finally {
       await host.dispose();
     }

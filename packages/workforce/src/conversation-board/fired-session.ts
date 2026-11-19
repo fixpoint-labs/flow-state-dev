@@ -57,17 +57,17 @@ async function settleOwedNotices(ctx: BlockContext): Promise<void> {
   const ledger = await conversationLedgerAt(ctx, partition);
   if (ledger === undefined) return;
   const { onUndeliverable } = conversationDelivery(CONVERSATION_LEDGER_ID);
-  const rows = ledger.list();
-  for (const row of rows) {
-    for (const notice of owedNotices(row, ledger.collectionId, rows)) {
-      await ledger.patchMetadata(row.id, { ...clearNotice(notice), ...undeliverableRecord(notice, FIRED_DETAIL, Date.now()) });
-      await onUndeliverable?.(ctx, row, notice, FIRED_DETAIL);
+  const tasks = ledger.list();
+  for (const task of tasks) {
+    for (const notice of owedNotices(task, ledger.collectionId, tasks)) {
+      await ledger.patchMetadata(task.id, { ...clearNotice(notice), ...undeliverableRecord(notice, FIRED_DETAIL, Date.now()) });
+      await onUndeliverable?.(ctx, task, notice, FIRED_DETAIL);
       // The conversation's notice entry reports a final failure; it will never
       // run, so the report goes from here, for this session's own board.
       if (notice.ending === "errored") {
         await sendTaskReport(
           ctx,
-          row,
+          task,
           { attempt: notice.attempt, error: notice.error ?? "" },
           { boardId: CONVERSATION_LEDGER_ID, partition },
           "conversation-board-worker-fired"
