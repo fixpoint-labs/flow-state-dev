@@ -15,9 +15,10 @@
  * again on its own, and `refresh()` reads again now.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ClientHttpError, type ViewCallOptions, type ViewInputOf, type ViewRef, type ViewValueOf } from "@flow-state-dev/client";
+import type { ViewCallOptions, ViewInputOf, ViewRef, ViewValueOf } from "@flow-state-dev/client";
 import { viewWatchIdentity, watchView, type ViewWatchClient, type ViewWatchStop } from "@flow-state-dev/client/internal";
 import { useClient } from "../internal/useClient";
+import { failureOf, type ViewReadFailure } from "../internal/readFailure";
 
 /** Options for {@link useView}. */
 export type UseViewOptions = ViewCallOptions & {
@@ -29,9 +30,8 @@ export type UseViewOptions = ViewCallOptions & {
   client?: ViewWatchClient;
 };
 
-// FIX-2774.
-/** Why a view's last read failed: the server's reason, and its HTTP status when it answered one. */
-export type ViewReadFailure = { message: string; httpStatus?: number };
+// FIX-2774. Defined beside the rule that writes it, which `useResource` shares.
+export type { ViewReadFailure };
 
 /** What {@link useView} returns. */
 export type UseViewResult<TValue> = {
@@ -45,16 +45,6 @@ export type UseViewResult<TValue> = {
   /** Read the view again now (a Retry, a refresh key), for every screen sharing the read. Nothing while disabled. */
   refresh(): void;
 };
-
-/** What a failed read says: the server's own words from its answer, else the error's. */
-function failureOf(error: unknown): ViewReadFailure {
-  if (error instanceof ClientHttpError) {
-    const body = error.body as { error?: unknown; message?: unknown } | undefined;
-    const said = typeof body?.error === "string" ? body.error : typeof body?.message === "string" ? body.message : undefined;
-    return { message: said ?? error.message, httpStatus: error.status };
-  }
-  return { message: error instanceof Error ? error.message : String(error) };
-}
 
 /**
  * What one watch heard. `watch` is that watch's own token, made when it
