@@ -260,7 +260,8 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 /**
  * Reads made under each Shift Manager credential: its provider builds its own
- * client from a connection, so they are counted at the page's `fetch`.
+ * client from a connection, so they are counted at the page's `fetch`. A
+ * view's read is a POST to its `/views/` path, so it counts as a read too.
  */
 const pageReads = new Map<string, Read[]>();
 const realFetch = globalThis.fetch;
@@ -268,7 +269,7 @@ globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input instanceof Request ? input.url : input);
   const auth = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined)).get("authorization") ?? "";
   const reads = pageReads.get(auth.replace(/^Bearer /, ""));
-  if (reads !== undefined && ((init?.method ?? "GET") === "GET" || url.includes("/reads/")) && !url.includes("/stream")) reads.push({ at: Date.now(), url: decodeURIComponent(url) });
+  if (reads !== undefined && ((init?.method ?? "GET") === "GET" || url.includes("/reads/") || url.includes("/views/")) && !url.includes("/stream")) reads.push({ at: Date.now(), url: decodeURIComponent(url) });
   return realFetch(input, init);
 };
 let mounts = 0;
@@ -501,7 +502,7 @@ async function taskScreen(on: Host, writer: Client) {
   }
   return {
     shown,
-    // One read of the conversation's board: the task screen's view of it, or the snapshot's (which reads only on a notice).
+    // One read of the conversation's board: the task screen's view of it (a POST), or the snapshot's (which reads only on a notice).
     boardReads: () => reads.filter((r) => r.url.includes(`/resources/tasks`) || r.url.includes("/views/listTasks_tasks")),
     all: reads,
     async dispatch(): Promise<number> {
