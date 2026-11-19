@@ -13,7 +13,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
-import { createFlowState, createInProcessFetch, inMemoryStores, resolveUserStorageKey, type FlowState } from "@flow-state-dev/engine";
+import { createFlowState, createInProcessFetch, inMemoryStores, PrincipalResolutionError, resolveUserStorageKey, type FlowState } from "@flow-state-dev/engine";
 import { defineProjectBlocks, MCP_CREDENTIALS_PREFIX, PROJECTS_FLOW } from "../src/index";
 import { CONNECTOR_KEYS_PATH, type ConnectorKeyStatus } from "../src/browser";
 
@@ -44,6 +44,8 @@ async function host(servers: readonly string[] | undefined) {
             const bearer = context.request?.headers.get("authorization")?.replace(/^Bearer /, "");
             // A sign-in that breaks, rather than refusing: not a 401.
             if (bearer === "token-broken") throw new Error("the sign-in service is down");
+            // The engine's own error for a host it can't sign anyone in on: a 500, not a refusal.
+            if (bearer === "token-misconfigured") throw new PrincipalResolutionError("the flow has no user to sign in", { status: 500 });
             const user = bearer === undefined ? undefined : BEARERS[bearer];
             return user === undefined ? null : { userId: user, orgId: ORG };
           }
@@ -59,7 +61,7 @@ async function host(servers: readonly string[] | undefined) {
   const door = async (
     method: "GET" | "POST" | "DELETE",
     server?: string,
-    options: { as?: "alice" | "bob" | "broken" | null; body?: unknown } = {}
+    options: { as?: "alice" | "bob" | "broken" | "misconfigured" | null; body?: unknown } = {}
   ): Promise<{ status: number; body: any }> => {
     const as = options.as === undefined ? "alice" : options.as;
     const response = await inProcess(`http://host${CONNECTOR_KEYS_PATH}${server === undefined ? "" : `/${server}`}`, {
@@ -141,6 +143,14 @@ describe("a user's connector keys, through the blocks' route", () => {
     const broken = await h.door("POST", "linear", { as: "broken", body: { value: SENTINEL } }).catch((error: unknown) => error);
     // Whatever the host makes of a thrown handler, it is not the route's 401 refusal.
     expect((broken as { status?: number }).status).not.toBe(401);
+    expect(await h.stored("alice", "linear")).toBeUndefined();
+  });
+
+  it("lets the engine's own 500 through as a server error, not a refusal, and writes nothing", async () => {
+    const h = await host(["linear"]);
+    const misconfigured = await h.door("POST", "linear", { as: "misconfigured", body: { value: SENTINEL } }).catch((error: unknown) => error);
+    // Only a 4xx sign-in is the caller being refused; a server-side failure stays one.
+    expect((misconfigured as { body?: { error?: string } }).body?.error).not.toBe("unauthorized");
     expect(await h.stored("alice", "linear")).toBeUndefined();
   });
 

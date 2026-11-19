@@ -229,12 +229,14 @@ export async function connectorKeyStatuses(
  * for any other failure, which the route lets through as a server error. The
  * engine's `PrincipalResolutionError` (its root export, outside `engine/host`,
  * the one engine entry workforce reads), told by the name its constructor
- * sets and its HTTP-shaped `status`.
+ * sets and a 4xx HTTP-shaped `status`.
  */
 function refusalOf(error: unknown): { status: number; message: string } | undefined {
   if (!(error instanceof Error) || error.name !== "PrincipalResolutionError") return undefined;
   const status = (error as { status?: unknown }).status;
-  return typeof status === "number" ? { status, message: error.message } : undefined;
+  // Only a 4xx is the caller refused. The engine also raises this error as a
+  // 500 for a host it can't sign anyone in on, and that stays a server error.
+  return typeof status === "number" && status >= 400 && status < 500 ? { status, message: error.message } : undefined;
 }
 
 /** The record a connector's key is stored under. */
