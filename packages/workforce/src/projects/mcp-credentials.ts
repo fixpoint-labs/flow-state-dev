@@ -40,7 +40,7 @@
  */
 
 import { defineCapability, defineResourceCollection } from "@flow-state-dev/core";
-import { PrincipalResolutionError, resolveSharedUserCellKey } from "@flow-state-dev/engine/host";
+import { resolveSharedUserCellKey } from "@flow-state-dev/engine/host";
 import type { InboundTransportAdapter, InboundTransportHost } from "@flow-state-dev/engine/host";
 import { z } from "zod";
 import { CONNECTOR_KEYS_PATH, PROJECTS_FLOW } from "./project-keys";
@@ -141,9 +141,8 @@ export function connectorKeysAdapter(servers: readonly string[]): InboundTranspo
           const principal = await host.resolvePrincipal({ source: SOURCE, request: req, envelope: RESOLVE_AS });
           return { cell: resolveSharedUserCellKey(principal.userId, principal.orgId, PROJECTS_FLOW) };
         } catch (error) {
-          if (error instanceof PrincipalResolutionError) {
-            return json(error.status, { error: "unauthorized", message: error.message });
-          }
+          const refused = refusalOf(error);
+          if (refused !== undefined) return json(refused.status, { error: "unauthorized", message: refused.message });
           throw error;
         }
       };
@@ -223,6 +222,19 @@ export async function connectorKeyStatuses(
       return { name, setAt: typeof setAt === "string" ? setAt : null };
     })
   );
+}
+
+/**
+ * The status and words of a sign-in that refused its caller, or `undefined`
+ * for any other failure, which the route lets through as a server error. The
+ * engine's `PrincipalResolutionError` (its root export, outside `engine/host`,
+ * the one engine entry workforce reads), told by the name its constructor
+ * sets and its HTTP-shaped `status`.
+ */
+function refusalOf(error: unknown): { status: number; message: string } | undefined {
+  if (!(error instanceof Error) || error.name !== "PrincipalResolutionError") return undefined;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" ? { status, message: error.message } : undefined;
 }
 
 /** The record a connector's key is stored under. */

@@ -42,6 +42,8 @@ async function host(servers: readonly string[] | undefined) {
         authentication: {
           resolvePrincipal: (context: { request?: Request }) => {
             const bearer = context.request?.headers.get("authorization")?.replace(/^Bearer /, "");
+            // A sign-in that breaks, rather than refusing: not a 401.
+            if (bearer === "token-broken") throw new Error("the sign-in service is down");
             const user = bearer === undefined ? undefined : BEARERS[bearer];
             return user === undefined ? null : { userId: user, orgId: ORG };
           }
@@ -57,7 +59,7 @@ async function host(servers: readonly string[] | undefined) {
   const door = async (
     method: "GET" | "POST" | "DELETE",
     server?: string,
-    options: { as?: "alice" | "bob" | null; body?: unknown } = {}
+    options: { as?: "alice" | "bob" | "broken" | null; body?: unknown } = {}
   ): Promise<{ status: number; body: any }> => {
     const as = options.as === undefined ? "alice" : options.as;
     const response = await inProcess(`http://host${CONNECTOR_KEYS_PATH}${server === undefined ? "" : `/${server}`}`, {
@@ -131,6 +133,14 @@ describe("a user's connector keys, through the blocks' route", () => {
     expect((await h.door("DELETE", "linear", { as: null })).status).toBe(401);
     // A userId in the body is not a sign-in.
     expect((await h.door("POST", "linear", { as: null, body: { value: SENTINEL, userId: "alice" } })).status).toBe(401);
+    expect(await h.stored("alice", "linear")).toBeUndefined();
+  });
+
+  it("answers a sign-in that breaks as a server error, not a refusal, and writes nothing", async () => {
+    const h = await host(["linear"]);
+    const broken = await h.door("POST", "linear", { as: "broken", body: { value: SENTINEL } }).catch((error: unknown) => error);
+    // Whatever the host makes of a thrown handler, it is not the route's 401 refusal.
+    expect((broken as { status?: number }).status).not.toBe(401);
     expect(await h.stored("alice", "linear")).toBeUndefined();
   });
 

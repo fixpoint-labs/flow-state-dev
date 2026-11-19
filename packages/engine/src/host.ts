@@ -189,7 +189,6 @@ export {
   type ParsedHmacSignature,
   planDeferWait,
   planQueueWait,
-  PrincipalResolutionError,
   type PrincipalResolver,
   type QueueWaitStep,
   resolveInProcessPrincipal,
