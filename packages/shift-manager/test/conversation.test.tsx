@@ -204,6 +204,27 @@ describe("what a view of its own draws", () => {
     expect(screen.queryByTestId("rev-load-earlier")).toBeNull();
   });
 
+  it("marks where the feed crosses into a new New York day, between that day's last entry and the next day's first", async () => {
+    const at = (id: string, text: string, ts: number) => ({ ...item(id, text), ts });
+    read.mockResolvedValue({
+      items: [
+        // 18:00 and 21:00 New York on the 18th: the second is already the 19th in UTC, still the same day here.
+        at("a", "Evening", Date.UTC(2026, 10, 18, 23, 0)),
+        at("b", "Late", Date.UTC(2026, 10, 19, 2, 0)),
+        // 08:00 New York on the 19th: the morning after.
+        at("c", "Morning", Date.UTC(2026, 10, 19, 13, 0)),
+      ],
+      truncated: false,
+    });
+    drawn([session(s1)]);
+    await screen.findByTestId("rev-items");
+    const markers = screen.getAllByTestId("rev-day-marker");
+    expect(markers.map((m) => m.textContent)).toEqual(["THURSDAY, NOVEMBER 19, 2026"]);
+    // It sits between the last entry of the 18th and the first of the 19th.
+    const order = [...screen.getByTestId("rev-items").children].map((li) => li.getAttribute("data-item-id") ?? li.getAttribute("data-testid"));
+    expect(order).toEqual(["a", "b", "rev-day-marker", "c"]);
+  });
+
   it("keeps its look hooks the same whatever its test id, so one rule styles every conversation", () => {
     const { container } = drawn([]);
     expect(container.querySelector('[data-look="conversation-feed"]')).toBeTruthy();

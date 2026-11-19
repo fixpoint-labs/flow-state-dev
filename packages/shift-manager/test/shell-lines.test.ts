@@ -4,7 +4,7 @@
  * and nothing else.
  */
 import { describe, expect, it } from "vitest";
-import { clockTime, initialsOf } from "../src/lib/shell";
+import { clockTime, feedDay, feedDayLabel, initialsOf } from "../src/lib/shell";
 import { isShiftCoordinatorWorking, startShiftCoordinatorWork } from "../src/lib/working";
 
 describe("the footer's initials (v2:110)", () => {
@@ -27,6 +27,18 @@ describe("a message's time (v2:135)", () => {
   it("is 24-hour HH:MM", () => {
     expect(clockTime(new Date(2026, 9, 2, 9, 5).getTime())).toBe("09:05");
     expect(clockTime(new Date(2026, 9, 2, 22, 41).getTime())).toBe("22:41");
+  });
+});
+
+describe("a feed's day (America/New_York)", () => {
+  it("turns over at midnight in New York, not UTC or the page's zone", () => {
+    // 23:59 and 00:01 New York (EST) either side of the 19th's midnight.
+    expect(feedDay(Date.UTC(2026, 10, 19, 4, 59))).toBe("2026-11-18");
+    expect(feedDay(Date.UTC(2026, 10, 19, 5, 1))).toBe("2026-11-19");
+  });
+
+  it("names the day in full", () => {
+    expect(feedDayLabel(Date.UTC(2026, 10, 19, 13, 0))).toBe("Thursday, November 19, 2026");
   });
 });
 
