@@ -2433,24 +2433,46 @@ async function runActionAttempt<
     if (endFailure !== undefined) {
       logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", { requestId, status: stopAccepted ? "aborted" : "failed", error: endFailure.message });
     }
-    if (stopAccepted) {
-      await options.stores.request.flushItems(requestId);
-      terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "aborted" }, {
-        abortedAt: Date.now(),
-        items: itemsToPersist(),
-        heartbeatsUntilFinalized: false
-      });
-      ctx.requestRuntime.status = "aborted";
-      await response.emitRequestStatus("aborted");
-      throw startupError;
-    }
     // FIX-2849: a refused start is terminal. A fresh request ends `failed`:
     // left `in_progress`, the stale sweep would mark it interrupted and bring
     // its session's wakes forward, starting a session whose every turn is
     // refused again on each one. A replay continuation is left for the stale
     // sweep to re-drive, as a failure that may pass deserves, unless its
     // session refuses every run: re-driven, it would be refused again, forever.
-    if (!isReplayMode || isTerminalStartRefusal(startupError)) await settleFailedBeforeRun(startupError);
+    const ending: "aborted" | "failed" | undefined = stopAccepted
+      ? "aborted"
+      : !isReplayMode || isTerminalStartRefusal(startupError)
+        ? "failed"
+        : undefined;
+    if (ending !== undefined) {
+      // Every write the run queued has landed before its terminal record, as
+      // on the main path, so nothing is still pending once a host that
+      // drains its runs closes the stores.
+      await options.stores.request.flushItems(requestId);
+      await options.stores.request.flushEvents(requestId);
+      await flushCheckpoints();
+      await flushTraces();
+      if (ending === "aborted") {
+        terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "aborted" }, {
+          abortedAt: Date.now(),
+          items: itemsToPersist(),
+          heartbeatsUntilFinalized: false
+        });
+        ctx.requestRuntime.status = "aborted";
+        await response.emitRequestStatus("aborted");
+      } else {
+        await settleFailedBeforeRun(startupError);
+      }
+      // A finished request's `onFinished`, as every ending runs it, then what
+      // it queued, before the run ends.
+      await runObserverSafely(options.flow.request?.onFinished, {
+        requestId,
+        actionName: options.actionName,
+        status: ending
+      }, ctx, { hook: "request.onFinished", internalSeams, logger });
+      await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+      await drainRequestSideChainPool(ctx);
+    }
     throw startupError;
   }
 

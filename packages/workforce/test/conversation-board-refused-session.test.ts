@@ -166,6 +166,115 @@ describe("a refused session's board debts", () => {
   });
 });
 
+describe("a refused session's other board debts", () => {
+  /**
+   * A fired coordinator's conversation, with `task` written onto its own
+   * board as a crash would leave it, and one refused turn of it. The task as
+   * the board then holds it, and the turn's error.
+   */
+  async function refusedOwing(host: BoardHost, shape: (template: Task) => Task, turns = 1) {
+    const hired = await host.hire("alice", {
+      id: "my.desk",
+      flow: "coordinator",
+      settings: { delegates: ["eng.tasker"], routing: "best-fit", fallback: "eng.tasker" }
+    });
+    expect(hired.error, messageOf(hired.error)).toBeUndefined();
+    const conv = await host.conversation("alice", "my.desk");
+    const filing = await host.filingOf("alice", conv);
+    await file(host, "alice", conv, { goal: "a first one", assignee: "eng.tasker" });
+    await host.settled();
+    const [template] = await host.rows("alice");
+    expect((await host.fire("alice", "my.desk")).error).toBeUndefined();
+    const task = shape(template!);
+    await host.writeRow("alice", filing, task);
+    const errors: string[] = [];
+    for (let i = 0; i < turns; i += 1) {
+      try {
+        const turn = await host.act("alice", conv, "listTasks_tasks", {});
+        errors.push(messageOf(turn.error) ?? "");
+      } catch (error) {
+        errors.push((error as Error).message);
+      }
+      await host.settled();
+    }
+    return { task: await host.row("alice", filing, task.id), errors };
+  }
+
+  it("pay a cancel owed: the board's own repair runs, not only the notice scan", async () => {
+    // Why: the pass that would cancel it never runs again. Left owed, the
+    // task stays open, and the wake that was its only way out is cleared.
+    const host = bootBoardHost();
+    try {
+      // A second refused turn finds nothing left owed.
+      const { task, errors } = await refusedOwing(
+        host,
+        // A cancel is owed only on a row a request waited on (its wait slot).
+        (template) =>
+          ({
+            ...template,
+            id: "task_cancel_owed",
+            goal: "stopped wait",
+            status: "pending",
+            cancelOwed: true,
+            wait: { gateId: "gate_stopped", requestId: "req_stopped", sessionId: template.filer?.sessionId ?? "s", deadline: Date.now() + 60_000 },
+            metadata: {}
+          }) as unknown as Task,
+        2
+      );
+      expect(task?.status).toBe("cancelled");
+      expect(task?.cancelOwed ?? false).toBe(false);
+      // The last turn is the refusal itself: nothing is left owed.
+      expect(errors.at(-1)).toContain('Worker "my.desk" was fired');
+      expect(errors.at(-1)).not.toContain("still owed");
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("keep no wake for a claimed task's lease end: its ending owes a wake of its own", async () => {
+    // Why: a lease end held the wake would start one refused request each
+    // lease, for as long as the task runs. The task's ending owes its notice
+    // and a fresh wake, and is settled then.
+    const host = bootBoardHost();
+    try {
+      const { task, errors } = await refusedOwing(host, (template) => ({
+        ...template,
+        id: "task_still_running",
+        goal: "still running",
+        status: "in_progress",
+        leaseUntil: Date.now() + 60_000,
+        metadata: {}
+      }) as Task);
+      expect(task?.status).toBe("in_progress");
+      expect(errors[0]).toContain('Worker "my.desk" was fired');
+      expect(errors[0]).not.toContain("still owed");
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("keep the wake while a debt can't be paid yet: the turn fails as a failure that may pass", async () => {
+    // A resume owed to a gate that isn't there yet (the waiting turn hasn't
+    // parked) can't be paid now, so the wake must stay for the next try.
+    const host = bootBoardHost();
+    try {
+      const { task, errors } = await refusedOwing(host, (template) => ({
+        ...template,
+        id: "task_resume_owed",
+        goal: "waited on",
+        status: "completed",
+        resumeOwed: true,
+        wait: { gateId: "gate_not_parked_yet", requestId: "req_waiting", sessionId: template.filer?.sessionId ?? "s", deadline: Date.now() + 60_000 },
+        metadata: {}
+      }) as unknown as Task);
+      expect(task?.resumeOwed).toBe(true);
+      expect(errors[0]).toContain('still owed: task "task_resume_owed"');
+    } finally {
+      await host.dispose();
+    }
+  });
+});
+
 /** An Error Reporter flow whose intake entry is missing: every report is refused, and none is taken. */
 function refusingIntake(): FlowInstance {
   const flow = defineFlow({ kind: ERROR_REPORTER_INTAKE_FLOW, actions: {}, internal: { actions: {} } } as never);

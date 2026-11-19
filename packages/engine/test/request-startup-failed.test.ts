@@ -66,6 +66,49 @@ describe("a request whose start fails", () => {
 
     expect((await stores.request.list()).map((record) => record.status)).toEqual(["aborted"]);
   });
+
+  it("flushes its traces and runs onFinished with its ending, as every finished request does", async () => {
+    // Why: `onFinished` is promised for every finished request, and a host
+    // that drains its runs closes the stores once a run ends, so a write the
+    // run left queued then is cut off.
+    for (const stop of [false, true]) {
+      const stores = createInMemoryStores();
+      const flushed: string[] = [];
+      const flush = stores.traces.flush.bind(stores.traces);
+      stores.traces.flush = async (id: string) => {
+        flushed.push(id);
+        return flush(id);
+      };
+      const finished: string[] = [];
+      const start = handler({
+        name: "start",
+        inputSchema: z.any(),
+        execute: async (_input, ctx) => {
+          if (stop) await recordRequestStop(stores.request, (await stores.request.get(ctx.request.identity.id))!);
+          throw new Error("this turn can't run");
+        }
+      });
+      const onFinished = handler({
+        name: "finished",
+        inputSchema: z.object({ status: z.string() }).passthrough(),
+        execute: async (input) => {
+          finished.push(input.status);
+          return {};
+        }
+      });
+      const flow = defineFlow({
+        kind: "startup-finished",
+        request: { onStarted: start, onFinished },
+        actions: { run: { inputSchema: z.object({}), block: handler({ name: "noop", inputSchema: z.any(), execute: async () => ({}) }) } }
+      })({ id: "startup-finished" });
+
+      await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", sessionId: "s1", stores, runtimeConfig: {} }).catch(() => undefined);
+
+      const [record] = await stores.request.list();
+      expect(finished).toEqual([stop ? "aborted" : "failed"]);
+      expect(flushed).toContain(record!.id);
+    }
+  });
 });
 
 describe("a resumed request whose start fails", () => {

@@ -49,6 +49,9 @@ import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
 import { taskChainSchema } from "../conversation-board/chain";
 import { settleRefusedSession } from "../conversation-board/refused-session";
+import { payMessageDebts } from "../messages/delivery";
+import { payReplyDebts } from "../messages/owed-replies";
+import { recheckRecipient } from "../messages/send-message";
 import { SESSION_BOARD_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
@@ -865,7 +868,14 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     } catch (error) {
       if (!(error instanceof WorkerTurnRefusedError) || !isBlockContext(ctx)) throw error;
       const detail = error.fired ? "its worker was fired" : `its worker can't run there: ${error.message}`;
-      const unsettled = await settleRefusedSession(ctx, detail);
+      // The session's message debts, as its pass pays them (`../conversation-board/session-board`).
+      const payMessages = async (inner: BlockContext) => {
+        const sends = await payMessageDebts(inner, (at, message) => recheckRecipient(at, installation, message));
+        const replies = await payReplyDebts(inner, installation, flowKind);
+        const due = [sends, replies].filter((at): at is number => at !== undefined);
+        return due.length === 0 ? undefined : Math.min(...due);
+      };
+      const unsettled = await settleRefusedSession(ctx, detail, payMessages);
       if (unsettled !== undefined) {
         throw new Error(`${error.message} What this session is owed couldn't all be settled yet, so the next turn tries again: ${unsettled}`);
       }
