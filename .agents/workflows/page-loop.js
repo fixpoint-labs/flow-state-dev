@@ -472,7 +472,7 @@ const ENTRY = `SITEMAP ENTRY ${A.page} (the page plan):\n${plan.entry}`
 // in each record, `<row> → <id>`). The script can't read files, so passes 1 and 3 are told where
 // the rows are; without this a Reference page is written from scratch and the rows are lost.
 const INCOMING = plan.type === 'reference'
-  ? `\n\nOther pages' depth passes moved rows to ${A.page}. List them with \`grep -rhE -- '→ ${A.page}( \\(corrected by pass 5\\))?$' docs/contributing/docs-revamp/pages --include=*.record.md\`. Each row is a claim: check it against the code, carry every true one, and name in the fact sheet each one you drop and why.`
+  ? `\n\nOther pages' depth passes moved rows to ${A.page}. List them with \`grep -rhE --include=*.record.md -e '→ ${A.page}( \\(corrected by pass 5\\))?$' docs/contributing/docs-revamp/pages\`. Each row is a claim: check it against the code, carry every true one, and name in the fact sheet each one you drop and why.`
   : ''
 
 // --- Passes 1 to 3 ------------------------------------------------------------------------------
