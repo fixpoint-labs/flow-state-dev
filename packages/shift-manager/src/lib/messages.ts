@@ -6,7 +6,7 @@
  * The screen reads the newest page and asks for older pages as it scrolls.
  * A notice that names messages merges those messages in.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useResource } from "@flow-state-dev/react";
 import { WORKER_MESSAGES_PATTERN, workerMessageResourceStateSchema, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
@@ -88,12 +88,15 @@ export function useMessages(readAt: number): {
     readAtSeen.current = readAt;
     log.refresh();
   }, [readAt, log.refresh]);
-  const rows =
-    log.value === null
-      ? log.failure?.httpStatus === 404
-        ? null
-        : undefined
-      : toMessages(log.value.map((entry) => ({ clientData: entry.value })));
+  const rows = useMemo(
+    () =>
+      log.value === null
+        ? log.failure?.httpStatus === 404
+          ? null
+          : undefined
+        : toMessages(log.value.map((entry) => ({ clientData: entry.value }))),
+    [log.value, log.failure]
+  );
   return {
     rows,
     failure: rows === undefined ? log.failure : undefined,

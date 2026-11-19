@@ -162,6 +162,8 @@ async function withNamedEntries<TValue>(
       : merged.findIndex((entry) => entry.storageKey > storageKey);
     merged.splice(at === -1 ? merged.length : at, 0, added);
   }
+  // An update can change `at`. Newest order is the whole list, not only the new keys.
+  if (newest) merged.sort((left, right) => compareNewest(placeOf(left), placeOf(right)));
   return merged;
 }
 
@@ -368,17 +370,19 @@ export function useResource<TDef extends ScopeResourceDef>(
   // read is out: a notice that names entries re-reads just those over them (FIX-2625).
   const how = useMemo<CollectionRead>(() => ({ all, newest, topicPrefix }), [all, newest, topicPrefix]);
   // How many newest pages the window holds. A different read starts again at one page.
-  const paging = useRef({ how, pages: 1 });
-  if (paging.current.how !== how) paging.current = { how, pages: 1 };
+  const paging = useRef({ how, handle, pages: 1 });
+  const nextCursor = useRef<string | undefined>(undefined);
+  if (paging.current.how !== how || paging.current.handle !== handle) {
+    paging.current = { how, handle, pages: 1 };
+    nextCursor.current = undefined;
+  }
   const [hasOlder, setHasOlder] = useState(false);
-  const [olderFor, setOlderFor] = useState(how);
-  if (olderFor !== how) {
-    setOlderFor(how);
+  const [olderFor, setOlderFor] = useState({ how, handle });
+  if (olderFor.how !== how || olderFor.handle !== handle) {
+    setOlderFor({ how, handle });
     setHasOlder(false);
   }
   const loadingOlder = useRef(false);
-  /** The cursor of the next older page, kept so a scroll fetches that page alone. */
-  const nextCursor = useRef<string | undefined>(undefined);
   const appendOlder = useRef(false);
   const held = useRef<{ handle: unknown; how: CollectionRead; entries: ScopeEntry<TValue>[] } | undefined>(undefined);
   const reading = useRef(0);
@@ -396,11 +400,12 @@ export function useResource<TDef extends ScopeResourceDef>(
       if (!("list" in handle)) return (await handle.read()).value;
       const last = held.current?.handle === handle && held.current.how === how && reading.current === 0 ? held.current.entries : undefined;
       reading.current += 1;
+      let appending = false;
       try {
         const placed = last !== undefined ? await withNamedEntries(handle, last, notice, how) : undefined;
         // A resync under `all` diffs the manifest against what is already held. The first read has nothing to diff, so it lists.
         // A scroll appends the next older page. A gap re-reads the pages already asked for.
-        const appending = newest && placed === undefined && appendOlder.current && notice === null && last !== undefined && nextCursor.current !== undefined;
+        appending = newest && placed === undefined && appendOlder.current && notice === null && last !== undefined && nextCursor.current !== undefined;
         appendOlder.current = false;
         const newestWindow = !newest || placed !== undefined
           ? undefined
@@ -413,11 +418,15 @@ export function useResource<TDef extends ScopeResourceDef>(
                   ...(topicPrefix === undefined ? {} : { topicPrefix })
                 });
                 nextCursor.current = page.nextCursor;
-                return { entries: [...last, ...page.items], hasOlder: page.nextCursor !== undefined };
+                paging.current = { how: paging.current.how, handle: paging.current.handle, pages: paging.current.pages + 1 };
+                const baseline = last ?? [];
+                return { entries: [...baseline, ...page.items], hasOlder: page.nextCursor !== undefined };
               })()
             : await (async () => {
-                const opened = await readNewestWindow(handle, paging.current.pages, topicPrefix);
+                const cover = last === undefined ? paging.current.pages : Math.max(paging.current.pages, Math.ceil((last ?? []).length / ENTRY_PAGE));
+                const opened = await readNewestWindow(handle, cover, topicPrefix);
                 nextCursor.current = opened.nextCursor;
+                paging.current = { how: paging.current.how, handle: paging.current.handle, pages: cover };
                 return opened;
               })();
         const entries =
@@ -442,7 +451,8 @@ export function useResource<TDef extends ScopeResourceDef>(
         throw error;
       } finally {
         reading.current -= 1;
-        loadingOlder.current = false;
+        // Only the scroll's own read clears the guard. Another notice must not open a second scroll.
+        if (appending) loadingOlder.current = false;
       }
     },
     { driver, enabled: handle !== undefined || sessionId !== undefined }
@@ -453,7 +463,6 @@ export function useResource<TDef extends ScopeResourceDef>(
     if (!hasOlder || loadingOlder.current) return;
     loadingOlder.current = true;
     appendOlder.current = true;
-    paging.current = { how: paging.current.how, pages: paging.current.pages + 1 };
     refresh();
   }, [hasOlder, refresh]);
   const written = useCallback(

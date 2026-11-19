@@ -106,11 +106,6 @@ const ENTRY_LIST_MAX_LIMIT = 200;
 /** A stored entry the list pages, before the client projection. */
 type ListedEntry = { storageKey: string; state: JsonObject; version: number };
 
-/** The shared newest order, read off a stored entry. */
-function placeOf(entry: ListedEntry): { storageKey: string; at: number | null } {
-  return { storageKey: entry.storageKey, at: sentAtOf(entry.state) };
-}
-
 /** The cursor of a newest-first page: the last entry's `at` (null when it has none) and its storage key. */
 type NewestMark = { at: number | null; storageKey: string };
 
@@ -131,12 +126,13 @@ function parseNewestCursor(cursor: string): NewestMark | undefined {
 /**
  * A version that moves when a projected entry's state moves. A projected
  * collection has no stored version, so the manifest cannot tell a change from an
- * unchanged row without one derived from the state. It is a 32-bit hash: a
- * collision keeps the held value until the state changes again. JSON key order
- * is part of the hash, so the same projection must stringify the same way.
+ * unchanged value without one derived from it. The hash is of the value the
+ * client sees, after `exclude` and `expose`, so a hidden field is not recoverable
+ * from the version. It is 32-bit: a collision keeps the held value until the
+ * value changes again.
  */
-function contentVersion(state: JsonObject): number {
-  const text = JSON.stringify(state);
+function contentVersion(value: unknown): number {
+  const text = JSON.stringify(value);
   let hash = 2166136261;
   for (let i = 0; i < text.length; i += 1) {
     hash ^= text.charCodeAt(i);
@@ -214,7 +210,9 @@ export async function handleReadScopeEntries(
     if (projected !== undefined) {
       if (!ownerKeyAdmits(config, storageKey, caller.userId)) return jsonResponse(200, null);
       const state = await readExternalCollectionState(config, extractBareTopic(config.pattern, storageKey), projected);
-      return jsonResponse(200, state === undefined ? null : await shaped(storageKey, state, contentVersion(state)));
+      if (state === undefined) return jsonResponse(200, null);
+      const visible = await applyClientData(config, state);
+      return jsonResponse(200, { ...(await shaped(storageKey, state, 0)), version: contentVersion(visible) });
     }
     const found = await readEntry(ctx.stores, address, caller, storageKey);
     return jsonResponse(200, found === undefined ? null : await shaped(storageKey, found.state, found.version));
@@ -253,9 +251,10 @@ export async function handleReadScopeEntries(
       projected
     );
     const admittedHits = hits.filter((hit) => ownerKeyAdmits(config, hit.storageKey, caller.userId));
+    const visible = await Promise.all(admittedHits.map(async (hit) => ({ hit, value: await applyClientData(config, hit.state as JsonObject) })));
     const items = manifest
-      ? admittedHits.map((hit) => ({ storageKey: hit.storageKey, version: contentVersion(hit.state as JsonObject) }))
-      : await Promise.all(admittedHits.map((hit) => shaped(hit.storageKey, hit.state as JsonObject, contentVersion(hit.state as JsonObject))));
+      ? visible.map(({ hit, value }) => ({ storageKey: hit.storageKey, version: contentVersion(value) }))
+      : await Promise.all(visible.map(async ({ hit, value }) => ({ ...(await shaped(hit.storageKey, hit.state as JsonObject, 0)), version: contentVersion(value) })));
     return jsonResponse(200, { items, ...(nextCursor !== undefined ? { nextCursor } : {}) });
   }
   const matched = (await readEntries(ctx.stores, address, caller)).filter(
@@ -268,11 +267,18 @@ export async function handleReadScopeEntries(
     if (cursor !== undefined && mark === undefined) {
       return jsonResponse(400, { error: "invalid_cursor", message: "cursor is not a newest-page cursor" });
     }
-    const ordered = [...matched].sort((left, right) => compareNewest(placeOf(left), placeOf(right)));
-    after = mark === undefined ? ordered : ordered.filter((found) => isAfterNewest(placeOf(found), mark));
+    // Newest order uses the `at` the client sees, the same value a named merge sorts by.
+    const dated = await Promise.all(
+      matched.map(async (found) => ({ found, at: sentAtOf(await applyClientData(config, found.state)) }))
+    );
+    const ordered = dated
+      .sort((left, right) => compareNewest({ storageKey: left.found.storageKey, at: left.at }, { storageKey: right.found.storageKey, at: right.at }))
+      .map((item) => item.found);
+    const atOf = new Map(dated.map((item) => [item.found.storageKey, item.at]));
+    after = mark === undefined ? ordered : ordered.filter((found) => isAfterNewest({ storageKey: found.storageKey, at: atOf.get(found.storageKey) ?? null }, mark));
     const page = after.slice(0, limit);
     const last = page[page.length - 1];
-    nextCursor = after.length > limit && last !== undefined ? JSON.stringify([sentAtOf(last.state), last.storageKey]) : undefined;
+    nextCursor = after.length > limit && last !== undefined ? JSON.stringify([atOf.get(last.storageKey) ?? null, last.storageKey]) : undefined;
     const items = await Promise.all(page.map((found) => shaped(found.storageKey, found.state, found.version)));
     return jsonResponse(200, { items, ...(nextCursor !== undefined ? { nextCursor } : {}) });
   }

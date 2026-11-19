@@ -271,6 +271,27 @@ describe("useResource(def, { newest: true })", () => {
     expect(lists).toHaveLength(listed + 1);
     expect(result.current.value).toHaveLength(251);
   });
+
+  it("keeps a message a notice added when the window is read again, and moves an entry whose at changed", async () => {
+    const stored = new Map<string, Stored>(
+      Array.from({ length: 200 }, (_, i) => [`projects/e${String(i).padStart(3, "0")}`, { value: { name: `E${i}`, at: i }, version: 1 }])
+    );
+    const { client, hear } = lab(stored);
+    const { result } = renderHook(() => useResource(projects, { newest: true, client }));
+    await waitFor(() => expect(result.current.value).toHaveLength(200));
+
+    stored.set("projects/e200", { value: { name: "new", at: 1_000 }, version: 1 });
+    await hear(named("projects/e200"));
+    await waitFor(() => expect(result.current.value).toHaveLength(201));
+
+    await hear({ topic: { scope: "org" }, kind: "resync" } as WireNotice);
+    await waitFor(() => expect(result.current.value?.some((entry) => entry.storageKey === "projects/e000")).toBe(true));
+    expect(result.current.value?.[0]?.storageKey).toBe("projects/e200");
+
+    stored.set("projects/e000", { value: { name: "moved", at: 2_000 }, version: 2 });
+    await hear(named("projects/e000"));
+    await waitFor(() => expect(result.current.value?.[0]?.storageKey).toBe("projects/e000"));
+  });
 });
 
 describe("useResource(def, { all: true, topicPrefix })", () => {
