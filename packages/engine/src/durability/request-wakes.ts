@@ -55,9 +55,14 @@ export function noteWakeOwed(store: WakeStore, dueAt: number): void {
  * it; rejects when the host refused or failed to. `onStarted` receives the
  * run's completion and a way to abort it, so a host that closes its stores can
  * wait for it, for a while.
+ *
+ * A run refused at its start for good ({@link isTerminalStartRefusal}) clears
+ * the wake it fired, at the version the fire read, and says so once: its
+ * session will refuse every run, so its pass, the only thing that clears the
+ * wake, never runs (FIX-2849). A debt owed since the fire keeps its wake.
  */
 export async function fireWakeThrough(
-  host: Pick<InboundTransportHost, "dispatch">,
+  host: Pick<InboundTransportHost, "dispatch" | "stores" | "logger">,
   wake: WakeRecord,
   onStarted?: (run: { finished: Promise<unknown>; abort(): void }) => void
 ): Promise<void> {
@@ -72,7 +77,47 @@ export async function fireWakeThrough(
     signal: controller.signal
   });
   onStarted?.({ finished: handle.finished, abort: () => controller.abort() });
+  void handle.finished.then(undefined, async (error: unknown) => {
+    const store = host.stores.wakes;
+    if (!isTerminalStartRefusal(error) || store === undefined) return;
+    try {
+      // `move` keeps the version, so this is the wake as the fire left it.
+      if (!(await store.clear(wake, wake.version))) return;
+      logRuntimeEvent(host.logger, "warn", "[flow-state] a wake's run was refused for good, so the wake was cleared", {
+        sessionId: wake.sessionId,
+        entry: wake.entry,
+        error: (error as Error).message
+      });
+    } catch (clearError) {
+      logRuntimeEvent(host.logger, "warn", "[flow-state] a wake whose run was refused for good couldn't be cleared: it fires again", {
+        sessionId: wake.sessionId,
+        entry: wake.entry,
+        error: clearError instanceof Error ? clearError.message : String(clearError)
+      });
+    }
+  });
   if (handle.accepted !== undefined) await handle.accepted;
+}
+
+/**
+ * The refusals a session's run can never get past, by their error `code`:
+ * Workforce's `WorkerTurnRefusedError`, thrown at the start of every turn of a
+ * session whose worker was fired or can no longer run there.
+ */
+const TERMINAL_START_REFUSALS: ReadonlySet<string> = new Set(["worker-turn-refused"]);
+
+/**
+ * Whether a run's failure is a refusal its session will give every run
+ * ({@link TERMINAL_START_REFUSALS}): on the error, or on one it wraps as its
+ * `cause` (a block's throw reaches the run's caller as a `FlowError` around it).
+ */
+function isTerminalStartRefusal(error: unknown): boolean {
+  for (let current = error, depth = 0; current != null && depth < 4; depth += 1) {
+    const code = (current as { readonly code?: unknown }).code;
+    if (typeof code === "string" && TERMINAL_START_REFUSALS.has(code)) return true;
+    current = (current as { readonly cause?: unknown }).cause;
+  }
+  return false;
 }
 
 /** The default most a debt may stay outstanding past its due time: 24 hours. */

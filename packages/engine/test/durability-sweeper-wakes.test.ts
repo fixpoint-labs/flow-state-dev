@@ -5,12 +5,14 @@
  * Real in-memory stores and the real checkpoint provider; the one stand-in is
  * the host's dispatch (`fireWake`), whose calls are what the step produces.
  */
+import { FlowError } from "@flow-state-dev/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { createInMemoryStores } from "../src/stores";
 import type { StoreRegistry, WakeInput, WakeRecord } from "../src/stores/types";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { createDurabilitySweeper, runTick, WAKE_RETRY_MS } from "../src/durability/durability-sweeper";
-import { createRequestWakes } from "../src/durability/request-wakes";
+import { createRequestWakes, fireWakeThrough } from "../src/durability/request-wakes";
+import type { InboundDispatchHandle, InboundTransportHost } from "../src/transports/types";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -140,5 +142,72 @@ describe("durability sweeper: wakes", () => {
     await runTick(tickArgs(bare as StoreRegistry, async () => {
       throw new Error("never fired");
     }));
+  });
+});
+
+// FIX-2849.
+describe("a fired wake whose run is refused at its start", () => {
+  /** A host whose dispatch is accepted and whose run then ends with `error`. */
+  function hostEndingWith(stores: StoreRegistry, error: unknown): Pick<InboundTransportHost, "dispatch" | "stores"> {
+    return {
+      stores,
+      dispatch: () => {
+        const finished = Promise.reject(error);
+        void finished.catch(() => {});
+        return { requestId: "r1", accepted: Promise.resolve(), finished } as unknown as InboundDispatchHandle;
+      }
+    };
+  }
+
+  // As a run's caller receives it: the block's throw, wrapped in a FlowError.
+  const refusal = new FlowError('Worker "chief-of-staff" was fired.', {
+    code: "execution_error",
+    cause: Object.assign(new Error('Worker "chief-of-staff" was fired.'), { code: "worker-turn-refused" })
+  });
+
+  it("is cleared, not fired again: a session that refuses every turn is never retried", async () => {
+    // Why: the sweep moves a wake one retry out before it fires, and only a
+    // pass in the session clears it. A session whose every start is refused
+    // never runs that pass, so without this the wake fires every 30 s forever.
+    const stores = createInMemoryStores();
+    await stores.wakes!.owe(wake());
+    const host = hostEndingWith(stores, refusal);
+    let fires = 0;
+    await runTick(tickArgs(stores, async (w) => {
+      fires += 1;
+      await fireWakeThrough(host, w);
+    }));
+    await sleep(10);
+    expect(fires).toBe(1);
+    expect(await stores.wakes!.get({ sessionId: "s1", entry: "dispatch" })).toBeNull();
+  });
+
+  it("keeps a debt owed since the fire: only the wake the fire read is cleared", async () => {
+    const stores = createInMemoryStores();
+    await stores.wakes!.owe(wake());
+    let finish!: (error: unknown) => void;
+    const host: Pick<InboundTransportHost, "dispatch" | "stores"> = {
+      stores,
+      dispatch: () => {
+        const finished = new Promise((_resolve, reject) => (finish = reject));
+        void finished.catch(() => {});
+        return { requestId: "r1", accepted: Promise.resolve(), finished } as unknown as InboundDispatchHandle;
+      }
+    };
+    await runTick(tickArgs(stores, (w) => fireWakeThrough(host, w)));
+    // A new debt lands while the refused run is still starting.
+    await stores.wakes!.owe(wake({ dueAt: Date.now() + 5_000 }));
+    finish(refusal);
+    await sleep(10);
+    expect(await stores.wakes!.get({ sessionId: "s1", entry: "dispatch" })).not.toBeNull();
+  });
+
+  it("stays kept when the run fails any other way: a failure that may pass is retried", async () => {
+    const stores = createInMemoryStores();
+    await stores.wakes!.owe(wake());
+    await runTick(tickArgs(stores, (w) => fireWakeThrough(hostEndingWith(stores, new Error("store unavailable")), w)));
+    await sleep(10);
+    const kept = await stores.wakes!.get({ sessionId: "s1", entry: "dispatch" });
+    expect(kept?.dueAt).toBeGreaterThan(Date.now());
   });
 });

@@ -2047,6 +2047,46 @@ async function runActionAttempt<
   let resumeContext: ResumeContext | undefined;
   let replayLog: ReplayLog | undefined;
   let ctx: ExecutionContext;
+  /**
+   * Settle this request `failed` for an error that ended it before its action
+   * ran, and send its one final-failure event once that write lands
+   * (FIX-1983). The failed record is this run's terminal write; the run's
+   * exit stamps it (see `runActionInternal`).
+   */
+  const settleFailedBeforeRun = async (error: unknown): Promise<void> => {
+    terminalRecordIncarnation = await settleFreshRequestSetupFailure({
+      stores: options.stores,
+      requestId,
+      flow: options.flow,
+      actionName: options.actionName as string,
+      userId: options.userId,
+      sessionId: options.sessionId,
+      orgId: options.orgId,
+      tenantId: options.tenantId,
+      source,
+      metadata: options.metadata,
+      input: options.input,
+      emittedItems: itemsToPersist(),
+      response,
+      error,
+      logger
+    });
+    const errorCapture = options.runtimeConfig.errorCapture;
+    if (terminalRecordIncarnation !== undefined && errorCapture !== undefined) {
+      void safeCaptureError(
+        errorCapture,
+        toFinalErrorCaptureEvent(normalizeError(error, { scope: "request" }), {
+          requestId,
+          flowKind: options.flow.kind,
+          actionName: options.actionName as string,
+          userId: options.userId,
+          sessionId: options.sessionId,
+          orgId: options.orgId
+        }),
+        logger
+      );
+    }
+  };
   try {
     if (isReplayMode && priorRecord !== undefined) {
       const priorItems = priorRecord.items ?? [];
@@ -2239,43 +2279,7 @@ async function runActionAttempt<
     await recoverFromPreTransitionFailure();
     deregisterAbortController(requestId, registered);
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
-    if (!isReplayMode) {
-      // The failed record is this run's terminal write; the run's exit
-      // stamps it (see `runActionInternal`).
-      terminalRecordIncarnation = await settleFreshRequestSetupFailure({
-        stores: options.stores,
-        requestId,
-        flow: options.flow,
-        actionName: options.actionName as string,
-        userId: options.userId,
-        sessionId: options.sessionId,
-        orgId: options.orgId,
-        tenantId: options.tenantId,
-        source,
-        metadata: options.metadata,
-        input: options.input,
-        emittedItems: itemsToPersist(),
-        response,
-        error: setupError,
-        logger
-      });
-      // FIX-1983: the final-failure event, only when the failed write landed.
-      const errorCapture = options.runtimeConfig.errorCapture;
-      if (terminalRecordIncarnation !== undefined && errorCapture !== undefined) {
-        void safeCaptureError(
-          errorCapture,
-          toFinalErrorCaptureEvent(normalizeError(setupError, { scope: "request" }), {
-            requestId,
-            flowKind: options.flow.kind,
-            actionName: options.actionName as string,
-            userId: options.userId,
-            sessionId: options.sessionId,
-            orgId: options.orgId
-          }),
-          logger
-        );
-      }
-    }
+    if (!isReplayMode) await settleFailedBeforeRun(setupError);
     throw setupError;
   }
 
@@ -2416,6 +2420,12 @@ async function runActionAttempt<
     if (endFailure !== undefined) {
       logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", { requestId, status: "failed", error: endFailure.message });
     }
+    // FIX-2849: a refused start is terminal. Past the point of no return, a
+    // replay continuation included, so it ends `failed` like any fresh
+    // request: left `in_progress`, the stale sweep would mark it interrupted
+    // and bring its session's wakes forward, and a session whose every turn
+    // is refused at start would be started again on each one.
+    await settleFailedBeforeRun(startupError);
     throw startupError;
   }
 
