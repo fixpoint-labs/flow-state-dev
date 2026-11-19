@@ -372,9 +372,16 @@ export function useResource<TDef extends ScopeResourceDef>(
   // How many newest pages the window holds. A different read starts again at one page.
   const paging = useRef({ how, handle, pages: 1 });
   const nextCursor = useRef<string | undefined>(undefined);
+  const loadingOlder = useRef(false);
+  const appendOlder = useRef(false);
+  /** Bumped when the read changes, so a scroll from the previous one cannot release a later guard. */
+  const scrollGeneration = useRef(0);
   if (paging.current.how !== how || paging.current.handle !== handle) {
     paging.current = { how, handle, pages: 1 };
     nextCursor.current = undefined;
+    scrollGeneration.current += 1;
+    loadingOlder.current = false;
+    appendOlder.current = false;
   }
   const [hasOlder, setHasOlder] = useState(false);
   const [olderFor, setOlderFor] = useState({ how, handle });
@@ -382,8 +389,6 @@ export function useResource<TDef extends ScopeResourceDef>(
     setOlderFor({ how, handle });
     setHasOlder(false);
   }
-  const loadingOlder = useRef(false);
-  const appendOlder = useRef(false);
   const held = useRef<{ handle: unknown; how: CollectionRead; entries: ScopeEntry<TValue>[] } | undefined>(undefined);
   const reading = useRef(0);
   const { data, error, cause, refresh } = useFencedRead<TValue | ScopeEntry<TValue>[] | null>(
@@ -400,13 +405,18 @@ export function useResource<TDef extends ScopeResourceDef>(
       if (!("list" in handle)) return (await handle.read()).value;
       const last = held.current?.handle === handle && held.current.how === how && reading.current === 0 ? held.current.entries : undefined;
       reading.current += 1;
-      let appending = false;
+      // Take the scroll before any await. A read that never starts leaves the flag set, and `loadOlder` takes it back.
+      const wantedOlder = appendOlder.current;
+      const scroll = scrollGeneration.current;
+      appendOlder.current = false;
+      let olderCommit: { cursor: string | undefined } | undefined;
+      let windowCommit: { cursor: string | undefined; pages: number } | undefined;
       try {
         const placed = last !== undefined ? await withNamedEntries(handle, last, notice, how) : undefined;
         // A resync under `all` diffs the manifest against what is already held. The first read has nothing to diff, so it lists.
         // A scroll appends the next older page. A gap re-reads the pages already asked for.
-        appending = newest && placed === undefined && appendOlder.current && notice === null && last !== undefined && nextCursor.current !== undefined;
-        appendOlder.current = false;
+        // The cursor and the page count commit with the entries, and only while this read is still the one on screen.
+        const appending = wantedOlder && newest && placed === undefined && notice === null && last !== undefined && nextCursor.current !== undefined;
         const newestWindow = !newest || placed !== undefined
           ? undefined
           : appending
@@ -417,16 +427,14 @@ export function useResource<TDef extends ScopeResourceDef>(
                   cursor: nextCursor.current,
                   ...(topicPrefix === undefined ? {} : { topicPrefix })
                 });
-                nextCursor.current = page.nextCursor;
-                paging.current = { how: paging.current.how, handle: paging.current.handle, pages: paging.current.pages + 1 };
+                olderCommit = { cursor: page.nextCursor };
                 const baseline = last ?? [];
                 return { entries: [...baseline, ...page.items], hasOlder: page.nextCursor !== undefined };
               })()
             : await (async () => {
                 const cover = last === undefined ? paging.current.pages : Math.max(paging.current.pages, Math.ceil((last ?? []).length / ENTRY_PAGE));
                 const opened = await readNewestWindow(handle, cover, topicPrefix);
-                nextCursor.current = opened.nextCursor;
-                paging.current = { how: paging.current.how, handle: paging.current.handle, pages: cover };
+                windowCommit = { cursor: opened.nextCursor, pages: cover };
                 return opened;
               })();
         const entries =
@@ -440,6 +448,13 @@ export function useResource<TDef extends ScopeResourceDef>(
         // Only the read in play is a baseline: one a newer read superseded is older than what's shown.
         if (stillCurrent()) {
           held.current = { handle, how, entries };
+          if (olderCommit !== undefined) {
+            nextCursor.current = olderCommit.cursor;
+            paging.current = { how: paging.current.how, handle: paging.current.handle, pages: paging.current.pages + 1 };
+          } else if (windowCommit !== undefined) {
+            nextCursor.current = windowCommit.cursor;
+            paging.current = { how: paging.current.how, handle: paging.current.handle, pages: windowCommit.pages };
+          }
           // A named merge keeps the window's older page; only a window read learns whether one remains.
           if (newestWindow !== undefined) setHasOlder(newestWindow.hasOlder);
           else if (!newest) setHasOlder(false);
@@ -451,8 +466,8 @@ export function useResource<TDef extends ScopeResourceDef>(
         throw error;
       } finally {
         reading.current -= 1;
-        // Only the scroll's own read clears the guard. Another notice must not open a second scroll.
-        if (appending) loadingOlder.current = false;
+        // The read that took the scroll releases it, appended or not. A read from an older generation must not release a later one.
+        if (wantedOlder && scrollGeneration.current === scroll) loadingOlder.current = false;
       }
     },
     { driver, enabled: handle !== undefined || sessionId !== undefined }
@@ -464,6 +479,11 @@ export function useResource<TDef extends ScopeResourceDef>(
     loadingOlder.current = true;
     appendOlder.current = true;
     refresh();
+    // The read takes the request before it waits. Still set means that read never started.
+    if (appendOlder.current) {
+      appendOlder.current = false;
+      loadingOlder.current = false;
+    }
   }, [hasOlder, refresh]);
   const written = useCallback(
     async (write: Promise<{ version: number }>) => {

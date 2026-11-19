@@ -43,6 +43,10 @@ function lab(stored: Map<string, Stored>, options: { repeatCursor?: boolean; fai
   let entryFailuresLeft = options.failEntryReads ?? 0;
   let inFlight = 0;
   let maxInFlight = 0;
+  let holdCursorLists = false;
+  let holdEntryReads = false;
+  const waitingCursor: Array<() => void> = [];
+  const waitingEntry: Array<() => void> = [];
   const fetcher = vi.fn<ClientFetch>(async (input) => {
     const url = new URL(String(input), "http://x");
     const shaped = (storageKey: string, entry: Stored) => ({ topic: storageKey.slice("projects/".length), storageKey, ...entry });
@@ -88,12 +92,17 @@ function lab(stored: Map<string, Stored>, options: { repeatCursor?: boolean; fai
         const entry = stored.get(key)!;
         return manifest ? { storageKey: key, version: entry.version } : shaped(key, entry);
       });
-      return json({ items, ...(nextCursor === undefined ? {} : { nextCursor }) });
+      const response = json({ items, ...(nextCursor === undefined ? {} : { nextCursor }) });
+      if (newest && cursor !== null && holdCursorLists) {
+        await new Promise<void>((resolve) => waitingCursor.push(resolve));
+      }
+      return response;
     }
     const one = /\/entries\/(.+)$/.exec(url.pathname);
     if (one !== null) {
       const key = decodeURIComponent(one[1]!);
       entryReads.push(key);
+      if (holdEntryReads) await new Promise<void>((resolve) => waitingEntry.push(resolve));
       inFlight += 1;
       maxInFlight = Math.max(maxInFlight, inFlight);
       await Promise.resolve();
@@ -122,7 +131,32 @@ function lab(stored: Map<string, Stored>, options: { repeatCursor?: boolean; fai
       for (const { options: heard } of subscriptions) heard.onChange(notice);
     });
   };
-  return { client, lists, entryReads, subscriptions, hear, maxInFlight: () => maxInFlight };
+  return {
+    client,
+    lists,
+    entryReads,
+    subscriptions,
+    hear,
+    maxInFlight: () => maxInFlight,
+    /** Leave the next newest-page read that carries a cursor unanswered until `resumeCursorLists`. */
+    pauseCursorLists: () => {
+      holdCursorLists = true;
+    },
+    resumeCursorLists: () => {
+      holdCursorLists = false;
+      for (const resume of waitingCursor.splice(0)) resume();
+    },
+    cursorListsWaiting: () => waitingCursor.length,
+    /** Leave the next entry read unanswered until `resumeEntryReads`. */
+    pauseEntryReads: () => {
+      holdEntryReads = true;
+    },
+    resumeEntryReads: () => {
+      holdEntryReads = false;
+      for (const resume of waitingEntry.splice(0)) resume();
+    },
+    entryReadsWaiting: () => waitingEntry.length
+  };
 }
 
 const keys = (entries: readonly { storageKey: string }[] | null) => (entries ?? []).map((entry) => entry.storageKey);
@@ -291,6 +325,57 @@ describe("useResource(def, { newest: true })", () => {
     stored.set("projects/e000", { value: { name: "moved", at: 2_000 }, version: 2 });
     await hear(named("projects/e000"));
     await waitFor(() => expect(result.current.value?.[0]?.storageKey).toBe("projects/e000"));
+  });
+
+  it("can fetch the older page after a scroll that arrived while a notice was still being read", async () => {
+    // The scroll's read is not an append while another read is out, so it must not keep the guard shut.
+    const stored = new Map<string, Stored>(
+      Array.from({ length: 250 }, (_, i) => [`projects/e${String(i).padStart(3, "0")}`, { value: { name: `E${i}`, at: i }, version: 1 }])
+    );
+    const server = lab(stored);
+    const { result } = renderHook(() => useResource(projects, { newest: true, client: server.client }));
+    await waitFor(() => expect(result.current.value).toHaveLength(200));
+    server.pauseEntryReads();
+    void server.hear(named("projects/e249"));
+    await waitFor(() => expect(server.entryReadsWaiting()).toBe(1));
+
+    act(() => result.current.loadOlder());
+    await act(async () => {
+      server.resumeEntryReads();
+    });
+    await waitFor(() => expect(result.current.value).toHaveLength(200));
+
+    act(() => result.current.loadOlder());
+    await waitFor(() => expect(result.current.value).toHaveLength(250));
+    expect(result.current.value?.[249]?.storageKey).toBe("projects/e000");
+    expect(result.current.hasOlder).toBe(false);
+  });
+
+  it("fetches an older page again when a newer read wins while that page is still in flight", async () => {
+    // The cursor commits with the entries. A page that lost the race is the next scroll's page, not one skipped past.
+    const stored = new Map<string, Stored>(
+      Array.from({ length: 450 }, (_, i) => [`projects/e${String(i).padStart(3, "0")}`, { value: { name: `E${i}`, at: i }, version: 1 }])
+    );
+    const server = lab(stored);
+    const { result } = renderHook(() => useResource(projects, { newest: true, client: server.client }));
+    await waitFor(() => expect(result.current.value).toHaveLength(200));
+    expect(result.current.value?.[199]?.storageKey).toBe("projects/e250");
+    server.pauseCursorLists();
+
+    act(() => result.current.loadOlder());
+    await waitFor(() => expect(server.cursorListsWaiting()).toBe(1));
+    await server.hear({ topic: { scope: "org" }, kind: "resync" } as WireNotice);
+    await waitFor(() => expect(server.lists.filter((search) => !search.includes("cursor=")).length).toBeGreaterThan(1));
+
+    await act(async () => {
+      server.resumeCursorLists();
+    });
+    expect(result.current.value).toHaveLength(200);
+
+    act(() => result.current.loadOlder());
+    await waitFor(() => expect(result.current.value).toHaveLength(400));
+    expect(result.current.value?.[200]?.storageKey).toBe("projects/e249");
+    expect(result.current.value?.[399]?.storageKey).toBe("projects/e050");
   });
 });
 
