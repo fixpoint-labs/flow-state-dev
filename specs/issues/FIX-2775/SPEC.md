@@ -43,16 +43,16 @@ screen still draws from the snapshot.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `node specs/issues/FIX-2775/poc/directory-census/check.mjs --built`; `pnpm --filter @flow-state-dev/shift-manager test -- inventory` with the 16 entries deleted; then every goal under `goals/shift-manager/` (26): the sidebar is on every page, so every goal touches the directory. Model as each goal names. Run by the implementer; verdicts on the implementation PR |
+| **Goal check** | `node specs/issues/FIX-2775/poc/directory-census/check.mjs --built` (`--simulate-built` shows this passes on the finished state); `pnpm --filter @flow-state-dev/shift-manager test -- inventory` with the 16 entries deleted; then every goal under `goals/shift-manager/` (26): the sidebar is on every page, so every goal touches the directory. Model as each goal names. Run by the implementer; verdicts on the implementation PR |
 | **Signal** | The census prints 0 sites and 0 entries for this issue. The inventory test passes. Every goal passes. Two legs are new: `it-shows-who-is-on-shift` gains **one answer** (a worker stops for an approval; the Inbox lists it and the worker's row reads on shift in the same view update, and both clear when it is answered), and `its-summary-changes-on-its-own` gains **directory live** (a routine paused and a project added from another session show on Routines and in PROJECTS within 2 s, with no snapshot read) |
 | **Input** | Each goal's own Lab and input. The directory-live leg uses a second client as the same user |
 | **Anti-game** | Don't grade a hook's return or a view's unit test. A screen that reads a view and then the snapshot passes the goals and fails the census. A list cut at one page passes a small Lab, so the hook's own test reads a 450-entry collection |
-| **Control that must fail** | The census with `--built` on today's main: FAILS, naming the 233 sites and 16 entries. `--control` plants an entry and a site: FAILS. `GOAL_CONTROL=status-from-snapshot` keeps the roster's status on the snapshot's walked asks: FAILS **one answer** |
+| **Control that must fail** | The census with `--built` on today's main: FAILS, naming the 233 sites and 16 entries, under a banner that says this is expected before the implementation. `--control` plants an entry and a site: FAILS. `GOAL_CONTROL=status-from-snapshot` keeps the roster's status on the snapshot's walked asks: FAILS **one answer** |
 
 The 233 sites and the entry split are re-derived by
 [`poc/directory-census/check.mjs`](poc/directory-census/check.mjs), which classifies every
 allowlist entry and fails on one nobody named ([Settled](DECISIONS.md#settled)). A site is one
-token kind on one line, outside the four files FIX-2777 deletes.
+token kind on one line, outside the four files FIX-2777 deletes. The inventory test enforces that the allowlist only shrinks; the census enforces zero snapshot sites; the goal check runs both.
 
 ## What changes
 
@@ -67,7 +67,7 @@ and the snapshot has no reader left.
 | The worker directory: `Sidebar.tsx`, `Roster.tsx`, `roster.ts`, `tasks.ts`, `WorkerSettings.tsx` (44) | One Shift Manager hook joins the inventory, read whole, with the roster view ([D1](DECISIONS.md#d1)). Status and counts come from the Inbox view's `items` and `tasks`, as FIX-2774 left them to this issue |
 | Worker rows and sessions on other screens: `ShiftCoordinator`, `Inbox`, `TaskFrame`, `TaskInspector`, `Tasks`, `SessionView`, `TaskBoardMeta`, `Conversation`, `conversation.ts` (87) | The same worker hook; react's `useSessionList` with dispatch runs for the sessions a screen finds; `organization()` for a conversation's derived id. `Conversation.tsx`'s `answered` read goes with the line it shares, since its feed is live (FIX-2776) |
 | Projects, workstreams and documents: `Project.tsx`, `projects.ts`, `JumpTo.tsx` (44) | `useResource(def, { all: true })` on the shared and private projects and on a project's workstreams by prefix; `useView` on the project setup view ([D3](DECISIONS.md#d3)) and the workstream report; Jump to's documents from one direct manifest read per worker flow, cached by flow |
-| Their own reads: Messages, Routines, Usage, Settings, rules, a document (20) | `useResource(..., { all: true })` on the message log; `useView` on the routines, harness usage and worker usage views, typed by their outputs; the MCP keys route from workforce ([D3](DECISIONS.md#d3)). None re-reads on `readAt` |
+| Their own reads: Messages, Routines, Usage, Settings, rules, a document (20) | `useResource(..., { all: true })` on the message log; `useView` on the routines, harness usage and worker usage views, typed by their outputs; the connector keys route from workforce ([D3](DECISIONS.md#d3)). None re-reads on `readAt` |
 | Helpers from `reads.ts` in seven other files (8) | Every `reads.ts` export a screen still imports moves to a screen module: `Failure`, `describeFailure`, `Section`, `Worker`, `workerOf`, `workerNames`, `Project`, `ProjectVisibility`, `toProject`, `BoardTaskView`, the board refs (`conversationBoardRef`, `collectionOfBoard`, `CONVERSATION_BOARD_COLLECTION`) and `GENERAL_TEAM`. `readEveryScopeEntry`, `createLabReader`, `LabReader` and `LabSnapshot` go with their callers. So FIX-2777 deletes four files and edits none |
 
 ```diff
@@ -82,19 +82,23 @@ and the snapshot has no reader left.
 
   // @flow-state-dev/react: useResource, at user or org scope
 + useResource(def, { all: true, topicPrefix? })            // every page through listAll()
-+ UseScopeCollectionResult.failure?: { message: string; httpStatus?: number }
++ UseScopeCollectionResult.failure?: ViewReadFailure      // useView's own type
 + UseScopeCollectionResult.refresh(): void                 // and on a single resource
 
   // @flow-state-dev/workforce
 + WorkforceClient.organization(): Promise<string>          // the identity it already reads, once
 + workerInventoryResource, projectsResource, privateProjectsResource, workerMessagesResource  // on /browser
-+ projectSetupView, mcpCredentialsRoute, McpCredentialStatus           // moved from Shift Manager's DevTeam host (D3)
+  // workforce: defineProjectBlocks, moved from Shift Manager's DevTeam host (D3); working names
++ defineProjectBlocks({ mcpServers, checkRepository, projectCoordinator? })
++   .views.projectSetup                                    // always; { projectCoordinator: null } when absent
++   .connectorKeys                                         // the key route's adapter, same offered servers
++ projectSetupView, ConnectorKeyStatus, CONNECTOR_KEYS_PATH  // on /browser
 ```
 
 **Docs:** at release, `packages/react/README.md`'s `useResource` entry names `all`,
 `topicPrefix`, `failure` and `refresh()`; `packages/workforce/README.md` names
-`organization()`, the four collection definitions on `/browser`, the project setup view and the
-MCP keys route. FIX-2774's changeset carries Shift Manager's own story; this issue's adds that the
+`organization()`, the four collection definitions on `/browser`, and what `defineProjectBlocks`
+now serves: the project setup view and the connector keys route. FIX-2774's changeset carries Shift Manager's own story; this issue's adds that the
 directory screens follow changes made elsewhere. No new page.
 
 ## How it gets there
@@ -124,8 +128,9 @@ scope reads and one view, never a per-session walk ([ER-5](../../epics/FIX-2683/
   ([ER-4](../../epics/FIX-2683/DECISIONS.md#who-owns-what)); FIX-2777 deletes them. It may shrink
   `reads.ts`: `readEveryScopeEntry` goes, and the snapshot's own reads use `listAll()`.
 - The writes: hire and edit through workforce's client, routine pauses and deletes, standing rules,
-  a project's writes, an MCP key's set and clear.
-- The DevTeam fixture host as a Lab; it imports what D3 moves.
+  a project's writes, a connector key's set and clear. The stored key prefix `mcp-credentials/`
+  (FIX-2645 decides whether it moves).
+- The DevTeam fixture host as a Lab; it builds both from `defineProjectBlocks` and keeps neither.
 
 ## What's already here, and the debt
 
@@ -137,7 +142,9 @@ scope reads and one view, never a per-session walk ([ER-5](../../epics/FIX-2683/
 | react's `useSessionList` (`includeDispatchRuns`), `useView` with `failure` and `refresh()` (FIX-2774) | **Reused**; `useResource` gains the same `failure` and `refresh()` |
 | workforce's `routinesView`, `workerUsageView`, `workstreamReportView`; harness-manager's `harnessUsageViewRef` | **Reused**, read live instead of once per Lab read |
 | workforce's client, which reads the roster flow's identity once (`orgOf`) | **Extended**: `organization()` exposes it |
-| The DevTeam host's `projectSetup` view and MCP keys route, which Shift Manager reads on every Lab | **Moved** into workforce ([D3](DECISIONS.md#d3)) |
+| The DevTeam host's `projectSetupView` (`teams/devteam/host.mts`) and `mcpCredentialsAdapter`, `statusOf`, `MCP_CREDENTIALS_PATH` (`teams/devteam/mcp-credentials.mts`), which Shift Manager reads on every Lab | **Moved** into `defineProjectBlocks` ([D3](DECISIONS.md#d3)) |
+| workforce's `projects/mcp-credentials.ts` (the keys collection, `mcpCredentialProblem`) and `projects/project-coordinator.ts` | **Extended** by the route and the view; no parallel module |
+| [FIX-2615](https://linear.app/fixpoint-labs/issue/FIX-2615)'s open epic spec ([#5010](https://github.com/fixpoint-labs/flow-state-dev/pull/5010)): connectors, and a key route planned for the Teammates lab | **Converges**: connector names now; FIX-2645's Teammates lab imports this route ([D3](DECISIONS.md#d3)) |
 | [FIX-2409](../FIX-2409/SPEC.md)'s "moving around costs no reads"; [FIX-1662 PLAN S3](../FIX-1662/PLAN.md)'s one snapshot | **Retired** for these screens by the epic's [D2](../../epics/FIX-2683/DECISIONS.md#d2); a count and its list still come from one answer |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
@@ -145,7 +152,7 @@ scope reads and one view, never a per-session walk ([ER-5](../../epics/FIX-2683/
 | `useResource`'s `all`, `topicPrefix`, `failure`, `refresh()` | `useView`'s `failure` and `refresh()`; the client's `listAll()`; `useResourceCollectionList` | **Extends** `useResource` with `listAll()` and `useView`'s two names ([D2](DECISIONS.md#d2)). The list hook pages a session collection by hand |
 | `WorkforceClient.organization()` | The client's private `orgOf`; `client.flow(ROSTER_FLOW).identity()`, an L3 finding in an app | **Extends** the client: the read it already makes |
 | Four collection definitions on `workforce/browser` | `PROJECTS_PATTERN`, `WORKER_MESSAGES_PATTERN` and the inventory pattern as bare strings | **Extends** `/browser` with the definitions workforce already has, so a read is typed by its client data |
-| `projectSetupView`, `mcpCredentialsRoute`, `McpCredentialStatus` in workforce | The DevTeam host's copies | **Moves** them beside the projects flow and the keys collection they read ([D3](DECISIONS.md#d3)) |
+| The project setup view and the connector keys route, served by `defineProjectBlocks` | The DevTeam host's copies; standalone exports; `checkRepository`'s view in the same blocks | **Extends** `defineProjectBlocks` as `checkRepository` does, so every projects flow built from it serves both, claude-code-style's included ([D3](DECISIONS.md#d3)) |
 | `useWorkers` in Shift Manager | A workforce directory view | **Composes** two reads ([D1](DECISIONS.md#d1)) |
 
 | The debt | |
@@ -180,10 +187,12 @@ worker join drifts between screens before FIX-2756 looks at it.
    workforce view.** If wrong: Shift Manager keeps a join the server could own.
 2. **[D2](DECISIONS.md#d2) · `useResource` reads a whole collection and says why a read failed,
    not an app hook over `listAll()`.** If wrong: three public names on a hook for one app's lists.
-3. **[D3](DECISIONS.md#d3) · The project setup view and the MCP keys route move from the DevTeam
-   host into workforce.** The one to weigh: every Lab on workforce then serves both. If wrong: a
-   route and a view in a package for one app's screens.
+3. **[D3](DECISIONS.md#d3) · `defineProjectBlocks` serves the project setup view and the
+   connector keys route, moved from the DevTeam host.** The one to weigh: every projects flow then
+   serves both, and FIX-2645's Teammates lab imports the route. If wrong: a route and a view in a
+   package for one app's screens.
 
 Improvement · `shift-manager`, `react`, `workforce` · L (233 screen sites in 35 files, 16
-allowlist entries out, four hook names in) · blocked by FIX-2774 (merged #5445), FIX-2769
+allowlist entries out, four hook names in), as three PRs: `react` (D2), `workforce` (D3 and the
+client), then the screens · blocked by FIX-2774 (merged #5445), FIX-2769
 (merged) · blocks FIX-2777, FIX-2778 · [Linear](https://linear.app/fixpoint-labs/issue/FIX-2775)

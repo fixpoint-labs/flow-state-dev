@@ -24,6 +24,13 @@
 //   node specs/issues/FIX-2775/poc/directory-census/check.mjs            # check
 //   node specs/issues/FIX-2775/poc/directory-census/check.mjs --control  # plant an entry and a site: expect FAIL
 //   node specs/issues/FIX-2775/poc/directory-census/check.mjs --built    # the goal check: this issue's counts expected 0
+//   node specs/issues/FIX-2775/poc/directory-census/check.mjs --simulate-built  # --built over the finished state: expect PASS
+//
+// `--built` is the goal check, run on the implementation. On today's main it
+// FAILS by design (that is its control), and says so in a banner first.
+// `--simulate-built` shows the goal check can pass: it reads today's tree with
+// this issue's 16 entries and every census site removed, the state the
+// implementation must reach, and must PASS.
 //
 // Exit 0 when the totals hold and the counts are the spec's. Exit 1 otherwise.
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -33,7 +40,8 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
 const APP = join(ROOT, "packages/shift-manager");
 const CONTROL = process.argv.includes("--control");
-const BUILT = process.argv.includes("--built");
+const SIMULATE = process.argv.includes("--simulate-built");
+const BUILT = SIMULATE || process.argv.includes("--built");
 const failures = [];
 
 // The spec's counts, measured on origin/main b7d2f79f37.
@@ -42,6 +50,11 @@ const EXPECTED = { entries: { "FIX-2775": 16, "FIX-2777": 21 }, sites: 233 };
 // ── 1. The allowlist ─────────────────────────────────────────────────────
 const allowlist = JSON.parse(readFileSync(join(APP, "test/inventory-allowlist.json"), "utf8"));
 if (CONTROL) allowlist.push({ file: "src/lib/planted.ts", symbol: "Planted", kind: "type" });
+if (BUILT) {
+  console.log(SIMULATE
+    ? "GOAL CHECK, SIMULATED: today's tree with this issue's entries and sites removed. Must PASS."
+    : "GOAL CHECK: run on the implementation. Before it lands, FAIL here is expected: it is the control.");
+}
 
 const byFile = {
   "src/lib/messages.ts": "FIX-2775",
@@ -55,7 +68,9 @@ const byFile = {
 };
 const counts = {};
 const mine = [];
-for (const entry of allowlist) {
+// The finished state: this issue's entries gone.
+const read = SIMULATE ? allowlist.filter((entry) => byFile[entry.file] !== "FIX-2775") : allowlist;
+for (const entry of read) {
   const owner = byFile[entry.file];
   if (owner === undefined) {
     failures.push(`allowlist entry unclassified: ${entry.file} ${entry.symbol} (${entry.kind})`);
@@ -64,8 +79,11 @@ for (const entry of allowlist) {
   counts[owner] = (counts[owner] ?? 0) + 1;
   if (owner === "FIX-2775") mine.push(`${entry.file} ${entry.symbol} (${entry.kind})`);
 }
-for (const file of Object.keys(byFile)) {
-  if (!allowlist.some((entry) => entry.file === file)) failures.push(`classified file holds no entry: ${file}`);
+// A classified file with no entry is a stale classification, except, under
+// --built, this issue's own files: emptying them is the goal.
+for (const [file, owner] of Object.entries(byFile)) {
+  if (BUILT && owner === "FIX-2775") continue;
+  if (!read.some((entry) => entry.file === file)) failures.push(`classified file holds no entry: ${file}`);
 }
 const wantEntries = BUILT ? { ...EXPECTED.entries, "FIX-2775": 0 } : EXPECTED.entries;
 for (const [owner, want] of Object.entries(wantEntries)) {
@@ -112,6 +130,8 @@ for (const [file, text] of files) {
     }
   });
 }
+// The finished state: no census site left.
+if (SIMULATE) sites.length = 0;
 const wantSites = BUILT ? 0 : EXPECTED.sites;
 if (sites.length !== wantSites) failures.push(`the census finds ${sites.length} sites, the spec says ${wantSites}`);
 if (CONTROL && !sites.some((site) => site.file === "src/lib/planted.ts")) failures.push("control: the planted site was not found");
@@ -123,7 +143,7 @@ for (const site of sites) {
   byKind[site.kind] = (byKind[site.kind] ?? 0) + 1;
   byScreen[site.file] = (byScreen[site.file] ?? 0) + 1;
 }
-console.log(`allowlist: ${allowlist.length} entries · by owner: ${JSON.stringify(counts)}`);
+console.log(`allowlist: ${read.length} entries · by owner: ${JSON.stringify(counts)}`);
 console.log(`census: ${sites.length} sites on ${new Set(sites.map((s) => `${s.file}:${s.line}`)).size} lines in ${Object.keys(byScreen).length} files · by kind: ${JSON.stringify(byKind)}`);
 console.log(`files that import reads.ts outside FIX-2777's four: ${new Set(sites.filter((s) => s.kind === "reads import").map((s) => s.file)).size}`);
 if (BUILT || process.argv.includes("--list")) {
