@@ -22,6 +22,8 @@ type FencedRead<T> = {
   readonly data: T;
   readonly isLoading: boolean;
   readonly error: string | null;
+  /** What the failed read threw, while `error` is set; `undefined` otherwise. */
+  readonly cause: unknown;
   readonly refresh: () => void;
 };
 
@@ -66,6 +68,7 @@ export function useFencedRead<T>(
   const [data, setData] = useState(empty);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cause, setCause] = useState<unknown>(undefined);
   const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
   const loadRef = useRef(load);
   loadRef.current = load;
@@ -73,6 +76,7 @@ export function useFencedRead<T>(
   const fence = useReadFence(identity, () => {
     setData(empty);
     setError(null);
+    setCause(undefined);
     setIsLoading(true);
     setHeldIdentity(null);
   });
@@ -86,6 +90,7 @@ export function useFencedRead<T>(
     if (stillCurrent === null) return;
     setIsLoading(true);
     setError(null);
+    setCause(undefined);
     setHeldIdentity(fence.identity);
     try {
       const next = await loadRef.current(stillCurrent, notice);
@@ -94,6 +99,7 @@ export function useFencedRead<T>(
     } catch (err) {
       if (!stillCurrent()) return;
       setError(describe(err, failureMessage));
+      setCause(err);
       throw err;
     } finally {
       if (stillCurrent()) setIsLoading(false);
@@ -113,6 +119,7 @@ export function useFencedRead<T>(
     data: holdsCurrent ? data : empty,
     isLoading: holdsCurrent ? isLoading : true,
     error: holdsCurrent ? error : null,
+    cause: holdsCurrent ? cause : undefined,
     refresh: () => void read().catch(() => undefined)
   };
 }
