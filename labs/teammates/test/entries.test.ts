@@ -10,7 +10,8 @@ import { describe, expect, it } from "vitest";
 import { noticeMetadata, noticeText, type TaskNotice } from "@flow-state-dev/orchestration/tasks";
 import { delegateAnswerMetadata } from "@flow-state-dev/workforce/browser";
 import type { WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
-import { toBoardTask, toEntries, toSteps, type ConversationEntry } from "../src/app";
+import { toEntries, toSteps, type ConversationEntry } from "../src/app";
+import { taskStatus } from "../src/lib/task";
 import { answerIn } from "../src/components/Popups";
 import { exchangeOf } from "../src/lib/talk";
 
@@ -57,7 +58,7 @@ describe("a task's ending in the conversation", () => {
 
   // FIX-2349: a task Lead cancelled read "failed" while its run was still going.
   it("draws a cancelled task as cancelled, never as failed", () => {
-    expect(toBoardTask({ id: "task_c", status: "cancelled", assignee: CODER, title: "Misc bug fix" }).status).toBe("cancelled");
+    expect(taskStatus({ status: "cancelled" })).toBe("cancelled");
     const [entry] = toEntries([row("task_c", "cancelled"), ending("d", "task_c", { ending: "cancelled" })], new Set([CODER]));
     expect(entry).toMatchObject({ kind: "result", taskId: "task_c", cancelled: true });
     expect(entry).not.toHaveProperty("failed");

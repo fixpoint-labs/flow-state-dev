@@ -95,11 +95,13 @@ const STATE_KINDS: Record<RecordedRead["scope"], readonly ChangeKind[]> = {
 /** The kinds a read of the session itself hears: its every change but its resources and boards. */
 const SESSION_KINDS: readonly ChangeKind[] = ["items", "request", "run", "state"];
 
-// FIX-2725 D1.
+// FIX-2725 D1; FIX-2773 moved identity off `run`.
 /**
  * The kinds each read of another session, or of the user's sessions, hears.
  * A session's flow and lineage change only when it is deleted or recreated
- * under its id, both of which publish `run` on it. Its requests' statuses
+ * under its id, both of which publish `state` on it (not `run`, which every
+ * turn starting or ending publishes there, so a board view that names its
+ * conversation would read again on each reply). Its requests' statuses
  * change on a request write, which publishes `request` on it; they vanish
  * with the session, whose delete (and a recreate) publishes `state` on it but
  * leaves its requests in the store. `state`, not `run`: a busy turn's session
@@ -112,7 +114,7 @@ const SESSION_KINDS: readonly ChangeKind[] = ["items", "request", "run", "state"
  * never on a turn starting or finishing, which publishes `run` there.
  */
 const PEER_KINDS: Record<"identity" | "turns" | "sessions" | "suspensions", readonly ChangeKind[]> = {
-  identity: ["run"],
+  identity: ["state"],
   turns: ["request", "state"],
   sessions: ["run"],
   suspensions: ["suspension"]
@@ -216,8 +218,8 @@ export type ViewDependencies = {
   resource(scope: "session" | "user" | "org", name: string, reach: StorageReach): void;
   /** A session itself read (its items, metadata, window, journal or record): heard on its every change. */
   session(sessionId: string): void;
-  // FIX-2725 D1.
-  /** Which flow and lineage another session is: heard on its `run` only. */
+  // FIX-2725 D1, amended by FIX-2773.
+  /** Which flow and lineage another session is: heard on its `state` only, which its birth and its delete publish. */
   sessionIdentity(sessionId: string): void;
   /** Another session's readonly state: heard on its `state`. */
   sessionState(sessionId: string): void;
