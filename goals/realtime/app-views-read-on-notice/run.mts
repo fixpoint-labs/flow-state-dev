@@ -451,8 +451,8 @@ async function mounted(views: ReturnType<typeof mountViews>): Promise<void> {
   await delay(500);
 }
 
-/** A task screen's run link pace wherever push can miss a change (`REREAD_EVERY_MS`). */
-const RUN_LINK_POLL_MS = 2_000;
+/** A task screen's run link pace wherever push can miss a change: since FIX-2776 its row comes from the task-list view, so `useView`'s default (`LIVE_POLL_MS` in the client's `live-read.ts`). */
+const RUN_LINK_POLL_MS = 3_000;
 
 /**
  * A task screen waiting on its run's link, under its own provider and
