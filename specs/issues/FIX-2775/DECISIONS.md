@@ -53,6 +53,9 @@ a notice with no ids, a missed-notice gap, or a failed entry read diffs the coll
 manifest (each entry's storage key and version, no values) and reads only the entries that
 are new or changed. It does not `listAll()`. [FIX-2845](https://linear.app/fixpoint-labs/issue/FIX-2845).
 
+Message ids are `msg_` plus random bytes, so storage-key order is not time order.
+Newest is each entry's `at`. A key sorted newest-first would show a random page.
+
 ![D2, chosen: useResource reads every page, beside a Shift Manager hook over listAll. Decides it: where the live read lives; in the app it imports topic, an inventory finding. Price: three public names. Tie: every page read either way](figures/d2-whole-collection.svg)
 
 It comes down to where the live read lives: in `react` once, or in the app, where the inventory finds it.

@@ -43,7 +43,7 @@ import {
   type WireTopic
 } from "@flow-state-dev/client";
 import { followEveryPage, liveRead } from "@flow-state-dev/client/internal";
-import { extractBareTopic, getPatternPrefix } from "@flow-state-dev/contracts/helpers";
+import { compareNewest, COLLECTION_MANIFEST_PAGE, COLLECTION_RESYNC_READS, extractBareTopic, getPatternPrefix, mapLimit, sentAtOf } from "@flow-state-dev/contracts/helpers";
 import type { JsonValue } from "@flow-state-dev/core/types";
 import type { SessionView } from "./useSession";
 import { useClient } from "../internal/useClient";
@@ -101,24 +101,13 @@ export type UseResourceResult<TDef> = TDef extends { scope: "session" }
 
 /** One page of the entries route: the most a first-page value holds, and the page size `all` asks for. */
 const ENTRY_PAGE = 200;
-/** One page of a collection manifest. The route's ceiling for a key-and-version page. */
-const MANIFEST_PAGE = 10_000;
 
 /** How a collection is read: its first page, every entry (`all`), or the newest page (`newest`), under `topicPrefix` when given. */
 type CollectionRead = { all: boolean; newest: boolean; topicPrefix: string | undefined };
 
-/** The same order the entries route uses for `order=newest`: a later `at` first, then storage key. */
-function compareNewestEntries<TValue>(a: ScopeEntry<TValue>, b: ScopeEntry<TValue>): number {
-  const stamp = (entry: ScopeEntry<TValue>): number | null => {
-    const at = (entry.value as { at?: unknown } | null)?.at;
-    return typeof at === "number" && Number.isFinite(at) ? at : null;
-  };
-  const left = stamp(a);
-  const right = stamp(b);
-  if (left !== null && right !== null && left !== right) return right - left;
-  if (left !== null && right === null) return -1;
-  if (left === null && right !== null) return 1;
-  return a.storageKey < b.storageKey ? -1 : a.storageKey > b.storageKey ? 1 : 0;
+/** Where `entry` sits in the newest order the entries route pages by. */
+function placeOf<TValue>(entry: ScopeEntry<TValue>): { storageKey: string; at: number | null } {
+  return { storageKey: entry.storageKey, at: sentAtOf(entry.value) };
 }
 
 // FIX-2625, FIX-2775 D2.
@@ -169,7 +158,7 @@ async function withNamedEntries<TValue>(
     if (isHeld(storageKey) || now.value === null) continue;
     const added = { topic: extractBareTopic(handle.key, storageKey), storageKey, value: now.value, version: now.version };
     const at = newest
-      ? merged.findIndex((entry) => compareNewestEntries(added, entry) < 0)
+      ? merged.findIndex((entry) => compareNewest(placeOf(added), placeOf(entry)) < 0)
       : merged.findIndex((entry) => entry.storageKey > storageKey);
     merged.splice(at === -1 ? merged.length : at, 0, added);
   }
@@ -189,7 +178,7 @@ async function resyncFromManifest<TValue>(
   const listed = await followEveryPage((cursor) =>
     handle.list({
       manifest: true,
-      limit: MANIFEST_PAGE,
+      limit: COLLECTION_MANIFEST_PAGE,
       ...(cursor === undefined ? {} : { cursor }),
       ...(topicPrefix === undefined ? {} : { topicPrefix })
     })
@@ -197,7 +186,7 @@ async function resyncFromManifest<TValue>(
   const have = new Map(held.map((entry) => [entry.storageKey, entry]));
   const stale = listed.filter((item) => have.get(item.storageKey)?.version !== item.version);
   const read = new Map(
-    await Promise.all(stale.map(async (item) => [item.storageKey, await handle.entry(item.storageKey).read()] as const))
+    await mapLimit(stale, COLLECTION_RESYNC_READS, async (item) => [item.storageKey, await handle.entry(item.storageKey).read()] as const)
   );
   const merged: ScopeEntry<TValue>[] = [];
   for (const item of listed) {
@@ -218,15 +207,15 @@ async function resyncFromManifest<TValue>(
   return merged;
 }
 
-/** The newest `pages` of a collection, and whether an older page remains. */
+/** The newest `pages` of a collection, whether an older page remains, and the cursor of that page. */
 async function readNewestWindow<TValue>(
   handle: ScopeCollectionHandle<TValue>,
   pages: number,
   topicPrefix: string | undefined
-): Promise<{ entries: ScopeEntry<TValue>[]; hasOlder: boolean }> {
+): Promise<{ entries: ScopeEntry<TValue>[]; hasOlder: boolean; nextCursor?: string }> {
   const entries: ScopeEntry<TValue>[] = [];
   let cursor: string | undefined;
-  let hasOlder = false;
+  let nextCursor: string | undefined;
   for (let page = 0; page < pages; page += 1) {
     const read = await handle.list({
       limit: ENTRY_PAGE,
@@ -235,14 +224,11 @@ async function readNewestWindow<TValue>(
       ...(topicPrefix === undefined ? {} : { topicPrefix })
     });
     entries.push(...read.items);
-    if (read.nextCursor === undefined) {
-      hasOlder = false;
-      break;
-    }
+    if (read.nextCursor === undefined) return { entries, hasOlder: false };
     cursor = read.nextCursor;
-    hasOlder = true;
+    nextCursor = read.nextCursor;
   }
-  return { entries, hasOlder };
+  return { entries, hasOlder: true, nextCursor };
 }
 
 /** Read now, and again on each resource notice under `roots` of `on`: the caller's user or org topic, or a session's. */
@@ -391,6 +377,9 @@ export function useResource<TDef extends ScopeResourceDef>(
     setHasOlder(false);
   }
   const loadingOlder = useRef(false);
+  /** The cursor of the next older page, kept so a scroll fetches that page alone. */
+  const nextCursor = useRef<string | undefined>(undefined);
+  const appendOlder = useRef(false);
   const held = useRef<{ handle: unknown; how: CollectionRead; entries: ScopeEntry<TValue>[] } | undefined>(undefined);
   const reading = useRef(0);
   const { data, error, cause, refresh } = useFencedRead<TValue | ScopeEntry<TValue>[] | null>(
@@ -410,8 +399,27 @@ export function useResource<TDef extends ScopeResourceDef>(
       try {
         const placed = last !== undefined ? await withNamedEntries(handle, last, notice, how) : undefined;
         // A resync under `all` diffs the manifest against what is already held. The first read has nothing to diff, so it lists.
-        // A newest window re-reads the pages already asked for: a gap picks up a new entry without listing the collection.
-        const newestWindow = newest && placed === undefined ? await readNewestWindow(handle, paging.current.pages, topicPrefix) : undefined;
+        // A scroll appends the next older page. A gap re-reads the pages already asked for.
+        const appending = newest && placed === undefined && appendOlder.current && notice === null && last !== undefined && nextCursor.current !== undefined;
+        appendOlder.current = false;
+        const newestWindow = !newest || placed !== undefined
+          ? undefined
+          : appending
+            ? await (async () => {
+                const page = await handle.list({
+                  limit: ENTRY_PAGE,
+                  order: "newest",
+                  cursor: nextCursor.current,
+                  ...(topicPrefix === undefined ? {} : { topicPrefix })
+                });
+                nextCursor.current = page.nextCursor;
+                return { entries: [...last, ...page.items], hasOlder: page.nextCursor !== undefined };
+              })()
+            : await (async () => {
+                const opened = await readNewestWindow(handle, paging.current.pages, topicPrefix);
+                nextCursor.current = opened.nextCursor;
+                return opened;
+              })();
         const entries =
           placed ??
           newestWindow?.entries ??
@@ -444,6 +452,7 @@ export function useResource<TDef extends ScopeResourceDef>(
   const loadOlder = useCallback(() => {
     if (!hasOlder || loadingOlder.current) return;
     loadingOlder.current = true;
+    appendOlder.current = true;
     paging.current = { how: paging.current.how, pages: paging.current.pages + 1 };
     refresh();
   }, [hasOlder, refresh]);

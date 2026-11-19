@@ -187,6 +187,50 @@ describe("the Messages view", () => {
     expect(shown[249]).toBe("msg_000");
   });
 
+  it("shows an answer before its older request, and the request says it was answered once it loads", async () => {
+    const fillers = Array.from({ length: 199 }, (_, i) =>
+      message({ id: `msg_${String(i + 1).padStart(3, "0")}`, from: "helper-a", to: "helper-b", at: 100 + i, text: `note ${i}` })
+    );
+    const ask = message({
+      id: "msg_000",
+      from: "researcher",
+      to: "coordinator",
+      at: 1,
+      text: "What is the codename?",
+      replyRequested: true,
+      answeredBy: "msg_answer"
+    });
+    const answer = message({
+      id: "msg_answer",
+      from: "coordinator",
+      to: "researcher",
+      at: 10_000,
+      exchange: "msg_000",
+      inReplyTo: "msg_000",
+      text: "BLUE-HERON",
+      hop: 2
+    });
+    held.messages = [ask, answer, ...fillers];
+    render(<Messages snapshot={snapshot} />);
+    const first = await screen.findAllByTestId("message");
+    expect(first).toHaveLength(200);
+    expect(first[0]!.getAttribute("data-message-id")).toBe("msg_answer");
+    expect(screen.queryByText("reply · waiting")).toBeNull();
+    expect(screen.queryByTestId("message-reply-state")).toBeNull();
+
+    const scroller = screen.getByTestId("messages-scroller");
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 4000 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 400 });
+    scroller.scrollTop = 3600;
+    act(() => fireEvent.scroll(scroller));
+    await waitFor(() => expect(screen.getAllByTestId("message")).toHaveLength(201));
+    const request = screen.getAllByTestId("message").find((line) => line.getAttribute("data-message-id") === "msg_000");
+    expect(request).toBeDefined();
+    expect(within(request!).getByTestId("message-reply-state").textContent).toBe("reply · answered");
+    const exchange = request!.closest("[data-testid='message-exchange']");
+    expect(exchange?.querySelector("[data-message-id='msg_answer']")).not.toBeNull();
+  });
+
   it("is at /messages, and a session at /s/<id>", () => {
     expect(parseRoute("/messages")).toEqual({ level: "messages" });
     expect(parseRoute("/s/wks_1")).toEqual({ level: "session", sessionId: "wks_1" });

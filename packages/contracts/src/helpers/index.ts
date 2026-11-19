@@ -12,6 +12,14 @@ export { toError } from "./to-error";
 export { isWindowsReservedName } from "./windows-reserved-name";
 export { extractBareTopic, getPatternPrefix } from "./pattern-prefix";
 export {
+  COLLECTION_MANIFEST_PAGE,
+  COLLECTION_RESYNC_READS,
+  compareNewest,
+  isAfterNewest,
+  sentAtOf,
+  type NewestPlace
+} from "./collection-list";
+export {
   assertSetExpectedVersion,
   assertDeleteExpectedVersion,
   resourceStateConflict,

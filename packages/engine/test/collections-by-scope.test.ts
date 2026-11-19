@@ -142,6 +142,8 @@ describe("a direct read of a collection's entries", () => {
     // A value page stops at 200. A manifest page is keys and versions, so a much larger page is one read.
     const refused = await get(router, ["resources", "user", "drafts/*", "entries"], alice, "?limit=201");
     expect(refused.status).toBe(400);
+    const manifestWord = await get(router, ["resources", "user", "drafts/*", "entries"], alice, "?manifest=true");
+    expect(manifestWord.status).toBe(400);
     const wide = await list(router, "user", "drafts/*", alice, "?manifest=1&limit=10000&topicPrefix=drafts/b");
     expect(wide.items).toEqual([{ storageKey: "drafts/b", version: 1 }]);
     expect(wide.items[0]).not.toHaveProperty("value");

@@ -41,6 +41,8 @@ function lab(stored: Map<string, Stored>, options: { repeatCursor?: boolean; fai
   const lists: string[] = [];
   const entryReads: string[] = [];
   let entryFailuresLeft = options.failEntryReads ?? 0;
+  let inFlight = 0;
+  let maxInFlight = 0;
   const fetcher = vi.fn<ClientFetch>(async (input) => {
     const url = new URL(String(input), "http://x");
     const shaped = (storageKey: string, entry: Stored) => ({ topic: storageKey.slice("projects/".length), storageKey, ...entry });
@@ -92,6 +94,10 @@ function lab(stored: Map<string, Stored>, options: { repeatCursor?: boolean; fai
     if (one !== null) {
       const key = decodeURIComponent(one[1]!);
       entryReads.push(key);
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await Promise.resolve();
+      inFlight -= 1;
       if (entryFailuresLeft > 0) {
         entryFailuresLeft -= 1;
         return json({ error: "entry_unavailable", message: "entry read failed" }, 500);
@@ -116,7 +122,7 @@ function lab(stored: Map<string, Stored>, options: { repeatCursor?: boolean; fai
       for (const { options: heard } of subscriptions) heard.onChange(notice);
     });
   };
-  return { client, lists, entryReads, subscriptions, hear };
+  return { client, lists, entryReads, subscriptions, hear, maxInFlight: () => maxInFlight };
 }
 
 const keys = (entries: readonly { storageKey: string }[] | null) => (entries ?? []).map((entry) => entry.storageKey);
@@ -207,6 +213,23 @@ describe("useResource(def, { all: true })", () => {
     expect(valueLists()).toHaveLength(pages);
   });
 
+  it("reads the entries a gap finds changed a few at a time, and does not list every value", async () => {
+    const stored = many(40);
+    const server = lab(stored);
+    const { result } = renderHook(() => useResource(projects, { all: true, client: server.client }));
+    await waitFor(() => expect(result.current.value).toHaveLength(40));
+    const valueLists = () => server.lists.filter((search) => !search.includes("manifest=1"));
+    const pages = valueLists().length;
+    for (const [key, entry] of stored) stored.set(key, { value: entry.value, version: 2 });
+
+    await server.hear({ topic: { scope: "org" }, kind: "resync" } as WireNotice);
+    await waitFor(() => expect(server.entryReads).toHaveLength(40));
+    expect(server.maxInFlight()).toBeLessThanOrEqual(20);
+    expect(server.maxInFlight()).toBeGreaterThan(1);
+    expect(valueLists()).toHaveLength(pages);
+    expect(result.current.value?.every((entry) => entry.version === 2)).toBe(true);
+  });
+
   it("says why a read stopped: a repeated cursor's own readable message, and not part of the list as all of it", async () => {
     const { client } = lab(many(450), { repeatCursor: true });
     const { result } = renderHook(() => useResource(projects, { all: true, client }));
@@ -237,13 +260,15 @@ describe("useResource(def, { newest: true })", () => {
     await waitFor(() => expect(result.current.value).toHaveLength(250));
     expect(result.current.value?.[249]?.storageKey).toBe("projects/e000");
     expect(result.current.hasOlder).toBe(false);
-    expect(lists).toHaveLength(listed + 2);
+    // The older page is one request. The first page is not read again.
+    expect(lists).toHaveLength(listed + 1);
+    expect(lists.at(-1)).toContain("cursor=");
 
     stored.set("projects/e300", { value: { name: "new", at: 300 }, version: 1 });
     await hear(named("projects/e300"));
     await waitFor(() => expect(result.current.value?.[0]?.storageKey).toBe("projects/e300"));
     expect(entryReads).toEqual(["projects/e300"]);
-    expect(lists).toHaveLength(listed + 2);
+    expect(lists).toHaveLength(listed + 1);
     expect(result.current.value).toHaveLength(251);
   });
 });
