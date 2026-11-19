@@ -2,16 +2,17 @@
 
 **Spec** · [Decisions](DECISIONS.md)
 
-## Six people, before and after
+## Seven people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
-| **sees a turn fail in Teammates** | A failed line with Retry, worked out by Teammates' own `toEntries` from a copy of the engine's retry list | The same line, worked out by React. The retry list exists once |
-| **sees a worker's turn fail or get stopped in Shift Manager** | The registry's plain red error text. No Retry, and no line where a stopped turn ended | The same failed line (Retry where the engine retries the turn) and stopped line Teammates draws |
-| **watches a worker message another, file a task and get its result** | Each app reads the `sendMessage` and `createTask` calls and the board's ending line its own way: Shift Manager's *Asked Ada*, Teammates' sent line | Workforce writes each one as a `data` item and draws it with its own renderer. An app replaces the look by registering its own |
+| **sees a turn fail in Teammates** | A failed line with Retry, from Teammates' own `toEntries` and a copy of the engine's retry list | The same line, from React and the turn's `retryable`, which the engine sets ([D3](DECISIONS.md#d3)) |
+| **sees a worker's turn fail or get stopped in Shift Manager** | Plain red error text. No Retry, no stopped line | Teammates' failed line with Retry, and its stopped line |
+| **watches a worker message another, file a task and get its result** | Each app decodes the `sendMessage` and `createTask` calls and the board's ending line its own way | Workforce writes each as a `data` item with its own renderer; an app can register its own look |
 | **builds a new conversation screen**, such as the message board plugin ([FIX-2839](https://linear.app/fixpoint-labs/issue/FIX-2839)) | Writes a fourth copy of the decoding | Calls React's model and spreads workforce's renderers |
 | **opens a conversation stored before this ships** | Sent, task and result lines show | Those three show as ordinary steps and messages. No compatibility read ([D1](DECISIONS.md#d1)) |
-| **adds a source the engine retries** | Edits the engine, two lab copies and two sync tests | Edits one list |
+| **uses a browser build older than the server** | The three types don't exist | Sent, task and result don't show (no renderer, no line). Nothing breaks |
+| **runs a host that adds its own retry source** (`publicReentrySources`) | No lab offers Retry on those turns | Retry shows: `retryable` uses the route's own rule ([D3](DECISIONS.md#d3)) |
 
 Claude Code-style's `entriesOf` is a third copy the issue doesn't name; it moves too ([D2](DECISIONS.md#d2)).
 
@@ -22,53 +23,53 @@ renderers, and none of them reads conversation items itself.**
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | "Nothing in either is unique to the app." One model the framework owns, so the next screen is not a fourth copy (the issue, decided by Jake on 2026-11-19) |
-| **Smaller, and rejected** | "Move `toEntries` into React and keep the workforce lines app-side." The tool-call and notice decoding is the larger half, and Shift Manager would keep its copy |
-| **Bigger, and not this issue's** | One model for every item view. The devtool shows raw items on purpose; kitchen-sink's turn notices are under *Leaves* |
+| **The real need** | "Nothing in either is unique to the app": one model the framework owns (the issue, Jake, 2026-11-19) |
+| **Smaller, and rejected** | Move `toEntries` into React, keep workforce lines app-side. Shift Manager keeps its copy, and that decoding is the larger half |
+| **Bigger, and not this issue's** | One model for every item view. The devtool shows raw items on purpose |
 | **Not done if** | Any app keeps a retry list, a sync test, or a function that turns items into its own entries · Shift Manager still has no stopped line · workforce lines show with workforce's renderers removed · a page goal in `goals/teammates-lab/`, `goals/shift-manager/` or `goals/claude-code-style-lab/` fails |
 
 ```mermaid
 flowchart LR
   S["one scripted session · each line kind"] --> A["Teammates · Shift Manager · Claude Code-style pages"]
-  A -->|"every line kind in each page"| P["PASS · goal met"]
+  A -->|"required lines in each page"| P["PASS · goal met"]
   C["control · workforce renderers removed"] -.-> A
   A -.->|"under the control"| F["must FAIL · sent task result received gone"]
 ```
 
-The check reads what each page draws. The control proves workforce's lines come through the
-registry, not app code.
-
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/workforce-apps/one-conversation-model/` (new) · scripted model · real browser, run by the implementer at completion · verdict on the implementation PR |
-| **Signal** | Each page draws all ten line kinds: user, assistant (streaming, then cut off), failed with Retry, stopped, steps, approval with its answer, sent, received, task, result |
+| **Goal check** | `goals/workforce-apps/one-conversation-model/` (new) · scripted model · real browser, run by the implementer at completion · verdict on the last implementation PR |
+| **Signal · required** | Each page draws failed with Retry, stopped, sent, received, task and result |
+| **Signal · stretch** | User, assistant (streaming, then cut off), steps, approval with its answer. Same run; a flake here doesn't block while each app's page goals pass |
 | **Input** | One session holding each kind once. Moving the stopped turn before the failed one must pass too |
-| **Anti-game** | Don't assert on `conversationLines`' return or a component test. Both pass while an app still decodes items |
+| **Anti-game** | Not the model's return or a component test: both pass while an app still decodes items |
 | **Control that must fail** | `GOAL_CONTROL=no-workforce-renderers` must FAIL on sent, task, result and received. Today's `main` must FAIL on Shift Manager's stopped line |
 
 ## What changes
 
-![Before: Teammates, Shift Manager and Claude Code-style each turn items into their own lines, with two copies of the retry list. After: React's conversationLines turns items and turns into lines, reading the one retry list in contracts; workforce writes sent, task and result as data items beside received and registers a renderer for each; the three apps draw the lines through the registry](figures/what-changes.svg)
-
-Three decoders become one model and one set of renderers. Red goes; green is what each app calls.
+![Before: Teammates, Shift Manager and Claude Code-style each turn items into their own lines, with two copies of the retry list. After: React's conversationLines turns items and turns into lines, each turn carrying retryable from the engine; workforce writes sent, task and result as data items beside received and registers a renderer for each; the three apps draw the lines through the registry](figures/what-changes.svg)
 
 **A conversation screen, as an app writes it:**
 
 ```diff
 - const entries = toEntries(items, workers, ended, retryable, stopped)
 - return entries.map((entry) => <Entry key={entry.id} entry={entry} />)
-+ const lines = conversationLines(items, turns) // turns: { id, status, source }[]
++ // module level: one registry object, not one per render
++ const renderers = { ...appRenderers, data: { ...workforceRenderers, ...appRenderers.data } }
++ const lines = conversationLines(items, turns) // turns: { id, status, retryable }[]
 + return (
-+   <FlowProvider renderers={{ ...appRenderers, data: { ...workforceRenderers, ...appRenderers.data } }}>
++   <FlowProvider renderers={renderers}>
 +     <ItemsRenderer lines={lines} />
 +   </FlowProvider>
 + )
 ```
 
-**Docs:** update `client/react.md` (a *Conversation lines* section: the kinds, turns, Retry)
-and `api/react.md`; update `workforce/ui.md` (workforce's renderers) and
-`workforce/messaging-workers.md` (a send is a `data` item); the React and workforce READMEs.
-No new page.
+**Delivery may be sliced**, in order: (1) the model, the rename and every caller, `retryable`,
+workforce's data types and renderers; (2) Teammates and Shift Manager; (3) Claude Code-style.
+
+**Docs:** changesets (BP-022): `minor` for `react`, whose published export is renamed with no
+alias; `patch` for `core`, `engine`, `workforce`. Pages: `client/react.md`, `api/react.md`,
+`workforce/ui.md`, `workforce/messaging-workers.md`, the React and workforce READMEs.
 
 ## How a line reaches the screen
 
@@ -76,62 +77,55 @@ No new page.
 flowchart LR
   T["workforce tools and board"] -->|"data items · sent task result received"| I["session items"]
   I --> M["conversationLines"]
-  R["session turns · status and source"] --> M
-  L["retry source list · contracts"] --> M
+  R["session turns · status and retryable"] --> M
   M -->|"lines"| IR["ItemsRenderer"]
   IR -->|"by kind or dataType"| G["renderer registry · app over workforce"]
 ```
 
-The model alone knows turns; the registry alone knows how a line looks.
+The model alone knows turns; the registry alone knows looks.
 
 ## What stays as it is
 
-- The engine's retry route and its rule.
-- Each app's look: it registers its own components for the lines.
-- Teammates' divider (`windowMarkOf`) and its *is answering* read (`answeringOf`), FIX-2772's.
+- The engine's retry route, its rule and its source list.
+- Each app's look, through its own renderers.
+- Teammates' divider and *is answering* read (FIX-2772's).
 - The devtool's raw item view.
 
 ## What's already here, and the debt
 
 | Already here | What this does with it |
 |---|---|
-| Ways to turn a conversation's items into lines (searched `toEntries`, `entriesOf`, `callRuns`, `buildItemRenderStream`, `suspension_resume`, `kind: "stopped"` across `packages/`, `labs/`, `apps/`) | **Four today, one after.** Closest: `react` · `buildItemRenderStream`, which becomes the model; the three app copies go. The registry's `request-group` already builds on it |
+| Ways to turn items into lines (searched `toEntries`, `entriesOf`, `callRuns`, `buildItemRenderStream` across `packages/`, `labs/`, `apps/`) | **Four today, one after.** `buildItemRenderStream` becomes the model; its other callers (the registry's and kitchen-sink's `request-group`, Shift Manager's `TaskSession`) switch in slice 1 |
 | `react` · `ItemsRenderer`, `toolGroupRenderer`, the approval receipt | **Extends.** Draws lines; the approval keeps its `resolution` |
-| Engine `PUBLIC_REENTRY_SOURCES` | **Moves** to contracts, re-exported by core; the engine imports it |
-| Workforce `workforce:received` | **Builds on.** Sent, task and result follow it ([D1](DECISIONS.md#d1)) |
-| [FIX-2738](https://github.com/fixpoint-labs/flow-state-dev/pull/5284): one `data` kind, drawn only through a registered renderer | **Kept and applied** to workforce's lines |
-| [FIX-2772 → Decided, not asked](../FIX-2772/DECISIONS.md#decided-not-asked): running, stopped and retryable read the turns view | **Kept.** The model takes those turns as input |
+| Engine `isPublicReentryAllowed` | **Reused** to set `retryable` on each turn ([D3](DECISIONS.md#d3)) |
+| Workforce `workforce:received` | **Builds on**, per [FIX-2738](https://github.com/fixpoint-labs/flow-state-dev/pull/5284) ([D1](DECISIONS.md#d1)) |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| Turns as an input to the model, and the stopped and failed lines | `react` · `buildItemRenderStream` | Composed: the same filter and grouping, plus a turn list it can't read off items |
-| `workforce:sent`, `workforce:task`, `workforce:result` data types | `workforce:received`; orchestration's `task-change` | Same pattern as received. `task-change` is a board record; joining it in the browser is the decoding this removes |
-| `workforceRenderers` on `workforce/react` | Shift Manager's `ReceivedMessage` and message-call line; Teammates' entry components | Moved into the package, not written new |
+| Turns as input; stopped and failed lines | `buildItemRenderStream` | Composed: its filter and grouping, plus turns |
+| `retryable` on `SessionTurn` and the turns view | The route's check | The same function, called where the turn is read |
+| `workforce:sent`, `:task`, `:result` and `workforceRenderers` | `workforce:received`; the apps' components | Received's pattern; components moved, not new |
 
 | The debt | |
 |---|---|
 | **Removes** | Teammates' `toEntries`, `items.ts`, `steps.ts` · Shift Manager's `callRuns`, `UNDRAWN` and message-call decoding · Claude Code-style's `entriesOf` and `withStopped` · two retry-list copies and two sync tests |
-| **Adds** | One rule: a tool call that wrote a line is not a step. Permanent by design: without it each sent message also shows as a step |
-| **Leaves** | The browser can't see a host's extra retry sources, so Retry is not offered on those turns · kitchen-sink's harness turn notices read turn status their own way |
+| **Adds** | One rule: a tool call that wrote a line is not a step (its tie [confirmed by a POC](DECISIONS.md#settled)) |
+| **Leaves** | Kitchen-sink's harness turn notices. Its `request-group` draws one request, not a conversation, so it is outside the goal check |
 
-**Net: down.** Three decoders and two list copies go; one rule is added.
+**Net: down.**
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met), at that size:** all three apps, measured on
-the page. If wrong: a model in React that the apps call while still decoding beside it.
+**[The goal](#the-goal-and-how-well-know-its-met):** all three apps, measured on the page. If
+wrong: apps that call the model and still decode beside it.
 
-**[The debt](#whats-already-here-and-the-debt), net down:** three decoders go, one rule is added.
-If wrong: a fourth decoder in the message board plugin.
+1. **[D3](DECISIONS.md#d3) · The engine sets `retryable` per turn**, not the issue's list in
+   contracts. If wrong: two additive fields we didn't need.
+2. **[D1](DECISIONS.md#d1) · Sent, task and result are server-written `data` items.** If wrong:
+   stored conversations lose those three lines for good.
+3. **[D2](DECISIONS.md#d2) · Claude Code-style moves too**, last. If wrong: one more PR.
 
-1. **[D1](DECISIONS.md#d1) · Sent, task and result are `data` items the server writes, not lines
-   a workforce reader decodes in the browser.** If wrong: conversations stored before this lose
-   those three lines for good.
-2. **[D2](DECISIONS.md#d2) · Claude Code-style moves to the model too.** If wrong: a larger PR
-   for a lab nobody asked about.
+**Open: D3**, since it changes what the issue named. D1's premise held on a POC. Starts after
+[#5473](https://github.com/fixpoint-labs/flow-state-dev/pull/5473) merges.
 
-**Open: none.** D1 is the one to weigh. Implementation starts after
-[#5473](https://github.com/fixpoint-labs/flow-state-dev/pull/5473) merges: it moves the Teammates
-code this deletes.
-
-Improvement · `contracts` `core` `engine` `react` `workforce` `orchestration` `shift-manager`, two labs · large · no epic
+Improvement · `core` `engine` `react` `workforce` `orchestration` `shift-manager` `ui`, kitchen-sink, two labs · large, sliced · no epic

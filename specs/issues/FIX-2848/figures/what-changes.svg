@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 440" role="img" aria-label="What changes. Before: Teammates (toEntries, items.ts, steps.ts), Shift Manager (callRuns and the message-call line in Conversation and ToolLine) and Claude Code-style (entriesOf, withStopped) each turn a conversation's items into their own lines, and Teammates and Claude Code-style each keep a copy of the engine's retry list with a sync test. React's ItemsRenderer only groups tool calls and draws approvals. After: the three apps call React's conversationLines with the session's items and turns, which reads the one retry list in contracts, and draw through the renderer registry. Workforce writes sent, task and result as data items beside received and registers a renderer for each; an app's own renderer for a dataType wins."
+<svg viewBox="0 0 940 440" role="img" aria-label="What changes. Before: Teammates (toEntries, items.ts, steps.ts), Shift Manager (callRuns and the message-call line in Conversation and ToolLine) and Claude Code-style (entriesOf, withStopped) each turn a conversation's items into their own lines, and Teammates and Claude Code-style each keep a copy of the engine's retry list with a sync test. React's ItemsRenderer only groups tool calls and draws approvals. After: the three apps call React's conversationLines with the session's items and turns, with each turn carrying retryable, stamped by the engine from its own retry rule, and draw through the renderer registry. Workforce writes sent, task and result as data items beside received and registers a renderer for each; an app's own renderer for a dataType wins."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -78,9 +78,9 @@
     <text class="t-s" x="506" y="164">ItemsRenderer draws the lines through the registry</text>
     <path class="arrow" d="M600,176 L600,198"/><path class="arrow" d="M800,176 L800,198"/>
     <rect class="pkg" x="494" y="200" width="200" height="70" rx="5"/>
-    <text class="t-h" x="506" y="222">contracts</text>
-    <text class="t-s" x="506" y="240">the one retry list,</text>
-    <text class="t-s" x="506" y="256">core re-exports, engine imports</text>
+    <text class="t-h" x="506" y="222">engine · each turn</text>
+    <text class="t-s" x="506" y="240">carries retryable, from</text>
+    <text class="t-s" x="506" y="256">the route's own rule</text>
     <rect class="new" x="708" y="200" width="200" height="70" rx="5"/>
     <text class="t-h c-code" x="720" y="222">renderer registry</text>
     <text class="t-s" x="720" y="240">by kind or dataType</text>
