@@ -28,6 +28,9 @@ const KEPT_OCCURRENCES = 5;
 /** The newest occurrence keys a row remembers, so a redelivered occurrence counts once. */
 const KEPT_SEEN = 50;
 
+/** The users whose failures a report names, newest last: who the error history shows it to. */
+const KEPT_USERS = 50;
+
 /** The ids one occurrence is known by: what a report links and a repeat's comment names. */
 const occurrenceIdsSchema = z.object({
   at: z.number(),
@@ -162,6 +165,8 @@ const reportResourceStateSchema = z.object({
     .optional(),
   /** Failed requests of the task, joined from its held occurrences. */
   heldRequests: z.array(occurrenceIdsSchema).optional(),
+  /** Every user whose failure it took, newest last, at most 50: kept when their occurrences roll out. Absent on older reports. */
+  userIds: z.array(z.string()).optional(),
   issue: issueSchema.optional(),
   /** The issue an earlier report of this fingerprint filed, closed since. */
   previousIssue: issueSchema.optional(),
@@ -273,8 +278,7 @@ export interface HistoryRead {
 export async function readHistory(reports: ResourceCollectionRef, days: readonly string[]): Promise<HistoryRead> {
   const hours: HistoryHour[] = [];
   for (const day of days) {
-    for (const key of historyKeysOfDay(day)) {
-      const ref = await reports.getOptional(key);
+    for (const ref of await Promise.all(historyKeysOfDay(day).map((key) => reports.getOptional(key)))) {
       const parsed = ref === undefined ? undefined : historyHourSchema.safeParse(ref.state);
       if (parsed?.success === true) hours.push(parsed.data);
     }
@@ -349,15 +353,16 @@ export async function updateReport(
 ): Promise<ReportResourceState | undefined> {
   const ref = await reports.getOptional(reportId);
   if (ref === undefined) return undefined;
-  // Set by each attempt; `change` re-runs on a conflict, so only the last attempt's pair is the one that landed.
-  let landed: { before: ReportResourceState; after: ReportResourceState } | undefined;
-  const result = await updateStateWith(ref as never, (current: unknown) => {
-    const row = parseRow(current);
-    const next = row === undefined ? undefined : change(row);
-    landed = row === undefined || next === undefined ? undefined : { before: row, after: next };
-    return { state: (next ?? current) as never, result: next ?? row };
-  });
-  if (landed !== undefined) {
+  type Landed = { readonly report: ReportResourceState | undefined; readonly before?: ReportResourceState; readonly after?: ReportResourceState };
+  // Returned by the attempt that landed: `change` re-runs on a conflict, so only the last attempt's pair counts.
+  const landed = (await updateStateWith(ref as never, (current: unknown): { state: never; result: Landed } => {
+    const stored = parseRow(current);
+    const next = stored === undefined ? undefined : change(stored);
+    if (stored === undefined || next === undefined) return { state: current as never, result: { report: stored } };
+    return { state: next as never, result: { report: next, before: stored, after: next } };
+  })) as Landed;
+  const result = landed.report;
+  if (landed.before !== undefined && landed.after !== undefined) {
     const { before, after } = landed;
     if (before.status !== after.status || before.issue?.url !== after.issue?.url || before.issue?.identifier !== after.issue?.identifier) {
       await appendHistory(
@@ -365,7 +370,7 @@ export async function updateReport(
         {
           at: Date.now(),
           kind: "status",
-          key: statusEntryKey(after.id, after.status, after.issue?.identifier),
+          key: statusEntryKey(after.id, after.firstSeenAt, after.status, after.issue?.identifier),
           reportId: after.id,
           source: after.source,
           fingerprint: after.fingerprint,
@@ -438,6 +443,14 @@ function occurrenceEntry(occurrence: Occurrence, to: { readonly reportId?: strin
 
 const withSeen = (seen: readonly string[] | undefined, key: string | undefined): string[] | undefined =>
   key === undefined ? seen?.slice() : [...(seen ?? []), key].slice(-KEPT_SEEN);
+
+/** `userIds` with the users of `ids`, each once, newest last. */
+function withUsers(userIds: readonly string[] | undefined, ids: readonly OccurrenceIds[]): string[] | undefined {
+  const named = ids.flatMap((o) => (o.userId === undefined ? [] : [o.userId]));
+  if (named.length === 0) return userIds?.slice();
+  const kept = (userIds ?? []).filter((id) => !named.includes(id));
+  return [...kept, ...new Set(named)].slice(-KEPT_USERS);
+}
 
 /**
  * Take one occurrence: hold it, count it, or make a report for it, under the
@@ -548,6 +561,7 @@ export async function intakeOccurrence(
           firstSeenAt: now,
           lastSeenAt: now,
           occurrences: [ids],
+          ...(ids.userId === undefined ? {} : { userIds: [ids.userId] }),
           runs: 0,
           ...(seenKey === undefined ? {} : { seen: [seenKey] }),
           ...(description === undefined ? {} : { description }),
@@ -643,6 +657,7 @@ async function listOnStorm(
       count: row.count + 1,
       lastSeenAt: o.now,
       occurrences: keepNewest(row.occurrences, o.ids),
+      userIds: withUsers(row.userIds, [o.ids]),
       storm: { windowStart, entries: nextEntries },
       ...(o.seenKey === undefined ? {} : { seen: withSeen(row.seen, o.seenKey) }),
       ...(commentOwed ? { commentOwed: true } : {})
@@ -672,7 +687,9 @@ async function joinHeld(reports: ResourceCollectionRef, reportId: string, reques
   await updateReport(reports, reportId, (report) => {
     const known = report.heldRequests ?? [];
     const fresh = requests.filter((r) => !known.some((k) => k.requestId === r.requestId));
-    return fresh.length === 0 ? undefined : { ...report, heldRequests: [...known, ...fresh].slice(-KEPT_OCCURRENCES) };
+    return fresh.length === 0
+      ? undefined
+      : { ...report, heldRequests: [...known, ...fresh].slice(-KEPT_OCCURRENCES), userIds: withUsers(report.userIds, fresh) };
   });
 }
 
@@ -700,6 +717,7 @@ async function countOn(
       count: report.count + 1,
       lastSeenAt: now,
       occurrences: keepNewest(report.occurrences, ids),
+      userIds: withUsers(report.userIds, [ids]),
       ...(seenKey === undefined ? {} : { seen: withSeen(report.seen, seenKey) }),
       ...(commentOwed ? { commentOwed: true } : {})
     };

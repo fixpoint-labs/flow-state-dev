@@ -583,6 +583,31 @@ describe("the history", () => {
     expect(record.cut).toBeGreaterThanOrEqual(1);
   });
 
+  // A redelivery is one occurrence whether its hour kept it or only counted it.
+  it("counts a redelivered occurrence past the hour's cap once", async () => {
+    const lab = await openLab();
+    const at = Date.now();
+    const key = hourKeyOf(at);
+    const full = Array.from({ length: 250 }, (_, i) => ({ at: at - 1000 + i, kind: "occurrence", key: `request:old_${i}`, requestId: `old_${i}` }));
+    const runtime = await lab.host.state.getRuntime();
+    await runtime.stores.resourceState.set("org", ORG, key, { hour: key.slice("error-reports/log-".length), entries: full, cut: 0 }, "any");
+    await lab.intake(requestOccurrence("req_late", "the queue is full", at));
+    const once = (await historyOf(lab))[key]!.cut;
+    await lab.intake(requestOccurrence("req_late", "the queue is full", at));
+    expect((await historyOf(lab))[key]!.cut).toBe(once);
+  });
+
+  // A failure back after its issue closed is a new report under the same id: its own statuses are kept, not taken for the old one's.
+  it("keeps a reopened report's statuses beside the closed one's in the same hour", async () => {
+    const lab = await openLab({ preview: { autoFile: ["request"] }, limits: { commentEveryMs: 0 }, closed: true });
+    await lab.breaks("cache miss storm");
+    await lab.breaks("cache miss storm");
+    await lab.breaks("cache miss storm");
+    const [again] = await lab.rows();
+    const statuses = (await entriesOf(lab)).filter((e) => e.kind === "status" && e.reportId === again!.id).map((e) => e.status);
+    expect(statuses).toEqual(["drafting", "previewing", "filing", "filed", "closed", "drafting", "previewing", "filing", "filed"]);
+  });
+
   // When a report was filed or dismissed is only known from the history: the report keeps its current status alone.
   it("keeps each change of a report's status with its time, and the issue once filed", async () => {
     const lab = await openLab();
@@ -651,6 +676,8 @@ describe("the history", () => {
 
 describe("reading the history", () => {
   const today = () => new Date().toISOString().slice(0, 10);
+  /** The report hash a record's path ends with: the same for every reader, whatever words its slug takes. */
+  const hashOf = (uri: string) => uri.slice(uri.lastIndexOf("-") + 1);
   const TITLE = "Coordinator fails on a project with no repository";
 
   it("is found with searchResources and read with readResourceContent: title, status in words, ids, never the fingerprint", async () => {
@@ -684,9 +711,11 @@ describe("reading the history", () => {
     await lab.intake({ kind: "task", at: Date.now(), taskId: "task_alice_1", boardId: "board_a", attempt: 1, error: "eng.tasker could not do it", userId: "alice", orgId: ORG, assignee: "eng.tasker" });
     const [hit] = await lab.searchHistory(OPERATOR, { query: "error report" });
     expect(hit).toBeDefined();
-    // Alice reads her own; the operator reads everything.
-    expect((await lab.searchHistory("alice", { query: "error report" })).map((h) => h.uri)).toEqual([hit!.uri]);
-    expect((await lab.readHistory("alice", hit!.uri)).content).toContain(TITLE);
+    // Alice reads her own, under a path with the same report hash, in her own words; the operator reads everything.
+    const own = await lab.searchHistory("alice", { query: "error report" });
+    expect(own.map((h) => hashOf(h.uri))).toEqual([hashOf(hit!.uri)]);
+    expect((await lab.readHistory("alice", own[0]!.uri)).content).toContain("eng.tasker could not do it");
+    expect((await lab.readHistory(OPERATOR, hit!.uri)).content).toContain(TITLE);
     // Bob, in the same org, finds nothing by her title's words or her task's id, and reads nothing of it.
     expect(await lab.searchHistory("bob", { query: TITLE })).toEqual([]);
     expect(await lab.searchHistory("bob", { query: "task_alice_1" })).toEqual([]);
@@ -714,6 +743,93 @@ describe("reading the history", () => {
     await lab.readHistory(OPERATOR, hit!.uri);
     await lab.searchHistory("bob", { query: "error report" });
     expect(await runtime.stores.resourceState.getByPrefix("org", ORG, "error-reports/")).toEqual(before);
+  });
+
+  // A user's report outlives their entries: past the hour's cap theirs is only counted, and later
+  // occurrences push them out of the five the report keeps. The report still names them.
+  it("shows a user their own report when their entry was cut and they left the newest five", async () => {
+    const lab = await openLab();
+    const at = Date.now();
+    const bob = (id: string, when: number) => ({ ...requestOccurrence(id, "the queue is full", when), userId: "bob", sessionId: "breaker-bob" });
+    await lab.intake(bob("req_bob_0", at));
+    const key = hourKeyOf(at);
+    const runtime = await lab.host.state.getRuntime();
+    const kept = (await historyOf(lab))[key]!.entries;
+    const filler = Array.from({ length: 250 - kept.length }, (_, i) => ({ at: at - 1000 + i, kind: "occurrence", key: `request:old_${i}`, requestId: `old_${i}` }));
+    await runtime.stores.resourceState.set("org", ORG, key, { hour: key.slice("error-reports/log-".length), entries: [...kept, ...filler], cut: 0 }, "any");
+    await lab.intake(requestOccurrence("req_alice", "the queue is full", at + 1));
+    for (let i = 1; i <= 5; i += 1) await lab.intake(bob(`req_bob_${i}`, at + 1 + i));
+    const [report] = await lab.rows();
+    expect(report!.occurrences.some((o) => o.userId === "alice")).toBe(false);
+    expect((await entriesOf(lab)).some((e) => e.userId === "alice")).toBe(false);
+    const [hit] = await lab.searchHistory(OPERATOR, { query: "queue" });
+    const own = await lab.searchHistory("alice", { query: "error report" });
+    expect(own.map((h) => hashOf(h.uri))).toEqual([hashOf(hit!.uri)]);
+    // Her words were cut with her entry, and Bob's stay his.
+    const read = (await lab.readHistory("alice", own[0]!.uri)).content;
+    expect(read).toContain("Error report, waiting in Inbox");
+    expect(read).not.toMatch(/req_bob|the queue is full/);
+  });
+
+  // What a search or read records is what the caller may read: never the whole history, nor another user's reports.
+  it("records only the records the caller may read, never the history they come from", async () => {
+    const recorded: string[] = [];
+    const lab = await openLab({
+      hostRun: (run) => async (r) => {
+        const result = await run(r);
+        if (r.action === "reports" && (r.input as { op?: string }).op !== "all") recorded.push(JSON.stringify(result.output ?? null));
+        return result;
+      }
+    });
+    await lab.intake({ kind: "task", at: Date.now(), taskId: "task_alice_1", boardId: "board_a", attempt: 1, error: "eng.tasker could not do it", userId: "alice", orgId: ORG, assignee: "eng.tasker" });
+    await lab.intake({ ...requestOccurrence("req_carol", "the disk is full"), userId: "carol", sessionId: "breaker-carol" });
+    recorded.length = 0;
+    await lab.searchHistory("bob", { query: "error report" });
+    expect(recorded.length).toBeGreaterThan(0);
+    expect(recorded.join("\n")).not.toMatch(/task_alice_1|could not do it|disk is full|req_carol/);
+    // The operator's read of one report records that report alone.
+    const [hit] = await lab.searchHistory(OPERATOR, { query: "disk" });
+    recorded.length = 0;
+    await lab.readHistory(OPERATOR, hit!.uri);
+    expect(recorded.join("\n")).toContain("disk is full");
+    expect(recorded.join("\n")).not.toMatch(/task_alice_1|could not do it/);
+  });
+
+  // How much of the org's history was cut is the operator's to know: other users' overflow never shows in a user's record.
+  it("shows a user's record the same however much of other users' history was cut", async () => {
+    const lab = await openLab();
+    const at = Date.now();
+    await lab.intake(requestOccurrence("req_alice", "the queue is full", at));
+    const [hit] = await lab.searchHistory("alice", { query: "queue" });
+    const before = (await lab.readHistory("alice", hit!.uri)).content;
+    const key = hourKeyOf(at);
+    const runtime = await lab.host.state.getRuntime();
+    const kept = (await historyOf(lab))[key]!.entries;
+    const filler = Array.from({ length: 250 - kept.length }, (_, i) => ({ at: at - 1000 + i, kind: "occurrence", key: `request:old_${i}`, requestId: `old_${i}` }));
+    await runtime.stores.resourceState.set("org", ORG, key, { hour: key.slice("error-reports/log-".length), entries: [...kept, ...filler], cut: 0 }, "any");
+    for (let i = 0; i < 3; i += 1) await lab.intake({ ...requestOccurrence(`req_bob_${i}`, "the disk is full", at + 1 + i), userId: "bob", sessionId: "breaker-bob" });
+    expect((await historyOf(lab))[key]!.cut).toBeGreaterThan(0);
+    expect((await lab.readHistory("alice", hit!.uri)).content).toBe(before);
+  });
+
+  // One fingerprint can hold several users' failures (paths and ids are normalized away), so what a user
+  // reads of a shared report is built from their own occurrences alone: never another user's words, nor the
+  // report's count, issue or drafted title, which come from every user's failures.
+  it("shows a user of a shared report only their own words, never another user's", async () => {
+    const lab = await openLab();
+    await lab.breaks("cannot open /home/alice/secrets/key.pem", "alice");
+    await lab.breaks("cannot open /home/bob/notes/todo.txt", "bob");
+    const [report] = await lab.rows();
+    expect(report!.count).toBe(2);
+    const hits = await lab.searchHistory("bob", { query: "error report" });
+    expect(hits).toHaveLength(1);
+    const read = await lab.readHistory("bob", hits[0]!.uri);
+    const seen = [hits[0]!.uri, hits[0]!.snippet, read.content ?? ""].join("\n");
+    expect(read.content).toContain("/home/bob/notes/todo.txt");
+    expect(seen).not.toMatch(/alice|secrets|key\.pem/);
+    // The drafted title is written from every user's failures.
+    expect(seen).not.toContain(report!.draft!.title);
+    expect(read.content).toContain("Seen 1 time(s)");
   });
 
   it("shows another org nothing, the operator's own id included", async () => {

@@ -66,7 +66,9 @@ export const historyHourSchema = z.object({
   /** Oldest first. */
   entries: z.array(historyEntrySchema),
   /** Entries past the cap, counted and not kept. */
-  cut: z.number()
+  cut: z.number(),
+  /** The keys of the newest entries cut, so a redelivered one is counted once. Absent on older records. */
+  cutKeys: z.array(z.string()).optional()
 });
 export type HistoryHour = z.infer<typeof historyHourSchema>;
 
@@ -99,15 +101,13 @@ function prunedKeys(day: string): string[] {
 /** Whether no other hour of `at`'s day has a record yet. */
 async function firstOfDay(reports: ResourceCollectionRef, at: number): Promise<boolean> {
   const own = historyKey(at);
-  for (const key of historyKeysOfDay(utcDay(at))) {
-    if (key !== own && (await reports.getOptional(key)) !== undefined) return false;
-  }
-  return true;
+  const others = historyKeysOfDay(utcDay(at)).filter((key) => key !== own);
+  return (await Promise.all(others.map((key) => reports.getOptional(key)))).every((ref) => ref === undefined);
 }
 
-/** The dedupe key of a status entry: one per report, status and issue. */
-export function statusEntryKey(reportId: string, status: string, identifier: string | undefined): string {
-  return `status:${reportId}:${status}:${identifier ?? ""}`;
+/** The dedupe key of a status entry: one per report lifetime (its first sighting), status and issue. A report reopened under the same id keeps its own. */
+export function statusEntryKey(reportId: string, since: number, status: string, identifier: string | undefined): string {
+  return `status:${reportId}:${since}:${status}:${identifier ?? ""}`;
 }
 
 /**
@@ -129,16 +129,21 @@ export async function appendHistory(reports: ResourceCollectionRef, entry: Histo
     let ref = await reports.getOptional(key);
     if (ref === undefined) {
       if (await firstOfDay(reports, entry.at)) {
-        for (const old of prunedKeys(utcDay(entry.at))) await reports.delete(old);
+        await Promise.all(prunedKeys(utcDay(entry.at)).map((old) => reports.delete(old)));
       }
       ref = await reports.getOrCreate(key, { hour: utcHour(entry.at), entries: [], cut: 0 });
     }
     await updateStateWith(ref as never, (current: unknown) => {
       const parsed = historyHourSchema.safeParse(current);
       const record: HistoryHour = parsed.success ? parsed.data : { hour: utcHour(entry.at), entries: [], cut: 0 };
-      if (entry.key !== undefined && record.entries.some((e) => e.key === entry.key)) return { state: current as never, result: undefined };
+      if (entry.key !== undefined && (record.entries.some((e) => e.key === entry.key) || record.cutKeys?.includes(entry.key) === true)) {
+        return { state: current as never, result: undefined };
+      }
+      const cutKeys = entry.key === undefined ? record.cutKeys : [...(record.cutKeys ?? []), entry.key].slice(-HISTORY_ENTRY_CAP);
       const next: HistoryHour =
-        record.entries.length >= HISTORY_ENTRY_CAP ? { ...record, cut: record.cut + 1 } : { ...record, entries: [...record.entries, entry] };
+        record.entries.length >= HISTORY_ENTRY_CAP
+          ? { ...record, cut: record.cut + 1, ...(cutKeys === undefined ? {} : { cutKeys }) }
+          : { ...record, entries: [...record.entries, entry] };
       return { state: next as never, result: undefined };
     });
   } catch (error) {

@@ -18,7 +18,8 @@
 import { PROJECT_STATE_KEY, WORKER_ID_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { COMMENT_ENTRY, LINE_ENTRY, REPORT_ENTRY, REPORTS_ENTRY, REPORT_SESSION_PREFIX } from "./flow";
 import { ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY, INTAKE_SESSION_ID } from "./keys";
-import type { HistoryRead, IntakeDecision, Occurrence, OccurrenceIds, ReportLimits, ReportResourceState } from "./reports";
+import type { ErrorHistoryRecord, HistoryRequest } from "./history-view";
+import type { IntakeDecision, Occurrence, OccurrenceIds, ReportLimits, ReportResourceState } from "./reports";
 
 export { INTAKE_SESSION_ID };
 
@@ -158,13 +159,13 @@ export interface ErrorReporter {
   /** The dossier a report is drafted from, gathered by code. */
   dossierOf(row: ReportResourceState): Promise<Record<string, unknown>>;
   /**
-   * Whole UTC days of history with the reports they name, read as the
-   * operator through the bound host, unfiltered: a caller filters what it
-   * shows. `undefined` before the bind.
+   * The history records one reader may read, read as the operator through the
+   * bound host and projected inside that run: one record by `ref`, or a
+   * search's hits. `undefined` before the bind.
    *
-   * @param days `YYYY-MM-DD` days, UTC.
+   * @param request Who reads (from a trusted caller), which days, and what.
    */
-  readHistory(days: readonly string[]): Promise<HistoryRead | undefined>;
+  readHistory(request: HistoryRequest): Promise<ErrorHistoryRecord[] | undefined>;
 }
 
 /** The newest requests and sessions a dossier reads. */
@@ -380,11 +381,11 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
       await operatorRun(host.conversationSessionId, LINE_ENTRY, { text }, "internal");
     },
 
-    async readHistory(days) {
+    async readHistory(request) {
       if (host === undefined) return undefined;
-      const result = await operatorRun(INTAKE_SESSION_ID, REPORTS_ENTRY, { op: "history", days }, "internal", ERROR_REPORTER_INTAKE_FLOW);
+      const result = await operatorRun(INTAKE_SESSION_ID, REPORTS_ENTRY, { op: "history", request }, "internal", ERROR_REPORTER_INTAKE_FLOW);
       if (result.error !== undefined) throw new Error(`the history read failed: ${result.error}`);
-      return result.output as HistoryRead;
+      return (result.output as { records: ErrorHistoryRecord[] }).records;
     },
 
     async dossierOf(row) {

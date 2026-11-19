@@ -24,8 +24,7 @@ import { defineMcpCredentialsCollection } from "../projects/mcp-credentials";
 import { conversationLedgerAt, conversationLedgerResources } from "../conversation-board/ledger";
 import { reportOwedKey } from "../conversation-board/report-owed";
 import { ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY } from "./keys";
-import { HISTORY_RETENTION_DAYS } from "./history";
-import { defineErrorHistoryCollection, ERROR_HISTORY_RESOURCE } from "./history-view";
+import { defineErrorHistoryCollection, ERROR_HISTORY_RESOURCE, historyRecords, historyRequestSchema } from "./history-view";
 import { redact, secretsFromEnv } from "./redact";
 import {
   CLAIM_LEASE_MS,
@@ -827,14 +826,15 @@ export function defineErrorReporterIntakeFlow(options: ErrorReporterIntakeFlowOp
     inputSchema: z.discriminatedUnion("op", [
       z.object({ op: z.literal("get"), id: z.string() }),
       z.object({ op: z.literal("all") }),
-      // Whole UTC days of history, with the reports they name: what the error-history view reads.
-      z.object({ op: z.literal("history"), days: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).max(HISTORY_RETENTION_DAYS) })
+      // One reader's records out of whole UTC days of history: what the error-history view reads. Projected
+      // here, so the run returns (and records) only what that reader may read, never the days it read.
+      z.object({ op: z.literal("history"), request: historyRequestSchema })
     ]),
     resources: { ...errorReportsResources },
     execute: async (input, ctx) => {
       const reports = reportsOf(ctx);
       if (input.op === "get") return { rows: [await readReport(reports, input.id)].filter((r) => r !== undefined) };
-      if (input.op === "history") return readHistory(reports, input.days);
+      if (input.op === "history") return { records: historyRecords(await readHistory(reports, input.request.days), input.request) };
       return { rows: await listReports(reports) };
     }
   });
