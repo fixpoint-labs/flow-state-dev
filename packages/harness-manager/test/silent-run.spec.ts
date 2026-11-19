@@ -164,7 +164,17 @@ describe("a coding run's default cap on run time", () => {
   async function fiveHourRun(runTimeoutMs?: number) {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
     const stub = harnessStub({ steps: Array.from({ length: 300 }, (_, i) => `step ${i + 1}`), stepEveryMs: 60_000 });
-    const h = host({ harness: stub.slot, ...(runTimeoutMs === undefined ? {} : { runTimeoutMs }) });
+    // When the run last sent an event: how long it ran, whatever the loop below takes to see it settle.
+    let lastEventAt = 0;
+    const harness: typeof stub.slot = (feeds) =>
+      stub.slot({
+        ...feeds,
+        onEvent: (ctx) => {
+          lastEventAt = Date.now();
+          feeds.onEvent?.(ctx);
+        },
+      });
+    const h = host({ harness, ...(runTimeoutMs === undefined ? {} : { runTimeoutMs }) });
     try {
       await h.act("seed");
       void h.act("drain");
@@ -176,7 +186,7 @@ describe("a coding run's default cap on run time", () => {
         await vi.advanceTimersByTimeAsync(60_000);
       }
       const ended = await h.until(settled, "the run to end");
-      return { ended, ranFor: Date.now() - startedAt };
+      return { ended, ranFor: lastEventAt - startedAt };
     } finally {
       vi.useRealTimers();
       await h.dispose();
@@ -186,8 +196,8 @@ describe("a coding run's default cap on run time", () => {
   it("stops a run still working at 4 hours when the host sets no cap, so a looping run can't spend forever", async () => {
     const { ended, ranFor } = await fiveHourRun();
     expect(ended).toMatchObject({ status: "errored", error: "The stub harness ran for 4 hrs, its cap on run time; stopped." });
-    expect(ranFor).toBeGreaterThanOrEqual(4 * 60 * 60_000 - 60_000);
-    expect(ranFor).toBeLessThan(5 * 60 * 60_000);
+    expect(ranFor).toBeGreaterThanOrEqual(4 * 60 * 60_000 - 2 * 60_000);
+    expect(ranFor).toBeLessThanOrEqual(4 * 60 * 60_000);
   }, 60_000);
 
   it("lets a run go past 4 hours to its end when the host turns the cap off with runTimeoutMs: 0", async () => {
