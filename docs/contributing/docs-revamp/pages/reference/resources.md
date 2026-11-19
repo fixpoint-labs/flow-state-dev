@@ -358,13 +358,13 @@ There is no `writable`, `llmWritable`, `edges`, `prefetchMode`, `maxInstances` o
 
 | Field | Holds |
 |---|---|
-| `scope` | `"session"`, `"user"` or `"org"` |
-| `scopeId` | The resolved session, user or org id |
-| `userId` | The server-derived owner |
-| `orgId` | The organization, when there is one |
-| `tenantId` | The tenant, when there is one |
-| `flowKind` | The flow the read runs under |
-| `signal` | The request's abort signal |
+| `scope` | `"session"`, `"user"` or `"org"`. |
+| `scopeId` | The resolved session, user or org id. |
+| `userId` | The server-derived owner. |
+| `orgId` | The organization, when there is one. |
+| `tenantId` | The tenant, when there is one. |
+| `flowKind` | The flow the read runs under. |
+| `signal` | The request's abort signal. |
 
 A user-scoped collection belongs to a user inside one organization. Use both `userId` and `orgId` in every query.
 

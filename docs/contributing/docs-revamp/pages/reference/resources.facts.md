@@ -335,7 +335,7 @@ See section 3 rows `prefetchMode`, `prefetchWindow`. A client-visible collection
 | `reactTo` | `created`, `stateUpdated`, `deleted` | `contentUpdated` throws. I found no public call that reports an app-side change, so I cannot say what fires these. **State only that they are accepted at definition; ask before documenting firing.** | `contentUpdated` throws | proj:116-130, 348-354; `projected-resource-collection.test.ts:104-109` |
 | `metadata` | record | | | proj:179 |
 
-- `ProjectedResourceContext` handed to both hooks (server-derived, never caller input): `scope`, `scopeId`, `userId`, `orgId?`, `tenantId?`, `flowKind`, `signal?`. Scope every query by `userId` and `orgId`: a user-scoped projected collection belongs to a user inside one organization. proj:89-110; prj:52, 111-125.
+- `ProjectedResourceContext` handed to both hooks (server-derived, never caller input): `scope`, `scopeId`, `userId`, `orgId?`, `tenantId?`. It also carries `flowKind` and `signal?`. Scope every query by `userId` and `orgId`: a user-scoped projected collection belongs to a user inside one organization. proj:89-110; prj:52, 111-125.
 - `ResourceQuery` handed to `search`: `{ search?, prefix?, filter?: Record<string, JsonValue>, limit?, cursor? }`. `filter` is equality only. proj:48-59.
 - Ranking, filtering and paging are the hook's; hits stay in the order returned; `nextCursor` is opaque and echoed. proj:61-87; prj:97-99.
 - `ctx.resources.<name>` is a `ProjectedResourceCollectionRef`: `get`, `getOptional`, `list(query?: string | ResourceQuery)`. A bare string is `{ search }`. `list` returns `{ items, nextCursor? }` of read-only refs with state and rendered content resolved. No `create`, `upsert`, `delete`, `count`. proj:219-241; prj:69.
