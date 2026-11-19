@@ -36,7 +36,7 @@ import { defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
 import type { ActionConfig, BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { retryOnConflict } from "./cas-retry";
-import { CHECK_REPOSITORY_VIEW } from "./project-keys";
+import { CHECK_REPOSITORY_VIEW, PROJECT_SETUP_VIEW } from "./project-keys";
 import {
   PROJECTS_RESOURCE,
   projectAddressSchema,
@@ -52,10 +52,12 @@ import { isMember } from "./membership-gate";
 import { isAlreadyExists } from "./store-errors";
 import { readProjectFiles } from "./project-files";
 import { listProjects, readProject } from "./project-read";
-import { projectOfWrite } from "./project-coordinator";
+import { defineProjectSetupView, projectOfWrite, type ProjectSetupView } from "./project-coordinator";
 import { ProjectRefusedError } from "./project-refusal";
 import { repositoryProblem } from "./repository-value";
 import { checkedMcpServers } from "./mcp-server-name";
+import { connectorKeysAdapter } from "./mcp-credentials";
+import type { InboundTransportAdapter } from "@flow-state-dev/engine/host";
 import { checkoutCommandProblem } from "@flow-state-dev/workspace";
 
 /** What creating a project takes. Closed: nothing in it names the owner. */
@@ -157,6 +159,13 @@ export interface ProjectBlocksOptions {
    * Absent: no refusal and no view.
    */
   checkRepository?: RepositoryCheck;
+  // FIX-2775 D3.
+  /**
+   * The worker each user's project coordinator runs as (an installation's
+   * `projectCoordinator()?.worker ?? null`), asked on each read of the
+   * `projectSetup` view. Absent: the view answers `null`.
+   */
+  projectCoordinator?: () => string | null;
 }
 
 /** The host's answer for one repository: where a run's checkout would be, or why there would be none. */
@@ -190,7 +199,8 @@ export type CheckRepositoryView = ViewDefinition<
 
 /**
  * The project writes, the project read and the project files read, the same
- * blocks as an `actions` map, and the repository check as a `views` map.
+ * blocks as an `actions` map, the repository check and the project setup as a
+ * `views` map, and the connector keys route as a transport adapter.
  */
 export type ProjectBlocks = {
   createProject: ReturnType<typeof defineWriteProject>;
@@ -215,7 +225,18 @@ export type ProjectBlocks = {
   views: {
     /** Present only when the host gave `checkRepository`. */
     checkRepository?: CheckRepositoryView;
+    // FIX-2775 D3.
+    /** Always: the host's project coordinator, `null` when it gave none. */
+    projectSetup: ProjectSetupView;
   };
+  // FIX-2775 D3.
+  /**
+   * The connector keys route, for `createFlowState({ adapters })`: each user's
+   * own key for a server in `mcpServers`, read, set and cleared at
+   * `CONNECTOR_KEYS_PATH`, the caller verified by the projects flow's sign-in.
+   * Serves no route when the host offers none.
+   */
+  connectorKeys: InboundTransportAdapter;
 };
 
 /** One map, shared by every write: a flow refuses two declarations under one ref. */
@@ -483,15 +504,19 @@ async function projectRowToChange(ctx: BlockContext, named: ProjectAddress | und
  * Build the project writes, the project read, the caller's project list and
  * the project files read. Register them on a flow at `PROJECTS_FLOW`:
  * the projects collections' `runBy` names that flow, so a client's project
- * write runs there.
+ * write runs there. Mount `connectorKeys` among the host's adapters, so each
+ * user can set their key for the servers a project names.
  *
  * @param options `mcpServers`: the MCP server names this host offers its
- *   projects. Absent: none, and a project can name no server.
+ *   projects, and the connectors the keys route takes keys for. Absent: none,
+ *   a project can name no server, and the route serves nothing.
  *   `checkRepository`: the host's repository check (see
- *   `ProjectBlocksOptions.checkRepository`).
+ *   `ProjectBlocksOptions.checkRepository`). `projectCoordinator`: what the
+ *   `projectSetup` view answers.
  * @example
  *   const projects = defineProjectBlocks({ mcpServers: ["linear"] });
  *   defineFlow({ kind: PROJECTS_FLOW, actions: { ...projects.actions }, views: { ...projects.views } });
+ *   createFlowState({ flows, adapters: [projects.connectorKeys] });
  */
 export function defineProjectBlocks(options: ProjectBlocksOptions = {}): ProjectBlocks {
   const offered = [...(options.mcpServers ?? [])];
@@ -546,6 +571,10 @@ export function defineProjectBlocks(options: ProjectBlocksOptions = {}): Project
         description: "Read the files a project keeps: each file's path under the project and its size in bytes. Members only."
       }
     },
-    views: options.checkRepository === undefined ? {} : { [CHECK_REPOSITORY_VIEW]: defineCheckRepositoryView(options.checkRepository) }
+    views: {
+      ...(options.checkRepository === undefined ? {} : { [CHECK_REPOSITORY_VIEW]: defineCheckRepositoryView(options.checkRepository) }),
+      [PROJECT_SETUP_VIEW]: defineProjectSetupView(options.projectCoordinator)
+    },
+    connectorKeys: connectorKeysAdapter(offered)
   };
 }

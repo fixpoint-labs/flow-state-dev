@@ -34,7 +34,7 @@
  * them, and moving a prefix breaks every store that already holds a project.
  */
 
-import { defineResourceCollection } from "@flow-state-dev/core";
+import { defineResourceCollection } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { PROJECTS_FLOW, PROJECTS_PATTERN } from "./project-keys";
 
@@ -218,6 +218,14 @@ const PRIVATE_PROJECTS_COLLECTION = defineResourceCollection({
   stateSchema: projectResourceStateSchema,
   client: { state: { read: true }, expose: PROJECT_CLIENT_FIELDS }
 });
+
+// FIX-2775.
+/** The shared projects' definition, for a browser read of the organization's `projects/*`. */
+export const projectsResource = PROJECTS_COLLECTION;
+
+// FIX-2775.
+/** The private projects' definition, for a browser read of the caller's own `projects/*`. */
+export const privateProjectsResource = PRIVATE_PROJECTS_COLLECTION;
 
 // BP-023.
 /**
