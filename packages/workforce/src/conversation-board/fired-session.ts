@@ -18,7 +18,7 @@
  */
 import { requestHostOf } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { clearNotice, owedNotices, undeliverableRecord } from "@flow-state-dev/orchestration/internal";
+import { clearNotice, filerResolver, owedNotices, undeliverableRecord } from "@flow-state-dev/orchestration/internal";
 import { DISPATCH_ENTRY } from "./board-entries";
 import { conversationDelivery } from "./delivery";
 import { filingSessionIdOf } from "./filing-session";
@@ -56,12 +56,15 @@ async function settleOwedNotices(ctx: BlockContext): Promise<void> {
   const partition = await filingSessionIdOf(ctx.session);
   const ledger = await conversationLedgerAt(ctx, partition);
   if (ledger === undefined) return;
-  const { onUndeliverable } = conversationDelivery(CONVERSATION_LEDGER_ID);
+  const declared = conversationDelivery(CONVERSATION_LEDGER_ID);
+  // The board's own filer rule, so a task filed before `Task.filer` names the
+  // dependents its ending cancelled as the delivery and the pass name them.
+  const filerOf = filerResolver(declared, partition);
   const tasks = ledger.list();
   for (const task of tasks) {
-    for (const notice of owedNotices(task, ledger.collectionId, tasks)) {
+    for (const notice of owedNotices(task, ledger.collectionId, tasks, filerOf)) {
       await ledger.patchMetadata(task.id, { ...clearNotice(notice), ...undeliverableRecord(notice, FIRED_DETAIL, Date.now()) });
-      await onUndeliverable?.(ctx, task, notice, FIRED_DETAIL);
+      await declared.onUndeliverable?.(ctx, task, notice, FIRED_DETAIL);
       // The conversation's notice entry reports a final failure; it will never
       // run, so the report goes from here, for this session's own board.
       if (notice.ending === "errored") {

@@ -21,6 +21,7 @@
  */
 import type { RequestWakes, WakeSettleResult, WakeView } from "@flow-state-dev/core/internal";
 import { logRuntimeEvent, type RuntimeLogger } from "../execution/logging";
+import { isTerminalStartRefusal } from "../execution/terminal-refusal";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { SessionStore, WakeRecord, WakeStore } from "../stores/types";
 import { dispatchInternalAs } from "./dispatch-internal";
@@ -98,27 +99,6 @@ export async function fireWakeThrough(
     }
   });
   if (handle.accepted !== undefined) await handle.accepted;
-}
-
-/**
- * The refusals a session's run can never get past, by their error `code`:
- * Workforce's `WorkerTurnRefusedError`, thrown at the start of every turn of a
- * session whose worker was fired or can no longer run there.
- */
-const TERMINAL_START_REFUSALS: ReadonlySet<string> = new Set(["worker-turn-refused"]);
-
-/**
- * Whether a run's failure is a refusal its session will give every run
- * ({@link TERMINAL_START_REFUSALS}): on the error, or on one it wraps as its
- * `cause` (a block's throw reaches the run's caller as a `FlowError` around it).
- */
-function isTerminalStartRefusal(error: unknown): boolean {
-  for (let current = error, depth = 0; current != null && depth < 4; depth += 1) {
-    const code = (current as { readonly code?: unknown }).code;
-    if (typeof code === "string" && TERMINAL_START_REFUSALS.has(code)) return true;
-    current = (current as { readonly cause?: unknown }).cause;
-  }
-  return false;
 }
 
 /** The default most a debt may stay outstanding past its due time: 24 hours. */

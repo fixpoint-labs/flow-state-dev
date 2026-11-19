@@ -14,6 +14,7 @@ import { isValidOrgId } from "@flow-state-dev/core";
 import { OrgRequiredError } from "../transports/errors";
 import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
+import { isTerminalStartRefusal } from "./terminal-refusal";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS, addressEntries } from "@flow-state-dev/core/types";
 import { SuspensionError, resolveEntry as resolveTypedEntry, taskBindingOf } from "@flow-state-dev/core";
@@ -2421,12 +2422,13 @@ async function runActionAttempt<
     if (endFailure !== undefined) {
       logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", { requestId, status: "failed", error: endFailure.message });
     }
-    // FIX-2849: a refused start is terminal. Past the point of no return, a
-    // replay continuation included, so it ends `failed` like any fresh
-    // request: left `in_progress`, the stale sweep would mark it interrupted
-    // and bring its session's wakes forward, and a session whose every turn
-    // is refused at start would be started again on each one.
-    await settleFailedBeforeRun(startupError);
+    // FIX-2849: a refused start is terminal. A fresh request ends `failed`:
+    // left `in_progress`, the stale sweep would mark it interrupted and bring
+    // its session's wakes forward, starting a session whose every turn is
+    // refused again on each one. A replay continuation is left for the stale
+    // sweep to re-drive, as a failure that may pass deserves, unless its
+    // session refuses every run: re-driven, it would be refused again, forever.
+    if (!isReplayMode || isTerminalStartRefusal(startupError)) await settleFailedBeforeRun(startupError);
     throw startupError;
   }
 
