@@ -899,6 +899,17 @@ async function legB(
       note(`j2: Shift Manager idle ${IDLE_MS / 1000} s, ${idle.map((v) => `${v.name} ${v.reads.length}`).join(", ")} requests`);
 
       const conversationPage = pagesOpen[0]!.page;
+      // The person is looking at the conversation. Messages and the panel opened after it in the
+      // same browser context, which leaves it a background tab: Chromium then runs its frames,
+      // and with them the `raf` polling below, a frame or two a second, so a line already drawn
+      // ~200 ms after its send would read 500–1000 ms (FIX-2841). Front it, and refuse to time a
+      // page whose frames still don't run (`document.hasFocus()` says true either way).
+      await conversationPage.bringToFront();
+      const fps = await conversationPage.evaluate<number>(
+        // A string, so the bundler's helpers don't reach the page. The timeout ends the count where frames stop altogether.
+        "new Promise((done) => { let frames = 0; const t0 = performance.now(); const rate = () => frames / ((performance.now() - t0) / 1000); const tick = () => (++frames, performance.now() - t0 < 300 ? requestAnimationFrame(tick) : done(rate())); requestAnimationFrame(tick); setTimeout(() => done(rate()), 1500); })"
+      );
+      if (fps < 20) throw new Error(`setup: the lead's conversation draws ${fps.toFixed(1)} frames a second, a background tab's rate; its samples would time that, not the line`);
       const lat: number[] = [];
       /** When each line's request ended in the store, from its send: what the Lab itself took. */
       const storeLat: number[] = [];
