@@ -88,26 +88,47 @@ describe("custom screens", () => {
       }
     ));
 
-  it("refuse as failed, not on content, when the function throws or answers with a promise: the event isn't unheard", () =>
+  it("refuse as failed, not on content, when the function throws or answers with neither a string nor nothing: the event isn't unheard", () =>
     withHost(
       {
         custom: {
           throws: { describe: "throws", screen: () => { throw new Error("boom"); } },
-          awaits: { describe: "awaits", screen: (async () => undefined) as never }
+          answersOddly: { describe: "answers a number", screen: (() => 7) as never }
         }
       },
       async (host) => {
         const one = await host.follower("alice");
         const two = await host.follower("alice");
         const a = (await host.subscribe("alice", one, { thread: PR, screens: [{ screen: "custom", name: "throws" }] })) as { id: string };
-        const b = (await host.subscribe("alice", two, { thread: PR, screens: [{ screen: "custom", name: "awaits" }] })) as { id: string };
+        const b = (await host.subscribe("alice", two, { thread: PR, screens: [{ screen: "custom", name: "answersOddly" }] })) as { id: string };
         const { output, by } = verdictsOf(await host.route(event()));
         expect(by.get(a.id)).toMatchObject({ reason: "custom:throws: failed", failed: true });
-        expect(by.get(b.id)?.reason).toBe("custom:awaits: failed");
+        expect(by.get(b.id)).toMatchObject({ reason: "custom:answersOddly: failed", failed: true });
         expect(unheard(output)).toBe(false);
         expect(await host.heard(one)).toEqual([]);
       }
     ));
+
+  // FIX-2789: a screen reads what the app keeps (a list, a permission at the provider), so it may await.
+  it("await an async screen: its reason refuses on content in routing and again at delivery, and its pass delivers", () => {
+    let allowed = "carol";
+    return withHost(
+      { custom: { listed: { describe: "the sender is on a list the app keeps", screen: async (e) => (await Promise.resolve(e.sender.id === allowed) ? undefined : `${e.sender.id} isn't listed`) } } },
+      async (host) => {
+        const one = await host.follower("alice");
+        const sub = (await host.subscribe("alice", one, { thread: PR, screens: [{ screen: "custom", name: "listed" }] })) as { id: string };
+        const { output, by } = verdictsOf(await host.route(event({ text: "from bob" })));
+        expect(by.get(sub.id)).toMatchObject({ pass: false, reason: expect.stringMatching(/^custom:listed: .+ isn't listed$/) });
+        expect(by.get(sub.id)?.failed).toBeUndefined();
+        expect(unheard(output)).toBe(true);
+        expect(await host.heard(one)).toEqual([]);
+        // The list changes: the next event reads it again.
+        allowed = "octocat";
+        await host.route(event({ text: "now listed" }));
+        expect(await host.heard(one)).toHaveLength(1);
+      }
+    );
+  });
 
   // A promise that rejects after routing refused it must not reach the host as an unhandled rejection: Node's default kills the process.
   it("refuse as failed an async screen that rejects, and leave no unhandled rejection to crash the host", async () => {

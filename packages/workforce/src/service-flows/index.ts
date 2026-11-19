@@ -19,6 +19,7 @@ export {
 export { operatorGitHub, operatorGitHubToken, type OperatorGitHubOptions } from "./github/operator";
 export { githubServiceFlow, type GitHubServiceFlowOptions } from "./github/service-flow";
 export { followPullRequest, type FollowPullRequestOptions } from "./github/follow-pull-request";
+export { githubLoginsListed, githubTrustedReviewersScreen, type GitHubTrustedReviewersOptions } from "./github/trusted-reviewers";
 export {
   internalServiceFlow,
   type InternalServiceFlow,
