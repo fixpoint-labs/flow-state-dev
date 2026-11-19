@@ -656,3 +656,14 @@ export type HarnessActivity =
  * never calls it.
  */
 export type HarnessActivityHook = (activity: HarnessActivity, ctx: HarnessCallbackContext) => void;
+
+// FIX-2794.
+/**
+ * Called by a harness on every event its run sends, of any kind: output, a
+ * message delta, a tool call starting or its result. It carries nothing but
+ * the fact that the run is still sending, so a host can tell a run that is
+ * working from one that has gone silent (harness-manager stops a run that has
+ * sent nothing for its idle window). Not awaited, and a throw never fails the
+ * run. A harness that never calls it looks silent to such a host.
+ */
+export type HarnessEventHook = (ctx: HarnessCallbackContext) => void;

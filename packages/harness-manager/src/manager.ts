@@ -59,6 +59,7 @@ import type {
   HarnessRunOutcome,
   HarnessActivityHook,
   HarnessBlock,
+  HarnessEventHook,
   HarnessResolver,
   HarnessRunInput,
   HarnessSessionHook,
@@ -118,7 +119,8 @@ import {
   type WorkspacePlace,
 } from "@flow-state-dev/workspace";
 import { NETWORK_CALL_TIMEOUT_MS } from "./timeouts";
-import { MAX_TIMER_MS } from "./guards";
+import { MAX_TIMER_MS, assertPositiveInt } from "./guards";
+import { DEFAULT_IDLE_TIMEOUT_MS, resolveRunCap, runStops } from "./run-stops";
 import {
   RUNS,
   assertPlaceAndHeld,
@@ -197,6 +199,7 @@ import {
   locationFor,
   hostForConfig,
   placeFor,
+  refreshCheckout,
   releaseCheckout,
   runBoardSegment,
   worktreeNameFor,
@@ -692,12 +695,31 @@ export interface ManagerOptions {
    * one provisioning path; the first is a host whose source is constant.
    */
   workspace: WorkspaceConfig | WorkspaceHost;
-  /** Wall-clock budget for the harness run itself. */
-  runTimeoutMs: number;
+  // FIX-2794.
+  /**
+   * How long the harness may send nothing, in ms, before its run is stopped
+   * and the attempt fails saying so (`No output from Claude Code for 20
+   * mins; stopped.`). Every event the harness sends (`onEvent`) starts the
+   * window again, so a run that is still working is never stopped for how
+   * long it has run. Default 20 minutes.
+   */
+  idleTimeoutMs?: number;
+  /**
+   * A cap on the harness run's wall-clock time, in ms, however busy it is.
+   * Default 4 hours, so a run that loops while still sending events can't
+   * spend forever; `0` turns the cap off, and a working run then goes on
+   * until it ends or goes silent.
+   */
+  runTimeoutMs?: number;
+  /**
+   * What the harness is called in a person's words, for the error a silent run
+   * fails with. Default `"the harness"`.
+   */
+  harnessLabel?: string;
   /**
    * How checkout contention is bounded. Defaults derive from the longest a live
-   * attempt can hold the lock — the run's deadline plus the provisioning budget,
-   * not the deadline alone.
+   * attempt can hold the lock without marking it live — its silence window plus
+   * the provisioning budget, not the window alone.
    */
   ownership?: Partial<OwnershipBounds>;
   /**
@@ -822,6 +844,17 @@ export interface HarnessFeeds {
    * own keeps compiling; the manager always hands one.
    */
   onActivity?: HarnessActivityHook;
+  // FIX-2794.
+  /**
+   * Called by the harness on every event its run sends. Each one starts the
+   * run's silence window (`idleTimeoutMs`) again and marks the run's checkout
+   * lock live. A harness that never calls it is stopped once that window has
+   * passed, however busy it is.
+   *
+   * Optional only so a host that wraps the manager's feeds in a slot of its
+   * own keeps compiling; the manager always hands one.
+   */
+  onEvent?: HarnessEventHook;
   // FIX-2389.
   /**
    * Called by a harness that asks about each tool call before it runs,
@@ -1589,7 +1622,11 @@ function managerState(state: ManagerState | undefined): ManagerState {
  *    working, not stuck, and cancelling it is the same defect.
  * 2. the provisioning budget — one deadline for all of git, see
  *    `WorkspaceConfig.provisionTimeoutMs`.
- * 3. `runTimeoutMs` — the agent.
+ * 3. `runTimeoutMs` — the agent. A run capped on time by its host is waited
+ *    out to its cap. The default cap (4 hours) and no cap (`0`) are not a
+ *    length a shutdown should wait out, so the host names how long a
+ *    shutdown gives the run before cancelling it (`codingDrainBudgetMs` gives
+ *    it 20 minutes). A shutdown can promise a run that much, not its end.
  * 4. the network calls after the agent: the completion check, the prompt
  *    builder, and the branch check for the run's pull requests
  *    (`checkBranchPullRequests`), each bounded by `NETWORK_CALL_TIMEOUT_MS`.
@@ -1633,7 +1670,16 @@ export async function withDeadline<T>(
  */
 export const DONE_STOP_GRACE_MS = 5_000;
 
+// FIX-2794.
+/**
+ * How often, at most, a run's events mark its checkout lock live. A run's
+ * events can come many a second; one touch of the lock file in ten seconds
+ * keeps it far inside the five minutes its stale window adds past the hold.
+ */
+const LOCK_REFRESH_MS = 10_000;
+
 export function harnessDrainBudgetMs(options: {
+  /** How long a shutdown waits for the agent: the run's cap when it has one, else the host's own wait. */
   runTimeoutMs: number;
   provisionTimeoutMs?: number | undefined;
   ownershipWaitMs: number;
@@ -1679,6 +1725,7 @@ export function harnessDrainBudgetMs(options: {
  * happened, so there is one derivation and it is called twice.
  */
 export function resolveOwnership(options: {
+  /** The longest the run step holds the lock without marking it live: a manager's silence window, or a holder's whole deadline. */
   runTimeoutMs: number;
   provisionTimeoutMs?: number | undefined;
   ownership?: Partial<OwnershipBounds> | undefined;
@@ -1689,6 +1736,11 @@ export function resolveOwnership(options: {
    */
   doneTimeoutMs?: number | undefined;
 }): { ownership: OwnershipBounds; maxLockHeldMs: number } {
+  // FIX-2794: for a manager this is its silence window, not a run's length.
+  // A run marks the lock live on every event and is stopped once silent for
+  // the window, so the window is the longest its lock goes unmarked (see the
+  // manager's `resolveOwnership` call). A holder that never marks the lock
+  // (the session door's talk turn) passes its whole deadline.
   const { runTimeoutMs } = options;
   // **How long a live attempt can legitimately hold the lock.**
   //
@@ -1933,6 +1985,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     phase: callerPhase,
     workspace,
     runTimeoutMs,
+    harnessLabel,
     harness,
     uses: hostUses,
     name = "harness-manager",
@@ -2017,8 +2070,24 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // stay in `sourceRepo` and their checkouts where they always were.
   const host: WorkspaceHost = isWorkspaceHost(workspace) ? workspace : hostForConfig(workspace);
 
+  // FIX-2794.
+  // Checked here, before anything is claimed: a timer handed a bad number
+  // fails the claimed attempt instead (`assertPositiveInt`).
+  const idleTimeoutMs = assertPositiveInt("harnessManager's idleTimeoutMs", options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS);
+  const runCapMs = resolveRunCap("harnessManager's runTimeoutMs", runTimeoutMs);
+
+  // **The run's term is its silence window, not its length.** A run has no
+  // length bound short of its cap (4 hours by default, or none), so its hold on
+  // the checkout can't be priced by one. What can be: every event the harness
+  // sends marks the lock live (`onEvent`), and a run silent for the window is
+  // stopped. So the longest a live run's lock goes UNREFRESHED is the window
+  // (from the step's start, or its last event, to its stop), and that is the
+  // term the stale window has to outlast. A harness that sends no events at
+  // all is stopped at the window too, so the bound holds for it as well. The
+  // refresh is throttled (`LOCK_REFRESH_MS`), well inside the five minutes the
+  // stale window adds past this hold.
   const { ownership } = resolveOwnership({
-    runTimeoutMs,
+    runTimeoutMs: idleTimeoutMs,
     provisionTimeoutMs: host.provisionTimeoutMs,
     doneTimeoutMs: runPhase.doneTimeoutMs,
     ...(options.ownership !== undefined ? { ownership: options.ownership } : {}),
@@ -3530,6 +3599,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return heldToolDecision(call);
   };
 
+  // FIX-2794.
+  /** Each running step's stops (silence, and the cap when set), and when its checkout lock was last marked live, by request. */
+  const harnessStops = runStops(idleTimeoutMs, harnessLabel, runCapMs);
+  const lockRefreshedAt = new Map<string, number>();
+
   // BP-031.
   /**
    * **The slot, called once.**
@@ -3576,6 +3650,19 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       if (watch === undefined) return;
       watch.steer = steer;
       if (steer !== null) watch.kick();
+    },
+    // FIX-2794: each event starts the step's silence window again, and marks
+    // the checkout lock live (throttled), so a working run's lock never ages
+    // into "stale" under a waiter. See `resolveOwnership` above.
+    onEvent: (ctx) => {
+      const requestId = ctx.request.identity.id;
+      harnessStops.heard(ctx);
+      const now = Date.now();
+      if (now - (lockRefreshedAt.get(requestId) ?? 0) < LOCK_REFRESH_MS) return;
+      const state = harnessCtxState(ctx);
+      if (state?.lockPath == null || state.leaseToken == null) return;
+      lockRefreshedAt.set(requestId, now);
+      refreshCheckout({ lockPath: state.lockPath, token: state.leaseToken });
     },
     // The step's notes, throttled, onto the task's `statusNote`.
     onActivity: (activity, ctx) => {
@@ -4431,17 +4518,21 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       abortSignal: (ctx) => {
         // Before the harness starts recording, so a pull request it opens is followed mid-turn.
         followRecordedPullRequests(ctx, onPullRequestRecorded, followingRun(ctx));
-        const deadline = AbortSignal.timeout(runTimeoutMs);
+        // A run that goes silent is stopped; one that keeps working runs on
+        // until its cap on run time.
+        const stop = harnessStops.arm(ctx);
         // Armed for every step: a run may offer a live steer once it starts.
         const steer = watchForSteers(ctx);
         startProgressNotes(ctx);
-        return AbortSignal.any([deadline, steer]);
+        return AbortSignal.any([stop, steer]);
       },
       // Fires on every exit from the dispatch — returned, threw, or
       // suspended. The tree is only written by the agent, so releasing the
       // moment it stops is tighter than holding through the verdict; a step
       // the request runs next for a steer takes it again.
-      onSettled: (ctx) => {
+      onSettled: (ctx, outcome) => {
+        harnessStops.clear(ctx, outcome);
+        lockRefreshedAt.delete(ctx.request.identity.id);
         stopWatching(ctx);
         stopProgressNotes(ctx);
         releaseLeaseFromState(ctx);
@@ -4456,6 +4547,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           execute: (error: unknown, ctx) => {
             const watch = steerWatches.get(ctx.request.identity.id);
             steerWatches.delete(ctx.request.identity.id);
+            // FIX-2794: a run stopped for silence, or at its cap, failed, in the
+            // stop's own words. Not the harness's error, whose cause is the
+            // abort: such a run was stopped by no one, and must not read as a stop.
+            const fired = harnessStops.takeFired(ctx.request.identity.id);
+            if (fired !== undefined && watch?.stopped !== true) throw new HarnessAttemptFailed(fired.message);
             if (watch?.stopped !== true) throw error;
             return STOPPED_FOR_STEER;
           },

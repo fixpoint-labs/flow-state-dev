@@ -141,6 +141,8 @@ export function claudeCodeBlock(feeds: HarnessSessionFeeds, seams: ClaudeCodeSea
     resume: feeds.resume,
     onSession: feeds.onSession,
     model: feeds.model,
+    // Each event the run sends keeps a working turn from being stopped as silent.
+    ...(feeds.onEvent !== undefined ? { onEvent: feeds.onEvent } : {}),
     detached: true,
     // Declares no plan record, so goal leg **p** can be seen to fail.
     recordWork: goalControl() !== "no-record",
@@ -170,6 +172,7 @@ export function claudeCodeSessionFlow(seams: ClaudeCodeSeams = {}) {
   // Claude Code's own default, as it did.
   return kitchenSinkHarnessFlow({
     kind: CLAUDE_CODE_SESSION,
+    harnessLabel: "Claude Code",
     // On, unless a test without durable execution turns it off (the seam) or
     // the `no-approval` goal control does, so goal leg **a** can be seen to fail.
     approveTools: seams.approveTools !== false && goalControl() !== "no-approval",

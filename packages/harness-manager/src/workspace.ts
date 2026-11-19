@@ -71,6 +71,7 @@ import {
   type WorkspaceHost,
   type WorkspaceSetup,
 } from "@flow-state-dev/workspace";
+import { refreshLock } from "@flow-state-dev/workspace/internal";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, isAskMarkerPath } from "./ask";
 import { DERIVED_IDENTITY, LOCK_SUFFIX, OWNED_SEGMENT } from "./identity";
 
@@ -888,6 +889,15 @@ export function releaseCheckout(lease: CheckoutLease | undefined): void {
   }
 }
 
+// FIX-2794.
+/**
+ * Mark a held checkout live now: its run is still sending events. Touches
+ * nothing that isn't this acquisition's, and never throws.
+ */
+export function refreshCheckout(lease: CheckoutLease): void {
+  refreshLock({ path: lease.lockPath, token: lease.token });
+}
+
 /** How ownership is bounded. Sized against the renewal lag that causes overlap. */
 export interface OwnershipBounds {
   /** How long to wait for a live holder to finish before failing the attempt. */
@@ -895,11 +905,13 @@ export interface OwnershipBounds {
   /** How often to re-check. */
   pollMs: number;
   /**
-   * A lock older than this belongs to a process that is gone.
+   * A lock not marked live for this long belongs to a process that is gone.
    *
-   * Sized past the run's own wall-clock deadline plus provisioning, so a lock
-   * is only ever declared stale once no live attempt could still be holding
-   * it. That is what lets this work without a heartbeat.
+   * Sized past the longest a live attempt goes without marking it — its run's
+   * silence window plus provisioning, since every event the run sends marks
+   * it (`refreshCheckout`) and a run silent for the window is stopped — so a
+   * lock is only ever declared stale once no live attempt could still be
+   * holding it.
    */
   staleAfterMs: number;
 }
@@ -919,7 +931,8 @@ export interface OwnershipBounds {
  * host's own lock (that one is held only while provisioning). Built on the
  * same lock file mechanism (`acquireLock` in `@flow-state-dev/workspace`):
  * atomic create, a stale steal that re-checks the file it judged, a token
- * release. No heartbeat: `staleAfterMs` outlasts the longest legitimate hold.
+ * release. No timer refreshes it: the run's events do (`refreshCheckout`), and
+ * `staleAfterMs` outlasts the longest a live holder goes between them.
  * The lock sits BESIDE the checkout, so `git worktree add` never meets a
  * non-empty directory. A cancelled `signal` stops the wait at once.
  */

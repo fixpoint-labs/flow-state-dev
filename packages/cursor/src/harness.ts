@@ -15,7 +15,7 @@ import { listCursorModels } from "./model-list";
 import { checkCursorReadiness } from "./sign-in";
 
 /** What `cursorHarness` takes: the Cursor block's options, less what each run feeds it. */
-export type CursorHarnessOptions = Omit<CursorAgentOptions, "cwd" | "resume" | "onSession" | "onSteerable" | "onActivity">;
+export type CursorHarnessOptions = Omit<CursorAgentOptions, "cwd" | "resume" | "onSession" | "onSteerable" | "onActivity" | "onEvent">;
 
 /**
  * Cursor as a harness value.
@@ -40,6 +40,7 @@ export function cursorHarness(options: CursorHarnessOptions = {} as CursorHarnes
         onSession: feeds.onSession,
         ...(feeds.onSteerable === undefined ? {} : { onSteerable: feeds.onSteerable }),
         ...(feeds.onActivity === undefined ? {} : { onActivity: feeds.onActivity }),
+        ...(feeds.onEvent === undefined ? {} : { onEvent: feeds.onEvent }),
       } as never) as unknown as HarnessBlock,
     readiness: () => checkCursorReadiness(env()),
     pass: CURSOR_PASS,

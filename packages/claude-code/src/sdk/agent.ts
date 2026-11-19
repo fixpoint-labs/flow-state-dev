@@ -34,6 +34,7 @@ import {
   readHarnessTurnFiles,
   recordPullRequests as startPullRequestRecorder,
   reportHarnessActivity,
+  reportHarnessEvent,
   reportHarnessSpend,
   type HarnessAttachmentBytes,
   type HarnessBilling,
@@ -47,6 +48,7 @@ import {
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessActivityHook,
+  HarnessEventHook,
   HarnessCallbackContext,
   HarnessResolver,
   HarnessSessionHook,
@@ -655,6 +657,13 @@ export interface ClaudeCodeAgentOptions {
    * Not awaited, and a throw is logged and swallowed.
    */
   onActivity?: HarnessActivityHook;
+  // FIX-2794.
+  /**
+   * Called on every event the run sends, of any kind, so a host can tell a
+   * working run from a silent one. Not awaited, and a throw is logged and
+   * swallowed.
+   */
+  onEvent?: HarnessEventHook;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
 }
@@ -908,6 +917,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     onSession,
     onUsage,
     onActivity,
+    onEvent,
     settingSources,
     settings,
     env,
@@ -1293,6 +1303,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               });
             let accountLookup: Promise<AccountInfo | undefined> | undefined = lookUpAccount();
             for await (const message of running) {
+              // Every message the SDK sends, partial ones included, says the run is still working.
+              reportHarnessEvent(onEvent, ctx);
               // Capture the SDK session id from any message that carries it (the
               // `system` init message does, well before the terminal result), so an
               // aborted or failed run is still resumable.

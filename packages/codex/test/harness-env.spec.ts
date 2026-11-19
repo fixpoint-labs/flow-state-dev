@@ -20,7 +20,7 @@ const { CODEX_PASS } = await import("../src/env-pass");
 const { harnessEnv } = await import("@flow-state-dev/core/harness");
 
 const SECRET = "LAB_SERVER_ONLY_SECRET";
-const feeds = { cwd: () => "/tmp/run", resume: () => undefined, onSession: () => {}, onUsage: () => {}, onActivity: () => {} };
+const feeds = { cwd: () => "/tmp/run", resume: () => undefined, onSession: () => {}, onUsage: () => {}, onActivity: () => {}, onEvent: () => {} };
 
 beforeEach(() => {
   seen.options.length = 0;
@@ -37,5 +37,11 @@ describe("a Codex run from codexHarness()", () => {
     expect(Object.keys(built!.client.env)).not.toContain(SECRET);
     expect(built!.client.env).toEqual(harnessEnv({ pass: CODEX_PASS }));
     expect(built!.cwd).toBe(feeds.cwd);
+  });
+
+  // FIX-2794.
+  it("hands the run the manager's event feed, so a busy Codex run is never taken for a silent one", () => {
+    codexHarness().agent(feeds as never);
+    expect(seen.options[0]!.onEvent).toBe(feeds.onEvent);
   });
 });

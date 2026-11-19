@@ -38,17 +38,32 @@ afterAll(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
-function host(options: { turnTimeoutMs?: number; approveTools?: boolean; finishes?: boolean }) {
+function host(options: {
+  turnTimeoutMs?: number;
+  idleTimeoutMs?: number;
+  approveTools?: boolean;
+  finishes?: boolean;
+  /** The stub's script, in place of one wedged step. */
+  steps?: { count: number; everyMs: number };
+}) {
   const dir = mkdtempSync(join(tmpdir(), "harness-session-deadline-"));
   dirs.push(dir);
   const cwd = join(dir, "work");
   mkdirSync(cwd, { recursive: true });
-  const stub = harnessStub(options.finishes === true ? {} : { steps: ["working"], stepEveryMs: FOREVER });
+  const stub = harnessStub(
+    options.steps !== undefined
+      ? { steps: Array.from({ length: options.steps.count }, (_, i) => `step ${i + 1}`), stepEveryMs: options.steps.everyMs }
+      : options.finishes === true
+        ? {}
+        : { steps: ["working"], stepEveryMs: FOREVER },
+  );
   const flow = harnessSessionFlow({
     kind: KIND,
     workspace: { provision: async () => cwd, locate: () => cwd, branch: () => null },
     agent: (feeds: HarnessSessionFeeds) => stub.slot(feeds as never) as HarnessBlock,
+    harnessLabel: "the stub harness",
     ...(options.turnTimeoutMs === undefined ? {} : { turnTimeoutMs: options.turnTimeoutMs }),
+    ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
     ...(options.approveTools === true ? { approveTools: true } : {}),
   });
   const stores = inMemoryStores();
@@ -93,11 +108,11 @@ describe("a harness session turn's deadline", () => {
       // The harness ran, and only its abort ended it.
       expect(h.stub.runs).toHaveLength(1);
       expect(Date.now() - startedAt).toBeGreaterThanOrEqual(200);
-      expect(result.error?.message).toMatch(/timed out after 200ms/);
+      expect(result.error?.message).toMatch(/ran for less than a second, its cap on run time; stopped\./);
       expect(record?.timedOut).toBe(true);
       // Not a person's stop: a page tells the two apart.
       expect(record?.stopped).toBe(false);
-      expect(record?.error).toMatch(/timed out after 200ms/);
+      expect(record?.error).toMatch(/ran for less than a second, its cap on run time; stopped\./);
       // Ended like any other turn: a page reads its end and what it spent.
       expect(record?.endedAt).not.toBeNull();
     } finally {
@@ -110,7 +125,7 @@ describe("a harness session turn's deadline", () => {
     try {
       const { result, record } = await h.turn("s-wedged-approvals", "do the thing");
       expect(h.stub.runs).toHaveLength(1);
-      expect(result.error?.message).toMatch(/timed out after 200ms/);
+      expect(result.error?.message).toMatch(/ran for less than a second, its cap on run time; stopped\./);
       expect(record?.timedOut).toBe(true);
       expect(record?.stopped).toBe(false);
       expect(record?.waitsOnApproval ?? null).toBeNull();
@@ -131,30 +146,125 @@ describe("a harness session turn's deadline", () => {
     }
   }, 20_000);
 
-  it("is an hour when the host sets none: a turn still running at 59 minutes goes on, and one at 60 is stopped", async () => {
+  // FIX-2794.
+  it("is not stopped for its length short of the cap: a harness still sending events at 90 minutes runs to its end", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
+    // One event a minute for an hour and a half: never silent for long, and far past any cap there was.
+    const h = host({ steps: { count: 90, everyMs: 60_000 } });
+    try {
+      let settled = false;
+      const startedAt = Date.now();
+      const ending = h.turn("s-busy", "do the thing").finally(() => {
+        settled = true;
+      });
+      await vi.waitFor(() => expect(h.stub.runs).toHaveLength(1));
+      for (let minute = 0; minute < 90 && !settled; minute += 1) await vi.advanceTimersByTimeAsync(60_000);
+      const { result, record } = await ending;
+      expect(result.error?.message).toBeUndefined();
+      // It ran the whole hour and a half: nothing cut it short.
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(90 * 60_000);
+      expect(record?.timedOut ?? null).toBeNull();
+      expect(record?.error ?? null).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      await h.dispose();
+    }
+  }, 30_000);
+
+  // FIX-2794.
+  it("caps a turn at 4 hours when the host sets no cap: a harness still sending events is stopped there, in the cap's words", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
+    // One event a minute for five hours: never silent, so only the default cap can end it early.
+    const h = host({ steps: { count: 300, everyMs: 60_000 } });
+    try {
+      let settled = false;
+      const startedAt = Date.now();
+      const ending = h.turn("s-looping", "do the thing").finally(() => {
+        settled = true;
+      });
+      await vi.waitFor(() => expect(h.stub.runs).toHaveLength(1));
+      for (let minute = 0; minute < 300 && !settled; minute += 1) await vi.advanceTimersByTimeAsync(60_000);
+      const { result, record } = await ending;
+      expect(result.error?.message).toBe("The stub harness ran for 4 hrs, its cap on run time; stopped.");
+      expect(record?.timedOut).toBe(true);
+      expect(record?.stopped).toBe(false);
+      const ranFor = Date.now() - startedAt;
+      expect(ranFor).toBeGreaterThanOrEqual(4 * 60 * 60_000);
+      expect(ranFor).toBeLessThan(5 * 60 * 60_000);
+    } finally {
+      vi.useRealTimers();
+      await h.dispose();
+    }
+  }, 60_000);
+
+  // FIX-2794.
+  it("has no cap when the host turns it off with turnTimeoutMs: 0: a harness still sending events at 5 hours runs to its end", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
+    const h = host({ turnTimeoutMs: 0, steps: { count: 300, everyMs: 60_000 } });
+    try {
+      let settled = false;
+      const startedAt = Date.now();
+      const ending = h.turn("s-uncapped", "do the thing").finally(() => {
+        settled = true;
+      });
+      await vi.waitFor(() => expect(h.stub.runs).toHaveLength(1));
+      for (let minute = 0; minute < 300 && !settled; minute += 1) await vi.advanceTimersByTimeAsync(60_000);
+      const { result, record } = await ending;
+      expect(result.error?.message).toBeUndefined();
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(300 * 60_000);
+      expect(record?.timedOut ?? null).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      await h.dispose();
+    }
+  }, 60_000);
+
+  // FIX-2794.
+  it("stops a harness that has sent nothing for 20 minutes when the host sets no window, saying so, as a failure and not a stop", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], shouldAdvanceTime: true });
     const h = host({});
     try {
       let settled = false;
-      const ending = h.turn("s-default", "do the thing").finally(() => {
+      const ending = h.turn("s-silent", "do the thing").finally(() => {
         settled = true;
       });
       await vi.waitFor(() => expect(h.stub.runs).toHaveLength(1));
-      await vi.advanceTimersByTimeAsync(59 * 60_000);
+      await vi.advanceTimersByTimeAsync(19 * 60_000);
       expect(settled).toBe(false);
       await vi.advanceTimersByTimeAsync(60_000);
-      const { record } = await ending;
+      await vi.waitFor(() => expect(settled).toBe(true));
+      const { result, record } = await ending;
+      expect(result.error?.message).toBe("No output from the stub harness for 20 mins; stopped.");
+      expect(record?.error).toBe("No output from the stub harness for 20 mins; stopped.");
       expect(record?.timedOut).toBe(true);
-      expect(record?.error).toMatch(/timed out after 3600000ms/);
+      // Not a person's stop: a page tells the two apart.
+      expect(record?.stopped).toBe(false);
     } finally {
       vi.useRealTimers();
+      await h.dispose();
+    }
+  }, 30_000);
+
+  // FIX-2794.
+  it("restarts the silence window at each event: a harness quiet for a while between events goes on", async () => {
+    // A 300 ms window, and a harness that pauses 200 ms between six events: 1.2 s in all, never 300 ms silent.
+    const h = host({ idleTimeoutMs: 300, steps: { count: 6, everyMs: 200 } });
+    try {
+      const { result, record } = await h.turn("s-paced", "do the thing");
+      expect(result.error).toBeUndefined();
+      expect(record?.timedOut ?? null).toBeNull();
+    } finally {
       await h.dispose();
     }
   }, 20_000);
 
   it("is refused at build when it is no deadline a timer honours, rather than stopping every turn at once", () => {
-    for (const turnTimeoutMs of [0, -1, Number.NaN, 2 ** 31]) {
+    // `0` is not here: it turns the cap off.
+    for (const turnTimeoutMs of [-1, Number.NaN, 2 ** 31]) {
       expect(() => host({ turnTimeoutMs })).toThrow(/turnTimeoutMs must be a positive whole number/);
+    }
+    for (const idleTimeoutMs of [0, -1, Number.NaN, 2 ** 31]) {
+      expect(() => host({ idleTimeoutMs })).toThrow(/idleTimeoutMs must be a positive whole number/);
     }
   });
 
