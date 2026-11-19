@@ -54,6 +54,9 @@ change is itself confidential. Then a check per notice is the price.
 <a name="d3"></a>
 ## D3 · The hook reads on a timer wherever push can miss a change: no push, the socket down, or a bus that can't cross processes
 
+> **Amended (Nov 19) by [FIX-2545](https://linear.app/fixpoint-labs/issue/FIX-2545).** The in-memory bus is single-process by decision and reports that it crosses, so the hook keeps no timer on it, on one process or two. The timer stays where push is absent, the socket is down, or a Postgres bus stops hearing its ping. The spec's "second process on the in-memory bus" leg describes the case before FIX-2545.
+
+
 | | |
 |---|---|
 | **Instead of** | Reading on a timer only when `GET /capabilities` says there is no push · a server that sends a synthetic notice at the poll pace where its bus can't cross, so the client needs no `crossing` frame. That adds a server timer per connection, while the client already keeps one for a dropped socket |
@@ -186,5 +189,6 @@ run a fresh `analysis` before the gate.
   connect, a reconnect or a poll), owned here; FIX-1506's panels and FIX-2466's views consume it.
 - **Amended (Nov 2)** — FIX-380 (Ably) is a later transport behind the same seam, outside
   FIX-2367 ([owner, #4512](https://github.com/fixpoint-labs/flow-state-dev/pull/4512#issuecomment-6567246620)). Wording only; the Ably arm stays what the seam supports.
+- **Amended (Nov 19)** — D3's in-memory case removed by FIX-2545: the in-memory bus is single-process, so the hook keeps no timer on it (FIX-2368's closure amendment).
 
 **Open: none.**

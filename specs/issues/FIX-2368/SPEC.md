@@ -136,7 +136,7 @@ children that each passed on a double.
 wrong: a slow goal nobody re-runs.
 
 1. **[D2](DECISIONS.md#d2) · Shift Manager and the labs are graded on a scratch copy with the
-   store swapped to Postgres,** not as shipped on SQLite and not through a new Lab option. If
+   store swapped to Postgres** (since the Nov 19 amendment, Shift Manager only; the labs follow in FIX-2843), not as shipped on SQLite and not through a new Lab option. If
    wrong: the apps we run day to day still poll, and the run says they don't.
 2. **[D1](DECISIONS.md#d1) · One run where the legs collide, on the real bus, not the children's
    checks side by side.** If wrong: a longer run whose failures are harder to split.
