@@ -95,6 +95,11 @@ export interface ScriptedServer {
    * refused it or a network that is down fails it. `undefined` lets lines through again.
    */
   holdDoor(gate: ((text: string) => Promise<void>) | undefined): void;
+  /**
+   * Hold the next turn of `worker` at its start: it runs, with nothing written yet, until the returned
+   * release, and then plays its script. For a test that reads what the screen says while a turn runs.
+   */
+  holdNextTurn(worker: string): () => void;
 }
 
 /** How many turns a worker reads word for word: the agent flow's default. */
@@ -199,6 +204,8 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
   let failNext: string | undefined;
   let refuseStop = false;
   let gate: ((text: string) => Promise<void>) | undefined;
+  /** The next turn's hold, by worker: its script waits on it. */
+  const holds = new Map<string, Promise<void>>();
   /** Each open approval, by suspension id: its worker and turn. */
   const approvals = new Map<string, { w: ScriptedWorker; turn: Turn }>();
   /** Each open session stream's handlers, by session id. */
@@ -327,12 +334,18 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
     const failed = failNext !== undefined && job.kind === "user" ? failNext : undefined;
     if (failed !== undefined) failNext = undefined;
     const steps: Step[] = failed !== undefined ? [[0, () => failIn(w, t, failed)]] : script(w, t, job);
-    for (const [delay, run] of [...steps, [200, () => endTurn(w, t, "completed")] as Step]) {
-      at += delay;
-      setTimeout(() => {
-        if (t.live) run();
-      }, at * speed);
-    }
+    const play = () => {
+      for (const [delay, run] of [...steps, [200, () => endTurn(w, t, "completed")] as Step]) {
+        at += delay;
+        setTimeout(() => {
+          if (t.live) run();
+        }, at * speed);
+      }
+    };
+    const hold = holds.get(w.teammate.id);
+    holds.delete(w.teammate.id);
+    if (hold === undefined) play();
+    else void hold.then(play);
     return t;
   };
 
@@ -746,6 +759,11 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
     },
     holdDoor(next) {
       gate = next;
+    },
+    holdNextTurn(workerId) {
+      let release!: () => void;
+      holds.set(workerId, new Promise<void>((resolve) => (release = resolve)));
+      return () => release();
     },
   };
 }

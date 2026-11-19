@@ -782,17 +782,18 @@ describe("the teammates screen", () => {
   });
 
   it("says under each name what the teammate is doing now, live, from its own state", async () => {
-    // Slow enough that Lead's turn (its answer, then its message to researcher) outlasts a read of its state
-    // under a full suite's load: at the screen tests' usual pace it runs for 80 ms.
-    const { server } = renderOnBoard({ [LEAD]: [] }, {}, { speed: 0.2 });
+    const { lab, server } = renderOnBoard({ [LEAD]: [] });
     const status = (name: string) => workerRow(name).querySelector("[data-status]")?.textContent;
     const header = () => conversation().querySelector("[data-header-status]")?.textContent;
     await waitFor(() => expect(status("Lead")).toMatch(/^Idle/));
     expect(header()).toMatch(/^Idle/);
 
+    // Lead's turn is held open at its start until both lines have been read: at the tests' pace it runs for 80 ms.
+    const release = lab.holdNextTurn("teammates.chief-of-staff");
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     await waitFor(() => expect(status("Lead")).toBe("Replying to you"), { interval: 5 });
-    expect(header()).toBe("Replying to you");
+    await waitFor(() => expect(header()).toBe("Replying to you"), { interval: 5 });
+    act(() => release());
     // researcher answers the message it was sent, and says whose.
     await waitFor(() => expect(status("researcher")).toBe("Replying to Lead"), { interval: 5, timeout: 2000 });
     await waitFor(() => expect(status("Lead")).toBe("Messaging researcher"), { interval: 5, timeout: 2000 });
