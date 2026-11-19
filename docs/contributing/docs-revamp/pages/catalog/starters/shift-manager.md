@@ -32,7 +32,7 @@ Shift Manager builds nothing for the Lab, so the config has to default-export a 
 
 Shift Manager is research software. Several screens are placeholders that say what will fill them.
 
-**Inbox** lists every approval and question a worker is waiting on you for, oldest first. Answer on the card, or reply to the worker beneath it. It lists asks in sessions you started and the runs those started, never another user's.
+**Inbox** lists every approval and question a worker is waiting on you for, oldest first. Answer on the card, or reply to the worker beneath it. It lists asks in sessions you started and the runs those started, never another user's. It also lists asks from your workers' runs with no conversation; those you answer on the card alone, with no reply box.
 
 **Tasks** lists every row on every board that isn't done, grouped by state, worker or workstream. Queued rows sit behind a toggle. Open one to see that worker's run as it happens, stop it with Interrupt, or follow it into the DevTool with *Open trace*.
 

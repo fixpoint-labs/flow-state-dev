@@ -179,8 +179,8 @@ Workforce opens these slots for other kits to fill. It fills none of its own.
 
 A view answers one question from stored data and never writes.
 
-- On `workforce-roster`: `roster`, the user's workers, standard and their own; `workerUsage`, tokens each worker used, by model, over a number of days; `workstreamReport`, the latest report from a workstream a worker leads; and `routines`, the user's scheduled routines.
-- On `agent`: `listTasks_tasks`, the conversation's task list.
+- On `workforce-roster`: `roster`, the user's workers, standard and their own; `workerUsage`, tokens each worker used, by model, over a number of days; `workerSessions`, the user's conversations with a worker; `sessionTurns`, one conversation's turns, with status and times but not their words; `workerMessages`, a worker's open messages and their answers; `inbox`, what waits on the user across their conversations; `workstreamReport`, the latest report from a workstream a worker leads; and `routines`, the user's scheduled routines.
+- On `agent`: `listTasks_tasks`, the conversation's task list; and `delegates`, the workers the conversation hands tasks to.
 
 `roster` answers for a user before their first conversation. From the browser, `rosterView` and `workerUsageView` come from `@flow-state-dev/workforce/browser`.
 

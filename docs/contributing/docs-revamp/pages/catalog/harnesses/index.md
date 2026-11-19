@@ -61,7 +61,7 @@ export default createFlowState({
 
 `workspace` is the one required key. Its `root` is the directory every checkout is made under, and its `source` says where each run's files come from. Here every run is cut from `/work/acme-shop`.
 
-`codingDrainBudgetMs` takes the same `checks`, `project`, `judge` and `runTimeoutMs` you give `harnesses`, so a shutdown waits long enough for a full run. [Harness runs](../../reference/harness-runs.md) has the default.
+`codingDrainBudgetMs` takes the same `checks`, `project`, `judge`, `idleTimeoutMs` and `runTimeoutMs` you give `harnesses`, so a shutdown waits long enough for a full run. [Harness runs](../../reference/harness-runs.md) has the default.
 
 A worker becomes a coding worker with two lines in its file:
 
@@ -190,7 +190,7 @@ The `harnesses` flow serves one view, `readiness`: a row per agent filled, reada
 
 ## Change it
 
-Besides `workspace`, the kit takes `defaultHarness`, `review`, `pullRequests`, `judge` (on by default), `checks`, `project`, `runTimeoutMs` and `logReadiness`. An unknown key is refused. [Harness runs](../../reference/harness-runs.md) has each key's default, which option wins when a worker's file and the kit disagree, and how to replace the `coder` flow with your own.
+Besides `workspace`, the kit takes `defaultHarness`, `review`, `pullRequests`, `judge` (on by default), `checks`, `project`, `idleTimeoutMs`, `runTimeoutMs` and `logReadiness`. An unknown key is refused. `idleTimeoutMs` stops a run after 20 minutes with no output from its agent. `runTimeoutMs` is an optional cap on a run's total time, 4 hours by default; `0` turns it off. [Harness runs](../../reference/harness-runs.md) has each key's default, which option wins when a worker's file and the kit disagree, and how to replace the `coder` flow with your own.
 
 ## Next
 
