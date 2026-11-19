@@ -38,8 +38,9 @@
  *   conversation is gone) clears it here and says so in this session; the
  *   task's ending stands. A thrown send, or any other refusal, leaves it owed
  *   for the conversation's next touch of its board. A conversation whose
- *   worker was fired accepts the send and then refuses to run it: the notice
- *   stays owed, and this session never hears of that refusal.
+ *   worker was fired accepts the send and then refuses to run it: the refused
+ *   turn settles the notice undeliverable there (`./fired-session`), and this
+ *   session never hears of that refusal.
  * - **Its pieces**. A turn that files pieces on the task
  *   session's own board leaves its task running when it ends, with no lease
  *   (`keptOpenBy: "filed"`); the turn each piece's ending wakes runs for the

@@ -21,6 +21,7 @@
  */
 import { SESSION_REQUEST_END_HOOK } from "@flow-state-dev/core/internal";
 import type {
+  BlockContext,
   FlowInstance,
   ResourceCollectionRef,
   SessionCreateCheck,
@@ -47,6 +48,7 @@ import {
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
 import { taskChainSchema } from "../conversation-board/chain";
+import { settleFiredSession } from "../conversation-board/fired-session";
 import { SESSION_BOARD_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
@@ -142,6 +144,12 @@ export type WorkerTurnContext = {
   readonly resources: unknown;
 };
 
+/** Whether `ctx` is a running block's whole context, not only the slice a worker is loaded from. */
+function isBlockContext(ctx: WorkerTurnContext): ctx is WorkerTurnContext & BlockContext {
+  const session = ctx.session as { readonly identity?: { readonly id?: unknown } };
+  return typeof session.identity?.id === "string" && typeof (ctx as { readonly emit?: unknown }).emit === "object";
+}
+
 /** The worker a turn runs as, with what it runs with. */
 export interface ResolvedWorker {
   /** The worker's id: a row on the user's roster, or a standard worker's id. */
@@ -219,8 +227,11 @@ export interface RosterWorker {
 /**
  * Thrown when a turn can't run as the session's worker: it was fired, now
  * names another flow, names something the installation no longer registers,
- * or runs on a flow kept for standard workers. Nothing is written; the row and
- * the session stay for a fix.
+ * or runs on a flow kept for standard workers. The row and the session stay
+ * for a fix. Its `code` tells the engine the refusal is for good, so the wake
+ * that started the turn is cleared rather than fired again. A fired worker's
+ * session settles what its board owes it, and lets its wake go, before this is
+ * thrown (`../conversation-board/fired-session`).
  */
 export class WorkerTurnRefusedError extends Error {
   readonly code = "worker-turn-refused";
@@ -856,6 +867,9 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     const collection = workerCollection(ctx, "resolveWorker");
     const found = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
     if (found.found === "none") {
+      // A refused session is terminal (FIX-2849): what its board owes it is
+      // settled and its wake let go here, since its pass never runs again.
+      if (isBlockContext(ctx)) await settleFiredSession(ctx);
       refuse(`Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`);
     }
     if (found.found === "unreadable") refuse(`Worker "${workerId}" can't run: ${found.problem}.`);
