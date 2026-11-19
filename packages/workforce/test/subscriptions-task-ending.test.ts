@@ -100,7 +100,7 @@ describe("a task's subscriptions", () => {
       expect(filed.error, messageOf(filed.error)).toBeUndefined();
       await atReadCheck;
       expect(await host.subscriptionRows("alice")).toEqual([]);
-      const taskId = (await host.rows("alice")).find((row) => row.goal.includes("[subscribe:"))?.id;
+      const taskId = (await host.rows("alice")).find((task) => task.goal.includes("[subscribe:"))?.id;
       expect(taskId).toEqual(expect.any(String));
       const cancelled = await host.act("alice", conv, "updateTask_tasks", { id: taskId, status: "cancelled" });
       expect(cancelled.error, messageOf(cancelled.error)).toBeUndefined();
@@ -108,10 +108,10 @@ describe("a task's subscriptions", () => {
       await onlyHeldRunning(host);
       release();
       await host.settled();
-      const rows = await host.subscriptionRows("alice");
-      expect(rows.map((r) => [r.taskId, r.enabled, r.endedReason])).toEqual([[taskId, false, "task_cancelled"]]);
+      const subscriptions = await host.subscriptionRows("alice");
+      expect(subscriptions.map((r) => [r.taskId, r.enabled, r.endedReason])).toEqual([[taskId, false, "task_cancelled"]]);
       await host.route(event({ text: "a review after the cancel" }));
-      expect(await host.heard(rows[0]!.sessionId)).toEqual([]);
+      expect(await host.heard(subscriptions[0]!.sessionId)).toEqual([]);
     } finally {
       release();
       delete readCheck.held;
