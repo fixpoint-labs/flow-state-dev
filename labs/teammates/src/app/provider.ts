@@ -7,10 +7,10 @@ import { createContext, createElement, useContext, useMemo, type ReactNode } fro
 import type { Client } from "@flow-state-dev/client";
 import { FlowProvider } from "@flow-state-dev/react";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { Conversations } from "../lib/conversation-store";
+import { conversationStore } from "../lib/conversation-store";
 import type { AppConnection } from "../lib/files";
 
-const shared = (client: Client, pollIntervalMs: number, connection: AppConnection) => ({ client, pollIntervalMs, connection, workforce: createWorkforceClient(client), conversations: new Conversations() });
+const shared = (client: Client, pollIntervalMs: number, connection: AppConnection) => ({ client, pollIntervalMs, connection, workforce: createWorkforceClient(client), conversations: conversationStore() });
 const AppContext = createContext<ReturnType<typeof shared> | null>(null);
 const PAGE: AppConnection = {};
 /** The app's client and what its screens share over it, for everything under it. Pass a stable client and connection. */

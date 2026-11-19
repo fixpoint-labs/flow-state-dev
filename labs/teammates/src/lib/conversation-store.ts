@@ -23,45 +23,37 @@ type Followed = {
 type Stop = { ids: ReadonlySet<string> | null };
 
 /** Each conversation's shared reads and Stop, by session id, with one change signal for `useSyncExternalStore`. */
-export class Conversations {
-  private readonly followed = new Map<string, Followed>();
-  private readonly stops = new Map<string, Stop>();
-  /** The flow each opened conversation runs on: what an approval is answered through. */
-  readonly flows = new Map<string, string>();
-  private readonly listeners = new Set<() => void>();
-
-  /** What conversation `sessionId`'s follower read last, the same object until it reads anew. */
-  read(sessionId: string): Followed | undefined {
-    return this.followed.get(sessionId);
-  }
-
-  /** A follower's latest read; `undefined` once it stops following. */
-  publish(sessionId: string, followed: Followed | undefined): void {
-    if (followed === undefined) this.followed.delete(sessionId);
-    else this.followed.set(sessionId, followed);
-    this.changed();
-  }
-
-  /** Conversation `sessionId`'s Stop under way, a new object on each change. */
-  stopOf(sessionId: string): Stop | undefined {
-    return this.stops.get(sessionId);
-  }
-
-  /** Set the Stop under way, or end it (`undefined`); ending one only ends `was`, when given, so a later press keeps its own. */
-  setStop(sessionId: string, stop: Stop | undefined, was?: Stop): void {
-    if (was !== undefined && this.stops.get(sessionId) !== was) return;
-    if (stop === undefined) this.stops.delete(sessionId);
-    else this.stops.set(sessionId, stop);
-    this.changed();
-  }
-
-  /** Called on every change; returns the stop. */
-  subscribe = (tell: () => void): (() => void) => {
-    this.listeners.add(tell);
-    return () => this.listeners.delete(tell);
+export function conversationStore() {
+  const followed = new Map<string, Followed>();
+  const stops = new Map<string, Stop>();
+  const listeners = new Set<() => void>();
+  const changed = () => {
+    for (const tell of [...listeners]) tell();
   };
-
-  private changed(): void {
-    for (const tell of [...this.listeners]) tell();
-  }
+  return {
+    /** The flow each opened conversation runs on: what an approval is answered through. */
+    flows: new Map<string, string>(),
+    /** What conversation `sessionId`'s follower read last, the same object until it reads anew. */
+    read: (sessionId: string): Followed | undefined => followed.get(sessionId),
+    /** A follower's latest read; `undefined` once it stops following. */
+    publish(sessionId: string, read: Followed | undefined): void {
+      if (read === undefined) followed.delete(sessionId);
+      else followed.set(sessionId, read);
+      changed();
+    },
+    /** Conversation `sessionId`'s Stop under way, a new object on each change. */
+    stopOf: (sessionId: string): Stop | undefined => stops.get(sessionId),
+    /** Set the Stop under way, or end it (`undefined`); with `was`, only while `was` is still the one under way, so a later press keeps its own. */
+    setStop(sessionId: string, stop: Stop | undefined, was?: Stop): void {
+      if (was !== undefined && stops.get(sessionId) !== was) return;
+      if (stop === undefined) stops.delete(sessionId);
+      else stops.set(sessionId, stop);
+      changed();
+    },
+    /** Called on every change; returns the stop. */
+    subscribe(tell: () => void): () => void {
+      listeners.add(tell);
+      return () => void listeners.delete(tell);
+    },
+  };
 }
