@@ -47,6 +47,9 @@ processes for its own leg. Then that leg drops out of the collision and is grade
 | **Because** | DevTeam's and the Teammates lab's configs build `sqliteStores` themselves. SQLite's bus doesn't cross, so under [FIX-2429's call](../FIX-2429/DECISIONS.md#decided-not-asked) Shift Manager's board keeps its 3 s timer while a task is open, and leg b's "no read between notices" can never pass there. The epic's *not done if* already reads "still polls … with the Postgres bus configured". Grading a scratch copy with only the store line changed tests Shift Manager's and the labs' own views on the bus that crosses. `buildShiftManagerCopy` already patches copies in scratch, so it needs no product change. A Lab option would be product surface no person has asked for |
 | **Locks in** | The run proves the views on Postgres. As shipped, the labs still read every 3 s while a task is open, and the report says so in one line |
 
+Since the Nov 19 amendment the closure grades only Shift Manager on this copy; the Teammates and
+claude-code-style labs follow in [FIX-2843](https://linear.app/fixpoint-labs/issue/FIX-2843).
+
 ![D2: where Shift Manager and the labs are graded. Chosen: a scratch copy with the store swapped to Postgres, beside as shipped on SQLite. Decides it: the bus that crosses, which leg b's no read between notices needs. Price: the labs as we run them day to day still poll while a task is open](figures/d2-scratch-postgres.svg)
 
 It comes down to the bus: on SQLite the board polls by an approved design, so leg b can't pass.
@@ -68,7 +71,7 @@ need a store option, filed under FIX-2466, and the closure configures it instead
 | # | What runs | PASS means |
 |---|---|---|
 | 1 | Legs a to d ([the signal](SPEC.md#the-signal)) | Each green; each control red where named |
-| 2 | One journey per team whose *after* row 1 doesn't walk. *Builds a screen two people watch* is leg a. **j2** *runs the labs or Shift Manager*: Shift Manager and the Teammates and claude-code-style labs, each on D2's copy, a conversation open with a task open and its message, request, project and activity views mounted; over 10 s from the first `crosses: true` frame, with nothing written, 0 reads (`j2:no-poll`); a message sent from another session shows within 1 s (`j2:message`). **j3** *runs more than one process*, on row 1's two processes plus one: process 1 on BullMQ `dispatch-only`, a `worker-only` process runs A's action, B on process 2 shows the reply within 1 s (`j3:worker-reply`); then over 10 s idle, with nothing written, 0 session-stream statements from process 2 (`j3:no-timed-read`), as in FIX-2427's signal, so the read the reply's notice wakes is not counted; `no-request-publish` must FAIL `j3:worker-reply`. **j4** *deploys to Vercel or Next*, the polling fallback only ([D3](#d3)): the fixture behind `createNextHandler`, `GET /capabilities` reports no push and B updates within the hook's poll interval plus 1 s (`j4:polls`) | Each green |
+| 2 | One journey per team whose *after* row 1 doesn't walk. *Builds a screen two people watch* is leg a. **j2** *runs the labs or Shift Manager*: Shift Manager on D2's copy (the Teammates and claude-code-style labs moved to [FIX-2843](https://linear.app/fixpoint-labs/issue/FIX-2843): their hosts run only model-backed workers, and this check keeps the model `n/a`), a conversation open with a task open and its message, request, project and activity views mounted; over 10 s from the first `crosses: true` frame, with nothing written, 0 reads (`j2:no-poll`); a message sent from another session shows within 1 s (`j2:message`). **j3** *runs more than one process*, on row 1's two processes plus one: process 1 on BullMQ `dispatch-only`, a `worker-only` process runs A's action, B on process 2 shows the reply within 1 s (`j3:worker-reply`); then over 10 s idle, with nothing written, 0 session-stream statements from process 2 (`j3:no-timed-read`), as in FIX-2427's signal, so the read the reply's notice wakes is not counted; `no-request-publish` must FAIL `j3:worker-reply`. **j4** *deploys to Vercel or Next*, the polling fallback only ([D3](#d3)): the fixture behind `createNextHandler`, `GET /capabilities` reports no push and B updates within the hook's poll interval plus 1 s (`j4:polls`) | Each green |
 | 3 | Every child's goal check with its controls, read from Linear at run time and printed: FIX-2426, FIX-2427, FIX-2428, FIX-1506, FIX-2429, FIX-2466, and any child that joins later. **None is skipped:** row 1 walks no child's signal as that child wrote it | Each PASS beside its documented FAIL |
 | 4 | The gap sweep: each [coordination seam](../../epics/FIX-2367/DECISIONS.md#coordination-seams) from both sides; the realtime guide and the client, react, node and store-postgres READMEs followed as written; each epic *not done if* state absent, including an app with no push configured (`push: false`) still updating by polling, and the Vercel pages saying "polls" | Every seam two-sided |
 
@@ -78,11 +81,12 @@ and FIX-2466 has no spec. FIX-380 (Ably) is outside the epic and gates nothing (
 
 ## Decided, not asked
 
-- **The epic's memory-bus control fails on the 1 s signal, not on "B never updates".** Since
-  [FIX-2428 D3](../FIX-2428/DECISIONS.md#d3) and the Nov 2 ER-5 amendment, a hook keeps its
-  timer where the bus can't cross, so under the in-memory bus B may update at the poll pace. The
-  control grades `a:org-state` and `a:org-row` on the 1 s. The epic's control line says the same,
-  amended in this PR.
+- **The epic's memory-bus control fails on the 1 s signal, and B never updates.** The in-memory
+  bus is single-process by decision ([FIX-2545](https://linear.app/fixpoint-labs/issue/FIX-2545)):
+  it always reports that it crosses, so on two processes the hook keeps no timer and the session
+  stream makes no timed read. The control grades `a:org-state` and `a:org-row` on the 1 s; what it
+  shows is that B never updates. Two processes need a bus that really crosses, such as Postgres.
+  The epic's control line says the same.
 - **"Polls off" is the product's default, not a switch the run sets.** On a bus that crosses,
   FIX-2426 turns the session stream's timed read off and the hooks keep no timer. The run counts
   reads instead, so a default left on is a FAIL, where a switch would hide it.
@@ -140,6 +144,11 @@ wants an independent one.
   bootstrap extended into `goals/lib`; the kept goal's scenes, runner and 1 s sampling named.
 - **Owner decision (Nov 2)** — D3 flipped to no Ably in the closure: j4 is the polling fallback,
   and the wait on epic D5 and #4486 is gone. The epic amended to match.
+- **Amended (Nov 19), after the closure run** — j2 covers Shift Manager only; the Teammates and
+  claude-code-style labs move to FIX-2843, since both run only model-backed workers. The
+  memory-bus control's expectation follows FIX-2545: B never updates on two processes. The run's
+  two failures, `j2:message` and FIX-2429's check, are tracked as FIX-2841 and FIX-2842 and block
+  the closure.
 
 ## Notes from review
 

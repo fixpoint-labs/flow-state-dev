@@ -30,7 +30,7 @@
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/realtime/a-change-reaches-every-screen/run.mts`. `GOAL_SCENES=a,b,c,d,j2,j3,j4` runs some (a, c and d always run together). Needs `initdb`/`pg_ctl` (Postgres 16 under `/usr/lib/postgresql`) or `FSD_DB_URL` (the log-read assertions are then CAN'T TELL), and `redis-server` for j3.
 
 **Controls:** each runs this file again; the three patches are applied as the processes load (`goals/lib/module-patch.mts`).
-- `GOAL_CONTROL=memory-bus` — FIX-2427's `no-bus`: the Postgres adapter backs no bus, so each process gets the in-memory one. Must FAIL `a:org-state` and `a:org-row`. (Since FIX-2545 the in-memory bus says it crosses, so B keeps no timer and never updates, rather than updating at the poll pace the spec expected.)
+- `GOAL_CONTROL=memory-bus` — FIX-2427's `no-bus`: the Postgres adapter backs no bus, so each process gets the in-memory one. Must FAIL `a:org-state` and `a:org-row`. B never updates: since FIX-2545 the in-memory bus says it crosses, so B keeps no timer (the spec says the same).
 - `GOAL_CONTROL=no-request-publish` — FIX-2426's `no-publish` on today's module: the request and session store wrappers send no notice (scope-state, resource and board notices share the queue and still go). Must FAIL `d:plain-reply` (and `j3:worker-reply`), with leg a passing.
 - `GOAL_CONTROL=skip-check` — FIX-2428's: the mint grants every session topic. Must FAIL `c:refused`.
 - `GOAL_CONTROL=main-before` — today's `main`: the parent of FIX-2426's implementation merge (`db498b976`), extracted to scratch and installed, with `app/` copied in unchanged. Must FAIL every `a:` assertion and `b:no-read-between`.

@@ -54,10 +54,13 @@ change is itself confidential. Then a check per notice is the price.
 <a name="d3"></a>
 ## D3 · The hook reads on a timer wherever push can miss a change: no push, the socket down, or a bus that can't cross processes
 
+> **Amended (Nov 19) by [FIX-2545](https://linear.app/fixpoint-labs/issue/FIX-2545).** The in-memory bus is single-process by decision and reports that it crosses, so the hook keeps no timer on it, on one process or two. The timer stays where push is absent, the socket is down, or a Postgres bus stops hearing its ping. The spec's "second process on the in-memory bus" leg describes the case before FIX-2545.
+
+
 | | |
 |---|---|
 | **Instead of** | Reading on a timer only when `GET /capabilities` says there is no push · a server that sends a synthetic notice at the poll pace where its bus can't cross, so the client needs no `crossing` frame. That adds a server timer per connection, while the client already keeps one for a dropped socket |
-| **Because** | A socket can be up and still miss a change made on another process, when its process's bus doesn't cross processes (the in-memory bus on two processes, a Postgres bus that stopped hearing its ping). FIX-2426 keeps the session stream's timer there; the hook keeps its own the same way. And a socket on a host with push still drops: a proxy's idle timeout, a deploy, a laptop that sleeps, a ticket that lands on another process. With the timer tied to capabilities alone, the screen goes stale with no sign of it. So `client.subscribe` reads on its timer from the first failed reconnect, the pace `followSession` already treats as lapsed, until the socket is back, and while the socket says its bus doesn't cross (an open Ably connection always crosses, [below](#decided-not-asked)). Each connect and reconnect calls `onChange` once. The timer lives in `client.subscribe`, not in each hook, so every consumer gets one fallback. Epic ER-5 says the same |
+| **Because** | A socket can be up and still miss a change made on another process, when its process's bus doesn't cross processes (a Postgres bus that stopped hearing its ping; the in-memory bus on two processes was one until FIX-2545 made it single-process). FIX-2426 keeps the session stream's timer there; the hook keeps its own the same way. And a socket on a host with push still drops: a proxy's idle timeout, a deploy, a laptop that sleeps, a ticket that lands on another process. With the timer tied to capabilities alone, the screen goes stale with no sign of it. So `client.subscribe` reads on its timer from the first failed reconnect, the pace `followSession` already treats as lapsed, until the socket is back, and while the socket says its bus doesn't cross (an open Ably connection always crosses, [below](#decided-not-asked)). Each connect and reconnect calls `onChange` once. The timer lives in `client.subscribe`, not in each hook, so every consumer gets one fallback. Epic ER-5 says the same |
 | **Locks in** | `pollIntervalMs` on `client.subscribe` and `useSubscription`, a public name. A screen on a push host still costs a read per interval while its socket is down or its bus doesn't cross, which on the in-memory bus is always, even on one process (FIX-2426 D1) |
 
 ![D3: when the hook reads on a timer. Chosen: wherever push can miss a change, beside no push only. Decides it: a socket that misses a change, dropped or on a bus that cannot cross. Price: a read per interval meanwhile. Flips if push on long-lived hosts never misses a change](figures/d3-fallback.svg)
@@ -186,5 +189,6 @@ run a fresh `analysis` before the gate.
   connect, a reconnect or a poll), owned here; FIX-1506's panels and FIX-2466's views consume it.
 - **Amended (Nov 2)** — FIX-380 (Ably) is a later transport behind the same seam, outside
   FIX-2367 ([owner, #4512](https://github.com/fixpoint-labs/flow-state-dev/pull/4512#issuecomment-6567246620)). Wording only; the Ably arm stays what the seam supports.
+- **Amended (Nov 19)** — D3's in-memory case removed by FIX-2545: the in-memory bus is single-process, so the hook keeps no timer on it (FIX-2368's closure amendment).
 
 **Open: none.**
