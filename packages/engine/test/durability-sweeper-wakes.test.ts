@@ -160,9 +160,9 @@ describe("a fired wake whose run is refused at its start", () => {
   }
 
   // As a run's caller receives it: the block's throw, wrapped in a FlowError.
-  const refusal = new FlowError('Worker "chief-of-staff" was fired.', {
+  const refusal = new FlowError('Worker "my.desk" was fired.', {
     code: "execution_error",
-    cause: Object.assign(new Error('Worker "chief-of-staff" was fired.'), { code: "worker-turn-refused" })
+    cause: Object.assign(new Error('Worker "my.desk" was fired.'), { code: "worker-turn-refused" })
   });
 
   it("is cleared, not fired again: a session that refuses every turn is never retried", async () => {

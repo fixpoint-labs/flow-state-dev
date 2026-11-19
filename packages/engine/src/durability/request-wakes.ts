@@ -59,8 +59,9 @@ export function noteWakeOwed(store: WakeStore, dueAt: number): void {
  * A run refused at its start for good ({@link isTerminalStartRefusal}) clears
  * the wake it fired, at the version the fire read, and says so once: its
  * session will refuse every run, so its pass, the only thing that clears the
- * wake, never runs (FIX-2849). A debt owed since the fire keeps its wake.
+ * wake, never runs. A debt owed since the fire keeps its wake.
  */
+// FIX-2849: the terminal-refusal clear.
 export async function fireWakeThrough(
   host: Pick<InboundTransportHost, "dispatch" | "stores" | "logger">,
   wake: WakeRecord,

@@ -2047,11 +2047,12 @@ async function runActionAttempt<
   let resumeContext: ResumeContext | undefined;
   let replayLog: ReplayLog | undefined;
   let ctx: ExecutionContext;
+  // FIX-1983; FIX-2849.
   /**
    * Settle this request `failed` for an error that ended it before its action
-   * ran, and send its one final-failure event once that write lands
-   * (FIX-1983). The failed record is this run's terminal write; the run's
-   * exit stamps it (see `runActionInternal`).
+   * ran, and send its one final-failure event once that write lands. The
+   * failed record is this run's terminal write; the run's exit stamps it (see
+   * `runActionInternal`).
    */
   const settleFailedBeforeRun = async (error: unknown): Promise<void> => {
     terminalRecordIncarnation = await settleFreshRequestSetupFailure({
