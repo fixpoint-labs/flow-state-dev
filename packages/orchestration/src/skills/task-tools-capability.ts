@@ -1784,8 +1784,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // conversation-result task's attempts (`conversation_result_one_attempt`).
       const ownRule =
         input.status !== undefined || (input.maxAttempts !== undefined && current.resultTo === "conversation");
-      // A hold or release is decided by the write, which also knows the one
-      // release a started held row may take (a legacy blocked row, BP-030).
+      // A hold or release is decided by the write. A status the board does not
+      // know is declined there (`unknown-status`), not treated as a started row.
       const locked = ownRule ? [] : lockedFields(current, edits);
       if (locked.length > 0) return lockedError(current, locked);
       // A message's own checks run before any write too (FIX-2086), so a call

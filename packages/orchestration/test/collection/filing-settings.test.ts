@@ -432,36 +432,26 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
   });
 });
 
-describe.each(BACKINGS)("retired rows in the store at upgrade (%s)", (_name, makeBacking) => {
+describe.each(BACKINGS)("a stored status the board does not know (%s)", (_name, makeBacking) => {
   const stored = { attempts: 0, createdAt: 1_000, updatedAt: 1_000, revision: 1 };
 
-  it("reads a blocked row as held, and starts it once released", async () => {
+  it("is not claimed, and a release is declined unknown-status, leaving the row as stored", async () => {
     const { seed } = await makeBacking();
-    const tasks = await seed({ ...stored, id: "t", goal: "t", status: "blocked", error: "waiting on legal" } as unknown as Task);
-    // The block's reason is kept where nothing hands it to a worker: a
-    // worker reads `feedback` as what to fix, and `error` as a failure.
-    expect(tasks.get("t")).toMatchObject({ status: "held", metadata: { heldReason: "waiting on legal" } });
-    expect(tasks.get("t")?.error).toBeUndefined();
-    expect(tasks.get("t")?.feedback).toBeUndefined();
+    const hold = {
+      id: "q1",
+      actor: "user",
+      openedAt: 1,
+      source: { kind: "row", closedBy: [{ by: "answer" }] },
+      ask: { kind: "question", prompt: "Which region?" },
+    };
+    const tasks = await seed({ ...stored, id: "t", goal: "t", status: "blocked", holds: [hold] } as unknown as Task);
+    expect(tasks.get("t")?.status).toBe("blocked");
+    expect(tasks.get("t")?.holds?.[0]?.source.kind).toBe("row");
     expect(await tasks.claim("w")).toBeNull();
-
-    await tasks.release("t");
-    const claimed = await tasks.claim("w");
-    expect(claimed?.id).toBe("t");
-    expect(claimed?.feedback).toBeUndefined();
-  });
-
-  it("releases a blocked row that had already been retried, and refuses only its edits", async () => {
-    // `blocked` was reachable from a retry's `pending`, so a stored blocked
-    // row can carry attempts. Leaving held isn't an edit of the filing: it
-    // is how the row starts again, so it is never refused as started.
-    const { seed } = await makeBacking();
-    const tasks = await seed({ ...stored, attempts: 1, id: "t", goal: "t", status: "blocked", error: "waiting on legal" } as unknown as Task);
-    expect(tasks.get("t")?.status).toBe("held");
-    expect(await tasks.patchSettings("t", { held: false, maxAttempts: 3 })).toMatchObject({ outcome: "declined", reason: "started" });
-    expect(await tasks.release("t")).toEqual({ outcome: "recorded" });
-    expect(tasks.get("t")?.status).toBe("pending");
-    expect((await tasks.claim("w"))?.id).toBe("t");
+    expect(await tasks.release("t")).toMatchObject({ outcome: "declined", reason: "unknown-status" });
+    expect(await tasks.cancel("t", "no longer a status")).toMatchObject({ outcome: "declined", reason: "unknown-status" });
+    expect(tasks.get("t")?.status).toBe("blocked");
+    expect(tasks.get("t")?.holds?.[0]?.source.kind).toBe("row");
   });
 });
 

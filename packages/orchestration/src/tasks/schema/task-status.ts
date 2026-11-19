@@ -21,45 +21,12 @@ export const taskStatusSchema = z.enum([
 
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
 
-// FIX-2080 D1.
-/**
- * The member `held` replaced. A row stored before then still
- * carries it; it reads as `held`, the same "filed, not started, until someone
- * says go". The cast-read half is the retired-shape map (`./retired-shapes`).
- */
-const LEGACY_BLOCKED_STATUS = "blocked";
+const TASK_STATUSES: ReadonlySet<string> = new Set(taskStatusSchema.options);
 
-// FIX-2080.
-/**
- * The status as it is read back off a **persisted** row: `taskStatusSchema`,
- * plus the legacy member mapped forward.
- *
- * This is not politeness about a name. Where a stored row IS parsed — a plain
- * resource, `taskSchema` as a block's input schema, the delegation board field
- * — a value that fails its schema is never surfaced: the engine substitutes
- * the resource's default (`normalizeResourceState`). An enum that simply
- * dropped the old member would therefore not mislabel a task written before
- * the rename; it would reset that state to empty.
- *
- * The mapping is a **fixed point**, which is what makes it safe to use on a
- * persisted schema at all: `assertStableResourceState` re-parses any value a
- * schema rewrote and rejects the write if the second parse moves it again.
- * Parsing `blocked` yields `held`, and `held` parses as itself, so the second
- * parse is a no-op.
- *
- * This covers the parse paths only. A **task collection instance is never
- * parsed on read** — the engine skips collection configs when it normalizes
- * scope resources, and both backings cast the stored row — so the durable
- * board is covered by the retired-shape map (`./retired-shapes`) instead.
- * The two together are the dual read.
- *
- * Use this wherever a stored row is decoded. Use {@link taskStatusSchema} for
- * everything a caller writes or a type is derived from.
- */
-export const persistedTaskStatusSchema = z.preprocess(
-  (value) => (value === LEGACY_BLOCKED_STATUS ? "held" : value),
-  taskStatusSchema
-);
+/** True when `status` is one the state machine knows. */
+export function isTaskStatus(status: string): status is TaskStatus {
+  return TASK_STATUSES.has(status);
+}
 
 const TERMINAL_STATUSES = new Set<TaskStatus>(["completed", "errored", "cancelled"]);
 
@@ -88,10 +55,10 @@ const ALLOWED_TRANSITIONS: Record<TaskStatus, ReadonlyArray<TaskStatus>> = {
  * Terminal statuses return an empty array.
  */
 export function allowedTransitionsFrom(from: TaskStatus): ReadonlyArray<TaskStatus> {
-  // A status the table does not know reaches no other status. It should not be
-  // possible — rows are migrated at the read boundary and the enum is closed —
-  // but indexing straight into the record made an unmapped value a TypeError
-  // inside the CAS, where callers expect `IllegalTaskTransitionError`.
+  // A status the table does not know reaches no other status. Indexing
+  // straight into the record threw a TypeError inside the CAS. A write
+  // against that row is declined `unknown-status` before this runs; the
+  // empty array is what a direct call returns instead of throwing.
   return ALLOWED_TRANSITIONS[from] ?? [];
 }
 

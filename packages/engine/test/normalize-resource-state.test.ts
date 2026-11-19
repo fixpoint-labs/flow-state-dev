@@ -67,6 +67,17 @@ describe("normalizeResourceState", () => {
     });
   });
 
+  it("falls back to the default when a task-shaped resource is stored with a status the schema rejects", () => {
+    const taskShaped = z.object({
+      id: z.string(),
+      goal: z.string(),
+      status: z.enum(["pending", "in_progress", "held", "completed", "errored", "cancelled"]),
+      attempts: z.number(),
+    });
+    const stored = { id: "t", goal: "t", status: "blocked", attempts: 0 };
+    expect(normalizeResourceState(config(taskShaped), stored)).toEqual({});
+  });
+
   it("falls back to the default when nothing is persisted", () => {
     const schema = z.object({ n: z.number().default(1) });
     expect(normalizeResourceState(config(schema), undefined)).toEqual({ n: 1 });

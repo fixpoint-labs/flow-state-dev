@@ -398,32 +398,3 @@ describe.each([
     });
   });
 });
-
-// FIX-2479 D1. A store holds questions written before the marker was renamed: `source.kind: "row"`.
-// Both backings read the stored task as it is (no parse), so the row read maps the marker forward,
-// or the board would see a question no answer closes and never start the task.
-describe.each([
-  ["sequencer-backed", async (stored: Task) => createStateBackedTaskCollection({ collectionId: "tasks", state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: { [stored.id]: stored } }), now: () => 1_000 })],
-  [
-    "resource-backed",
-    async (stored: Task) => {
-      const collection = createFakeResourceCollection();
-      await collection.create({ id: stored.id }, stored as never);
-      return createResourceBackedTaskCollection({ collectionId: "tasks", collection, now: () => 1_000 });
-    },
-  ],
-] as const)("a question stored under the retired row marker (%s)", (_name, storedOn) => {
-  it("reads as the task's own, holds the task, and its answer closes it and lets the task start", async () => {
-    const { board: scratch } = await sequencerBacking();
-    const filed = await scratch.createTask({ id: "t1", goal: "g", questions: [ask(CSV)] });
-    const legacy = { ...filed, holds: filed.holds!.map((hold) => ({ ...hold, source: { ...hold.source, kind: "row" } })) } as unknown as Task;
-    const board = await storedOn(legacy);
-    const row = board.get("t1")!;
-    expect(row.holds!.map((hold) => hold.source.kind)).toEqual(["task"]);
-    expect(holdIds(row)).toEqual([filed.holds![0]!.id]);
-    expect(await board.claim("w")).toBeNull();
-    expect(await board.answer!("t1", user(filed.holds![0]!.id, "The March export"))).toEqual({ outcome: "recorded" });
-    expect(holdIds(board.get("t1"))).toEqual([]);
-    expect(await board.claim("w")).toMatchObject({ id: "t1", status: "in_progress" });
-  });
-});

@@ -25,9 +25,9 @@ describe("a stored board task, read by the snapshot and by the inbox view", () =
     expect(view).toEqual(snapshot);
   });
 
-  it("reads a retired `blocked` task as held, drops a hold that doesn't parse, and names a task with no id by its key", () => {
+  it("drops a hold that doesn't parse, keeps the stored status, and names a task with no id by its key", () => {
     const [snapshot, view] = both({ goal: "g", status: "blocked", holds: [{ nonsense: true }] });
-    expect([snapshot.id, snapshot.status, snapshot.holds]).toEqual(["t_fallback", "held", []]);
+    expect([snapshot.id, snapshot.status, snapshot.holds]).toEqual(["t_fallback", "blocked", []]);
     expect(view).toEqual(snapshot);
   });
 });

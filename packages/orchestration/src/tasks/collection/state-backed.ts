@@ -15,15 +15,14 @@
  * checkpointed (latest-only with always-on default); a generator's
  * own state and the request are not restored on resume.
  *
- * This file is the storage: the state slot, read through the retired-shape
- * boundary, and written in one compare-and-set over the whole map. Every
- * `TaskCollectionRef` method is the method table's (`./method-table`).
+ * This file is the storage: the state slot, and one compare-and-set over
+ * the whole map. Every `TaskCollectionRef` method is the method table's
+ * (`./method-table`).
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { StateRef } from "@flow-state-dev/core/types";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { Task, TaskClaimIdentity } from "../schema/task";
-import { withRetiredShapes } from "../schema/retired-shapes";
 import type { FilingStamp } from "./internal";
 import type { TaskCollectionRef } from "./types";
 import type { TaskChangeEvent } from "./change-event";
@@ -109,33 +108,11 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
   const maxEnqueuedTasks = options.maxEnqueuedTasks ?? undefined;
   const maxTotalRetries = options.maxTotalRetries ?? undefined;
 
-  // FIX-2080.
-  /**
-   * The read boundary for this backing — same job as the resource backing's
-   * `readTaskState`. Atomic state is stored, not parsed, so a row in a shape
-   * the retired-shape map reads (`withRetiredShapes`) arrives as
-   * stored; it is mapped forward here, before any filter or the transition
-   * guard sees it.
-   *
-   * The map is rebuilt only when a legacy row is actually present, so the
-   * common path returns the stored object itself.
-   */
-  function migrateTasks(slot: unknown): Record<string, Task> {
-    if (!slot || typeof slot !== "object") return {};
-    const stored = slot as Record<string, Task>;
-    let migrated: Record<string, Task> | undefined;
-    for (const [id, task] of Object.entries(stored)) {
-      const next = withRetiredShapes(task);
-      if (next === task) continue;
-      migrated ??= { ...stored };
-      migrated[id] = next;
-    }
-    return migrated ?? stored;
-  }
-
   function readTasks(): Record<string, Task> {
     const raw = options.state.state as Record<string, unknown>;
-    return migrateTasks(raw[stateKey]);
+    const slot = raw[stateKey];
+    if (!slot || typeof slot !== "object") return {};
+    return slot as Record<string, Task>;
   }
 
   /**
@@ -159,10 +136,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
   ): Promise<void> {
     await options.state.atomicState((state) => {
       const raw = state as Record<string, unknown>;
-      // Through the same boundary as `readTasks`: the mutator re-reads
-      // committed state on every CAS retry, so a legacy row would otherwise
-      // reach the transition guard here even though the read path is clean.
-      const currentTasks = migrateTasks(raw[stateKey]);
+      // The mutator re-reads committed state on every CAS retry.
+      const slot = raw[stateKey];
+      const currentTasks = !slot || typeof slot !== "object" ? {} : (slot as Record<string, Task>);
 
       const next = mutate(currentTasks);
       if (next === undefined) return {} as Partial<Record<string, unknown>>;

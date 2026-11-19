@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 import { attachmentReferenceSchema } from "@flow-state-dev/core/attachments";
-import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
+import { taskStatusSchema, type TaskStatus } from "./task-status";
 import { taskSteerSchema } from "./steer";
 import { taskHoldSchema } from "./hold";
 import { taskSpendSchema } from "./spend";
@@ -44,8 +44,7 @@ export const taskSchema = z.object({
    */
   attachments: z.array(attachmentReferenceSchema).optional(),
 
-  // Decoded from a stored row, so it tolerates the pre-FIX-1245 member.
-  status: persistedTaskStatusSchema,
+  status: taskStatusSchema,
   attempts: z.number().int().nonnegative().default(0),
   /**
    * Optional retry budget. When set and `attempts < maxAttempts`, a
@@ -350,15 +349,6 @@ export const taskSchema = z.object({
    * named no source: a cascade, a substrate write-back, an older row.
    */
   cancelledVia: z.enum(["tool", "action"]).optional(),
-  // FIX-2080, BP-030; FIX-2081.
-  /**
-   * The row was stored `blocked` and read as `held`. Set
-   * only at the read boundary, and persisted with the row when it is next
-   * written; a release clears it. Such a row may have started before it was
-   * blocked, and a release alone is how it runs again; no current path holds
-   * a row that has started.
-   */
-  heldFromBlocked: z.literal(true).optional(),
   error: z.string().optional(),
   feedback: z.string().optional(),
 
