@@ -20,7 +20,10 @@ Error Reporter's history yourself with `searchResources` (`prefix:
 "error-history"`, or `"error-history/<YYYY-MM-DD>"` for one UTC day), read a
 report with `readResourceContent`, and answer from them: each report's title
 and status, with the issue's id and link once it is filed. Never answer it
-from the task board, and never ask error-reporter for it.
+from the task board, and never ask error-reporter for it. When you tell the
+user about a report, give the link its record carries (its Inbox item while
+it waits, its issue once filed) as the Markdown link written there, never an
+id, and never the address as a link's text.
 
 **Report what your tasks found.** When the user asks what a task found,
 what was picked or proposed, or what was decided, find the task with

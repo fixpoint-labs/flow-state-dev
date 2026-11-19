@@ -6,7 +6,10 @@
  * holding questions for them. It draws workforce's inbox view and reads no
  * other list (`lib/inbox.ts`).
  * A list and a detail pane; the detail draws an ask with the same card Shift
- * Coordinator uses, and answers it through the same resume.
+ * Coordinator uses, and answers it through the same resume. The list groups
+ * every ask no task holds under the worker that raised it, with a count, each
+ * ask showing its heading and, when it differs, its message's first line; a
+ * task's item stands on its own.
  *
  * Drawn as design v2's Inbox (v2:559-645): a 400px list whose items carry the
  * highlighter square (each one waits on the user), and a detail on the
@@ -33,7 +36,8 @@ import { doorOf, rosterOf, waited, workerLabel, type LoadedSnapshot } from "../l
 import type { InboxHold, InboxAnswer, InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import { describeFailure, type Failure } from "../lib/reads";
-import { itemAtRoute, sessionOfHold, useInbox, useInboxAnswer, workerOfHold, type InboxAsk } from "../lib/inbox";
+import { useInbox, useInboxAnswer, type InboxAsk } from "../lib/inbox";
+import { groupedByWorker, itemAtRoute, sessionOfHold, workerOfHold } from "../lib/inbox-list";
 import { navigate } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import { useRetrySessionFeed, useSharedSessionFeed } from "../lib/session-feeds";
@@ -84,6 +88,53 @@ function itemFrom(item: InboxItem): string {
   const who = item.task?.assignee ?? workerOfHold(hold) ?? (noConversation ? `${hold.detail?.flowKind ?? "a worker flow"}, no conversation` : "unknown worker");
   const more = item.holds.length > 1 ? ` · ${item.holds.length} asks` : "";
   return `${workerLabel(who)} · task ${item.task?.title ?? "—"}${more}`;
+}
+
+/** What a grouped item says under its heading: its message's first line, or nothing when the heading already is that (an untitled ask). */
+function groupedFrom(item: InboxItem): string | null {
+  const line = item.holds[0]!.ask.prompt.split("\n")[0] ?? "";
+  return line === "" || line === itemHeading(item) ? null : line;
+}
+
+/** One item of the list: approval or question, its heading, `from` under it when there is one, and how long it has waited. */
+function ItemButton({ item, selected, from, now }: { item: InboxItem; selected: boolean; from: string | null; now: number }) {
+  return (
+    <button
+      type="button"
+      onClick={() => /* in place: picks the item shown beside the list */ navigate({ level: "inbox", item: item.id })}
+      aria-selected={selected}
+      data-testid="inbox-item"
+      data-item-id={item.id}
+      data-source={item.holds[0]!.source.kind}
+      data-suspension-id={item.holds[0]!.source.kind === "suspension" ? item.holds[0]!.source.suspensionId : undefined}
+      data-session-id={sessionOfHold(item.holds[0]!) ?? undefined}
+      className={cn(
+        "grid w-full grid-cols-[10px_minmax(0,1fr)_auto] gap-2.5 border-b border-foreground/10 px-[18px] py-[13px] text-left",
+        selected ? "bg-card shadow-[inset_2px_0_0_var(--color-info)]" : "hover:bg-foreground/5",
+      )}
+    >
+      {/* The highlighter: every ask waits on the user. */}
+      <StateSquare state="needs" className="mt-1" />
+      <span className="flex min-w-0 flex-col gap-1">
+        <span className="flex">
+          <span className="border border-foreground/50 px-1 font-mono text-xs font-medium tracking-[0.1em]" data-testid="inbox-item-kind">
+            {isApproval(item) ? "APPROVAL" : "QUESTION"}
+          </span>
+        </span>
+        <span className="line-clamp-2 text-sm leading-[1.3] font-semibold" data-testid="inbox-item-question">
+          {itemHeading(item)}
+        </span>
+        {from === null ? null : (
+          <Meta className="text-muted-foreground" testId="inbox-item-from">
+            {from}
+          </Meta>
+        )}
+      </span>
+      <Meta role="count" className="text-muted-foreground" testId="inbox-item-wait">
+        waiting {waited(item.since, now)}
+      </Meta>
+    </button>
+  );
 }
 
 export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; itemId: string | null; gaps: Gaps }) {
@@ -150,46 +201,27 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
           </p>
         ) : (
           <ol className="min-h-0 flex-1 overflow-y-auto">
-            {shown.map((item) => {
-              const isSelected = item === selected;
-              return (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    onClick={() => /* in place: picks the item shown beside the list */ navigate({ level: "inbox", item: item.id })}
-                    aria-selected={isSelected}
-                    data-testid="inbox-item"
-                    data-item-id={item.id}
-                    data-source={item.holds[0]!.source.kind}
-                    data-suspension-id={item.holds[0]!.source.kind === "suspension" ? item.holds[0]!.source.suspensionId : undefined}
-                    data-session-id={sessionOfHold(item.holds[0]!) ?? undefined}
-                    className={cn(
-                      "grid w-full grid-cols-[10px_minmax(0,1fr)_auto] gap-2.5 border-b border-foreground/10 px-[18px] py-[13px] text-left",
-                      isSelected ? "bg-card shadow-[inset_2px_0_0_var(--color-info)]" : "hover:bg-foreground/5",
-                    )}
-                  >
-                    {/* The highlighter: every ask waits on the user. */}
-                    <StateSquare state="needs" className="mt-1" />
-                    <span className="flex min-w-0 flex-col gap-1">
-                      <span className="flex">
-                        <span className="border border-foreground/50 px-1 font-mono text-xs font-medium tracking-[0.1em]" data-testid="inbox-item-kind">
-                          {isApproval(item) ? "APPROVAL" : "QUESTION"}
-                        </span>
-                      </span>
-                      <span className="line-clamp-2 text-sm leading-[1.3] font-semibold" data-testid="inbox-item-question">
-                        {itemHeading(item)}
-                      </span>
-                      <Meta className="text-muted-foreground" testId="inbox-item-from">
-                        {itemFrom(item)}
-                      </Meta>
-                    </span>
-                    <Meta role="count" className="text-muted-foreground" testId="inbox-item-wait">
-                      waiting {waited(item.since, now)}
-                    </Meta>
-                  </button>
+            {groupedByWorker(shown).map((entry) =>
+              entry.kind === "item" ? (
+                <li key={entry.item.id}>
+                  <ItemButton item={entry.item} selected={entry.item === selected} from={itemFrom(entry.item)} now={now} />
                 </li>
-              );
-            })}
+              ) : (
+                <li key={`worker:${entry.worker}`} data-testid="inbox-group" data-worker={entry.worker}>
+                  <Meta className="block border-b border-foreground/10 px-[18px] pt-3 pb-1.5 text-muted-foreground" testId="inbox-group-head">
+                    {`${workerLabel(entry.worker)} · ${entry.items.length} waiting`}
+                  </Meta>
+                  <ol>
+                    {entry.items.map((item) => (
+                      <li key={item.id}>
+                        {/* The group names the worker, so each item says what it asks instead. */}
+                        <ItemButton item={item} selected={item === selected} from={groupedFrom(item)} now={now} />
+                      </li>
+                    ))}
+                  </ol>
+                </li>
+              ),
+            )}
           </ol>
         )}
       </section>

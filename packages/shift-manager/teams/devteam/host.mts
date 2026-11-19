@@ -1249,6 +1249,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           ...(options.errorReporter.limits === undefined ? {} : { limits: options.errorReporter.limits }),
           ...(options.errorReporter.secrets === undefined ? {} : { secrets: options.errorReporter.secrets }),
           links: reportLinks,
+          // Shift Manager's Inbox opens the ask that waits in the report's own session. Relative to
+          // the page's `<base href>`, so it opens under whatever prefix the page is served at
+          // (a proxy's `/shift-manager/`), which the Lab can't know when it writes the line.
+          inboxLink: ({ sessionId }) => `./inbox/${encodeURIComponent(sessionId)}`,
           log: options.log ?? ((line: string) => process.stderr.write(`[error-reporter] ${line}\n`)),
         });
   // What the workforce kit reads: the tree, or a copy with the controls' edits
