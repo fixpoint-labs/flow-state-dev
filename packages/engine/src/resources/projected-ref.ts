@@ -28,12 +28,16 @@ export function buildProjectedResourceRef(args: {
   contentTemplateRef?: string;
   /** Resolve a `contentTemplateRef` path to raw template text (`null` when unavailable). */
   resolveTemplateRef?: (ref: string) => string | null;
+  /** The collection's `llmReadable`, carried on the ref as a store-backed instance carries its collection's config. */
+  llmReadable?: boolean;
 }): ProjectedResourceRef<JsonObject> {
-  const { scope, storageKey, readState, contentTemplate, contentTemplateRef, resolveTemplateRef } = args;
+  const { scope, storageKey, readState, contentTemplate, contentTemplateRef, resolveTemplateRef, llmReadable } = args;
   return {
     path: storageKey,
     scope,
     uri: `${scope}/${storageKey}`,
+    // The read tool's gate (`isLlmReadable`) reads the collection's flag off the instance ref.
+    config: { llmReadable: llmReadable === true },
     get state() {
       return readState();
     },

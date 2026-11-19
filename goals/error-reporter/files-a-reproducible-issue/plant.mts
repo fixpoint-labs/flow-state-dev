@@ -31,8 +31,11 @@ function repositoryHostOf(project: KnownProject): string {
  *
  * @param modelId The id the Lab resolved for it: the Shift Coordinator's own `model:`.
  * @param projects The projects the Lab holds.
+ * @param real The worker's real model, which answers a message no plant matches and that names no project (leg R's question).
  */
-export function plantedCoordinatorModel(modelId: string, projects: readonly KnownProject[]): GeneratorModel {
+export function plantedCoordinatorModel(modelId: string, projects: readonly KnownProject[], real?: () => GeneratorModel): GeneratorModel {
+  const planted = (said: string) =>
+    /^(dispatch\s+\{|post to [a-z.-]+:|burst:)/i.test(said) || projects.some((p) => said.toLowerCase().includes(p.id) || said.toLowerCase().includes(p.title.toLowerCase()));
   return {
     modelId,
     async generate() {
@@ -40,10 +43,11 @@ export function plantedCoordinatorModel(modelId: string, projects: readonly Know
     },
     async generateStep(options) {
       const messages = options.messages as Array<{ role: string; content: unknown }>;
+      const said = textOf([...messages].reverse().find((m) => m.role === "user")?.content).trim();
+      if (real !== undefined && !planted(said)) return real().generateStep!(options);
       const last = messages.at(-1);
       // After a tool's result, the turn is done.
       if (last?.role === "tool") return { text: "Done.", finishReason: "stop" };
-      const said = textOf([...messages].reverse().find((m) => m.role === "user")?.content).trim();
       const dispatch = /^dispatch\s+(\{[\s\S]*\})\s*$/.exec(said);
       if (dispatch !== null) {
         return {

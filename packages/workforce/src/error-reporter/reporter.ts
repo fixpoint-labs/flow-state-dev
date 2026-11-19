@@ -18,6 +18,7 @@
 import { PROJECT_STATE_KEY, WORKER_ID_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { COMMENT_ENTRY, LINE_ENTRY, REPORT_ENTRY, REPORTS_ENTRY, REPORT_SESSION_PREFIX } from "./flow";
 import { ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY, INTAKE_SESSION_ID } from "./keys";
+import type { ErrorHistoryRecord, HistoryRequest } from "./history-view";
 import type { IntakeDecision, Occurrence, OccurrenceIds, ReportLimits, ReportResourceState } from "./reports";
 
 export { INTAKE_SESSION_ID };
@@ -149,12 +150,22 @@ export interface ErrorReporter {
   dispose(): void;
   /** The Lab's own secrets. */
   secrets(): readonly string[];
+  /** Where the reporter says what went wrong with itself: the Lab's `log`. */
+  log(message: string): void;
   /** Start what an intake's decision owes: a report's run, or a counted comment. */
   follow(decision: IntakeDecision): void;
   /** A line in the reporter's conversation. */
   say(text: string): Promise<void>;
   /** The dossier a report is drafted from, gathered by code. */
   dossierOf(row: ReportResourceState): Promise<Record<string, unknown>>;
+  /**
+   * The history records one reader may read, read as the operator through the
+   * bound host and projected inside that run: one record by `ref`, or a
+   * search's hits. `undefined` before the bind.
+   *
+   * @param request Who reads (from a trusted caller), which days, and what.
+   */
+  readHistory(request: HistoryRequest): Promise<ErrorHistoryRecord[] | undefined>;
 }
 
 /** The newest requests and sessions a dossier reads. */
@@ -358,6 +369,8 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
 
     secrets: () => options.secrets?.() ?? [],
 
+    log,
+
     follow(decision) {
       if (decision.decision === "new" || (decision.decision === "storm" && decision.isNew)) startReport(decision.reportId);
       else if ((decision.decision === "counted" || decision.decision === "storm") && decision.commentOwed) startComment(decision.reportId);
@@ -366,6 +379,13 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
     async say(text) {
       if (host?.conversationSessionId === undefined) return;
       await operatorRun(host.conversationSessionId, LINE_ENTRY, { text }, "internal");
+    },
+
+    async readHistory(request) {
+      if (host === undefined) return undefined;
+      const result = await operatorRun(INTAKE_SESSION_ID, REPORTS_ENTRY, { op: "history", request }, "internal", ERROR_REPORTER_INTAKE_FLOW);
+      if (result.error !== undefined) throw new Error(`the history read failed: ${result.error}`);
+      return (result.output as { records: ErrorHistoryRecord[] }).records;
     },
 
     async dossierOf(row) {

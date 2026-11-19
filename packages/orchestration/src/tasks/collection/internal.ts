@@ -14,6 +14,7 @@ import type { TaskClaimTicket } from "../claim-ticket";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
 import {
+  isTaskStatus,
   isTerminalStatus,
   isTransitionAllowed,
 } from "../schema/task-status";
@@ -336,25 +337,14 @@ export interface TaskSettingsPatch {
   assignee?: string;
 }
 
-
-// FIX-2080; BP-030.
-/**
- * A release and nothing else, of a row an older version stored `blocked`
- * (`heldFromBlocked`, set only at the read boundary). Such a row may have
- * started before it was blocked, and a release is how it runs again.
- * No current path holds a started row, so any other started held
- * row keeps the field table's rule: no release. Field edits stay locked.
- */
-function legacyReleaseOnly(task: Task, patch: TaskSettingsPatch): boolean {
-  return task.status === "held" && task.heldFromBlocked === true && patch.held === false && patchFields(patch).length === 1;
-}
-
 /**
  * The status check the field table leaves: a settings edit lands only on a
- * pending or held row. Which fields a started row still takes is the
- * table's call (`lockedFields`), not this one's.
+ * pending or held row. A status the board does not know is declined
+ * `unknown-status`, and the row is left as stored. Which fields a started
+ * row still takes is the table's call (`lockedFields`), not this one's.
  */
 function settingsDecline(task: Task): TaskWriteDeclineReason | undefined {
+  if (!isTaskStatus(task.status)) return "unknown-status";
   return task.status !== "pending" && task.status !== "held" ? "started" : undefined;
 }
 
@@ -394,7 +384,7 @@ export function settingsWrite(
       detail: `task "${task.id}" sends its result to the conversation, so it has one attempt. Nothing was written.`,
     });
   }
-  const locked = legacyReleaseOnly(task, patch) ? [] : lockedFields(task, patchFields(patch));
+  const locked = lockedFields(task, patchFields(patch));
   if (locked.length > 0) return { decline: "started" };
   const declined = settingsDecline(task);
   if (declined !== undefined) return { decline: declined };
@@ -402,8 +392,6 @@ export function settingsWrite(
   if (patch.held === true && task.status === "pending") update.status = "held";
   if (patch.held === false && task.status === "held") {
     update.status = "pending";
-    // The legacy mark serves one release; a later hold is an ordinary one.
-    if (task.heldFromBlocked === true) update.heldFromBlocked = undefined;
   }
   if (patch.deps !== undefined && !sameIds(patch.deps, task.deps)) {
     assertDepsEditable(task.id, patch.deps, lookup);
@@ -862,6 +850,7 @@ export function transitionDeclineReason(
   now: number,
   changeKind?: TaskChangeKind
 ): TaskWriteDeclineReason | undefined {
+  if (!isTaskStatus(task.status)) return "unknown-status";
   // FIX-2133: a held row settles only by cancel, whoever writes, guarded or
   // not. Its holds close first: an answer, a deadline, or the cancel itself.
   if (

@@ -284,7 +284,7 @@ describe("the two folds composed — a tie across requests", () => {
 
 // FIX-2479 D1: the task's own hold is written `"task"`, and one stored before the rename reads
 // `"row"`. Either way an answered question no longer waits; a run's stop waits while it is on the task.
-describe("waitPrompt — the task's own hold, under either marker", () => {
+describe("waitPrompt — the task's own hold", () => {
   const answeredFirst = (kind: string) => ({
     id: "t",
     status: "in_progress",
@@ -295,8 +295,12 @@ describe("waitPrompt — the task's own hold, under either marker", () => {
     steers: [{ id: "s1", answers: "q1" }],
   });
 
-  it.each(["task", "row"])("skips an answered question and shows the next open hold (%s)", (kind) => {
-    expect(waitPrompt(answeredFirst(kind) as never)).toBe("Ship it?");
+  it("skips an answered question and shows the next open hold", () => {
+    expect(waitPrompt(answeredFirst("task") as never)).toBe("Ship it?");
+  });
+
+  it("does not treat a hold marked row as what the task waits on", () => {
+    expect(waitPrompt(answeredFirst("row") as never)).toBeUndefined();
   });
 
   it("shows a run's stop while it is on the task, whatever answers name", () => {

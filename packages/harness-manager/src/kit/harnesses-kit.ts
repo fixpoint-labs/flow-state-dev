@@ -59,7 +59,9 @@ const configSchema: z.ZodType<HarnessesConfig, z.ZodTypeDef, HarnessesConfig> = 
       .object({ commands: z.array(z.string()).readonly(), timeoutMs: z.number().int().positive().optional() })
       .optional(),
     project: z.boolean().optional(),
-    runTimeoutMs: z.number().int().positive().optional(),
+    idleTimeoutMs: z.number().int().positive().optional(),
+    // `0` turns the cap off.
+    runTimeoutMs: z.number().int().nonnegative().optional(),
     logReadiness: z.boolean().optional(),
   })
   .strict();

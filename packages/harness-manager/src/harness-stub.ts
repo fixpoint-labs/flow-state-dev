@@ -19,6 +19,7 @@ import { handler } from "@flow-state-dev/core";
 import {
   harnessRunHandleSchema,
   harnessRunInputSchema,
+  reportHarnessEvent,
   reportHarnessSpend,
 } from "@flow-state-dev/core/harness";
 import type { CapabilityRef } from "@flow-state-dev/core";
@@ -190,7 +191,7 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
   return {
     runs,
     toolCalls,
-    slot: ({ cwd, resume, onSession, mcpTools, onToolApproval }) => {
+    slot: ({ cwd, resume, onSession, mcpTools, onToolApproval, onEvent }) => {
       const block = handler({
         name: "harness-stub",
         inputSchema: harnessRunInputSchema,
@@ -230,6 +231,8 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
             for (const step of options.steps ?? []) {
               if ((options.stepEveryMs ?? 0) > 0) await pause(options.stepEveryMs!, ctx.signal);
               ctx.emit.message(step);
+              // Each step is an event the run sent, as a real harness's output is.
+              reportHarnessEvent(onEvent, context);
             }
             // A cold run is a new coding session (another task, or a fresh attempt): it makes every scripted call from the top.
             const progress = (run.resume === null ? undefined : progressBy.get(run.resume)) ?? { nextCall: 0, heldLast: false };

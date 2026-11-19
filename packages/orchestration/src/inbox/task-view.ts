@@ -9,7 +9,7 @@
  */
 import { taskSpendView, type TaskSpendView } from "../tasks/spend";
 import { taskSpendViewSchema } from "../tasks/schema/spend";
-import { isTerminalStatus, persistedTaskStatusSchema, type TaskStatus } from "../tasks/schema/task-status";
+import { isTerminalStatus, taskStatusSchema, type TaskStatus } from "../tasks/schema/task-status";
 import type { Task } from "../tasks/schema/task";
 import { openUserHolds } from "./holds";
 import type { InboxHold, InboxTaskInput } from "./types";
@@ -46,7 +46,7 @@ export type TaskView<TDetail = unknown> = {
   readonly title: string;
   readonly goal: string | null;
   readonly assignee: string | null;
-  /** The status as stored, read forward (a legacy `blocked` reads `held`). Kept even when it is a word {@link state} doesn't know. */
+  /** The status as stored. Kept even when it is a word {@link state} doesn't know. */
   readonly status: string;
   /** What a person sees it as. */
   readonly state: TaskViewStatus;
@@ -115,7 +115,7 @@ function spendOf(row: TaskViewInput, status: string): TaskSpendView | null {
  *   the Inbox read; those holds say they can't be answered from here.
  */
 export function taskView<TDetail = unknown>(row: TaskViewInput, holds?: readonly InboxHold<TDetail>[]): TaskView<TDetail> {
-  const parsed = persistedTaskStatusSchema.safeParse(row.status);
+  const parsed = taskStatusSchema.safeParse(row.status);
   const status = parsed.success ? parsed.data : row.status;
   const terminal = parsed.success && isTerminalStatus(parsed.data);
   const open = terminal

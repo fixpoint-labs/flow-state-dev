@@ -19,9 +19,10 @@ Most planted failures go to Sandbox's project coordinator. Its routing is `judgm
 - **Leg H.** The bug planted in a worker's harness run gives one report in Inbox, and its link opens the task.
 - **Leg C.** In a fresh Lab, the Shift Coordinator's own turn crashes on the planted bug and best fit answers it; its report reaches Inbox. Then the Shift Coordinator hands a post to an agent worker, `researcher`, whose turn fails on it; that post's report reaches Inbox.
 - **Leg M.** A person tells the Error Reporter, in its own conversation, about a problem that threw nothing. One report reaches Inbox and nothing is filed.
+- **Leg R.** After leg 2, in the same store (the restarted Lab, or Lab A under a control). **a** The history holds 11 occurrence entries for leg 2's fingerprint; the report still keeps 5. **b** Leg 1's report has status entries `previewing`, then `filed` with the tracker's identifier and URL. **c** Asked "What has been reported today, and is any of it filed?", the Shift Coordinator's turn calls `searchResources` with a hit under `error-history/`, calls no `sendMessage` or `createTask` naming error-reporter, and its answer names leg 1's issue identifier. **d** Asked in its own conversation "Did you report the burst: harbor failure?" (leg 6's report, waiting in Inbox), error-reporter calls `searchResources` or `readResourceContent` with an `error-history/` result, and its answer says the report waits in Inbox. The two questions are in no prompt or WORKER.md. In this leg only, a coordinator message no plant matches and that names no project goes to the worker's real model.
 
 **Anti-game:**
-- The check never reads the reporter's prompt or the harness transcript to grade. It grades the store's rows, Inbox as Shift Manager reads it, and the tracker's recorded calls.
+- The check never reads the reporter's prompt or the harness transcript to grade. It grades the store's rows, Inbox as Shift Manager reads it, and the tracker's recorded calls. Leg R grades the store's history records and the sessions' recorded tool calls, so an answer that names the identifier without an `error-history` read fails.
 - A pass with the coordinator healthy proves nothing, so leg 1 first asserts that the message failed the request.
 - The replay is graded by fingerprint in a separate Lab, not by text similarity.
 - The ids are compared to the store's record for that request, not to anything the report wrote.
@@ -38,6 +39,8 @@ Most planted failures go to Sandbox's project coordinator. Its routing is `judgm
 - `eager`: a retried attempt is reported. It must FAIL leg 4 on *no report for a task that passed on retry*.
 - `no-redact`: the dossier reaches the harness unredacted. It must FAIL leg 5 on *no secret in a report*.
 - `rescue-unreported`: the Shift Coordinator's answered crash is not reported. It must FAIL leg C on *the Shift Coordinator's own crash reaches Inbox*.
+- `no-history`: the intake writes no history entry for an occurrence. It must FAIL leg R on *the history holds 11 occurrences of leg 2's failure*.
+- `no-report-read`: `error-history` is left out of the Shift Coordinator's flow. It must FAIL leg R on *the Shift Coordinator searches error-history*.
 - `post-on-touch`: a delegate's failed post goes out only on the board's next touch. It must FAIL leg C on *the delegate's failed post reaches Inbox*.
 
 ## Verdict log

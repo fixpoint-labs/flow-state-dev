@@ -57,9 +57,12 @@ const TEXT_ONLY_HTML: typeof harden[] = [
 /** What a one-line text keeps: inline Markdown. Anything else is unwrapped to its text. */
 const INLINE_ELEMENTS = ["strong", "em", "del", "code", "a"];
 
+/** What a block of it drops: an image, so showing the text never makes the browser load one. */
+const NO_IMAGES = ["img"];
+
 /**
  * Text an agent or a tool wrote, as Markdown, with any HTML in it shown as
- * text. `inline` keeps it to one truncated line: inline Markdown only, and a
+ * text, and no image loaded. `inline` keeps it to one truncated line: inline Markdown only, and a
  * list item or heading is unwrapped to its text rather than drawn as a block.
  */
 export function MarkdownText({ text, className, inline = false }: { text: string; className?: string; inline?: boolean }) {
@@ -73,7 +76,7 @@ export function MarkdownText({ text, className, inline = false }: { text: string
       {text}
     </MessageResponse>
   ) : (
-    <MessageResponse className={className} rehypePlugins={TEXT_ONLY_HTML}>
+    <MessageResponse className={className} rehypePlugins={TEXT_ONLY_HTML} disallowedElements={NO_IMAGES} unwrapDisallowed>
       {text}
     </MessageResponse>
   );
