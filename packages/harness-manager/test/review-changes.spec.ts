@@ -384,6 +384,15 @@ describe("a coding run that made changes waits for a person's review", () => {
         landFailed: null,
         landAttempts: [],
         checks: null,
+        // What was asked, the run's own summary, and what it changed (FIX-2782): no pull request, and the round is the whole branch.
+        goal: "the feature",
+        answer: "done",
+        pullRequests: [],
+        round: null,
+        files: [{ path: "change-1.txt", added: 1, removed: 0 }],
+        fileCount: 1,
+        added: 1,
+        removed: 0,
       });
       expect(hold.ask.prompt).toContain(`1 commit on ${detail!.branch}`);
       expect(held.attempts).toBe(1);
@@ -470,6 +479,8 @@ describe("a coding run that made changes waits for a person's review", () => {
       expect(h.seen[1]).toMatchObject({ resume: "sess_1", request: h.seen[0]!.request });
       expect(h.seen[1]!.prompt).toContain("Keep the old flag name.");
       expect(h.review(again)!.ask.prompt).toContain("2 commits on");
+      // The revision's round starts where the first review left off, so only its own commit is this round's.
+      expect(reviewDetail(await h.reviewData(again))?.round).toEqual({ commits: 1, subjects: ["Change 2"] });
       expect(again.attempts).toBe(1);
 
       await h.answer({ verdict: "accepted" });
@@ -517,6 +528,42 @@ describe("a coding run that made changes waits for a person's review", () => {
       expect(h.seen).toHaveLength(2);
       expect(h.seen[1]!.resume).toBeNull();
       expect(h.seen[1]!.prompt).toContain("Rename the flag.");
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  // FIX-2782: a round on a branch that already had commits listed them all, so a person couldn't tell this round's work from the earlier.
+  it("lists this round's commits apart from the branch's earlier ones, on the review's data and its prompt", async () => {
+    const h = host({ script: ["commits-no-session", "commits"] });
+    try {
+      await h.start();
+      const first = await h.until(h.waiting, "the first try's review");
+      // The first round is the whole branch: nothing earlier to set it apart from.
+      expect(reviewDetail(await h.reviewData(first))?.round).toBeNull();
+      await h.answer({ verdict: "revise", words: "Rename the flag." });
+      await h.retry();
+      const again = await h.until((t) => t.attempts === 2 && h.waiting(t), "the second try's review");
+      const detail = reviewDetail(await h.reviewData(again));
+      expect(detail).toMatchObject({ commits: 2, subjects: ["Change 2", "Change 1"], round: { commits: 1, subjects: ["Change 2"] } });
+      expect(h.review(again)!.ask.prompt).toContain("1 commit this round:\n- Change 2");
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  // A round that committed nothing has no work of its own to set apart: an empty round would hide the branch's commits.
+  it("shows the branch's commits when a round on it added none", async () => {
+    const h = host({ script: ["commits-no-session", "no-commit"] });
+    try {
+      await h.start();
+      await h.until(h.waiting, "the first try's review");
+      await h.answer({ verdict: "revise", words: "Rename the flag." });
+      await h.retry();
+      const again = await h.until((t) => t.attempts === 2 && h.waiting(t), "the second try's review");
+      const detail = reviewDetail(await h.reviewData(again));
+      expect(detail).toMatchObject({ commits: 1, subjects: ["Change 1"], round: null });
+      expect(h.review(again)!.ask.prompt).not.toContain("this round");
     } finally {
       await h.dispose();
     }
@@ -1057,6 +1104,53 @@ process.stdout.write(out);
       expect(() => git(h.remote, "rev-parse", "--verify", "--quiet", `refs/heads/${branch}`)).toThrow();
       expect(ghCalls().slice(calls).filter((call) => call.startsWith("pr create"))).toEqual([]);
       expect(h.seen).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+});
+
+// FIX-2782: the review card gave a person nothing to decide on. Its data carries what was asked, the run's own
+// summary and the task's pull requests, so the card can show them without leaving it.
+describe("a coding run's review carries what was asked, the run's summary and its pull requests", () => {
+  const PR_URL = "https://github.com/acme/widgets/pull/41";
+  const PATH = process.env.PATH;
+
+  // `gh` is a stub on PATH: the branch has pull request #41, closed, so it is recorded but nothing is open to push to.
+  beforeAll(() => {
+    const bin = mkdtempSync(join(tmpdir(), "harness-manager-recorded-pr-gh-"));
+    dirs.push(bin);
+    writeFileSync(
+      join(bin, "gh"),
+      `#!/usr/bin/env node
+const args = process.argv.slice(2);
+const listed = [{ number: 41, html_url: ${JSON.stringify(PR_URL)}, state: "closed", title: "Tidy the task list", created_at: new Date().toISOString(), head: { ref: "x" } }];
+process.stdout.write(args[0] === "api" && /pulls\\?head=/.test(args[1] ?? "") ? JSON.stringify(listed) : "[]");
+`,
+    );
+    chmodSync(join(bin, "gh"), 0o755);
+    process.env.PATH = `${bin}${delimiter}${PATH ?? ""}`;
+  });
+  afterAll(() => {
+    process.env.PATH = PATH;
+  });
+
+  it("puts the task's goal, the run's final message and the recorded pull request on the review's data and prompt", async () => {
+    const h = host({ script: ["commits"], remote: true });
+    try {
+      await h.start();
+      const held = await h.until(h.waiting, "the review");
+      const detail = reviewDetail(await h.reviewData(held));
+      expect(detail).toMatchObject({
+        goal: "the feature",
+        answer: "done",
+        pullRequests: [{ number: 41, url: PR_URL }],
+        files: [{ path: "change-1.txt", added: 1, removed: 0 }],
+      });
+      const prompt = h.review(held)!.ask.prompt;
+      expect(prompt).toContain("Asked: the feature");
+      expect(prompt).toContain("The run's summary: done");
+      expect(prompt).toContain(`Pull request #41: ${PR_URL}`);
     } finally {
       await h.dispose();
     }

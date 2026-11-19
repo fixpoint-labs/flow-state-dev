@@ -135,7 +135,6 @@ import {
   pullRequestHead,
   recordBranchPullRequests,
   releaseLock,
-  run,
   WORKTREES,
   worktreesCollection,
   type LockLease,
@@ -144,7 +143,7 @@ import {
   type WorktreeOwner,
   type WorktreeRecording,
 } from "@flow-state-dev/workspace";
-import { readRunChanges, runChangesSchema } from "./commits";
+import { headCommit, readRunChanges, runChangesSchema } from "./commits";
 import { z } from "zod";
 import {
   assertCommandCheckOptions,
@@ -601,15 +600,6 @@ export const HARNESS_SESSION_FAILED_OUTCOME = "The harness reported the run as f
 function failureWordsOf(handle: HarnessRunHandle): string {
   const words = (handle as { failureMessage?: unknown }).failureMessage;
   return typeof words === "string" && words.trim() !== "" ? words : HARNESS_SESSION_FAILED_OUTCOME;
-}
-
-/** The commit `cwd`'s checkout is on, or `null` when git can't read one there. */
-async function headCommit(cwd: string): Promise<string | null> {
-  try {
-    return (await run("git", ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], { cwd, timeoutMs: 10_000 })).stdout.trim() || null;
-  } catch {
-    return null;
-  }
 }
 
 /** Change the session's state atomically. */

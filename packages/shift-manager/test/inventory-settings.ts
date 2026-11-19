@@ -55,6 +55,7 @@ export const shiftManager: AppInventory = {
     ],
     "src/components/flow-state/reasoning.tsx": ["ReasoningProps", "ReasoningTriggerProps", "ReasoningContentProps"],
     "src/components/flow-state/review-hold.tsx": ["ReviewDetail", "ReviewAnswer", { name: "LandedWork", reason: "a registry copy, byte-equal to its packages/ui source (static.test.ts); the registry ships without harness-manager, so it inlines LandedWork" }],
+    "src/components/flow-state/run-changes.tsx": ["RunChangesFile", "RunChangesPatch", "RunChangesProps"],
     "src/components/flow-state/run-checks.tsx": ["RunChecksProps", { name: "RunCheck", reason: "a registry copy, byte-equal to its packages/ui source (static.test.ts); the registry ships without harness-manager, so it inlines its ReviewCheck" }],
     "src/components/flow-state/shimmer.tsx": ["TextShimmerProps"],
     "src/components/flow-state/spend.tsx": ["SpendLineOptions", { name: "SpendSummary", reason: "a registry copy, byte-equal to its packages/ui source (static.test.ts); the registry ships without orchestration, so it inlines its TaskSpendView" }],

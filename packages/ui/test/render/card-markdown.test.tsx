@@ -53,6 +53,19 @@ describe("the review card draws its text as Markdown", () => {
     await htmlStaysText(container.querySelector<HTMLElement>("[data-review-prompt]")!);
   });
 
+  // A task's ask and a run's summary are anyone's words: opening the card must not make the browser fetch an image they name.
+  it("loads no image a review's ask or the run's summary names", async () => {
+    const image = "![x](https://images.example/p.png)";
+    const { container } = render(
+      <ReviewHold review={{ branch: "b", commits: 1, subjects: [], judge: null, goal: `Do it ${image}`, answer: `Done ${image}` }} />,
+    );
+    for (const at of ["[data-review-goal]", "[data-review-answer]"]) {
+      const el = container.querySelector<HTMLElement>(at)!;
+      await waitFor(() => expect(el.textContent).toContain(at === "[data-review-goal]" ? "Do it" : "Done"));
+      expect(el.querySelector("img")).toBeNull();
+    }
+  });
+
   it("draws a commit subject's inline Markdown on one truncated line", async () => {
     const subject = "Fix **the adapter** in `relay`";
     const { container } = render(<ReviewHold review={{ branch: "b", commits: 1, subjects: [subject], judge: null }} />);
