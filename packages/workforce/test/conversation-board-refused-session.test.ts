@@ -137,6 +137,59 @@ describe("a refused session's board debts", () => {
     return { metadata, ownFiling, pieceId: piece.id, error: messageOf(turn.error) };
   }
 
+  it("keep the wake to when the next debt falls due, as the payers answer it", async () => {
+    // Why: a debt due later (a question's deadline, a wait slot's next look, a
+    // message's resend) can't be paid now. Cleared, the wake that would have
+    // paid it then is gone.
+    const settled: Array<number | null> = [];
+    const ctx = {
+      session: { identity: { id: "s1" }, lineageId: "l1", state: {} },
+      resources: {},
+      emit: { message: () => {} },
+      requestHost: {
+        wakes: {
+          read: async () => ({ dueAt: 0, landBy: 0, version: 1 }),
+          settle: async (_entry: string, _read: unknown, next: number | null) => {
+            settled.push(next);
+            return next === null ? "cleared" : "moved";
+          }
+        }
+      }
+    } as unknown as BlockContext;
+    const due = Date.now() + 60_000;
+    expect(await settleRefusedSession(ctx, "its worker was fired", async () => due)).toContain("still owed");
+    expect(settled).toEqual([due]);
+  });
+
+  it("clear only the wake as it stood before the boards were read: a debt landing meanwhile keeps its wake", async () => {
+    // Why: a notice written while the refused turn reads its boards owes the
+    // wake again (a new version). Cleared at that version, the notice the
+    // read never saw is left with no wake.
+    let version = 1;
+    const settled: number[] = [];
+    const ctx = {
+      session: { identity: { id: "s1" }, lineageId: "l1", state: {} },
+      resources: {},
+      emit: { message: () => {} },
+      requestHost: {
+        wakes: {
+          read: async () => ({ dueAt: 0, landBy: 0, version }),
+          settle: async (_entry: string, read: { version: number }) => {
+            settled.push(read.version);
+            return "cleared";
+          }
+        }
+      }
+    } as unknown as BlockContext;
+    // A debt lands while the boards are read: the wake is owed again.
+    const payMessages = async () => {
+      version = 2;
+      return undefined;
+    };
+    expect(await settleRefusedSession(ctx, "its worker was fired", payMessages)).toBeUndefined();
+    expect(settled).toEqual([1]);
+  });
+
   it("report a task that failed for good once, under the board it is on, from a session with a board above", async () => {
     const taken: Array<Record<string, unknown>> = [];
     const host = bootBoardHost({ plainFlows: { [ERROR_REPORTER_INTAKE_FLOW]: recordingIntake(taken) } });
@@ -268,7 +321,7 @@ describe("a refused session's other board debts", () => {
         metadata: {}
       }) as unknown as Task);
       expect(task?.resumeOwed).toBe(true);
-      expect(errors[0]).toContain('still owed: task "task_resume_owed"');
+      expect(errors[0]).toContain("still owed: the next debt falls due at");
     } finally {
       await host.dispose();
     }

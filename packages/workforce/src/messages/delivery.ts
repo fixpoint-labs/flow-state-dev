@@ -315,9 +315,12 @@ export type RecheckRecipient = (ctx: BlockContext, row: WorkerMessageResourceSta
  *   then the same dispatch as the first, and `resent` recorded. A failed
  *   check or a final refusal ends it `refused`, told.
  *
+ * @param endedHere A request to take as ended whatever its record says: the
+ *   running one, when its session refuses it for good, since a
+ *   send it died in before writing the row is never written now.
  * @returns When the next owed message falls due, or `undefined` when none is owed.
  */
-export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipient): Promise<number | undefined> {
+export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipient, endedHere?: string): Promise<number | undefined> {
   const owed = owedOf(ctx.session.state);
   if (owed.length === 0) return undefined;
   const log = messageLogOf(ctx);
@@ -338,7 +341,7 @@ export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipie
   for (const entry of owed) {
     const ref = await log.getOptional(entry.id);
     if (ref === undefined) {
-      if (await hasEnded(ctx, entry.by)) drop.push(entry.id);
+      if (entry.by === endedHere || (await hasEnded(ctx, entry.by))) drop.push(entry.id);
       else later(Date.now() + NOTICE_DUE_MS);
       continue;
     }

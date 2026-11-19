@@ -67,7 +67,7 @@ describe("a request whose start fails", () => {
     expect((await stores.request.list()).map((record) => record.status)).toEqual(["aborted"]);
   });
 
-  it("flushes its traces and runs onFinished with its ending, as every finished request does", async () => {
+  it("flushes its traces and runs onErrored and onFinished with its ending, as every finished request does", async () => {
     // Why: `onFinished` is promised for every finished request, and a host
     // that drains its runs closes the stores once a run ends, so a write the
     // run left queued then is cut off.
@@ -80,6 +80,7 @@ describe("a request whose start fails", () => {
         return flush(id);
       };
       const finished: string[] = [];
+      const errored: string[] = [];
       const start = handler({
         name: "start",
         inputSchema: z.any(),
@@ -98,7 +99,18 @@ describe("a request whose start fails", () => {
       });
       const flow = defineFlow({
         kind: "startup-finished",
-        request: { onStarted: start, onFinished },
+        request: {
+          onStarted: start,
+          onFinished,
+          onErrored: handler({
+            name: "errored",
+            inputSchema: z.object({ error: z.object({ message: z.string() }).passthrough() }).passthrough(),
+            execute: async (input) => {
+              errored.push(input.error.message);
+              return {};
+            }
+          })
+        },
         actions: { run: { inputSchema: z.object({}), block: handler({ name: "noop", inputSchema: z.any(), execute: async () => ({}) }) } }
       })({ id: "startup-finished" });
 
@@ -106,6 +118,8 @@ describe("a request whose start fails", () => {
 
       const [record] = await stores.request.list();
       expect(finished).toEqual([stop ? "aborted" : "failed"]);
+      // A failed start is a failed request: its error observer hears it; a stopped one is no failure.
+      expect(errored).toEqual(stop ? [] : ["this turn can't run"]);
       expect(flushed).toContain(record!.id);
     }
   });

@@ -135,9 +135,17 @@ export async function sendOwedReply(
  * sender's resend owns it now and the request that lands it owes it again;
  * keep the rest, while their turn runs or waits.
  *
+ * @param endedHere A request to take as ended whatever its record says: the
+ *   running one, when its session refuses it for good, since it
+ *   will never answer.
  * @returns When the next owed reply should be looked at again, or `undefined` when none is owed.
  */
-export async function payReplyDebts(ctx: BlockContext, installation: WorkerInstallation, flowKind: string): Promise<number | undefined> {
+export async function payReplyDebts(
+  ctx: BlockContext,
+  installation: WorkerInstallation,
+  flowKind: string,
+  endedHere?: string
+): Promise<number | undefined> {
   const owed = owedRepliesOf(ctx.session.state);
   if (owed.length === 0) return undefined;
   const log = messageLogOf(ctx);
@@ -153,7 +161,7 @@ export async function payReplyDebts(ctx: BlockContext, installation: WorkerInsta
     // the request that owes it is the one that delivered it, looked at again
     // next time, never the dead one's end.
     const delivered = row.status === "delivered";
-    if ((!delivered || row.deliveredAs === entry.by) && (await hasEnded(ctx, entry.by))) {
+    if ((!delivered || row.deliveredAs === entry.by) && (entry.by === endedHere || (await hasEnded(ctx, entry.by)))) {
       if (delivered) await sendOwedReply(ctx, installation, flowKind, entry.id, "", "stopped");
       else drop.push(entry);
       continue;

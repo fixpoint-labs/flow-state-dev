@@ -2379,22 +2379,29 @@ async function runActionAttempt<
     input: summarizeForLog(options.input)
   });
 
-  // The last awaits before the main try, and covered by neither cleanup path on
-  // their own: the pre-transition catch above has already closed, and every
-  // terminal path lives inside the try below. A rejection here — an `onStarted`
-  // observer that throws, an instrumentation seam that rejects — would leave
-  // the heartbeat/abort-poll timer running for the life of the process, reading
-  // the request store once per interval for a request that is already gone.
-  // Same leak the pre-controller guards close, one window further down; the
-  // difference is that the abort controller is registered by now, so this guard
-  // has to release that too. Rethrows, so the caller still sees the failure.
+  // FIX-2849: the startup observers run inside the main try, so a failure
+  // there ends through the one failure path every other ending takes: the
+  // heartbeat through the drain, the abort classification and its re-read,
+  // the end hooks after the final drain, `onErrored`, `onFinished`, the
+  // flushes and the terminal record. `failedAtStart` tells that path the
+  // action never ran (see its replay branch and its rethrow).
+  let failedAtStart = false;
+
+  // What the action block returned, once it has. Set before the completion
+  // hooks run, so a hook that fails the request leaves it on the record.
+  // `recorded` is the record's snapshot, taken then too, so a hook that
+  // mutates the returned object cannot change the recorded answer.
+  let actionAnswer: { output: unknown; recorded: RecordedOutput } | undefined;
+  // A failure a request-end hook handed back, once the record was patched to it (FIX-2077).
+  let endError: ReturnType<typeof applyNormalizedErrorSeam> | undefined;
+
   try {
+    failedAtStart = true;
     // The session config's request-end hook (FIX-2145), added to this
     // request's registry as a block's `onRequestEnded` would add it. Before
-    // the startup observers, so what they spend is handed on too, and a
-    // failed startup ends through it below. Its writes record what the
-    // request spent, so an explicit abort doesn't stop them; every other
-    // hook's writes still stop on one.
+    // the startup observers, so what they spend is handed on too. Its writes
+    // record what the request spent, so an explicit abort doesn't stop them;
+    // every other hook's writes still stop on one.
     const sessionEndHook = options.flow.session?.[SESSION_REQUEST_END_HOOK]?.(ctx);
     if (sessionEndHook !== undefined) {
       const outliveAbort = (ctx as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT];
@@ -2407,84 +2414,8 @@ async function runActionAttempt<
       requestId,
       actionName: options.actionName
     }, ctx, { hook: "request.onStarted", internalSeams, logger });
-  } catch (startupError) {
-    stopHeartbeatTimer();
-    deregisterAbortController(requestId, registered);
-    // The request ends here, never reaching the paths below: hand on what the
-    // startup observers spent, once the `.sideChain()` work they queued has
-    // settled, as the other endings do. A hook's failure is logged, never in
-    // place of the startup error.
-    await drainRequestSideChainPool(ctx);
-    // A stop accepted while the startup observers ran (`/abort` answered the
-    // caller that it stopped) ends the request `aborted`, as the main path's
-    // failure does, never `failed` over the stop the caller was told of
-    // (FIX-2849). The same proof the main path reads: this process delivered
-    // the stop, or the record holds it for this incarnation.
-    const stopRecord = await options.stores.request.get(requestId).catch(() => undefined);
-    const stopAccepted =
-      deliveredAbort ||
-      (stopRecord?.abortRequested === true && resolveRequestIncarnation(stopRecord) === currentIncarnation);
-    const endFailure = await requestEndRegistryOf(ctx)?.run(
-      stopAccepted
-        ? { status: "aborted" }
-        : { status: "failed", error: { message: startupError instanceof Error ? startupError.message : String(startupError) } },
-      { requestId, logger }
-    );
-    if (endFailure !== undefined) {
-      logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", { requestId, status: stopAccepted ? "aborted" : "failed", error: endFailure.message });
-    }
-    // FIX-2849: a refused start is terminal. A fresh request ends `failed`:
-    // left `in_progress`, the stale sweep would mark it interrupted and bring
-    // its session's wakes forward, starting a session whose every turn is
-    // refused again on each one. A replay continuation is left for the stale
-    // sweep to re-drive, as a failure that may pass deserves, unless its
-    // session refuses every run: re-driven, it would be refused again, forever.
-    const ending: "aborted" | "failed" | undefined = stopAccepted
-      ? "aborted"
-      : !isReplayMode || isTerminalStartRefusal(startupError)
-        ? "failed"
-        : undefined;
-    if (ending !== undefined) {
-      // Every write the run queued has landed before its terminal record, as
-      // on the main path, so nothing is still pending once a host that
-      // drains its runs closes the stores.
-      await options.stores.request.flushItems(requestId);
-      await options.stores.request.flushEvents(requestId);
-      await flushCheckpoints();
-      await flushTraces();
-      if (ending === "aborted") {
-        terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "aborted" }, {
-          abortedAt: Date.now(),
-          items: itemsToPersist(),
-          heartbeatsUntilFinalized: false
-        });
-        ctx.requestRuntime.status = "aborted";
-        await response.emitRequestStatus("aborted");
-      } else {
-        await settleFailedBeforeRun(startupError);
-      }
-      // A finished request's `onFinished`, as every ending runs it, then what
-      // it queued, before the run ends.
-      await runObserverSafely(options.flow.request?.onFinished, {
-        requestId,
-        actionName: options.actionName,
-        status: ending
-      }, ctx, { hook: "request.onFinished", internalSeams, logger });
-      await emitActionLifecycleSeam(internalSeams, "finished", metadata);
-      await drainRequestSideChainPool(ctx);
-    }
-    throw startupError;
-  }
+    failedAtStart = false;
 
-  // What the action block returned, once it has. Set before the completion
-  // hooks run, so a hook that fails the request leaves it on the record.
-  // `recorded` is the record's snapshot, taken then too, so a hook that
-  // mutates the returned object cannot change the recorded answer.
-  let actionAnswer: { output: unknown; recorded: RecordedOutput } | undefined;
-  // A failure a request-end hook handed back, once the record was patched to it (FIX-2077).
-  let endError: ReturnType<typeof applyNormalizedErrorSeam> | undefined;
-
-  try {
     // Re-throw deferred parse error now that we have ctx for error handling.
     if (parseError !== undefined) {
       throw parseError;
@@ -3114,6 +3045,25 @@ async function runActionAttempt<
       ...(endError !== undefined ? { error: endError } : {})
     };
   } catch (error) {
+    // A replay continuation whose start failed in a way that may pass is left
+    // for the stale sweep to re-drive, as before: nothing is recorded. One its
+    // session refuses for good, or one stopped meanwhile, ends below, as a
+    // fresh request does: re-driven, a refused one would be refused forever.
+    if (failedAtStart && isReplayMode && !isTerminalStartRefusal(error) && !composedSignal.aborted) {
+      stopHeartbeatTimer();
+      deregisterAbortController(requestId, registered);
+      // Hand on what the startup observers spent, once their `.sideChain()`
+      // work has settled. A hook's failure is logged, never in place of the error.
+      await drainRequestSideChainPool(ctx);
+      const endFailure = await requestEndRegistryOf(ctx)?.run(
+        { status: "failed", error: { message: error instanceof Error ? error.message : String(error) } },
+        { requestId, logger }
+      );
+      if (endFailure !== undefined) {
+        logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", { requestId, status: "failed", error: endFailure.message });
+      }
+      throw error;
+    }
     // The heartbeat is deliberately NOT cleared here. It has to outlive the
     // drain below: while the pool settles, this request is still alive, and a
     // request with no heartbeat goes stale. `detectInterruptedRequests` sweeps
@@ -3439,6 +3389,10 @@ async function runActionAttempt<
       });
     }
     if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
+
+    // A failed start rejects the run, as it always has: its callers (a wake's
+    // fire among them) read the failure off the rejection.
+    if (failedAtStart) throw error;
 
     return {
       // The action's answer when it gave one before the request failed, as the

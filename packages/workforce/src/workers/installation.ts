@@ -869,9 +869,12 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       if (!(error instanceof WorkerTurnRefusedError) || !isBlockContext(ctx)) throw error;
       const detail = error.fired ? "its worker was fired" : `its worker can't run there: ${error.message}`;
       // The session's message debts, as its pass pays them (`../conversation-board/session-board`).
+      // This request is refused for good, so a debt it owes counts as ended,
+      // whatever its record says (a replay put it back `in_progress`).
       const payMessages = async (inner: BlockContext) => {
-        const sends = await payMessageDebts(inner, (at, message) => recheckRecipient(at, installation, message));
-        const replies = await payReplyDebts(inner, installation, flowKind);
+        const refusedHere = inner.request.identity.id;
+        const sends = await payMessageDebts(inner, (at, message) => recheckRecipient(at, installation, message), refusedHere);
+        const replies = await payReplyDebts(inner, installation, flowKind, refusedHere);
         const due = [sends, replies].filter((at): at is number => at !== undefined);
         return due.length === 0 ? undefined : Math.min(...due);
       };

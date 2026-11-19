@@ -196,8 +196,11 @@ const passLine: ConcurrencyKey = (ctx) =>
  */
 export const PASS_CONCURRENCY = { policy: "defer", key: passLine } as const satisfies ConcurrencyConfig;
 
-/** Write a notice's dedupe key: `true` the first time. */
-function noteSeen(ctx: BlockContext, key: string) {
+/**
+ * Write a notice's dedupe key: `true` the first time. Atomic, so of two
+ * requests handling one notice at once only the first says it.
+ */
+export function noteSeen(ctx: BlockContext, key: string) {
   return withOutcome(
     (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
       ctx.session.atomicState(mutator as never),

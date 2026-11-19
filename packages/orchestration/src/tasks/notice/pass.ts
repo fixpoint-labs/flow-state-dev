@@ -87,6 +87,13 @@ export interface PayBoardDebtsOptions {
    * dependents by the same rule the cascade suppressed their notices by.
    */
   readonly filerOf?: (row: Task) => string | undefined;
+  // FIX-2849.
+  /**
+   * `false`: a claimed row's lease end is no debt the answer counts. A
+   * session that can no longer run a pass (its every turn is refused) can't
+   * reclaim a row, so its lease ends owe it nothing. Default `true`.
+   */
+  readonly leases?: false;
 }
 
 function log(message: string, detail: Record<string, unknown>): void {
@@ -209,7 +216,7 @@ export async function payBoardDebts(
     if (held !== undefined) owe(Math.max(held, now + NOTICE_DUE_MS));
     // A claimed row's lease: if its worker died, the lease lapses, and the
     // pass at its end reclaims the row.
-    if (row.status === "in_progress" && row.leaseUntil != null && !isTerminalStatus(row.status)) owe(row.leaseUntil);
+    if (options.leases !== false && row.status === "in_progress" && row.leaseUntil != null && !isTerminalStatus(row.status)) owe(row.leaseUntil);
   }
   return { nextDue };
 }

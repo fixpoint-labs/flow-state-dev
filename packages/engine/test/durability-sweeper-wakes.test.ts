@@ -205,6 +205,26 @@ describe("a fired wake whose run is refused at its start", () => {
     expect(await stores.wakes!.get({ sessionId: "s1", entry: "dispatch" })).toBeNull();
   });
 
+  it("is kept when the fire began inside its fence, however late the refused run ends", async () => {
+    // Why: the refused run reads its board as it starts. Begun inside the
+    // fence, it may have missed a debt a writer was still landing, so the
+    // wake must outlive it even when the refusal comes after the fence.
+    const stores = createInMemoryStores();
+    await stores.wakes!.owe(wake({ landBy: Date.now() + 100 }));
+    const host: Pick<InboundTransportHost, "dispatch" | "stores"> = {
+      stores,
+      dispatch: () => {
+        const finished = new Promise((_resolve, reject) => setTimeout(() => reject(refusal), 200));
+        void finished.catch(() => {});
+        return { requestId: "r1", accepted: Promise.resolve(), finished } as unknown as InboundDispatchHandle;
+      }
+    };
+    let finished: Promise<unknown> | undefined;
+    await runTick(tickArgs(stores, (w) => fireWakeThrough(host, w, (run) => (finished = run.finished))));
+    await finished!.catch(() => undefined);
+    expect(await stores.wakes!.get({ sessionId: "s1", entry: "dispatch" })).not.toBeNull();
+  });
+
   it("is cleared before the run a host waits on at shutdown counts as finished", async () => {
     // Why: a host drains the runs its fired wakes started before it closes its
     // stores. A clear still in flight then would be cut off, and the refused

@@ -61,8 +61,9 @@ export function noteWakeOwed(store: WakeStore, dueAt: number): void {
  * the wake it fired, at the version the fire read, and says so once: its
  * session will refuse every run, so its pass, the only thing that clears the
  * wake, never runs. A debt owed since the fire keeps its wake. So does one
- * still inside its fence (`landBy`): it fires once more, past the fence, and
- * is cleared then, so a writer landing its debt late can't lose its wake.
+ * fired inside its fence (`landBy`), however late its run ends: it fires once
+ * more, past the fence, and is cleared then, so a writer landing its debt
+ * late can't lose its wake.
  */
 // FIX-2849: the terminal-refusal clear.
 export async function fireWakeThrough(
@@ -71,6 +72,10 @@ export async function fireWakeThrough(
   onStarted?: (run: { finished: Promise<unknown>; abort(): void }) => void
 ): Promise<void> {
   const controller = new AbortController();
+  // Decided as the fire starts, the moment the refused run reads its board:
+  // a run that read it inside the fence may have missed a debt landing late,
+  // however long it takes to end.
+  const firedInsideFence = Date.now() < wake.landBy;
   const handle = dispatchInternalAs(host, {
     flowKind: wake.flowKind,
     entry: wake.entry,
@@ -88,8 +93,7 @@ export async function fireWakeThrough(
       // Inside its fence, a writer that owed this wake may still be landing
       // its debt: the wake is kept until the fence, as a pass's settle keeps
       // it, and the fire past it, refused again, clears it.
-      const now = Date.now();
-      if (now < wake.landBy) {
+      if (firedInsideFence) {
         const kept = await store.get(wake);
         // `move` keeps the version, so this is the wake as the fire left it.
         if (kept !== null && kept.version === wake.version && kept.dueAt < wake.landBy) await store.move(wake, wake.version, wake.landBy);
