@@ -20,6 +20,8 @@ import { CONNECTOR_KEYS_PATH, type ConnectorKeyStatus } from "../src/browser";
 const ORG = "acme";
 const SENTINEL = `lin_api_SENTINEL${Math.random().toString(36).slice(2)}`;
 const BEARERS: Record<string, string> = { "token-alice": "alice", "token-bob": "bob" };
+/** The same user id signed in under a second org. */
+const OTHER_ORG = "globex";
 
 const states: FlowState[] = [];
 afterEach(async () => {
@@ -46,6 +48,7 @@ async function host(servers: readonly string[] | undefined) {
             if (bearer === "token-broken") throw new Error("the sign-in service is down");
             // The engine's own error for a host it can't sign anyone in on: a 500, not a refusal.
             if (bearer === "token-misconfigured") throw new PrincipalResolutionError("the flow has no user to sign in", { status: 500 });
+            if (bearer === "token-alice-globex") return { userId: "alice", orgId: OTHER_ORG };
             const user = bearer === undefined ? undefined : BEARERS[bearer];
             return user === undefined ? null : { userId: user, orgId: ORG };
           }
@@ -61,22 +64,23 @@ async function host(servers: readonly string[] | undefined) {
   const door = async (
     method: "GET" | "POST" | "DELETE",
     server?: string,
-    options: { as?: "alice" | "bob" | "broken" | "misconfigured" | null; body?: unknown } = {}
+    options: { as?: "alice" | "alice-globex" | "bob" | "broken" | "misconfigured" | null; body?: unknown; raw?: string; headers?: Record<string, string> } = {}
   ): Promise<{ status: number; body: any }> => {
     const as = options.as === undefined ? "alice" : options.as;
     const response = await inProcess(`http://host${CONNECTOR_KEYS_PATH}${server === undefined ? "" : `/${server}`}`, {
       method,
       headers: {
         "content-type": "application/json",
-        ...(as === null ? {} : { authorization: `Bearer token-${as}` })
+        ...(as === null ? {} : { authorization: `Bearer token-${as}` }),
+        ...options.headers
       },
-      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) })
+      ...(options.raw !== undefined ? { body: options.raw } : options.body === undefined ? {} : { body: JSON.stringify(options.body) })
     });
     const text = await response.text();
     return { status: response.status, body: text.length > 0 ? JSON.parse(text) : undefined };
   };
-  const stored = async (user: string, server: string) => {
-    const cell = resolveUserStorageKey(user, ORG, { id: "", isolateUserState: false });
+  const stored = async (user: string, server: string, org: string = ORG) => {
+    const cell = resolveUserStorageKey(user, org, { id: "", isolateUserState: false });
     return (await (await state.getRuntime()).stores.resourceState.get("user", cell, `${MCP_CREDENTIALS_PREFIX}${server}`))?.state;
   };
   return { door, stored };
@@ -152,6 +156,43 @@ describe("a user's connector keys, through the blocks' route", () => {
     // Only a 4xx sign-in is the caller being refused; a server-side failure stays one.
     expect((misconfigured as { body?: { error?: string } }).body?.error).not.toBe("unauthorized");
     expect(await h.stored("alice", "linear")).toBeUndefined();
+  });
+
+  it("refuses a write from another site, 403, and stores nothing, as the router refuses every other browser write", async () => {
+    const h = await host(["linear"]);
+    // A foreign page's no-preflight form: a CORS-safelisted content type, sent cross-site with the victim's credentials.
+    const crossSite = { "content-type": "text/plain", "sec-fetch-site": "cross-site" };
+    const post = await h.door("POST", "linear", { raw: JSON.stringify({ value: SENTINEL }), headers: crossSite });
+    expect(post.status).toBe(403);
+    expect(await h.stored("alice", "linear")).toBeUndefined();
+    // Even as JSON, a cross-site set or clear is refused.
+    expect((await h.door("POST", "linear", { body: { value: SENTINEL }, headers: { "sec-fetch-site": "cross-site" } })).status).toBe(403);
+    expect(await h.stored("alice", "linear")).toBeUndefined();
+    expect((await h.door("POST", "linear", { body: { value: SENTINEL } })).status).toBe(200);
+    expect((await h.door("DELETE", "linear", { headers: { "sec-fetch-site": "cross-site" } })).status).toBe(403);
+    expect(await h.stored("alice", "linear")).toMatchObject({ value: SENTINEL });
+    // Same-site and same-origin writes are the screens' own.
+    expect((await h.door("DELETE", "linear", { headers: { "sec-fetch-site": "same-origin" } })).status).toBe(200);
+  });
+
+  it("refuses a set whose body isn't JSON, 415, and stores nothing", async () => {
+    const h = await host(["linear"]);
+    const refused = await h.door("POST", "linear", { raw: JSON.stringify({ value: SENTINEL }), headers: { "content-type": "text/plain" } });
+    expect(refused.status).toBe(415);
+    expect(JSON.stringify(refused)).not.toContain("SENTINEL");
+    expect(await h.stored("alice", "linear")).toBeUndefined();
+    const charset = await h.door("POST", "linear", { raw: JSON.stringify({ value: SENTINEL }), headers: { "content-type": "application/json; charset=utf-8" } });
+    expect(charset.status).toBe(200);
+  });
+
+  it("keeps the same user's key apart in each org they sign in under", async () => {
+    const h = await host(["linear"]);
+    expect((await h.door("POST", "linear", { body: { value: SENTINEL } })).status).toBe(200);
+    expect((await h.door("GET", undefined, { as: "alice-globex" })).body.servers).toEqual([{ name: "linear", setAt: null }]);
+    expect(await h.stored("alice", "linear", OTHER_ORG)).toBeUndefined();
+    expect((await h.door("POST", "linear", { as: "alice-globex", body: { value: "globex-key" } })).status).toBe(200);
+    expect(await h.stored("alice", "linear")).toMatchObject({ value: SENTINEL });
+    expect(await h.stored("alice", "linear", OTHER_ORG)).toMatchObject({ value: "globex-key" });
   });
 
   it("is not served by a host that offers no connectors", async () => {

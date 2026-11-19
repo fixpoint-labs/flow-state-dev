@@ -1,5 +1,6 @@
 ---
 "@flow-state-dev/workforce": minor
+"@flow-state-dev/contracts": minor
 ---
 
 Every projects flow built from `defineProjectBlocks` now serves the project setup view and each user's connector keys route, and an app reads the organization and four collections it used to name by hand (FIX-2775).
@@ -10,3 +11,5 @@ Every projects flow built from `defineProjectBlocks` now serves the project setu
 - **workforce:** `@flow-state-dev/workforce/browser` exports `workerInventoryResource`, `projectsResource`, `privateProjectsResource` and `workerMessagesResource`, for `client.resource(def)` or `useResource(def)`, typed by what each collection's browser read publishes.
 
 Docs: packages/workforce/README.md (`organization()`; the four collection definitions on `/browser`; what `defineProjectBlocks` now serves: the `projectSetup` view with `projectCoordinator`, `ProjectSetup` and `ProjectSetupView`, and the `connectorKeys` route with `CONNECTOR_KEYS_PATH`, `ConnectorKeyStatus`, `connectorKeyStatuses`, its answers and refusals).
+- **workforce:** the connector keys route refuses a set or clear sent from another site (`sec-fetch-site: cross-site`, 403) and a set whose body isn't `application/json` (415), as the engine refuses every other browser write.
+- **contracts:** `isJsonMediaType(contentType)` on `@flow-state-dev/contracts/helpers` says whether a content type's essence is `application/json`; the engine's JSON body rule and the keys route share it.

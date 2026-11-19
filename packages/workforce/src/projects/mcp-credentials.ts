@@ -39,6 +39,7 @@
  * carries a value.
  */
 
+import { isJsonMediaType } from "@flow-state-dev/contracts/helpers";
 import { defineCapability, defineResourceCollection } from "@flow-state-dev/core";
 import { resolveSharedUserCellKey } from "@flow-state-dev/engine/host";
 import type { InboundTransportAdapter, InboundTransportHost } from "@flow-state-dev/engine/host";
@@ -148,6 +149,11 @@ export function connectorKeysAdapter(servers: readonly string[]): InboundTranspo
       };
       /** The caller's cell, once the named connector is one offered; or the refusal that stops the request. */
       const callerFor = async (req: Request, name: string): Promise<{ cell: string } | Response> => {
+        // A dedicated route answers before the router's own cross-site refusal, so a write here makes it itself:
+        // a foreign page may not set or clear a key with credentials the browser attaches on its own.
+        if (req.headers.get("sec-fetch-site") === "cross-site") {
+          return json(403, { error: "cross-site", message: "A connector key can't be set or cleared from another site." });
+        }
         const caller = await cellOf(req);
         if (caller instanceof Response || offered.includes(name)) return caller;
         return json(404, {
@@ -174,6 +180,10 @@ export function connectorKeysAdapter(servers: readonly string[]): InboundTranspo
               const name = params.server ?? "";
               const caller = await callerFor(req, name);
               if (caller instanceof Response) return caller;
+              // The engine's rule for every write body: `application/json` only, so a no-preflight `text/plain` post can't write.
+              if (!isJsonMediaType(req.headers.get("content-type"))) {
+                return json(415, { error: "unsupported-media-type", message: 'Send the key as `application/json`: `{ "value": "<key>" }`.' });
+              }
               const value = await valueOf(req);
               const problem = typeof value === "string" ? mcpCredentialProblem(value) : 'send it as `{ "value": "<key>" }`';
               if (problem !== undefined) {
