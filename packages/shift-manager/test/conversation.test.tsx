@@ -218,6 +218,18 @@ describe("what a view of its own draws", () => {
     expect(screen.getAllByText("REVIEWER")).toHaveLength(2);
   });
 
+  it("marks where the feed crosses into a new day, between the last entry of one day and the first of the next", async () => {
+    // Noon UTC, two days apart: a different day in any page time zone. Two entries share the first day.
+    const on = (id: string, day: number) => ({ ...item(id, id), ts: Date.UTC(2026, 9, day, 12) });
+    read.mockResolvedValue({ items: [on("a", 7), on("b", 7), on("c", 9)], truncated: false });
+    drawn([session(s1)]);
+    await screen.findAllByTestId("mine");
+    const rows = [...screen.getByTestId("rev-items").children].map((li) => li.getAttribute("data-testid") === "rev-day-marker" ? `day ${li.getAttribute("data-day")}` : li.getAttribute("data-item-id"));
+    // Only a crossing is marked: nothing before the first entry, nothing between two of the same day.
+    expect(rows).toEqual(["a", "b", "day 2026-10-09", "c"]);
+    expect(screen.getByRole("separator", { name: /Fri 9 Oct/ }).textContent).toContain("Fri 9 Oct");
+  });
+
   it("draws another worker's message as its own item under its sender's name, with a link to Messages, whatever the view draws", async () => {
     const received = {
       id: "m",

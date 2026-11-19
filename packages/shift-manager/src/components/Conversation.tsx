@@ -39,7 +39,7 @@ import { STALE_CLASS } from "./flow-state/connection-banner";
 import type { Worker } from "../lib/reads";
 import { useDeliverLine } from "../lib/deliver";
 import { useWorkforce } from "../lib/workforce";
-import { clockTime } from "../lib/shell";
+import { clockTime, dayLabel, withDayMarkers } from "../lib/shell";
 
 /**
  * Items the feed never draws: `ItemRenderer` paints nothing for them. Keep in step with
@@ -170,6 +170,8 @@ export function Conversation({
           ),
     [read],
   );
+  // The feed as drawn: a marker with the date where it crosses into a new day, in the page's time zone.
+  const rows = useMemo(() => withDayMarkers(shown, (segment) => (segment.kind === "group" ? segment.items[0]! : segment.item).ts), [shown]);
 
   // Nothing is sent into a conversation the screen hasn't read, or to a worker with no door.
   const blocked =
@@ -267,7 +269,10 @@ export function Conversation({
             <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
               <LoadEarlierButton load={read.loadEarlier} testId={`${testId}-load-earlier`} />
               <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
-                {shown.map((segment) => {
+                {rows.map((segment) => {
+                  if (segment.kind === "day") {
+                    return <DayMarkerLine key={`day/${segment.day}`} marker={segment} testId={testId} />;
+                  }
                   if (segment.kind === "group") {
                     const first = segment.items[0]!;
                     return (
@@ -332,5 +337,19 @@ export function Conversation({
         ) : null}
       </section>
     </ConversationFrame>
+  );
+}
+
+/** Where the feed crosses into a new day: the date between two hairlines, in the message label's mono type. */
+function DayMarkerLine({ marker, testId }: { marker: { day: string; at: number }; testId: string }) {
+  const label = dayLabel(marker.at, Date.now());
+  return (
+    <li role="separator" aria-label={label} className="flex items-center gap-3 py-2" data-testid={`${testId}-day-marker`} data-day={marker.day} data-look="day-marker">
+      <span className="h-px flex-1 bg-border" aria-hidden />
+      <time dateTime={marker.day} className="font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground uppercase">
+        {label}
+      </time>
+      <span className="h-px flex-1 bg-border" aria-hidden />
+    </li>
   );
 }

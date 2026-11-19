@@ -4,7 +4,7 @@
  * and nothing else.
  */
 import { describe, expect, it } from "vitest";
-import { clockTime, initialsOf } from "../src/lib/shell";
+import { clockTime, dayKey, dayLabel, initialsOf, withDayMarkers } from "../src/lib/shell";
 import { isShiftCoordinatorWorking, startShiftCoordinatorWork } from "../src/lib/working";
 
 describe("the footer's initials (v2:110)", () => {
@@ -27,6 +27,44 @@ describe("a message's time (v2:135)", () => {
   it("is 24-hour HH:MM", () => {
     expect(clockTime(new Date(2026, 9, 2, 9, 5).getTime())).toBe("09:05");
     expect(clockTime(new Date(2026, 9, 2, 22, 41).getTime())).toBe("22:41");
+  });
+});
+
+describe("the feed's day markers", () => {
+  const NY = "America/New_York";
+  // 23:30 and 00:30 New York time across the night of 18–19 Nov 2026 (UTC-5): one hour apart, two days.
+  const lateNight = Date.UTC(2026, 10, 19, 4, 30);
+  const earlyMorning = Date.UTC(2026, 10, 19, 5, 30);
+  const morning = Date.UTC(2026, 10, 19, 13, 0);
+
+  it("draws the day boundary at the user's midnight, not UTC's", () => {
+    expect(dayKey(lateNight, NY)).toBe("2026-11-18");
+    expect(dayKey(earlyMorning, NY)).toBe("2026-11-19");
+    // In UTC both instants are the 19th: the boundary moves with the zone.
+    expect(dayKey(lateNight, "UTC")).toBe(dayKey(earlyMorning, "UTC"));
+  });
+
+  it("puts a marker only where the feed crosses into a new day, between the two days' entries", () => {
+    const entries = [lateNight - 3_600_000, lateNight, earlyMorning, morning];
+    expect(withDayMarkers(entries, (ts) => ts, NY)).toEqual([
+      lateNight - 3_600_000,
+      lateNight,
+      { kind: "day", day: "2026-11-19", at: earlyMorning },
+      earlyMorning,
+      morning,
+    ]);
+    expect(withDayMarkers([], (ts: number) => ts, NY)).toEqual([]);
+  });
+
+  it("labels the morning's marker Today, so a new day reads at a glance, and always shows the date", () => {
+    expect(dayLabel(earlyMorning, morning, NY)).toBe("Today · Thu 19 Nov");
+    expect(dayLabel(lateNight, morning, NY)).toBe("Yesterday · Wed 18 Nov");
+    expect(dayLabel(Date.UTC(2026, 10, 10, 15), morning, NY)).toBe("Tue 10 Nov");
+    expect(dayLabel(Date.UTC(2025, 11, 31, 15), morning, NY)).toBe("Wed 31 Dec 2025");
+  });
+
+  it("finds yesterday across a month boundary", () => {
+    expect(dayLabel(Date.UTC(2026, 9, 31, 15), Date.UTC(2026, 10, 1, 15), NY)).toBe("Yesterday · Sat 31 Oct");
   });
 });
 
