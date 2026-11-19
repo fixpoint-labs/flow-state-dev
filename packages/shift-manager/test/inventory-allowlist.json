@@ -1,6 +1,5 @@
 [
   {"file":"src/lib/reads.ts","symbol":"(file)","kind":"gone"},
-  {"file":"src/lib/messages.ts","symbol":"topic","kind":"client import"},
   {"file":"src/lib/projects.ts","symbol":"topic","kind":"client import"},
   {"file":"src/lib/projects.ts","symbol":"viewRef","kind":"client import"},
   {"file":"src/lib/reads.ts","symbol":"ClientHttpError","kind":"client import"},
