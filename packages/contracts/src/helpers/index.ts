@@ -11,6 +11,7 @@ export { mapLimit } from "./concurrency";
 export { toError } from "./to-error";
 export { isWindowsReservedName } from "./windows-reserved-name";
 export { extractBareTopic, getPatternPrefix } from "./pattern-prefix";
+export { isJsonMediaType } from "./json-media-type";
 export {
   assertSetExpectedVersion,
   assertDeleteExpectedVersion,

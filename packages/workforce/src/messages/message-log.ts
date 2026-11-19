@@ -4,7 +4,7 @@
  * `log-row.ts` live in, and how a block reaches it. Beside it, the chain rows
  * the hop limit counts an exchange in (`hop.ts`).
  */
-import { defineResourceCollection } from "@flow-state-dev/core";
+import { defineResourceCollection } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { isOpenMessage, WORKER_MESSAGES_PATTERN, WORKER_MESSAGES_RESOURCE, workerMessageResourceStateSchema, type WorkerMessageResourceState } from "./log-row";
@@ -41,6 +41,10 @@ export const workerMessagesCollection = defineResourceCollection({
     [IN_REPLY_TO_INDEX]: (_key, message) => message.inReplyTo
   }
 });
+
+// FIX-2775.
+/** The log's definition, for a browser read of the caller's own messages: `useResource(workerMessagesResource, { all: true })`. */
+export const workerMessagesResource = workerMessagesCollection;
 
 /** Where the chain rows live, one per user's turn whose exchange sent a message. **Pinned**: persisted. */
 export const MESSAGE_CHAINS_PATTERN = "workforce/message-chains/*";
