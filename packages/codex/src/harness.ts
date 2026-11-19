@@ -15,7 +15,7 @@ import { listCodexModels } from "./model-list";
 import { readCodexUsage } from "./usage";
 
 /** What `codexHarness` takes: the Codex block's options, less what each run feeds it. */
-export type CodexHarnessOptions = Omit<CodexAgentOptions, "cwd" | "resume" | "onSession" | "onActivity">;
+export type CodexHarnessOptions = Omit<CodexAgentOptions, "cwd" | "resume" | "onSession" | "onActivity" | "onEvent">;
 
 /** How long the readiness check waits for Codex's account to answer. */
 const READINESS_TIMEOUT_MS = 30_000;
@@ -41,6 +41,7 @@ export function codexHarness(options: CodexHarnessOptions = {}): Harness {
         resume: feeds.resume,
         onSession: feeds.onSession,
         ...(feeds.onActivity === undefined ? {} : { onActivity: feeds.onActivity }),
+        ...(feeds.onEvent === undefined ? {} : { onEvent: feeds.onEvent }),
       } as never) as unknown as HarnessBlock,
     readiness: (check) => checkCodexReadiness({ env: env(), timeoutMs: READINESS_TIMEOUT_MS, ...(check?.signal === undefined ? {} : { signal: check.signal }) }),
     pass: CODEX_PASS,

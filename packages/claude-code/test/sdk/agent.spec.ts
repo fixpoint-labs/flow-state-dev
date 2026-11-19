@@ -3485,3 +3485,21 @@ describe("claudeCodeAgent — onActivity", () => {
     });
   }
 });
+
+// FIX-2794.
+describe("claudeCodeAgent — onEvent", () => {
+  it("is called on every message the SDK sends, deltas and tool results included, so a host can tell a working run from a silent one", async () => {
+    const messages: ClaudeCodeSdkMessage[] = [
+      { type: "system", subtype: "init", session_id: "sess_new" },
+      { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Tests" } } } as ClaudeCodeSdkMessage,
+      { type: "assistant", message: { content: [{ type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "pnpm test" } }] } },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "ok" }] } },
+      RESULT_OK,
+    ];
+    let events = 0;
+    const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages), onEvent: () => (events += 1) });
+    const { error } = await testBlock(block, { input: { prompt: "go" } });
+    expect(error).toBeNull();
+    expect(events).toBe(messages.length);
+  });
+});

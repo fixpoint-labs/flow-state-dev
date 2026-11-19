@@ -12,7 +12,7 @@
 import { parseBlobRef } from "@flow-state-dev/core/attachments";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { taskHoldSchema, taskView, type TaskHold, type TaskViewInput } from "@flow-state-dev/orchestration/inbox";
-import { taskSpendViewSchema, withRetiredShapes, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { taskSpendViewSchema, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 
 const runLinkSchema = z.object({ sessionId: z.string(), requestId: z.string(), attempt: z.number() });
@@ -112,29 +112,27 @@ function spendOf(boardRef: string, data: unknown): TaskSpendView | null {
  * `fallbackId` names it when the stored entry has no id (its key in the ledger).
  */
 export function boardTaskOf(boardRef: string, ownerSessionId: string, fallbackId: string, stored: unknown): BoardTask {
-  // A task stored `blocked` (orchestration 0.5.0 and earlier) reads as `held`.
-  const data = withRetiredShapes(stored);
   return {
     boardRef,
     ownerSessionId,
-    id: text(field(data, "id")) ?? fallbackId,
-    title: text(field(data, "title")) ?? text(field(data, "goal")) ?? fallbackId,
-    goal: text(field(data, "goal")),
-    context: text(field(data, "context")),
-    attachments: filesOf(field(data, "attachments")),
-    status: text(field(data, "status")) ?? "pending",
-    assignee: text(field(data, "assignee")),
-    priority: field(data, "priority") == null ? null : String(field(data, "priority")),
-    labels: strings(field(data, "labels")),
-    deps: strings(field(data, "deps")),
-    run: runLinkOf(field(data, "run")),
-    error: field(data, "error") == null ? null : String(field(data, "error")),
-    holds: holdsOf(field(data, "holds")),
-    steers: steersOf(field(data, "steers")),
-    spend: spendOf(boardRef, data),
-    createdAt: time(field(data, "createdAt")),
-    updatedAt: time(field(data, "updatedAt")),
-    startedAt: time(field(data, "startedAt")),
-    completedAt: time(field(data, "completedAt"))
+    id: text(field(stored, "id")) ?? fallbackId,
+    title: text(field(stored, "title")) ?? text(field(stored, "goal")) ?? fallbackId,
+    goal: text(field(stored, "goal")),
+    context: text(field(stored, "context")),
+    attachments: filesOf(field(stored, "attachments")),
+    status: text(field(stored, "status")) ?? "pending",
+    assignee: text(field(stored, "assignee")),
+    priority: field(stored, "priority") == null ? null : String(field(stored, "priority")),
+    labels: strings(field(stored, "labels")),
+    deps: strings(field(stored, "deps")),
+    run: runLinkOf(field(stored, "run")),
+    error: field(stored, "error") == null ? null : String(field(stored, "error")),
+    holds: holdsOf(field(stored, "holds")),
+    steers: steersOf(field(stored, "steers")),
+    spend: spendOf(boardRef, stored),
+    createdAt: time(field(stored, "createdAt")),
+    updatedAt: time(field(stored, "updatedAt")),
+    startedAt: time(field(stored, "startedAt")),
+    completedAt: time(field(stored, "completedAt"))
   };
 }

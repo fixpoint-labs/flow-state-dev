@@ -19,8 +19,6 @@ export {
   type TaskRunLink,
   type TaskStatus,
 } from "./schema/task";
-// A stored row read in the current shapes (BP-030): for a reader of raw stored rows, such as a browser's list.
-export { withRetiredShapes } from "./schema/retired-shapes";
 // What a task's runs spent (FIX-2288): the stored shape, and the fold a reader shows.
 export {
   taskSpendSchema,

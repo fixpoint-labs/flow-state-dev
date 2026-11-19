@@ -1,4 +1,4 @@
-// FIX-2133 D2, the epic FIX-2058's ER-8; FIX-2129; FIX-2578; FIX-2479 D1 (BP-030).
+// FIX-2133 D2, the epic FIX-2058's ER-8; FIX-2129; FIX-2578; FIX-2479 D1.
 /**
  * What holds a task: one list of holds, `Task.holds`, whatever the task's
  * status.
@@ -22,9 +22,6 @@
  *   delivered message), and never by the Inbox, which lists only `"user"`
  *   holds.
  *
- * A task's own hold an earlier version stored says `"row"`. It reads as `"task"`
- * at the parse and at the collection's row read (`./retired-shapes`), both
- * through {@link withCurrentHoldMarker}, and is never written.
  * Permanent: stored holds don't expire.
  *
  * Server-written only, through the collection's one hold write
@@ -77,24 +74,6 @@ export const suspensionHoldSchema = z.object({
   }),
 });
 
-// FIX-2479 D1.
-/** The marker earlier versions stored on a task's own hold. Read, never written. */
-const RETIRED_OWN_HOLD_MARKER = "row";
-
-// BP-030.
-/**
- * A stored hold with its marker read forward: a task's own hold stored as
- * `"row"` reads as `"task"`. Any other value is returned as the same object.
- * The one place the retired marker is read; the parse and the row read both
- * call it.
- */
-export function withCurrentHoldMarker<T>(hold: T): T {
-  if (hold === null || typeof hold !== "object") return hold;
-  const source = (hold as { source?: unknown }).source;
-  if (source === null || typeof source !== "object" || (source as { kind?: unknown }).kind !== RETIRED_OWN_HOLD_MARKER) return hold;
-  return { ...hold, source: { ...source, kind: "task" } };
-}
-
 /** A question, a confirm or an external wait: the task's own hold, with no run parked behind it. */
 export const ownHoldSchema = z.object({
   ...holdBase,
@@ -122,8 +101,8 @@ export const ownHoldSchema = z.object({
   midway: z.literal(true).optional(),
 });
 
-/** One hold on a task. A stored `"row"` marker reads as `"task"` ({@link withCurrentHoldMarker}). */
-export const taskHoldSchema = z.preprocess(withCurrentHoldMarker, z.union([suspensionHoldSchema, ownHoldSchema]));
+/** One hold on a task. */
+export const taskHoldSchema = z.union([suspensionHoldSchema, ownHoldSchema]);
 
 export type SuspensionHold = z.infer<typeof suspensionHoldSchema>;
 export type OwnHold = z.infer<typeof ownHoldSchema>;

@@ -92,7 +92,6 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
 import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
-import { withRetiredShapes } from "../schema/retired-shapes";
 import type { TaskCollectionRef, TaskWriteDeclineReason } from "./types";
 import { leaseLapsed, readAbandonments, type FilingStamp } from "./internal";
 import type { TaskEndingRecorder } from "./ending";
@@ -244,12 +243,9 @@ export interface ResourceBackedOptions {
   };
 }
 
-// FIX-2080.
 /**
- * The read boundary for this backing. Collection instances are stored, not
- * parsed, so a row in a shape the retired-shape map reads arrives
- * as stored; it is mapped forward here (see `withRetiredShapes`), before any
- * filter or the transition guard sees it.
+ * The read of a stored task. Collection instances are stored, not parsed, so
+ * this returns the row as it was written.
  *
  * Every read of committed task state goes through this — `readTaskState` for
  * a ref, and directly for the `current` a CAS updater is handed, since that
@@ -258,7 +254,7 @@ export interface ResourceBackedOptions {
 function readTaskStateOf<TInput, TOutput>(
   state: JsonObject
 ): Task<TInput, TOutput> {
-  return withRetiredShapes(state) as unknown as Task<TInput, TOutput>;
+  return state as unknown as Task<TInput, TOutput>;
 }
 
 function readTaskState<TInput, TOutput>(

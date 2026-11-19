@@ -440,9 +440,9 @@
       "name": "review-hold",
       "title": "Review Hold",
       "type": "registry:component",
-      "description": "A coding run's changes waiting on the user's review: its commits on the branch, the project's checks, the judge's verdict, and Accept or Ask for changes, with Accept split into Open a PR and Merge locally when the host can land the work. Reads harness-manager's review stop data and sends only the answers it takes. Drawn from a task's hold, or for a kind: review suspension (SuspensionCard routes those here).",
+      "description": "A coding run's changes waiting on the user's review: what was asked, the run's own summary, its commits on the branch (this round's apart from earlier ones), its pull requests, the files it changed, the project's checks, the judge's verdict and its reason, and Accept or Ask for changes, with Accept split into Open a PR and Merge locally when the host can land the work. Reads harness-manager's review stop data and sends only the answers it takes. Drawn from a task's hold, or for a kind: review suspension (SuspensionCard routes those here).",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "lucide-react"],
-      "registryDependencies": ["message-response", "run-checks", "tokens"],
+      "registryDependencies": ["message-response", "run-changes", "run-checks", "tokens"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/review-hold.tsx",

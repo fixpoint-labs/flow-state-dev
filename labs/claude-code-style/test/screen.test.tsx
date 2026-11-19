@@ -323,8 +323,10 @@ describe("the session-mode screen", () => {
   });
 
   it("never moves while the turn writes, even at the end: your own line takes you down, then Jump to latest offers the rest", async () => {
-    // The list grows with its text, so what the turn writes lands below the view.
-    const feeds = layOutFeeds((feed) => 500 + (feed.textContent?.length ?? 0) * 4);
+    // The list grows with its text, so what the turn writes lands below the view. Like a browser's,
+    // its scroll height also counts the space the feed keeps under your line, which is padding.
+    const content = (feed: HTMLElement) => 500 + (feed.textContent?.length ?? 0) * 4;
+    const feeds = layOutFeeds((feed) => content(feed) + (Number.parseFloat(feed.style.paddingBottom) || 0));
     onTestFinished(feeds.restore);
     await renderApp({ vendor: { mainTurn: "takes-acme" } });
     await pick();
@@ -352,7 +354,8 @@ describe("the session-mode screen", () => {
     const jump = await within(thread()).findByRole("button", { name: "Jump to latest" }, SLOW);
     fireEvent.click(jump);
     expect(feeds.scrolls.at(-1)).toEqual({ feed, behavior: "smooth" });
-    expect(feed.scrollHeight - feed.scrollTop - feed.clientHeight).toBe(0);
+    // At the end of what was written, whatever space is still kept below it.
+    expect(content(feed) - feed.scrollTop - feed.clientHeight).toBe(0);
     expect(within(thread()).queryByRole("button", { name: "Jump to latest" })).toBeNull();
   });
 

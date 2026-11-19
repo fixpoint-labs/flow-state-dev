@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { acquireLock, releaseLock, tryAcquireLock, type LockBounds } from "../src/lock";
+import { acquireLock, refreshLock, releaseLock, tryAcquireLock, type LockBounds } from "../src/lock";
 import { tempDir } from "./git-fixtures";
 
 let dir: string;
@@ -112,5 +112,35 @@ describe("one try, never a wait", () => {
     expect(lease).toBeDefined();
     expect(readFileSync(path, "utf8")).not.toContain("gone");
     releaseLock(lease!);
+  });
+});
+
+// FIX-2794.
+describe("a holder that refreshes its lock as its work goes", () => {
+  const unrefreshed: LockBounds = { waitMs: 2_000, pollMs: 10, staleAfterMs: 400 };
+  const aged = (ms: number) => {
+    const then = new Date(Date.now() - ms);
+    utimesSync(path, then, then);
+  };
+
+  it("keeps a lock live past the stale window: refreshed, a lock no timer touched is still held", async () => {
+    const lease = await acquireLock(path, unrefreshed);
+    aged(1_000);
+    refreshLock(lease);
+    expect(tryAcquireLock(path, unrefreshed)).toBeUndefined();
+    releaseLock(lease);
+  });
+
+  it("never refreshes a lock that is no longer its own, so a replacement's lock goes stale on its own terms", async () => {
+    const lease = await acquireLock(path, unrefreshed);
+    aged(1_000);
+    const replacement = tryAcquireLock(path, unrefreshed)!;
+    expect(replacement).toBeDefined();
+    aged(1_000);
+    refreshLock(lease);
+    // Still aged: the old holder's refresh didn't touch the replacement's lock.
+    const taker = tryAcquireLock(path, unrefreshed);
+    expect(taker).toBeDefined();
+    releaseLock(taker!);
   });
 });
