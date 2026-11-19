@@ -23,6 +23,7 @@ import { isDone } from "./columns";
 import { useReportFeedState } from "./feed-health";
 import { useLab } from "./lab-data";
 import { describeFailure, type Failure, type Section } from "./reads";
+import { sessionOfHold } from "./inbox-list";
 import { useRetrySessionFeed, useSharedSessionFeed } from "./session-feeds";
 
 export type { InboxAsk, InboxBoardTask, InboxViewValue };
@@ -91,16 +92,6 @@ export function itemIdHolding(items: readonly InboxViewItem[], suspensionId: str
   return items.find((item) => item.holds.some((hold) => hold.id === suspensionId))?.id ?? suspensionId;
 }
 
-/**
- * The Inbox item a route names: by its id, else, for a link written when an
- * item's id was its suspension's (`/inbox/<suspensionId>`), the item one of
- * whose holds that suspension is. `null` when none.
- */
-export function itemAtRoute(items: readonly InboxViewItem[], id: string | null): InboxViewItem | null {
-  if (id === null) return null;
-  return items.find((item) => item.id === id) ?? items.find((item) => item.holds.some((hold) => hold.id === id)) ?? null;
-}
-
 /** A task's Inbox item, by its board and id; `undefined` when nothing of it waits on the user. */
 function itemOfTask(items: readonly InboxViewItem[], task: Pick<InboxBoardTask, "boardRef" | "id"> | undefined): InboxViewItem | undefined {
   if (task === undefined) return undefined;
@@ -134,15 +125,6 @@ export function askWord(hold: InboxViewHold): "approval" | "review" | "question"
   return asked === "approval" || asked === "review" || asked === "confirm" ? asked : "question";
 }
 
-/** The session a stop waits in, or `null` for a run with no conversation (or a task's own hold). */
-export function sessionOfHold(hold: InboxViewHold): string | null {
-  return hold.source.kind === "suspension" ? hold.source.sessionId : null;
-}
-
-/** The worker a stop asks for: its ask's, when its session names one. */
-export function workerOfHold(hold: InboxViewHold): string | null {
-  return hold.detail?.workerId ?? null;
-}
 
 /**
  * The suspension a stop's card draws: from the ask's detail, or, when the view

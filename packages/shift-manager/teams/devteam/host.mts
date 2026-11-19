@@ -1005,6 +1005,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           ...(options.errorReporter.limits === undefined ? {} : { limits: options.errorReporter.limits }),
           ...(options.errorReporter.secrets === undefined ? {} : { secrets: options.errorReporter.secrets }),
           links: reportLinks,
+          // Shift Manager's Inbox opens the ask that waits in the report's own session.
+          inboxLink: ({ sessionId }) => `/inbox/${encodeURIComponent(sessionId)}`,
           log: options.log ?? ((line: string) => process.stderr.write(`[error-reporter] ${line}\n`)),
         });
   // What the workforce kit reads: the tree, or a copy with the controls' edits

@@ -7,7 +7,7 @@
  * route. The rest are Shift Manager's own.
  *
  *     /shift-coordinator             Shift Coordinator: where `/` and any unknown path land
- *     /inbox[/<item>]                one Inbox item: a suspension id, or a held question's row (`inbox.ts`)
+ *     /inbox[/<item>]                one Inbox item: a suspension id, a held question's row, or the session a lone ask waits in (`inbox-list.ts`)
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
  *     /messages                      every message between the user's workers
