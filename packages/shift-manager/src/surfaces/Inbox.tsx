@@ -8,8 +8,8 @@
  * A list and a detail pane; the detail draws an ask with the same card Shift
  * Coordinator uses, and answers it through the same resume. The list groups
  * every ask no task holds under the worker that raised it, with a count, each
- * ask showing its heading and its message's first line; a task's item stands
- * on its own.
+ * ask showing its heading and, when it differs, its message's first line; a
+ * task's item stands on its own.
  *
  * Drawn as design v2's Inbox (v2:559-645): a 400px list whose items carry the
  * highlighter square (each one waits on the user), and a detail on the
@@ -90,13 +90,14 @@ function itemFrom(item: InboxItem): string {
   return `${workerLabel(who)} · task ${item.task?.title ?? "—"}${more}`;
 }
 
-/** A text's first line. */
-function firstLine(text: string): string {
-  return text.split("\n")[0] ?? "";
+/** What a grouped item says under its heading: its message's first line, or nothing when the heading already is that (an untitled ask). */
+function groupedFrom(item: InboxItem): string | null {
+  const line = item.holds[0]!.ask.prompt.split("\n")[0] ?? "";
+  return line === "" || line === itemHeading(item) ? null : line;
 }
 
-/** One item of the list: approval or question, its heading, `from` under it, and how long it has waited. */
-function ItemButton({ item, selected, from, now }: { item: InboxItem; selected: boolean; from: string; now: number }) {
+/** One item of the list: approval or question, its heading, `from` under it when there is one, and how long it has waited. */
+function ItemButton({ item, selected, from, now }: { item: InboxItem; selected: boolean; from: string | null; now: number }) {
   return (
     <button
       type="button"
@@ -123,9 +124,11 @@ function ItemButton({ item, selected, from, now }: { item: InboxItem; selected: 
         <span className="line-clamp-2 text-sm leading-[1.3] font-semibold" data-testid="inbox-item-question">
           {itemHeading(item)}
         </span>
-        <Meta className="text-muted-foreground" testId="inbox-item-from">
-          {from}
-        </Meta>
+        {from === null ? null : (
+          <Meta className="text-muted-foreground" testId="inbox-item-from">
+            {from}
+          </Meta>
+        )}
       </span>
       <Meta role="count" className="text-muted-foreground" testId="inbox-item-wait">
         waiting {waited(item.since, now)}
@@ -212,7 +215,7 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
                     {entry.items.map((item) => (
                       <li key={item.id}>
                         {/* The group names the worker, so each item says what it asks instead. */}
-                        <ItemButton item={item} selected={item === selected} from={firstLine(item.holds[0]!.ask.prompt)} now={now} />
+                        <ItemButton item={item} selected={item === selected} from={groupedFrom(item)} now={now} />
                       </li>
                     ))}
                   </ol>

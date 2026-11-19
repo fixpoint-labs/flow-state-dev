@@ -50,7 +50,7 @@ const SECRET = "sk-live-abcdefghijklmnop1234";
 type Prompted = { kind: "draft" | "file" | "comment"; prompt: string; trackerTools: boolean };
 
 /** How the stand-in answers beyond a clean run: a filing that fails `fileFails` times, a comment with no result. */
-type StandIn = { closed?: boolean; trailer?: boolean; fileFails?: number; commentUnreadable?: boolean; draftThrows?: number };
+type StandIn = { closed?: boolean; trailer?: boolean; fileFails?: number; commentUnreadable?: boolean; draftThrows?: number; draftTitle?: string };
 
 /**
  * A harness that answers like one: a JSON draft, a filed issue, or a comment
@@ -74,7 +74,7 @@ function standInHarness(prompts: Prompted[], options: StandIn = {}) {
         const unreadable = failsNow || (kind === "comment" && options.commentUnreadable === true);
         const json =
           kind === "draft"
-            ? { title: "Coordinator fails on a project with no repository", summary: "It throws.", stepsToReproduce: ["Send it work"], expected: "It works", actual: "It throws", suspectedCause: "No repo check", questions: ["Which team?"] }
+            ? { title: options.draftTitle ?? "Coordinator fails on a project with no repository", summary: "It throws.", stepsToReproduce: ["Send it work"], expected: "It works", actual: "It throws", suspectedCause: "No repo check", questions: ["Which team?"] }
             : kind === "file"
               ? { url: "https://tracker.example/FIX-9", identifier: "FIX-9" }
               : { closed: options.closed === true };
@@ -172,7 +172,7 @@ async function openLab(
   options: Partial<ErrorReporterOptions> & StandIn & { agentAnswer?: ReturnType<typeof mockGenerator>; hostRun?: (run: ErrorReporterHost["run"]) => ErrorReporterHost["run"] } = {}
 ): Promise<Lab> {
   const prompts: Prompted[] = [];
-  const { agentAnswer, closed, trailer, fileFails, commentUnreadable, draftThrows, hostRun, ...reporterOptions } = options;
+  const { agentAnswer, closed, trailer, fileFails, commentUnreadable, draftThrows, draftTitle, hostRun, ...reporterOptions } = options;
   const reporter = createErrorReporter({
     worker: "error-reporter",
     operator: { userId: OPERATOR, orgId: ORG },
@@ -194,7 +194,7 @@ async function openLab(
       [ERROR_REPORTER_FLOW]: defineErrorReporterFlow({
         reporter,
         installation,
-        harness: standInHarness(prompts, { closed, trailer, fileFails, commentUnreadable, draftThrows }),
+        harness: standInHarness(prompts, { closed, trailer, fileFails, commentUnreadable, draftThrows, draftTitle }),
         mcpTools: trackerTools,
         agent: { catalog: { searchResources: resourceSearchTools().searchResources, readResourceContent: readResourceContentTool() } }
       })
@@ -909,6 +909,53 @@ describe("the line when a report starts waiting in Inbox", () => {
     const lines = await lab.conversationLines();
     expect(lines).toContainEqual(expect.stringContaining("Filed FIX-9"));
     expect(lines.filter((line) => line.includes("Inbox"))).toEqual([]);
+  });
+});
+
+// A report's title and where it came from are text others wrote: a drafted title quotes the error,
+// a task's title or goal is its creator's. Written into a Markdown line, an image in it would be
+// fetched and a link in it would sit beside the line's own; each is shown as the characters typed.
+describe("text others wrote, in the Markdown about a report", () => {
+  const WRITTEN = "![x](https://attacker.example/i) x) [Open it in Inbox](https://attacker.example)";
+  /** `WRITTEN` with every punctuation mark escaped: Markdown shows it as typed, with no image and no link of its own. */
+  const LITERAL = String.raw`\!\[x\]\(https\:\/\/attacker\.example\/i\) x\) \[Open it in Inbox\]\(https\:\/\/attacker\.example\)`;
+  /** The links and images a Markdown text opens: each `[` or `![` no backslash escapes. */
+  const opened = (text: string) => [...text.matchAll(/(?<!\\)!?\[[^\]]*\]\([^)]*\)/g)].map((m) => m[0]);
+
+  it("keeps a drafted title's image and link as text in the waiting line: its Inbox link is the line's only link", async () => {
+    const lab = await openLab({ inboxLink, draftTitle: WRITTEN });
+    await lab.breaks("the queue is full");
+    const [report] = await lab.rows();
+    const link = `[Open it in Inbox](/inbox/${encodeURIComponent(`${REPORT_SESSION_PREFIX}${report!.id}`)})`;
+    const waiting = (await lab.conversationLines()).filter((line) => line.startsWith("Waiting in your Inbox"));
+    expect(waiting).toEqual([`Waiting in your Inbox: **${LITERAL}**, from a failed request (breaker / respond), seen 1 time. ${link}`]);
+    expect(opened(waiting[0]!)).toEqual([link]);
+  });
+
+  it("keeps a task's goal as text where the waiting line and the preview's question say where the report came from", async () => {
+    const lab = await openLab({ inboxLink });
+    const conv = await lab.host.conversation("alice");
+    const added = await lab.host.act("alice", conv, "createTask_tasks", { goal: `${WRITTEN} [fail]`, assignee: "eng.tasker" });
+    expect(added.error, messageOf(added.error)).toBeUndefined();
+    await lab.host.settled();
+    await lab.reporter.idle();
+    await lab.host.settled();
+    // The goal's first 80 characters, which here are `WRITTEN` whole.
+    const from = `a failed task (${LITERAL})`;
+    const waiting = (await lab.conversationLines()).filter((line) => line.startsWith("Waiting in your Inbox"));
+    expect(waiting).toHaveLength(1);
+    expect(waiting[0]).toContain(`, from ${from}, seen 1 time.`);
+    expect(opened(waiting[0]!)).toEqual([expect.stringMatching(/^\[Open it in Inbox\]\(\/inbox\//)]);
+    const [ask] = await lab.asks();
+    expect(ask!.message).toBe(`From ${from} · seen 1 time. File it?\n\n**Questions**\n\n- Which team?`);
+    expect(opened(ask!.message)).toEqual([]);
+  });
+
+  it("keeps a drafted title as text in the line that says it was filed", async () => {
+    const lab = await openLab({ draftTitle: WRITTEN, preview: { autoFile: ["request"] } });
+    await lab.breaks("the queue is full");
+    const filed = (await lab.conversationLines()).filter((line) => line.startsWith("Filed"));
+    expect(filed).toEqual([`Filed FIX-9: ${LITERAL} https://tracker.example/FIX-9`]);
   });
 });
 

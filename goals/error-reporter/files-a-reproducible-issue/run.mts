@@ -454,8 +454,9 @@ async function turnOf(runtime: Awaited<ReturnType<Lab["state"]["getRuntime"]>>, 
 const FINGERPRINT = /fp-[0-9a-f]{8,}/;
 /** What a user reads of `text`: with every link's address (a Markdown link's target, an `href`) taken out. A bare URL is text, and stays. */
 const readText = (text: string) => text.replace(/\]\([^)\s]*\)/g, "]").replace(/href=\\?"[^"\\]*\\?"/g, "");
-/** The Markdown links' addresses in `text` that open an Inbox item. */
-const inboxLinks = (text: string) => [...text.matchAll(/\]\((\/inbox\/[^)\s]+)\)/g)].map((m) => m[1]!);
+/** The Markdown links in `text` that open an Inbox item, each as the path it opens on a page served at the root (`./inbox/x` is relative to the page's base). */
+const inboxLinks = (text: string) =>
+  [...text.matchAll(/\]\(((?:\.\/|\/)inbox\/[^)\s]+)\)/g)].map((m) => new URL(m[1]!, "http://lab.example/").pathname);
 
 /** Any of `secrets` in `value`, by name. */
 function secretsIn(value: unknown, secrets: Record<string, string>): string[] {

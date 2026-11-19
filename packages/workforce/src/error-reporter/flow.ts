@@ -31,6 +31,7 @@ import {
   errorReportsResources,
   intakeOccurrence,
   listReports,
+  markdownLiteral,
   occurrenceSchema,
   readHistory,
   readReport,
@@ -472,7 +473,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
         await sayInConversation(
           ctx,
           "An error report is waiting in the operator's Inbox.",
-          `Waiting in your Inbox: **${draft.title}**, from ${sourceInWords(kept)}, seen ${timesSeen(kept.count)}.${link === undefined ? "" : ` ${link}`}`
+          `Waiting in your Inbox: **${markdownLiteral(draft.title)}**, from ${sourceInWords(kept)}, seen ${timesSeen(kept.count)}.${link === undefined ? "" : ` ${link}`}`
         );
       }
       return { title: draft.title, body, questions: draft.questions ?? [] };
@@ -620,7 +621,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
         lastRunError: undefined
       }));
       const title = row?.draft?.title ?? (row?.parts.message.split("\n")[0] ?? "").slice(0, 120);
-      const line = `Filed ${parsed.data.identifier ?? "an issue"}: ${title || "the error report"} ${parsed.data.url}`;
+      const line = `Filed ${parsed.data.identifier ?? "an issue"}: ${title === "" ? "the error report" : markdownLiteral(title)} ${parsed.data.url}`;
       ctx.emit.message(line);
       await sayInConversation(ctx, line);
       return { filed: true as const, ...parsed.data };

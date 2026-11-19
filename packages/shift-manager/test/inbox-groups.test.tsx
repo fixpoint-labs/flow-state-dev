@@ -32,7 +32,7 @@ vi.mock("../src/lib/deliver", async (importOriginal) => ({ ...(await importOrigi
 
 afterEach(cleanup);
 
-type Asked = { id: string; workerId: string; sessionId: string; title: string; message: string; since: number };
+type Asked = { id: string; workerId: string; sessionId: string; title?: string; message: string; since: number };
 
 /** The view's answer over `asked` and one task holding a question, built as the server builds it. */
 function viewOf(asked: Asked[]): InboxViewValue {
@@ -56,9 +56,9 @@ function viewOf(asked: Asked[]): InboxViewValue {
         suspensionId: ask.id,
         kind: "input",
         prompt: ask.message,
-        title: ask.title,
+        ...(ask.title === undefined ? {} : { title: ask.title }),
         since: ask.since,
-        detail: { suspensionId: ask.id, requestId: `req_${ask.id}`, sessionId: ask.sessionId, workerId: ask.workerId, title: ask.title, message: ask.message, kind: "input", createdAt: ask.since } as unknown as InboxAsk,
+        detail: { suspensionId: ask.id, requestId: `req_${ask.id}`, sessionId: ask.sessionId, workerId: ask.workerId, ...(ask.title === undefined ? {} : { title: ask.title }), message: ask.message, kind: "input", createdAt: ask.since } as unknown as InboxAsk,
       })),
       flowOf: () => "agent",
     }),
@@ -73,6 +73,17 @@ const reports: Asked[] = [
 const approval: Asked = { id: "sp4", workerId: "shift-coordinator", sessionId: "s_coord", title: "Fire eng.coder?", message: "It has been idle a week.", since: 3 };
 
 const screenOf = (itemId: string | null) => <Inbox snapshot={{ inventory: { ok: true, value: { workers: [] } } } as unknown as LoadedSnapshot} itemId={itemId} gaps={GAPS} />;
+
+describe("an untitled ask in a worker's group", () => {
+  // Its heading is already what it asks: the line under it would say it twice.
+  it("shows what it asks once", () => {
+    value = viewOf([{ id: "sp5", workerId: "eng.em", sessionId: "s_em", message: "Which branch should I cut the release from?", since: 1 }]);
+    render(screenOf(null));
+    const [item] = within(screen.getByTestId("inbox-group")).getAllByTestId("inbox-item");
+    expect(within(item!).getByTestId("inbox-item-question").textContent).toBe("Which branch should I cut the release from?");
+    expect(item!.textContent!.split("Which branch should I cut the release from?")).toHaveLength(2);
+  });
+});
 
 describe("an Inbox with three error reports waiting", () => {
   it("shows them as one group under the worker that asked, with its count, each with its title, source and count", () => {
