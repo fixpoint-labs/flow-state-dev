@@ -195,24 +195,24 @@ async function resyncFromManifest<TValue>(
     })
   );
   const have = new Map(held.map((entry) => [entry.storageKey, entry]));
-  const stale = listed.filter((row) => have.get(row.storageKey)?.version !== row.version);
+  const stale = listed.filter((item) => have.get(item.storageKey)?.version !== item.version);
   const read = new Map(
-    await Promise.all(stale.map(async (row) => [row.storageKey, await handle.entry(row.storageKey).read()] as const))
+    await Promise.all(stale.map(async (item) => [item.storageKey, await handle.entry(item.storageKey).read()] as const))
   );
   const merged: ScopeEntry<TValue>[] = [];
-  for (const row of listed) {
-    const now = read.get(row.storageKey);
+  for (const item of listed) {
+    const now = read.get(item.storageKey);
     if (now !== undefined) {
       if (now.value === null) continue;
       merged.push({
-        topic: extractBareTopic(handle.key, row.storageKey),
-        storageKey: row.storageKey,
+        topic: extractBareTopic(handle.key, item.storageKey),
+        storageKey: item.storageKey,
         value: now.value,
         version: now.version
       });
       continue;
     }
-    const known = have.get(row.storageKey);
+    const known = have.get(item.storageKey);
     if (known !== undefined) merged.push(known);
   }
   return merged;

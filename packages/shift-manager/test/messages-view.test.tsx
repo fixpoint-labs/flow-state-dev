@@ -9,7 +9,7 @@ import { firstLine, exchangesOf, toMessages, type WorkerMessageResourceState } f
 import { parseRoute, pathFor } from "../src/lib/routes";
 
 /** The log the screen reads, and a failure the next list throws. */
-const held: { rows: WorkerMessageResourceState[]; fail?: Error; lists: string[] } = { rows: [], lists: [] };
+const held: { messages: WorkerMessageResourceState[]; fail?: Error; lists: string[] } = { messages: [], lists: [] };
 
 const fetcher: ClientFetch = async (input) => {
   const url = new URL(String(input), "http://x");
@@ -19,11 +19,15 @@ const fetcher: ClientFetch = async (input) => {
   const limit = Number(url.searchParams.get("limit") ?? 50);
   const cursor = url.searchParams.get("cursor");
   const newest = url.searchParams.get("order") === "newest";
-  const ranked = [...held.rows].sort((a, b) => (newest ? b.at - a.at || a.id.localeCompare(b.id) : a.id.localeCompare(b.id)));
+  const ranked = [...held.messages].sort((a, b) => (newest ? b.at - a.at || a.id.localeCompare(b.id) : a.id.localeCompare(b.id)));
   const start =
     cursor === null
       ? 0
-      : ranked.findIndex((row) => (newest ? JSON.stringify([row.at, `workforce/messages/${row.id}`]) === cursor : `workforce/messages/${row.id}` === cursor)) + 1;
+      : ranked.findIndex((message) =>
+          newest
+            ? JSON.stringify([message.at, `workforce/messages/${message.id}`]) === cursor
+            : `workforce/messages/${message.id}` === cursor
+        ) + 1;
   const page = ranked.slice(Math.max(start, 0), Math.max(start, 0) + limit);
   const last = page.at(-1);
   const nextCursor =
@@ -34,7 +38,7 @@ const fetcher: ClientFetch = async (input) => {
       : undefined;
   return new Response(
     JSON.stringify({
-      items: page.map((row) => ({ topic: row.id, storageKey: `workforce/messages/${row.id}`, value: row, version: 1 })),
+      items: page.map((message) => ({ topic: message.id, storageKey: `workforce/messages/${message.id}`, value: message, version: 1 })),
       ...(nextCursor === undefined ? {} : { nextCursor })
     }),
     { status: 200, headers: { "content-type": "application/json" } }
@@ -49,7 +53,7 @@ vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 import { Messages } from "../src/surfaces/Messages";
 import { ToolLineGroup } from "../src/components/ToolLine";
 
-const row = (over: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResourceState, "id" | "from" | "to" | "at">): WorkerMessageResourceState => ({
+const message = (over: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResourceState, "id" | "from" | "to" | "at">): WorkerMessageResourceState => ({
   text: "hello",
   exchange: over.id,
   fromSession: `s_${over.from}`,
@@ -61,15 +65,15 @@ const row = (over: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResou
   ...over,
 });
 
-const ask = row({ id: "msg_a", from: "researcher", to: "coordinator", at: 1_000, text: "What is the codename?\nThanks." });
-const answer = row({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_000, exchange: "msg_a", inReplyTo: "msg_a", text: "BLUE-HERON", hop: 2 });
-const other = row({ id: "msg_c", from: "helper-a", to: "helper-b", at: 2_000, status: "refused", reason: "dispatch-rejected: down" });
+const ask = message({ id: "msg_a", from: "researcher", to: "coordinator", at: 1_000, text: "What is the codename?\nThanks." });
+const answer = message({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_000, exchange: "msg_a", inReplyTo: "msg_a", text: "BLUE-HERON", hop: 2 });
+const other = message({ id: "msg_c", from: "helper-a", to: "helper-b", at: 2_000, status: "refused", reason: "dispatch-rejected: down" });
 
 // FIX-2624: the user holds no session at all; the log is read by user scope.
 const snapshot = { sessions: [], readAt: 1 } as unknown as LoadedSnapshot;
 
 beforeEach(() => {
-  held.rows = [];
+  held.messages = [];
   held.fail = undefined;
   held.lists = [];
   resource.mockClear();
@@ -95,7 +99,7 @@ describe("the message log, as exchanges", () => {
 
 describe("the Messages view", () => {
   it("lists every message with both sides, read by user scope with no session, and opens either side's session", async () => {
-    held.rows = [ask, answer, other];
+    held.messages = [ask, answer, other];
     render(<Messages snapshot={snapshot} />);
     const lines = await screen.findAllByTestId("message");
     expect(resource.mock.calls[0]?.[0]).toEqual({ scope: "user", pattern: "workforce/messages/*" });
@@ -114,9 +118,9 @@ describe("the Messages view", () => {
   });
 
   it("says a message is on its way until its recipient takes it, and when it couldn't be delivered", async () => {
-    const onItsWay = row({ id: "msg_d", from: "researcher", to: "helper-a", at: 4_000, status: "unconfirmed" });
-    const gaveUp = row({ id: "msg_e", from: "researcher", to: "helper-b", at: 5_000, status: "undeliverable", reason: "it couldn't be delivered within 1440 minutes" });
-    held.rows = [onItsWay, gaveUp];
+    const onItsWay = message({ id: "msg_d", from: "researcher", to: "helper-a", at: 4_000, status: "unconfirmed" });
+    const gaveUp = message({ id: "msg_e", from: "researcher", to: "helper-b", at: 5_000, status: "undeliverable", reason: "it couldn't be delivered within 1440 minutes" });
+    held.messages = [onItsWay, gaveUp];
     render(<Messages snapshot={snapshot} />);
     const lines = await screen.findAllByTestId("message");
     const status = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).getByTestId("message-status").textContent;
@@ -125,11 +129,11 @@ describe("the Messages view", () => {
   });
 
   it("says where a reply request's answer is: waiting, waiting on the user, answered, or answered after its sender's wait ended (FIX-2318)", async () => {
-    const waiting = row({ id: "msg_f", from: "researcher", to: "helper-a", at: 6_000, status: "unconfirmed", replyRequested: true, deadlineAt: 66_000 });
-    const onPerson = row({ id: "msg_g", from: "researcher", to: "helper-b", at: 7_000, status: "unconfirmed", replyRequested: true, queuedBehind: "user" });
-    const answered = row({ id: "msg_h", from: "researcher", to: "coordinator", at: 8_000, replyRequested: true, deadlineAt: 68_000, answeredBy: "msg_x" });
-    const late = row({ id: "msg_i", from: "researcher", to: "coordinator", at: 9_000, replyRequested: true, deadlineAt: 10_000, waitEndedAt: 10_000, answeredBy: "msg_y" });
-    held.rows = [waiting, onPerson, answered, late, ask];
+    const waiting = message({ id: "msg_f", from: "researcher", to: "helper-a", at: 6_000, status: "unconfirmed", replyRequested: true, deadlineAt: 66_000 });
+    const onPerson = message({ id: "msg_g", from: "researcher", to: "helper-b", at: 7_000, status: "unconfirmed", replyRequested: true, queuedBehind: "user" });
+    const answered = message({ id: "msg_h", from: "researcher", to: "coordinator", at: 8_000, replyRequested: true, deadlineAt: 68_000, answeredBy: "msg_x" });
+    const late = message({ id: "msg_i", from: "researcher", to: "coordinator", at: 9_000, replyRequested: true, deadlineAt: 10_000, waitEndedAt: 10_000, answeredBy: "msg_y" });
+    held.messages = [waiting, onPerson, answered, late, ask];
     render(<Messages snapshot={snapshot} />);
     const lines = await screen.findAllByTestId("message");
     const replyState = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).queryByTestId("message-reply-state")?.textContent;
@@ -142,7 +146,7 @@ describe("the Messages view", () => {
   });
 
   it("says so when there are none", async () => {
-    held.rows = [];
+    held.messages = [];
     render(<Messages snapshot={snapshot} />);
     expect((await screen.findByTestId("messages-empty")).textContent).toContain("No messages yet");
   });
@@ -160,8 +164,8 @@ describe("the Messages view", () => {
   });
 
   it("shows the newest page of a log past one page, and loads older messages on scroll", async () => {
-    held.rows = Array.from({ length: 250 }, (_, i) =>
-      row({ id: `msg_${String(i).padStart(3, "0")}`, from: "researcher", to: "coordinator", at: 1_000 + i, text: `line ${i}` })
+    held.messages = Array.from({ length: 250 }, (_, i) =>
+      message({ id: `msg_${String(i).padStart(3, "0")}`, from: "researcher", to: "coordinator", at: 1_000 + i, text: `line ${i}` })
     );
     render(<Messages snapshot={snapshot} />);
     const first = await screen.findAllByTestId("message");
