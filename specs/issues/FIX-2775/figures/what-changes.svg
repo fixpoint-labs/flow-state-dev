@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 392" role="img" aria-label="Before and after for Shift Manager's directory screens: the connection gate, the sidebar's TEAMS, PROJECTS and counts, Roster, Jump to, a project, Messages, Routines, Usage, Settings, and the worker rows on every other screen. Before: they draw from the snapshot, which the browser builds from the session list, the roster flow's identity, the inventory, the projects and each flow's manifest, and Messages, Routines and Usage read again on each snapshot read. After: each reads through the packages: react's useResource reading whole collections, useView over the roster, Inbox, routines and usage views, useSessionList, and workforce's organization call. The snapshot reads and readEveryScopeEntry are struck through"
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .scr   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .strike{ stroke:var(--gone); stroke-width:1.6; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .ah    { fill:var(--ink-3); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="392"/>
+
+  <g id="before">
+    <text class="t-lbl" x="16" y="26">TODAY · THE SNAPSHOT, BUILT IN THE BROWSER</text>
+    <rect class="gone" x="16" y="36" width="320" height="340" rx="6"/>
+    <text class="t-b" x="32" y="62">One read, then again on set events</text>
+    <text class="t-g" x="32" y="88">the session list, dispatch runs included</text>
+    <line class="strike" x1="32" y1="84" x2="236" y2="84"/>
+    <text class="t-g" x="32" y="112">the roster flow's identity: the organization</text>
+    <line class="strike" x1="32" y1="108" x2="252" y2="108"/>
+    <text class="t-g" x="32" y="136">the inventory, every page (readEveryScopeEntry)</text>
+    <line class="strike" x1="32" y1="132" x2="276" y2="132"/>
+    <text class="t-g" x="32" y="160">the shared and private projects, every page</text>
+    <line class="strike" x1="32" y1="156" x2="258" y2="156"/>
+    <text class="t-g" x="32" y="184">each listed flow's manifest: the documents</text>
+    <line class="strike" x1="32" y1="180" x2="250" y2="180"/>
+    <text class="t-g" x="32" y="208">the walked asks and boards: on-shift status</text>
+    <line class="strike" x1="32" y1="204" x2="250" y2="204"/>
+    <text class="t-b" x="32" y="246">Beside it, re-read on each snapshot read</text>
+    <text class="t-g" x="32" y="272">Messages: its own live read, topic imported</text>
+    <line class="strike" x1="32" y1="268" x2="246" y2="268"/>
+    <text class="t-g" x="32" y="296">Routines and Usage: one view call per read</text>
+    <line class="strike" x1="32" y1="292" x2="246" y2="292"/>
+    <text class="t-g" x="32" y="320">a project's workstreams: its own live read</text>
+    <line class="strike" x1="32" y1="316" x2="244" y2="316"/>
+    <text class="t-s" x="32" y="352">233 snapshot sites in 35 files · 16 allowlist entries</text>
+  </g>
+
+  <g id="screens">
+    <text class="t-lbl" x="380" y="26">THE SCREENS · UNCHANGED</text>
+    <rect class="scr" x="380" y="36" width="180" height="340" rx="6"/>
+    <text class="t-b" x="396" y="64">Connection gate</text>
+    <text class="t-b" x="396" y="96">Sidebar: TEAMS,</text>
+    <text class="t-b" x="396" y="112">PROJECTS, counts</text>
+    <text class="t-b" x="396" y="144">Roster, a worker</text>
+    <text class="t-b" x="396" y="176">Jump to</text>
+    <text class="t-b" x="396" y="208">A project</text>
+    <text class="t-b" x="396" y="240">Messages</text>
+    <text class="t-b" x="396" y="272">Routines, Usage</text>
+    <text class="t-b" x="396" y="304">Settings</text>
+    <text class="t-s" x="396" y="336">and the worker rows on</text>
+    <text class="t-s" x="396" y="352">every other screen</text>
+  </g>
+
+  <line class="arrow" x1="336" y1="200" x2="372" y2="200"/>
+  <polygon class="ah" points="372,196 380,200 372,204"/>
+  <line class="arrow" x1="560" y1="200" x2="596" y2="200"/>
+  <polygon class="ah" points="596,196 604,200 596,204"/>
+
+  <g id="after">
+    <text class="t-lbl" x="604" y="26">AFTER · THE PACKAGES, EACH KEPT CURRENT</text>
+    <rect class="new" x="604" y="36" width="320" height="340" rx="6"/>
+    <text class="t-c" x="620" y="62">react · useResource, every page</text>
+    <text class="t-s" x="620" y="80">the inventory, projects, the message log,</text>
+    <text class="t-s" x="620" y="96">a project's workstreams · with failure, refresh</text>
+    <text class="t-c" x="620" y="128">react · useView</text>
+    <text class="t-s" x="620" y="146">the roster view, the Inbox view (on-shift status</text>
+    <text class="t-s" x="620" y="162">and counts), routines, usage, project setup</text>
+    <text class="t-c" x="620" y="194">react · useSessionList</text>
+    <text class="t-s" x="620" y="212">the user's sessions, dispatch runs included</text>
+    <text class="t-c" x="620" y="244">client · a direct read of each manifest</text>
+    <text class="t-s" x="620" y="262">once per flow, static: Jump to's documents</text>
+    <text class="t-c" x="620" y="294">workforce · organization()</text>
+    <text class="t-s" x="620" y="312">the gate, and a conversation's derived id</text>
+    <text class="t-s" x="620" y="352">0 sites · 0 entries · FIX-2777 only deletes</text>
+  </g>
+</svg>
