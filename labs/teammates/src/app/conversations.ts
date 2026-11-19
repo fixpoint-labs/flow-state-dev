@@ -22,6 +22,9 @@ import type { Item } from "../lib/items";
 import { reuseById } from "../lib/stable";
 import { useAppClient } from "./provider";
 
+/** How many turns workforce's session turns view lists: a session's newest. */
+const TURNS_LISTED = 50;
+
 /** Follows conversation `sessionId` for every screen on it: render one per open conversation. Draws nothing. */
 export function ConversationFollower({ sessionId }: { sessionId: string }): null {
   const { client, pollIntervalMs, conversations } = useAppClient();
@@ -36,8 +39,10 @@ export function ConversationFollower({ sessionId }: { sessionId: string }): null
   const last = useRef<ConversationEntry[]>([]);
   const items = feed?.items as unknown as Item[] | undefined;
   const ended = useMemo(() => (turns ?? []).filter((t) => t.status !== "in_progress").map((t) => t.id), [turns]);
-  // A stop ends once the turns show every turn it stopped ended.
-  const stopEnded = stop?.ids != null && [...stop.ids].every((id) => ended.includes(id));
+  // A stop ends once the turns show every turn it stopped ended. A full view (its newest fifty) that doesn't list
+  // one has left it out as older; one listing fewer hasn't read it yet.
+  const listed = new Set((turns ?? []).map((t) => t.id));
+  const stopEnded = stop?.ids != null && [...stop.ids].every((id) => ended.includes(id) || (!listed.has(id) && listed.size >= TURNS_LISTED));
   const followed = useMemo(() => {
     if (feed === undefined || items === undefined) return undefined;
     const read = turns ?? [];
