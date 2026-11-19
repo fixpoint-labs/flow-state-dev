@@ -104,8 +104,11 @@ It comes down to what any Lab serves: today a project's coordinator and the keys
 - **`readEveryScopeEntry` goes from `reads.ts` too.** The snapshot's own inventory and projects
   reads call `listAll()` until FIX-2777 deletes them, so the function has no caller. `reads.ts`
   shrinks; ER-4 forbids only growth.
-- **Helpers move, data doesn't.** `describeFailure`, `Failure`, the board refs, `GENERAL_TEAM`
-  and `workerOf` move to a screen module, so no file outside FIX-2777's four imports `reads.ts`.
+- **Helpers move, data doesn't.** Every `reads.ts` export a screen still imports (`Failure`,
+  `describeFailure`, `Section`, `Worker`, `workerOf`, `workerNames`, `Project`,
+  `ProjectVisibility`, `toProject`, `BoardTaskView`, the board refs and `GENERAL_TEAM`) moves to
+  a screen module, so no file outside FIX-2777's four imports `reads.ts`. The census check is the
+  test: any import left fails it.
 - **Changesets.** `@flow-state-dev/react` minor (D2), `@flow-state-dev/workforce` minor
   (`organization()`, the definitions on `/browser`, D3), `@flow-state-dev/shift-manager` patch
   (the directory follows changes made elsewhere).
