@@ -12,7 +12,10 @@
  * one turn's steps (its tool calls and the thinking between them), a failed
  * turn (with Retry when the engine runs it again), a stopped turn (after its
  * last line), a suspension (with its answer), and any `data` item. A renderer
- * decides how a kind looks, never whether an item is one.
+ * decides how a kind looks, never whether an item is one. Given the registry
+ * in use (`renderers`), a `data` item it has no renderer for (or turns off)
+ * is a record, not a line: no renderer, no line, so a board's change record
+ * never takes Retry off the failed turn before it.
  *
  * A tool call that wrote a line is that line, not a step: a `data` item keyed
  * by the logical id of the tool call it was written in (`key` is
@@ -82,7 +85,7 @@ export type ItemLine =
 
 /** How {@link conversationLines} filters before it reads lines. */
 export type ConversationLinesOptions = {
-  /** The registry in use: items a container with a registered renderer owns are left to that renderer. */
+  /** The registry in use: items a container with a registered renderer owns are left to that renderer, and a `data` item with no renderer here is no line. */
   renderers?: RendererRegistry;
   /** Default `true`: a keyed `data` item shows only its latest snapshot, at that snapshot's place. */
   deduplicateByKey?: boolean;
@@ -194,6 +197,13 @@ function callsThatWroteLines(items: readonly OutputItem[]): (call: ToolOutputIte
   };
 }
 
+/** Whether `renderers` draws `item`: always with no registry given, else only through a renderer registered for its `dataType`. */
+function drawsData(item: DataItem, renderers: RendererRegistry | undefined): boolean {
+  if (renderers === undefined) return true;
+  const renderer = renderers.data?.[item.dataType];
+  return renderer !== undefined && renderer !== false;
+}
+
 /** Whether a message says anything: a text part with words, or any part that isn't text. */
 function saysSomething(item: MessageItem): boolean {
   return item.content.some((part) => {
@@ -265,6 +275,7 @@ export function conversationLines(
       const resolution = answered.get((item as SuspensionItem).suspensionId);
       lines.push({ kind: "suspension", id: item.id, requestId, item: item as SuspensionItem, ...(resolution === undefined ? {} : { resolution }) });
     } else if (item.type === "data") {
+      if (!drawsData(item as DataItem, options.renderers)) continue;
       lines.push({ kind: "data", id: item.id, requestId, item: item as DataItem });
     } else {
       lines.push({ kind: "item", id: item.id, requestId, item });

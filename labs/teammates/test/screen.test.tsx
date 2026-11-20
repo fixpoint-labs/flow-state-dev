@@ -176,8 +176,8 @@ describe("the teammates screen", () => {
     expect(popup.contains(document.activeElement)).toBe(true);
     expect(conversation().contains(line)).toBe(true);
     // Live: researcher's reading of the message, then the reply it sent, arrive while the popup is open.
-    await waitFor(() => expect(popup.querySelector('[data-step="given"]')?.textContent).toMatch(/What's our launch date\?/), { timeout: 2000 });
-    await waitFor(() => expect(popup.querySelector('[data-step="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
+    await waitFor(() => expect(popup.querySelector('[data-entry="received"]')?.textContent).toMatch(/What's our launch date\?/), { timeout: 2000 });
+    await waitFor(() => expect(popup.querySelector('[data-entry="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
     await waitFor(() => expect(popup.querySelector("[data-overlay-status]")?.textContent).toBe("replied"));
     expect(line.querySelector("[data-sent-status]")?.textContent).toBe("replied");
 
@@ -450,11 +450,11 @@ describe("the teammates screen", () => {
       await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 });
 
       const body = popup.querySelector("[data-step=result]")!.parentElement!;
-      const kinds = [...body.querySelectorAll(":scope > [data-step]")].map((el) => el.getAttribute("data-step"));
+      const kinds = [...body.querySelectorAll(":scope > [data-step], :scope > [data-entry]")].map((el) => el.getAttribute("data-step") ?? el.getAttribute("data-entry"));
       // The harness, then what the run did in order, then its result last: the popup opens on its latest entry.
-      expect(kinds).toEqual(["harness", "tool", "said", "tools", "result"]);
+      expect(kinds).toEqual(["harness", "tool", "assistant", "tools", "result"]);
       expect(popup.querySelector("[data-step=harness]")?.textContent).toBe(`Started on ${name}`);
-      expect(popup.querySelector("[data-step=said]")?.textContent).toContain('The typo is on line 1: "Relay keps".');
+      expect(popup.querySelector("[data-entry=assistant]")?.textContent).toContain('The typo is on line 1: "Relay keps".');
       // A run of steps folds into one line, in the same words on every harness, and opens to each one.
       const fold = popup.querySelector("[data-step=tools]")!;
       expect(fold.querySelector("summary")?.textContent).toBe("Edited a file and ran a command");
@@ -565,7 +565,7 @@ describe("the teammates screen", () => {
       // The reply lands after it opened, and moves nothing.
       await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
       const opened = feeds.scrolls.filter((s) => s.feed === body).length;
-      await waitFor(() => expect(popup.querySelector('[data-step="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
+      await waitFor(() => expect(popup.querySelector('[data-entry="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
       expect(feeds.scrolls.filter((s) => s.feed === body).length).toBe(opened);
       expect(body.scrollTop).toBe(4500);
     } finally {

@@ -9,7 +9,7 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import type { WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
-import type { ConversationEntry } from "../src/lib/conversation";
+import { linesOf, sent } from "./lines";
 import { Conversation } from "../src/components/Conversation";
 import { lookOf } from "../src/lib/looks";
 import { rosterEntry } from "./scripted-server";
@@ -27,7 +27,7 @@ describe("a sent line's status", () => {
     // 51 lines Lead sent; every one asked for and got a reply.
     const ids = Array.from({ length: 51 }, (_, i) => `m${String(i).padStart(2, "0")}`);
     const log = ids.flatMap((id) => [message(id, { replyRequested: true, answeredBy: `r_${id}` }), message(`r_${id}`, { from: "researcher", to: LEAD, inReplyTo: id })]);
-    const entries: ConversationEntry[] = ids.map((id) => ({ kind: "sent", id: `e_${id}`, messageId: id, to: "researcher", text: id }));
+    const lines = linesOf(ids.map((id) => sent(`e_${id}`, "q1", { messageId: id, to: "researcher", text: id })));
     const asked: string[][] = [];
     // The worker messages view as the server answers it: each asked id's row and its answer, nothing else (none are open).
     const client = {
@@ -38,7 +38,7 @@ describe("a sent line's status", () => {
       },
       subscribe: () => ({ close: () => {} }),
     } as unknown as Client;
-    const { Follower } = standInFollower("s1", { entries, running: false, stopping: false, backgroundRunning: 0 });
+    const { Follower } = standInFollower("s1", { lines, running: false, stopping: false, backgroundRunning: 0 });
     const view = render(
       <TestProvider client={client}>
         <Follower />

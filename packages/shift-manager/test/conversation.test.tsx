@@ -26,9 +26,18 @@ const lab = {
   snapshot: { orgId: "org_1", sessions: [], inventory: { ok: true, value: { workers: [] } } },
 };
 const upload = vi.fn();
-const workforce = { organization: async () => "org_1", ensureWorkerSession, upload };
+const retryTurn = vi.fn();
+const workforce = { organization: async () => "org_1", ensureWorkerSession, upload, retryTurn };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
+/** The session's turns, as workforce's session turns view reads them: how each ended, and whether the engine retries it. */
+let turns: Array<{ id: string; status: string; retryable?: boolean }> = [];
+vi.mock("@flow-state-dev/react", async (original) => {
+  const real = await original<typeof import("@flow-state-dev/react")>();
+  const turnsView = (await import("@flow-state-dev/workforce/browser")).sessionTurnsViewRef().view;
+  type Rest = Parameters<typeof real.useView> extends [unknown, ...infer R] ? R : never;
+  return { ...real, useView: (ref: { view: string }, ...rest: Rest) => (ref.view === turnsView ? { value: turns } : real.useView(ref as never, ...rest)) };
+});
 /**
  * Each follow a mounted conversation opened: the session, where its items go, and whether it
  * stopped. The follow's first answer is `read`'s; a case pushes what the session stream brings.
@@ -92,7 +101,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
 
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { Conversation } from "../src/components/Conversation";
-import { RECEIVED_MESSAGE_DATA_TYPE, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
+import { RECEIVED_MESSAGE_DATA_TYPE, TASK_RESULT_DATA_TYPE, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 
 // The reviewer's conversation: the session at its derived address, where a worker's message lands too.
 const s1 = await deriveWorkerSessionId({ userId: "u_1", orgId: "org_1", flow: "agent", criteria: { worker: "eng.reviewer" } });
@@ -112,6 +121,9 @@ beforeEach(() => {
   ensureWorkerSession.mockResolvedValue({ id: s1 });
   lab.refresh.mockReset();
   read.mockResolvedValue({ items: [], truncated: false });
+  retryTurn.mockReset();
+  retryTurn.mockResolvedValue(undefined);
+  turns = [];
 });
 afterEach(() => cleanup());
 
@@ -123,7 +135,8 @@ const drawnElement = (sessions: SessionSummary[], over: Partial<Parameters<typeo
     name="Reviewer"
     testId="rev"
     emptyText="Nothing said to the reviewer yet."
-    renderItem={(it) => <span data-testid="mine">{(it as unknown as { text: string }).text}</span>}
+    // The view draws the worker's messages its own way and leaves every other line to the registry, as a real view does.
+    renderItem={(it) => (it.type === "message" ? <span data-testid="mine">{(it as unknown as { text: string }).text}</span> : undefined)}
     {...over}
   />
 );
@@ -255,6 +268,48 @@ describe("what a view of its own draws", () => {
   it("says the worker has the line while one from this page is in flight", () => {
     drawn([], { working: true });
     expect(screen.getByTestId("rev-working").textContent).toContain("Reviewer is working on it");
+  });
+});
+
+describe("a turn that didn't finish", () => {
+  const typed = { id: "u1", requestId: "q1", type: "message", role: "user", status: "completed", ts: 1, content: [{ type: "input_text", text: "Ship it." }] };
+  const failure = { id: "e1", requestId: "q1", type: "error", status: "failed", ts: 2, message: "The model provider is down.", code: "PROVIDER_ERROR" };
+
+  it("says why it failed, with Retry when the engine retries it, which retries that turn in this session", async () => {
+    turns = [{ id: "q1", status: "failed", retryable: true }];
+    read.mockResolvedValue({ items: [typed, failure], truncated: false });
+    drawn([session(s1)]);
+    const line = await screen.findByTestId("request-recovery");
+    expect(line.textContent).toContain("The model provider is down.");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /Retry/ })));
+    expect(retryTurn).toHaveBeenCalledWith(s1, "q1");
+  });
+
+  it("offers no Retry on a turn the engine won't retry", async () => {
+    turns = [{ id: "q1", status: "failed", retryable: false }];
+    read.mockResolvedValue({ items: [typed, failure], truncated: false });
+    drawn([session(s1)]);
+    expect((await screen.findByTestId("request-recovery")).textContent).toContain("The model provider is down.");
+    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+  });
+
+  it("says you stopped it, after its last line", async () => {
+    turns = [{ id: "q1", status: "aborted" }];
+    read.mockResolvedValue({ items: [typed, item("a", "Half an ans")].map((it) => ({ ...it, requestId: "q1" })), truncated: false });
+    drawn([session(s1)]);
+    await screen.findAllByTestId("mine");
+    const lines = screen.getAllByTestId("rev-item");
+    expect(lines.at(-1)!.textContent).toContain("Interrupted by you");
+  });
+});
+
+describe("a task this worker filed", () => {
+  it("draws its result where the board ended it", async () => {
+    const ended = { id: "res1", requestId: "q2", type: "data", status: "completed", ts: 3, dataType: TASK_RESULT_DATA_TYPE, value: { taskId: "t1", from: "eng.coder", title: "Fix the flaky test", text: "Fixed: the retry raced the timer.", ending: "done" } };
+    read.mockResolvedValue({ items: [ended], truncated: false });
+    drawn([session(s1)]);
+    await waitFor(() => expect(screen.getAllByTestId("rev-item")).toHaveLength(1));
+    expect(screen.getByTestId("rev-item").textContent).toContain("Fixed: the retry raced the timer.");
   });
 });
 

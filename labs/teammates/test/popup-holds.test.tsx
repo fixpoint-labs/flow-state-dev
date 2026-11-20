@@ -170,7 +170,7 @@ describe("a coding task's popup answers what its run waits on you for", () => {
   it("a pending question or review sits below the scrolling feed, the header says so, and your verdict stays in the log", async () => {
     const popup = await playRun({ asks: true }).popup;
     const status = () => popup.querySelector("[data-overlay-status]")?.textContent;
-    const feedOf = () => popup.querySelector('[data-step="said"]')!.parentElement!;
+    const feedOf = () => popup.querySelector('[data-entry="assistant"]')!.parentElement!;
     const belowFeed = (panel: HTMLElement) => {
       const feed = feedOf();
       expect(feed.contains(panel)).toBe(false);
@@ -178,7 +178,7 @@ describe("a coding task's popup answers what its run waits on you for", () => {
     };
 
     const asked = await within(popup).findByRole("region", { name: "Waiting on you" }, { timeout: 2000 });
-    await waitFor(() => expect(popup.querySelector('[data-step="said"]')).not.toBeNull());
+    await waitFor(() => expect(popup.querySelector('[data-entry="assistant"]')).not.toBeNull());
     belowFeed(asked);
     expect(status()).toBe("Waiting on you");
     fireEvent.change(within(asked).getByLabelText("Your answer"), { target: { value: "Only line 1." } });

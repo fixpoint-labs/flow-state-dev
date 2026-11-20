@@ -156,9 +156,9 @@
     // Kitchen Sink's byte copy of the registry's request-recovery: its failed-turn
     // line draws `RequestRecovery`; `INTERRUPTED_REASON` is for apps that word their own.
     "apps/kitchen-sink/components/flow-state/request-recovery.tsx",
-    // Shift Manager's byte-identical copy of the registry's error.tsx, whose
-    // `ErrorBody` export is for `request-recovery`, which it doesn't draw yet.
-    "packages/shift-manager/src/components/flow-state/error.tsx",
+    // Shift Manager's byte copy of the registry's request-recovery: its failed and stopped
+    // turn lines draw `RequestRecovery`; `INTERRUPTED_REASON` is for apps that word their own.
+    "packages/shift-manager/src/components/flow-state/request-recovery.tsx",
     // Kitchen Sink's copy of the registry's run-changes, which the registry
     // drift test requires installed; its Changes section imports it later.
     "apps/kitchen-sink/components/flow-state/run-changes.tsx",

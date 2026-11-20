@@ -43,7 +43,7 @@ const listed = (id: string, status: string, times: { updatedAt: number; startedA
 async function panel(rows: CodingBoardTask[], connection: SessionConnectionStatus = "live", data: StubData = {}) {
   const { client } = stubServer(Object.assign(data, { board: { s1: rows } }));
   // Only the conversation's connection, which a stale feed greys the panel by.
-  const { Follower } = standInFollower("s1", { entries: [], running: false, stopping: false, backgroundRunning: 0 }, connection);
+  const { Follower } = standInFollower("s1", { lines: [], running: false, stopping: false, backgroundRunning: 0 }, connection);
   render(
     <TestProvider client={client}>
       <Follower />

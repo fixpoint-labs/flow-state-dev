@@ -344,11 +344,11 @@ A conversation screen draws **lines**, not items. React's `conversationLines(ite
 | Line (`ItemLine.kind`) | From | What the model decides |
 |---|---|---|
 | `user`, `assistant` | `message` | An assistant line is `streaming` while its turn runs, `incomplete` when its turn failed or was stopped first; a reply that ended saying nothing is no line |
-| `steps` | `tool_output`, `reasoning` | One turn's calls and the thinking between them, one after another; never spans two turns. `ended` once its turn is over |
+| `steps` | `tool_output`, `reasoning` | One turn's calls and the thinking between them, one after another; never spans two turns. `ended` once its turn is over. `ItemsRenderer` hands a `toolGroupRenderer` the line itself |
 | `failed` | `error` | `retryable` only on the newest turn that drew a line, and only when that turn's `retryable` (set by the engine, see [action forms](./action-forms.md)) says so |
 | `stopped` | the turn (`aborted`) | Not an item: placed after that turn's last line. The registry's `stopped` slot draws it |
 | `suspension` | `suspension` | Carries its `resolution` once a `suspension_resume` answers it |
-| `data` | `data` | Drawn by the renderer registered for its `dataType` |
+| `data` | `data` | Drawn by the renderer registered for its `dataType`. Given the registry in use (`renderers`), a `data` item it has no renderer for, or turns off, is a record and makes no line (no renderer, no line), so a board pass's change record never takes Retry off the failed turn before it |
 | `item` | anything else | Drawn by the registry |
 
 The filters `ItemsRenderer` always applied run first (latest keyed snapshot, sub-agent and trace items out, container-owned items left to their container). Records that draw nothing (`state_change`, `resource_change`, `suspension_resume`, `continuation`) make no line.
