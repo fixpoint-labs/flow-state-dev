@@ -1,8 +1,11 @@
 import type { FileContent } from "@flow-state-dev/core/items";
 import { interruptChordLabel, isSendKey, useDraftSend } from "@flow-state-dev/react";
-import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
+import { ArrowUpIcon, ChevronDownIcon } from "lucide-react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { harnessName, harnessState, harnessWarning, withHarness, type HarnessState } from "../lib/harness";
 import { cn } from "../lib/utils";
 import { AttachButton, AttachmentStrip, useAttachments, type AttachmentUploader } from "./flow-state/attachments";
+import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 
 /**
  * Where you type to the open worker. Enter or Cmd+Enter (Ctrl+Enter) sends,
@@ -33,6 +36,13 @@ import { AttachButton, AttachmentStrip, useAttachments, type AttachmentUploader 
  * the end; nothing is sent. It calls `onPrefilled` once the words are in, so
  * the parent drops them: a box that closes and reopens (a switch away and
  * back) must not add them again.
+ *
+ * The toolbar under the text picks the harness a coding task you ask for runs
+ * on: the lab's default until you pick another, which then rides on each line
+ * as one `Coding harness: …` line (`withHarness`) while the conversation is
+ * open. When that harness can't run here, a warning under the box says why
+ * before you send and offers the harnesses that can; nothing is blocked, since
+ * most lines ask for no coding at all.
  */
 export function Composer({
   sessionId,
@@ -47,7 +57,13 @@ export function Composer({
   onSend,
   prefill,
   onPrefilled,
+  harnesses,
+  defaultHarness,
 }: {
+  /** Which coding harnesses can run here, or `undefined` while the first read is out. No rows: no harness picker. */
+  harnesses?: readonly HarnessReadinessChipRow[];
+  /** The harness a coding task runs on when none is picked (the lab's default). */
+  defaultHarness?: string;
   /** A line to put in the box, as a starter line's click hands it; `at` makes a second click of the same line count. Never sent by itself. */
   seed?: { text: string; at: number };
   /** The conversation it types to; `/` and a switch find its composer by it. */
@@ -72,6 +88,13 @@ export function Composer({
   onPrefilled?: () => void;
 }) {
   const attachments = useAttachments({ client: uploader, sessionId });
+  // The harness picked for this conversation; a switch to another conversation starts from the default again.
+  const [pick, setPick] = useState<{ sessionId: string; harness: string }>();
+  const picked = pick?.sessionId === sessionId ? pick.harness : undefined;
+  const choose = (harness: string) => setPick({ sessionId, harness });
+  const coding = picked ?? defaultHarness;
+  const warning = harnessWarning(harnesses, coding);
+  const labelId = useId();
   const { text, setText, sending: busy, failure: error, submit, canSend } = useDraftSend("teammates:draft", sessionId, attachments);
   const current = useRef(text);
   current.current = text;
@@ -99,7 +122,7 @@ export function Composer({
   }, [seed]);
   const send = () => {
     if (!canSend || busy) return;
-    void submit(onSend);
+    void submit((typed, files) => onSend(withHarness(typed, picked, defaultHarness), files));
   };
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -123,14 +146,18 @@ export function Composer({
         <div
           {...attachments.dropTarget}
           data-dragging={attachments.dragging ? "true" : undefined}
-          className={cn("rounded-3xl border border-border bg-card px-3 py-2 focus-within:border-ring", attachments.dragging && "border-ring bg-accent/40")}
+          className={cn(
+            "rounded-xl border border-border-strong bg-surface shadow-[0_8px_28px_-12px_rgb(0_0_0/0.7)] focus-within:border-ring",
+            attachments.dragging && "border-ring bg-accent/40",
+          )}
         >
-          <AttachmentStrip attachments={attachments} className="px-1 pb-1 empty:hidden" />
-          <div className="flex items-end gap-2">
-          <AttachButton attachments={attachments} className="rounded-full" />
+          <AttachmentStrip attachments={attachments} className="px-3 pt-3 empty:hidden" />
+          <label htmlFor={labelId} className="sr-only">
+            Message {workerName}
+          </label>
           <textarea
             ref={box}
-            aria-label={`Message ${workerName}`}
+            id={labelId}
             data-composer
             data-session-id={sessionId}
             rows={1}
@@ -139,27 +166,62 @@ export function Composer({
             onKeyDown={onKeyDown}
             onPaste={attachments.onPaste}
             placeholder={`Message ${workerName}…`}
-            className="block field-sizing-content max-h-48 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1 text-base outline-none placeholder:text-muted-foreground"
+            className="block field-sizing-content max-h-48 min-h-14 w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 pb-1 text-[14.5px] leading-[1.6] outline-none placeholder:text-text-3"
           />
-          {running || stopping ? (
+          <div className="flex items-center gap-1 px-2 pb-2">
+            <AttachButton
+              attachments={attachments}
+              className="size-8 rounded-sm text-text-2 hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+            />
+            {harnesses !== undefined && harnesses.length > 0 ? (
+              <HarnessPicker rows={harnesses} current={coding} fallback={defaultHarness} onPick={choose} />
+            ) : null}
+            <span className="ml-auto hidden font-mono text-[11px] text-text-3 sm:inline">⏎ send · ⇧⏎ newline</span>
+            {running || stopping ? (
+              <button
+                type="button"
+                onClick={onStop}
+                disabled={stopping}
+                className="h-8 rounded-sm border border-border-strong px-3 text-xs font-semibold text-destructive hover:bg-surface-raised disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                {stopping ? "Stopping…" : "Stop"}
+              </button>
+            ) : null}
             <button
-              type="button"
-              onClick={onStop}
-              disabled={stopping}
-              className="rounded-full border border-border px-3 py-1 text-sm font-semibold text-destructive hover:bg-accent disabled:opacity-60"
+              type="submit"
+              aria-label={busy ? "Sending…" : "Send"}
+              title={busy ? "Sending…" : "Send"}
+              disabled={!canSend || busy}
+              className="grid size-8 place-items-center rounded-sm bg-brand text-brand-foreground hover:brightness-110 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
-              {stopping ? "Stopping…" : "Stop"}
+              <ArrowUpIcon className="size-4" aria-hidden />
             </button>
-          ) : null}
-          <button
-            type="submit"
-            disabled={!canSend || busy}
-            className="rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground disabled:opacity-40"
-          >
-            {busy ? "Sending…" : "Send"}
-          </button>
           </div>
         </div>
+        {warning === undefined ? null : (
+          <p role="status" data-testid="harness-warning" className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-warning-text">
+            <span>
+              {warning.label} can't run coding tasks here{warning.why === null ? "" : `: ${warning.why}`}.
+            </span>
+            {warning.ready.length === 0 ? (
+              <span>No coding harness is ready.</span>
+            ) : (
+              <>
+                <span>Use</span>
+                {warning.ready.map((row) => (
+                  <button
+                    key={row.harness}
+                    type="button"
+                    onClick={() => choose(row.harness)}
+                    className="rounded-sm border border-warning-line bg-warning-soft px-2 py-0.5 font-medium text-warning-text hover:brightness-125 focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    {row.label}
+                  </button>
+                ))}
+              </>
+            )}
+          </p>
+        )}
         {running && stopRefused !== undefined ? (
           <p role="alert" className="mt-1 text-xs text-destructive">
             Not stopped: {stopRefused}
@@ -181,5 +243,96 @@ export function Composer({
         ) : null}
       </div>
     </form>
+  );
+}
+
+const DOT: Record<HarnessState, string> = { ready: "bg-success", "not-ready": "bg-warning", unknown: "bg-presence-idle" };
+const STATE_WORDS: Record<HarnessState, string> = { ready: "ready", "not-ready": "not ready", unknown: "not checked" };
+
+/**
+ * The toolbar's harness picker: a dot for whether the current harness can run
+ * here and its name; opens a list of every harness with the same dot, the
+ * default marked. Esc or a click elsewhere closes it, and Esc there never
+ * counts toward the composer's Esc Esc stop.
+ */
+function HarnessPicker({
+  rows,
+  current,
+  fallback,
+  onPick,
+}: {
+  rows: readonly HarnessReadinessChipRow[];
+  current: string | undefined;
+  fallback: string | undefined;
+  onPick: (harness: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+  const row = rows.find((r) => r.harness === current);
+  const state = row === undefined ? "unknown" : harnessState(row);
+  const name = row?.label ?? (current === undefined ? "Harness" : harnessName(current));
+  return (
+    <div
+      ref={root}
+      className="relative"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !open) return;
+        event.stopPropagation();
+        setOpen(false);
+        button.current?.focus();
+      }}
+    >
+      <button
+        ref={button}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Coding harness: ${name}, ${STATE_WORDS[state]}`}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-8 items-center gap-1.5 rounded-sm px-2 text-xs text-text-2 hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        <span aria-hidden className={cn("size-1.5 rounded-full", DOT[state])} />
+        {name}
+        <ChevronDownIcon aria-hidden className="size-3.5" />
+      </button>
+      {open ? (
+        <div role="menu" aria-label="Coding harness" className="absolute bottom-full left-0 z-20 mb-1 min-w-52 rounded-md border border-border-strong bg-surface p-1 shadow-lg">
+          {rows.map((r) => {
+            const s = harnessState(r);
+            return (
+              <button
+                key={r.harness}
+                type="button"
+                role="menuitemradio"
+                aria-checked={r.harness === current}
+                onClick={() => {
+                  onPick(r.harness);
+                  setOpen(false);
+                  button.current?.focus();
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-ring",
+                  r.harness === current && "bg-surface-raised",
+                )}
+              >
+                <span aria-hidden className={cn("size-1.5 rounded-full", DOT[s])} />
+                <span className="text-foreground">{r.label}</span>
+                {r.harness === fallback ? <span className="text-text-3">default</span> : null}
+                <span className="ml-auto text-text-3">{STATE_WORDS[s]}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }

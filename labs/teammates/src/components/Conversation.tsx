@@ -318,6 +318,8 @@ export function Conversation({
         prefill={prefill}
         onPrefilled={onPrefilled}
         uploader={calls}
+        harnesses={harnesses}
+        defaultHarness={context?.harness}
         onSend={(text, attachments) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();
