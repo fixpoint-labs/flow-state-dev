@@ -15,7 +15,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useAppClient, useConversation, useTasks } from "../app";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
 import { stepOf } from "../components/flow-state/conversation-lines";
-import { holdOf, taskStatus, titleOf, workerOf } from "./task";
+import { attemptStartedAt, holdOf, taskStatus, titleOf, workerOf } from "./task";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom, useTalk } from "./talk";
 import { age, useNow } from "./use-watch";
@@ -88,7 +88,7 @@ export function freshEndings(tasks: readonly CodingBoardTask[], now: number, isC
 /**
  * The status line, in plain words, and its tone: "Needs your OK: …",
  * "Waiting on you: …", "Replying to you", "Replying to researcher",
- * "Running coding task: X", "Coding task finished: X", "Coding task
+ * "Running coding task: X", "Running 3 tasks · X" (X the newest), "Coding task finished: X", "Coding task
  * failed: X", "Messaging writer", or "Idle".
  */
 export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: string) => string, isCoding: (id: string) => boolean): Status {
@@ -106,8 +106,10 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
     const from = given?.kind === "data" ? (given.item.value as { from?: string })?.from : undefined;
     return plain(from !== undefined ? `Replying to ${nameOf(from)}` : "Replying to you");
   }
-  const coding = tasks.find((t) => taskStatus(t) === "running" && isCoding(workerOf(t)));
-  if (coding) return plain(`Running coding task: ${titleOf(coding)}`);
+  // The newest running task names the line: an old one left running must not hide the one you just started.
+  const coding = tasks.filter((t) => taskStatus(t) === "running" && isCoding(workerOf(t))).sort((a, b) => (attemptStartedAt(b) ?? 0) - (attemptStartedAt(a) ?? 0));
+  if (coding.length === 1) return plain(`Running coding task: ${titleOf(coding[0]!)}`);
+  if (coding.length > 1) return plain(`Running ${coding.length} tasks · ${titleOf(coding[0]!)}`);
   const ended = freshEndings(tasks, now, isCoding)[0];
   if (ended) {
     const state = taskPresentation(ended);

@@ -754,7 +754,7 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
     const look = (worker: HTMLElement) => {
       const avatar = worker.querySelector<HTMLElement>("[data-avatar]")!;
-      return [avatar.textContent, avatar.dataset.avatar];
+      return [avatar.dataset.icon, avatar.dataset.avatar];
     };
     expect(look(workerRow("Lead"))).toEqual(["★", "amber"]);
     expect(look(workerRow("researcher"))).toEqual(["🔎", "teal"]);
@@ -771,7 +771,7 @@ describe("the teammates screen", () => {
   it("gives a teammate whose file sets no look its initial, on a color of the palette", async () => {
     render(<TestProvider server={fast()}><App /></TestProvider>);
     await screen.findByLabelText("Message Lead");
-    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Hire a teammate" })[0]!);
     const form = screen.getByRole("form", { name: "Hire a teammate" });
     fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "tester" } });
     fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Runs the tests." } });
@@ -809,7 +809,7 @@ describe("the teammates screen", () => {
   it("hires with Cmd+Enter in the instructions and saves new ones with Ctrl+Enter, never from a form that can't send yet", async () => {
     render(<TestProvider server={fast()}><App /></TestProvider>);
     await screen.findByLabelText("Message Lead");
-    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Hire a teammate" })[0]!);
     const form = screen.getByRole("form", { name: "Hire a teammate" });
     const instructions = within(form).getByLabelText("Teammate instructions");
     // No name or role yet: the shortcut sends nothing, as the disabled button wouldn't.
@@ -881,7 +881,7 @@ describe("the teammates screen", () => {
     // A worker from the files has no fire control.
     expect(within(conversation()).queryByRole("button", { name: "Fire" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Hire a teammate" })[0]!);
     const form = screen.getByRole("form", { name: "Hire a teammate" });
     fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "Tester" } });
     fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Runs the tests." } });
