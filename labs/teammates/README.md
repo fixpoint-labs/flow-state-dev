@@ -270,7 +270,9 @@ checkout that doesn't. The checkout's own branch and working tree are never chan
   operator alone (workforce's `operatorGitHub`); `fsdev dev` ticks the polls and the clock routines,
   each from a SQLite file of its own beside the store.
 - Every request is the lab's own user in the lab's own org, never a user the request names: the
-  operator-only GitHub token is gated on it. A consult of another conversation reads on a smaller
+  operator-only GitHub token is gated on it. `openTeammates`'s `user` option, which names the user
+  each request is (the lab's own when it names none), is for a goal's host that needs two users
+  in that org; `fsdev.config.mts` never sets it. A consult of another conversation reads on a smaller
   model (`intent/utility`).
 
 Durable, on SQLite: a worker message a busy host turned away is sent again on its session's wake,
