@@ -695,9 +695,11 @@ describe("a lab whose server code changed", () => {
   });
 
   it("puts the changed pill's script only on a restartable app's pages", () => {
-    // The pill polls the app list; an app that can't be restarted has no reason to.
+    // The pill polls the app list; an app that can't be restarted has no reason to. (The app switcher
+    // reads the same list, but only when its menu is opened, so it isn't a poll.)
     assert.match(buttonScript(apps[1], { restartable: true }), /x-super-app-restart/);
-    assert.doesNotMatch(buttonScript(apps[0]), /apps\.json/);
+    assert.doesNotMatch(buttonScript(apps[0]), /"restart":\{/);
+    assert.doesNotMatch(buttonScript(apps[0]), /x-super-app-restart/);
   });
 
   it("restarts on a POST that carries the restart header", async () => {
