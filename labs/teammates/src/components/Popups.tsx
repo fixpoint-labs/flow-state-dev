@@ -13,7 +13,7 @@ import {
 } from "../app";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
-import { waitsFor, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, titleOf, waitsOnPullRequest as onPullRequest, workerOf } from "../lib/task";
+import { waitsFor, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, waitsOnPullRequest, workerOf } from "../lib/task";
 import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -163,7 +163,7 @@ export interface FollowUp {
 }
 
 /** What a follow-up puts in the filer's composer: the task by its title, and room for what to do next. */
-const followUpText = (task: CodingBoardTask) => `Follow up on "${titleOf(task)}": `;
+const followUpText = (task: CodingBoardTask) => `Follow up on "${task.title}": `;
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
 export function PopupView({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
@@ -217,7 +217,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const steps = work.lines;
   const to = task === undefined ? "" : workerOf(task);
   const coding = task !== undefined && isCoding(to);
-  const line = task ? taskLine({ title: titleOf(task), to }, coding, nameOf) : "Task";
+  const line = task ? taskLine({ title: task.title, to }, coding, nameOf) : "Task";
   // A teammate's task carries its look; a coding task is nobody's.
   const harness = task === undefined ? undefined : harnessOf(task);
   const on = task === undefined ? undefined : runsOn({ harness, model: modelOf(task) });
@@ -260,12 +260,12 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
     ) : task && waiting === "question" ? (
       <QuestionPopup task={task} answer={actions.answer} />
     ) : null;
-  const waitsOnPullRequest = task !== undefined && onPullRequest(task);
+  const onPullRequest = task !== undefined && waitsOnPullRequest(task);
   const answer = task?.detail?.answer ?? undefined;
   return (
-    <SessionOverlay variant="modal" label={line} title={title} status={waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : waitsOnPullRequest ? "PR open" : status} onClose={onClose} footer={pinned}>
+    <SessionOverlay variant="modal" label={line} title={title} status={waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : onPullRequest ? "PR open" : status} onClose={onClose} footer={pinned}>
       {/* Its run is done and its work is a pull request: open until it merges or closes. The Steer box wakes it to check. */}
-      {task !== undefined && waitsOnPullRequest ? <PullRequestOpen task={task} /> : null}
+      {task !== undefined && onPullRequest ? <PullRequestOpen task={task} /> : null}
       {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} steer rerun={rerun} />}
       {/* What a coding task's run changed, what it ran and how long it took, without opening a step. */}
       {task && coding ? <TaskSummary task={task} steps={steps} /> : null}
@@ -319,7 +319,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
         </section>
       ) : null}
       {/* The live line ends the feed while it runs: until its first step, the line above says it is starting; a task waiting on you isn't working. */}
-      {task && status === "running" && holdOf(task) === undefined && !waitsOnPullRequest && task.run?.sessionId !== undefined && steps.length > 0 ? (
+      {task && status === "running" && holdOf(task) === undefined && !onPullRequest && task.run?.sessionId !== undefined && steps.length > 0 ? (
         <StreamingIndicator message={workingStatus({ ...work.working, note: task.statusNote })} since={attemptStartedAt(task)} />
       ) : null}
     </SessionOverlay>

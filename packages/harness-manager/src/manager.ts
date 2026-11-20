@@ -980,6 +980,9 @@ const landedSchema = z.discriminatedUnion("kind", [
     // FIX-2781; BP-030.
     /** `true` when the pull request was already open from the branch, which was pushed to it. Absent on one an accept opened. */
     existing: z.boolean().optional(),
+    // FIX-2858; BP-030.
+    /** The run's base, gone from the remote, when the pull request went into the default branch instead. */
+    baseGone: z.string().optional(),
   }),
   z.object({ kind: z.literal("merge"), branch: z.string(), commit: z.string(), checkout: z.string(), from: z.string() }),
 ]);
@@ -1520,16 +1523,29 @@ function landedLine(landed: Landed): string {
   return landed.kind === "pull-request"
     ? landed.existing === true
       ? `Pushed ${landed.branch} to pull request #${landed.number}, already open into ${landed.base}: ${landed.url}. Next: review and merge it.`
-      : `Opened pull request #${landed.number} from ${landed.branch} into ${landed.base}: ${landed.url}. Next: review and merge it.`
+      : `Opened pull request #${landed.number} from ${landed.branch} into ${landed.base}: ${landed.url}.` +
+        (landed.baseGone === undefined ? "" : ` ${landed.baseGone} is gone from the remote, so it goes into ${landed.base}, the default branch.`) +
+        ` Next: review and merge it.`
     : `Merged ${landed.from} into ${landed.branch} in ${landed.checkout}, now at ${landed.commit.slice(0, 12)}. Next: push ${landed.branch} when you're ready.`;
 }
 
-// FIX-2658.
+// FIX-2658, FIX-2858.
 /**
- * Landing refusals no coding run can fix: the host can't land here, or its
- * remote can't be used. These go straight back to the person.
+ * Landing refusals no coding run can fix: the host can't land here, its
+ * remote can't be used, or GitHub refused the pull request itself (the only
+ * thing a run could do about that is open one on its own, outside the
+ * landing). These go straight back to the person.
  */
-const UNFIXABLE_LANDINGS = new Set(["land-unsupported", "no-push-remote", "no-pull-request-repo", "remote-repointed", "base-unknown"]);
+const UNFIXABLE_LANDINGS = new Set([
+  "land-unsupported",
+  "no-push-remote",
+  "no-pull-request-repo",
+  "remote-repointed",
+  "base-unknown",
+  "base-gone",
+  "pull-request-failed",
+  "pull-request-gone",
+]);
 
 /** What the feed and the review asked again say when landing failed: the run's commits are still on its branch. */
 function landFailedLine(failed: { land: LandHow; message: string }, others: boolean): string {

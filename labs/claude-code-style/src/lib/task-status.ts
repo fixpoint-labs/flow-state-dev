@@ -1,8 +1,21 @@
-import type { TaskStatus } from "../app";
-import type { TaskSignalKind } from "../components/flow-state/task-signals";
+import type { CodingBoardTask, TaskStatus } from "../app";
+import type { TaskSignalKind, TaskSignalRun, TaskSignalView } from "../components/flow-state/task-signals";
 
-/** The endings a task stays in: its row moves to the tasks pane's *Done* group, and its progress note no longer says anything. */
-export const FINISHED: ReadonlySet<TaskStatus> = new Set(["completed", "errored", "cancelled"]);
+/**
+ * A coding board row as the registry's `TaskTime` reads it: the view's
+ * `state` and the row's times, and this attempt's run start and lease
+ * deadline. The registry item takes orchestration's `TaskView` shape, which
+ * the row doesn't carry whole.
+ */
+export function timeSignalOf(task: Pick<CodingBoardTask, "state" | "updatedAt" | "completedAt" | "run" | "leaseUntil">): { view: TaskSignalView; run: TaskSignalRun } {
+  return {
+    view: { state: task.state, times: { updatedAt: task.updatedAt ?? null, completedAt: task.completedAt ?? null } },
+    run: { startedAt: task.run?.startedAt ?? null, leaseUntil: task.leaseUntil ?? null },
+  };
+}
+
+/** The endings a task stays in: its row moves to the tasks pane's *Done* group, and its progress note no longer says anything. Read with a row's stored status, whatever its word. */
+export const FINISHED: ReadonlySet<string> = new Set(["completed", "errored", "cancelled"]);
 
 /** How the pane names a task's status, and the token its dot and label take. */
 export const TASK_STATUS: Record<TaskStatus, { label: string; tone: string; dot: string }> = {

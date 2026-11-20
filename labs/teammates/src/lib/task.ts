@@ -5,9 +5,10 @@
  * answer send. Functions over the view's row, read with `?.` and `== null`:
  * the screen keeps no row type of its own.
  */
-import { taskView, type InboxAnswer, type RefileOverrides, type TaskView } from "@flow-state-dev/orchestration/inbox";
+import type { InboxAnswer, RefileOverrides } from "@flow-state-dev/orchestration/inbox";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import type { ReviewAnswer } from "../components/flow-state/review-hold";
+import type { TaskSignalRun, TaskSignalView } from "../components/flow-state/task-signals";
 import { harnessName } from "./harness";
 
 /** A task's status in the screen's words: `cancelled` is its own ending, since a task someone withdrew did not fail. */
@@ -17,9 +18,6 @@ export function taskStatus(task: Pick<CodingBoardTask, "status">): "running" | "
 
 /** The worker it was filed for; none for a task filed to nobody. */
 export const workerOf = (task: Pick<CodingBoardTask, "assignee">): string => task.assignee ?? "";
-
-/** Its line's words: its title, else its goal. */
-export const titleOf = (task: Pick<CodingBoardTask, "title" | "goal">): string => task.title ?? task.goal;
 
 /** What it waits on you for while something does: its oldest open hold, as the view read it. */
 export const holdOf = (task: Pick<CodingBoardTask, "asks">) => task.asks[0];
@@ -36,9 +34,6 @@ export const harnessOf = (task: Pick<CodingBoardTask, "harness">): string | unde
 /** The model its run reported, when it reported one; never guessed. */
 export const modelOf = (task: Pick<CodingBoardTask, "spend">): string | undefined => task.spend?.model ?? undefined;
 
-/** The row as orchestration's `taskView` reads it, with the view's own holds: its state and times, for its time signal and the counts. */
-export const viewOf = (task: CodingBoardTask, board = ""): TaskView => taskView({ ...task, board } as Parameters<typeof taskView>[0], task.asks);
-
 /** When this attempt's run started: its run link's start, else the task's own (a retry keeps its first start). */
 export const attemptStartedAt = (task: Pick<CodingBoardTask, "run" | "startedAt">): number | undefined => task.run?.startedAt ?? task.startedAt;
 
@@ -53,11 +48,18 @@ export const runsNow = (task: Pick<CodingBoardTask, "status" | "leaseUntil">, no
 /** Whether it waits on its pull request: its run ended, and it stays open until the pull request merges or closes. */
 export const waitsOnPullRequest = (task: Pick<CodingBoardTask, "status" | "pullRequests">): boolean => task.status === "in_progress" && task.pullRequests.length > 0;
 
-/** Its run's start and lease deadline, for the time signal; each absent until the row has it. */
-export const runTimesOf = (task: Pick<CodingBoardTask, "run" | "leaseUntil">) => ({
-  ...(typeof task.run?.startedAt === "number" ? { startedAt: task.run.startedAt } : {}),
-  ...(typeof task.leaseUntil === "number" ? { leaseUntil: task.leaseUntil } : {}),
-});
+/**
+ * A coding board row as the registry's `TaskTime` reads it: the view's
+ * `state` and the row's times, and this attempt's run start and lease
+ * deadline. The registry item takes orchestration's `TaskView` shape, which
+ * the row doesn't carry whole.
+ */
+export function timeSignalOf(task: Pick<CodingBoardTask, "state" | "updatedAt" | "completedAt" | "run" | "leaseUntil">): { view: TaskSignalView; run: TaskSignalRun } {
+  return {
+    view: { state: task.state, times: { updatedAt: task.updatedAt ?? null, completedAt: task.completedAt ?? null } },
+    run: { startedAt: task.run?.startedAt ?? null, leaseUntil: task.leaseUntil ?? null },
+  };
+}
 
 /**
  * How long this attempt ran: from its start (the run link's, so a retry times
@@ -76,10 +78,10 @@ export function attemptDurationMs(task: Pick<CodingBoardTask, "status" | "run" |
  * its brief (read whole, `context`) with one line added naming the task it
  * re-runs, by title, so the old brief is kept and the link shows.
  */
-export function rerunOverrides(task: Pick<CodingBoardTask, "status" | "title" | "goal" | "harness">, context: string | undefined, worker: string): RefileOverrides {
+export function rerunOverrides(task: Pick<CodingBoardTask, "status" | "title" | "harness">, context: string | undefined, worker: string): RefileOverrides {
   const ended = task.status === "cancelled" ? "was cancelled" : "failed";
   const on = harnessOf(task);
-  const line = `This re-runs the task "${titleOf(task)}", which ${ended}${on === undefined ? "" : ` on ${on}`}.`;
+  const line = `This re-runs the task "${task.title}", which ${ended}${on === undefined ? "" : ` on ${on}`}.`;
   return { assignee: worker, context: context === undefined || context === "" ? line : `${context}\n\n${line}` };
 }
 

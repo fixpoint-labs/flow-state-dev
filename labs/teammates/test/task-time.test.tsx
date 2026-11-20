@@ -5,11 +5,11 @@
  * lease lapsed, the board's own rule) reads *quiet* in the warning colour, but
  * never while the panel's feed is stale, an ended row says how long ago it
  * ended, and the heading counts each state. The screen reads what the signal
- * needs from the coding board view's row: its `taskView`, its run's start and
+ * needs from the coding board view's row: its `state`, its run's start and
  * its lease.
  *
  * Red states produced before this was trusted: the row's words drawn without
- * the signal (the panel case fails), `runTimesOf` dropping `leaseUntil` (the
+ * the signal (the panel case fails), `timeSignalOf` dropping `leaseUntil` (the
  * row and quiet cases fail), the panel passing `stale` as false (the stale
  * case fails).
  */
@@ -19,7 +19,7 @@ import type { SessionConnectionStatus } from "@flow-state-dev/client";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { rosterEntry } from "./scripted-server";
 import { TeammatePanel } from "../src/components/TeammatePanel";
-import { runTimesOf, viewOf } from "../src/lib/task";
+import { timeSignalOf } from "../src/lib/task";
 import { codingTask, standInFollower, stubServer, TestProvider, type StubData } from "./stub-server";
 
 afterEach(cleanup);
@@ -58,9 +58,8 @@ async function panel(rows: CodingBoardTask[], connection: SessionConnectionStatu
 describe("a teammate's tasks and their time", () => {
   it("reads the row's view, its run's start and its lease from the board's row", () => {
     const task = listed("t1", "in_progress", { updatedAt: 5, startedAt: 3, leaseUntil: 120_005 });
-    expect(viewOf(task).state).toBe("running");
-    expect(runTimesOf(task)).toEqual({ startedAt: 3, leaseUntil: 120_005 });
-    expect(runTimesOf(listed("t2", "pending", { updatedAt: 5 }))).toEqual({});
+    expect(timeSignalOf(task)).toEqual({ view: { state: "running", times: { updatedAt: 5, completedAt: null } }, run: { startedAt: 3, leaseUntil: 120_005 } });
+    expect(timeSignalOf(listed("t2", "pending", { updatedAt: 5 })).run).toEqual({ startedAt: null, leaseUntil: null });
   });
 
   it("times a working run, marks one that stopped answering quiet, ages an ended one, and counts each state", async () => {

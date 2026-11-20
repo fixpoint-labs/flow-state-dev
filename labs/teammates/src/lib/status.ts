@@ -16,7 +16,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useAppClient, useConversation, useTasks } from "../app";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
 import { stepOf } from "../components/flow-state/conversation-lines";
-import { holdOf, runsNow, taskStatus, titleOf, waitsOnPullRequest, workerOf } from "./task";
+import { holdOf, runsNow, taskStatus, waitsOnPullRequest, workerOf } from "./task";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom, useTalk } from "./talk";
 import { age, useNow } from "./use-watch";
@@ -110,13 +110,13 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
   }
   // Running only while a run holds its lease: a task kept open with no run on it claims nothing.
   const coding = tasks.find((t) => runsNow(t, now) && isCoding(workerOf(t)));
-  if (coding) return plain(`Running coding task: ${titleOf(coding)}`);
+  if (coding) return plain(`Running coding task: ${coding.title}`);
   const merging = tasks.find((t) => waitsOnPullRequest(t) && isCoding(workerOf(t)));
-  if (merging) return plain(`Waiting on its pull request: ${titleOf(merging)}`);
+  if (merging) return plain(`Waiting on its pull request: ${merging.title}`);
   const ended = freshEndings(tasks, now, isCoding)[0];
   if (ended) {
     const state = taskPresentation(ended);
-    return { text: `Coding task ${ended.status === "errored" ? state.word : "finished"}: ${titleOf(ended)}`, tone: state.tone, needsYou: false };
+    return { text: `Coding task ${ended.status === "errored" ? state.word : "finished"}: ${ended.title}`, tone: state.tone, needsYou: false };
   }
   const waiting = owedRepliesFrom(worker, [...talk]);
   if (waiting.length > 0) return plain(`Messaging ${waiting.map(nameOf).join(", ")}`);

@@ -4,21 +4,22 @@
  * mark the lab keeps.
  */
 import { describe, expect, it } from "vitest";
-import type { AppTask } from "../src/app";
+import type { CodingBoardTask } from "../src/app";
+import { ask, codingBoardTask } from "./coding-board-task";
 import { columnOf, dismissalKey, waitingOnYou } from "../src/lib/columns";
 
-const task = (patch: Partial<AppTask>): AppTask => ({ id: "t", title: "t", goal: "g", status: "in_progress", ...patch });
+const task = (patch: Partial<CodingBoardTask>): CodingBoardTask => codingBoardTask({ id: "t", title: "t", goal: "g", ...patch });
 
 describe("columnOf", () => {
   it.each([
     ["pending", task({ status: "pending" }), "working"],
     ["in progress", task({}), "working"],
     ["held with no open question", task({ status: "held" }), "working"],
-    ["held on a question", task({ status: "held", openHold: { kind: "question", prompt: "EU or US?" } }), "waiting"],
-    ["waiting on your input", task({ status: "in_progress", openHold: { kind: "input", prompt: "Which plan?" } }), "waiting"],
-    ["waiting on your approval", task({ status: "in_progress", openHold: { kind: "approval", prompt: "Send it?" } }), "waiting"],
+    ["held on a question", task({ status: "held", asks: [ask("question", "EU or US?")] }), "waiting"],
+    ["waiting on your input", task({ status: "in_progress", asks: [ask("input", "Which plan?")] }), "waiting"],
+    ["waiting on your approval", task({ status: "in_progress", asks: [ask("approval", "Send it?")] }), "waiting"],
     ["failed", task({ status: "errored" }), "waiting"],
-    ["waiting on your review", task({ status: "in_progress", openHold: { kind: "review", prompt: "Draft attached" } }), "review"],
+    ["waiting on your review", task({ status: "in_progress", asks: [ask("review", "Draft attached")] }), "review"],
     ["completed", task({ status: "completed" }), "resolved"],
     ["cancelled", task({ status: "cancelled" }), "resolved"],
   ])("puts a task that is %s under its column", (_name, row, column) => {
@@ -33,7 +34,7 @@ describe("columnOf", () => {
   });
 
   it("puts a pinned task under Pinned whatever its status", () => {
-    expect(columnOf(task({ status: "in_progress", openHold: { kind: "review", prompt: "x" } }), true)).toBe("pinned");
+    expect(columnOf(task({ status: "in_progress", asks: [ask("review", "x")] }), true)).toBe("pinned");
     expect(columnOf(task({ status: "completed" }), true)).toBe("pinned");
   });
 });
@@ -41,8 +42,8 @@ describe("columnOf", () => {
 describe("waitingOnYou", () => {
   it("counts what you owe a session: questions, input, reviews and failures, never work under way or done", () => {
     const tasks = [
-      task({ status: "held", openHold: { kind: "question", prompt: "EU or US?" } }),
-      task({ status: "in_progress", openHold: { kind: "review", prompt: "Draft attached" } }),
+      task({ status: "held", asks: [ask("question", "EU or US?")] }),
+      task({ status: "in_progress", asks: [ask("review", "Draft attached")] }),
       task({ status: "errored" }),
       task({}),
       task({ status: "held" }),

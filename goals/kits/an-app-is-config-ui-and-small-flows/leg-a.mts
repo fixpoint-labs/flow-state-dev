@@ -92,10 +92,12 @@ const ROW_WATCH = `(() => {
 /**
  * The column a board row lands in, from the task's stored state, by the lab's own pure `columnOf`:
  * the row is graded before it is pinned and it never fails, so neither pin nor dismissal applies.
- * A task's `holds` are its open holds (an answered one leaves the list); the first is the one the row shows.
+ * A task's `holds` are its open holds (an answered one leaves the list); the first is the one the row shows,
+ * read as the coding board view's `asks` lists it, which is what `columnOf` reads.
  */
 function columnOfStored(task: any): string {
-  return columnOf({ status: task.status, openHold: (task.holds ?? [])[0]?.ask } as unknown as Parameters<typeof columnOf>[0], false, false);
+  const asks = ((task.holds ?? []) as Array<{ ask: unknown }>).slice(0, 1).map((hold) => ({ ask: hold.ask }));
+  return columnOf({ status: task.status, asks } as unknown as Parameters<typeof columnOf>[0], false, false);
 }
 
 /** One attempt of leg a. `env` is the control's, for the lab's server. */
