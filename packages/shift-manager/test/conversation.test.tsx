@@ -13,7 +13,7 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GAPS } from "../src/gaps";
-import type { Worker } from "../src/lib/reads";
+import type { Worker } from "../src/lib/workers";
 import { TurnNotDelivered } from "../src/lib/deliver";
 
 const read = vi.fn();

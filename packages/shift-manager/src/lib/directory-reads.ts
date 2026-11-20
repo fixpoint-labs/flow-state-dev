@@ -13,7 +13,7 @@ import { useResource, useSessionList } from "@flow-state-dev/react";
 import { privateProjectsResource, projectsResource, workerInventoryResource } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
 import type { Failure } from "./failure";
-import { toProject, type Project } from "./projects";
+import { toProject, type Project } from "./project";
 import { useRoster, type RosterRead } from "./roster";
 import { toWorker, type Worker } from "./workers";
 

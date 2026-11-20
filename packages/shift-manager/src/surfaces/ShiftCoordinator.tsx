@@ -32,7 +32,7 @@ import { TasksPanel } from "../components/TasksPanel";
 import { COORDINATOR_FLOW, useConversationSession } from "../lib/conversation";
 import { useSessionItems } from "../components/flow-state/session-items-context";
 import { ItemRenderer } from "@flow-state-dev/react";
-import { AsOf, Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
+import { AsOf, Meta, ScreenTitle, SectionFailure } from "../components/ui";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
 import { delegatesViewRef } from "@flow-state-dev/workforce/browser";
 import { useView } from "@flow-state-dev/react";

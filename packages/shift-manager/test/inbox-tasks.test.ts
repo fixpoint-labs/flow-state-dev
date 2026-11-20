@@ -16,7 +16,9 @@ import { elapsed, isQueued, nothingWaitingSentence, summaryLine } from "../src/l
 import type { InboxAsk, InboxViewValue } from "../src/lib/inbox";
 import { itemAtRoute } from "../src/lib/inbox-list";
 import type { LoadedSnapshot } from "../src/lib/derive";
-import { inboxSection, type Ask, type BoardTaskView, type Worker } from "../src/lib/reads";
+import { inboxSection, type Ask } from "../src/lib/reads";
+import type { BoardTaskView } from "../src/lib/boards";
+import type { Worker } from "../src/lib/workers";
 
 let index = 0;
 function item(fields: Record<string, unknown>): OutputItem {

@@ -25,7 +25,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { shiftCoordinatorOf, workerLabel } from "../lib/shift";
 import type { InboxBoardTask } from "../lib/inbox";
 import { handToShiftCoordinator } from "../lib/outbox";
-import { readProject, type Project, type WorkstreamEntry } from "../lib/projects";
+import { readProject, type WorkstreamEntry } from "../lib/projects";
+import type { Project } from "../lib/project";
 import { useProjects, useWorkers } from "../lib/directory";
 import { useDocuments } from "../lib/documents";
 import { navigate, type Route } from "../lib/routes";

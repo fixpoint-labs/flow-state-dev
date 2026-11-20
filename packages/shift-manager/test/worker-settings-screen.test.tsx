@@ -8,7 +8,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import type { Client } from "@flow-state-dev/client";
-import { type LabSnapshot, type Worker } from "../src/lib/reads";
+import { type LabSnapshot } from "../src/lib/reads";
+import type { Worker } from "../src/lib/workers";
 import { toWorker } from "../src/lib/workers";
 import { MAX_RULE_CHARS } from "@flow-state-dev/workforce/browser";
 

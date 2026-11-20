@@ -11,7 +11,9 @@ import { GAPS } from "../src/gaps";
 import type { Client } from "@flow-state-dev/client";
 import { spendAfterWrite } from "@flow-state-dev/orchestration/tasks";
 import type { LoadedSnapshot } from "../src/lib/derive";
-import { inboxSection, toBoardTaskView, type Ask, type BoardTaskView, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
+import { inboxSection, toBoardTaskView, type Ask, type ConversationBoards, type LabSnapshot } from "../src/lib/reads";
+import type { BoardTaskView } from "../src/lib/boards";
+import type { Section } from "../src/lib/failure";
 import { GENERAL_TEAM, toWorker } from "../src/lib/workers";
 
 let fixture: LabSnapshot;

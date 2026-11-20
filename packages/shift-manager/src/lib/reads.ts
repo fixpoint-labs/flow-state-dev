@@ -64,24 +64,12 @@ import { suspensionShape } from "@flow-state-dev/react";
 import { deriveSuspensions } from "@flow-state-dev/react/internal";
 import { PROJECTS_PATTERN, ROSTER_FLOW, sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 import { boardTaskOf, createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { describeFailure, type Failure as ScreenFailure } from "./failure";
-import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "./boards";
-import { toProject, type Project as ScreenProject, type ProjectVisibility } from "./projects";
-import { toWorker, workerOf, type Worker as DirectoryWorker } from "./workers";
+import { describeFailure, type Failure, type Section } from "./failure";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, type BoardTaskView } from "./boards";
+import { toProject, type Project, type ProjectVisibility } from "./project";
+import { toWorker, workerOf, type Worker } from "./workers";
 import type { Client } from "@flow-state-dev/client";
 import { createInboxClient, inboxItems, taskActionName, type BoardActions, type InboxAnswer, type InboxHold, type InboxItem, type InboxTaskInput, type TaskHold } from "@flow-state-dev/orchestration/inbox";
-
-/** Why a read did not load: the screens' own. */
-export type Failure = ScreenFailure;
-
-/** One section's outcome: its value, or why it has none. */
-export type Section<T> = { ok: true; value: T } | { ok: false; failure: Failure };
-
-/** A worker: the directory's row (`workers.ts`). */
-export type Worker = DirectoryWorker;
-
-/** A project: the screens' row (`projects.ts`). */
-export type Project = ScreenProject;
 
 /** The projects the user reads: the organization's, and their own private ones. */
 export type Projects = {
@@ -91,9 +79,6 @@ export type Projects = {
 
 /** The run working a task, or the run that last worked it: workforce's board task names it. */
 export type RunLink = NonNullable<BoardTask["run"]>;
-
-/** One task on a conversation's board: workforce's board task. */
-export type BoardTaskView = BoardTask;
 
 /** A conversation's board and every row on it. */
 export type ConversationBoards = { refs: string[]; rows: BoardTaskView[] };

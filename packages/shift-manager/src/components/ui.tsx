@@ -244,16 +244,6 @@ export function ShiftMark({ status, className = "size-2" }: { status: ShiftStatu
   return <span className={`inline-block shrink-0 border ${fill} ${className}`} data-mark={status} aria-hidden />;
 }
 
-/** A worker's status, as its mark and its word. */
-export function StatusWord({ status }: { status: ShiftStatus }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="status-word" data-status={status}>
-      <ShiftMark status={status} />
-      {status}
-    </span>
-  );
-}
-
 /**
  * The mark every screen that draws a status or a count shows when the status
  * result is partial (asks did not load). The words are the caller's.

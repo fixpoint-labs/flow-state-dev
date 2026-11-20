@@ -77,7 +77,6 @@ export const shiftManager: AppInventory = {
     "src/lib/columns.ts": ["Column"],
     "src/lib/conversation-tasks.ts": ["ConversationTask"],
     "src/lib/conversation.ts": ["WorkerConversation"],
-    "src/lib/derive.ts": ["Roster", "WorkerState", "WorkerStates"],
     "src/lib/directory-reads.ts": [
       { name: "CollectionRead", reason: "a useResource read of a whole collection as the directory holds it: its parsed values, its failure and its refresh" },
       { name: "DirectoryReads", reason: "the directory's reads, one hook's output assembled from useResource, the roster watch and useSessionList" },
@@ -93,9 +92,11 @@ export const shiftManager: AppInventory = {
     "src/lib/inbox.ts": ["ReviewData"],
     "src/lib/lab-data.tsx": ["LabData"],
     "src/lib/messages.ts": ["MessageExchange"],
+    "src/lib/project.ts": [
+      { name: "Project", reason: "a projects row with where it lives, parsed by toProject so a row an earlier version wrote still reads (BP-030); the collection's client data names no visibility" },
+    ],
     "src/lib/projects.ts": [
       "ProjectAddress",
-      { name: "Project", reason: "a projects row with where it lives, parsed by toProject so a row an earlier version wrote still reads (BP-030); the collection's client data names no visibility" },
       { name: "WorkstreamEntry", reason: "workforce's ParsedWorkstreamEntry with its storage key and whether it has gone quiet, which the screen works out by projectProgress's clock" },
       { name: "ProjectWorkstreams", reason: "a project's entries with the progress the screen works out from them (projectProgress): a hook's output, assembled" },
       { name: "ScreenRead", reason: "UI state: a hook's value, its failure and its refresh, as the project screens draw a read" },

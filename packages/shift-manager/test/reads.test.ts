@@ -11,9 +11,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { connect } from "../src/lib/connection";
 import { createLabReader, UNOWNED_SESSION_UNANSWERABLE, type LabSnapshot } from "../src/lib/reads";
-import { workerStates, type LoadedSnapshot } from "../src/lib/derive";
-import { joinWorkers } from "../src/lib/workers";
-import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+import type { LoadedSnapshot } from "../src/lib/derive";
 import { ROSTER_FLOW, rosterView } from "@flow-state-dev/workforce/browser";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
 import { ASK_LAB_COORDINATORS, ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
@@ -401,12 +399,6 @@ describe("asks through a coordinator's delivery (V7)", () => {
     if (!snapshot.asks.ok || !snapshot.inventory.ok) throw new Error("not loaded");
     expect(snapshot.inventory.value.workers.map((s) => s.id)).not.toContain("ops.mine");
     expect(snapshot.asks.value.map((a) => [a.workerId, a.item.message])).toEqual([["ops.mine", "Approve: ship it"]]);
-
-    // Roster and TEAMS join the roster the same way, so the worker is on shift there.
-    const entries = await createWorkforceClient(client).roster();
-    const { workers } = joinWorkers(snapshot.inventory.ok ? snapshot.inventory.value.workers : undefined, entries);
-    const states = workerStates({ ...snapshot, inventory: { ok: true, value: { workers } } });
-    expect(states.workers.get("ops.mine")?.status).toBe("on shift");
   });
 
   it("a roster that fails to load fails Inbox's asks by name, not by dropping the user's own workers", async () => {

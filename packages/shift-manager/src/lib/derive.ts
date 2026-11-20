@@ -5,8 +5,10 @@
  */
 import type { InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { isDone } from "./columns";
-import type { Ask, BoardTaskView, Failure, LabSnapshot, Project, Section, Worker } from "./reads";
-import { workerFor, type ShiftStatus } from "./shift";
+import type { Ask, LabSnapshot } from "./reads";
+import type { BoardTaskView } from "./boards";
+import type { Failure, Section } from "./failure";
+import type { Project } from "./project";
 import { workerOf, workstreamOf } from "./workers";
 
 /** A loaded snapshot (not a refusal, not an unreachable Lab). */
@@ -37,78 +39,6 @@ export function boardOwnerOf(snapshot: LoadedSnapshot, row: BoardTaskView): stri
 /** The tasks Tasks shows: every attached board's, excluding done ones. */
 export function openTasks(snapshot: LoadedSnapshot): BoardTaskView[] {
   return allTasks(snapshot).filter((row) => !isDone(row.status));
-}
-
-/** The workers a row's assignee is resolved against. */
-export type Roster = { workers: readonly Worker[] };
-
-/** One worker's state: its status, the tasks it holds, and the asks it waits on you with. */
-export type WorkerState = {
-  worker: Worker;
-  status: ShiftStatus;
-  /** Its rows that are running, waiting on you included, in board order: its slots in use. */
-  held: BoardTaskView[];
-  /** Of `held`, the rows held on a question or confirm for you (their Inbox item's board holds). */
-  waitsOnYou: BoardTaskView[];
-  /** Its pending asks, in Inbox's order. */
-  asks: Ask[];
-};
-
-/** Every worker's state, and whether the result is partial. */
-export type WorkerStates = {
-  /** Keyed by worker id, in inventory order. */
-  workers: Map<string, WorkerState>;
-  /** Asks did not load: a worker waiting on you only through an ask reads off shift. */
-  partial: boolean;
-};
-
-const computed = new WeakMap<LoadedSnapshot, WorkerStates>();
-
-/**
- * Every worker's status, worked out once per snapshot from what the Lab records:
- * its rows (each resolved by {@link workerFor}) and its pending asks.
- *
- * - **on shift**: it holds a running row (one waiting on you included) or a
- *   pending ask;
- * - **off shift**: none of those. Queued, blocked, errored and finished rows
- *   hold no slot.
- *
- * A row no single worker resolves to, and an ask whose session names no worker in
- * the inventory, count for nobody. Asks that did not load leave every status
- * as the boards give it and mark the result `partial`.
- *
- * Every screen that draws a status or a count reads this result, and the same
- * snapshot always gets the same object.
- */
-export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
-  const cached = computed.get(snapshot);
-  if (cached !== undefined) return cached;
-  const roster = rosterOf(snapshot);
-  const workers = new Map<string, WorkerState>(
-    roster.workers.map((worker) => [worker.id, { worker, status: "off shift", held: [], waitsOnYou: [], asks: [] }]),
-  );
-  for (const row of allTasks(snapshot)) {
-    if (row.status !== "in_progress") continue;
-    const owner = workerFor(roster.workers, row);
-    if (owner === undefined) continue;
-    const state = workers.get(owner.id);
-    state?.held.push(row);
-    if (waitsOnYou(snapshot, row)) state?.waitsOnYou.push(row);
-  }
-  for (const ask of snapshot.asks.ok ? snapshot.asks.value : []) {
-    if (ask.workerId !== null) workers.get(ask.workerId)?.asks.push(ask);
-  }
-  for (const state of workers.values()) {
-    state.status = state.held.length > 0 || state.asks.length > 0 ? "on shift" : "off shift";
-  }
-  const result = { workers, partial: !snapshot.asks.ok };
-  computed.set(snapshot, result);
-  return result;
-}
-
-/** The workers of a snapshot whose inventory loaded; empty otherwise. */
-export function rosterOf(snapshot: LoadedSnapshot): Roster {
-  return snapshot.inventory.ok ? snapshot.inventory.value : { workers: [] };
 }
 
 /**

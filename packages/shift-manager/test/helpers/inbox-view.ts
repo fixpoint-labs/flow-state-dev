@@ -8,7 +8,8 @@
 import { suspendForUserKindOf } from "@flow-state-dev/core/types";
 import { boardOwnerOf, type LoadedSnapshot } from "../../src/lib/derive";
 import type { InboxAsk, InboxViewValue } from "../../src/lib/inbox";
-import type { Ask, LabSnapshot, Section } from "../../src/lib/reads";
+import type { Ask, LabSnapshot } from "../../src/lib/reads";
+import type { Section } from "../../src/lib/failure";
 
 /** An ask as the view's detail carries it. */
 function askOf(ask: Ask): InboxAsk {

@@ -10,7 +10,8 @@ import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { COLUMNS, columnFor, isHeld, isDone } from "../src/lib/columns";
 import { openTasks, type LoadedSnapshot } from "../src/lib/derive";
 import { workerFor } from "../src/lib/shift";
-import { toBoardTaskView, type BoardTaskView } from "../src/lib/reads";
+import { toBoardTaskView } from "../src/lib/reads";
+import type { BoardTaskView } from "../src/lib/boards";
 import { toWorker } from "../src/lib/workers";
 
 /** Where BR-12 puts each shipped status. */

@@ -13,7 +13,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { SessionSummary } from "@flow-state-dev/client";
 import { useDirectoryReads, type CollectionRead } from "./directory-reads";
 import type { Failure, Section } from "./failure";
-import type { Project } from "./projects";
+import type { Project } from "./project";
 import type { RosterRead } from "./roster";
 import { joinWorkers, type Worker } from "./workers";
 
