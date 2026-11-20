@@ -27,10 +27,12 @@ import { ToolGroup } from "../components/flow-state/tool";
 import { isTaskBrief } from "../components/flow-state/workforce-lines";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { ConversationScrollButton } from "../components/flow-state/conversation";
+import { LineContext, type LineContextValue } from "../components/flow-state/conversation-lines";
 import { EmptyState, LoadEarlierButton, SectionFailure } from "../components/ui";
 import { askWord, holdsOnYou, taskAsks, useInbox, type InboxAsk } from "../lib/inbox";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { useLab } from "../lib/lab-data";
+import { workerLabel } from "../lib/derive";
 import { useReportFeedState } from "../lib/feed-health";
 import { collectionOfBoard, describeFailure, type Failure } from "../lib/reads";
 import { useRetrySessionFeed, useSharedSessionFeed } from "../lib/session-feeds";
@@ -91,6 +93,9 @@ export function TaskSession() {
     </div>
   );
 }
+
+/** What a run's lines can do here: name the workers, as the conversation does. */
+const RUN_LINES: LineContextValue = { nameOf: workerLabel };
 
 /**
  * The open run's items, through the run session's feed: its newest items once,
@@ -194,38 +199,41 @@ function RunItems({ run }: { run: OpenRun }) {
       ) : null}
       <LoadEarlierButton load={stored.loadEarlier} testId="session-load-earlier" />
       {/* The whole session, not only this task's items: the task plan card reads every task change in it. */}
-      <SessionItemsProvider value={stored.items}>
-        <ol className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-4" data-testid="session-items">
-          {shown.lines.map((line) => {
-            // A steps line is named by its first call or thought, and typed as the run of steps it is.
-            const item = line.kind === "steps" ? line.items[0] : line.kind === "stopped" ? undefined : line.item;
-            const type = line.kind === "steps" ? "steps" : (item?.type ?? line.kind);
-            return (
-              <li
-                key={`${line.requestId}/${line.id}`}
-                data-testid="session-item"
-                data-item-id={item?.id ?? line.id}
-                data-item-type={type}
-                {...(line.kind === "user" && !isTaskBrief(line.item) ? feed.mine(line.id) : {})}
-              >
-                {line.kind === "suspension" ? (
-                  <PendingAsk ask={asks.find((ask) => ask.id === line.item.suspensionId)} />
-                ) : (
-                  <ItemsRenderer lines={[line]} toolGroupRenderer={ToolGroup} />
-                )}
-              </li>
-            );
-          })}
-          {/* An ask the framework raised without this task's stamp is not among the task's items; it waits at the run's end. */}
-          {asks
-            .filter((ask) => !shown.lines.some((line) => line.kind === "suspension" && line.item.suspensionId === ask.id))
-            .map((ask) => (
-              <li key={ask.id} data-testid="session-pending-ask">
-                <PendingAsk ask={ask} />
-              </li>
-            ))}
-        </ol>
-      </SessionItemsProvider>
+      {/* Names only: a task's run offers no Retry and no answers on its lines. */}
+      <LineContext.Provider value={RUN_LINES}>
+        <SessionItemsProvider value={stored.items}>
+          <ol className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-4" data-testid="session-items">
+            {shown.lines.map((line) => {
+              // A steps line is named by its first call or thought, and typed as the run of steps it is.
+              const item = line.kind === "steps" ? line.items[0] : line.kind === "stopped" ? undefined : line.item;
+              const type = line.kind === "steps" ? "steps" : (item?.type ?? line.kind);
+              return (
+                <li
+                  key={`${line.requestId}/${line.id}`}
+                  data-testid="session-item"
+                  data-item-id={item?.id ?? line.id}
+                  data-item-type={type}
+                  {...(line.kind === "user" && !isTaskBrief(line.item) ? feed.mine(line.id) : {})}
+                >
+                  {line.kind === "suspension" ? (
+                    <PendingAsk ask={asks.find((ask) => ask.id === line.item.suspensionId)} />
+                  ) : (
+                    <ItemsRenderer lines={[line]} toolGroupRenderer={ToolGroup} />
+                  )}
+                </li>
+              );
+            })}
+            {/* An ask the framework raised without this task's stamp is not among the task's items; it waits at the run's end. */}
+            {asks
+              .filter((ask) => !shown.lines.some((line) => line.kind === "suspension" && line.item.suspensionId === ask.id))
+              .map((ask) => (
+                <li key={ask.id} data-testid="session-pending-ask">
+                  <PendingAsk ask={ask} />
+                </li>
+              ))}
+          </ol>
+        </SessionItemsProvider>
+      </LineContext.Provider>
       {shown.lines.length === 0 ? (
         <p className="px-4 pb-4 text-sm text-muted-foreground" data-testid="session-empty">
           The run hasn't recorded a step yet.

@@ -44,7 +44,7 @@ vi.mock("../src/lib/task-items", async (original) => ({
   readTaskClaims: (...args: unknown[]) => readTaskClaims(...args),
 }));
 
-import { taskBriefMetadata } from "@flow-state-dev/workforce/browser";
+import { RECEIVED_MESSAGE_DATA_TYPE, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 import { collectionOfBoard } from "../src/lib/reads";
 import { TaskSession } from "../src/surfaces/TaskSession";
 
@@ -146,5 +146,27 @@ describe("the task's brief", () => {
     // Words the user typed still read as theirs, and are still the user's line for jump-to-latest.
     expect(within(typedRow!).getByTestId("message").getAttribute("data-message-role")).toBe("user");
     expect(typedRow!.getAttribute("data-sent-line")).toBe("u1");
+  });
+});
+
+describe("another worker's lines in a task's run", () => {
+  it("names the sender as the conversation does: the Shift Coordinator by its label, not its id", async () => {
+    const received = {
+      id: "r1",
+      type: "data",
+      dataType: RECEIVED_MESSAGE_DATA_TYPE,
+      status: "completed",
+      requestId: "req_run",
+      itemIndex: 1,
+      ts: 101,
+      taskId: "t1",
+      value: { id: "msg_1", from: "ops.shift-coordinator", text: "which branch?" },
+    };
+    render(<TaskSession />);
+    await act(async () => feeds.at(-1)!.onRead({ items: [claim, received], truncated: false }));
+
+    const line = document.querySelector<HTMLElement>("[data-line=received]")!;
+    expect(line.textContent).toContain("Shift Coordinator");
+    expect(line.textContent).not.toContain("ops.shift-coordinator");
   });
 });
