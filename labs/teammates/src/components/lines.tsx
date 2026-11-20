@@ -12,10 +12,11 @@
  */
 import { memo, useMemo, type ReactNode } from "react";
 import type { DataItem, FileContent, MessageItem } from "@flow-state-dev/core/items";
-import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { codingBoardViewRef, type CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { ItemsRenderer, useFlowContext, useView, type ItemLine, type RendererRegistry } from "@flow-state-dev/react";
 import { FILED_TASK_DATA_TYPE, rosterView, type FiledTaskValue, type RosterEntry } from "@flow-state-dev/workforce/browser";
-import { useAppClient, useTasks } from "../app";
+// The provider and not the app's index: the read model draws its lines with this registry.
+import { useAppClient } from "../app/provider";
 import type { Look } from "../lib/looks";
 import { settingOf, takesTasks } from "../lib/roster";
 import { workerOf } from "../lib/task";
@@ -121,8 +122,10 @@ function placeholderOf(item: DataItem, value: Partial<FiledTaskValue>, harness: 
  */
 function TaskLine({ item }: { item: DataItem }) {
   const { nameOf = (id: string) => id, avatarOf, openTask } = useLineContext();
-  const tasks = useTasks(useFlowContext().sessionId).value ?? NO_TASKS;
+  const { sessionId } = useFlowContext();
   const { client, pollIntervalMs } = useAppClient();
+  // `useTasks`' read, made here: the same view and input, so one watch serves both.
+  const tasks = useView(codingBoardViewRef(), { sessionId: sessionId ?? "" }, { client, pollIntervalMs, enabled: sessionId !== undefined }).value ?? NO_TASKS;
   const roster = useView(rosterView, {}, { client, pollIntervalMs }).value ?? NO_WORKERS;
   const value = item.value as Partial<FiledTaskValue>;
   const coderOf = (id: string) => roster.find((w) => w.id === id && takesTasks(w));
