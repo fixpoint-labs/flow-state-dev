@@ -9,13 +9,13 @@ import { cn } from "../lib/utils";
 const CHIP = "inline-flex h-7 max-w-full items-center gap-1.5 rounded-sm border border-border bg-surface px-2.5 text-xs text-text-2";
 
 /** The last two segments of a path, `flow-state-dev / implementation`; the whole path when it has fewer. */
-export function shortFolder(path: string): string {
+function shortFolder(path: string): string {
   const parts = path.split(/[\\/]+/).filter(Boolean);
   return parts.slice(-2).join(" / ") || path;
 }
 
 /** What the folder chip's tooltip says: the whole path, and what a coding worktree of it runs before and after its run. */
-export function folderDetail(context: Pick<AppContext, "folder" | "setup" | "checks">): string {
+function folderDetail(context: Pick<AppContext, "folder" | "setup" | "checks">): string {
   const lines = [`Working folder: ${context.folder}`, "Every coding task works in a worktree of it."];
   // An older server sends neither: say nothing rather than a wrong "none".
   if (context.setup !== undefined) lines.push(`Worktree setup: ${context.setup ?? "none"}`);

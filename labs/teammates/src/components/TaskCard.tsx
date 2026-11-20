@@ -34,7 +34,7 @@ export function RunsOn({ on }: { on: string }) {
 }
 
 /** How long an active task has run, coarse for its card: "42s", "2m", "3h", "2d". */
-export function sinceShort(ms: number): string {
+function sinceShort(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${Math.floor(s / 60)}m`;

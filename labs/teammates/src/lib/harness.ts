@@ -40,7 +40,7 @@ export function harnessWarning(chips: readonly HarnessReadinessChipRow[] | undef
  * `teammates.cursor`"). Kept here so the composer knows when the lab's own
  * default differs from it and has to be named.
  */
-export const LEAD_FALLBACK_HARNESS = "cursor";
+const LEAD_FALLBACK_HARNESS = "cursor";
 
 /**
  * The line you send, naming the harness its coding tasks should start on: one

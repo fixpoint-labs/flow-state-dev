@@ -55,7 +55,7 @@ export const textOf = (item: MessageItem): string => item.content.map((part) => 
 export const filesOf = (item: MessageItem): FileContent[] => item.content.filter((part): part is FileContent => part.type === "file");
 
 /** A line's clock time, "3:56 PM", in the reader's locale; nothing for a line with no time. */
-export function clockTime(ts: number | undefined): string | undefined {
+function clockTime(ts: number | undefined): string | undefined {
   if (typeof ts !== "number" || !Number.isFinite(ts) || ts <= 0) return undefined;
   return new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }

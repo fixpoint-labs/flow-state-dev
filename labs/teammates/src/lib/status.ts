@@ -170,12 +170,7 @@ export function useActivity(worker: string): StatusInputs["activity"] {
   return activityOf(sessions, turns);
 }
 
-/** A teammate's status line, its words alone, live. Its age holds while `stale`. */
-export function useStatusLine(worker: string, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): string {
-  return useStatus(worker, sessionId, nameOf, isCoding, stale).text;
-}
-
-/** {@link useStatusLine} with its tone and whether it asks you to act, for a place that colours the line (the header's pill). */
+/** A teammate's status line, live, with its tone and whether it asks you to act. Its age holds while `stale`. */
 export function useStatus(worker: string, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): Status {
   const now = useNow(undefined, !stale);
   const activity = useActivity(worker);
