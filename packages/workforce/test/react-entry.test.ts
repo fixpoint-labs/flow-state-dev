@@ -19,7 +19,7 @@ const manifest = (path: string) =>
 
 describe("@flow-state-dev/workforce/react", () => {
   it("carries the panel components and their helpers", () => {
-    expect(Object.keys(entry).sort()).toEqual(["BOARD_STATUS_COLUMNS", "BoardColumns", "BoardList", "Roster", "WorkerDetail", "groupIntoColumns", "workforceRenderers"].sort());
+    expect(Object.keys(entry).sort()).toEqual(["BOARD_STATUS_COLUMNS", "BoardColumns", "BoardList", "Roster", "WorkerDetail", "groupIntoColumns"].sort());
   });
 
   it("is served by the package in the workspace and once published, and React's package serves no workforce subpath", () => {
