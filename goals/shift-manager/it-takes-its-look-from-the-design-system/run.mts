@@ -21,7 +21,7 @@
  *              premise); setup fails if there is no such line
  *
  * Legs (each failure is tagged `<leg> [<build> <variant>]`):
- *   reach      each swept registry part (message, reasoning, tool, code block)
+ *   reach      each swept registry part (message, tool group, tool step, code block)
  *              is drawn at least once in the task's Session
  *   themed     on the themed build, every colour painted on the shell and on
  *              each swept part is one of Shift Manager's values for that variant,
@@ -100,9 +100,10 @@ const THEME_IMPORT = /^@import "@flow-state-dev\/design-system\/shift-manager\.c
 /** The registry parts the Session must draw, by the selector that finds Shift Manager's copy of each. */
 const SWEPT: Record<string, string> = {
   message: '[data-testid=session-item][data-item-type=message] [data-testid=message]',
-  reasoning: '[data-testid=session-item][data-item-type=reasoning] [data-slot=collapsible]',
-  tool: '[data-testid=session-item][data-item-type=tool_output] [data-slot=collapsible]',
-  "code block": '[data-testid=session-item][data-item-type=tool_output] [data-language]',
+  // A run of thinking and calls is one tool group, opening to a row per thought or call.
+  "tool group": '[data-testid=session-item][data-item-type=steps] [data-testid=tool-group]',
+  "tool step": '[data-testid=session-item][data-item-type=steps] [data-testid=tool-row]',
+  "code block": '[data-testid=session-item][data-item-type=steps] [data-language]',
 };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -216,12 +217,14 @@ async function readPass(page: Page, origin: string, taskId: string, dark: boolea
   await page.getByTestId("tasks-table").waitFor({ timeout: 20_000 });
   await page.locator(`[data-testid=task-row][data-task-id="${taskId}"]`).click();
   await page.getByTestId("session-items").waitFor({ timeout: 15_000 });
-  await page.locator('[data-testid=session-item][data-item-type=tool_output]').first().waitFor({ timeout: 15_000 });
-  // The tool card and the reasoning draw their bodies closed; open them so the code block is read too.
-  for (const trigger of await page.locator("[data-testid=session-item] [data-slot=collapsible-trigger]").all()) {
-    if ((await trigger.getAttribute("data-state")) === "closed") await trigger.click();
+  await page.locator('[data-testid=session-item][data-item-type=steps]').first().waitFor({ timeout: 15_000 });
+  // The tool group draws closed, and so does each row in it; open the group, then its rows, so the code block is read too.
+  for (let depth = 0; depth < 2; depth += 1) {
+    for (const trigger of await page.locator("[data-testid=session-item] [data-slot=collapsible-trigger]").all()) {
+      if ((await trigger.getAttribute("data-state")) === "closed") await trigger.click();
+    }
   }
-  if ((await page.locator(SWEPT.tool!).count()) > 0) {
+  if ((await page.locator(SWEPT["tool step"]!).count()) > 0) {
     await page.locator(SWEPT["code block"]!).first().waitFor({ timeout: 15_000 }).catch(() => undefined);
   }
   // Read once the page shows the variant and no finite transition or animation is still running.

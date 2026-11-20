@@ -1,13 +1,12 @@
 /**
  * What the screen shows of worker talk, from workforce's worker messages view
  * (a worker's open messages, and the rows and answers of the lines on screen)
- * joined with a conversation (`watchConversation`), and what the recipient did
+ * joined with a conversation (`useConversation`), and what the recipient did
  * with one message, read from the turn of its conversation that read it.
  */
-import type { OutputItem } from "@flow-state-dev/core/items";
-import { useView } from "@flow-state-dev/react";
+import { useView, type ItemLine } from "@flow-state-dev/react";
 import { RECEIVED_MESSAGE_DATA_TYPE, workerMessagesViewRef, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
-import { toSteps, useAppClient, type ConversationEntry, type SessionStep } from "../app";
+import { useAppClient } from "../app";
 
 type Message = WorkerMessageResourceState;
 
@@ -37,8 +36,8 @@ export function useTalk(worker: string, ids: readonly string[] = []): Message[] 
  * `since` is when the conversation's window starts: a message sent before it was
  * read in an older turn the window no longer holds, so it is not waiting.
  */
-export function pendingFor(worker: string, rows: readonly Message[], entries: ConversationEntry[], since?: number): Message[] {
-  const read = new Set(entries.flatMap((e) => (e.kind === "received" ? [e.messageId] : [])));
+export function pendingFor(worker: string, rows: readonly Message[], lines: readonly ItemLine[], since?: number): Message[] {
+  const read = new Set(lines.flatMap((line) => receivedId(line) ?? []));
   return rows.filter((m) => m.to === worker && m.status === "unconfirmed" && !read.has(m.id) && (since === undefined || m.at >= since));
 }
 
@@ -52,13 +51,19 @@ export function owedRepliesFrom(worker: string, rows: readonly Message[]): strin
   return [...new Set(rows.filter((m) => m.from === worker && m.replyRequested && !undelivered(m) && !answered.has(m.id)).map((m) => m.to))];
 }
 
+/** The id of the message a received line read, or `undefined` for any other line. */
+function receivedId(line: ItemLine): string | undefined {
+  if (line.kind !== "data" || line.item.dataType !== RECEIVED_MESSAGE_DATA_TYPE) return undefined;
+  const id = (line.item.value as { id?: unknown } | undefined)?.id;
+  return typeof id === "string" ? id : undefined;
+}
+
 /**
- * The turn of a conversation that read message `messageId`, as steps: the
- * message, then all that turn did. The last receipt: a taker that died is
+ * The turn of a conversation that read message `messageId`, as its lines:
+ * the message, then all that turn did. The last receipt: a taker that died is
  * taken over, and the turn that took over is the one that answered.
  */
-export function exchangeOf(items: readonly OutputItem[], messageId: string): SessionStep[] {
-  const all = items as unknown as Parameters<typeof toSteps>[0];
-  const read = [...all].reverse().find((i) => i.type === "data" && i.dataType === RECEIVED_MESSAGE_DATA_TYPE && i.value?.id === messageId);
-  return read === undefined ? [] : toSteps(all.filter((i) => i.requestId === read.requestId));
+export function exchangeOf(lines: readonly ItemLine[], messageId: string): ItemLine[] {
+  const read = [...lines].reverse().find((line) => receivedId(line) === messageId);
+  return read === undefined ? [] : lines.filter((line) => line.requestId === read.requestId);
 }

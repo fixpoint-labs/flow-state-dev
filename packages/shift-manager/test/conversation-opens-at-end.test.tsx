@@ -8,11 +8,11 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Conversation } from "../src/components/Conversation";
-import { toWorker } from "../src/lib/reads";
+import { toWorker } from "../src/lib/workers";
 
-vi.mock("../src/lib/lab-data", () => ({
-  useLab: () => ({ client: { userId: "alice" }, refresh: async () => undefined, answered: undefined }),
-}));
+// One object, as the provider hands one. The conversation's turns read (a view) never answers here.
+const lab = { client: { userId: "alice", subscribe: () => ({ close: () => {} }), view: () => new Promise(() => {}) }, refresh: async () => undefined, answered: undefined };
+vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 // The send path and the workforce client: this view sends nothing.
 vi.mock("../src/lib/deliver", async (original) => ({ ...(await original<typeof import("../src/lib/deliver")>()), useDeliverLine: () => async () => ({ requestId: "q", suspended: false, stopped: null }) }));
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => ({}) }));

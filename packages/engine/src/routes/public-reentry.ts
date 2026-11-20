@@ -55,7 +55,7 @@ import {
  * browser app deciding whether to offer an answer) can pin its own copy to
  * this set in a test. A host's `publicReentrySources` extends it at runtime.
  */
-export const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
+const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
   "http",
   "mcp",
   "scheduled"

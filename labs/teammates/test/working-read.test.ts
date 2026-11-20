@@ -14,7 +14,7 @@ import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import { CODER_FLOW, type CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import { AppProvider, useTaskWork, type AppCalls } from "../src/app";
+import { AppProvider, useTaskWork } from "../src/app";
 import { codingTask } from "./stub-server";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
@@ -85,7 +85,7 @@ function host(options: { stored: unknown[]; live: Record<string, unknown[]>; pla
     return json({});
   }) as ClientFetch;
   const client = createClient({ userId: "u", baseUrl: "", fetcher });
-  const wrapper = ({ children }: { children: ReactNode }) => createElement(AppProvider, { calls: {} as AppCalls, client, pollIntervalMs: 100 }, children);
+  const wrapper = ({ children }: { children: ReactNode }) => createElement(AppProvider, { client, pollIntervalMs: 100 }, children);
   return { client, calls, wrapper };
 }
 

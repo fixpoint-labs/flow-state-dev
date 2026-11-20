@@ -15,9 +15,12 @@ import { createElement, useEffect, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ClientFetch } from "@flow-state-dev/client";
+import type { FileContent, MessageItem } from "@flow-state-dev/core/items";
+import { conversationLines, type ItemLine } from "@flow-state-dev/react";
+import { TASK_RESULT_DATA_TYPE, type TaskResultValue } from "@flow-state-dev/workforce/browser";
 import { waitFor } from "../../../test-support/contract";
-import { useApp, useTasks, useThread, type AppCalls, type AppTask, type ThreadEntry, type ThreadView } from "../../src/app";
-import { Entry } from "../../src/components/Entry";
+import { useApp, useTasks, useThread, type AppCalls, type AppTask, type ThreadView } from "../../src/app";
+import { claudeCodeRenderers, textOf, WorkLines } from "../../src/components/lines";
 import type { ModeId } from "../../src/modes";
 import { closeApps, openTestApp, type Script, type TestApp } from "../app-host";
 
@@ -188,19 +191,44 @@ interface Followed<T> {
   until(check: (value: T) => boolean, ms?: number): Promise<T>;
 }
 
+/** A thread's line, as these scenarios read it: what it is, its turn, and what it says. */
+type Entry = { kind: ItemLine["kind"] | "result"; id: string; requestId: string; line: ItemLine; text?: string; files?: FileContent[]; taskId?: string; status?: string; duringTurn?: boolean };
+
+/** A thread as the screen draws it: the view, with its lines as the lab's registry draws them. */
+type Shown = ThreadView & { entries: Entry[] };
+
+/** The view's lines, as the thread draws them (`useLines`), each with what the scenarios read of it. */
+function shownOf(view: ThreadView): Shown {
+  const lines = conversationLines(view.items, view.turns, { renderers: claudeCodeRenderers });
+  const entries = lines.map((line): Entry => {
+    const base = { id: line.id, requestId: line.requestId, line };
+    if (line.kind === "user" || line.kind === "assistant") {
+      const files = line.item.content.filter((part): part is FileContent => part.type === "file");
+      return { ...base, kind: line.kind, text: textOf(line.item as MessageItem), ...(files.length > 0 ? { files } : {}) };
+    }
+    if (line.kind === "data" && line.item.dataType === TASK_RESULT_DATA_TYPE) {
+      const value = line.item.value as TaskResultValue;
+      return { ...base, kind: "result", taskId: value.taskId, status: value.ending, duringTurn: lines.some((other) => other.kind === "user" && other.requestId === line.requestId) };
+    }
+    return { ...base, kind: line.kind };
+  });
+  return { ...view, entries };
+}
+
 /** What a screen watching session `sessionId` reads: its thread and its tasks, and the calls under the same provider. */
-function watch(sessionId: string, threads = false) {
-  const thread = followed<ThreadView>();
+function watch(sessionId: string) {
+  const thread = followed<Shown>();
   const tasks = followed<AppTask[]>();
-  const drawn: ThreadView[] = [];
+  const drawn: Shown[] = [];
   const hook = renderHook(
     () => {
-      const view = useThread(sessionId, threads);
+      const view = useThread(sessionId);
       const board = useTasks(sessionId).value;
       useEffect(() => {
         if (view === undefined) return;
-        drawn.push(view);
-        thread.tell(view);
+        const shown = shownOf(view);
+        drawn.push(shown);
+        thread.tell(shown);
       }, [view]);
       useEffect(() => {
         if (board !== undefined) tasks.tell(board);
@@ -253,17 +281,17 @@ async function readUntil<T>(read: () => Promise<T>, check: (value: T) => boolean
 }
 
 /** What a user line may carry: anything more is a state the screen could draw. */
-const USER_LINE_KEYS = new Set(["kind", "id", "text", "sentToThread", "requestId"]);
+const USER_LINE_KEYS = new Set(["kind", "id", "item", "requestId"]);
 
 /**
  * A line of yours says only what you typed: it carries no field past its text, and the thread draws
  * nothing more for it, such as a mark that it waits.
  */
-function expectPlainLine(view: ThreadView, text: string) {
-  const line = view.entries.find((e) => e.kind === "user" && e.text === text) as ThreadEntry | undefined;
+function expectPlainLine(view: Shown, text: string) {
+  const line = view.entries.find((e) => e.kind === "user" && e.text === text)?.line;
   expect(line, `the line "${text}" is in the thread`).toBeDefined();
   expect(Object.keys(line!).filter((key) => !USER_LINE_KEYS.has(key))).toEqual([]);
-  const drawn = renderToStaticMarkup(createElement(Entry, { entry: line! })).replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  const drawn = renderToStaticMarkup(createElement(WorkLines, { lines: [line!] })).replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
   expect(drawn).toBe(text);
 }
 describe("the lab's screen reads", () => {
@@ -310,7 +338,7 @@ describe("the lab's screen reads", () => {
       await waitFor(2_000);
       expect(view.latest()!.running).toBe(true);
       // No line was ever drawn with a mark, in any view.
-      for (const v of drawn) for (const e of v.entries) if (e.kind === "user") expectPlainLine(v, e.text);
+      for (const v of drawn) for (const e of v.entries) if (e.kind === "user") expectPlainLine(v, e.text!);
       // Stopped, so the host can close. A Stop stops the turns the thread had read as running at the
       // press, and its request read can trail the sends, so Stop is pressed until none runs.
       for (let press = 0; press < 10 && view.latest()!.running; press++) {
@@ -329,7 +357,7 @@ describe("the lab's screen reads", () => {
       // The turn's text is in: it is ending.
       await view.until((v) => v.entries.some((e) => e.kind === "assistant"));
       await screen.calls().send(id, ASK.next);
-      const answered = (v: ThreadView) => v.entries.slice(v.entries.findIndex((e) => e.kind === "user" && e.text === ASK.next) + 1).some((e) => e.kind === "assistant");
+      const answered = (v: Shown) => v.entries.slice(v.entries.findIndex((e) => e.kind === "user" && e.text === ASK.next) + 1).some((e) => e.kind === "assistant");
       const ended = await view.until((v) => !v.running && v.entries.some((e) => e.kind === "user" && e.text === ASK.next) && answered(v), 20_000);
       expectPlainLine(ended, ASK.after);
       expectPlainLine(ended, ASK.next);
@@ -363,7 +391,7 @@ describe("the lab's screen reads", () => {
     check("shows the thread waiting on its question, and the answer clears it", async () => {
       target = await make();
       const id = await target.open("threads");
-      const screen = watch(id, true);
+      const screen = watch(id);
       const board = screen.tasks;
       await screen.calls().send(id, ASK.question);
       const held = await board.until((r) => r.some((t) => t.openHold?.kind === "question"));
@@ -487,7 +515,7 @@ describe("the lab's screen reads", () => {
       expect(shot.data).toMatch(/^fsd-blob:/);
       await screen.calls().send(id, ASK.shot, [shot]);
       const sent = await view.until((v) => v.entries.some((e) => e.kind === "user" && e.text === ASK.shot), 30_000);
-      const line = sent.entries.find((e) => e.kind === "user" && e.text === ASK.shot) as Extract<ThreadEntry, { kind: "user" }>;
+      const line = sent.entries.find((e) => e.kind === "user" && e.text === ASK.shot)!;
       // A reference on the line, never the bytes.
       expect(line.files).toEqual([{ type: "file", data: shot.data, mediaType: "image/png", filename: "bug.png" }]);
       expect(new Uint8Array(await (await screen.calls().readFile(line.files![0])).arrayBuffer())).toEqual(PNG);

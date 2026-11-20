@@ -111,7 +111,7 @@ describe("V8", () => {
     // Workforce's conversation ledger id isn't exported; the boards' own
     // action name is, by the task tools' rule (`<tool>_<ledger id>`), and the
     // Lab tests that read a board end to end fail if either drifts.
-    const { CONVERSATION_BOARD_COLLECTION } = await import("../src/lib/reads");
+    const { CONVERSATION_BOARD_COLLECTION } = await import("../src/lib/boards");
     const { LIST_TASKS_ACTION } = await import("../src/lib/conversation-tasks");
     expect(LIST_TASKS_ACTION).toBe(`listTasks_${CONVERSATION_BOARD_COLLECTION}`);
   });
@@ -171,17 +171,29 @@ describe("V8", () => {
   it("makes no write from the task screen but the abort, the one send path and the board's own task actions (ER-15, D2)", () => {
     const taskFiles = ["lib/task.tsx", "lib/task-items.ts", "surfaces/TaskFrame.tsx", "surfaces/TaskSession.tsx", "surfaces/TaskInspector.tsx"];
     const WRITES = /\.(send|resume|answer|retry|continue|delete|updateMetadata)\(|\b(postLine|createCollectionResource|updateCollectionResource|deleteCollectionResource|createSession|retryRequest|continueRequest)\b|method:\s*"(POST|PUT|PATCH|DELETE)"/;
-    const writes = (text: string) =>
-      text.split("\n").filter((line) => WRITES.test(line) || (/\.request\([^)]*\)\.abort\(/.test(line) && !/await actions\.request\(run\.requestId\)\.abort\(\)/.test(line)));
-    for (const file of taskFiles) expect(writes(readFileSync(join(src, file), "utf8")), file).toEqual([]);
+    // A failed task's Retry is the board's own retry, made once, in the task provider (pinned below).
+    const RETRY = "await board.retry(taskId);";
+    const writes = (text: string, file?: string) =>
+      text
+        .split("\n")
+        .filter((line) => !(file === "lib/task.tsx" && line.trim() === RETRY))
+        .filter((line) => WRITES.test(line) || (/\.request\([^)]*\)\.abort\(/.test(line) && !/await actions\.request\(run\.requestId\)\.abort\(\)/.test(line)));
+    for (const file of taskFiles) expect(writes(readFileSync(join(src, file), "utf8"), file), file).toEqual([]);
     // The abort is one run's stop, through workforce (FIX-2776 D3).
     expect(readFileSync(join(src, "lib/task.tsx"), "utf8")).toContain("await workforce.stopRun(openRun.sessionId, openRun.requestId)");
-    // The header's action row changes the task only through the board's own
-    // actions, the reader's `taskActions`, handed to the registry's row whole.
-    expect(readFileSync(join(src, "surfaces/TaskFrame.tsx"), "utf8")).toContain("reader.taskActions(");
+    // The task changes only through the board's own actions, orchestration's
+    // `inbox.board(...)` (`useBoardActions`), built once for the task: the
+    // header hands them to the registry's row whole, and a failed run's line
+    // retries through the provider's `retryTask`.
+    expect(readFileSync(join(src, "lib/task.tsx"), "utf8")).toContain("useBoardActions(");
+    expect(readFileSync(join(src, "lib/task.tsx"), "utf8")).toContain(RETRY);
+    expect(readFileSync(join(src, "surfaces/TaskFrame.tsx"), "utf8")).toContain("const board = task.board;");
     // Planted: a second write is caught.
     expect(writes(`await client.flow(f).send("run", {});`)).toHaveLength(1);
     expect(writes(`await client.flow(f).request(id).abort();`)).toHaveLength(1);
+    expect(writes(`await client.retry(taskId);`, "lib/task.tsx")).toHaveLength(1);
+    expect(writes(`  ${RETRY}`, "surfaces/TaskSession.tsx")).toHaveLength(1);
+    expect(writes(`  ${RETRY} // again`, "lib/task.tsx")).toHaveLength(1);
   });
 
   it("goes to an address through a real link, so it opens in a new tab and can be copied (FIX-2414)", () => {

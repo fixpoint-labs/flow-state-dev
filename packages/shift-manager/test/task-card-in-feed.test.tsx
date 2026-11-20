@@ -3,10 +3,14 @@
  * One card per task the turn filed. Status comes from the board, so a task
  * the feed still holds as running can show errored.
  */
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as draw, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { SessionScope, TaskBoardMeta } from "../src/components/TaskBoardMeta";
+import { DirectoryProvider } from "../src/lib/directory";
+
+const render = (ui: ReactElement) => draw(ui, { wrapper: DirectoryProvider });
 import type { SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/client";
 
 /** The view's own timer where push can miss a change: `useView`'s default. */
@@ -40,6 +44,11 @@ const lab: { client: { userId: string; subscribe: typeof subscribe; view: typeof
   refresh: async () => void refreshes++,
 };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
+// FIX-2775: the directory the card reads its workers and sessions from: the case's snapshot.
+vi.mock("../src/lib/directory-reads", async () => {
+  const { useFixedReads } = await import("./helpers/directory");
+  return { useDirectoryReads: () => useFixedReads(() => ("inventory" in lab.snapshot ? lab.snapshot : undefined) as never) };
+});
 // The user's conversation with the Error Reporter, as the snapshot lists it; `null` before a first line.
 let reporterConversation: string | null = null;
 const conversationsAskedFor: unknown[] = [];

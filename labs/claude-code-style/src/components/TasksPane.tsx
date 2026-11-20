@@ -5,7 +5,7 @@ import { useMissing, useNow } from "../lib/use-watch";
 import { Clamp } from "./Clamp";
 import { PANE_TITLE } from "../modes";
 import { cn } from "../lib/utils";
-import { Entry } from "./Entry";
+import { useLines, WorkLines } from "./lines";
 import { LoadEarlier } from "./LoadEarlier";
 import { PaneHeader } from "./PaneHeader";
 import { SessionOverlay } from "./flow-state/session-overlay";
@@ -126,6 +126,7 @@ function TaskSheet({ sessionId, task, onClose }: { sessionId: string; task: AppT
   const lab = useApp();
   const actions = useMemo(() => lab.taskActions(sessionId), [lab, sessionId]);
   const work = useTaskWork(task);
+  const lines = useLines(work?.items);
   const status = TASK_STATUS[task.status];
   return (
     <SessionOverlay
@@ -166,9 +167,9 @@ function TaskSheet({ sessionId, task, onClose }: { sessionId: string; task: AppT
         </div>
       ) : null}
       {waitsOnPullRequest(task) ? <PullRequestOpen task={withPullRequestLinks(task, work)} className="mb-3 block" /> : null}
-      {work === undefined || work.entries.length === 0 ? <p className="text-sm text-muted-foreground">Nothing yet.</p> : null}
+      {lines === undefined || lines.length === 0 ? <p className="text-sm text-muted-foreground">Nothing yet.</p> : null}
       <LoadEarlier load={work?.loadEarlier} />
-      {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
+      <WorkLines lines={lines} />
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
       {task.status === "in_progress" && task.openHold === undefined && !waitsOnPullRequest(task) ? (
         <StreamingIndicator message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />

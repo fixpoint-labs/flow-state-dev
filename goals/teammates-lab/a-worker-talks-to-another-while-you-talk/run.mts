@@ -23,8 +23,10 @@
  *   5  you ask for a fix; lead starts a coding task with no question and no
  *      project anywhere on the screen, the run goes through
  *      Claude Code, a worktree of the checkout gets one commit that changes the
- *      README's first line and nothing else, the checkout itself is untouched,
- *      and the result lands in lead's conversation as the coding task's.
+ *      README's first line and nothing else, the checkout itself is untouched
+ *      until you accept the review from its popup (merge locally), which lands
+ *      the checkout at that commit, and the result lands in lead's
+ *      conversation as the coding task's.
  *
  * Inputs are held out: the launch date is drawn at random and written into the
  * working folder's README, where researcher reads it, the codename is drawn at random, and the
@@ -34,7 +36,7 @@
  * Controls: GOAL_CONTROL=no-model | no-lead-send | no-reply-back | no-summary | no-memory (see goal.md)
  */
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "playwright";
 import { createClient, readEveryCollectionPage } from "@flow-state-dev/client";
@@ -92,10 +94,13 @@ const dropSendFor = (worker: string): ModulePatch => ({
   to: `if (typeof self !== "string" || self === ${JSON.stringify(worker)}) return [];`,
 });
 
-/** A scratch patch to the lab's host, where lead's flow is put together. */
+/** A scratch patch to the lab's host, where lead's memory is composed in. */
 const hostPatch = (from: string): ModulePatch => ({ module: "labs/teammates/host.mts", from, to: "" });
-/** The history summary out of lead's flow: its capability and its fold. */
-const NO_SUMMARY = [hostPatch(String.raw`,\s*earlier\.capability`), hostPatch(String.raw`beforeAnswer: earlier\.fold,`)];
+/**
+ * The history summary off for lead: the built-in worker flow folds older turns into one by default,
+ * and lead's file, in the goal's copy of the workers' tree, turns that section off.
+ */
+const NO_SUMMARY_FILE = (text: string) => text.replace(/^capabilities:$/m, "defaults:\n  historySummary: false\ncapabilities:");
 
 /**
  * Each control: what it changes, the steps it must redden, and any step it may
@@ -103,7 +108,10 @@ const NO_SUMMARY = [hostPatch(String.raw`,\s*earlier\.capability`), hostPatch(St
  * `skip` is step 4 under a control about another step: its 60 turns test
  * nothing there.
  */
-const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps: string[]; mayAlso?: string[]; skip?: string[] }> = {
+const CONTROLS: Record<
+  string,
+  { patches?: ModulePatch[]; leadFile?: (text: string) => string; model?: string; steps: string[]; mayAlso?: string[]; skip?: string[] }
+> = {
   // No model answers: lead's conversation holds only your own lines.
   "no-model": { model: "openai/no-such-model-goal-control", steps: ["1", "2", "3", "5"], skip: ["4"] },
   // lead can't message: no card, no line in researcher's conversation, no row, and so no reply.
@@ -126,11 +134,11 @@ const CONTROLS: Record<string, { patches?: ModulePatch[]; model?: string; steps:
   // instead of with `sendMessage`, so no reply lands (2 of 3 runs on 2026-10-28). Neither patch
   // touches messaging; that is the model, not a leak.
   // No history summary: memory may still answer, but the divider can't say the earlier turns were summarized.
-  "no-summary": { patches: NO_SUMMARY, steps: ["4"], mayAlso: ["3"] },
+  "no-summary": { leadFile: NO_SUMMARY_FILE, steps: ["4"], mayAlso: ["3"] },
   // Neither memory nor the summary: nothing holds what left the window, so lead can't answer it.
   "no-memory": {
+    leadFile: NO_SUMMARY_FILE,
     patches: [
-      ...NO_SUMMARY,
       hostPatch(String.raw`mem\.capability\.presets\(\{[^)]*\}\)`),
       hostPatch(String.raw`afterAnswer: mem\.captureFromItems,`),
     ],
@@ -168,6 +176,11 @@ function scratchCheckout(dir: string, typo: Fixture["typos"][number], rest: stri
   writeFileSync(join(checkout, "README.md"), `${typo.readme}\n${rest}`);
   writeFileSync(join(checkout, ".gitignore"), "**/.fsdev/\n");
   git(checkout, "init", "-q", "-b", "main");
+  // Merge locally runs a plain `git merge`; a machine set to never fast-forward would make a merge
+  // commit, and step 5's "at the run's commit" would fail on the machine, not the lab. This checkout's
+  // own settings override the global ones.
+  git(checkout, "config", "merge.ff", "true");
+  git(checkout, "config", "branch.main.mergeOptions", "--ff");
   git(checkout, "-c", "user.email=goal@example.com", "-c", "user.name=goal", "add", ".");
   git(checkout, "-c", "user.email=goal@example.com", "-c", "user.name=goal", "commit", "-q", "-m", "init");
   return checkout;
@@ -229,10 +242,11 @@ interface Drawn {
 /** The open conversation's entries in order, as drawn. */
 async function entriesOf(page: Page): Promise<Drawn[]> {
   return await conversation(page)
-    .locator("[data-entry]")
+    // The lab's own entries, and the registry's lines (a run of steps and a folded brief aside).
+    .locator("[data-entry], [data-line]:not([data-line=steps]):not([data-line=brief])")
     .evaluateAll((els) =>
       els.map((el) => ({
-        kind: (el as HTMLElement).dataset.entry ?? "",
+        kind: (el as HTMLElement).dataset.entry ?? (el as HTMLElement).dataset.line ?? "",
         label: el.getAttribute("aria-label") ?? el.querySelector("[aria-label]")?.getAttribute("aria-label") ?? "",
         // As shown: block breaks between the label and a Markdown body, and the label in its uppercase style.
         text: (el as HTMLElement).innerText,
@@ -348,7 +362,8 @@ async function stepFour(
   }
 
   // The divider: labelled summarized, with the codename line and researcher's reply above it.
-  const divider = conversation(page).getByRole("separator");
+  // Read by its own name: a Markdown rule (`---`) in an answer is a separator too, drawn above it.
+  const divider = conversation(page).getByRole("separator", { name: /^Earlier turns / });
   const shown = await divider.first().waitFor({ timeout: 15_000 }).then(() => true, () => false);
   const label = shown ? await divider.first().getAttribute("aria-label") : null;
   if (!shown) fail("4", "no divider in lead's conversation");
@@ -384,11 +399,24 @@ await runGoal(async (failures, tell_) => {
   const mark = join(dir, "patched.txt");
   const patches = control?.patches ?? [];
   if (patches.length > 0) console.error(`GOAL_CONTROL=${CONTROL} patches:\n${describePatches(patches, REPO_ROOT)}`);
+  // A control that edits lead's file does it in a copy of the workers' tree, never the repository's.
+  let tree: string | undefined;
+  if (control?.leadFile !== undefined) {
+    tree = join(dir, "workforce");
+    cpSync(join(LAB, "workforce"), tree, { recursive: true });
+    const file = join(tree, "teams/teammates/workers/chief-of-staff/WORKER.md");
+    const original = readFileSync(file, "utf8");
+    const edited = control.leadFile(original);
+    if (edited === original) throw new Error(`setup: GOAL_CONTROL=${CONTROL} changed nothing in lead's file`);
+    writeFileSync(file, edited);
+    console.error(`GOAL_CONTROL=${CONTROL}: lead's file in ${tree} reads:\n${edited.split("\n---")[0]}`);
+  }
   const env = intentFreeEnv(process.env, {
     TEAMMATES_MODEL: control?.model ?? MODEL,
     TEAMMATES_STORE: join(dir, "teammates.sqlite"),
     TEAMMATES_USER: "you",
     TEAMMATES_WORKDIR: checkout,
+    ...(tree === undefined ? {} : { TEAMMATES_TREE: tree }),
     ...(patches.length > 0 ? modulePatchEnv(patches, REPO_ROOT, mark) : {}),
   });
   console.error(`goal: launch date ${date.text}; typo "${typo.wrong}"; scratch ${dir}`);
@@ -505,13 +533,61 @@ await runGoal(async (failures, tell_) => {
     const earlier = (await entriesOf(page)).filter((e) => e.kind === "task").length;
     const cardsNow = (es: Drawn[]) => es.filter((e) => e.kind === "task").slice(earlier);
     const fixAt = (es: Drawn[]) => userAt(es, fixture.fix);
-    const ended = await readUntil(
-      page,
-      (es) => cardsNow(es).some((e) => e.status !== undefined && /^(done|failed)$/.test(e.status)),
-      fixture.runWithinMs,
-    );
+    const ENDED = /^(done|failed)$/;
+    const settled = (e: Drawn) => e.status !== undefined && (ENDED.test(e.status) || e.status === "waiting on you");
+    /**
+     * The disk while the run's work is its own: the checkout untouched, and one worktree of it,
+     * under the lab's runs folder, with a commit that fixes the README's first line and nothing
+     * else. Its commit, or `undefined` when there isn't exactly one.
+     */
+    const runOnDisk = (): string | undefined => {
+      const now = diskOf(checkout);
+      if (now.head !== before.head || now.status !== before.status) fail("5", "the checkout itself changed (HEAD or working tree) before you accepted the run");
+      const worktrees = tell_.over(
+        "5 · worktrees of the checkout other than itself",
+        now.worktrees
+          .split("\n\n")
+          .map((block) => ({ path: /^worktree (.+)$/m.exec(block)?.[1], head: /^HEAD (.+)$/m.exec(block)?.[1] }))
+          .filter((w): w is { path: string; head: string } => w.path !== undefined && w.head !== undefined && w.path !== checkout),
+        { emptyIs: "no run worked in the checkout, which a control produces" },
+      );
+      const changed = worktrees.filter((w) => w.head !== before.head);
+      if (changed.length !== 1) {
+        fail("5", `${changed.length} worktree(s) of the checkout carry a commit; want exactly one`);
+        return undefined;
+      }
+      const [worktree] = changed;
+      const files = git(checkout, "diff", "--name-only", before.head, worktree!.head).split("\n").filter(Boolean);
+      if (files.join(",") !== "README.md") fail("5", `the run changed ${files.join(", ") || "nothing"}, not README.md alone`);
+      const readme = git(checkout, "show", `${worktree!.head}:README.md`).split("\n");
+      if (!readme[0]!.includes(typo.right) || readme[0]!.includes(typo.wrong)) fail("5", `the README's first line is still wrong: "${readme[0]}"`);
+      // `git` here trims the output, so the README's last newline is gone.
+      if (readme.slice(1).join("\n") !== rest.trimEnd()) fail("5", "the run changed more of the README than its first line");
+      if (!worktree!.path.startsWith(runsRoot)) fail("5", `the run's worktree ${worktree!.path} is not under the lab's runs folder`);
+      evidence.push(`5: started with no question and no project; Claude Code fixed "${typo.wrong}" in ${worktree!.path}, README.md only, checkout untouched`);
+      return worktree!.head;
+    };
+
+    let ended = await readUntil(page, (es) => cardsNow(es).some(settled), fixture.runWithinMs);
+    // A run that committed waits for your review. The disk is read first, while the work is the
+    // run's alone; then you accept it from its popup, as a person would, and it lands in your checkout.
+    const waiting = cardsNow(ended.entries).findIndex((e) => e.status === "waiting on you");
+    let reviewed: { commit: string | undefined } | undefined;
+    if (waiting >= 0) {
+      reviewed = { commit: runOnDisk() };
+      await tasks.nth(earlier + waiting).click();
+      const review = page.getByRole("dialog", { name: /^Coding task: / }).getByRole("region", { name: "Ready for review" });
+      // The lab's working folder has no remote, so the one way to land is a merge into it.
+      const accept = review.getByRole("button", { name: "Accept: Merge locally", exact: true });
+      if (await accept.waitFor({ timeout: 30_000 }).then(() => true, () => false)) {
+        await accept.click();
+        evidence.push("5: the run waited for your review; accepted from its popup, merged locally");
+      } else fail("5", `the task waits on you, but its popup offers no "Accept: Merge locally"`);
+      await page.keyboard.press("Escape");
+      ended = await readUntil(page, (es) => cardsNow(es).some((e) => e.status !== undefined && ENDED.test(e.status)), 120_000);
+    }
     const filed = tell_.over("5 · task cards lead filed in this step", cardsNow(ended.entries), { emptyIs: "lead filed nothing, which a control produces" });
-    const run = filed.find((e) => e.status !== undefined && /^(done|failed)$/.test(e.status));
+    const run = filed.find((e) => e.status !== undefined && ENDED.test(e.status));
     if (filed.length === 0) fail("5", `lead started no coding task within ${fixture.runWithinMs / 1000}s`);
     else if (run?.status !== "done") fail("5", `lead's task ended "${run?.status ?? filed[0]!.status}", not "done"`);
     // The lab has no projects (FIX-2335): nothing on the page offers one or asks which one. A
@@ -539,30 +615,13 @@ await runGoal(async (failures, tell_) => {
       if (resultAt < 0 || resultAt < fixAt(result.entries)) fail("5", "the result never landed in lead's conversation as the coding task's");
       else if (/^Coding task couldn't finish/.test(result.entries[resultAt]!.label)) fail("5", `the coding task's last result is a failure: "${result.entries[resultAt]!.text}"`);
     }
-    // The disk: the checkout untouched, one worktree of it with one commit that fixes the first line only.
-    const after = diskOf(checkout);
-    if (after.head !== before.head || after.status !== before.status) fail("5", "the checkout itself changed (HEAD or working tree)");
-    const worktrees = tell_.over(
-      "5 · worktrees of the checkout other than itself",
-      after.worktrees
-        .split("\n\n")
-        .map((block) => ({ path: /^worktree (.+)$/m.exec(block)?.[1], head: /^HEAD (.+)$/m.exec(block)?.[1] }))
-        .filter((w): w is { path: string; head: string } => w.path !== undefined && w.head !== undefined && w.path !== checkout),
-      { emptyIs: "no run worked in the checkout, which a control produces" },
-    );
-    const changed = worktrees.filter((w) => w.head !== before.head);
-    if (changed.length !== 1) {
-      fail("5", `${changed.length} worktree(s) of the checkout carry a commit; want exactly one`);
-    } else {
-      const [worktree] = changed;
-      const files = git(checkout, "diff", "--name-only", before.head, worktree!.head).split("\n").filter(Boolean);
-      if (files.join(",") !== "README.md") fail("5", `the run changed ${files.join(", ") || "nothing"}, not README.md alone`);
-      const readme = git(checkout, "show", `${worktree!.head}:README.md`).split("\n");
-      if (!readme[0]!.includes(typo.right) || readme[0]!.includes(typo.wrong)) fail("5", `the README's first line is still wrong: "${readme[0]}"`);
-      // `git` here trims the output, so the README's last newline is gone.
-      if (readme.slice(1).join("\n") !== rest.trimEnd()) fail("5", "the run changed more of the README than its first line");
-      if (!worktree!.path.startsWith(runsRoot)) fail("5", `the run's worktree ${worktree!.path} is not under the lab's runs folder`);
-      evidence.push(`5: started with no question and no project; Claude Code fixed "${typo.wrong}" in ${worktree!.path}, README.md only, checkout untouched`);
+    if (reviewed === undefined) runOnDisk();
+    else if (reviewed.commit !== undefined) {
+      // Accepted and merged: the checkout is now at the run's commit, and holds nothing else.
+      const landed = diskOf(checkout);
+      if (landed.head !== reviewed.commit) fail("5", `after the merge the checkout is at ${landed.head.slice(0, 8)}, not the run's commit ${reviewed.commit.slice(0, 8)}`);
+      else if (landed.status !== before.status) fail("5", "after the merge the checkout's working tree holds more than the run's commit");
+      else evidence.push(`5: the checkout is at the run's commit ${reviewed.commit.slice(0, 8)}`);
     }
     if (patches.length > 0) assertPatched(patches, REPO_ROOT, mark);
   } finally {

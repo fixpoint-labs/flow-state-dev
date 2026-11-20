@@ -306,6 +306,23 @@ describe("useResource(def, { newest: true })", () => {
     expect(result.current.value).toHaveLength(251);
   });
 
+  it("reads again when a screen switches between the first page and the newest window: each is its own read mode", async () => {
+    // Storage-key order and newest order disagree, so the value shows which read landed.
+    const stored = new Map<string, Stored>([
+      ["projects/a", { value: { name: "A", at: 1 }, version: 1 }],
+      ["projects/b", { value: { name: "B", at: 3 }, version: 1 }],
+      ["projects/c", { value: { name: "C", at: 2 }, version: 1 }]
+    ]);
+    const { client, lists } = lab(stored);
+    const { result, rerender } = renderHook(({ newest }) => useResource(projects, { newest, client }), { initialProps: { newest: false } });
+    await waitFor(() => expect(keys(result.current.value)).toEqual(["projects/a", "projects/b", "projects/c"]));
+    rerender({ newest: true });
+    await waitFor(() => expect(keys(result.current.value)).toEqual(["projects/b", "projects/c", "projects/a"]));
+    expect(lists.at(-1)).toContain("order=newest");
+    rerender({ newest: false });
+    await waitFor(() => expect(keys(result.current.value)).toEqual(["projects/a", "projects/b", "projects/c"]));
+  });
+
   it("keeps a message a notice added when the window is read again, and moves an entry whose at changed", async () => {
     const stored = new Map<string, Stored>(
       Array.from({ length: 200 }, (_, i) => [`projects/e${String(i).padStart(3, "0")}`, { value: { name: `E${i}`, at: i }, version: 1 }])
@@ -407,6 +424,42 @@ describe("useResource(def, { all: true, topicPrefix })", () => {
     await waitFor(() => expect(keys(result.current.value)).toEqual(["projects/p1/a", "projects/p1/b", "projects/p1/c"]));
     expect(entryReads).toEqual(["projects/p1/c"]);
     expect(lists).toHaveLength(listed);
+  });
+
+  // The live read's path filter is the client's (`liveRead`'s `paths`), not the subscription's, so
+  // the narrowed root is pinned by which notice with no ids reads the list again.
+  it("narrows its live paths to the prefix's whole segments: its own project's notice re-reads, the next project's doesn't", async () => {
+    const stored = new Map([
+      ["projects/p1/a", entry("p1a")],
+      ["projects/p2/a", entry("p2a")]
+    ]);
+    const { client, lists, hear } = lab(stored);
+    const { result } = renderHook(() => useResource(projects, { all: true, topicPrefix: "projects/p1/", client }));
+    await waitFor(() => expect(keys(result.current.value)).toEqual(["projects/p1/a"]));
+    const listed = lists.length;
+
+    await hear({ topic: { scope: "org", resource: "projects/p2" }, kind: "resource" });
+    expect(lists).toHaveLength(listed);
+    stored.set("projects/p1/b", entry("p1b"));
+    await hear({ topic: { scope: "org", resource: "projects/p1" }, kind: "resource" });
+    await waitFor(() => expect(keys(result.current.value)).toEqual(["projects/p1/a", "projects/p1/b"]));
+    expect(lists).toHaveLength(listed + 1);
+  });
+
+  it("narrows a prefix that ends mid-segment to the segment above it, so a sibling project's notice is still heard", async () => {
+    // `projects/p1` (no slash) also matches `projects/p10/...`: the path rule matches by segment, so the root is `projects`.
+    const stored = new Map([
+      ["projects/p1/a", entry("p1a")],
+      ["projects/p10/a", entry("p10a")],
+      ["projects/p2/a", entry("p2a")]
+    ]);
+    const { client, lists, hear } = lab(stored);
+    const { result } = renderHook(() => useResource(projects, { all: true, topicPrefix: "projects/p1", client }));
+    await waitFor(() => expect(keys(result.current.value)).toEqual(["projects/p1/a", "projects/p10/a"]));
+    const listed = lists.length;
+
+    await hear({ topic: { scope: "org", resource: "projects/p2" }, kind: "resource" });
+    await waitFor(() => expect(lists).toHaveLength(listed + 1));
   });
 });
 

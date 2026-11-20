@@ -174,6 +174,12 @@ export const ENTRIES = [
     decision: "Owner, 2026-11-14 and 2026-11-15 (FIX-2738): the payload is `value` (`record`, `fact` and `payload` were rejected); one kind, the `component` item removed, a component is a dataType with a renderer",
     retires: [],
   },
+  {
+    term: "Line",
+    means: "What a conversation screen draws: one `ItemLine` from React's `conversationLines(items, turns)` (user, assistant, steps, failed, stopped, suspension, data, item). The model decides each kind; a renderer decides only how it looks. Not workforce's coordinator `ConversationLine`, which is a line of a conversation's recent history read for the coordinator.",
+    decision: "Owner, 2026-11-19 (FIX-2848): React's render stream becomes the conversation model, renamed with no alias; its type is `ItemLine` so it doesn't reuse `ConversationLine`",
+    retires: [{ name: "buildItemRenderStream" }, { name: "ItemRenderSegment" }, { name: "BuildItemRenderStreamOptions" }],
+  },
 
   // Dispatch, wait, ask and hand-off ----------------------------------------------------------
   {
@@ -625,6 +631,8 @@ export const ENTRIES = [
   },
   { term: "Project", means: "A body of work, private to you or shared with your org.", decision: "Workforce vocabulary", published: true, retires: [] },
   { term: "Workstream", means: "One area of a shared project, with one owner.", decision: "Workforce vocabulary", published: true, retires: [] },
+  // FIX-2775 D3 coins it for the keys route's public names; FIX-2645 renames the MCP vocabulary to it and decides what it retires.
+  { term: "Connector", means: "An outside tool server a host offers its projects' runs, which each user holds their own key for.", decision: "FIX-2775 D3, a working name until FIX-2645", published: false, retires: [] },
   {
     term: "Project coordinator",
     means: "Your coordinator for one project: one session per user per project. Never a room or a talk session.",
@@ -971,6 +979,11 @@ const EXEMPTIONS = [
     path: /^(?:apps\/docs\/docs\/workforce\/delegating-work\.md|apps\/docs\/docs\/shift-manager\/overview\.md|packages\/workforce\/README\.md|packages\/shift-manager\/README\.md)$/,
     rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "recurring-work-prose"],
     why: "FIX-2614: published pages may name the released schedule and subscription surface until /release-docs rewrites them, and deletes this in the same PR",
+  },
+  {
+    path: /^\.changeset\/one-conversation-model\.md$/,
+    rules: ["buildItemRenderStream", "ItemRenderSegment", "BuildItemRenderStreamOptions"],
+    why: "FIX-2848: the release note that tells consumers which renamed React exports to replace",
   },
   {
     path: /^\.changeset\/user-suspension-reasons\.md$/,
@@ -1322,7 +1335,7 @@ const EXEMPTIONS = [
   {
     id: "other-kinds",
     terms: ["kind"],
-    strip: /\b(?:block|item|content|event|channel|part|tool|error|message|node|trace|step|manifest|change|ask|path|entry)[ -]kinds?\b/gi,
+    strip: /\b(?:block|item|content|event|channel|part|tool|error|message|node|trace|step|manifest|change|ask|path|entry|state)[ -]kinds?\b/gi,
     why: "another subsystem's kind",
   },
   {
@@ -1425,10 +1438,10 @@ const EXEMPTIONS = [
   },
   {
     id: "registry-copies",
-    terms: ["kind", "person"],
-    where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\//.test(path),
-    strip: /\battachmentKind\b|\bkinds?\b|\bpersons?\b|\bperson's\b/gi,
-    why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test: its words are the registry's",
+    terms: ["kind", "person", "thread"],
+    where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\/|^packages\/ui\/registry\.json$/.test(path),
+    strip: /\battachmentKind\b|\bkinds?\b|\bpersons?\b|\bperson's\b|\bthreads?\b/gi,
+    why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test, and the registry's own manifest, which names workforce-lines' workforce dependency: its words are the registry's",
   },
   {
     id: "person-any-human",

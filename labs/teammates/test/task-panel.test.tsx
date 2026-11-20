@@ -13,14 +13,15 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AppCalls, ConversationView } from "../src/app";
-import { createFixtureApp, rosterEntry } from "./fake-app";
+import type { ConversationView } from "../src/lib/conversation";
+import { scriptedServer, rosterEntry } from "./scripted-server";
 import { Conversation } from "../src/components/Conversation";
 import { attemptStartedAt, viewOf } from "../src/lib/task";
-import { codingTask, hold, POPUP_READ, stubServer, TestProvider } from "./stub-server";
+import { codingTask, hold, POPUP_READ, standInFollower, stubServer, TestProvider } from "./stub-server";
 import { TaskCard } from "../src/components/TaskCard";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 import { lookOf } from "../src/lib/looks";
+import { filed, linesOf } from "./lines";
 
 afterEach(() => {
   cleanup();
@@ -45,15 +46,13 @@ const TASKS: CodingBoardTask[] = [
 
 const worker = rosterEntry({ id: "chief", name: "Lead", description: "Routes work" });
 
-/** Just what the panel watches beside the board: a connection that never went stale. */
-const adapter = { watchConnection: () => () => {} } as unknown as AppCalls;
 
 /** The panel over a stand-in board holding `tasks`, once its rows are drawn. */
 async function renderPanel(tasks: CodingBoardTask[] = TASKS) {
   const { client } = stubServer({ board: { s1: tasks } });
   render(
-    <TestProvider calls={adapter} client={client}>
-      <TeammatePanel adapter={adapter} worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} isCoding={() => false} onOpen={() => {}} />
+    <TestProvider client={client}>
+      <TeammatePanel worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} isCoding={() => false} onOpen={() => {}} />
     </TestProvider>,
   );
   const panel = screen.getByRole("complementary", { name: "Lead's panel" });
@@ -153,21 +152,18 @@ describe("a busy panel stays short", () => {
 describe("a task's line in the conversation", () => {
   it("draws a filed task the moment it is filed and fills it in place from its board row: the same card from filing to done", async () => {
     // The conversation names the filing; the board has no row for it yet.
-    const view: ConversationView = { entries: [{ kind: "task", id: "k1", taskId: "t1", title: "Fix the typo", to: "teammates.cursor" }], running: false, stopping: false, backgroundRunning: 0 };
-    // The double answers the roster and the conversation's other package views; its conversation is this one entry.
-    const calls = {
-      ...createFixtureApp({ speed: 0.05 }),
-      watchConversation: (_: string, onChange: (v: ConversationView) => void) => (onChange(view), () => {}),
-      watchConnection: () => () => {},
-      watchWindow: () => () => {},
-    } as AppCalls;
+    const view: ConversationView = { lines: linesOf([filed("k1", "q1", { taskId: "t1", title: "Fix the typo", assignee: "teammates.cursor" })]), running: false, stopping: false, backgroundRunning: 0 };
+    // The scripted server answers the roster and the conversation's other package views; its conversation is this one line.
+    const { Follower } = standInFollower("s1", view);
     const server = stubServer({ board: { s1: [] } });
     render(
-      <TestProvider calls={calls} client={server.client}>
-        <Conversation adapter={calls} worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => true} harnessOf={() => "Cursor"} onFire={async () => {}} onOpen={() => {}} />
+      <TestProvider server={scriptedServer({ speed: 0.05 })} client={server.client}>
+        <Follower />
+        <Conversation worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => true} onFire={async () => {}} onOpen={() => {}} />
       </TestProvider>,
     );
-    const card = screen.getByRole("button", { name: "Coding task: Fix the typo, on Cursor" }).closest("[data-entry=task]")!;
+    // Which worker codes, and on what, is the roster's: the app's own roster watch shares that read, so the card has it on the page as it is filed.
+    const card = (await screen.findByRole("button", { name: "Coding task: Fix the typo, on Cursor" }, POPUP_READ)).closest("[data-entry=task]")!;
     expect(card.querySelector("[data-task-status]")?.textContent).toBe("running");
     // The row arrives, then ends: the same card reads it.
     server.board.s1!.push(codingTask({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo", status: "completed" }));
@@ -177,7 +173,7 @@ describe("a task's line in the conversation", () => {
 
   it("uses its panel row's word and colour", () => {
     for (const t of [TASKS[1]!, TASKS[2]!, TASKS[0]!]) {
-      const { unmount } = render(<TaskCard task={t} nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={() => {}} />);
+      const { unmount } = render(<TaskCard task={t} nameOf={(id) => id} onOpen={() => {}} />);
       const word = document.querySelector("[data-task-status]")!;
       const asks = t.asks.length > 0;
       expect(word.textContent).toBe(asks ? "waiting on you" : t.status === "errored" ? "failed" : "running");

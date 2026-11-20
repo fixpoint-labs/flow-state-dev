@@ -49,6 +49,7 @@ import {
   type ModulePatch,
 } from "../../lib/index.mts";
 import { startLab as startDesk } from "../../claude-code-style-lab/lab.mts";
+import { signedInClient } from "../lab.mts";
 
 interface Told {
   topic: string;
@@ -66,6 +67,8 @@ const fixture = loadFixture<{
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const RUNS = Number(process.env.GOAL_RUNS ?? 3);
 const LAB = repoPath("labs", "teammates");
+/** The lab's host as its config builds it, telling its two users apart (the lab takes every request as one). */
+const CONFIG = repoPath("goals", "teammates-lab", "consults-a-conversation-without-waking-it", "lab.config.mts");
 const USER = "u_goal";
 const INTRUDER = "u_goal_intruder";
 /** The utility model both labs read a consult on. */
@@ -94,7 +97,7 @@ type Item = {
   content?: { text?: string }[];
 };
 
-/** The teammates lab, served from a copy of its workers' tree, over an empty scratch checkout as its working folder. */
+/** The teammates lab, served from a copy of its workers' tree with its two users told apart, over an empty scratch checkout as its working folder. */
 async function startTeammates(dir: string, tree: string, env: Record<string, string>): Promise<{ child: ChildProcess; origin: string }> {
   const workdir = join(dir, "workdir");
   mkdirSync(workdir, { recursive: true });
@@ -103,7 +106,7 @@ async function startTeammates(dir: string, tree: string, env: Record<string, str
   const origin = `http://127.0.0.1:${port}`;
   await refuseIfAnswering(origin);
   let log = "";
-  const child = spawn("npx", ["tsx", "../../packages/fsdev/bin/fsdev.ts", "dev", "--app", "@flow-state-dev/teammates", "--port", String(port), "--no-open"], {
+  const child = spawn("npx", ["tsx", "../../packages/fsdev/bin/fsdev.ts", "dev", "--app", "@flow-state-dev/teammates", "--config", CONFIG, "--port", String(port), "--no-open"], {
     cwd: LAB,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
@@ -193,7 +196,7 @@ async function teammatesRun(n: number, tree: string, fail: (what: string) => voi
   const value = heldOut();
   const lab = await startTeammates(dir, tree, env);
   try {
-    const me = createClient({ userId: USER, baseUrl: lab.origin });
+    const me = signedInClient(USER, lab.origin);
     const workforce = createWorkforceClient(me);
 
     // ── Leg 1: tell writer, then ask lead.
@@ -217,7 +220,7 @@ async function teammatesRun(n: number, tree: string, fail: (what: string) => voi
     notes.push(`run ${n} leg 1: "${told.topic}" ${value}, ${asked.consults.length} consult(s) on [${models.join(", ")}], writer ${before.requests}/${before.items} → ${after.requests}/${after.items}`);
 
     // ── Leg 2: another user asks their own lead to read the first user's writer conversation.
-    const them = createClient({ userId: INTRUDER, baseUrl: lab.origin });
+    const them = signedInClient(INTRUDER, lab.origin);
     const theirLead = await createWorkforceClient(them).ensureWorkerSession({ worker: fixture.lead });
     const intruded = await say(them, theirLead.flowId ?? theirLead.flowKind, theirLead.id, fill(fixture.intruderAsk, { session: writer.id, topic: told.topic }));
     if (intruded.reply.includes(value) || JSON.stringify(intruded.consults).includes(value)) fail("leg 2 · no value: another user was told the value");

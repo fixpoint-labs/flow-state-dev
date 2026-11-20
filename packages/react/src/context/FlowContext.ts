@@ -86,6 +86,7 @@ function mergeRenderers(
     source: child.source !== undefined ? child.source : parent.source,
     error: child.error !== undefined ? child.error : parent.error,
     suspension: child.suspension !== undefined ? child.suspension : parent.suspension,
+    stopped: child.stopped !== undefined ? child.stopped : parent.stopped,
     component: {
       ...parent.component,
       ...child.component

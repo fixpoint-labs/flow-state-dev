@@ -13,16 +13,17 @@
  * call; the suspension notice it publishes takes the item away, with no
  * read of the Lab after it.
  */
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { useView } from "@flow-state-dev/react";
-import { createInboxClient, type InboxAnswer, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, type BoardActions, type InboxAnswer, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { inboxViewRef, type InboxSuspensionDetail as InboxAsk, type InboxBoardTask, type InboxViewValue } from "@flow-state-dev/workforce/browser";
 import { isDone } from "./columns";
+import { CONVERSATION_BOARD_COLLECTION } from "./boards";
 import { useReportFeedState } from "./feed-health";
 import { useLab } from "./lab-data";
-import { describeFailure, type Failure, type Section } from "./reads";
+import { describeFailure, type Failure, type Section } from "./failure";
 import { sessionOfHold } from "./inbox-list";
 import { useRetrySessionFeed, useSharedSessionFeed } from "./session-feeds";
 
@@ -46,6 +47,8 @@ type InboxRead = {
   failure: Failure | undefined;
   /** Read the view again now: Retry, R and *as of · refresh*. */
   refresh(): void;
+  /** When the view's answer last landed here, epoch ms: what *as of* says. `undefined` before. */
+  readAt: number | undefined;
 };
 
 /**
@@ -64,7 +67,11 @@ export function useInbox(enabled = true): InboxRead {
   );
   const lapsed = value !== undefined && stale && failure !== undefined;
   useReportFeedState(enabled && value !== undefined ? (lapsed ? "lapsed" : "live") : undefined);
-  return { section, stale, failure: lapsed ? (failure as Failure) : undefined, refresh };
+  const [readAt, setReadAt] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (value !== undefined) setReadAt(Date.now());
+  }, [value]);
+  return { section, stale, failure: lapsed ? (failure as Failure) : undefined, refresh, readAt };
 }
 
 /**
@@ -162,18 +169,30 @@ export function answerOfResolution(hold: InboxViewHold, action: ResumeAction, da
 
 /**
  * Answer one hold through orchestration's one answer call. No read follows:
- * the server's notice takes the item away. An answer in a session marks it
- * answered once, for a conversation on screen to read itself back.
+ * the server's notice takes the item away, and a conversation on screen hears
+ * its session's resume on its own live feed.
  */
 export function useInboxAnswer(): (hold: InboxViewHold | InboxHold<unknown>, answer: InboxAnswer) => Promise<void> {
-  const { client, noteAnswered } = useLab();
+  const { client } = useLab();
   const inbox = useMemo(() => createInboxClient(client), [client]);
-  return useCallback(
-    async (hold, answer) => {
-      await inbox.answerOne(hold, answer);
-      if (hold.source.kind === "suspension" && hold.source.sessionId !== null) noteAnswered(hold.source.sessionId);
-    },
-    [inbox, noteAnswered],
+  return useCallback((hold, answer) => inbox.answerOne(hold, answer), [inbox]);
+}
+
+// FIX-2381.
+/**
+ * The task actions of a conversation's board: cancel, steer, release, retry
+ * and re-file, orchestration's `inbox.board(...)` bound to the conversation's
+ * session and the flow that owns it, as the signed-in user. Each rejects with
+ * the board's refusal. `undefined` for a conversation whose session names no
+ * owning flow (or isn't listed yet): it has no board to act on.
+ */
+export function useBoardActions(conversation: { id: string; flowId: string } | undefined): BoardActions | undefined {
+  const { client } = useLab();
+  const id = conversation?.id;
+  const flowId = conversation?.flowId;
+  return useMemo(
+    () => (id === undefined || flowId === undefined ? undefined : createInboxClient(client).board({ flowId, sessionId: id, board: CONVERSATION_BOARD_COLLECTION })),
+    [client, id, flowId],
   );
 }
 

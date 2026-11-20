@@ -1,48 +1,122 @@
+// @vitest-environment happy-dom
 /**
- * The lab's contract matrix: six scenarios, each run against the test double
- * (`test/fake-app.ts`) and against the real adapter over the lab's own host
- * (`host.mts`, in process, with only the model scripted and every coding run
- * on harness-manager's scripted coder). Both columns share every assertion,
- * so a package change that alters what the adapter hands the screen fails
- * here, and a fake that draws what the real adapter can't fails too. The
- * Claude Code-style lab runs the same scenarios on its own adapter.
+ * The lab's contract matrix: what the screen reads through `src/app/`'s hooks
+ * and writes through its calls, in six scenarios, each run against the
+ * scripted server (`test/scripted-server.ts`, which the screen tests draw on)
+ * and against the lab's own host (`host.mts`, in process, with only the model
+ * scripted and every coding run on harness-manager's scripted coder). Both
+ * columns go through the same hooks and share every assertion, so a package
+ * change that alters what the hooks hand the screen fails here, and a scripted
+ * server that serves what the real host can't fails too. The Claude Code-style
+ * lab runs the same scenarios on its own hooks.
  *
  * A stop is a task's Cancel, or Stop on the worker's turn. Its main worker
  * takes a task's result as a turn of its own, after the one that filed it.
  *
  * The screen reads a conversation's tasks through harness-manager's coding
- * board view and acts on them through orchestration's Inbox client, never
- * through the adapter, and the double files no tasks: the task scenarios run
- * on the real column only, through that view and that client.
+ * board view and acts on them through orchestration's Inbox client, and the
+ * scripted server files no tasks: the task scenarios run on the real column
+ * only, through that view and that client.
  *
- * A gap the real adapter will close is listed in `GAPS` with its issue: that
+ * A gap the lab will close is listed in `GAPS` with its issue: that
  * assertion runs as `it.fails`, so it stays green while the gap is there and
  * turns red the day the issue lands, and that PR removes the mark.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { createElement } from "react";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { render } from "@testing-library/react";
+import { createElement, Fragment, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
-import { createClient, type Client, type SessionConnectionStatus } from "@flow-state-dev/client";
+import { createClient, type Client, type SessionConnectionStatus, type UploadRequest } from "@flow-state-dev/client";
+import type { FileContent } from "@flow-state-dev/core/items";
 import { codingBoardViewRef, type CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { createInboxClient } from "@flow-state-dev/orchestration/inbox";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { pluggable, scriptedModels, waitFor } from "../../../test-support/contract";
 import { openTeammates } from "../../host.mts";
-import { createAppCalls, type ConversationEntry, type ConversationView, type AppCalls, type Unsubscribe } from "../../src/app";
-import { Entry } from "../../src/components/Entry";
-import { createFixtureApp } from "../fake-app";
+import { AppProvider, ConversationFollower, useAppClient, useConversationCalls } from "../../src/app";
+import type { ItemLine } from "@flow-state-dev/react";
+import type { MessageItem } from "@flow-state-dev/core/items";
+import { FILED_TASK_DATA_TYPE, TASK_RESULT_DATA_TYPE, type FiledTaskValue, type TaskResultValue } from "@flow-state-dev/workforce/browser";
+import type { ConversationView } from "../../src/lib/conversation";
+import type { AppConnection } from "../../src/lib/files";
+import { LinesOf } from "../lines";
+import { scriptedServer } from "../scripted-server";
+
+// The scenarios drive the hooks from outside React, as the host's answers arrive: no act() to wrap them in.
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+
+/** Stops a watch. */
+type Unsubscribe = () => void;
+
+/** What a conversation's follower read, as every screen on it reads it. */
+type Read = { view: ConversationView; connection: SessionConnectionStatus };
+
+/** The screen's half of the lab, on one client: its provider, a follower per conversation a scenario watches, and its calls. */
+interface Screen {
+  open(worker: string): Promise<string>;
+  send(id: string, text: string, files?: readonly FileContent[]): Promise<void>;
+  interrupt(id: string): Promise<void>;
+  retry(id: string, requestId: string): Promise<void>;
+  upload(request: UploadRequest): Promise<FileContent>;
+  readFile(file: FileContent): Promise<Blob>;
+  /** What conversation `id`'s follower read, on each change; its follower is mounted from the first watch on. */
+  watch(id: string, on: (read: Read) => void): Unsubscribe;
+  close(): void;
+}
+
+/** The provider over `client` and `connection`, drawn, with its calls and conversations held for a scenario to drive. */
+function mountScreen(client: Client, connection: AppConnection): Screen {
+  let held: { app: ReturnType<typeof useAppClient>; calls: ReturnType<typeof useConversationCalls> } | undefined;
+  let follow: (ids: string[]) => void = () => {};
+  const followed: string[] = [];
+  function Probe() {
+    const [ids, setIds] = useState<string[]>([]);
+    follow = setIds;
+    held = { app: useAppClient(), calls: useConversationCalls() };
+    return createElement(Fragment, null, ...ids.map((id) => createElement(ConversationFollower, { key: id, sessionId: id })));
+  }
+  const drawn = render(createElement(AppProvider, { client, connection, pollIntervalMs: 150 }, createElement(Probe)));
+  const calls = () => held!.calls;
+  return {
+    open: (worker) => calls().open(worker),
+    send: (id, text, files = []) => calls().send(id, text, files),
+    interrupt: (id) => calls().stop(id),
+    retry: (id, requestId) => calls().retry(id, requestId),
+    upload: (request) => calls().upload(request),
+    readFile: (file) => calls().readFile(file),
+    watch(id, on) {
+      if (!followed.includes(id)) {
+        followed.push(id);
+        follow([...followed]);
+      }
+      const { conversations } = held!.app;
+      let last: unknown;
+      const tell = () => {
+        const read = conversations.read(id);
+        if (read?.view === undefined || read === last) return;
+        last = read;
+        on({ view: read.view, connection: read.connection });
+      };
+      const stop = conversations.subscribe(tell);
+      tell();
+      return stop;
+    },
+    close: () => drawn.unmount(),
+  };
+}
 
 const CHIEF = "teammates.chief-of-staff";
 const CODER = "teammates.cursor";
 
-/** One column of the matrix: an adapter, and what a scenario does to the server behind it. */
+/** One column of the matrix: the screen's half on a server, and what a scenario does to the server behind it. */
 interface Target {
-  lab: AppCalls;
+  lab: Screen;
   /** The next line's turn fails at its model call. */
   failNextTurn(): void;
   /** The host stops answering; `restore` brings it back. */
@@ -50,11 +124,11 @@ interface Target {
   restore(): void;
   /** The next abort is answered 409 and goes no further, as when an answer resumed the turn first. */
   refuseNextAbort(): void;
-  /** The abort calls the adapter posted, by URL; the fake posts none, so it has none. */
+  /** The abort calls the screen posted, by URL; the scripted server takes none over a fetch, so it has none. */
   aborts?: string[];
-  /** The client the real column's screen reads its tasks through; the fake has none. */
+  /** The client the real column's screen reads its tasks through; the scripted one files none. */
   client?: Client;
-  /** How many of the conversation's turns the server holds `in_progress` now, from its request rows; the fake has none. */
+  /** How many of the conversation's turns the server holds `in_progress` now, from its request rows; the scripted one says none. */
   turnsRunning?(sessionId: string): Promise<number>;
   close(): Promise<void>;
 }
@@ -91,16 +165,17 @@ const PNG = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72
 /** The last user message of a step's messages: what this turn answers, not what an earlier one did. */
 const lastUserLine = (said: string) => said.slice(said.lastIndexOf('"role":"user"'));
 
-/** The fake. */
-function fakeTarget(): Target {
-  const fake = createFixtureApp({ speed: 0.2 });
+/** The scripted server. */
+function scriptedTarget(): Target {
+  const server = scriptedServer({ speed: 0.2 });
+  const lab = mountScreen(server.client, server.connection);
   return {
-    lab: fake,
-    failNextTurn: () => fake.failNextTurn(FAILURE),
-    lose: () => fake.setConnection("lapsed"),
-    restore: () => fake.setConnection("live"),
-    refuseNextAbort: () => fake.refuseNextStop(),
-    close: async () => {},
+    lab,
+    failNextTurn: () => server.failNextTurn(FAILURE),
+    lose: () => server.setConnection("lapsed"),
+    restore: () => server.setConnection("live"),
+    refuseNextAbort: () => server.refuseNextStop(),
+    close: async () => lab.close(),
   };
 }
 
@@ -163,6 +238,8 @@ async function realTarget(): Promise<Target> {
     store: join(data, "teammates.sqlite"),
     model: "test/scripted",
     userId: "you",
+    // Off this file's own path: the DOM's URL, which the hooks need here, isn't Node's.
+    tree: join(dirname(fileURLToPath(import.meta.url)), "../../workforce"),
     workdir: repo,
     runsRoot: join(data, "runs"),
     scriptedHarnessStepMs: 50,
@@ -186,7 +263,7 @@ async function realTarget(): Promise<Target> {
     return inProcess(input, init);
   });
   const client = createClient({ userId: "you", baseUrl: "", fetcher: plug.fetcher as never });
-  const lab = createAppCalls(client, { fetcher: plug.fetcher as never });
+  const lab = mountScreen(client, { fetcher: plug.fetcher as never });
   return {
     lab,
     failNextTurn: () => (failing.next = true),
@@ -198,6 +275,7 @@ async function realTarget(): Promise<Target> {
     turnsRunning: async (sessionId) =>
       (await client.sessions.requests(sessionId, { limit: 20 })).filter((r) => r.actionName === "respond" && r.status === "in_progress").length,
     close: async () => {
+      lab.close();
       plug.restore();
       await (flowState as unknown as { dispose?: () => Promise<void> }).dispose?.();
       rmSync(data, { recursive: true, force: true });
@@ -205,12 +283,14 @@ async function realTarget(): Promise<Target> {
   };
 }
 
-/** Assertions the real adapter can't meet yet, by column, with the issue that closes each. */
-const GAPS: Record<string, { real?: string; fake?: string }> = {
+/** Assertions the lab can't meet yet, by column, with the issue that closes each. */
+const GAPS: Record<string, { real?: string; scripted?: string }> = {
 };
 
 const stops: Unsubscribe[] = [];
 let target: Target | undefined;
+/** The lead's conversation the scenario opened. */
+let chiefId: string | undefined;
 afterEach(async () => {
   stops.splice(0).forEach((stop) => stop());
   await target?.close();
@@ -252,7 +332,7 @@ function follow<T>(watch: (on: (value: T) => void) => Unsubscribe): Followed<T> 
   };
 }
 
-const conversation = (lab: AppCalls, id: string) => follow<ConversationView>((on) => lab.watchConversation(id, on));
+const conversation = (lab: Screen, id: string) => follow<ConversationView>((on) => lab.watch(id, (read) => on(read.view)));
 /** A conversation's tasks as the screen reads them: the coding board view, read every 200 ms. */
 const tasks = (client: Client, id: string) =>
   follow<CodingBoardTask[]>((on) => {
@@ -274,7 +354,7 @@ const boardOf = async (client: Client, id: string) => {
   const detail = await client.sessions.get(id);
   return createInboxClient(client).board({ flowId: detail.flowId ?? detail.flowKind, sessionId: id, board: "tasks" });
 };
-const connection = (lab: AppCalls, id: string) => follow<SessionConnectionStatus>((on) => lab.watchConnection(id, on));
+const connection = (lab: Screen, id: string) => follow<SessionConnectionStatus>((on) => lab.watch(id, (read) => on(read.connection)));
 
 /** Reads `read` every 100 ms until `check` holds for it, or fails after `ms`. */
 async function readUntil<T>(read: () => Promise<T>, check: (value: T) => boolean, ms = 15_000): Promise<T> {
@@ -289,7 +369,7 @@ async function readUntil<T>(read: () => Promise<T>, check: (value: T) => boolean
 }
 
 /** Presses Stop until the conversation reads nothing running. */
-async function stopAll(lab: AppCalls, id: string, view: Followed<ConversationView>) {
+async function stopAll(lab: Screen, id: string, view: Followed<ConversationView>) {
   for (let press = 0; press < 10 && view.latest()!.running; press++) {
     await lab.interrupt(id);
     await waitFor(1_000);
@@ -298,12 +378,19 @@ async function stopAll(lab: AppCalls, id: string, view: Followed<ConversationVie
 }
 
 /** What a user line may carry: anything more is a state the screen could draw. */
-const USER_LINE_KEYS = new Set(["kind", "id", "text"]);
+const USER_LINE_KEYS = new Set(["kind", "id", "requestId", "item"]);
 
-/** The entries after your line `text`: what its turn, and any later one, wrote. */
+/** A line's words: a message's text parts, joined. */
+const wordsOf = (line: ItemLine) => ("item" in line && line.item.type === "message" ? (line.item as MessageItem).content.map((part) => ("text" in part ? part.text : "")).join("") : "");
+/** Your line `text`. */
+const yours = (line: ItemLine, text: string) => line.kind === "user" && wordsOf(line) === text;
+/** A data line's value, when it is of `dataType`. */
+const valueOf = <T,>(line: ItemLine, dataType: string): T | undefined => (line.kind === "data" && line.item.dataType === dataType ? (line.item.value as T) : undefined);
+
+/** The lines after your line `text`: what its turn, and any later one, wrote. */
 const afterLine = (view: ConversationView, text: string) => {
-  const at = view.entries.findIndex((e) => e.kind === "user" && e.text === text);
-  return at < 0 ? [] : view.entries.slice(at + 1);
+  const at = view.lines.findIndex((line) => yours(line, text));
+  return at < 0 ? [] : view.lines.slice(at + 1);
 };
 
 /**
@@ -311,17 +398,17 @@ const afterLine = (view: ConversationView, text: string) => {
  * draws nothing more for it, such as a mark that it waits for the worker's answer.
  */
 function expectPlainLine(view: ConversationView, text: string) {
-  const line = view.entries.find((e) => e.kind === "user" && e.text === text) as ConversationEntry | undefined;
+  const line = view.lines.find((l) => yours(l, text));
   expect(line, `the line "${text}" is in the conversation`).toBeDefined();
   expect(Object.keys(line!).filter((key) => !USER_LINE_KEYS.has(key))).toEqual([]);
-  const entry = createElement(Entry, { entry: line!, workerName: "Lead", nameOf: (id: string) => id, lookOf: () => ({ icon: "★", color: "amber" as const }) });
+  const entry = createElement(LinesOf, { lines: [line!] });
   expect(renderToStaticMarkup(entry).replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")).toBe(text);
 }
 
 describe.each([
-  ["fake", async () => fakeTarget()],
+  ["scripted", async () => scriptedTarget()],
   ["real", async () => realTarget()],
-] as const)("the %s adapter", (column, make) => {
+] as const)("the %s server", (column, make) => {
   /** `it`, or `it.fails` when this column has a gap named for `name`. */
   const check = (name: string, run: () => Promise<void>) => {
     const gap = GAPS[name]?.[column];
@@ -330,12 +417,14 @@ describe.each([
   /** The lead's conversation, on a fresh target. */
   const chief = async () => {
     target = await make();
-    // Opening a conversation reads the roster first: the calls learn the workers' names from it, and draw a line
-    // from a worker they know as that worker's.
-    return { lab: target.lab, id: await target.lab.openConversation(CHIEF) };
+    // Opening a conversation reads the roster first, as its follower does: a line under a worker's name it knows
+    // is drawn as that worker's.
+    const id = await target.lab.open(CHIEF);
+    chiefId = id;
+    return { lab: target.lab, id };
   };
 
-  // The double files no tasks: these read the real host's board, as the screen does.
+  // The scripted server files no tasks: these read the real host's board, as the screen does.
   if (column === "real") {
     describe("a result that lands mid-turn", () => {
       check("shows the task's result under the worker that ran it, once its review is accepted, and the row reads done", async () => {
@@ -344,12 +433,17 @@ describe.each([
         const view = conversation(lab, id);
         const board = tasks(client, id);
         await lab.send(id, ASK.result);
-        const filed = await view.until((v) => v.entries.some((e) => e.kind === "task"));
-        const card = filed.entries.find((e) => e.kind === "task") as { taskId: string; to: string };
+        const filed = await view.until((v) => v.lines.some((line) => valueOf(line, FILED_TASK_DATA_TYPE) !== undefined));
+        const card = filed.lines.map((line) => valueOf<FiledTaskValue>(line, FILED_TASK_DATA_TYPE)).find((value) => value !== undefined)!;
         // A coding run that committed waits for your review, answerable once the view knows the run's flow.
         const held = await board.until((r) => r.some((t) => t.id === card.taskId && t.asks[0]?.ask.kind === "review" && t.asks[0].unanswerable === null), 30_000);
         await createInboxClient(client).answerOne(held.find((t) => t.id === card.taskId)!.asks[0]!, { value: { verdict: "accepted" } });
-        await view.until((v) => v.entries.some((e) => e.kind === "result" && e.taskId === card.taskId && e.from === card.to && e.failed !== true && e.text.length > 0));
+        await view.until((v) =>
+          v.lines.some((line) => {
+            const result = valueOf<TaskResultValue>(line, TASK_RESULT_DATA_TYPE);
+            return result?.taskId === card.taskId && result.from === card.assignee && result.ending === "completed" && result.text.length > 0;
+          }),
+        );
         await board.until((r) => r.some((t) => t.id === card.taskId && t.status === "completed"));
       });
     });
@@ -360,12 +454,12 @@ describe.each([
       const view = conversation(lab, id);
       // Every view the conversation draws, not only the latest: a mark drawn for a moment counts.
       const drawn: ConversationView[] = [];
-      stops.push(lab.watchConversation(id, (v) => drawn.push(v)));
+      stops.push(lab.watch(id, (read) => drawn.push(read.view)));
       await lab.send(id, ASK.meanwhile);
-      await view.until((v) => v.running && v.entries.some((e) => e.kind === "user" && e.text === ASK.meanwhile));
+      await view.until((v) => v.running && v.lines.some((line) => yours(line, ASK.meanwhile)));
       for (const line of ASK.beside) await lab.send(id, line);
       // Both lines are in the conversation while it reads running.
-      await view.until((v) => v.running && ASK.beside.every((line) => v.entries.some((e) => e.kind === "user" && e.text === line)));
+      await view.until((v) => v.running && ASK.beside.every((text) => v.lines.some((line) => yours(line, text))));
       if (target!.turnsRunning !== undefined) {
         // On the server all three turns run at once: none waits to start.
         await readUntil(() => target!.turnsRunning!(id), (count) => count === 3);
@@ -374,7 +468,7 @@ describe.each([
         expect(view.latest()!.running).toBe(true);
       }
       // No line was ever drawn with a mark, in any view.
-      for (const v of drawn) for (const e of v.entries) if (e.kind === "user") expectPlainLine(v, e.text);
+      for (const v of drawn) for (const line of v.lines) if (line.kind === "user") expectPlainLine(v, wordsOf(line));
       // Stopped, so the host can close. A Stop stops the turns the view had read as running at the
       // press, and its request read can trail the sends, so Stop is pressed until none runs.
       await stopAll(lab, id, view);
@@ -400,11 +494,11 @@ describe.each([
       const view = conversation(lab, id);
       target!.failNextTurn();
       await lab.send(id, ASK.failing);
-      await view.until((v) => v.entries.some((e) => e.kind === "user" && e.text === ASK.failing));
+      await view.until((v) => v.lines.some((line) => yours(line, ASK.failing)));
       await waitFor(1_500);
       return view.until((v) => !v.running);
     };
-    const after = (view: ConversationView) => view.entries.slice(view.entries.findIndex((e) => e.kind === "user" && e.text === ASK.failing) + 1);
+    const after = (view: ConversationView) => view.lines.slice(view.lines.findIndex((line) => yours(line, ASK.failing)) + 1);
     check("stops running and shows no reply", async () => {
       const view = await failed();
       expect(after(view).filter((e) => e.kind === "assistant")).toEqual([]);
@@ -412,6 +506,15 @@ describe.each([
     check("shows why the turn failed", async () => {
       const view = await failed();
       expect(JSON.stringify(after(view))).toContain(FAILURE);
+    });
+    check("offers Retry on it, which runs it again as a new request that answers", async () => {
+      const view = await failed();
+      const line = after(view).find((e): e is Extract<ItemLine, { kind: "failed" }> => e.kind === "failed");
+      expect(line).toMatchObject({ item: { message: expect.stringContaining(FAILURE) }, retryable: true });
+      await target!.lab.retry(chiefId!, line!.requestId);
+      const answered = await conversation(target!.lab, chiefId!).until((v) => !v.running && after(v).some((e) => e.kind === "assistant"), 30_000);
+      // The failed line stays, with no Retry: the new request is the newest turn now.
+      expect(after(answered).filter((e) => e.kind === "failed").map((e) => (e as { retryable: boolean }).retryable)).toEqual([false]);
     });
   });
 
@@ -447,7 +550,7 @@ describe.each([
   }
 
   describe("a turn stop", () => {
-    /** The tasks the turn files: the real lead files two; the double files none. */
+    /** The tasks the turn files: the real lead files two; the scripted one files none. */
     const filed = column === "real" ? 2 : 0;
     /** The lead's conversation, answering a turn that filed its tasks and works on. */
     const answering = async () => {
@@ -455,7 +558,7 @@ describe.each([
       const view = conversation(lab, id);
       await lab.send(id, ASK.stopMe);
       // Stop is on screen while the view reads the worker answering.
-      await view.until((v) => v.running && v.entries.some((e) => e.kind === "user" && e.text === ASK.stopMe) && v.entries.filter((e) => e.kind === "task").length === filed, 30_000);
+      await view.until((v) => v.running && v.lines.some((line) => yours(line, ASK.stopMe)) && v.lines.filter((line) => valueOf(line, FILED_TASK_DATA_TYPE) !== undefined).length === filed, 30_000);
       return { lab, id, view };
     };
 
@@ -464,26 +567,26 @@ describe.each([
       const pressed = lab.interrupt(id);
       await view.until((v) => v.stopping);
       await pressed;
-      const ended = await view.until((v) => !v.running && !v.stopping && v.entries.some((e) => e.kind === "stopped"));
-      const stopped = ended.entries.filter((e) => e.kind === "stopped");
+      const ended = await view.until((v) => !v.running && !v.stopping && v.lines.some((e) => e.kind === "stopped"));
+      const stopped = ended.lines.filter((e) => e.kind === "stopped");
       expect(stopped).toHaveLength(1);
       // After the stopped turn's line and both its tasks, and last: nothing came after it.
-      const at = ended.entries.indexOf(stopped[0]!);
-      expect(ended.entries.findIndex((e) => e.kind === "user" && e.text === ASK.stopMe)).toBeLessThan(at);
-      expect(ended.entries.slice(0, at).filter((e) => e.kind === "task")).toHaveLength(filed);
-      expect(at).toBe(ended.entries.length - 1);
+      const at = ended.lines.indexOf(stopped[0]!);
+      expect(ended.lines.findIndex((line) => yours(line, ASK.stopMe))).toBeLessThan(at);
+      expect(ended.lines.slice(0, at).filter((line) => valueOf(line, FILED_TASK_DATA_TYPE) !== undefined)).toHaveLength(filed);
+      expect(at).toBe(ended.lines.length - 1);
       // One abort, for the answering turn: none for the board's own passes.
       if (target!.aborts !== undefined) expect(target!.aborts).toHaveLength(1);
     });
 
-    // The double runs no background work: only the real column has tasks left running.
+    // The scripted server runs no background work: only the real column has tasks left running.
     if (column === "real") {
       check("counts the background work the stopped turn left running, from the session's runs", async () => {
         const { lab, id, view } = await answering();
         const client = target!.client!;
         const board = tasks(client, id);
         await lab.interrupt(id);
-        await view.until((v) => !v.running && v.entries.some((e) => e.kind === "stopped"));
+        await view.until((v) => !v.running && v.lines.some((e) => e.kind === "stopped"));
         const counted = await view.until((v) => v.backgroundRunning !== null && v.backgroundRunning > 0, 30_000);
         // Stop stops the turn only: both tasks it filed still run, until their own end.
         expect(counted.backgroundRunning).toBe(2);
@@ -500,10 +603,10 @@ describe.each([
       await lab.send(id, ASK.meanwhile);
       await pressed;
       // Stopping ends with the stopped turn, while the later line's turn still answers.
-      const after = await view.until((v) => !v.stopping && v.running && v.entries.some((e) => e.kind === "stopped"), 30_000);
-      expect(after.entries.filter((e) => e.kind === "stopped")).toHaveLength(1);
-      const at = after.entries.findIndex((e) => e.kind === "stopped");
-      expect(after.entries.findIndex((e) => e.kind === "user" && e.text === ASK.meanwhile)).toBeGreaterThan(at);
+      const after = await view.until((v) => !v.stopping && v.running && v.lines.some((e) => e.kind === "stopped"), 30_000);
+      expect(after.lines.filter((e) => e.kind === "stopped")).toHaveLength(1);
+      const at = after.lines.findIndex((e) => e.kind === "stopped");
+      expect(after.lines.findIndex((line) => yours(line, ASK.meanwhile))).toBeGreaterThan(at);
       if (target!.aborts !== undefined) expect(target!.aborts).toHaveLength(1);
       // Stopped too, so the host can close.
       await lab.interrupt(id);
@@ -516,32 +619,32 @@ describe.each([
       // No wait for the view to read the second turn: Stop is pressed at once.
       await lab.interrupt(id);
       const after = await view.until((v) => !v.running && !v.stopping, 30_000);
-      expect(after.entries.some((e) => e.kind === "stopped")).toBe(true);
+      expect(after.lines.some((e) => e.kind === "stopped")).toBe(true);
       if (target!.aborts !== undefined) expect(target!.aborts).toHaveLength(2);
     });
 
     check("a stop the server refuses while the turn runs on clears stopping, says why, and draws no stopped line", async () => {
       const { lab, id, view } = await answering();
       target!.refuseNextAbort();
-      await expect(lab.interrupt(id)).rejects.toThrow(/Press Stop again/);
+      await expect(lab.interrupt(id)).rejects.toThrow(/Stop it again/);
       await waitFor(300);
       const after = view.latest()!;
       expect(after.running).toBe(true);
       expect(after.stopping).toBe(false);
-      expect(after.entries.some((e) => e.kind === "stopped")).toBe(false);
+      expect(after.lines.some((e) => e.kind === "stopped")).toBe(false);
       // Pressed again, it stops.
       await lab.interrupt(id);
-      await view.until((v) => !v.running && v.entries.some((e) => e.kind === "stopped"), 30_000);
+      await view.until((v) => !v.running && v.lines.some((e) => e.kind === "stopped"), 30_000);
     });
 
     check("gives a turn that completed no stopped line", async () => {
       const { lab, id } = await chief();
       const view = conversation(lab, id);
       await lab.send(id, ASK.hello);
-      await view.until((v) => !v.running && v.entries.some((e) => e.kind === "assistant"), 30_000);
+      await view.until((v) => !v.running && v.lines.some((e) => e.kind === "assistant"), 30_000);
       // The view reads the requests on the turn's ending notice; in process that lands well inside a second.
       await waitFor(1_500);
-      expect(view.latest()!.entries.some((e) => e.kind === "stopped")).toBe(false);
+      expect(view.latest()!.lines.some((e) => e.kind === "stopped")).toBe(false);
     });
   });
 
@@ -552,15 +655,16 @@ describe.each([
       const shot = await lab.upload({ data: new Blob([PNG], { type: "image/png" }), mediaType: "image/png", filename: "bug.png" });
       expect(shot.data).toMatch(/^fsd-blob:/);
       await lab.send(id, ASK.shot, [shot]);
-      const sent = await view.until((v) => v.entries.some((e) => e.kind === "user" && e.text === ASK.shot), 30_000);
-      const line = sent.entries.find((e) => e.kind === "user" && e.text === ASK.shot) as Extract<ConversationEntry, { kind: "user" }>;
+      const sent = await view.until((v) => v.lines.some((line) => yours(line, ASK.shot)), 30_000);
+      const line = sent.lines.find((l) => yours(l, ASK.shot)) as Extract<ItemLine, { kind: "user" }>;
       // A reference on the line, never the bytes.
-      expect(line.files).toEqual([{ type: "file", data: shot.data, mediaType: "image/png", filename: "bug.png" }]);
-      expect(new Uint8Array(await (await lab.readFile(line.files![0])).arrayBuffer())).toEqual(PNG);
+      const files = line.item.content.filter((part): part is FileContent => part.type === "file");
+      expect(files).toEqual([{ type: "file", data: shot.data, mediaType: "image/png", filename: "bug.png" }]);
+      expect(new Uint8Array(await (await lab.readFile(files[0]!)).arrayBuffer())).toEqual(PNG);
       // Only the real column has a model: its answer says the turn was handed the image.
       if (column === "real") {
         const answered = await view.until((v) => afterLine(v, ASK.shot).some((e) => e.kind === "assistant"), 30_000);
-        expect(afterLine(answered, ASK.shot).find((e) => e.kind === "assistant")).toMatchObject({ text: SAW_IMAGE });
+        expect(wordsOf(afterLine(answered, ASK.shot).find((e) => e.kind === "assistant")!)).toBe(SAW_IMAGE);
       }
       await stopAll(lab, id, view);
     });

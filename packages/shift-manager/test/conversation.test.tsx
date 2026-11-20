@@ -13,7 +13,7 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GAPS } from "../src/gaps";
-import type { Worker } from "../src/lib/reads";
+import type { Worker } from "../src/lib/workers";
 import { TurnNotDelivered } from "../src/lib/deliver";
 
 const read = vi.fn();
@@ -26,9 +26,18 @@ const lab = {
   snapshot: { orgId: "org_1", sessions: [], inventory: { ok: true, value: { workers: [] } } },
 };
 const upload = vi.fn();
-const workforce = { ensureWorkerSession, upload };
+const retryTurn = vi.fn();
+const workforce = { organization: async () => "org_1", ensureWorkerSession, upload, retryTurn };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
+/** The session's turns, as workforce's session turns view reads them: how each ended, and whether the engine retries it. */
+let turns: Array<{ id: string; status: string; retryable?: boolean }> = [];
+vi.mock("@flow-state-dev/react", async (original) => {
+  const real = await original<typeof import("@flow-state-dev/react")>();
+  const turnsView = (await import("@flow-state-dev/workforce/browser")).sessionTurnsViewRef().view;
+  type Rest = Parameters<typeof real.useView> extends [unknown, ...infer R] ? R : never;
+  return { ...real, useView: (ref: { view: string }, ...rest: Rest) => (ref.view === turnsView ? { value: turns } : real.useView(ref as never, ...rest)) };
+});
 /**
  * Each follow a mounted conversation opened: the session, where its items go, and whether it
  * stopped. The follow's first answer is `read`'s; a case pushes what the session stream brings.
@@ -92,7 +101,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
 
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { Conversation } from "../src/components/Conversation";
-import { RECEIVED_MESSAGE_DATA_TYPE, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
+import { RECEIVED_MESSAGE_DATA_TYPE, TASK_RESULT_DATA_TYPE, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 
 // The reviewer's conversation: the session at its derived address, where a worker's message lands too.
 const s1 = await deriveWorkerSessionId({ userId: "u_1", orgId: "org_1", flow: "agent", criteria: { worker: "eng.reviewer" } });
@@ -101,7 +110,7 @@ const s1 = await deriveWorkerSessionId({ userId: "u_1", orgId: "org_1", flow: "a
 const worker = { id: "eng.reviewer", kind: "agent", door: "talk" } as unknown as Worker;
 const session = (id: string): SessionSummary =>
   ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "eng.reviewer" }, createdAt: 1, parentSessionId: null }) as unknown as SessionSummary;
-const item = (id: string, text: string) => ({ id, requestId: "r", type: "message", role: "assistant", ts: Date.UTC(2026, 9, 7, 17, 34), text });
+const item = (id: string, text: string) => ({ id, requestId: "r", type: "message", role: "assistant", ts: Date.UTC(2026, 9, 7, 17, 34), text, content: [{ type: "output_text", text }] });
 const delivered = { requestId: "q", suspended: false, stopped: null };
 
 beforeEach(() => {
@@ -112,6 +121,9 @@ beforeEach(() => {
   ensureWorkerSession.mockResolvedValue({ id: s1 });
   lab.refresh.mockReset();
   read.mockResolvedValue({ items: [], truncated: false });
+  retryTurn.mockReset();
+  retryTurn.mockResolvedValue(undefined);
+  turns = [];
 });
 afterEach(() => cleanup());
 
@@ -123,7 +135,8 @@ const drawnElement = (sessions: SessionSummary[], over: Partial<Parameters<typeo
     name="Reviewer"
     testId="rev"
     emptyText="Nothing said to the reviewer yet."
-    renderItem={(it) => <span data-testid="mine">{(it as unknown as { text: string }).text}</span>}
+    // The view draws the worker's messages its own way and leaves every other line to the registry, as a real view does.
+    renderItem={(it) => (it.type === "message" ? <span data-testid="mine">{(it as unknown as { text: string }).text}</span> : undefined)}
     {...over}
   />
 );
@@ -232,11 +245,12 @@ describe("what a view of its own draws", () => {
     await screen.findAllByTestId("mine");
     // The view's renderItem draws its own messages, never another worker's.
     expect(screen.getAllByTestId("mine").map((n) => n.textContent)).toEqual(["BLUE-HERON"]);
-    const drawnMessage = screen.getByTestId("received-message");
-    expect(drawnMessage.textContent).toContain("ENG.AUTHOR");
+    const drawnMessage = document.querySelector<HTMLElement>("[data-line=received]")!;
+    // Under the sender's name; the label is set in capitals by its style, not its text.
+    expect(drawnMessage.textContent).toContain("eng.author");
     expect(drawnMessage.textContent).toContain("the codename?");
-    expect(screen.getByTestId("received-message-answers")).toBeTruthy();
-    expect(screen.getAllByTestId("received-message-messages")).toHaveLength(1);
+    expect(drawnMessage.textContent).toContain("· reply");
+    expect(screen.getAllByTestId("messages-link")).toHaveLength(1);
     expect(screen.getAllByText("REVIEWER")).toHaveLength(1);
   });
 
@@ -255,6 +269,48 @@ describe("what a view of its own draws", () => {
   it("says the worker has the line while one from this page is in flight", () => {
     drawn([], { working: true });
     expect(screen.getByTestId("rev-working").textContent).toContain("Reviewer is working on it");
+  });
+});
+
+describe("a turn that didn't finish", () => {
+  const typed = { id: "u1", requestId: "q1", type: "message", role: "user", status: "completed", ts: 1, content: [{ type: "input_text", text: "Ship it." }] };
+  const failure = { id: "e1", requestId: "q1", type: "error", status: "failed", ts: 2, message: "The model provider is down.", code: "PROVIDER_ERROR" };
+
+  it("says why it failed, with Retry when the engine retries it, which retries that turn in this session", async () => {
+    turns = [{ id: "q1", status: "failed", retryable: true }];
+    read.mockResolvedValue({ items: [typed, failure], truncated: false });
+    drawn([session(s1)]);
+    const line = await screen.findByTestId("request-recovery");
+    expect(line.textContent).toContain("The model provider is down.");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /Retry/ })));
+    expect(retryTurn).toHaveBeenCalledWith(s1, "q1");
+  });
+
+  it("offers no Retry on a turn the engine won't retry", async () => {
+    turns = [{ id: "q1", status: "failed", retryable: false }];
+    read.mockResolvedValue({ items: [typed, failure], truncated: false });
+    drawn([session(s1)]);
+    expect((await screen.findByTestId("request-recovery")).textContent).toContain("The model provider is down.");
+    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+  });
+
+  it("says you stopped it, after its last line", async () => {
+    turns = [{ id: "q1", status: "aborted" }];
+    read.mockResolvedValue({ items: [typed, item("a", "Half an ans")].map((it) => ({ ...it, requestId: "q1" })), truncated: false });
+    drawn([session(s1)]);
+    await screen.findAllByTestId("mine");
+    const lines = screen.getAllByTestId("rev-item");
+    expect(lines.at(-1)!.textContent).toContain("Interrupted by you");
+  });
+});
+
+describe("a task this worker filed", () => {
+  it("draws its result where the board ended it", async () => {
+    const ended = { id: "res1", requestId: "q2", type: "data", status: "completed", ts: 3, dataType: TASK_RESULT_DATA_TYPE, value: { taskId: "t1", from: "eng.coder", title: "Fix the flaky test", text: "Fixed: the retry raced the timer.", ending: "done" } };
+    read.mockResolvedValue({ items: [ended], truncated: false });
+    drawn([session(s1)]);
+    await waitFor(() => expect(screen.getAllByTestId("rev-item")).toHaveLength(1));
+    expect(screen.getByTestId("rev-item").textContent).toContain("Fixed: the retry raced the timer.");
   });
 });
 
@@ -440,11 +496,13 @@ describe("sending", () => {
     expect(read).toHaveBeenCalledTimes(1);
   });
 
-  it("reads the Lab again and shows the reason when the door refuses, keeping the line", async () => {
+  // FIX-2775: what a turn changes elsewhere reaches each screen through that read's own notices, so a send
+  // reads nothing of the Lab after it, refused or not.
+  it("shows the reason when the door refuses, keeping the line, and reads nothing of the Lab after it", async () => {
     sendTurn.mockRejectedValue(new TurnNotDelivered("refused", "no thanks"));
     drawn([session(s1)]);
     await send("nope");
-    expect(lab.refresh).toHaveBeenCalled();
+    expect(lab.refresh).not.toHaveBeenCalled();
     expect(screen.getByTestId("rev-composer-error").textContent).toContain("no thanks");
     expect((screen.getByTestId("rev-composer-input") as HTMLInputElement).value).toBe("nope");
   });

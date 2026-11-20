@@ -13,7 +13,9 @@ import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { connect } from "../src/lib/connection";
 import { readSessionItems } from "./helpers/session-reads";
-import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, createLabReader, toBoardTaskView, type BoardTaskView } from "../src/lib/reads";
+import { createLabReader, toBoardTaskView } from "../src/lib/reads";
+import type { BoardTaskView } from "../src/lib/boards";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "../src/lib/boards";
 import { openRunLab, RUN_LAB_ASK, RUN_LAB_FAILURE, RUN_LAB_SPEND, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -316,7 +318,7 @@ describe("following the row as the board moves it", () => {
 });
 
 describe("what the Session draws of the run's items", () => {
-  it("draws what the item renderers draw: a sub-agent's working steps stay out, a keyed snapshot shows once", async () => {
+  it("draws what the item renderers draw: a sub-agent's working steps stay out, and a record no renderer draws is no line", async () => {
     const opened = await openLab();
     const row = await finishedRow(opened);
     // A sub-agent's message is stored in the session and stamped with the task,
@@ -345,10 +347,10 @@ describe("what the Session draws of the run's items", () => {
     });
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
     await screen.findByTestId("session", {}, { timeout: 10_000 });
-    await waitFor(() => expect(itemIds()).toContain("item_data_keyed:progress"));
+    await waitFor(() => expect(itemIds().length).toBeGreaterThan(0));
     expect(itemIds()).not.toContain(working.id);
-    // The run wrote its progress snapshot twice; it shows once, at its latest.
-    expect(itemIds().filter((id) => id === "item_data_keyed:progress")).toHaveLength(1);
+    // The run's progress snapshot is a record Shift Manager's registry draws nothing for: no line, however often it was written.
+    expect(itemIds()).not.toContain("item_data_keyed:progress");
   }, 30_000);
 });
 
@@ -360,13 +362,10 @@ describe("the Session draws with Shift Manager's registry copies (ER-6)", () => 
     await screen.findByTestId("session", {}, { timeout: 10_000 });
     const drawn = (type: string) =>
       screen.queryAllByTestId("session-item").filter((el) => el.getAttribute("data-item-type") === type);
-    await waitFor(() => expect(drawn("tool_output").length).toBeGreaterThan(0), { timeout: 5_000 });
-    // The registry's message card, and the collapsible reasoning and tool cards.
+    await waitFor(() => expect(drawn("steps").length).toBeGreaterThan(0), { timeout: 5_000 });
+    // The registry's message card, and its tool group: one collapsible line for a run of thinking and calls.
     expect(drawn("message").every((li) => li.querySelector("[data-testid=message]") !== null)).toBe(true);
-    for (const type of ["reasoning", "tool_output"]) {
-      expect(drawn(type).length, type).toBeGreaterThan(0);
-      expect(drawn(type).every((li) => li.querySelector("[data-slot=collapsible]") !== null), type).toBe(true);
-    }
+    expect(drawn("steps").every((li) => li.querySelector("[data-testid=tool-group][data-slot=collapsible]") !== null)).toBe(true);
   }, 30_000);
 });
 

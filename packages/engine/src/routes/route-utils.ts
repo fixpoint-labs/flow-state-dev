@@ -25,6 +25,7 @@ import type { ResolvedPrincipal } from "../transports/types";
 import { ownerKeyAdmits } from "../resources/owner-private";
 import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
+import { isJsonMediaType } from "@flow-state-dev/contracts/helpers";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { normalizeResourceState } from "../resources/normalize-resource-state";
@@ -680,11 +681,6 @@ export class JsonMediaTypeError extends Error {
   }
 }
 
-function isJsonMediaType(contentType: string | null): boolean {
-  if (contentType === null) return false;
-  const essence = contentType.split(";", 1)[0]?.trim().toLowerCase();
-  return essence === "application/json";
-}
 
 /**
  * The one JSON body reader for mutating routes. An empty body is `{}`; a

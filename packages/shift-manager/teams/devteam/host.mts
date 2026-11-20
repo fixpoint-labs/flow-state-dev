@@ -49,7 +49,7 @@ import {
   type FlowState
 } from "@flow-state-dev/engine";
 import { ensureSessionRecord, type PrincipalResolver } from "@flow-state-dev/engine/host";
-import { boolean, defineCapability, defineView, evaluator, handler, readResourceContentTool, resourceSearchTools, sequencer } from "@flow-state-dev/core";
+import { boolean, defineCapability, evaluator, handler, readResourceContentTool, resourceSearchTools, sequencer } from "@flow-state-dev/core";
 import {
   encodeUserSegment,
   type BlockContext,
@@ -92,6 +92,7 @@ import {
   defineWorkerInventoryCollection,
   inventoryWorkers,
   inventoryWriterActions,
+  connectorKeyStatuses,
   defineProjectBlocks,
   projectTools,
   defineWorkstreamBlocks,
@@ -153,7 +154,6 @@ import {
   featureIssueOf,
 } from "./workforce/flows/workers/em.mts";
 import type { HarnessFeeds as LabHarnessFeeds } from "./harness.mts";
-import { mcpCredentialsAdapter, statusOf } from "./mcp-credentials.mts";
 import { coordinatorMemory } from "./memory.mts";
 import { withWriteLatency } from "./write-latency.mts";
 import {
@@ -296,32 +296,6 @@ const resolveLabPrincipal: PrincipalResolver = async (context) => {
  */
 export async function readDevTeamTree(root: string = LAB_TREE): Promise<WorkforceFolder> {
   return readWorkforceFolder({ path: root, claim: () => undefined });
-}
-
-/**
- * The projects flow's view that names this Lab's project setup, for Shift
- * Manager: it doesn't name the project coordinator itself, and reads it here.
- */
-const PROJECT_SETUP_VIEW = "projectSetup";
-
-// FIX-2624.
-/**
- * The project setup as a user-scope view, read with no session: the worker
- * each user's project coordinator runs as (`projectCoordinator`), or `null`
- * when the tree declares none. The Lab's configuration, the same for every
- * caller; it reads no resource, so its answer names no topic.
- */
-export function projectSetupView(projectCoordinator: () => string | null) {
-  return defineView({
-    scope: "user",
-    block: handler({
-      name: "devforce-project-setup",
-      description: "Name this Lab's project setup: the worker each user's project coordinator runs as.",
-      inputSchema: z.object({}),
-      outputSchema: z.object({ projectCoordinator: z.string().nullable() }),
-      execute: () => ({ projectCoordinator: projectCoordinator() }),
-    }),
-  });
 }
 
 /**
@@ -1183,7 +1157,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // The project writes, built once: the flow that creates projects at open runs
   // them as actions, and the Shift Coordinator calls the same ones as tools. The
   // workstream writes are built with the installation, below.
-  const projectBlocks = defineProjectBlocks({ mcpServers: Object.keys(options.mcpServers ?? {}) });
+  // They serve the project setup view (which worker each user's project
+  // coordinator runs as, read from the installation the tree opens, below)
+  // and each user's connector keys route, for the servers offered here.
+  const projectBlocks = defineProjectBlocks({
+    mcpServers: Object.keys(options.mcpServers ?? {}),
+    projectCoordinator: () => installation.projectCoordinator()?.worker ?? null,
+  });
 
   // A coding run's MCP servers, relayed with its owner's key. Built here so a
   // malformed entry refuses the open; the Lab user is the one `seedEnv` seeds.
@@ -1520,10 +1500,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       ...projectBlocks.actions,
       ...workstreamBlocks.actions,
     },
-    views: {
-      // Which worker each user's project coordinator runs as.
-      [PROJECT_SETUP_VIEW]: projectSetupView(() => installation.projectCoordinator()?.worker ?? null),
-    },
+    // The project setup view among them: which worker each user's project coordinator runs as.
+    views: { ...projectBlocks.views },
   } as never)() as unknown as FlowInstance;
   hiredOn = { builtFlows, projectsFlow, reviewersFlow: githubReviewersFlow(resources[GITHUB_REVIEWERS_DOC]) };
   return hiredOn;
@@ -1632,9 +1610,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // Every request that settles failed, to the Error Reporter's intake.
     ...(reporter === undefined ? {} : { errorCapture: (event: unknown) => reporter.capture(event as never) }),
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),
-    // Each user's MCP keys are written through the Lab's own route, never an
-    // action, whose input its request record keeps.
-    adapters: options.mcpServers === undefined ? [] : [mcpCredentialsAdapter(Object.keys(options.mcpServers))],
+    // Each user's MCP keys are written through the project blocks' route, never
+    // an action, whose input its request record keeps. It serves nothing when
+    // the Lab offers no servers.
+    adapters: [projectBlocks.connectorKeys],
   } as never);
 
   // The Error Reporter's runs write through these stores, and every host stops
@@ -1724,7 +1703,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // Never the key, never the address.
   if (options.mcpServers !== undefined) {
     const offered = options.mcpServers;
-    const stored = await statusOf(runtime as never, LAB_USER_CELL, Object.keys(offered));
+    const stored = await connectorKeyStatuses(runtime as never, LAB_USER_CELL, Object.keys(offered));
     const each = stored.map(({ name, setAt }) => {
       const seed = offered[name]?.seedEnv;
       const key =

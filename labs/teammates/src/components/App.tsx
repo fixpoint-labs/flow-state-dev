@@ -1,10 +1,9 @@
-import { ClientHttpError } from "@flow-state-dev/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { harnessReadinessViewRef } from "@flow-state-dev/harness-manager/browser";
 import { useView } from "@flow-state-dev/react";
 import type { HireWorkerInput, RosterEntry } from "@flow-state-dev/workforce/browser";
 import { appContextView } from "../../flows/lab-context-ref.mts";
-import { useApp, useAppClient } from "../app";
+import { ConversationFollower, useAppClient, useConversationCalls } from "../app";
 import { Conversation } from "./Conversation";
 import { KeysSheet } from "./KeysSheet";
 import { PopupView, type FollowUp, type Popup } from "./Popups";
@@ -14,7 +13,6 @@ import { WorkersList } from "./WorkersList";
 import { ConnectionScreen, type ConnectionFailure } from "./flow-state/connection-screen";
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { readAddress, writeAddress, type Address, type AddressWrite } from "../lib/address";
-import { harnessName } from "../lib/harness";
 import { focusComposer, focusWhenDrawn, useAppKeys } from "../lib/keys";
 import { lookOf as lookOfRow } from "../lib/looks";
 import { displayName, settingOf, takesTasks, useWorkforce } from "../lib/roster";
@@ -57,14 +55,18 @@ const KEYS = [
   ["Enter", "Send, in the composer"],
   ["Esc", "Close a dialog"],
 ] as const;
-/** A failed roster read as the connection screen shows it: a status the server answered with, apart from a dead socket. */
+/**
+ * A failed roster read as the connection screen shows it: a status the server answered with, read off the error
+ * itself, apart from a dead socket, which has none.
+ */
 function failureOf(error: unknown): ConnectionFailure {
-  if (error instanceof ClientHttpError) return { httpStatus: error.status, message: error.message };
-  return { message: error instanceof Error ? error.message : String(error) };
+  const message = error instanceof Error ? error.message : String(error);
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === "number" ? { httpStatus: status, message } : { message };
 }
 
 export function App() {
-  const adapter = useApp();
+  const calls = useConversationCalls();
   const { client, pollIntervalMs } = useAppClient();
   const workforce = useWorkforce();
   const [workers, setWorkers] = useState<RosterEntry[]>([]);
@@ -115,7 +117,7 @@ export function App() {
     const stop = workforce.watchRoster((roster) => {
       const mine = ++latest;
       const talking = roster.filter((w) => !takesTasks(w));
-      Promise.allSettled(talking.map((w) => adapter.openConversation(w.id))).then((opened) => {
+      Promise.allSettled(talking.map((w) => calls.open(w.id))).then((opened) => {
         if (!current || mine !== latest) return;
         // Before the page lands, a conversation that won't open is the lab being unreachable.
         const refused = opened.find((o): o is PromiseRejectedResult => o.status === "rejected");
@@ -146,7 +148,7 @@ export function App() {
       current = false;
       stop();
     };
-  }, [adapter, workforce, attempt]);
+  }, [calls, workforce, attempt]);
 
   // The watch brings the new row and its conversation; the pick waits for them.
   // What the lab works on and with (its context view), and which harnesses can run (the harness kit's readiness view);
@@ -181,12 +183,6 @@ export function App() {
     return found === undefined ? id : displayName(found);
   }, [workers]);
   const isCoding = useCallback((id: string) => workers.some((w) => w.id === id && takesTasks(w)), [workers]);
-  // A coding worker's harness, for a task line drawn before its row arrives.
-  const harnessOf = useCallback((id: string) => {
-    const found = workers.find((w) => w.id === id);
-    const harness = found === undefined ? undefined : settingOf(found, "harness");
-    return harness === undefined ? undefined : harnessName(harness);
-  }, [workers]);
   const lookOf = useCallback((id: string) => {
     const found = workers.find((w) => w.id === id);
     return lookOfRow(found === undefined ? { id, name: id } : { id, name: displayName(found), icon: settingOf(found, "icon"), color: settingOf(found, "color") });
@@ -267,7 +263,7 @@ export function App() {
   useEffect(() => {
     if (unopened === undefined) return;
     let current = true;
-    adapter.openConversation(unopened).then((id) => {
+    calls.open(unopened).then((id) => {
       if (!current || conversations.current[unopened] !== undefined) return;
       conversations.current = { ...conversations.current, [unopened]: id };
       setSessions(conversations.current);
@@ -275,7 +271,7 @@ export function App() {
     return () => {
       current = false;
     };
-  }, [adapter, unopened]);
+  }, [calls, unopened]);
   // No teammate open, no panel column held for one.
   const panelShown = worker !== undefined && sessionId !== undefined;
   useAppKeys({
@@ -301,8 +297,11 @@ export function App() {
       className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
       style={{ gridTemplateColumns: panelShown ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
     >
+      {/* One follower per conversation: every screen on it reads what it read. */}
+      {Object.values(sessions).map((id) => (
+        <ConversationFollower key={id} sessionId={id} />
+      ))}
       <WorkersList
-        adapter={adapter}
         workers={teammates}
         sessions={sessions}
         selected={worker?.id}
@@ -318,13 +317,11 @@ export function App() {
         <Conversation
           // One conversation per session: a draft typed to one worker never carries over to another.
           key={sessionId}
-          adapter={adapter}
           worker={worker}
           sessionId={sessionId}
           nameOf={nameOf}
           lookOf={lookOf}
           isCoding={isCoding}
-          harnessOf={harnessOf}
           onFire={() => fire(worker.id)}
           onOpen={openPopup}
           prefill={prefill?.sessionId === sessionId ? prefill : undefined}
@@ -343,7 +340,6 @@ export function App() {
         <TeammatePanel
           // One panel per teammate: an opened group or an edit doesn't carry over to another.
           key={worker.id}
-          adapter={adapter}
           worker={worker}
           sessionId={sessionId}
           openTask={popup?.kind === "task" ? popup.taskId : undefined}
@@ -373,7 +369,7 @@ export function App() {
         }}
       />
       <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} keys={KEYS} />
-      {popup ? <PopupView adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} followUp={followUp} onClose={closePopup} onMissing={popup === addressed.current ? dropPopup : undefined} /> : null}
+      {popup ? <PopupView popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} followUp={followUp} onClose={closePopup} onMissing={popup === addressed.current ? dropPopup : undefined} /> : null}
     </div>
   );
 }

@@ -22,7 +22,8 @@ with its own ids passes a correct lab.
   is answered in its thread's view and noted.
 - **3** each thread waits on your review, and *Resolve* on its card completes it.
 - **4** each finished thread has a `data-entry="result"` line in the main thread whose button is
-  `aria-expanded="false"`, doesn't show the reply, and opens to it; the task views' tool lines
+  `aria-expanded="false"`, doesn't show the reply, and opens to it (an answer the router handed
+  straight to the conversation lands as a message and is only noted); the task views' tool lines
   hold no camelCase tool name, task id or `null`.
 - **5** for a thread whose result reached the lead as a notice it answers in a turn, the lead's text
   after the first result line writes at most 30% of any opened reply again (runs of 8 words or

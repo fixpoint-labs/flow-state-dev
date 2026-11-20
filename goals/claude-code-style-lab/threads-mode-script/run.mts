@@ -67,7 +67,7 @@ async function snapshot(page: Page): Promise<Snapshot> {
       const thread = document.querySelector('main[aria-label="Main thread"]');
       return {
         // A line's mark (*Sent to a task*) sits beside it, so its whole entry is read.
-        user: [...(thread?.querySelectorAll('[data-entry="user"]') ?? [])].map((el) => (el.parentElement?.textContent ?? "").trim()),
+        user: [...(thread?.querySelectorAll('[data-entry="user"]') ?? [])].map((el) => (el.closest("[data-request-id]")?.textContent ?? "").trim()),
         cards: [...(thread?.querySelectorAll('[data-entry="thread"]') ?? [])].map((el) => ({
           taskId: el.getAttribute("data-task-id") ?? "",
           column: el.getAttribute("data-column") ?? "",

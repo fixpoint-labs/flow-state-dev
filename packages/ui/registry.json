@@ -694,6 +694,34 @@
       "categories": ["ai", "chat"]
     },
     {
+      "name": "conversation-lines",
+      "title": "Conversation Lines",
+      "type": "registry:component",
+      "description": "The lines a conversation screen configures instead of writing: a failed turn with Retry, a stopped turn with the work still running, a run of tool calls (the tool group, or a compact line), and a wait for the user's yes, answered or not. One line context, set by the screen, says what each line can do there: who works, Retry, the running count, whether the screen answers. Outside a provider a line draws with no action.",
+      "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react"],
+      "registryDependencies": ["request-recovery", "approval", "tool", "tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/conversation-lines.tsx",
+        "target": "components/flow-state/conversation-lines.tsx"
+      }],
+      "categories": ["ai", "chat"]
+    },
+    {
+      "name": "workforce-lines",
+      "title": "Workforce Lines",
+      "type": "registry:component",
+      "description": "Workforce's conversation lines, styled: a message another worker sent, one this worker sent (asked, answered, refused), a task filed, a filed task's ending, and a task's brief folded to one line over any message renderer. Names, pictures and what a click opens come from the conversation-lines context the screen sets.",
+      "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "@flow-state-dev/workforce", "lucide-react"],
+      "registryDependencies": ["conversation-lines", "collapsible", "message-response", "tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/workforce-lines.tsx",
+        "target": "components/flow-state/workforce-lines.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
       "name": "run-changes",
       "title": "Run Changes",
       "type": "registry:component",

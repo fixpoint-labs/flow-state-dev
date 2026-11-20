@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { claudeCode } from "@flow-state-dev/claude-code";
 import { codexHarness } from "@flow-state-dev/codex";
-import type { ModelResolver } from "@flow-state-dev/core/types";
+import type { ModelResolver, PrincipalResolutionContext } from "@flow-state-dev/core/types";
 import { cursorHarness } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
 import { ASK_MARKER_IGNORED, assertPositiveInt, scriptedHarness, type Harness } from "@flow-state-dev/harness-manager";
@@ -24,7 +24,7 @@ import { appContextFlow } from "./flows/lab-context.mts";
 export interface TeammatesOptions {
   store: string;
   model: string;
-  userId: string;
+  userId: string; user?: (context: PrincipalResolutionContext) => string | undefined;
   workdir: string | undefined;
   runsRoot: string;
   tree?: string;
@@ -103,7 +103,7 @@ export async function openTeammates(options: TeammatesOptions) {
     durable: true,
     dispatchDrainTimeoutMs: codingDrainBudgetMs({ runTimeoutMs, checks }),
     ...(options.staleThresholdMs === undefined ? {} : { staleSweepThresholdMs: options.staleThresholdMs }),
-    resolvePrincipal: () => ({ userId: options.userId, orgId: "teammates-lab" }),
+    resolvePrincipal: (context) => ({ userId: options.user?.(context) ?? options.userId, orgId: "teammates-lab" }),
     devtool: { userId: options.userId },
     models: { default: options.model, intents: { utility: ["openai/gpt-6-luna"] } },
     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),

@@ -25,15 +25,18 @@
  * workforce's `stopRun` and draws *interrupted* only once the stream reads
  * `aborted` (the run's record decides).
  *
- * A task's asks are not read here: the screens read them from the snapshot
- * until the Inbox's own view answers them.
+ * A task's asks are not read here: the screens read them from the Inbox
+ * view (`inbox.ts`).
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { RequestStatus } from "@flow-state-dev/core/types";
+import type { BoardActions } from "@flow-state-dev/orchestration/inbox";
 import { useRequestStream } from "@flow-state-dev/react";
 import { useConversationTasks, type ConversationTask } from "./conversation-tasks";
 import { useLab } from "./lab-data";
-import { describeFailure, type Failure } from "./reads";
+import { useSessions } from "./directory";
+import { useBoardActions } from "./inbox";
+import { describeFailure, type Failure } from "./failure";
 import { useWorkforce } from "./workforce";
 import { resolveRunFlow } from "./task-items";
 
@@ -51,13 +54,13 @@ const STOP_TIMEOUT_MS = 30_000;
 const CONVERSATION_BOARD = "tasks";
 
 /** The session a board ref names as its holder: everything before its last dot. */
-export function holderSessionOf(boardRef: string): string {
+function holderSessionOf(boardRef: string): string {
   const dot = boardRef.lastIndexOf(".");
   return dot > 0 ? boardRef.slice(0, dot) : boardRef;
 }
 
 /** Whether `boardRef` names a conversation's board (`<sessionId>.tasks`), the only boards there are. */
-export function isConversationBoard(boardRef: string): boolean {
+function isConversationBoard(boardRef: string): boolean {
   return boardRef === `${holderSessionOf(boardRef)}.${CONVERSATION_BOARD}`;
 }
 
@@ -128,6 +131,10 @@ export type TaskView = {
   /** When an aborted run stopped, by its stream; `undefined` while it hasn't. */
   stoppedAt: number | undefined;
   devtoolUrl: string | undefined;
+  /** The board's task actions, on the conversation that holds the board; `undefined` with no owner to run them. */
+  board: BoardActions | undefined;
+  /** Run the task again through the board's own retry, then read the row and the Lab again; `undefined` with no board actions. */
+  retryTask: (() => Promise<void>) | undefined;
   // FIX-2009.
   /** Request ids this composer started, newest last, for this open task only: the Session follows each. */
   sent: readonly string[];
@@ -150,10 +157,15 @@ function isOpen(row: OpenTask): boolean {
 
 /** Hold one open task. */
 export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { boardRef: string; taskId: string; devtoolUrl?: string; children: ReactNode }) {
-  const { client } = useLab();
+  const { client, refresh } = useLab();
+  const sessions = useSessions().list;
   const workforce = useWorkforce();
   const holder = holderSessionOf(boardRef);
   const conversationBoard = isConversationBoard(boardRef);
+  // The board's actions run on the conversation that holds it, through the
+  // flow that conversation's session names as its owner. No owner, no actions.
+  const holderFlowId = !conversationBoard ? undefined : (sessions?.find((session) => session.id === holder)?.flowId ?? undefined);
+  const board = useBoardActions(holderFlowId === undefined ? undefined : { id: holder, flowId: holderFlowId });
 
   // ---- the row: the holding conversation's flow, read once, then its board's view.
   const [holderFlow, setHolderFlow] = useState<{ flow: string } | { failure: Failure } | undefined>(undefined);
@@ -279,6 +291,29 @@ export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { board
     }
   }, [workforce, openRun, interrupt.kind]);
 
+  // The view is live: Retry reads the holder's flow again when that failed, and waits a fresh deadline.
+  const holderFlowFailed = holderFlow !== undefined && "failure" in holderFlow;
+  const readTaskAgain = useCallback(() => {
+    setMissedOut(false);
+    setRowRetries((n) => n + 1);
+    if (holderFlowFailed) setFlowReads((n) => n + 1);
+  }, [holderFlowFailed]);
+  // The task's Retry is the board's own; the row and the Lab are read again either way.
+  const retryTask = useMemo(
+    () =>
+      board === undefined
+        ? undefined
+        : async () => {
+            try {
+              await board.retry(taskId);
+            } finally {
+              readTaskAgain();
+              void refresh();
+            }
+          },
+    [board, taskId, readTaskAgain, refresh],
+  );
+
   const [sent, setSent] = useState<string[]>([]);
   useEffect(() => setSent([]), [boardRef, taskId]);
   const noteSent = useCallback((requestId: string) => setSent((held) => (held.includes(requestId) ? held : [...held, requestId])), []);
@@ -291,12 +326,7 @@ export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { board
     rowFailure,
     waiting,
     gaveUp,
-    // The view is live: Retry reads the holder's flow again when that failed, and waits a fresh deadline.
-    retryRow: () => {
-      setMissedOut(false);
-      setRowRetries((n) => n + 1);
-      if (holderFlow !== undefined && "failure" in holderFlow) setFlowReads((n) => n + 1);
-    },
+    retryRow: readTaskAgain,
     run,
     retryRun: () => setRetries((n) => n + 1),
     status,
@@ -304,6 +334,8 @@ export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { board
     requestInterrupt,
     stoppedAt: status === "aborted" ? stream.completedAt : undefined,
     devtoolUrl,
+    board,
+    retryTask,
     sent,
     noteSent,
   };

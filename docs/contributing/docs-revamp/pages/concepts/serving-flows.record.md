@@ -39,6 +39,7 @@ Written by `docs-writer` (sonnet), 802 words. Scenario: The support desk: `suppo
 
 - After the loop: the SQLite example's filename is `support.db`, in the working directory. better-sqlite3 does not create parent directories (`store-sqlite/src/registry.ts:60` passes the filename straight to it), so a path under a missing folder stopped the server from starting.
 - Post-merge edit (the app fires its own schedules): the schedule paragraph says the app keeps the clock, and on a serverless host one cron route wakes it. Page sha256 1e65923ef8c0: check-docs-page.mjs exits 0.
+- After the loop (review): drift fix: `serve()` now runs the same network-bind check as `fsdev serve`, refusing a non-loopback host while a flow has no resolver and refusing calls to a flow registered later (packages/node/src/serve.ts:192-196, packages/node/src/bind-guard.ts:80-87). The sample passes `{ host: "127.0.0.1" }` and the text names the `allowUnauthenticated: true` override. Schedules are dropped from the adapters sentence and the schedule paragraph names the dispatch route every app serves under `/api/flows`, since the router mounts it itself (packages/engine/src/transports/scheduled/createScheduledEndpointAdapter.ts:1-14, packages/engine/src/routes/createFlowApiRouter.ts:609). Type-check in apps/kitchen-sink/zz-drift, deleted afterwards: only the planted error, plus missing `@flow-state-dev/engine/host` exports from the stale local engine build. 1012 words. Page sha256 fca9f7eb8ec6.
 
 ## 5 · Fact check
 
@@ -50,6 +51,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 f5c
 
 - Post-review edit, checked: `flowAuthenticates` needs a non-default `resolvePrincipal` (`engine/src/routes/instance-caller.ts:91-95`); `serve` defaults to host `0.0.0.0` (`node/src/serve.ts:54-55`); the bind guard runs only in `fsdev serve`/`fsdev dev` (`fsdev/src/commands/serve.ts:109`, `dev.ts:371`).
 - Post-merge edit, checked against the code: the tick calls the schedule's dispatch URL through the app's own router, or over the network when a cron route gave it the deployment's address (`engine/src/flowstate/createFlowState.ts`, `#tick`, `scheduleDispatchRequest` then `router.POST` or `fetch`); the cron route is `vercelScheduler().route` (`packages/vercel/src/scheduler.ts:61`).
+- Re-run after the review edit: `serve` awaits `assertNetworkBindIsAuthenticated` and installs a per-request guard off loopback unless `allowUnauthenticated` (packages/node/src/serve.ts:192-198); loopback and the override return early (packages/node/src/bind-guard.ts:84); default host `0.0.0.0` (packages/node/src/serve.ts:145); the scheduled endpoint is mounted on every router (packages/engine/src/routes/createFlowApiRouter.ts:609) and serves `POST …/schedules/*scheduleId/dispatch` and `GET …/schedules` (createScheduledEndpointAdapter.ts:31-40).
 
 ## 6 · Depth pass
 

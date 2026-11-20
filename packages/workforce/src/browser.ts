@@ -92,13 +92,29 @@ export {
 export { COORDINATOR_JUDGMENT, COORDINATOR_FLOW, COORDINATOR_ROUTE } from "./coordinator/coordinator-keys";
 /** The Error Reporter's flow: an app finds the worker a user tells about a problem by it. */
 export { ERROR_REPORTER_FLOW } from "./error-reporter/keys";
-export { SEND_MESSAGE_TOOL, RECEIVED_MESSAGE_DATA_TYPE } from "./messages/keys";
+export { SEND_MESSAGE_TOOL, RECEIVED_MESSAGE_DATA_TYPE, SENT_MESSAGE_DATA_TYPE, FILED_TASK_DATA_TYPE, TASK_RESULT_DATA_TYPE } from "./messages/keys";
+export type {
+  FiledTaskValue,
+  ReceivedMessageValue,
+  SentMessageTarget,
+  SentMessageValue,
+  SentMessageWait,
+  TaskResultValue
+} from "./messages/line-values";
+export { sentTargetLabel } from "./messages/sent-target";
 export { SCHEDULES_PATTERN } from "./schedules/keys";
 export { LIST_ROUTINES_ACTION, ROUTINE_VERBS } from "./routines/keys";
 export { routinesView } from "./routines/routines-view-ref";
 export { workstreamReportView } from "./projects/workstream-report-view-ref";
 export { checkRepositoryView } from "./projects/check-repository-view-ref";
-export { PROJECTS_FLOW, PROJECTS_PATTERN } from "./projects/project-keys";
+export { projectSetupView } from "./projects/project-setup-view-ref";
+export type { ProjectSetup, ProjectSetupView } from "./projects/project-coordinator";
+export { CONNECTOR_KEYS_PATH, PROJECTS_FLOW, PROJECTS_PATTERN } from "./projects/project-keys";
+export type { ConnectorKeyStatus } from "./projects/mcp-credentials";
+// FIX-2775: the collections an app reads whole, typed by their client data.
+export { privateProjectsResource, projectsResource } from "./projects/collections";
+export { workerInventoryResource } from "./inventory/collections";
+export { workerMessagesResource } from "./messages/message-log";
 export { listedRoutineSchema, routineMakerSchema, type ListedRoutine, type RoutineMaker } from "./routines/listed-routine";
 export {
   isOpenMessage,

@@ -7,20 +7,19 @@
  */
 import { describe, expect, it } from "vitest";
 import type { WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
-import { toEntries } from "../src/app";
 import { pendingFor } from "../src/lib/talk";
+import { linesOf } from "./lines";
 
 const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
-const WORKERS = new Set([LEAD, RESEARCHER]);
 
 const user = (id: string, ts: number, text: string) =>
-  ({ id, type: "message", role: "user", status: "completed", requestId: `req_${id}`, itemIndex: 0, ts, content: [{ type: "output_text", text }] });
+  ({ id, type: "message", role: "user", status: "completed", requestId: `req_${id}`, itemIndex: 0, ts, provenance: { blockName: "w", blockInstanceId: "w", phase: "main" }, content: [{ type: "output_text", text }] });
 const answer = (id: string, ts: number, text: string) =>
-  ({ id, type: "message", role: "assistant", status: "completed", requestId: `req_${id}`, itemIndex: 1, ts, content: [{ type: "output_text", text }] });
+  ({ id, type: "message", role: "assistant", status: "completed", requestId: `req_${id}`, itemIndex: 1, ts, provenance: { blockName: "w", blockInstanceId: "w", phase: "main" }, content: [{ type: "output_text", text }] });
 /** A reply landing in the conversation: the received line the worker reads it through. */
 const received = (id: string, ts: number, messageId: string) =>
-  ({ id, type: "data", dataType: "workforce:received", status: "completed", requestId: `req_${id}`, itemIndex: 0, ts, agentName: RESEARCHER, value: { id: messageId, from: RESEARCHER, text: "Nov 12" } });
+  ({ id, type: "data", dataType: "workforce:received", status: "completed", requestId: `req_${id}`, itemIndex: 0, ts, provenance: { blockName: "w", blockInstanceId: "w", phase: "main" }, agentName: RESEARCHER, value: { id: messageId, from: RESEARCHER, text: "Nov 12" } });
 /** A reply on its way to Lead, as the worker messages view answers its row. */
 const reply = (id: string, at: number): WorkerMessageResourceState => ({
   id, from: RESEARCHER, to: LEAD, text: "Nov 12", at, inReplyTo: "msg_question", exchange: "msg_question", fromSession: "s_r", fromFlow: "agent", toSession: "s_l", toFlow: "agent", hop: 1, status: "unconfirmed",
@@ -41,19 +40,17 @@ describe("pending replies in a conversation's window", () => {
   const talk = [...older, reply("msg_r4", 1050)];
 
   it("does not hold replies older than the conversation's window as pending, after newer user and assistant messages", () => {
-    const entries = toEntries(items as never, WORKERS);
-    expect(entries.map((e) => e.kind)).toEqual(["received", "assistant", "user", "assistant", "user", "assistant"]);
-    expect(pendingFor(LEAD, talk, entries, windowStart)).toEqual([]);
+    const lines = linesOf(items);
+    expect(lines.map((line) => line.kind)).toEqual(["data", "assistant", "user", "assistant", "user", "assistant"]);
+    expect(pendingFor(LEAD, talk, lines, windowStart)).toEqual([]);
   });
 
   it("still holds a reply that is newer than the window and not yet read, as pending", () => {
-    const entries = toEntries(items as never, WORKERS);
     const waiting = reply("msg_r5", 1400);
-    expect(pendingFor(LEAD, [...talk, waiting], entries, windowStart)).toEqual([waiting]);
+    expect(pendingFor(LEAD, [...talk, waiting], linesOf(items), windowStart)).toEqual([waiting]);
   });
 
   it("holds a reply as pending when the conversation has no window bound, as before", () => {
-    const entries = toEntries(items as never, WORKERS);
-    expect(pendingFor(LEAD, [reply("msg_r9", 1400)], entries).map((m) => m.id)).toEqual(["msg_r9"]);
+    expect(pendingFor(LEAD, [reply("msg_r9", 1400)], linesOf(items)).map((m) => m.id)).toEqual(["msg_r9"]);
   });
 });

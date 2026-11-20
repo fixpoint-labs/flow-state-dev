@@ -16,27 +16,27 @@
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import type { ConversationEntry } from "../src/app";
+import { approval as approvalItem, answered, linesOf } from "./lines";
 import { App } from "../src/components/App";
 import { codingTask, hold as openHold } from "./stub-server";
 import { createNotifier, teammateAttention, titleFor, useNotifyToggle } from "../src/lib/attention";
 import { ENDING_SHOWN_MS, needsOf, statusOf, type StatusInputs } from "../src/lib/status";
-import { createFixtureApp, FixtureProvider } from "./fake-app";
+import { scriptedServer, ScriptedProvider } from "./scripted-server";
 
 const NOW = 1_000_000_000;
 const coder = (id: string) => id === "cursor";
 const named = (id: string) => id;
 /** A coding board row, running on `cursor` unless `over` says otherwise. */
 const task = (id: string, over: Partial<CodingBoardTask>): CodingBoardTask => codingTask({ id, assignee: "cursor", title: `Task ${id}`, goal: "g", status: "in_progress", ...over });
-const approval = (resolution?: string): ConversationEntry => ({ kind: "approval", id: "ap", requestId: "q", suspensionId: "s", text: "Publish the draft?", ...(resolution ? { resolution } : {}) });
-const inputs = (over: Partial<StatusInputs>): StatusInputs => ({ activity: { running: false, lastActiveAt: 0 } as StatusInputs["activity"], entries: [], talk: [], tasks: [], now: NOW, ...over });
+const approval = (resolution?: string) => linesOf([approvalItem("ap", "q", "s", "Publish the draft?"), ...(resolution ? [answered("ar", "q", "s", resolution)] : [])])[0]!;
+const inputs = (over: Partial<StatusInputs>): StatusInputs => ({ activity: { running: false, lastActiveAt: 0 } as StatusInputs["activity"], lines: [], talk: [], tasks: [], now: NOW, ...over });
 const status = (over: Partial<StatusInputs>) => statusOf("writer", inputs(over), named, coder);
 
 describe("the status line puts what needs you first", () => {
   it("an approval you haven't answered, even while the teammate is answering", () => {
-    expect(status({ entries: [approval()], activity: { running: true, lastActiveAt: NOW } as StatusInputs["activity"] })).toEqual({ text: "Needs your OK: Publish the draft?", tone: "text-attention", needsYou: true });
+    expect(status({ lines: [approval()], activity: { running: true, lastActiveAt: NOW } as StatusInputs["activity"] })).toEqual({ text: "Needs your OK: Publish the draft?", tone: "text-attention", needsYou: true });
     // Answered, it needs nothing.
-    expect(status({ entries: [approval("approved")] }).needsYou).toBe(false);
+    expect(status({ lines: [approval("approved")] }).needsYou).toBe(false);
   });
 
   it("a task that waits on you, above the same task running", () => {
@@ -132,7 +132,7 @@ describe("the notifier", () => {
 
   it("a task's second hold on you is a new need, not the first one again", () => {
     const hold = (holdId: string) => task("t1", { asks: [openHold("question", "Which branch?", { id: holdId })] });
-    const keys = (t: CodingBoardTask) => needsOf({ entries: [], tasks: [t] }).map((n) => n.key);
+    const keys = (t: CodingBoardTask) => needsOf({ lines: [], tasks: [t] }).map((n) => n.key);
     expect(keys(hold("h1"))).not.toEqual(keys(hold("h2")));
   });
 });
@@ -158,7 +158,7 @@ describe("a teammate waiting on your yes, on screen", () => {
       { permission: "granted", requestPermission: async () => "granted" },
     );
     vi.stubGlobal("Notification", Fake);
-    render(<FixtureProvider calls={createFixtureApp({ speed: 0.05 })}><App /></FixtureProvider>);
+    render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
     await waitFor(() => expect(row("writer")).toBeTruthy());
     await act(async () => fireEvent.click(within(workers()).getByRole("checkbox", { name: "Notify me" })));
     expect((within(workers()).getByRole("checkbox", { name: "Notify me" }) as HTMLInputElement).checked).toBe(true);

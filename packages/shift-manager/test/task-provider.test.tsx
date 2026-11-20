@@ -28,7 +28,12 @@ const state = vi.hoisted(() => ({
 const stopRun = vi.fn();
 const sessionsGet = vi.fn();
 const client = { userId: "u_1", sessions: { get: (id: string) => sessionsGet(id) } };
-vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client }) }));
+const refresh = vi.fn(async () => undefined);
+const boardRetry = vi.fn();
+const boardActions = { retry: (id: string) => boardRetry(id) };
+vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client, refresh }) }));
+vi.mock("../src/lib/directory", () => ({ useSessions: () => ({ list: [{ id: CONVERSATION, flowId: "coordinator" }] }) }));
+vi.mock("../src/lib/inbox", () => ({ useBoardActions: (at: unknown) => (at === undefined ? undefined : boardActions) }));
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => ({ stopRun }) }));
 vi.mock("../src/lib/conversation-tasks", async (original) => ({
   ...(await original<typeof import("../src/lib/conversation-tasks")>()),
@@ -72,6 +77,8 @@ beforeEach(() => {
   state.completedAt = undefined;
   state.streaming = true;
   stopRun.mockReset();
+  refresh.mockClear();
+  boardRetry.mockReset();
   sessionsGet.mockReset();
   sessionsGet.mockImplementation(async (id: string) => ({ id, flowKind: "agent", flowId: id === CONVERSATION ? "coordinator" : "agent:desk" }));
 });
@@ -185,5 +192,31 @@ describe("Interrupt (D3)", () => {
     await act(async () => last().requestInterrupt());
     expect(last().interrupt.kind).toBe("refused");
     expect(last().status).toBe("in_progress");
+  });
+});
+
+// A failed task's Retry is the board's own, made here once: the task's lines Retry through it.
+describe("Retry on a failed task", () => {
+  it("runs the task again on its board, then reads the row and the Lab again", async () => {
+    boardRetry.mockResolvedValue(undefined);
+    draw();
+    await settle();
+    await act(async () => last().retryTask!());
+    expect(boardRetry).toHaveBeenCalledWith("t1");
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the row and the Lab again when the board refuses, and the refusal reaches the caller", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    state.tasks = [];
+    boardRetry.mockRejectedValue(new Error("not errored"));
+    draw();
+    await settle();
+    await act(async () => vi.advanceTimersByTimeAsync(MISSING_FOR_MS + 10));
+    expect(last().gaveUp).toBe(true);
+    await act(async () => expect(last().retryTask!()).rejects.toThrow("not errored"));
+    // The row's deadline starts afresh: the row is read again.
+    expect(last().gaveUp).toBe(false);
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 });

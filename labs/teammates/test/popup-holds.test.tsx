@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/components/App";
 import { TaskCard } from "../src/components/TaskCard";
 import { lookOf } from "../src/lib/looks";
-import { createFixtureApp } from "./fake-app";
+import { scriptedServer } from "./scripted-server";
 import { codingTask, hold, Refused, stubServer, TestProvider, type Posted, POPUP_READ } from "./stub-server";
 
 afterEach(() => {
@@ -102,7 +102,7 @@ function playRun({ asks = false, review = true, lands = false } = {}) {
   });
   if (!asks) carryOn();
   window.history.replaceState(null, "", `/?worker=${LEAD}&session=${BOARD}&task=t1`);
-  render(<TestProvider calls={createFixtureApp({ speed: 0.05 })} client={server.client}><App /></TestProvider>);
+  render(<TestProvider server={scriptedServer({ speed: 0.05 })} client={server.client}><App /></TestProvider>);
   return { popup: screen.findByRole("dialog", { name: TASK }, POPUP_READ), server };
 }
 
@@ -170,7 +170,7 @@ describe("a coding task's popup answers what its run waits on you for", () => {
   it("a pending question or review sits below the scrolling feed, the header says so, and your verdict stays in the log", async () => {
     const popup = await playRun({ asks: true }).popup;
     const status = () => popup.querySelector("[data-overlay-status]")?.textContent;
-    const feedOf = () => popup.querySelector('[data-step="said"]')!.parentElement!;
+    const feedOf = () => popup.querySelector('[data-entry="assistant"]')!.parentElement!;
     const belowFeed = (panel: HTMLElement) => {
       const feed = feedOf();
       expect(feed.contains(panel)).toBe(false);
@@ -178,7 +178,7 @@ describe("a coding task's popup answers what its run waits on you for", () => {
     };
 
     const asked = await within(popup).findByRole("region", { name: "Waiting on you" }, { timeout: 2000 });
-    await waitFor(() => expect(popup.querySelector('[data-step="said"]')).not.toBeNull());
+    await waitFor(() => expect(popup.querySelector('[data-entry="assistant"]')).not.toBeNull());
     belowFeed(asked);
     expect(status()).toBe("Waiting on you");
     fireEvent.change(within(asked).getByLabelText("Your answer"), { target: { value: "Only line 1." } });
@@ -250,7 +250,7 @@ describe("accepting a coding task's review says where its work goes", () => {
 
   it("names where an accepted task's work landed on its line in the thread", () => {
     const landed = codingTask({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo", status: "completed", landed: { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: BRANCH, base: "main" } });
-    const { container } = render(<TaskCard task={landed} coding nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={() => {}} />);
+    const { container } = render(<TaskCard task={landed} coding nameOf={(id) => id} onOpen={() => {}} />);
     expect(container.querySelector("[data-task-landed]")?.textContent).toBe("PR #7");
   });
 });

@@ -26,7 +26,7 @@ const client = {
   },
   flow: () => ({ request: () => ({ answer: async (body: unknown) => void answers.push(body) }) }),
 };
-vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client, noteAnswered: () => {} }) }));
+vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client }) }));
 // The card reads the stop's data from the page's feed for the ask's session; its first read is the session's state.
 vi.mock("../src/lib/session-feeds", async () => (await import("./helpers/fake-feed")).fakeFeeds([], () => client.sessions.state()));
 const { AskCard } = await import("../src/components/AskCard");

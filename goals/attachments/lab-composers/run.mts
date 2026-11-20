@@ -5,9 +5,9 @@
  *   Host:   each lab's own host (`labs/claude-code-style/host.mts`,
  *           `labs/teammates/host.mts`), in this process, on a SQLite store in
  *           a scratch folder, driven through the calls each lab's page makes
- *           (the Claude Code-style lab's `src/app/` calls, the Teammates
- *           adapter): `upload` for each file, then `send` with the
- *           references beside the line.
+ *           (each lab's `src/app/` calls; the Teammates lab's under its
+ *           provider, with a follower on Lead's conversation): `upload` for
+ *           each file, then `send` with the references beside the line.
  *   Input:  two fresh PNGs, a random word drawn on each. The line names
  *           neither word.
  *   Legs:   the Claude Code-style lab's main session and the Teammates lab's
@@ -27,13 +27,17 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, sessionFeed, type Client } from "@flow-state-dev/client";
 import { sessionTurnsViewRef } from "@flow-state-dev/workforce/browser";
-import type { FileContent } from "@flow-state-dev/core/items";
+import type { FileContent, OutputItem } from "@flow-state-dev/core/items";
+import { conversationLines } from "@flow-state-dev/react";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { openClaudeCodeStyle } from "../../../labs/claude-code-style/host.mts";
 import { appCalls } from "../../../labs/claude-code-style/src/app/index.ts";
-import { entriesOf as ccsEntriesOf, THREAD_ITEMS, type Item as CcsItem, type ThreadEntry } from "../../../labs/claude-code-style/src/lib/thread-entries.ts";
+import { THREAD_ITEMS } from "../../../labs/claude-code-style/src/app/feed.ts";
+import { textOf as ccsTextOf } from "../../../labs/claude-code-style/src/components/lines.tsx";
 import { openTeammates } from "../../../labs/teammates/host.mts";
-import { createAppCalls, type ConversationView } from "../../../labs/teammates/src/app/index.ts";
+import { filesOf, textOf } from "../../../labs/teammates/src/components/lines.tsx";
+import type { ConversationView } from "../../../labs/teammates/src/lib/conversation.ts";
+import { teammatesScreen } from "../../teammates-lab/screen.mts";
 import {
   REPO_ROOT,
   RUN_STAMP,
@@ -63,7 +67,7 @@ const WORDS = [
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS: Record<string, { patches: ModulePatch[] }> = {
-  // Each adapter's send carries the line alone, as on main before this change.
+  // Each lab's send carries the line alone, as on main before this change.
   "drop-attachments": {
     patches: ["labs/claude-code-style/src/app/calls.ts", "labs/teammates/src/app/conversations.ts"].flatMap((module) => [
       { module, from: String.raw`attachments: \[\.\.\.attachments\] \}\);`, to: "attachments: [] });" },
@@ -109,9 +113,16 @@ function until<T>(watch: (on: (value: T) => void) => () => void, check: (value: 
 }
 
 /** The Claude Code-style thread as its screen reads it: the session's items on the feed, and whether a turn runs, from workforce's session turns view. */
-type CcsThread = { entries: ThreadEntry[]; running: boolean };
+type CcsThread = { entries: Array<{ kind: string; text?: string; files?: FileContent[] }>; running: boolean };
+/** The thread's lines (React's conversation model, as the lab draws them), with what a line of words says and carries. */
+const ccsEntriesOf = (items: OutputItem[]): CcsThread["entries"] =>
+  conversationLines(items).map((line) =>
+    line.kind === "user" || line.kind === "assistant"
+      ? { kind: line.kind, text: ccsTextOf(line.item), files: line.item.content.filter((part): part is FileContent => part.type === "file") }
+      : { kind: line.kind },
+  );
 function watchCcsThread(client: Client, sessionId: string, on: (view: CcsThread) => void): () => void {
-  let items: CcsItem[] | undefined;
+  let items: OutputItem[] | undefined;
   let running: boolean | undefined;
   const tell = () => {
     if (items !== undefined && running !== undefined) on({ entries: ccsEntriesOf(items), running });
@@ -119,7 +130,7 @@ function watchCcsThread(client: Client, sessionId: string, on: (view: CcsThread)
   const feed = sessionFeed(client, sessionId, { itemTypes: [...THREAD_ITEMS] });
   const stopFeed = feed.subscribe(({ items: next, state }) => {
     if (next.length === 0 && state === "connecting") return;
-    items = next as unknown as CcsItem[];
+    items = next as unknown as OutputItem[];
     tell();
   });
   const stopTurns = client.live<{ status: string }[]>([], {
@@ -235,16 +246,17 @@ await runGoal(async (failures, tell) => {
   // --- The Teammates lab: Lead, a generator teammate ------------------------
   const tmHost = await openTeammates({ store: join(SCRATCH, "teammates.sqlite"), model: MODEL, userId: USER_ID, workdir: checkout(join(SCRATCH, "tm-repo")), runsRoot: join(SCRATCH, "tm-runs") });
   const tmFetch = createInProcessFetch(tmHost as never) as never;
-  const tmAdapter = () => createAppCalls(createClient({ userId: USER_ID, baseUrl: "", fetcher: tmFetch }), { fetcher: tmFetch });
-  // Opening a conversation reads the roster first, so a line under a worker's name reads as that worker's.
-  const tm = tmAdapter();
-  const leadSession = await tm.openConversation(LEAD);
-  const freshTm = tmAdapter();
+  // The lab's screen half, as a page holds it: its provider over a client, and a follower per conversation watched.
+  const tmScreen = () => teammatesScreen(createClient({ userId: USER_ID, baseUrl: "", fetcher: tmFetch }), { fetcher: tmFetch });
+  const tm = await tmScreen();
+  const leadSession = await tm.calls.open(LEAD);
+  const freshTm = await tmScreen();
+  const lab = (screen: typeof tm) => ({ ...screen.calls, screen });
   const lead = await legOf<ConversationView>(
-    tm,
-    freshTm,
-    (adapter, on) => (adapter as ReturnType<typeof tmAdapter>).watchConversation(leadSession, on),
-    (view) => view.entries,
+    lab(tm),
+    lab(freshTm),
+    (adapter, on) => (adapter as ReturnType<typeof lab>).screen.watch(leadSession, (view) => on(view)),
+    (view) => view.lines.map((line) => (line.kind === "user" || line.kind === "assistant" ? { kind: line.kind, text: textOf(line.item), files: filesOf(line.item) } : { kind: line.kind })),
     (view) => view.running,
     leadSession,
     [first, second],
@@ -269,6 +281,8 @@ await runGoal(async (failures, tell) => {
   failures.push("blocked: the coding legs wait on a filed task carrying its turn's files (FIX-2522); the generator legs above ran");
 
   await (ccsHost as unknown as { dispose?: () => Promise<void> }).dispose?.();
+  tm.close();
+  freshTm.close();
   await (tmHost as unknown as { dispose?: () => Promise<void> }).dispose?.();
   return {
     failures,

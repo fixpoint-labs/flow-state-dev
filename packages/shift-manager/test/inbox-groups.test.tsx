@@ -11,7 +11,6 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { inboxItems, taskActionName } from "@flow-state-dev/orchestration/inbox";
 import { GAPS } from "../src/gaps";
-import type { LoadedSnapshot } from "../src/lib/derive";
 import type { InboxAsk, InboxViewValue } from "../src/lib/inbox";
 import { Inbox } from "../src/surfaces/Inbox";
 
@@ -72,7 +71,7 @@ const reports: Asked[] = [
 ];
 const approval: Asked = { id: "sp4", workerId: "shift-coordinator", sessionId: "s_coord", title: "Fire eng.coder?", message: "It has been idle a week.", since: 3 };
 
-const screenOf = (itemId: string | null) => <Inbox snapshot={{ inventory: { ok: true, value: { workers: [] } } } as unknown as LoadedSnapshot} itemId={itemId} gaps={GAPS} />;
+const screenOf = (itemId: string | null) => <Inbox itemId={itemId} gaps={GAPS} />;
 
 describe("an untitled ask in a worker's group", () => {
   // Its heading is already what it asks: the line under it would say it twice.

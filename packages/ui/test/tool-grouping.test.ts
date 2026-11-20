@@ -15,6 +15,8 @@ import {
   toolRunOpen,
   toolRunState,
   toolStepState,
+  triedLabel,
+  withRedone,
   withToolState,
 } from "../registry/components/tool-grouping";
 
@@ -184,5 +186,33 @@ describe("a run's state", () => {
   it("is open only while running", () => {
     expect(toolRunOpen("running")).toBe(true);
     for (const state of ["completed", "error", "waiting"] as const) expect(toolRunOpen(state)).toBe(false);
+  });
+
+  // A failed call the agent then made again, and got through, was an attempt: the run is not failed for it.
+  describe("a failed call a later call of the same tool redid", () => {
+    it("reads as done in the run, and says it was tried", () => {
+      const steps = [
+        { tool: "openWorkstream", state: "error" as const },
+        { tool: "readNotes", state: "completed" as const },
+        { tool: "openWorkstream", state: "completed" as const },
+      ];
+      expect(withRedone(steps)).toEqual([
+        { tool: "openWorkstream", state: "completed", redone: true },
+        { tool: "readNotes", state: "completed", redone: false },
+        { tool: "openWorkstream", state: "completed", redone: false },
+      ]);
+      expect(toolRunState(withRedone(steps).map((s) => s.state))).toBe("completed");
+      expect(triedLabel("openWorkstream")).toBe("Tried openWorkstream");
+      expect(triedLabel("Read src/a.ts")).toBe("Tried read src/a.ts");
+    });
+
+    it("stays failed when no later call of that tool got through, or only another tool did", () => {
+      const steps = [
+        { tool: "openWorkstream", state: "error" as const },
+        { tool: "readNotes", state: "completed" as const },
+        { tool: "openWorkstream", state: "error" as const },
+      ];
+      expect(withRedone(steps).map((s) => [s.state, s.redone])).toEqual([["error", false], ["completed", false], ["error", false]]);
+    });
   });
 });

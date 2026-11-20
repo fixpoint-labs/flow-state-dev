@@ -17,3 +17,19 @@ export const PROJECTS_FLOW = "projects" as const;
 
 /** The repository check's view name on the projects flow (`defineProjectBlocks({ checkRepository }).views`). */
 export const CHECK_REPOSITORY_VIEW = "checkRepository" as const;
+
+// FIX-2775 D3.
+/**
+ * The project setup's view name on the projects flow (`defineProjectBlocks().views`):
+ * which worker each user's project coordinator runs as.
+ */
+export const PROJECT_SETUP_VIEW = "projectSetup" as const;
+
+// FIX-2775 D3.
+/**
+ * Where the connector keys route (`defineProjectBlocks().connectorKeys`) is
+ * served: `GET` reads which keys the caller has set, `POST` and `DELETE`
+ * `<path>/<server>` set and clear one. The path keeps the keys' wire name,
+ * as their stored prefix does.
+ */
+export const CONNECTOR_KEYS_PATH = "/api/flows/mcp-credentials" as const;

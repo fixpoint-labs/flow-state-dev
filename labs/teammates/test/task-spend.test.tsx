@@ -19,7 +19,7 @@ import { App } from "../src/components/App";
 import { TaskCard } from "../src/components/TaskCard";
 import { codingSpendLine } from "../src/components/TeammatePanel";
 import { lookOf } from "../src/lib/looks";
-import { createFixtureApp } from "./fake-app";
+import { scriptedServer } from "./scripted-server";
 import { codingTask, stubServer, TestProvider, POPUP_READ } from "./stub-server";
 
 afterEach(() => {
@@ -52,28 +52,28 @@ const spendOn = (el: Element) => el.querySelector("[data-spend]")?.textContent ?
 
 describe("a coding task's spend", () => {
   it("shows on its line once its run reports: tokens and the vendor's charge", () => {
-    const { container, rerender } = render(<TaskCard task={ranOn("t1", "codex", null)} coding nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={() => {}} />);
+    const { container, rerender } = render(<TaskCard task={ranOn("t1", "codex", null)} coding nameOf={(id) => id} onOpen={() => {}} />);
     expect(spendOn(container)).toBeNull();
-    rerender(<TaskCard task={ranOn("t1", "codex", CODEX)} coding nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={() => {}} />);
+    rerender(<TaskCard task={ranOn("t1", "codex", CODEX)} coding nameOf={(id) => id} onOpen={() => {}} />);
     expect(spendOn(container)).toBe("14.7k tokens · $0.42");
   });
 
   it("shows no dollar figure for a run billed by subscription", () => {
-    const { container } = render(<TaskCard task={ranOn("t1", "claude-code", CLAUDE)} coding nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={() => {}} />);
+    const { container } = render(<TaskCard task={ranOn("t1", "claude-code", CLAUDE)} coding nameOf={(id) => id} onOpen={() => {}} />);
     expect(spendOn(container)).toBe("9.2k tokens");
   });
 
   it("shows in the popup with the model, input and output apart", async () => {
     window.history.replaceState(null, "", `/?worker=${LEAD}&session=conversation:${LEAD}&task=t1`);
     const server = stubServer({ board: { [`conversation:${LEAD}`]: [ranOn("t1", "codex", CODEX)] } });
-    render(<TestProvider calls={createFixtureApp({ speed: 0.2 })} client={server.client}><App /></TestProvider>);
+    render(<TestProvider server={scriptedServer({ speed: 0.2 })} client={server.client}><App /></TestProvider>);
     const popup = await screen.findByRole("dialog", { name: TASK }, POPUP_READ);
     await waitFor(() => expect(popup.querySelector("[data-task-spend]")?.textContent).toBe("gpt-5.5-codex · 12.4k in · 2.3k out · $0.42"));
   });
 
   it("totals in the teammate's panel across its coding tasks", async () => {
     const server = stubServer({ board: { [`conversation:${LEAD}`]: [ranOn("t1", "codex", CODEX), ranOn("t2", "claude-code", CLAUDE)] } });
-    render(<TestProvider calls={createFixtureApp({ speed: 0.2 })} client={server.client}><App /></TestProvider>);
+    render(<TestProvider server={scriptedServer({ speed: 0.2 })} client={server.client}><App /></TestProvider>);
     const panel = await screen.findByRole("complementary", { name: "Lead's panel" });
     await waitFor(() => expect(panel.querySelector("[data-coding-spend]")?.textContent).toBe("Coding tasks: 23.9k tokens · $0.42"));
   });

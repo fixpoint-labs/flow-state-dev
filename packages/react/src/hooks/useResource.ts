@@ -369,31 +369,33 @@ export function useResource<TDef extends ScopeResourceDef>(
   // A collection's entries as last read, for this handle read this way, while no other
   // read is out: a notice that names entries re-reads just those over them (FIX-2625).
   const how = useMemo<CollectionRead>(() => ({ all, newest, topicPrefix }), [all, newest, topicPrefix]);
+  // The read mode, named by value so no match rests on `how`'s identity: the held baseline and the paging window are each for one mode.
+  const mode = all ? `all:${topicPrefix ?? ""}` : newest ? `newest:${topicPrefix ?? ""}` : "page";
   // How many newest pages the window holds. A different read starts again at one page.
-  const paging = useRef({ how, handle, pages: 1 });
+  const paging = useRef({ mode, handle, pages: 1 });
   const nextCursor = useRef<string | undefined>(undefined);
   const loadingOlder = useRef(false);
   const appendOlder = useRef(false);
   /** Bumped when the read changes, so a scroll from the previous one cannot release a later guard. */
   const scrollGeneration = useRef(0);
-  if (paging.current.how !== how || paging.current.handle !== handle) {
-    paging.current = { how, handle, pages: 1 };
+  if (paging.current.mode !== mode || paging.current.handle !== handle) {
+    paging.current = { mode, handle, pages: 1 };
     nextCursor.current = undefined;
     scrollGeneration.current += 1;
     loadingOlder.current = false;
     appendOlder.current = false;
   }
   const [hasOlder, setHasOlder] = useState(false);
-  const [olderFor, setOlderFor] = useState({ how, handle });
-  if (olderFor.how !== how || olderFor.handle !== handle) {
-    setOlderFor({ how, handle });
+  const [olderFor, setOlderFor] = useState({ mode, handle });
+  if (olderFor.mode !== mode || olderFor.handle !== handle) {
+    setOlderFor({ mode, handle });
     setHasOlder(false);
   }
-  const held = useRef<{ handle: unknown; how: CollectionRead; entries: ScopeEntry<TValue>[] } | undefined>(undefined);
+  const held = useRef<{ handle: unknown; mode: string; entries: ScopeEntry<TValue>[] } | undefined>(undefined);
   const reading = useRef(0);
   const { data, error, cause, refresh } = useFencedRead<TValue | ScopeEntry<TValue>[] | null>(
     // `client` too: by `sessionId` there is no handle, and a value one client read is never shown under another.
-    [handle, scope, key, sessionId, client, how],
+    [handle, scope, key, sessionId, client, mode],
     null,
     `Failed to read "${key}"`,
     async (stillCurrent, notice) => {
@@ -403,7 +405,7 @@ export function useResource<TDef extends ScopeResourceDef>(
       }
       if (handle === undefined) return null;
       if (!("list" in handle)) return (await handle.read()).value;
-      const last = held.current?.handle === handle && held.current.how === how && reading.current === 0 ? held.current.entries : undefined;
+      const last = held.current?.handle === handle && held.current.mode === mode && reading.current === 0 ? held.current.entries : undefined;
       reading.current += 1;
       // Take the scroll before any await. A read that never starts leaves the flag set, and `loadOlder` takes it back.
       const wantedOlder = appendOlder.current;
@@ -447,13 +449,13 @@ export function useResource<TDef extends ScopeResourceDef>(
               : (await handle.list({ limit: ENTRY_PAGE })).items);
         // Only the read in play is a baseline: one a newer read superseded is older than what's shown.
         if (stillCurrent()) {
-          held.current = { handle, how, entries };
+          held.current = { handle, mode, entries };
           if (olderCommit !== undefined) {
             nextCursor.current = olderCommit.cursor;
-            paging.current = { how: paging.current.how, handle: paging.current.handle, pages: paging.current.pages + 1 };
+            paging.current = { mode: paging.current.mode, handle: paging.current.handle, pages: paging.current.pages + 1 };
           } else if (windowCommit !== undefined) {
             nextCursor.current = windowCommit.cursor;
-            paging.current = { how: paging.current.how, handle: paging.current.handle, pages: windowCommit.pages };
+            paging.current = { mode: paging.current.mode, handle: paging.current.handle, pages: windowCommit.pages };
           }
           // A named merge keeps the window's older page; only a window read learns whether one remains.
           if (newestWindow !== undefined) setHasOlder(newestWindow.hasOlder);

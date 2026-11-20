@@ -6,17 +6,16 @@
  */
 import { StandingRules } from "../components/StandingRules";
 import { ScreenTitle } from "../components/ui";
-import { shiftCoordinatorOf, type LoadedSnapshot } from "../lib/derive";
-import { useRoster, withRoster } from "../lib/roster";
+import { shiftCoordinatorOf } from "../lib/shift";
+import { useWorkers } from "../lib/directory";
 import { RouteLink } from "../components/RouteLink";
 
 // FIX-1747.
 /** What Shift Manager calls the `shift-coordinator` worker. */
 const SHIFT_COORDINATOR_NAME = "Shift Coordinator";
 
-export function WorkerSettingsView({ snapshot, workerId, devtoolUrl }: { snapshot: LoadedSnapshot; workerId: string; devtoolUrl?: string }) {
-  const roster = useRoster();
-  const { workers } = withRoster(snapshot, roster);
+export function WorkerSettingsView({ workerId, devtoolUrl }: { workerId: string; devtoolUrl?: string }) {
+  const { workers, roster } = useWorkers();
   const worker = workers.find((w) => w.id === workerId);
   const shiftCoordinator = shiftCoordinatorOf(workers);
   const name = shiftCoordinator.kind === "one" && shiftCoordinator.worker.id === workerId ? SHIFT_COORDINATOR_NAME : (worker?.name ?? workerId);

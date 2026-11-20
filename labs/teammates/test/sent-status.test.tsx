@@ -9,10 +9,11 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import type { WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
-import type { AppCalls, ConversationEntry } from "../src/app";
+import { linesOf, sent } from "./lines";
 import { Conversation } from "../src/components/Conversation";
 import { lookOf } from "../src/lib/looks";
-import { FixtureProvider, rosterEntry } from "./fake-app";
+import { rosterEntry } from "./scripted-server";
+import { standInFollower, TestProvider } from "./stub-server";
 
 afterEach(cleanup);
 
@@ -26,7 +27,7 @@ describe("a sent line's status", () => {
     // 51 lines Lead sent; every one asked for and got a reply.
     const ids = Array.from({ length: 51 }, (_, i) => `m${String(i).padStart(2, "0")}`);
     const log = ids.flatMap((id) => [message(id, { replyRequested: true, answeredBy: `r_${id}` }), message(`r_${id}`, { from: "researcher", to: LEAD, inReplyTo: id })]);
-    const entries: ConversationEntry[] = ids.map((id) => ({ kind: "sent", id: `e_${id}`, messageId: id, to: "researcher", text: id }));
+    const lines = linesOf(ids.map((id) => sent(`e_${id}`, "q1", { messageId: id, to: "researcher", text: id })));
     const asked: string[][] = [];
     // The worker messages view as the server answers it: each asked id's row and its answer, nothing else (none are open).
     const client = {
@@ -37,23 +38,19 @@ describe("a sent line's status", () => {
       },
       subscribe: () => ({ close: () => {} }),
     } as unknown as Client;
-    const quiet = () => () => {};
-    const adapter = {
-      watchConversation: (_: string, onChange: (view: unknown) => void) => (onChange({ entries, running: false, stopping: false, backgroundRunning: 0 }), () => {}),
-      watchConnection: (_: string, onChange: (state: string) => void) => (onChange("live"), () => {}),
-      watchWindow: quiet,
-      watchTasks: quiet,
-    } as unknown as AppCalls;
+    const { Follower } = standInFollower("s1", { lines, running: false, stopping: false, backgroundRunning: 0 });
     const view = render(
-      <FixtureProvider calls={adapter} client={client}>
-        <Conversation adapter={adapter} worker={rosterEntry({ id: LEAD, name: "Lead" })} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} harnessOf={() => undefined} onFire={async () => {}} onOpen={() => {}} />
-      </FixtureProvider>,
+      <TestProvider client={client}>
+        <Follower />
+        <Conversation worker={rosterEntry({ id: LEAD, name: "Lead" })} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} onFire={async () => {}} onOpen={() => {}} />
+      </TestProvider>,
     );
     const statusOf = (id: string) => [...view.container.querySelectorAll("[data-sent-status]")].find((s) => s.closest("button")?.getAttribute("aria-label")?.endsWith(`: ${id}`))?.textContent;
     await waitFor(() => expect(statusOf("m50")).toBe("replied"));
     expect(asked.at(-1)).toHaveLength(50);
     expect(statusOf("m01")).toBe("replied");
     // The oldest line is outside the 50 asked for: no status, never "working".
-    expect(statusOf("m00")).toBe("");
+    expect(statusOf("m00")).toBeUndefined();
+    expect(view.container.querySelector('[data-message-id="m00"]')).not.toBeNull();
   });
 });

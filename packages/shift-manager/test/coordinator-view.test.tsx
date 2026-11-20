@@ -9,14 +9,18 @@
  * changes nothing), BR-29 (a `coordinator-route` record is never drawn as a
  * line), and BR-20's "under the delegate's name".
  */
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as draw, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DataItem } from "@flow-state-dev/core/items";
 import { DelegatesPanel } from "../src/components/DelegatesPanel";
+import { DirectoryProvider } from "../src/lib/directory";
+
+const render = (ui: ReactElement) => draw(ui, { wrapper: DirectoryProvider });
 import { CoordinatorRoute } from "../src/components/CoordinatorRoute";
-import { shiftManagerRenderers } from "../src/components/ToolLine";
+import { shiftManagerRenderers } from "../src/components/lines";
 import { knownWorkers, senderOf } from "../src/lib/conversation";
-import { toWorker } from "../src/lib/reads";
+import { toWorker } from "../src/lib/workers";
 
 let listed: Array<{ worker: string; note?: string }> = [];
 const calls: string[] = [];
@@ -29,6 +33,11 @@ const changeList = (next: Array<{ worker: string; note?: string }>) => {
   for (const heard of [...changed]) heard();
 };
 
+// FIX-2775: the directory, holding the page's one roster watch: nothing else read.
+vi.mock("../src/lib/directory-reads", async () => {
+  const { useFixtureReads } = await import("./helpers/directory");
+  return { useDirectoryReads: () => useFixtureReads(() => undefined) };
+});
 // One connection and one workforce client, as the app memoizes them per Lab.
 vi.mock("../src/lib/lab-data", () => {
   const lab = { client: { userId: "alice" } };
@@ -36,6 +45,7 @@ vi.mock("../src/lib/lab-data", () => {
 });
 vi.mock("../src/lib/workforce", () => {
   const workforce = {
+    organization: async () => "acme",
     // The roster watch: reports one read, and each roster a test tells it of.
     watchRoster(onRoster: (entries: unknown[]) => void) {
       rosterViews.add(onRoster);

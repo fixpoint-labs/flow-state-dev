@@ -1206,6 +1206,10 @@ export async function createExecutionContext<
           ...(options.requestHost.suspensionAdmission !== undefined ? { suspensionAdmission: options.requestHost.suspensionAdmission } : {}),
           // FIX-2725 D1: a view's session reads record where each answers.
           ...(viewDependencies !== undefined ? { sessionReads: sessionReadObserver(viewDependencies) } : {}),
+          // FIX-2848 D3: a turn's `retryable` reads the host's re-entry sources, as the retry route does.
+          ...((options.requestHost.publicReentrySources ?? options.effectiveRuntimeConfig?.publicReentrySources) !== undefined
+            ? { publicReentrySources: options.requestHost.publicReentrySources ?? options.effectiveRuntimeConfig?.publicReentrySources }
+            : {}),
           parentTask: options.requestHost.parentTask,
           waitResume: options.requestHost.waitResume,
           waitSweeper: options.requestHost.waitSweeper,

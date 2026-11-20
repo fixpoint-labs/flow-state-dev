@@ -5,8 +5,11 @@
  */
 import { useMemo } from "react";
 import type { Client, SessionConnectionStatus } from "@flow-state-dev/client";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { useSessionFeed } from "@flow-state-dev/react";
-import type { Item } from "../lib/thread-entries";
+
+/** The item types a thread's lines are drawn from: a failed turn's `error` item, and workforce's lines (`data`). */
+export const THREAD_ITEMS = ["message", "tool_output", "error", "data"];
 
 /** A session feed's connection: `lapsed` once a retry has failed, `stopped` once it gives up. */
 export type ConnectionState = SessionConnectionStatus;
@@ -22,7 +25,7 @@ export function useFeed(client: Client, sessionId: string | null, types: readonl
       feed === undefined
         ? undefined
         : {
-            ...(feed.items === undefined ? {} : { items: feed.items as unknown as Item[], ...(feed.hasEarlier ? { loadEarlier: feed.loadEarlier } : {}) }),
+            ...(feed.items === undefined ? {} : { items: feed.items as OutputItem[], ...(feed.hasEarlier ? { loadEarlier: feed.loadEarlier } : {}) }),
             connection: feed.state as ConnectionState,
             runs: feed.runs === null ? null : feed.runs.length,
             followResponse: feed.followResponse,

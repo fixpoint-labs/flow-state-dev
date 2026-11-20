@@ -7,11 +7,12 @@
  * driven directly with real clients (Node's `fetch` and `WebSocket`): the
  * claude-code-style lab's thread (its running turn) and pins (its `useThread`
  * and `usePins`, under its own `LabProvider`), the Teammates
- * lab's conversation (whether it is answering), its divider and its Talk
- * lines (`useTalk`, workforce's worker messages view, under its
- * `AppProvider`), and Shift Manager's worker
+ * lab's conversation (whether it is answering, from workforce's session turns
+ * view), its divider (the history summary, by `useResource` with the session's
+ * id), both read by the conversation's follower, and its Talk lines (`useTalk`,
+ * workforce's worker messages view), under its `AppProvider`, and Shift Manager's worker
  * conversation (the client's `sessionFeed`, which its shared session feed holds), its message log
- * (`useMessages`), a project's entries (`useProjectRead`) and a task screen
+ * (`useMessages`), a project's entries (`useProjectWorkstreams`) and a task screen
  * waiting on its run's link (`TaskProvider`), the last three under the real
  * `LabProvider`, rendered by react-dom over happy-dom. Each view has its own
  * client, whose fetcher counts the reads it makes.
@@ -62,13 +63,15 @@ import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFl
 import { appPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 import { PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
 import { AppProvider as CcAppProvider, usePins as useCcPins, useThread as useCcThread, type ThreadView } from "../../../labs/claude-code-style/src/app/index.ts";
-import { AppProvider as TmAppProvider, createAppCalls, type ConversationView } from "../../../labs/teammates/src/app/index.ts";
+import { AppProvider as TmAppProvider, ConversationFollower as TmConversationFollower, useConversation as useTmConversation } from "../../../labs/teammates/src/app/index.ts";
+import type { ConversationView } from "../../../labs/teammates/src/lib/conversation.ts";
 import { useTalk } from "../../../labs/teammates/src/lib/talk.ts";
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
-import { useProjectRead } from "../../../packages/shift-manager/src/lib/projects.ts";
+import { useProjectWorkstreams } from "../../../packages/shift-manager/src/lib/projects.ts";
 import { useMessages } from "../../../packages/shift-manager/src/lib/messages.ts";
-import { conversationBoardRef } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { PageReadsProvider, useReadPageAgain } from "../../../packages/shift-manager/src/lib/page-reads.tsx";
+import { conversationBoardRef } from "../../../packages/shift-manager/src/lib/boards.ts";
 import { TaskProvider, useTask } from "../../../packages/shift-manager/src/lib/task.tsx";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -260,7 +263,8 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 /**
  * Reads made under each Shift Manager credential: its provider builds its own
- * client from a connection, so they are counted at the page's `fetch`.
+ * client from a connection, so they are counted at the page's `fetch`. A
+ * view's read is a POST to its `/views/` path, so it counts as a read too.
  */
 const pageReads = new Map<string, Read[]>();
 const realFetch = globalThis.fetch;
@@ -268,7 +272,7 @@ globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input instanceof Request ? input.url : input);
   const auth = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined)).get("authorization") ?? "";
   const reads = pageReads.get(auth.replace(/^Bearer /, ""));
-  if (reads !== undefined && ((init?.method ?? "GET") === "GET" || url.includes("/reads/")) && !url.includes("/stream")) reads.push({ at: Date.now(), url: decodeURIComponent(url) });
+  if (reads !== undefined && ((init?.method ?? "GET") === "GET" || url.includes("/reads/") || url.includes("/views/")) && !url.includes("/stream")) reads.push({ at: Date.now(), url: decodeURIComponent(url) });
   return realFetch(input, init);
 };
 let mounts = 0;
@@ -315,7 +319,7 @@ function mountViews(on: Host, sessionId: string) {
   const pinsClient = clientOf(on);
   // The Claude Code-style lab's thread and pins, as its screen reads them: each on its own client.
   function CcThreadProbe() {
-    const view = useCcThread(sessionId, false);
+    const view = useCcThread(sessionId);
     useEffect(() => {
       if (view !== undefined) ccThread.push({ at: Date.now(), value: view });
     }, [view]);
@@ -337,7 +341,21 @@ function mountViews(on: Host, sessionId: string) {
   );
   const tm = clientOf(on);
   const tmConversation = record<ConversationView>();
-  const tmWindowReads = clientOf(on);
+  // Teammates' conversation under its provider: its one follower, as the page mounts one per teammate, and what it read.
+  function TmConversationProbe() {
+    const view = useTmConversation(sessionId)?.view;
+    useEffect(() => {
+      if (view !== undefined) tmConversation.push({ at: Date.now(), value: view });
+    }, [view]);
+    return null;
+  }
+  const tmRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
+  tmRoot.render(
+    createElement(TmAppProvider, {
+      client: tm.client,
+      children: [createElement(TmConversationFollower, { key: "follower", sessionId }), createElement(TmConversationProbe, { key: "probe" })],
+    }),
+  );
   const sm = clientOf(on);
   const smItems = record<{ items: readonly OutputItem[]; truncated: boolean }>();
   const talk = clientOf(on);
@@ -353,30 +371,32 @@ function mountViews(on: Host, sessionId: string) {
     return null;
   }
   const talkRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
-  talkRoot.render(createElement(TmAppProvider, { calls: createAppCalls(talk.client), client: talk.client, children: createElement(TalkProbe) }));
+  talkRoot.render(createElement(TmAppProvider, { client: talk.client, children: createElement(TalkProbe) }));
   // Shift Manager under its real provider: a project's entries, as its view reads them.
   const smToken = `tok-sm-${(mounts += 1)}`;
   const smReads: Read[] = [];
   pageReads.set(smToken, smReads);
   const smProject = record<ProjectShown>();
   const smMessages = record<string[]>();
-  let labRead: () => Promise<void> = async () => {};
+  let labRead: () => void = () => {};
   function ProjectProbe() {
-    const { snapshot, refresh } = useLab();
-    labRead = refresh;
+    const { snapshot } = useLab();
+    // FIX-2775: R reads again what the page holds, each screen's own reads included.
+    labRead = useReadPageAgain();
     const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot : undefined;
-    const { read } = useProjectRead({ visibility: "shared", id: PROJECT }, loaded !== undefined, loaded?.readAt ?? 0);
-    const entries = read !== undefined && "value" in read && read.value !== null ? read.value.entries.map((e) => e.id) : undefined;
+    // FIX-2775: the entries are read on their own, by the project's prefix, from the moment the view draws them.
+    const { value } = useProjectWorkstreams({ visibility: "shared", id: PROJECT });
+    const entries = value === undefined ? undefined : value.entries.map((e) => e.id);
     const key = entries === undefined ? null : entries.join(",");
     useEffect(() => {
       if (entries !== undefined) smProject.push({ at: Date.now(), value: { entries } });
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [key]);
-    // The Messages view reads the log once the snapshot has landed, on its `readAt`.
-    return loaded === undefined ? null : createElement(MessagesProbe, { readAt: loaded.readAt });
+    // The Messages view reads the log once the Lab has let Shift Manager in.
+    return loaded === undefined ? null : createElement(MessagesProbe);
   }
-  function MessagesProbe({ readAt }: { readAt: number }) {
-    const { rows } = useMessages(readAt);
+  function MessagesProbe() {
+    const { rows } = useMessages();
     const ids = rows == null ? undefined : rows.map((m) => m.id);
     const key = ids === undefined ? null : ids.join(",");
     useEffect(() => {
@@ -386,11 +406,10 @@ function mountViews(on: Host, sessionId: string) {
     return null;
   }
   const smRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
-  smRoot.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: smToken, baseUrl: on.base }, children: createElement(ProjectProbe) }));
+  smRoot.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: smToken, baseUrl: on.base }, children: createElement(PageReadsProvider, { children: createElement(ProjectProbe) }) }));
   const stops = [
     () => ccRoot.unmount(),
-    createAppCalls(tm.client).watchConversation(sessionId, (value) => tmConversation.push({ at: Date.now(), value })),
-    createAppCalls(tmWindowReads.client).watchWindow(sessionId, () => {}),
+    () => tmRoot.unmount(),
     // Shift Manager's conversation reads its session through one shared feed: the client's `sessionFeed`.
     (() => {
       const feed = sessionFeed(sm.client, sessionId);
@@ -408,7 +427,6 @@ function mountViews(on: Host, sessionId: string) {
     () => talkRoot.unmount(),
     () => smRoot.unmount(),
   ];
-  const requestReads = (reads: Read[]) => reads.filter((r) => r.url.includes("/requests"));
   // The Claude Code-style thread reads its turns through workforce's session turns view.
   const turnReads = (reads: Read[]) => reads.filter((r) => r.url.includes("/views/sessionTurns"));
   // One project read lists its entries by the project's one prefix.
@@ -417,18 +435,19 @@ function mountViews(on: Host, sessionId: string) {
   const logReads = () => smReads.filter((r) => r.url.includes("workforce/messages"));
   return {
     shown: { ccThread, ccPins, tmConversation, smItems, tmTalk, smProject, smMessages },
-    labRead: () => labRead(),
+    labRead: async () => labRead(),
     reads: {
       "claude-code-style thread (running turn)": () => turnReads(cc.reads),
       "claude-code-style pins": () => pinsClient.reads,
-      "Teammates conversation (answering)": () => requestReads(tm.reads),
-      "Teammates divider": () => tmWindowReads.reads,
+      "Teammates conversation (answering)": () => turnReads(tm.reads),
+      // The divider's own read: the session's state without its items, for the history summary's mark.
+      "Teammates divider": () => tm.reads.filter((r) => r.url.includes("/state") && r.url.includes("include_items=false")),
       "Shift Manager conversation": () => sm.reads,
       "Teammates Talk": () => talk.reads.filter((r) => r.url.includes("/views/workerMessages")),
       "Shift Manager project entries": entryReads,
       "Shift Manager message log": logReads,
     } as Record<string, () => Read[]>,
-    all: [cc.reads, pinsClient.reads, tm.reads, tmWindowReads.reads, sm.reads, talk.reads, smReads],
+    all: [cc.reads, pinsClient.reads, tm.reads, sm.reads, talk.reads, smReads],
     close: () => stops.forEach((stop) => stop()),
   };
 }
@@ -450,8 +469,8 @@ async function mounted(views: ReturnType<typeof mountViews>): Promise<void> {
   await delay(500);
 }
 
-/** A task screen's run link pace wherever push can miss a change (`REREAD_EVERY_MS`). */
-const RUN_LINK_POLL_MS = 2_000;
+/** A task screen's run link pace wherever push can miss a change: since FIX-2776 its row comes from the task-list view, so `useView`'s default (`LIVE_POLL_MS` in the client's `live-read.ts`). */
+const RUN_LINK_POLL_MS = 3_000;
 
 /**
  * A task screen waiting on its run's link, under its own provider and
@@ -501,7 +520,7 @@ async function taskScreen(on: Host, writer: Client) {
   }
   return {
     shown,
-    // One read of the conversation's board: the task screen's view of it, or the snapshot's (which reads only on a notice).
+    // One read of the conversation's board: the task screen's view of it (a POST), or the snapshot's (which reads only on a notice).
     boardReads: () => reads.filter((r) => r.url.includes(`/resources/tasks`) || r.url.includes("/views/listTasks_tasks")),
     all: reads,
     async dispatch(): Promise<number> {
@@ -602,7 +621,7 @@ await runGoal(async (failures, tell) => {
       else if (waitReads === 0) evidence.push(`a: task screen read its board 0 times over ${IDLE_MS / 1000} s waiting, and showed the run link ${linkShown} ms after its write`);
       task.close();
 
-      // A Lab read (the snapshot read again, here as the user's Refresh) reads the log and the entries again, as it did before.
+      // A Lab read (Shift Manager's R, which reads again what the page holds) reads the log and the entries again, as it did before.
       await quiet(views.all);
       const onLabRead = ["Shift Manager message log", "Shift Manager project entries"];
       const readsBefore = new Map(onLabRead.map((name) => [name, views.reads[name]!().length]));

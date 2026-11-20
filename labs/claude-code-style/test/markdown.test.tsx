@@ -4,12 +4,18 @@
  * already draws as code, and HTML in the text shows as text, never as an element.
  */
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import { Entry } from "../src/components/Entry";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { conversationLines } from "@flow-state-dev/react";
+import { TASK_RESULT_DATA_TYPE } from "@flow-state-dev/workforce/browser";
+import { claudeCodeRenderers, WorkLines } from "../src/components/lines";
+
+// A result line reads the board's rows where the screen opens tasks; drawn here with none.
+vi.mock("../src/app/tasks", async (original) => ({ ...(await original<typeof import("../src/app/tasks")>()), useTasks: () => ({ value: undefined, stale: false }) }));
 
 afterEach(cleanup);
 
-const say = (text: string) => render(<Entry entry={{ kind: "assistant", id: "a1", text }} />).container;
+const drawn = (items: object[]) => render(<WorkLines lines={conversationLines(items as never, [], { renderers: claudeCodeRenderers })} />).container;
+const say = (text: string) => drawn([{ id: "a1", type: "message", role: "assistant", requestId: "r1", status: "completed", content: [{ type: "output_text", text }] }]);
 
 describe("agent Markdown", () => {
   it("draws headings, lists and emphasis as elements, not as marks", () => {
@@ -40,11 +46,9 @@ describe("agent Markdown", () => {
   });
 
   it("renders a background result's summary as Markdown too, once its line is opened", () => {
-    const view = render(
-      <Entry
-        entry={{ kind: "result", id: "r1", taskId: "t1", title: "Research Acme", status: "completed", summary: "Acme ships **weekly**.", duringTurn: true }}
-      />,
-    ).container;
+    const view = drawn([
+      { id: "r1", type: "data", dataType: TASK_RESULT_DATA_TYPE, requestId: "r1", status: "completed", value: { taskId: "t1", title: "Research Acme", text: "Acme ships **weekly**.", ending: "completed" }, provenance: { blockInstanceId: "r1:x:0" } },
+    ]);
     fireEvent.click(view.querySelector("button")!);
     expect(view.querySelector('[data-streamdown="strong"]')?.textContent).toBe("weekly");
   });

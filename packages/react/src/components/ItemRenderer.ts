@@ -12,7 +12,8 @@
  *
  * Non-client types (context, state_change, resource_change) return null.
  *
- * All custom renderers receive `{ item }` as their prop.
+ * All custom renderers receive `{ item }` as their prop, and `line` beside
+ * it when the item is drawn as a conversation line.
  */
 import { createElement, type ReactNode } from "react";
 import type {
@@ -34,6 +35,7 @@ import { QuestionRenderer } from "./QuestionRenderer";
 import { SelectionRenderer } from "./SelectionRenderer";
 import { SchemaFormRenderer } from "./SchemaFormRenderer";
 import { suspensionShape } from "@flow-state-dev/contracts/types/suspension";
+import type { ItemLine } from "./conversation-lines";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -58,6 +60,13 @@ export type ItemRendererProps = {
    * Ignored for non-suspension items.
    */
   resolution?: SuspensionStatus;
+  /**
+   * The conversation line this item is drawn for ({@link ItemLine}), when it
+   * is drawn as one: a registered renderer receives it beside `item`, to read
+   * what the model decided (a failed line's `retryable`, an assistant line's
+   * `streaming` or `incomplete`).
+   */
+  line?: ItemLine;
 };
 
 // ---------------------------------------------------------------------------
@@ -219,14 +228,14 @@ const BUILT_IN_FALLBACKS: Record<string, ((item: OutputItem) => ReactNode) | und
  * fallbacks, then a JSON dev fallback.
  */
 export function ItemRenderer(props: ItemRendererProps): ReactNode {
-  const { item, isResolved, resolution } = props;
+  const { item, isResolved, resolution, line } = props;
 
   // Non-renderable types: bail early (no hooks called on this path).
   if (NON_RENDERABLE_TYPES.has(item.type)) {
     return null;
   }
 
-  return renderItem(item, isResolved, resolution);
+  return renderItem(item, isResolved, resolution, line);
 }
 
 /**
@@ -237,7 +246,8 @@ export function ItemRenderer(props: ItemRendererProps): ReactNode {
 function renderItem(
   item: OutputItem,
   isResolved?: boolean,
-  resolution?: SuspensionStatus
+  resolution?: SuspensionStatus,
+  line?: ItemLine
 ): ReactNode {
   const { renderers } = useFlowContext();
 
@@ -257,7 +267,7 @@ function renderItem(
 
   // 1. Custom renderer from registry.
   if (resolved !== undefined) {
-    return createElement(resolved, { item });
+    return createElement(resolved, line === undefined ? { item } : { item, line });
   }
 
   // A data item draws only through a renderer registered for its
