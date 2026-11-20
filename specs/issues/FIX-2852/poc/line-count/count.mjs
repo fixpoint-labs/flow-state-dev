@@ -8,7 +8,8 @@
 //     its registry source counts 0. A copy the app changed counts only the
 //     lines it changed (against a longest common subsequence with the source).
 //  2. Each app's line files (LINE_FILES) count every non-blank line.
-//  3. Totality: every other file that draws or wires a line (DRAWS) must be in
+//  3. Totality: every other file that draws or wires a line (DRAWS: any prop typed as a line's
+//     item or value, under any name, so markup moved out of a line file is caught) must be in
 //     LINE_FILES or in DECLARED_OUT with its reason, or the run fails. A line
 //     renderer added under a new name can't hide from the count.
 //
@@ -85,7 +86,7 @@ const DECLARED_OUT = {
 // Draws or wires a line: a renderer's props, the model, the registry, the
 // recovery line, the brief, a decoder, the tool-run words.
 const DRAWS =
-  /\bitem\??: *(DataItem|ErrorItem|MessageItem|SuspensionItem|ToolOutputItem)\b|\bline\??: *(ItemLine|Extract<ItemLine)|RendererRegistry|toolGroupRenderer|<ItemsRenderer|<ItemRenderer|conversationLines\(|entriesOf\(|<RequestRecovery|taskBriefOf\(|flow-state\/tool-grouping"|createContext<(LineScreen|TurnLineActions)/;
+  /\b\w+\??: *(readonly )?(DataItem|ErrorItem|MessageItem|SuspensionItem|ToolOutputItem)\b|\b(SentMessageValue|ReceivedMessageValue|FiledTaskValue|TaskResultValue)\b|\bline\??: *(ItemLine|Extract<ItemLine)|RendererRegistry|toolGroupRenderer|<ItemsRenderer|<ItemRenderer|conversationLines\(|entriesOf\(|<RequestRecovery|taskBriefOf\(|flow-state\/tool-grouping"|createContext<(LineScreen|TurnLineActions)/;
 
 const isSource = (p) => /\.(ts|tsx)$/.test(p) && !p.endsWith(".d.ts") && !/\.(test|spec|stories)\.tsx?$/.test(p);
 
@@ -173,6 +174,8 @@ if (!control) {
   const changedCopy = { app: "Kitchen Sink", path: "apps/kitchen-sink/components/flow-state/request-recovery.tsx", text: `${reg}\n// planted one\n// planted two\n// planted three\n` };
   const identicalCopy = { app: "Kitchen Sink", path: "apps/kitchen-sink/components/flow-state/request-recovery.tsx", text: reg };
   const renamed = { app: "Shift Manager", path: "packages/shift-manager/src/components/PlantedLine.tsx", text: 'import type { ItemLine } from "@flow-state-dev/react";\nexport function PlantedLine({ line }: { line: ItemLine }) {\n  return line.id;\n}\n' };
+  const extracted = { app: "Shift Manager", path: "packages/shift-manager/src/components/MovedMarkup.tsx", text: 'import type { DataItem } from "@flow-state-dev/core/items";\nexport function MovedMarkup({ record }: { record: DataItem }) {\n  return <p>{String(record.value)}</p>;\n}\n' };
+  const byValue = { app: "Teammates", path: "labs/teammates/src/components/MovedValue.tsx", text: 'import type { ReceivedMessageValue } from "@flow-state-dev/workforce/browser";\nexport function MovedValue({ v }: { v: Partial<ReceivedMessageValue> }) {\n  return <p>{v.text}</p>;\n}\n' };
   const counted = (plants) => Object.fromEntries(Object.entries(census(plants)).map(([a, cs]) => [a, sum(cs)]));
   const throws = (plants) => {
     try {
@@ -186,6 +189,8 @@ if (!control) {
     ["a changed registry copy counts its 3 changed lines", counted([changedCopy])["Kitchen Sink"] - base["Kitchen Sink"] === 3],
     ["a byte-identical copy counts 0", counted([identicalCopy])["Kitchen Sink"] === base["Kitchen Sink"]],
     ["a line renderer under a new, unlisted name fails the run", throws([renamed])],
+    ["markup moved out of a line file into an unlisted component fails the run", throws([extracted])],
+    ["a component reading a line's value under any prop name fails the run", throws([byValue])],
     ["a listed line file grown by 4 lines counts 4 more", (() => {
       // The first Teammates line file this checkout has, so the control runs before and after FIX-2848's second slice.
       const path = [...LINE_FILES].find((p) => p.startsWith("labs/teammates/") && existsSync(join(ROOT, p)));
