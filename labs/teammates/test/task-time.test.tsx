@@ -100,7 +100,7 @@ describe("a teammate's tasks and their time", () => {
   it("says how long ago an ended task ended", async () => {
     const now = Date.now();
     const shown = await panel([listed("c", "cancelled", { updatedAt: now - 12 * MIN })]);
-    fireEvent.click(within(shown).getByRole("tab", { name: /Cancelled/ }));
+    fireEvent.click(within(shown).getByRole("tab", { name: /Done/ }));
     expect(within(shown).getByRole("button", { name: "Asked researcher to task c" }).querySelector("[data-elapsed]")?.textContent).toBe("12m ago");
   });
 

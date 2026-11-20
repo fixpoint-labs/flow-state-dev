@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { ClockIcon, TerminalIcon } from "lucide-react";
+import { CheckIcon, ClockIcon, TerminalIcon } from "lucide-react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useTasks } from "../app";
@@ -16,8 +16,9 @@ import { reasonLine, type Popup } from "./Popups";
 import { taskLabel, taskLine } from "./TaskCard";
 
 /**
- * How many of *Failed*'s rows show before *Show all*: the newest few answer
- * "what just broke?". Running and cancelled tasks are never capped.
+ * How many of *Failed*'s and *Done*'s rows show before *Show all*: the newest
+ * few answer "what just broke?" and "what just finished?". Running tasks are
+ * never capped.
  */
 const NEWEST_SHOWN = 5;
 
@@ -25,16 +26,22 @@ const NEWEST_SHOWN = 5;
 const FILTERS = [
   { status: "running", label: "Running" },
   { status: "failed", label: "Failed" },
-  { status: "cancelled", label: "Cancelled" },
+  { status: "done", label: "Done" },
 ] as const;
 type Filter = (typeof FILTERS)[number]["status"];
 
-/** Each filter's marker, labelled by its tile's word: a green dot, a red square, a hollow ring. */
+/** Each filter's marker, labelled by its tile's word: a green dot, a red square, a check. */
 const MARKER: Record<Filter, string> = {
   running: "size-1.5 rounded-full bg-success",
   failed: "size-1.5 rounded-[1px] bg-danger",
-  cancelled: "size-2 rounded-full border border-text-3",
+  done: "size-3 text-text-3",
 };
+
+/** What an empty tab says. */
+const EMPTY: Record<Filter, string> = { running: "No running tasks.", failed: "No failed tasks.", done: "Nothing done yet." };
+
+/** The tabs whose lists show their newest {@link NEWEST_SHOWN} until *Show all*. */
+const CAPPED: ReadonlySet<Filter> = new Set(["failed", "done"]);
 
 /**
  * Newest first: by when it ended, else when it first started, else when it
@@ -58,28 +65,31 @@ function newestFirst(tasks: readonly CodingBoardTask[]): CodingBoardTask[] {
 /**
  * A teammate's tasks, split by the panel's filters, each newest first: the
  * running ones (those waiting on you first), the failed ones less those the
- * viewer cleared, and the cancelled ones. Done tasks have no tile: the panel
- * is for what still needs an eye, and a finished task's line stays in the
- * conversation.
+ * viewer cleared, and the done ones: completed, cancelled, and failed ones
+ * the viewer cleared. Every ended task lands in one tile, so finished work
+ * stays findable and *Clear* moves a failure out of the way, never out of
+ * reach.
  */
 function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<string>): Record<Filter, CodingBoardTask[]> {
   const of = (status: ReturnType<typeof taskStatus>) => newestFirst(tasks.filter((t) => taskStatus(t) === status));
   const running = of("running");
+  const isCleared = (t: CodingBoardTask) => taskStatus(t) === "failed" && cleared.has(clearMark(t));
   return {
     running: [...running.filter((t) => holdOf(t) !== undefined), ...running.filter((t) => holdOf(t) === undefined)],
-    failed: of("failed").filter((t) => !cleared.has(clearMark(t))),
-    cancelled: of("cancelled"),
+    failed: of("failed").filter((t) => !isCleared(t)),
+    done: newestFirst(tasks.filter((t) => taskStatus(t) === "done" || taskStatus(t) === "cancelled" || isCleared(t))),
   };
 }
 
 /**
  * The right pane: the selected teammate's tasks. Its heading gives the total.
- * Under it, three count tiles, *Running*, *Failed* and *Cancelled*, which are
- * the panel's tabs: the selected one lists its tasks as cards, newest first
- * (running ones waiting on you first). *Failed* shows its newest five, with
- * *Show all* / *Show fewer*, and *Clear*, which hides them from this panel in
- * this browser; the tasks themselves stay, and the conversation and popup
- * still show them. A card opens its task in a popup and carries its time: an
+ * Under it, three count tiles, *Running*, *Failed* and *Done*, which are the
+ * panel's tabs: the selected one lists its tasks as cards, newest first
+ * (running ones waiting on you first). *Failed* and *Done* show their newest
+ * five, with *Show all* / *Show fewer*. *Failed* has *Clear*, which moves its
+ * tasks to *Done* in this browser; the tasks themselves are unchanged. *Done*
+ * holds completed and cancelled tasks too, a cancelled one marked so on its
+ * card. A card opens its task in a popup and carries its time: an
  * active one's clock on this attempt, with a thin bar while its run answers,
  * and *Long-running* once it has been open a day; an ended one's age. Then
  * what this conversation's coding tasks spent, and at the foot its routines.
@@ -115,12 +125,13 @@ export function TeammatePanel({
   // A running clock ticks each second; it holds while the feed is stale, as the status line's age does.
   const now = useNow(1_000, !stale);
   const [filter, setFilter] = useState<Filter>("running");
-  // *Failed* shows its newest few until *Show all*, and folds back with *Show fewer*.
-  const [allFailed, setAllFailed] = useState(false);
-  const tabs = useRef<Record<Filter, HTMLButtonElement | null>>({ running: null, failed: null, cancelled: null });
+  // *Failed* and *Done* show their newest few until *Show all*, and fold back with *Show fewer*.
+  const [expanded, setExpanded] = useState<Filter>();
+  const showAll = expanded === filter;
+  const tabs = useRef<Record<Filter, HTMLButtonElement | null>>({ running: null, failed: null, done: null });
   const name = displayName(worker);
 
-  const shown = filter === "failed" && !allFailed ? groups.failed.slice(0, NEWEST_SHOWN) : groups[filter];
+  const shown = CAPPED.has(filter) && !showAll ? groups[filter].slice(0, NEWEST_SHOWN) : groups[filter];
 
   // Arrow keys move between the tiles, as a tab list's do; the selection follows focus.
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -228,7 +239,7 @@ export function TeammatePanel({
                 >
                   <span className="text-xl leading-none font-semibold tabular-nums">{groups[status].length}</span>
                   <span className="flex min-w-0 max-w-full items-center gap-1.5 text-xs whitespace-nowrap text-text-2">
-                    <span aria-hidden className={cn("shrink-0", MARKER[status])} />
+                    {status === "done" ? <CheckIcon aria-hidden strokeWidth={2.5} className={cn("shrink-0", MARKER.done)} /> : <span aria-hidden className={cn("shrink-0", MARKER[status])} />}
                     {label}
                   </span>
                 </button>
@@ -241,7 +252,7 @@ export function TeammatePanel({
               <button
                 type="button"
                 aria-label={`Clear failed (${groups.failed.length})`}
-                title="Hide these from this panel. The tasks themselves stay."
+                title="Move these to Done, in this browser. The tasks themselves stay."
                 onClick={() => clearFailed(groups.failed.map(clearMark))}
                 className="self-end text-xs text-text-3 underline-offset-2 hover:text-foreground hover:underline"
               >
@@ -249,20 +260,20 @@ export function TeammatePanel({
               </button>
             ) : null}
             {shown.length === 0 ? (
-              <p className="text-xs text-text-3">{tasks.length === 0 ? `${name} hasn't started any tasks yet.` : `No ${filter} tasks.`}</p>
+              <p className="text-xs text-text-3">{tasks.length === 0 ? `${name} hasn't started any tasks yet.` : EMPTY[filter]}</p>
             ) : (
               <ul aria-label={FILTERS.find((f) => f.status === filter)!.label} className="flex flex-col gap-2">
                 {shown.map(card)}
               </ul>
             )}
-            {filter === "failed" && groups.failed.length > NEWEST_SHOWN ? (
+            {CAPPED.has(filter) && groups[filter].length > NEWEST_SHOWN ? (
               <button
                 type="button"
-                aria-expanded={allFailed}
-                onClick={() => setAllFailed(!allFailed)}
+                aria-expanded={showAll}
+                onClick={() => setExpanded(showAll ? undefined : filter)}
                 className="self-start text-xs text-text-3 underline-offset-2 hover:text-foreground hover:underline"
               >
-                {allFailed ? "Show fewer" : `Show all ${groups.failed.length}`}
+                {showAll ? "Show fewer" : `Show all ${groups[filter].length}`}
               </button>
             ) : null}
           </div>

@@ -325,22 +325,23 @@ describe("the teammates screen", () => {
     expect(await within(panel("writer")).findByText("writer hasn't started any tasks yet.")).toBeTruthy();
   });
 
-  it("counts running, failed and cancelled tasks on its tiles, lists the selected tile's, and moves a task that ends off Running live", async () => {
+  it("counts running, failed and done tasks on its tiles, lists the selected tile's, and moves a task that ends off Running live", async () => {
     const ended = (id: string, title: string, status: "completed" | "errored" | "cancelled") => codingTask({ id, assignee: "teammates.researcher", title, status });
     const { server } = renderOnBoard({
       [LEAD]: [ended("t-1", "Look up the launch date", "completed"), ended("t-2", "Check the beta numbers", "errored"), ended("t-3", "Find a customer quote", "completed"), ended("t-4", "Pull the survey", "cancelled")],
     });
     const side = await screen.findByRole("complementary", { name: "Lead's panel" });
     const tiles = () => within(side).getAllByRole("tab").map((t) => t.textContent);
-    await waitFor(() => expect(tiles()).toEqual(["0Running", "1Failed", "1Cancelled"]));
-    // Done tasks have no tile: none of their cards are in the panel.
-    expect(within(side).queryByRole("button", { name: "Asked researcher to look up the launch date" })).toBeNull();
+    await waitFor(() => expect(tiles()).toEqual(["0Running", "1Failed", "3Done"]));
     // A failure is one click away, on its tile.
     fireEvent.click(within(side).getByRole("tab", { name: /Failed/ }));
     const failed = within(side).getByRole("list", { name: "Failed" });
     expect(within(failed).getByRole("button", { name: "Asked researcher to check the beta numbers" })).toBeTruthy();
-    fireEvent.click(within(side).getByRole("tab", { name: /Cancelled/ }));
-    expect(within(within(side).getByRole("list", { name: "Cancelled" })).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Asked researcher to pull the survey"]);
+    // Finished work stays findable: completed and cancelled together under Done.
+    fireEvent.click(within(side).getByRole("tab", { name: /Done/ }));
+    expect(within(within(side).getByRole("list", { name: "Done" })).getAllByRole("button").map((b) => b.getAttribute("aria-label")).sort()).toEqual(
+      ["Asked researcher to find a customer quote", "Asked researcher to look up the launch date", "Asked researcher to pull the survey"],
+    );
 
     // A task filed now counts on Running, and leaves it when it ends, with no reload.
     fireEvent.click(within(side).getByRole("tab", { name: /Running/ }));

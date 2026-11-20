@@ -47,17 +47,16 @@ theme so it reads as the app it copies.
   a click outside it, and the conversation under it keeps its place. While a task runs, its feed
   ends in a live line: the command or file it is on, else its plan step, else its last progress
   note, else "Working...", with how long it has been running.
-- **Right:** the open teammate's panel. At the top, its name and role, and *Edit instructions*.
-  Under that, the tasks its conversation started, coding tasks and teammates' jobs alike, with
-  their count, newest first in each group. Running tasks come first; one waiting on you leads, in
-  the attention colour, and every running task shows, however many there are. Failed tasks follow,
-  open, each with the first line of its reason: the newest five, with *Show all* and *Show fewer*
-  for the rest. *Clear* hides the failed tasks from the panel in this browser; it deletes nothing,
-  the heading still counts them, a task that fails again shows again, and *Show N cleared* brings
-  them back. *Done* and *Cancelled* each fold into one line with a count, and a click opens
-  the rows; *Done* opens to its newest five and a *Show all* button. A task that ends moves into
-  its group as it ends. Each row opens the task in a popup, and a task's line in the conversation
-  uses the same word and colour as its row. A *Routines* section sits at the foot, empty for now.
+- **Right:** the open teammate's panel. At the top, *Tasks* and their count: the tasks its
+  conversation started, coding tasks and teammates' jobs alike. Under it, three count tiles,
+  *Running*, *Failed* and *Done*, which are the panel's tabs; the selected one lists its tasks
+  as cards, newest first. A running task waiting on you leads, and every running task shows,
+  however many there are. *Failed* gives each task the first line of its reason. *Failed* and
+  *Done* show their newest five, with *Show all* and *Show fewer*. *Clear* moves the failed tasks
+  to *Done* in this browser; it deletes nothing, and a task that fails again shows again. *Done*
+  holds completed and cancelled tasks too, a cancelled one marked so. A task that ends moves to
+  its tile as it ends. Each card opens the task in a popup, and a task's line in the conversation
+  uses the same word and colour as its card. A *Routines* section sits at the foot, empty for now.
 - **Keys:** ⌘K (Ctrl+K) finds a teammate by its name or role, or opens *Hire a teammate*. Alt+↑
   and Alt+↓ move to the previous or next teammate. `/` puts the cursor in the composer, and `?`
   lists every key. Opening a teammate puts the cursor in its composer. Firing a teammate you hired

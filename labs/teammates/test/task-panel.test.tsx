@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 /**
  * A teammate's panel says at a glance what is running, what
- * failed and why, and what finished most recently (FIX-2395); a task's line
+ * failed and why, and what finished (FIX-2395); a task's line
  * in the conversation uses the same word and colour as its panel row, so the
- * two never disagree on how a task stands.
+ * two never disagree on how a task stands. Every ended task stays findable
+ * under *Done*: completed, cancelled (marked so), and failed ones you cleared.
  *
  * Red states produced before this was trusted: on `main` (filing order, no
  * order by time, *Failed* collapsed with no reason, *Done* uncapped) every panel case
@@ -69,9 +70,9 @@ describe("a teammate's tasks in its panel", () => {
   it("totals them in the heading and counts each filter on its tile, Running first and selected", async () => {
     const panel = await renderPanel();
     expect(within(panel).getByRole("heading", { name: "Tasks 12" })).toBeTruthy();
-    // The tiles are the tabs: the only way to choose which tasks show. Done has no tile.
+    // The tiles are the tabs: the only way to choose which tasks show. Done counts completed and cancelled alike.
     expect(within(panel).getByRole("tablist", { name: "Task status" })).toBeTruthy();
-    expect(tiles(panel)).toEqual([["2Running", "true"], ["2Failed", "false"], ["1Cancelled", "false"]]);
+    expect(tiles(panel)).toEqual([["2Running", "true"], ["2Failed", "false"], ["8Done", "false"]]);
   });
 
   it("puts a task waiting on you first among the running ones", async () => {
@@ -101,14 +102,26 @@ describe("a teammate's tasks in its panel", () => {
     expect(document.activeElement).toBe(tab(panel, "Failed"));
     fireEvent.keyDown(tab(panel, "Failed"), { key: "ArrowLeft" });
     fireEvent.keyDown(tab(panel, "Running"), { key: "ArrowLeft" });
-    expect(tab(panel, "Cancelled").getAttribute("aria-selected")).toBe("true");
-    expect(rows(within(panel).getByRole("list", { name: "Cancelled" }))).toEqual(["Asked researcher to task c1"]);
+    expect(tab(panel, "Done").getAttribute("aria-selected")).toBe("true");
   });
 
-  it("has no expanders and no other filter: no Done group, no Show cleared, no All", async () => {
+  it("keeps finished work findable under Done: newest first, a cancelled task marked as cancelled", async () => {
+    // Without a Done tile a completed task left the panel entirely, and a cancelled one sat apart from it.
+    const panel = await renderPanel();
+    fireEvent.click(tab(panel, "Done"));
+    const done = within(panel).getByRole("list", { name: "Done" });
+    expect(rows(done)).toEqual(["c1", "d0", "d1", "d2", "d3"].map((id) => `Asked researcher to task ${id}`));
+    expect(statusOf(done, 0)).toBe("cancelled");
+    // A completed one needs no word: being under Done says it.
+    expect(statusOf(done, 1)).toBeNull();
+    fireEvent.click(within(panel).getByRole("button", { name: "Show all 8" }));
+    expect(rows(within(panel).getByRole("list", { name: "Done" }))).toHaveLength(8);
+  });
+
+  it("has no other filter: no Show cleared, no All, no New task", async () => {
     const panel = await renderPanel();
     expect(panel.querySelectorAll("[aria-expanded]")).toHaveLength(0);
-    expect(within(panel).queryByRole("button", { name: /^Done|cleared|^All/ })).toBeNull();
+    expect(within(panel).queryByRole("button", { name: /cleared|^All/ })).toBeNull();
     expect(within(panel).queryByRole("button", { name: /New task/ })).toBeNull();
   });
 });
@@ -138,7 +151,7 @@ describe("a busy panel stays short", () => {
     expect(failedIds()).toHaveLength(5);
   });
 
-  it("clears failed rows from the panel only: the heading still counts them, and the tile drops to zero", async () => {
+  it("Clear moves failed rows to Done, not out of reach: the heading still counts them, Failed drops to zero", async () => {
     const panel = await renderPanel(BUSY);
     fireEvent.click(tab(panel, "Failed"));
     fireEvent.click(within(panel).getByRole("button", { name: "Clear failed (7)" }));
@@ -147,6 +160,12 @@ describe("a busy panel stays short", () => {
     expect(tab(panel, "Failed").textContent).toBe("0Failed");
     // Not deleted: the task is still the board's, so the heading's total keeps it.
     expect(within(panel).getByRole("heading", { name: "Tasks 13" })).toBeTruthy();
+    // Clear was a dead end; now a cleared failure is under Done, still saying it failed and why.
+    expect(tab(panel, "Done").textContent).toBe("7Done");
+    fireEvent.click(tab(panel, "Done"));
+    const done = within(panel).getByRole("list", { name: "Done" });
+    expect(rows(done)[0]).toBe("Asked researcher to task f0");
+    expect(statusOf(done, 0)).toBe("failed · boom");
   });
 
   it("remembers a clear across a reload, but shows a task again when it fails anew", async () => {
