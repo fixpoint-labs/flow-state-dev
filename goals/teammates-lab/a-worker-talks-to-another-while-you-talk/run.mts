@@ -176,6 +176,11 @@ function scratchCheckout(dir: string, typo: Fixture["typos"][number], rest: stri
   writeFileSync(join(checkout, "README.md"), `${typo.readme}\n${rest}`);
   writeFileSync(join(checkout, ".gitignore"), "**/.fsdev/\n");
   git(checkout, "init", "-q", "-b", "main");
+  // Merge locally runs a plain `git merge`; a machine set to never fast-forward would make a merge
+  // commit, and step 5's "at the run's commit" would fail on the machine, not the lab. This checkout's
+  // own settings override the global ones.
+  git(checkout, "config", "merge.ff", "true");
+  git(checkout, "config", "branch.main.mergeOptions", "--ff");
   git(checkout, "-c", "user.email=goal@example.com", "-c", "user.name=goal", "add", ".");
   git(checkout, "-c", "user.email=goal@example.com", "-c", "user.name=goal", "commit", "-q", "-m", "init");
   return checkout;
