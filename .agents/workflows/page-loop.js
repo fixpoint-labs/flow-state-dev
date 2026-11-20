@@ -702,6 +702,9 @@ section(
         .join('\n')}`
     : 'No findings from passes 4 to 7; the page was not changed.',
 )
+if (finalCheck && finalCheck.fixed) {
+  sections[sections.length - 1] += `\n- Last round, from the final fact check (${finalCheck.untrue.length} finding(s)). Changed: ${finalCheck.changed.map(one).join(' · ') || 'nothing'}.`
+}
 section(
   9,
   'Cold read',

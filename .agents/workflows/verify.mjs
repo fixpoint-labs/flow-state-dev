@@ -10889,7 +10889,8 @@ check('page-loop: a Reference page gets a final fact check of the closed page, a
   const last9 = order.map((l, i) => (/^pass-9:/.test(l) ? i : -1)).filter((i) => i >= 0).at(-1)
   assert.ok(order.indexOf('final-fact-check') > last9, 'the final check reads the page after the cold read')
   assert.ok(order.indexOf('final-fix') > order.indexOf('final-fact-check'), 'its findings go to a fix round')
-  assert.ok(order.lastIndexOf('pass-4') > order.indexOf('final-fix') || order.findLastIndex((l) => l.startsWith('pass-4')) > order.indexOf('final-fix'), 'pass 4 runs on the fixed page')
+  assert.ok(order.findLastIndex((l) => l.startsWith('pass-4')) > order.indexOf('final-fix'), 'pass 4 runs on the fixed page')
+  assert.match(result.recordText, /^- Last round, from the final fact check \(1 finding\(s\)\)\. Changed: corrected the row\./m)
   assert.match(calls.find((c) => c.label === 'final-fix').prompt, /exported from \/internal only/)
   assert.match(result.recordText, /Final fact check of the page as it closed, sha256 \S+: 1 untrue, fixed in a last round/)
   // Clean: the check runs and nothing is fixed.
