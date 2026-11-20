@@ -34,8 +34,7 @@ export {
   createFlowApiRouter,
   createInProcessFetch,
   decodePathSegments,
-  disposeFlowApiRouter,
-  PUBLIC_REENTRY_SOURCES
+  disposeFlowApiRouter
 } from "./routes";
 export {
   createBearerSecretPrincipalResolver,

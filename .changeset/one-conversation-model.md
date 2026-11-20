@@ -1,7 +1,7 @@
 ---
 "@flow-state-dev/react": minor
 "@flow-state-dev/core": patch
-"@flow-state-dev/engine": patch
+"@flow-state-dev/engine": minor
 "@flow-state-dev/workforce": patch
 ---
 
@@ -11,5 +11,7 @@ One conversation model: React turns a session's items and turns into the lines a
 - **react:** `ItemsRenderer` takes `lines` (computed where the items and turns change); `items` still works and is read as `conversationLines(items)`. A registered renderer receives the line beside the item (`{ item, line }`). The registry has a new `stopped` slot for the stopped line; unset, a plain "Stopped" line draws, and `false` draws none.
 - **core / engine:** `SessionTurn` (from `ctx.sessions.turns`) carries `retryable`: whether the engine's retry route runs that turn again for its caller, decided by the route's own rule with the host's `publicReentrySources`. Offer Retry from it rather than from a copy of the source list.
 - **workforce:** the session turns view carries `retryable` on each turn. `sendMessage` writes a `workforce:sent` line for every send (a refused one says why, and a waited send's line is written again with its answer, or as `failed` with the error when its wait fails), a conversation's filing writes `workforce:task`, and a filed task's ending writes `workforce:result`. All three are client-only data items beside `workforce:received`; their value types (`SentMessageValue`, `FiledTaskValue`, `TaskResultValue`, `ReceivedMessageValue`) and dataType constants come from `@flow-state-dev/workforce/browser`. Their look is the UI registry's `workforce-lines` item (`fsdev ui add workforce-lines`), whose `workforceLineRenderers` go in a registry's `data` slot: `data: { ...workforceLineRenderers, ...appRenderers.data }`. The board's message saying that ending stays in the model's history and no longer reaches a client (`itemVisibility: { client: false, history: true }`), so the ending draws once, as its result line; a client that read the ending from that message (`parseNotice`, `delegateAnswerOf` over session items) reads the `workforce:result` line instead. Conversations stored before this show those three as ordinary steps and messages.
+
+`PUBLIC_REENTRY_SOURCES` is no longer exported from `@flow-state-dev/engine`. Each turn now carries `retryable`, set by the engine, so a client no longer keeps its own copy of the retry list to check against it. A host's `publicReentrySources` option still extends the list.
 
 Docs: apps/docs/docs/client/react.md and apps/docs/docs/api/react.md (`conversationLines`, `ItemsRenderer`'s `lines`, the `stopped` slot), apps/docs/docs/workforce/ui.md and apps/docs/docs/workforce/messaging-workers.md (the line types and the `workforce-lines` registry item), packages/react/README.md and packages/workforce/README.md
