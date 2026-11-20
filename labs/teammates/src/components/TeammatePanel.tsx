@@ -287,7 +287,7 @@ export function TeammatePanel({
  * Put a file's teammate the user edited back as the file has it: their copy
  * goes, and its next turn reads the file's name and instructions.
  */
-function ResetButton({ name, onReset }: { name: string; onReset: () => Promise<void> }) {
+export function ResetButton({ name, onReset }: { name: string; onReset: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const reset = async () => {

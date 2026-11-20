@@ -36,8 +36,8 @@ export const ENDING_SHOWN_MS = 2 * 60_000;
 
 /** An approval's tone: the attention colour, you must act. A task's tone is `taskPresentation`'s. */
 const NEEDS_OK = "text-attention";
-/** The quiet tone of every other line. */
-const PLAIN = "text-muted-foreground";
+/** The tone of a line that only reports (replying, idle), not a task's state or something you owe. */
+export const PLAIN = "text-muted-foreground";
 
 /** The line, and the class that colours it: a task's from `taskPresentation`, an approval's the attention colour. */
 export interface Status {
@@ -172,10 +172,15 @@ export function useActivity(worker: string): StatusInputs["activity"] {
 
 /** A teammate's status line, its words alone, live. Its age holds while `stale`. */
 export function useStatusLine(worker: string, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): string {
+  return useStatus(worker, sessionId, nameOf, isCoding, stale).text;
+}
+
+/** {@link useStatusLine} with its tone and whether it asks you to act, for a place that colours the line (the header's pill). */
+export function useStatus(worker: string, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): Status {
   const now = useNow(undefined, !stale);
   const activity = useActivity(worker);
   const talk = useTalk(worker) ?? [];
   const view = useConversation(sessionId)?.view;
   const tasks = useTasks(sessionId).value ?? [];
-  return statusOf(worker, { activity, lines: view?.lines ?? [], talk, tasks, now }, nameOf, isCoding).text;
+  return statusOf(worker, { activity, lines: view?.lines ?? [], talk, tasks, now }, nameOf, isCoding);
 }

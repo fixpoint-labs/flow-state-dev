@@ -2,7 +2,7 @@
 /**
  * What the lab works on and with, as a user-scope view the page reads with no
  * session: the working folder and the problem a coding run's checkout of it
- * would be refused with, the model, the default harness, and each worker's
+ * would be refused with, the setup and checks a coding worktree runs, the model, the default harness, and each worker's
  * declared delegates. The page draws its context strip and first-run lines
  * from it, through `appContextView` (`lab-context-ref.mts`); the host serves
  * the flow ({@link appContextFlow}). Its answer is the host's settings, the
@@ -21,6 +21,10 @@ const appContextSchema = z.object({
   model: z.string(),
   /** The harness a coding worker whose file names none runs on. */
   harness: z.string(),
+  /** The command each fresh coding worktree runs before its run (`TEAMMATES_SETUP`), or `null` when none. Absent from an older server. */
+  setup: z.string().nullable().optional(),
+  /** The commands a coding run's worktree must pass before its task is done (`TEAMMATES_CHECKS`). Absent from an older server. */
+  checks: z.array(z.string()).optional(),
   /** Each worker's declared delegates, by worker id: ids, or `"all"`. A worker with none is absent. */
   delegates: z.record(z.string(), z.union([z.literal("all"), z.array(z.string())])),
 });
@@ -34,7 +38,7 @@ export function appContextViewOf(read: () => Promise<AppContext>) {
     scope: "user",
     block: handler({
       name: "lab-context",
-      description: "What the lab works on and with: the working folder and its problem if any, the model, the default harness, and each worker's delegates.",
+      description: "What the lab works on and with: the working folder and its problem if any, the setup and checks a coding worktree runs, the model, the default harness, and each worker's delegates.",
       inputSchema: z.object({}),
       outputSchema: appContextSchema,
       execute: read,
