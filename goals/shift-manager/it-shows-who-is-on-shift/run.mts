@@ -373,20 +373,21 @@ async function oneAnswer(page: Page, origin: string, userId: string, store: Stor
   await open(page, origin, "/inbox");
   const client = createClient({ userId, baseUrl: origin });
   const sessionId = (await client.flow("seat").createSession({ state: { [WORKER_ID_STATE_KEY]: asker.id } })).id;
-  await page.evaluate(
-    ({ workerId, sessionId }) => {
-      const w = window as unknown as { __frames: Frame[] };
-      w.__frames = [];
-      const read = (): Frame => ({
+  // A string, not a function: tsx names this file's functions with a helper the page doesn't have.
+  await page.evaluate(`(() => {
+    const workerId = ${JSON.stringify(asker.id)};
+    const sessionId = ${JSON.stringify(sessionId)};
+    window.__frames = [];
+    function read() {
+      return {
         count: document.querySelector("[data-testid=nav-inbox-count]")?.textContent ?? null,
-        status: document.querySelector(`[data-testid=team] [data-testid=worker][data-worker-id="${workerId}"]`)?.getAttribute("data-status") ?? null,
+        status: document.querySelector('[data-testid=team] [data-testid=worker][data-worker-id="' + workerId + '"]')?.getAttribute("data-status") ?? null,
         listed: [...document.querySelectorAll("[data-testid=inbox-item]")].some((e) => e.getAttribute("data-session-id") === sessionId),
-      });
-      w.__frames.push(read());
-      new MutationObserver(() => w.__frames.push(read())).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
-    },
-    { workerId: asker.id, sessionId },
-  );
+      };
+    }
+    window.__frames.push(read());
+    new MutationObserver(() => window.__frames.push(read())).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+  })()`);
   const frames = async () => (await page.evaluate(() => (window as unknown as { __frames: Frame[] }).__frames)) as Frame[];
   const until = async (done: (all: Frame[]) => boolean) => {
     for (let waited = 0; waited < 20_000; waited += 100) {

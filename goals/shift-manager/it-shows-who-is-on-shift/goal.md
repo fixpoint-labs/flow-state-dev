@@ -1,6 +1,6 @@
 # shift-manager › it shows who is on shift
 
-**Issue:** FIX-1723
+**Issue:** FIX-1723; the **one answer** leg by FIX-2775 (epic FIX-2683), whose spec's goal is `specs/issues/FIX-2775/SPEC.md` → "The goal, and how we'll know it's met".
 
 **Outcome:** A person running a Lab in Shift Manager opens Roster and sees every worker the Lab has, each on shift or off shift as the Lab's own records say, with the tasks it holds and what it waits on, for all teams or one. The sidebar's Roster entry, its footer and its TEAMS rows agree with the page.
 
@@ -18,6 +18,7 @@
 - **sidebar**: the Roster entry's on-shift count and the footer's equal the store's, and the sidebar never says on call.
 - **TEAMS**: one row per group, Staff first, each with a square per seat carrying the store's status, and its on-shift count over its seats.
 - **filter**: each TEAMS row opens Roster for exactly that team, names it in the title, and is marked current.
+- **one answer** (spread 1, after the legs above): a worker on the seat flow that is off shift stops for an approval, opened by this script through the Lab's routes; then the person approves it from Inbox. In every state the page draws, the Inbox lists the ask exactly when the worker's TEAMS square reads on shift, so the two move in one update, both when it is asked and when it is answered. Each state is read by a `MutationObserver` in the page, whose callback runs once per committed change, so no state is skipped and none is read half-drawn.
 
 **Anti-game:**
 - No assertion reads Shift Manager's modules. The oracle is the store, read by this script through the Lab's HTTP routes (the inventory, the person's conversation ledger, each seat session's suspensions). A row's board is the conversation whose partition keeps it, `<sessionId>.tasks`, by the script's own match against the listed sessions, so a HOLDING chip is graded against the real board ref.
@@ -31,6 +32,7 @@
 **Controls:** each rebuilds Shift Manager with `src/lib/shift.ts` swapped for a module under `controls/` (`src/lib/derive.ts` before FIX-2775, when status read the snapshot).
 - `GOAL_CONTROL=ignore-asks`: status reads board rows only. Must fail at **status** on the worker whose only wait is an ask.
 - `GOAL_CONTROL=count-queued`: queued rows count as slots. Must fail at **slots** on the worker holding a queued row.
+- `GOAL_CONTROL=status-from-snapshot`: status counts the snapshot's walked asks, read through the page's provider, while the Inbox lists the view's. Must fail at **one answer**.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
