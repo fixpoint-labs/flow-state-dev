@@ -92,6 +92,22 @@ describe("buttonScript", () => {
     assert.match(script, /noopener/);
   });
 
+  it("offers the hosted apps to switch to, from the live list, and knows which one this page is", () => {
+    const script = buttonScript({ id: "shift-manager", title: "Shift Manager" });
+    // Read from the list the proxy serves when the menu opens, so a stopped app shows as stopped.
+    assert.match(script, /"list":"\/devtool\/apps\.json"/);
+    // The page's own app id is carried, so the menu can mark it "here" rather than link to itself.
+    assert.match(script, /"id":"shift-manager"/);
+    assert.match(script, /fsd-super-switch/);
+  });
+
+  it("writes a script that parses, with and without the restart pill", () => {
+    for (const restartable of [false, true]) {
+      const body = buttonScript({ id: "lab", title: "Lab" }, { restartable }).replace(/^<script>/, "").replace(/<\/script>$/, "");
+      assert.doesNotThrow(() => new Function(body), `restartable: ${restartable}`);
+    }
+  });
+
   it("can't be broken out of by an app title", () => {
     const script = buttonScript({ id: "x", title: "</script><img src=x onerror=alert(1)>" });
     // The only `</script>` is the one that ends the snippet.

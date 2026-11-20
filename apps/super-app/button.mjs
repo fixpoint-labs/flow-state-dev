@@ -8,6 +8,10 @@
  * It is made in script, appended to `<html>` rather than `<body>`, and only after
  * `load`, so a framework hydrating `<body>` (Next) never meets a node it didn't render.
  *
+ * Above it sits the app switcher: a second round button that pops up the hosted
+ * apps (from `/devtool/apps.json`, read each time it opens, so a stopped app shows
+ * as stopped) and moves this tab to the one picked.
+ *
  * For an app that can be restarted, the script also polls `/devtool/apps.json`
  * and, while the app's server code has changed since it started, shows a pill
  * beside the button that restarts it.
@@ -38,21 +42,61 @@ const CLOSE_BODY = /<\/body>/i;
 export function buttonScript(app, { restartable = false } = {}) {
   const href = `${DEVTOOL_PATH}?app=${encodeURIComponent(app.id)}`;
   const label = `Open the DevTool for ${app.title}`;
+  const list = `${DEVTOOL_PATH}apps.json`;
   const restart = restartable
-    ? { id: app.id, title: app.title, list: `${DEVTOOL_PATH}apps.json`, url: `${RESTART_PATH}${encodeURIComponent(app.id)}`, header: RESTART_HEADER, every: POLL_MS }
+    ? { id: app.id, title: app.title, list, url: `${RESTART_PATH}${encodeURIComponent(app.id)}`, header: RESTART_HEADER, every: POLL_MS }
     : undefined;
   // `<` escaped so a title can't close the tag it is written into.
-  const data = JSON.stringify({ href, label, restart }).replace(/</g, "\\u003c");
+  const data = JSON.stringify({ id: app.id, href, label, list, restart }).replace(/</g, "\\u003c");
   return `<script>(function(c){
+var ROUND="all:initial;position:fixed;right:16px;z-index:2147483647;box-sizing:border-box;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#1c1b15;color:#e7e5e4;border:1px solid rgba(231,229,228,.3);box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer;opacity:.75;";
+function hover(el){el.onmouseenter=function(){el.style.opacity="1"};el.onmouseleave=function(){el.style.opacity=".75"}}
 function add(){
 if(document.getElementById("fsd-super-devtool"))return;
 var a=document.createElement("a");
 a.id="fsd-super-devtool";a.href=c.href;a.target="_blank";a.rel="noopener";a.title=c.label;a.setAttribute("aria-label",c.label);
-a.style.cssText="all:initial;position:fixed;right:16px;bottom:16px;z-index:2147483647;box-sizing:border-box;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#1c1b15;color:#e7e5e4;border:1px solid rgba(231,229,228,.3);box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer;opacity:.75";
-a.onmouseenter=function(){a.style.opacity="1"};a.onmouseleave=function(){a.style.opacity=".75"};
+a.style.cssText=ROUND+"bottom:16px";hover(a);
 a.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
 document.documentElement.appendChild(a);
+switcher();
 if(c.restart)watch(c.restart);
+}
+function switcher(){
+var b=document.createElement("button");
+b.id="fsd-super-switch";b.type="button";b.title="Switch app";b.setAttribute("aria-label","Switch app");b.setAttribute("aria-haspopup","menu");b.setAttribute("aria-expanded","false");
+b.style.cssText=ROUND+"bottom:60px";hover(b);
+b.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
+var m=document.createElement("div");
+m.id="fsd-super-apps";m.setAttribute("role","menu");
+m.style.cssText="all:initial;position:fixed;right:60px;bottom:60px;z-index:2147483647;box-sizing:border-box;min-width:220px;padding:6px;display:none;flex-direction:column;gap:2px;border-radius:10px;background:#1c1b15;color:#e7e5e4;border:1px solid rgba(231,229,228,.2);box-shadow:0 8px 24px rgba(0,0,0,.45);font:13px/1.3 system-ui,sans-serif";
+var open=false;
+function item(text,note,href,current){
+var el=document.createElement(href?"a":"div");
+el.setAttribute("role","menuitem");
+el.style.cssText="all:initial;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 10px;border-radius:6px;color:inherit;font:inherit;text-decoration:none;"+(href?"cursor:pointer;":"")+(current?"font-weight:600;background:rgba(231,229,228,.08);":"");
+var t=document.createElement("span");t.textContent=text;t.style.cssText="all:initial;color:inherit;font:inherit";el.appendChild(t);
+if(note){var n=document.createElement("span");n.textContent=note;n.style.cssText="all:initial;color:#a8a29e;font:11px system-ui,sans-serif";el.appendChild(n)}
+if(href){el.href=href;el.onmouseenter=function(){el.style.background="rgba(231,229,228,.12)"};el.onmouseleave=function(){el.style.background=""}}
+if(current)el.setAttribute("aria-current","page");
+return el;
+}
+function render(list){
+m.textContent="";
+list.forEach(function(x){
+var here=x.id===c.id,up=x.status==="running";
+m.appendChild(item(x.title,here?"here":up?"":x.status,here?null:x.prefix+"/",here));
+});
+var hr=document.createElement("div");hr.style.cssText="all:initial;display:block;height:1px;margin:4px 2px;background:rgba(231,229,228,.15)";m.appendChild(hr);
+m.appendChild(item("All apps","","/",false));
+}
+function show(v){open=v;m.style.display=v?"flex":"none";b.setAttribute("aria-expanded",String(v))}
+b.onclick=function(){
+if(open)return show(false);
+fetch(c.list,{cache:"no-store"}).then(function(res){return res.ok?res.json():[]},function(){return[]}).then(function(list){render(list);show(true)});
+};
+document.addEventListener("click",function(e){if(open&&!m.contains(e.target)&&!b.contains(e.target))show(false)},true);
+document.addEventListener("keydown",function(e){if(open&&e.key==="Escape")show(false)});
+document.documentElement.appendChild(b);document.documentElement.appendChild(m);
 }
 function watch(r){
 var p=document.createElement("button");

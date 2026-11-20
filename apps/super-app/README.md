@@ -33,6 +33,15 @@ app as the user that app declares: Kitchen Sink's one user, and for a lab the
 `userId` (and token, if any) its pages carry. With none declared, the panel's own
 user editor decides. It sits behind the same sign-in as everything else.
 
+## App switcher
+
+Above the DevTool button sits a second round button. It pops up the hosted apps,
+read fresh from `/devtool/apps.json` each time it opens: the app you're on is
+marked "here", and an app that isn't running shows its status. Picking one moves
+the current tab to it, and "All apps" goes back to the landing page. A click
+outside the menu or Escape closes it. Like the DevTool button, the proxy writes
+it in (`button.mjs`), so the apps know nothing about it.
+
 ## Dependencies and packages in `pnpm dev`
 
 `pnpm dev` runs `pnpm install --frozen-lockfile` before any app starts, so a pull
