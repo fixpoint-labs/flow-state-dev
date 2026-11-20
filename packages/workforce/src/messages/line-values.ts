@@ -32,8 +32,8 @@ export type ReceivedMessageValue = {
 /** Who a sent message went to: a worker's id, the session that works a task, or one of the user's conversations. */
 export type SentMessageTarget = string | { task: string } | { session: string };
 
-/** How a waited send stands (`wait: true`): `waiting` until the answer or the deadline, then the call's result. */
-export type SentMessageWait = { status: "waiting" | "answered" | "running" | "failed"; reply?: string; noAnswer?: true; recipient?: "waiting_on_person" };
+/** How a waited send stands (`wait: true`): `waiting` until the answer or the deadline, then the call's result; `error` says why a `failed` one got no answer. */
+export type SentMessageWait = { status: "waiting" | "answered" | "running" | "failed"; reply?: string; noAnswer?: true; error?: string; recipient?: "waiting_on_person" };
 
 /** A message this worker sent (`workforce:sent`). One per call: a refused send is a line too, saying why. */
 export type SentMessageValue = {
@@ -66,7 +66,7 @@ export type TaskResultValue = {
   /** The worker that ran it. */
   from?: string;
   title: string;
-  /** Its answer, or its error, or the ending in words. */
+  /** What the board said of the ending, as its message beside this line says it. */
   text: string;
   ending: "completed" | "errored" | "cancelled";
 };

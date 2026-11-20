@@ -10,26 +10,25 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import type { TaskNotice } from "@flow-state-dev/orchestration/tasks";
 import { TASK_RESULT_DATA_TYPE } from "../messages/keys";
 import type { TaskResultValue } from "../messages/line-values";
-import { answerTextOf } from "./delegate-answer";
 
 /**
  * The result line for `notice` on the task `task`, or `undefined` for an ending
- * that isn't one (a park, a retry): `said` is the message's text, which the
- * line falls back to when the ending carries no answer or error of its own.
+ * that isn't one (a park, a retry). `said` is the board's ending message, and
+ * the line says exactly that: never the task's output or error read here,
+ * which can say more than the message lets the browser see.
  */
 export function resultLineOf(
-  notice: Pick<TaskNotice, "taskId" | "ending" | "output" | "error">,
+  notice: Pick<TaskNotice, "taskId" | "ending">,
   task: { goal: string; title?: string; assignee?: string },
   said: string
 ): TaskResultValue | undefined {
   const ending = notice.ending;
   if (ending !== "completed" && ending !== "errored" && ending !== "cancelled") return undefined;
-  const own = ending === "completed" ? answerTextOf(notice.output) : ending === "errored" ? notice.error : undefined;
   return {
     taskId: notice.taskId,
     ...(task.assignee === undefined ? {} : { from: task.assignee }),
     title: task.title ?? task.goal,
-    text: own ?? said,
+    text: said,
     ending
   };
 }

@@ -30,8 +30,9 @@ function sentIn(id: string, callId: string, value: SentMessageValue): DataItem {
   return { ...base(id), type: "data", dataType: SENT_MESSAGE_DATA_TYPE, value, key: `r1:${path}`, provenance: { blockName: "sendMessage", blockInstanceId: `r1:${path}:0`, phase: "main" } } as DataItem;
 }
 const line = (id: string, dataType: string, value: unknown): DataItem => ({ ...base(id), type: "data", dataType, value }) as DataItem;
+/** The `sendMessage` call `callId`, as its generator (at `root/step[0]`) records it. */
 const sendCall = (id: string, callId: string): ToolOutputItem =>
-  ({ ...base(id), type: "tool_output", blockName: "gen", output: { sent: "msg_1" }, toolCall: { callId, name: "sendMessage", arguments: "{}", generatorBlock: "gen" } }) as ToolOutputItem;
+  ({ ...base(id), provenance: { blockName: "gen", blockInstanceId: "r1:root/step[0]:0", phase: "main" as const }, type: "tool_output", blockName: "gen", output: { sent: "msg_1" }, toolCall: { callId, name: "sendMessage", arguments: "{}", generatorBlock: "gen" } }) as ToolOutputItem;
 
 const items: OutputItem[] = [
   line("in", RECEIVED_MESSAGE_DATA_TYPE, { id: "msg_0", from: "ada", text: "Can you check the build?", budget: 3, replyRequested: true } satisfies ReceivedMessageValue),
@@ -70,6 +71,16 @@ describe("workforce's line renderers", () => {
     const { container } = draw({});
     expect(container.querySelectorAll("[data-line]")).toHaveLength(0);
     expect(container.textContent).toBe("");
+  });
+
+  it("draw a waited send whose delivery failed as failed, with why, not as sent", () => {
+    // The send's call is hidden behind its line, so the line is the only place the failure shows.
+    const failed = sentIn("lost", "tc_D", { to: "cy", text: "Ping?", messageId: "msg_3", wait: { status: "failed", error: "undeliverable: cy's session is gone." } });
+    const lines = conversationLines([sendCall("c4", "tc_D"), failed], [{ id: "r1", status: "completed" }], { renderers: { data: { ...workforceRenderers } } });
+    const { container } = render(createElement(FlowProvider, { renderers: { data: { ...workforceRenderers } } }, createElement(ItemsRenderer, { lines })));
+    const drawn = container.querySelector('[data-line="sent"]');
+    expect(drawn?.getAttribute("data-state")).toBe("failed");
+    expect(drawn?.textContent).toBe("Not answered by cy: Ping?undeliverable: cy's session is gone.");
   });
 
   it("give way to an app's own renderer for a type, spread after them", () => {

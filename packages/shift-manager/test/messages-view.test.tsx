@@ -182,7 +182,7 @@ describe("a message the worker sent, in its own conversation", () => {
   // FIX-2848 D1: the server writes the send as its own line, keyed by its call; the call then draws as that line.
   it("draws once, from the send's own line, when the server wrote one for its call", () => {
     const path = "root/step[0]/tool[sendMessage][tc_A]";
-    const sendCall = { ...call("t1", { to: "coordinator", text: "What is the codename?" }, { sent: "msg_a" }), toolCall: { callId: "tc_A", name: "sendMessage", arguments: "{}" } } as unknown as ToolOutputItem;
+    const sendCall = { ...call("t1", { to: "coordinator", text: "What is the codename?" }, { sent: "msg_a" }), toolCall: { callId: "tc_A", name: "sendMessage", arguments: "{}" }, provenance: { blockName: "gen", blockInstanceId: "r:root/step[0]:0", phase: "main" } } as unknown as ToolOutputItem;
     const sent = {
       id: "d1",
       type: "data",
@@ -200,6 +200,24 @@ describe("a message the worker sent, in its own conversation", () => {
       </FlowProvider>,
     );
     expect(screen.getAllByTestId("message-call").map((line) => line.textContent)).toEqual([expect.stringContaining("To coordinator: What is the codename?")]);
+  });
+
+  it("says why, from the send's own line, when a waited send's delivery failed", () => {
+    const failed = {
+      id: "d2",
+      type: "data",
+      status: "completed",
+      requestId: "r",
+      dataType: "workforce:sent",
+      value: { to: "coordinator", text: "Ping?", messageId: "msg_b", wait: { status: "failed", error: "not_delivered: the session is gone." } },
+      provenance: { blockName: "sendMessage", blockInstanceId: "r:root/step[0]/tool[sendMessage][tc_B]:0", phase: "main" },
+    } as unknown as DataItem;
+    render(
+      <FlowProvider renderers={shiftManagerRenderers}>
+        <ItemsRenderer lines={conversationLines([failed], [], { renderers: shiftManagerRenderers })} />
+      </FlowProvider>,
+    );
+    expect(screen.getByTestId("message-call-reason").textContent).toBe("not_delivered: the session is gone.");
   });
 
   it("names a task or a conversation it was sent to, not 'another worker' (FIX-2160)", () => {

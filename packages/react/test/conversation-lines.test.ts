@@ -21,8 +21,17 @@ const base = (id: string, requestId: string) => ({ id, requestId, itemIndex: 0, 
 const user = (id: string, requestId: string, text = "hi"): MessageItem => ({ ...base(id, requestId), type: "message", role: "user", content: [{ type: "output_text", text }] }) as MessageItem;
 const said = (id: string, requestId: string, overrides: Partial<MessageItem> = {}): MessageItem =>
   ({ ...base(id, requestId), type: "message", role: "assistant", content: [{ type: "output_text", text: "sure" }], ...overrides }) as MessageItem;
-const call = (id: string, requestId: string, name = "search", callId = `c-${id}`, overrides: Partial<ToolOutputItem> = {}): ToolOutputItem =>
-  ({ ...base(id, requestId), type: "tool_output", blockName: "gen", output: null, toolCall: { callId, name, arguments: "{}", generatorBlock: "gen" }, ...overrides }) as ToolOutputItem;
+/** A tool call's output, as its generator (at `root/step[0]`, else `generatorPath`) records it; `stepNumber` is the model step it was in. */
+const call = (id: string, requestId: string, name = "search", callId = `c-${id}`, overrides: Partial<ToolOutputItem> = {}, { stepNumber, generatorPath = "root/step[0]" }: { stepNumber?: number; generatorPath?: string } = {}): ToolOutputItem =>
+  ({
+    ...base(id, requestId),
+    provenance: { blockName: "gen", blockInstanceId: `${requestId}:${generatorPath}:0`, phase: "main" as const },
+    type: "tool_output",
+    blockName: "gen",
+    output: null,
+    toolCall: { callId, name, arguments: "{}", generatorBlock: "gen", ...(stepNumber === undefined ? {} : { stepNumber }) },
+    ...overrides
+  }) as ToolOutputItem;
 const thought = (id: string, requestId: string): OutputItem => ({ ...base(id, requestId), type: "reasoning", summary: [{ type: "reasoning_text", text: "hm" }] }) as OutputItem;
 const failure = (id: string, requestId: string): ErrorItem => ({ ...base(id, requestId), type: "error", message: "boom" }) as ErrorItem;
 const data = (id: string, requestId: string, overrides: Partial<DataItem> = {}): DataItem => ({ ...base(id, requestId), type: "data", dataType: "x", value: {}, ...overrides }) as DataItem;
@@ -54,6 +63,13 @@ describe("user and assistant lines", () => {
     expect(conversationLines([said("a1", "r1"), failure("e1", "r1")], [{ id: "r1", status: "failed" }])[0]).not.toHaveProperty("incomplete");
   });
 
+  it("marks no reply streaming while its turn is interrupted: nothing writes it until the turn runs again, and the user didn't stop it", () => {
+    const lines = conversationLines([said("a1", "r1", { status: "in_progress" })], [{ id: "r1", status: "interrupted" }]);
+    expect(lines).toEqual([expect.objectContaining({ kind: "assistant", id: "a1" })]);
+    expect(lines[0]).not.toHaveProperty("streaming");
+    expect(lines[0]).not.toHaveProperty("incomplete");
+  });
+
   it("draws no line for a reply that ended saying nothing", () => {
     expect(kinds(conversationLines([user("u1", "r1"), said("a1", "r1", { content: [{ type: "output_text", text: "  " }] } as never)]))).toEqual(["user:u1"]);
   });
@@ -83,8 +99,23 @@ describe("a tool call that wrote a line", () => {
   });
 
   it("is matched by a provider's call id after the model step's index, as the tool executor writes it", () => {
-    const lines = conversationLines([call("c2", "r1", "sendMessage", "tc_A"), lineOfCall("d1", "r1", "sendMessage", "3%3Atc_A")]);
+    const lines = conversationLines([call("c2", "r1", "sendMessage", "tc_A", {}, { stepNumber: 3 }), lineOfCall("d1", "r1", "sendMessage", "3%3Atc_A")]);
     expect(kinds(lines)).toEqual(["data:d1"]);
+  });
+
+  it("is told apart from a call in another model step that reused its call id and wrote no line", () => {
+    // A provider may reuse a call id across steps; only the step-1 call wrote a line, so the step-0 one is still a step.
+    const lines = conversationLines([
+      call("c1", "r1", "sendMessage", "tc_A", {}, { stepNumber: 0 }),
+      call("c2", "r1", "sendMessage", "tc_A", {}, { stepNumber: 1 }),
+      lineOfCall("d1", "r1", "sendMessage", "1%3Atc_A")
+    ]);
+    expect(kinds(lines)).toEqual(["steps:c1", "data:d1"]);
+  });
+
+  it("is told apart from a call with the same id made by another generator in the same turn", () => {
+    const lines = conversationLines([call("c1", "r1", "sendMessage", "tc_A", {}, { generatorPath: "root/step[1]" }), lineOfCall("d1", "r1", "sendMessage", "tc_A")]);
+    expect(kinds(lines)).toEqual(["steps:c1", "data:d1"]);
   });
 
   it("stays a step when the data item written in it carries no such key (a task board's change record)", () => {

@@ -15,6 +15,7 @@
 import { describe, expect, it } from "vitest";
 import { mockGenerator, type MockGeneratorScriptEntry } from "@flow-state-dev/testing";
 import { parseBlockInstanceId } from "@flow-state-dev/contracts/block-instance-id";
+import { conversationLines } from "@flow-state-dev/react";
 import type { WorkerManifest } from "../src";
 import { FILED_TASK_DATA_TYPE, SENT_MESSAGE_DATA_TYPE, TASK_RESULT_DATA_TYPE } from "../src/messages/keys";
 import { boardWorkers, bootBoardHost, type BoardHost } from "./conversation-board-harness";
@@ -80,6 +81,10 @@ describe("workforce:sent", () => {
       expect(callOfKey(line.key)).toMatch(/^tool\[sendMessage\]\[(\d+%3A)?tc_A\]$/);
       const call = items.find((item) => item.type === "tool_output" && item.toolCall?.callId === "tc_A");
       expect(call?.requestId).toBe(line.requestId);
+      // React's model, on the items the engine stored, reads that call as this line and not as a step.
+      const drawn = conversationLines(items, []);
+      expect(drawn.filter((l) => l.kind === "steps").flatMap((l) => (l.kind === "steps" ? l.items : [])).map((i) => i.id)).not.toContain(call.id);
+      expect(drawn.some((l) => l.kind === "data" && l.item.id === line.id)).toBe(true);
     } finally {
       await h.dispose();
     }

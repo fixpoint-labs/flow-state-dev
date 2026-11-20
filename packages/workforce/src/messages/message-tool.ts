@@ -135,6 +135,7 @@ function waitOf(outcome: z.infer<typeof waitResultSchema>): SentMessageWait {
     status: outcome.status,
     ...(outcome.reply === undefined ? {} : { reply: outcome.reply }),
     ...(outcome.noAnswer === true ? { noAnswer: true as const } : {}),
+    ...(outcome.error === undefined ? {} : { error: outcome.error }),
     ...(outcome.recipient === undefined ? {} : { recipient: outcome.recipient })
   };
 }

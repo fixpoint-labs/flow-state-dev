@@ -38,7 +38,7 @@ import type {
   ToolOutputItem
 } from "@flow-state-dev/core/items";
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
-import { parseBlockInstanceId } from "@flow-state-dev/contracts/block-instance-id";
+import { blockPathTool, extendBlockPath, parseBlockInstanceId } from "@flow-state-dev/contracts/block-instance-id";
 import type { RendererRegistry } from "../registry/block-renderers";
 
 /**
@@ -92,6 +92,8 @@ export type ConversationLinesOptions = {
 
 /** Statuses after which a turn writes nothing more. */
 const ENDED = new Set(["completed", "incomplete", "failed", "aborted"]);
+/** A turn whose run died and waits to run again: nothing writes its reply until then, so the reply isn't streaming. */
+const INTERRUPTED = "interrupted";
 /** Statuses of a turn that didn't finish what it was writing. */
 const CUT_OFF = new Set(["failed", "aborted"]);
 
@@ -170,48 +172,26 @@ function shownItems(items: readonly OutputItem[], options: ConversationLinesOpti
 }
 
 /**
- * The value inside a `[…]` of a path segment, as the tool executor wrote it:
- * percent-escaped, so `%3A` is a `:` it embedded (a model step's index before the call id).
+ * The logical ids of the tool calls the shown data items were written in:
+ * a data item stands for a call when its `key` is that call's logical id.
  */
-const unescape = (value: string): string => {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-};
-
-/**
- * The tool call a data item stands for, as `requestId`, tool name and call
- * id: when its `key` is the logical id of the tool call it was written in.
- */
-function callOfLine(item: DataItem): { requestId: string; name: string; callId: string } | undefined {
-  if (item.key === undefined) return undefined;
-  const parsed = parseBlockInstanceId(item.provenance.blockInstanceId);
-  if (parsed === undefined || `${parsed.requestId}:${parsed.path}` !== item.key) return undefined;
-  const segment = parsed.path.split("/").at(-1) ?? "";
-  const match = /^tool\[([^\]]*)\]\[([^\]]*)\]$/.exec(segment);
-  if (match === null) return undefined;
-  return { requestId: parsed.requestId, name: unescape(match[1]!), callId: unescape(match[2]!) };
-}
-
-/** The tool calls the shown data items stand for, by request and tool name: each one's call ids, as written. */
 function callsThatWroteLines(items: readonly OutputItem[]): (call: ToolOutputItem) => boolean {
-  const written: Array<{ requestId: string; name: string; callId: string }> = [];
+  const written = new Set<string>();
   for (const item of items) {
     if (item.type !== "data") continue;
-    const call = callOfLine(item as DataItem);
-    if (call !== undefined) written.push(call);
+    const { key, provenance } = item as DataItem;
+    const parsed = key === undefined ? undefined : parseBlockInstanceId(provenance.blockInstanceId);
+    if (parsed !== undefined && `${parsed.requestId}:${parsed.path}` === key) written.add(key);
   }
-  if (written.length === 0) return () => false;
-  return (call) =>
-    written.some(
-      (line) =>
-        line.requestId === call.requestId &&
-        line.name === call.toolCall?.name &&
-        // A provider's call id, alone or after the model step's index (`<step>:<callId>`).
-        (line.callId === call.toolCall.callId || line.callId.endsWith(`:${call.toolCall.callId}`))
-    );
+  if (written.size === 0) return () => false;
+  return (call) => {
+    const generator = parseBlockInstanceId(call.provenance.blockInstanceId);
+    if (generator === undefined || call.toolCall === undefined) return false;
+    // The call's own path, as the tool executor builds it: under its generator, by tool name and the model step's index before the call id.
+    const { name, callId, stepNumber } = call.toolCall;
+    const segment = blockPathTool(name, stepNumber === undefined ? callId : `${stepNumber}:${callId}`);
+    return written.has(`${generator.requestId}:${extendBlockPath(generator.path, segment)}`);
+  };
 }
 
 /** Whether a message says anything: a text part with words, or any part that isn't text. */
@@ -277,7 +257,7 @@ export function conversationLines(
         id: item.id,
         requestId,
         item: item as MessageItem,
-        ...(unfinished && cutOff.has(requestId) ? { incomplete: true as const } : item.status === "in_progress" && !ended(requestId) ? { streaming: true as const } : {})
+        ...(unfinished && cutOff.has(requestId) ? { incomplete: true as const } : item.status === "in_progress" && !ended(requestId) && turnOf.get(requestId)?.status !== INTERRUPTED ? { streaming: true as const } : {})
       });
     } else if (item.type === "error") {
       lines.push({ kind: "failed", id: item.id, requestId, item: item as ErrorItem, retryable: false });

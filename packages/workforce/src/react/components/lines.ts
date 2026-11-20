@@ -8,7 +8,8 @@
  * - `workforce:received`: a message another worker sent, under its sender's name.
  * - `workforce:sent`: a message this worker sent, *To ada: …*; *Asked ada* when
  *   it asked for a reply, with the answer under it once a waited send has
- *   one; *Not sent to ada*, and why, when it was refused.
+ *   one; *Not sent to ada*, and why, when it was refused; *Not answered by
+ *   ada*, and why, when a waited send's delivery failed.
  * - `workforce:task`: a task the conversation filed, and who it is for.
  * - `workforce:result`: a task's ending, under the worker that ran it.
  *
@@ -67,20 +68,23 @@ function waitAnswer(wait: SentMessageValue["wait"]): string | null {
   return null;
 }
 
-/** A message this worker sent (`workforce:sent`), refused ones too. */
+/** A message this worker sent (`workforce:sent`), refused and failed ones too. */
 function SentMessageLine({ item }: { item: DataItem }): ReactNode {
   const value = item.value as Partial<SentMessageValue>;
   const to = targetLabel(value.to);
   const asks = value.replyRequested === true || value.wait !== undefined;
-  const state = value.refused !== undefined ? "refused" : value.wait?.status === "waiting" ? "waiting" : "sent";
-  const label = state === "refused" ? `Not sent to ${to}` : state === "waiting" ? `Asking ${to}…` : asks ? `Asked ${to}` : `To ${to}`;
+  const state =
+    value.refused !== undefined ? "refused" : value.wait?.status === "waiting" ? "waiting" : value.wait?.status === "failed" ? "failed" : "sent";
+  const label =
+    state === "refused" ? `Not sent to ${to}` : state === "waiting" ? `Asking ${to}…` : state === "failed" ? `Not answered by ${to}` : asks ? `Asked ${to}` : `To ${to}`;
   const answer = state === "sent" ? waitAnswer(value.wait) : null;
+  const reason = state === "refused" ? value.refused : state === "failed" ? value.wait?.error : undefined;
   return createElement(
     "div",
     { "data-line": "sent", "data-to": to, "data-state": state, ...(value.messageId === undefined ? {} : { "data-message-id": value.messageId }) },
     said(label, value.text ?? ""),
     answer === null ? null : createElement("p", { style: lineStyle, "data-part": "answer" }, answer),
-    value.refused === undefined ? null : createElement("p", { style: mutedStyle, "data-part": "reason" }, value.refused)
+    reason === undefined ? null : createElement("p", { style: mutedStyle, "data-part": "reason" }, reason)
   );
 }
 

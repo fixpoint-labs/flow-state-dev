@@ -212,7 +212,7 @@ function SentMessage({ item }: { item: DataItem }) {
       asks={waits || value.replyRequested === true}
       state={value.wait?.status === "waiting" ? "waiting" : "completed"}
       refused={value.refused !== undefined || value.wait?.status === "failed"}
-      reason={value.refused}
+      reason={value.refused ?? value.wait?.error}
       output={value.wait}
     />
   );
