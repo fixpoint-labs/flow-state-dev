@@ -1,7 +1,7 @@
 /**
  * How the lab draws a conversation's lines: React's conversation model
  * (`conversationLines`) decides what each line is, and this file's renderers,
- * one per kind, decide how it looks. Workforce's own line types (a message
+ * one per line type, decide how it looks. Workforce's own line types (a message
  * sent, one received, a task filed, a task's ending) draw through the
  * registry's `data` slot, the lab's look over workforce's
  * (`{ ...workforceRenderers, ...lab }`), so a line type the lab has no look
