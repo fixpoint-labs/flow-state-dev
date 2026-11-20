@@ -17,7 +17,7 @@
  * One Esc only dismisses, and an Esc in the composer is the composer's.
  */
 import { interruptChordLabel, useInterruptKeys } from "@flow-state-dev/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor } from "../lib/columns";
 import { doorOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
@@ -27,7 +27,7 @@ import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import { useDeliverLine } from "../lib/deliver";
 import { useWorkforce } from "../lib/workforce";
-import { holderSessionOf, isConversationBoard, useTask } from "../lib/task";
+import { useTask } from "../lib/task";
 import { distinctTitle, legacyTaskDraftKey, taskDraftKey } from "../lib/tasks";
 import { TurnComposer } from "../components/TurnComposer";
 import type { Gaps } from "../gaps";
@@ -199,17 +199,10 @@ function Activity({ worker, armed }: { worker: string | null; armed: boolean }) 
 /** Interrupt, the task's actions, and the controls with no shipped operation (D2). */
 function Actions({ gaps }: { gaps: Gaps }) {
   const task = useTask();
-  const { reader, snapshot, refresh } = useLab();
+  const { refresh } = useLab();
   const running = task.run.kind === "open" && task.status === "in_progress";
   const pending = task.interrupt.kind === "pending";
-  // The board's actions run on the conversation that holds it, through the
-  // flow that conversation's session names as its owner. No owner, no actions.
-  const holder = holderSessionOf(task.boardRef);
-  const flowId =
-    snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || !isConversationBoard(task.boardRef)
-      ? undefined
-      : (snapshot.sessions.find((session) => session.id === holder)?.flowId ?? undefined);
-  const board = useMemo(() => (flowId === undefined ? undefined : reader.taskActions({ id: holder, flowId })), [reader, holder, flowId]);
+  const board = task.board;
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 pb-2" data-testid="task-actions">
       <button

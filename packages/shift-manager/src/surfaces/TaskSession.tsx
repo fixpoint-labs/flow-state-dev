@@ -15,9 +15,11 @@
  * The run's lines are React's conversation model over this task's items and
  * its run's status (a stopped run draws its stopped line), drawn as a
  * conversation draws them (Shift Manager's registry, `components/lines.tsx`:
- * a run of tool calls as one tool group, a task's brief folded), with no
- * Retry: the run is the board's to run again. An ask the run raised and that
- * still waits is drawn inline, with the one ask card Inbox uses.
+ * a run of tool calls as one tool group, a task's brief folded). A failed
+ * run's line offers Retry while its task stands failed on the board: the run
+ * is the board's to run again, so Retry is the board's, the task's own Retry.
+ * An ask the run raised and that still waits is drawn inline, with the one
+ * ask card Inbox uses.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -95,8 +97,6 @@ export function TaskSession() {
   );
 }
 
-/** What a run's lines can do here: name the workers, as the conversation does. */
-const RUN_LINES: LineContextValue = { nameOf: workerLabel };
 
 /**
  * The open run's items, through the run session's feed: its newest items once,
@@ -105,7 +105,7 @@ const RUN_LINES: LineContextValue = { nameOf: workerLabel };
  * what is shown. The run's request stream reports only its status.
  */
 function RunItems({ run }: { run: OpenRun }) {
-  const { client } = useLab();
+  const { client, refresh } = useLab();
   const task = useTask();
   const inbox = useInbox().section;
   const asks = taskAsks(inbox?.ok === true ? inbox.value.items : [], task.row);
@@ -166,10 +166,32 @@ function RunItems({ run }: { run: OpenRun }) {
   const { renderers } = useFlowContext();
   // Every line this composer sent shows by its request: a stamping door's turns carry the stamp too.
   const sentSet = useMemo(() => new Set(task.sent), [task.sent]);
-  // The run's one turn, as its request stream last said: a stopped run draws its stopped line. No
-  // `retryable`, so a failed run offers no Retry: the board runs it again.
+  // The run's one turn, as its request stream last said: a stopped run draws its stopped line. A
+  // failed run is retryable while its task stands failed: the board runs it again, on Retry.
   const status = task.status;
-  const turns = useMemo(() => (status === undefined ? [] : [{ id: run.requestId, status }]), [run.requestId, status]);
+  const { board, retryRow, taskId } = task;
+  const retryable = board !== undefined && task.row?.status === "errored";
+  const turns = useMemo(() => (status === undefined ? [] : [{ id: run.requestId, status, retryable }]), [run.requestId, status, retryable]);
+  // What a run's lines can do here: name the workers, as the conversation does, and Retry the task.
+  const lineActions = useMemo<LineContextValue>(
+    () => ({
+      nameOf: workerLabel,
+      ...(board === undefined
+        ? {}
+        : {
+            retry: async () => {
+              // Read the board and the Lab again either way, as the task's own Retry does.
+              try {
+                await board.retry(taskId);
+              } finally {
+                retryRow();
+                void refresh();
+              }
+            },
+          }),
+    }),
+    [board, retryRow, refresh, taskId],
+  );
   const shown = useMemo(() => {
     if (stored === undefined) return undefined;
     // The claims only teach the attribution which tasks are this board's; they are never drawn.
@@ -204,8 +226,8 @@ function RunItems({ run }: { run: OpenRun }) {
       ) : null}
       <LoadEarlierButton load={stored.loadEarlier} testId="session-load-earlier" />
       {/* The whole session, not only this task's items: the task plan card reads every task change in it. */}
-      {/* Names only: a task's run offers no Retry and no answers on its lines. */}
-      <LineContext.Provider value={RUN_LINES}>
+      {/* Names, and the board's Retry: a task's run offers no answers on its lines. */}
+      <LineContext.Provider value={lineActions}>
         <SessionItemsProvider value={stored.items}>
           <ol className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-4" data-testid="session-items">
             {shown.lines.map((line) => {

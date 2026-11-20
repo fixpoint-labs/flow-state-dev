@@ -30,6 +30,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { RequestStatus } from "@flow-state-dev/core/types";
+import type { BoardActions } from "@flow-state-dev/orchestration/inbox";
 import { useRequestStream } from "@flow-state-dev/react";
 import { useConversationTasks, type ConversationTask } from "./conversation-tasks";
 import { useLab } from "./lab-data";
@@ -128,6 +129,8 @@ export type TaskView = {
   /** When an aborted run stopped, by its stream; `undefined` while it hasn't. */
   stoppedAt: number | undefined;
   devtoolUrl: string | undefined;
+  /** The board's task actions, on the conversation that holds the board; `undefined` with no owner to run them. */
+  board: BoardActions | undefined;
   // FIX-2009.
   /** Request ids this composer started, newest last, for this open task only: the Session follows each. */
   sent: readonly string[];
@@ -150,10 +153,17 @@ function isOpen(row: OpenTask): boolean {
 
 /** Hold one open task. */
 export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { boardRef: string; taskId: string; devtoolUrl?: string; children: ReactNode }) {
-  const { client } = useLab();
+  const { client, reader, snapshot } = useLab();
   const workforce = useWorkforce();
   const holder = holderSessionOf(boardRef);
   const conversationBoard = isConversationBoard(boardRef);
+  // The board's actions run on the conversation that holds it, through the
+  // flow that conversation's session names as its owner. No owner, no actions.
+  const holderFlowId =
+    snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || !conversationBoard
+      ? undefined
+      : (snapshot.sessions.find((session) => session.id === holder)?.flowId ?? undefined);
+  const board = useMemo(() => (holderFlowId === undefined ? undefined : reader.taskActions({ id: holder, flowId: holderFlowId })), [reader, holder, holderFlowId]);
 
   // ---- the row: the holding conversation's flow, read once, then its board's view.
   const [holderFlow, setHolderFlow] = useState<{ flow: string } | { failure: Failure } | undefined>(undefined);
@@ -304,6 +314,7 @@ export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { board
     requestInterrupt,
     stoppedAt: status === "aborted" ? stream.completedAt : undefined,
     devtoolUrl,
+    board,
     sent,
     noteSent,
   };
