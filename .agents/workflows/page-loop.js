@@ -36,6 +36,8 @@
  *   - pass 5 runs after pass 6, and checks the Reference rows pass 6 moved as well as the page: a
  *     row keeps no claim the fact check found untrue;
  *   - every revision is followed by pass 4 again, and pass 9 reads the page pass 4 last read.
+ *   - a Reference page that closes gets a final fact check of the page as it closed; its findings
+ *     go through one last revise round and pass 4, and the record lists them under pass 5.
  *
  * REVISE. Passes 4 (a failing check), 5 (an untrue claim), 6 (mechanism on the page), 7
  * (`docs-editor` says REVISE) and 9 (a question most readers missed) send the page back to pass 8.
@@ -614,6 +616,40 @@ ${pending.map((f, i) => `${i + 1}. [${f.from}] ${one(f.text)}`).join('\n')}`,
   pending = gaps
 }
 
+// --- The final fact check (Reference pages) ------------------------------------------------------
+// Pass 5 reads the page once, after the draft. A Reference page is long and keeps changing through the
+// revise rounds, so on the pilots the closed page still carried untrue rows pass 5 never saw. One more
+// fact check reads the page as it closed; what it finds goes through one last revise round and pass 4.
+
+let finalCheck = null
+if (plan.type === 'reference' && !escalated) {
+  phase('Check')
+  const closedSha = checkRuns.at(-1).sha
+  const finalFacts = await agent(
+    `You are the final fact check of ${PATH}, a Reference page that has closed its revise rounds. ${STANDARD} You have the page and the code, and nothing else: do not read its fact sheet, record, the sitemap or any spec. Go table by table, row by row. Check option and field names, defaults, which entry point exports a name (a name exported only from an \`/internal\` entry is not public), error codes and messages, routes and status codes, and store guarantees. Return each claim that is not true, with what is true and its file and line; row 0 and "" for every claim. Read only.`,
+    { label: 'final-fact-check', phase: 'Check', schema: FACT_CHECK_SCHEMA, agentType: 'code-reader' },
+  )
+  if (!finalFacts) return failed('final fact check')
+  finalCheck = { sha: closedSha, untrue: finalFacts.untrue, fixed: false }
+  if (finalFacts.untrue.length) {
+    phase('Revise')
+    const fix = await agent(
+      `You are the last revise round on ${PATH}: the final fact check found the claims below untrue. ${STANDARD} Correct each one on the page, and keep the fact sheet ${FACTS} true to every change. Change nothing else.
+
+FINDINGS:
+${finalFacts.untrue.map((u, i) => `${i + 1}. ${one(u.claim)} Untrue: ${one(u.truth)} (${one(u.where)})`).join('\n')}`,
+      { label: 'final-fix', phase: 'Revise', schema: REVISE_SCHEMA, agentType: 'docs-writer', model: WRITER },
+    )
+    if (!fix) return failed('final fix')
+    checks = await machineChecks('the final fact-check fix', rounds.length + 1)
+    if (!checks) return failed('pass 4 after the final fact-check fix')
+    checkRuns.push(checks)
+    finalCheck.fixed = true
+    finalCheck.changed = fix.changed
+    if (!checks.ok) escalated = [{ from: 'pass 4', text: `After the final fact-check fix: ${checks.checks.filter((x) => !x.ok).map((x) => one(x.check)).join(', ')}` }]
+  }
+}
+
 // --- The record ---------------------------------------------------------------------------------
 
 const list = (items, empty) => (items.length ? items.map((s) => `- ${one(s)}`).join('\n') : empty)
@@ -649,7 +685,7 @@ section(
 section(
   5,
   'Fact check',
-  `Checked against the code: the page as pass 4 read it after ${checkRuns[0].after}, sha256 ${checkRuns[0].sha}, and the ${depth.rows.length} Reference row(s) pass 6 moved.\n\n${list(factCheck.untrue.map((u) => `${u.row ? `Reference row ${u.row}: ` : ''}${u.claim} Untrue: ${u.truth} (${u.where})${u.row ? ' The row is recorded corrected.' : ''}`), 'No untrue claim found.')}`,
+  `Checked against the code: the page as pass 4 read it after ${checkRuns[0].after}, sha256 ${checkRuns[0].sha}, and the ${depth.rows.length} Reference row(s) pass 6 moved.\n\n${list(factCheck.untrue.map((u) => `${u.row ? `Reference row ${u.row}: ` : ''}${u.claim} Untrue: ${u.truth} (${u.where})${u.row ? ' The row is recorded corrected.' : ''}`), 'No untrue claim found.')}${finalCheck ? `\n\nFinal fact check of the page as it closed, sha256 ${finalCheck.sha}: ${finalCheck.untrue.length ? `${finalCheck.untrue.length} untrue, fixed in a last round.\n\n${list(finalCheck.untrue.map((u) => `${u.claim} Untrue: ${u.truth} (${u.where})`), '')}` : 'no untrue claim found.'}` : ''}`,
 )
 section(6, 'Depth pass', depth.rows.length ? `${depth.rows.length} paragraph(s) of mechanism, moved in revise round 1; see Reference rows.` : 'Every paragraph is the model; none moved.')
 section(

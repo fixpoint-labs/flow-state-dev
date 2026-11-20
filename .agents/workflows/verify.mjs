@@ -10522,7 +10522,7 @@ const LOOP_PAGE = '---\ntitle: State and scopes\ntype: concept\n---\n\n# State a
  * A stub for every page-loop agent, by label. `editor` lists pass 7's verdicts in order (the last
  * repeats); `missed` lists, per cold read, the question numbers every reader gets wrong.
  */
-function loopResponder({ entries = { 'C-07': { slug: 'concepts/state-and-scopes', title: 'State and scopes', type: 'concept' } }, tree = {}, unscanned = [], status = 'new', found = true, editor = ['SHIP'], untrue = [], depthEntries = [], missed = [], questions = loopQuestions, dead = [], page = LOOP_PAGE, checksRed = [], recorded = { written: true, checkerExit: 0, checkerOutput: 'ok' } } = {}) {
+function loopResponder({ entries = { 'C-07': { slug: 'concepts/state-and-scopes', title: 'State and scopes', type: 'concept' } }, tree = {}, unscanned = [], status = 'new', found = true, editor = ['SHIP'], untrue = [], depthEntries = [], missed = [], questions = loopQuestions, dead = [], page = LOOP_PAGE, checksRed = [], finalUntrue = [], recorded = { written: true, checkerExit: 0, checkerOutput: 'ok' } } = {}) {
   let editorCalls = 0
   let checkCalls = 0
   return (prompt, opts) => {
@@ -10559,6 +10559,8 @@ function loopResponder({ entries = { 'C-07': { slug: 'concepts/state-and-scopes'
       const wrong = missed[Number(label.split(':')[1]) - 1] || []
       return { grades: [1, 2, 3].flatMap((reader) => questions.map((_, i) => ({ reader, question: i + 1, correct: !wrong.includes(i + 1) }))) }
     }
+    if (label === 'final-fact-check') return { untrue: finalUntrue }
+    if (label === 'final-fix') return { changed: ['corrected the row'], declined: [] }
     if (label === 'record') return recorded
     throw new Error(`page-loop stub: no response for ${label}`)
   }
@@ -10876,6 +10878,31 @@ check('page-loop: a target path that belongs to another sitemap entry is refused
   // Its own record names it: the page is this entry's, and the run goes on.
   const own = await run('page-loop.js', { args: { ...loopArgs, page: 'R-01' }, respond: loopResponder({ entries: blocksEntries, tree: { [`${LOOP_DIR}/reference/blocks.md`]: { recordSitemap: 'R-01', title: 'Blocks', type: 'reference' } } }) })
   assert.equal(own.result.status, 'complete')
+})
+
+check('page-loop: a Reference page gets a final fact check of the closed page, and its findings get a fix round and pass 4', async () => {
+  const tree = { [`${LOOP_DIR}/reference/blocks.md`]: { recordSitemap: 'R-01', title: 'Blocks', type: 'reference' } }
+  const finalUntrue = [{ row: 0, claim: 'X is exported from /types.', truth: 'X is exported from /internal only.', where: 'core/src/internal/index.ts:1', corrected: '' }]
+  const { result, calls } = await run('page-loop.js', { args: { ...loopArgs, page: 'R-01' }, respond: loopResponder({ entries: blocksEntries, tree, finalUntrue }) })
+  assert.equal(result.status, 'complete')
+  const order = calls.map((c) => c.label)
+  const last9 = order.map((l, i) => (/^pass-9:/.test(l) ? i : -1)).filter((i) => i >= 0).at(-1)
+  assert.ok(order.indexOf('final-fact-check') > last9, 'the final check reads the page after the cold read')
+  assert.ok(order.indexOf('final-fix') > order.indexOf('final-fact-check'), 'its findings go to a fix round')
+  assert.ok(order.lastIndexOf('pass-4') > order.indexOf('final-fix') || order.findLastIndex((l) => l.startsWith('pass-4')) > order.indexOf('final-fix'), 'pass 4 runs on the fixed page')
+  assert.match(calls.find((c) => c.label === 'final-fix').prompt, /exported from \/internal only/)
+  assert.match(result.recordText, /Final fact check of the page as it closed, sha256 \S+: 1 untrue, fixed in a last round/)
+  // Clean: the check runs and nothing is fixed.
+  const clean = await run('page-loop.js', { args: { ...loopArgs, page: 'R-01' }, respond: loopResponder({ entries: blocksEntries, tree }) })
+  assert.equal(labels(clean.calls, 'final-fix').length, 0)
+  assert.match(clean.result.recordText, /Final fact check of the page as it closed, sha256 \S+: no untrue claim found/)
+})
+
+check('page-loop: a page that is not Reference gets no final fact check', async () => {
+  const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ finalUntrue: [{ row: 0, claim: 'c', truth: 't', where: 'w', corrected: '' }] }) })
+  assert.equal(result.status, 'complete')
+  assert.equal(labels(calls, 'final-fact-check').length, 0)
+  assert.doesNotMatch(result.recordText, /Final fact check/)
 })
 
 check('page-loop: a kept page skips the draft, and the record says so', async () => {
