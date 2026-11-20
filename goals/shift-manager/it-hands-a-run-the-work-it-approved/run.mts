@@ -56,6 +56,7 @@ import { claudeCodeHarness } from "../../../packages/shift-manager/teams/devteam
 import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { EM_TURN, MESSAGE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { CODER_BRANCH_PREFIX } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 
@@ -413,13 +414,13 @@ await runGoal(async (failures) => {
         await sleep(1_000);
       }
       if (prompts.length === 0) note("b", "the real harness was never reached");
-      const branches = git("branch", "--list", "conductor/*", "--format=%(refname:short)")
+      const branches = git("branch", "--list", `${CODER_BRANCH_PREFIX}*`, "--format=%(refname:short)")
         .split("\n")
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
       const work = branches.map((branch) => git("log", "-p", `${BASE_REF}..${branch}`)).join("\n");
       if (!work.includes(fixture.realRun.token)) {
-        note("b", `the commit does not carry the goal's token (${branches.length} branch(es) under conductor/)`);
+        note("b", `the commit does not carry the goal's token (${branches.length} branch(es) under ${CODER_BRANCH_PREFIX})`);
       } else {
         evidence.push(`a real coding run's commit on ${branches.join(", ")} carried the approved goal's token`);
       }

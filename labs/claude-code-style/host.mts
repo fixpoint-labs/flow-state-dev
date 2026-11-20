@@ -79,7 +79,7 @@ export async function openClaudeCodeStyle(options: ClaudeCodeStyleOptions): Prom
         github: { provider: github, poll: true },
         sessionFields,
       }),
-      harnesses({ workspace, checks, logReadiness: true }),
+      harnesses({ workspace, checks, branchPrefix: "claude-code-style/", logReadiness: true }),
       scripted === undefined ? claude : claude.without(harnesses.slots.harnesses, "claude-code").without(harnesses.slots.harnesses, "claude-code-plan"),
     ],
     fill: {
