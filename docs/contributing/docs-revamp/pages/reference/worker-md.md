@@ -122,7 +122,7 @@ What the loader refuses is listed under `errors` as `{ path, error, kind }`, and
 | Cause | What the loader says |
 | --- | --- |
 | A worker folder with no `WORKER.md` | `Worker folder "<name>" has no WORKER.md.` |
-| No frontmatter | `WORKER.md in "<name>/" has no frontmatter — a worker file needs at least a \`description\``. |
+| No frontmatter | ``WORKER.md in "<name>/" has no frontmatter — a worker file needs at least a `description` ``. |
 | Frontmatter with no `description` | `WORKER.md in "<name>/" must declare a non-empty description`. A missing, non-string or blank `description` all give it. |
 | A `name` that is not a non-empty string | `WORKER.md in "<name>/" declares a name that is not a non-empty string`. |
 | A symlinked `WORKER.md` or folder, or a `WORKER.md` that cannot be read | Refused, never followed. |

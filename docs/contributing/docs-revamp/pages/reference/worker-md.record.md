@@ -35,7 +35,7 @@ Written by `docs-writer` (sonnet), 1976 words. Scenario: none
 - After revise round 3, page sha256 47c4e33d2251: exit 0.
 - After the final fact-check fix, page sha256 70f9eb280fe5: exit 0.
 
-- After the loop (review): read the record and the final fact check. The page still named `readWorkforceDirectory` in two sentences after the final fix said it is internal (packages/workforce/src/loader/index.ts:17-20 exports only `readWorkforceFolder`); both now say "the loader". 2115 words. Page sha256 333bfab1c4dd.
+- After the loop (review): read the record and the final fact check. The page still named `readWorkforceDirectory` in two sentences after the final fix said it is internal (packages/workforce/src/loader/index.ts:17-20 exports only `readWorkforceFolder`); both now say "the loader". The no-frontmatter message is in a double-backtick span, since an escaped backtick inside a single span broke the page as MDX; `node apps/docs/scripts/lint-brand.mjs` on the page: 0 findings. 2115 words. Page sha256 bc581b81b746.
 
 ## 5 · Fact check
 
