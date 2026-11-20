@@ -26,8 +26,8 @@ const MODELS = [
   { id: "anthropic/claude-opus-5-5", available: true, via: "anthropic key" },
   { id: "xai/grok-5", available: false, reason: "no key or gateway for xai" },
 ];
-const row = (harness: string, label: string, ready: boolean): HarnessReadinessChipRow => ({ harness, label, ready, reason: ready ? null : "not signed in", remedy: null, unanswered: false });
-const HARNESSES = [row("claude-code", "Claude Code", true), row("cursor", "Cursor", false)];
+const chip = (harness: string, label: string, ready: boolean): HarnessReadinessChipRow => ({ harness, label, ready, reason: ready ? null : "not signed in", remedy: null, unanswered: false });
+const HARNESSES = [chip("claude-code", "Claude Code", true), chip("cursor", "Cursor", false)];
 const CHOICES: SettingsChoices = { models: MODELS, harnesses: HARNESSES };
 
 const options = (select: HTMLElement) => [...(select as HTMLSelectElement).options].map((o) => ({ text: o.textContent, disabled: o.disabled }));
