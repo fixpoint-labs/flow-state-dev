@@ -16,7 +16,7 @@
 **Controls:**
 - `GOAL_CONTROL=no-listen` — the bus never `LISTEN`s but says it crosses (a scratch patch to `packages/store-postgres/src/bus.ts`). Must FAIL `1:reply`. It fails `3` and `4` too: the patch says "crosses" with no tail pool as well.
 - `GOAL_CONTROL=trust-listen` — the bus trusts a `LISTEN` that succeeded: no ping, and a lost connection changes nothing. Must FAIL `3:drop`.
-- `GOAL_CONTROL=no-bus` — today's `main`: the Postgres adapter declares no `bus`, so each process gets an in-memory one (a scratch patch to `packages/store-postgres/src/registry.ts`, where `postgresStores` declares its slots). Must FAIL `2:idle`: process 2's two views read the store 4 times a second each.
+- `GOAL_CONTROL=no-bus` — the Postgres adapter declares no `bus`, so each process gets an in-memory one (a scratch patch to `packages/store-postgres/src/registry.ts`, where `postgresStores` declares its slots). Since FIX-2545 the in-memory bus says it crosses, so the views keep no timer and `2:idle` logs 0 statements. Must FAIL on delivery: `1:reply` and `1:run` (p2 never hears p1), `3:drop` (no listening backend to terminate), `3:back`, and `4:no-tail`.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
