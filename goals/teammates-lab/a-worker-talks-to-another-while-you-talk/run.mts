@@ -583,13 +583,11 @@ await runGoal(async (failures, tell_) => {
     if (filed.length === 0) fail("5", `lead started no coding task within ${fixture.runWithinMs / 1000}s`);
     else if (run?.status !== "done") fail("5", `lead's task ended "${run?.status ?? filed[0]!.status}", not "done"`);
     // The lab has no projects (FIX-2335): nothing on the page offers one or asks which one. A
-    // worker's own wording ("the project notes") isn't a project shown, so it doesn't count, and
-    // nor does a line lead sent a teammate ("Messaged writer: … the project context"): it asks you nothing.
-    const toTeammates = await conversation(page).getByRole("button", { name: /^Messaged / }).allInnerTexts();
-    const said = [...(await page.locator("body").innerText()).matchAll(
-      /[^\n]*(\b(which|what|pick|choose|select|open|no|new|in) (a |the )?projects?\b|\bprojects?:)[^\n]*/gi,
-    )].find((m) => !toTeammates.some((card) => card.includes(m[0].trim())));
-    if (said !== undefined) fail("5", `the page offers or asks for a project: "${said[0].slice(0, 200)}"`);
+    // worker's own wording ("the project notes") isn't a project shown, so it doesn't count.
+    const said = (await page.locator("body").innerText()).match(
+      /[^\n]*(\b(which|what|pick|choose|select|open|no|new|in) (a |the )?projects?\b|\bprojects?:)[^\n]*/i,
+    );
+    if (said !== null) fail("5", `the page offers or asks for a project: "${said[0].slice(0, 200)}"`);
     if (run?.status === "done") {
       // The run, opened from its line in a popup: it went through Claude Code.
       await tasks.nth(earlier + filed.indexOf(run)).click();
