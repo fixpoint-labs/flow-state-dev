@@ -402,7 +402,8 @@ function expectPlainLine(view: ConversationView, text: string) {
   expect(line, `the line "${text}" is in the conversation`).toBeDefined();
   expect(Object.keys(line!).filter((key) => !USER_LINE_KEYS.has(key))).toEqual([]);
   const entry = createElement(LinesOf, { lines: [line!] });
-  expect(renderToStaticMarkup(entry).replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")).toBe(text);
+  // The clock time under your bubble is when you sent it, not words about the line: everything else is your words alone.
+  expect(renderToStaticMarkup(entry).replace(/<time[^>]*>.*?<\/time>/g, "").replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")).toBe(text);
 }
 
 describe.each([

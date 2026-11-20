@@ -12,6 +12,7 @@ import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
 import { ContextStrip } from "./ContextStrip";
+import { Divider } from "./Divider";
 import { EditForm } from "./TeammateForms";
 import { ResetButton } from "./TeammatePanel";
 import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
@@ -274,13 +275,7 @@ export function Conversation({
             {lines.map((line, i) => (
               <Fragment key={line.id}>
                 {i === markAt && mark ? (
-                  <div role="separator" aria-label={mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"} className="my-2 flex items-center gap-3">
-                    <span className="h-px flex-1 bg-border" />
-                    <span className="font-mono text-xs tracking-widest text-muted-foreground uppercase">
-                      {mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"}
-                    </span>
-                    <span className="h-px flex-1 bg-border" />
-                  </div>
+                  <Divider label={mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"} />
                 ) : null}
                 {/* A line its renderer draws nothing for takes no room. */}
                 <div
