@@ -125,6 +125,7 @@ reviewer should treat it as unchecked.
 
 ## Notes from review
 
-None yet.
+- **Cursor (D2's fields):** "ten flat optional fields is easy to drift. If `onViewRunning` / `readFile` are not in the Teammates exemplar in SPEC, consider either dropping them from *Locks in* until a screen needs them, or documenting which line kinds consume each field." For the implementer: ship only the fields a line in the three apps reads, and say on each field which line kinds read it. Cursor also noted `who` and `nameOf` overlap.
+- **Cursor (the new goal):** scope `goals/workforce-apps/configured-lines/` to what each app keeps of its own (avatars, click-through, the live task card, the Messages link) so it does not assert every line kind a second time.
 
 **Open: none.**

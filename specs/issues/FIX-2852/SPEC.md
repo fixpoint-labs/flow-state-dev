@@ -43,7 +43,7 @@ flowchart LR
 | **Goal check, leg 2** | `goals/teammates-lab/` and `goals/shift-manager/` pass, Shift Manager's tool wording updated ([D3](DECISIONS.md#d3)); `goals/workforce-apps/configured-lines/` (new) asserts each app's own feature on the page |
 | **Signal** | Leg 1: three apps at most 1,450, none above its before. Leg 2: each page draws failed with Retry, stopped, sent, received, task, result, brief and steps, plus Teammates' avatar, click-through and live task card, and Shift Manager's Messages link |
 | **Anti-game** | Not a line count alone: deleting a feature lowers it too, which leg 2 catches. Every file that draws a line is counted or declared out with a reason; an unlisted one fails the run |
-| **Control that must fail** | `count.mjs --control` plants a changed copy, an identical copy and a renamed line renderer; each must be caught, and it passes today. `GOAL_CONTROL=no-line-context` must FAIL on Retry, the avatars and the click-through |
+| **Control that must fail** | `count.mjs --control` plants a changed copy, an identical copy, a grown line file and a renamed line renderer; each must be caught, and it passes today on main and on the #5495 head. `GOAL_CONTROL=no-line-context` lives in the new goal's `run.mts` (`goals/workforce-apps/configured-lines/`), not in the POC, and must FAIL on Retry, the avatars and the click-through |
 
 ## What changes
 
