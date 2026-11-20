@@ -97,4 +97,10 @@
     padding-left: 1.5rem;
     font-size: 12px;
   }
+  /* Links in a message read in the accent, as the handoff's palette sets (the renderer is a registry copy). */
+  [data-streamdown="link"] {
+    color: var(--brand);
+    text-decoration-color: color-mix(in srgb, var(--brand) 45%, transparent);
+    text-underline-offset: 2px;
+  }
 }

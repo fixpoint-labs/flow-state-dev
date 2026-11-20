@@ -295,7 +295,7 @@ export function App() {
   return (
     <div
       className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
-      style={{ gridTemplateColumns: panelShown ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
+      style={{ gridTemplateColumns: panelShown ? "17rem minmax(0,1fr) 22rem" : "17rem minmax(0,1fr)" }}
     >
       {/* One follower per conversation: every screen on it reads what it read. */}
       {Object.values(sessions).map((id) => (

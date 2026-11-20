@@ -203,7 +203,7 @@ export function TeammatePanel({
           <h2 id="tasks-heading" className="text-sm font-semibold">
             Tasks <span className="font-normal text-text-3 tabular-nums">{tasks.length}</span>
           </h2>
-          <div role="tablist" aria-label="Task status" className="grid grid-cols-3 gap-2" onKeyDown={onTabKey}>
+          <div role="tablist" aria-label="Task status" className="grid grid-cols-3 gap-1.5" onKeyDown={onTabKey}>
             {FILTERS.map(({ status, label }) => {
               const selected = filter === status;
               return (
@@ -220,12 +220,12 @@ export function TeammatePanel({
                   tabIndex={selected ? 0 : -1}
                   onClick={() => setFilter(status)}
                   className={cn(
-                    "flex flex-col items-start gap-1 rounded-md border px-3 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
+                    "flex min-w-0 flex-col items-start gap-1 rounded-md border px-2.5 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
                     selected ? "border-border-strong bg-surface-raised" : "border-border bg-transparent hover:bg-surface",
                   )}
                 >
                   <span className="text-xl leading-none font-semibold tabular-nums">{groups[status].length}</span>
-                  <span className="flex items-center gap-1.5 text-xs text-text-2">
+                  <span className="flex min-w-0 max-w-full items-center gap-1.5 text-xs whitespace-nowrap text-text-2">
                     <span aria-hidden className={cn("shrink-0", MARKER[status])} />
                     {label}
                   </span>

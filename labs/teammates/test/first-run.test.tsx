@@ -6,7 +6,7 @@
  * declared delegates as read, and offers lines that fill the composer without
  * sending them.
  */
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import { CODER_FLOW } from "@flow-state-dev/harness-manager/browser";
@@ -59,10 +59,40 @@ describe("the context strip", () => {
     await waitFor(() => expect(chips.querySelector('[data-harness="codex"]')?.textContent).toContain("Run `codex login`"));
     // A harness that can't run shows Sign in, not its error, until asked: then what to do.
     const codex = chips.querySelector<HTMLElement>('[data-harness="codex"]')!;
-    expect(within(codex).queryByRole("note")).toBeNull();
-    fireEvent.click(within(codex).getByRole("button", { name: "Sign in" }));
-    expect(within(codex).getByRole("note").textContent).toContain("Run `codex login`");
+    const signIn = within(codex).getByRole("button", { name: "Sign in" });
+    const remedy = () => screen.queryByRole("dialog", { name: "Sign in to Codex" });
+    expect(remedy()).toBeNull();
+    fireEvent.click(signIn);
+    expect(remedy()?.textContent).toContain("Run `codex login`");
+    expect(signIn.getAttribute("aria-expanded")).toBe("true");
     expect(within(chips).getByRole("button", { name: "Re-check harnesses" })).toBeTruthy();
+  });
+
+  // The remedy must never be stuck open: whichever way the person dismisses it, it closes and focus goes back to Sign in.
+  it("closes the Sign in remedy with Sign in again, Escape, or a click outside, and gives focus back to Sign in", async () => {
+    render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
+    const chips = await screen.findByRole("group", { name: "Coding harnesses" });
+    await waitFor(() => expect(chips.querySelector('[data-harness="codex"] button')).not.toBeNull());
+    const signIn = within(chips.querySelector<HTMLElement>('[data-harness="codex"]')!).getByRole("button", { name: "Sign in" });
+    const remedy = () => screen.queryByRole("dialog", { name: "Sign in to Codex" });
+    // Sign in again toggles it shut.
+    fireEvent.click(signIn);
+    expect(remedy()).not.toBeNull();
+    fireEvent.click(signIn);
+    await waitFor(() => expect(remedy()).toBeNull());
+    expect(signIn.getAttribute("aria-expanded")).toBe("false");
+    // Escape closes it and puts focus back on Sign in.
+    fireEvent.click(signIn);
+    fireEvent.keyDown(remedy()!, { key: "Escape" });
+    await waitFor(() => expect(remedy()).toBeNull());
+    expect(document.activeElement).toBe(signIn);
+    // A click anywhere else closes it.
+    fireEvent.click(signIn);
+    expect(remedy()).not.toBeNull();
+    // The outside-click listener is armed a tick after the popover opens, as a real click would find it.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(remedy()).toBeNull());
   });
 
   /** A client whose lab-context and readiness reads are changed by `edit`. */

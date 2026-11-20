@@ -1,6 +1,6 @@
 import type { FileContent } from "@flow-state-dev/core/items";
 import { interruptChordLabel, isSendKey, useDraftSend } from "@flow-state-dev/react";
-import { ArrowUpIcon, ChevronDownIcon } from "lucide-react";
+import { ArrowUpIcon, ChevronDownIcon, TerminalIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { harnessName, harnessState, harnessWarning, withHarness, type HarnessState } from "../lib/harness";
 import { cn } from "../lib/utils";
@@ -59,11 +59,14 @@ export function Composer({
   onPrefilled,
   harnesses,
   defaultHarness,
+  replyModel,
 }: {
   /** Which coding harnesses can run here, or `undefined` while the first read is out. No rows: no harness picker. */
   harnesses?: readonly HarnessReadinessChipRow[];
   /** The harness a coding task runs on when none is picked (the lab's default). */
   defaultHarness?: string;
+  /** The model the teammate's own replies run on, so the picker can say it doesn't choose that. */
+  replyModel?: string;
   /** A line to put in the box, as a starter line's click hands it; `at` makes a second click of the same line count. Never sent by itself. */
   seed?: { text: string; at: number };
   /** The conversation it types to; `/` and a switch find its composer by it. */
@@ -174,7 +177,7 @@ export function Composer({
               className="size-8 rounded-sm text-text-2 hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
             />
             {harnesses !== undefined && harnesses.length > 0 ? (
-              <HarnessPicker rows={harnesses} current={coding} fallback={defaultHarness} onPick={choose} />
+              <HarnessPicker rows={harnesses} current={coding} fallback={defaultHarness} onPick={choose} workerName={workerName} replyModel={replyModel} />
             ) : null}
             <span className="ml-auto hidden font-mono text-[11px] text-text-3 sm:inline">⏎ send · ⇧⏎ newline</span>
             {running || stopping ? (
@@ -260,11 +263,15 @@ function HarnessPicker({
   current,
   fallback,
   onPick,
+  workerName,
+  replyModel,
 }: {
   rows: readonly HarnessReadinessChipRow[];
   current: string | undefined;
   fallback: string | undefined;
   onPick: (harness: string) => void;
+  workerName: string;
+  replyModel: string | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -280,6 +287,8 @@ function HarnessPicker({
   const row = rows.find((r) => r.harness === current);
   const state = row === undefined ? "unknown" : harnessState(row);
   const name = row?.label ?? (current === undefined ? "Harness" : harnessName(current));
+  // It picks where coding tasks start, never what the teammate itself answers on: say both.
+  const replies = replyModel === undefined ? `${workerName}'s own replies don't use it.` : `${workerName}'s replies use ${replyModel.slice(replyModel.lastIndexOf("/") + 1) || replyModel}.`;
   return (
     <div
       ref={root}
@@ -296,16 +305,23 @@ function HarnessPicker({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Coding harness: ${name}, ${STATE_WORDS[state]}`}
+        aria-label={`Code with ${name}, ${STATE_WORDS[state]}`}
+        title={`Coding tasks start on this harness. ${replies}`}
         onClick={() => setOpen((v) => !v)}
         className="flex h-8 items-center gap-1.5 rounded-sm px-2 text-xs text-text-2 hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
       >
+        {/* The task cards' terminal mark: this picks where coding tasks start. */}
+        <TerminalIcon aria-hidden className="size-3.5 text-text-3" />
+        <span className="text-text-3">Code with</span>
         <span aria-hidden className={cn("size-1.5 rounded-full", DOT[state])} />
-        {name}
+        <span className="text-foreground">{name}</span>
         <ChevronDownIcon aria-hidden className="size-3.5" />
       </button>
       {open ? (
-        <div role="menu" aria-label="Coding harness" className="absolute bottom-full left-0 z-20 mb-1 min-w-52 rounded-md border border-border-strong bg-surface p-1 shadow-lg">
+        <div role="menu" aria-label="Start coding tasks on" className="absolute bottom-full left-0 z-20 mb-1 min-w-52 rounded-md border border-border-strong bg-surface p-1 shadow-lg">
+          <div aria-hidden className="px-2 pt-1 pb-1.5 text-[11px] font-medium tracking-wide text-text-3 uppercase">
+            Start coding tasks on
+          </div>
           {rows.map((r) => {
             const s = harnessState(r);
             return (

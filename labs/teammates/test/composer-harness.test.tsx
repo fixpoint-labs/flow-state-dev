@@ -56,6 +56,17 @@ describe("the composer", () => {
     return onSend;
   };
 
+  // The picker reads like a choice of what the teammate answers on unless it says otherwise; it only picks where coding tasks start.
+  it("says the picker chooses where coding tasks start, not the model the teammate replies on", () => {
+    render(
+      <Composer sessionId="s1" workerName="Lead" running={false} onStop={() => {}} onSend={vi.fn(async () => {})} harnesses={ROWS} defaultHarness="claude-code" replyModel="openai/gpt-6-luna" />,
+    );
+    const picker = screen.getByRole("button", { name: "Code with Claude Code, ready" });
+    expect(picker.title).toBe("Coding tasks start on this harness. Lead's replies use gpt-6-luna.");
+    fireEvent.click(picker);
+    expect(screen.getByRole("menu", { name: "Start coding tasks on" })).toBeTruthy();
+  });
+
   it("warns before send when the default harness can't run, and a pick from the warning reaches the sent line", async () => {
     const onSend = open();
     const warning = screen.getByTestId("harness-warning");

@@ -320,6 +320,7 @@ export function Conversation({
         uploader={calls}
         harnesses={harnesses}
         defaultHarness={context?.harness}
+        replyModel={context?.model}
         onSend={(text, attachments) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();

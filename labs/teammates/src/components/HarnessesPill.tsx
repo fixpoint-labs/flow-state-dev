@@ -9,6 +9,7 @@
  * as they are; this takes the same rows and the same `recheck`.
  */
 import { RefreshCwIcon } from "lucide-react";
+import { Popover } from "radix-ui";
 import { useState } from "react";
 import type { HarnessReadinessChipRow, HarnessReadinessProps } from "./flow-state/harness-readiness";
 
@@ -17,7 +18,6 @@ const DOT = { true: "bg-success", false: "bg-warning", unknown: "bg-presence-idl
 
 /** One harness in the pill: its dot and name, and for one that can't run, a Sign in that shows what to do. */
 function HarnessEntry({ row }: { row: HarnessReadinessChipRow }) {
-  const [shown, setShown] = useState(false);
   const state = row.ready ? "true" : row.unanswered ? "unknown" : "false";
   const why = [row.reason, row.remedy].filter(Boolean).join(". ");
   return (
@@ -31,16 +31,23 @@ function HarnessEntry({ row }: { row: HarnessReadinessChipRow }) {
       <span className="text-foreground">{row.label}</span>
       {/* The remedy stays in the text for a screen reader; Sign in shows it to everyone else. */}
       {row.ready ? null : <span className="sr-only">: {why || (row.unanswered ? "the check got no answer" : "not ready")}</span>}
+      {/* A popover: Sign in again, Escape, or a click outside closes it, and focus goes back to Sign in. */}
       {row.ready || row.unanswered || why === "" ? null : (
-        <button type="button" aria-expanded={shown} onClick={() => setShown((v) => !v)} className={LINK}>
-          Sign in
-        </button>
+        <Popover.Root>
+          <Popover.Trigger className={LINK}>Sign in</Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Content
+              side="bottom"
+              align="start"
+              sideOffset={6}
+              aria-label={`Sign in to ${row.label}`}
+              className="z-50 w-max max-w-72 rounded-sm border border-border-strong bg-popover px-2.5 py-1.5 text-xs text-text-2 shadow-lg"
+            >
+              {why}
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
       )}
-      {shown ? (
-        <span role="note" className="absolute top-full left-0 z-20 mt-1.5 w-max max-w-72 rounded-sm border border-border-strong bg-popover px-2.5 py-1.5 text-xs text-text-2 shadow-lg">
-          {why}
-        </span>
-      ) : null}
     </span>
   );
 }
