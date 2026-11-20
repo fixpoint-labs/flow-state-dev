@@ -6,7 +6,8 @@
  *
  * That is the whole of it: the read, the feed (React's conversation model over
  * the session's items and turns, drawn by the registry's renderers, with a run
- * of tool calls as the registry's tool group and a failed or stopped turn as its line), the jump to the latest turn, the working line, the
+ * of tool calls as the registry's tool group, a failed or stopped turn as its line, and a divider where
+ * the next line was written on a different day: Today, Yesterday, or its date), the jump to the latest turn, the working line, the
  * composer, and the one send path. A view varies it by props, never by a fork:
  * the session it is (`session`, for one a view found itself: a project
  * coordinator's, a workstream's lead's; `project`, for a project's conversation
@@ -20,7 +21,7 @@
  * under it. It is exported for a screen that shows a named state in the same
  * column; split the feed or the composer out when a second view needs them apart.
  */
-import { useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { RECEIVED_MESSAGE_DATA_TYPE, sessionTurnsViewRef, type ProjectAddressRef } from "@flow-state-dev/workforce/browser";
 import type { SessionSummary } from "@flow-state-dev/client";
@@ -44,6 +45,7 @@ import { useWorkers } from "../lib/directory";
 import { useDeliverLine } from "../lib/deliver";
 import { useWorkforce } from "../lib/workforce";
 import { clockTime } from "../lib/shell";
+import { dayBreaks, lineTime } from "../lib/days";
 
 /** v2's scrolling column (v2:122-180): padded 36/32, `max-w-[720px]`, with the composer pinned under it. */
 export function ConversationFrame({
@@ -153,6 +155,8 @@ export function Conversation({
   // so a session holding only those (a standing-rules read writes a state change into it before any
   // line is sent) counts as empty.
   const shown = useMemo(() => (read === undefined ? [] : conversationLines(read.items, turns ?? [], { renderers: shiftManagerRenderers })), [read, turns]);
+  // Where the day changes between two lines in a row.
+  const days = useMemo(() => dayBreaks(shown.map(lineTime), new Date()), [shown]);
   const runs = conversation.stillRunning;
   // The one stopped line that says what still runs, by the registry's rule. An id, so the line
   // context below stays one object across reads that don't move it.
@@ -262,7 +266,7 @@ export function Conversation({
               <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
                 <LoadEarlierButton load={read.loadEarlier} testId={`${testId}-load-earlier`} />
                 <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
-                  {shown.map((line) => {
+                  {shown.map((line, i) => {
                     // A steps line is named by its first call or thought; a stopped line has no item of its own.
                     const item = line.kind === "steps" ? line.items[0] : line.kind === "stopped" ? undefined : line.item;
                     const role = (item as { role?: string } | undefined)?.role ?? "";
@@ -271,8 +275,15 @@ export function Conversation({
                     const own = line.kind === "steps" || item === undefined || received ? undefined : renderItem?.(item);
                     const sender = line.kind === "assistant" ? senderOf(worker, line.item, known) : undefined;
                     return (
+                      <Fragment key={`${line.requestId}/${line.id}`}>
+                      {days[i] === undefined ? null : (
+                        <li role="separator" aria-label={days[i]} className="my-2 flex items-center gap-3" data-testid={`${testId}-day`} data-look="day-divider">
+                          <span className="h-px flex-1 bg-border" />
+                          <span className="font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground uppercase">{days[i]}</span>
+                          <span className="h-px flex-1 bg-border" />
+                        </li>
+                      )}
                       <li
-                        key={`${line.requestId}/${line.id}`}
                         data-testid={`${testId}-item`}
                         data-item-id={item?.id ?? line.id}
                         data-request-id={line.requestId}
@@ -299,6 +310,7 @@ export function Conversation({
                           </div>
                         )}
                       </li>
+                      </Fragment>
                     );
                   })}
                 </ol>
