@@ -1,21 +1,13 @@
 /**
- * What the screens compute from one snapshot, kept out of the components so
- * every surface computes it the same way.
+ * What the snapshot's reads compute from one snapshot. No screen reads the
+ * snapshot any more: the screens compute from their own reads (`shift.ts`,
+ * `inbox.ts`), and the helpers both share live there.
  */
 import type { InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { isDone } from "./columns";
-import {
-  GENERAL_TEAM,
-  type Ask,
-  type BoardTaskView,
-  type Failure,
-  type LabSnapshot,
-  type Project,
-  type Section,
-  type Worker,
-  workerOf,
-  workstreamOf,
-} from "./reads";
+import type { Ask, BoardTaskView, Failure, LabSnapshot, Project, Section, Worker } from "./reads";
+import { workerFor, type ShiftStatus } from "./shift";
+import { workerOf, workstreamOf } from "./workers";
 
 /** A loaded snapshot (not a refusal, not an unreachable Lab). */
 export type LoadedSnapshot = Exclude<LabSnapshot, { refused: Failure } | { unreachable: Failure }>;
@@ -49,36 +41,6 @@ export function openTasks(snapshot: LoadedSnapshot): BoardTaskView[] {
 
 /** The workers a row's assignee is resolved against. */
 export type Roster = { workers: readonly Worker[] };
-
-// FIX-1672.
-/**
- * The worker a row is held by, or `undefined` when no single worker is.
- *
- * A row names an `assignee`, which is a routing key a board's workers answer
- * to, not a worker address: a board may name `<name>` for the worker
- * `<team>.<name>`. So, in order:
- *
- * 1. the worker whose id is the assignee;
- * 2. the one worker whose own name is the assignee.
- *
- * A name more than one worker carries, or none, is no worker: a row is never shown against
- * several workers, or against a guess. Which worker actually claimed the row is
- * not published to a browser, and a declared assignee-to-worker map
- * arrives in a later release.
- */
-export function workerFor(roster: Roster, row: Pick<BoardTaskView, "assignee">): Worker | undefined {
-  if (row.assignee === null) return undefined;
-  const exact = roster.workers.find((worker) => worker.id === row.assignee);
-  if (exact !== undefined) return exact;
-  const named = roster.workers.filter((worker) => worker.name === row.assignee);
-  return named.length === 1 ? named[0] : undefined;
-}
-
-/** A worker's shift status, the one word Roster and the sidebar draw. */
-export type ShiftStatus = "on shift" | "off shift";
-
-/** The two statuses, in the order Roster groups them. */
-export const SHIFT_STATUSES: readonly ShiftStatus[] = ["on shift", "off shift"];
 
 /** One worker's state: its status, the tasks it holds, and the asks it waits on you with. */
 export type WorkerState = {
@@ -127,7 +89,7 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
   );
   for (const row of allTasks(snapshot)) {
     if (row.status !== "in_progress") continue;
-    const owner = workerFor(roster, row);
+    const owner = workerFor(roster.workers, row);
     if (owner === undefined) continue;
     const state = workers.get(owner.id);
     state?.held.push(row);
@@ -200,39 +162,6 @@ export function asksOfTask(snapshot: LabSnapshot | undefined, row: Pick<BoardTas
   );
 }
 
-/**
- * The door of the flow that owns a session: the worker inventory rows of the
- * workers on that flow name it, since a worker flow is registered under its name.
- * Every worker on one flow shares its door. `null` when no worker entry is on the
- * flow, or its worker flow takes no message.
- */
-export function doorOf(workers: readonly Worker[], flowId: string): string | null {
-  return workers.find((worker) => worker.kind === flowId)?.door ?? null;
-}
-
-/**
- * Whether the door of the flow that owns a session takes a task id, read the
- * same way as {@link doorOf}. `false` when no worker entry is on the flow.
- */
-export function doorTakesTaskOf(workers: readonly Worker[], flowId: string): boolean {
-  return workers.find((worker) => worker.kind === flowId)?.doorTakesTask ?? false;
-}
-
-/**
- * The teams in the worker inventory, each with its display name and its
- * workers, in first-seen order, with the org workers' General group first.
- */
-export function teamsOf(workers: readonly Worker[]): Array<{ team: string; name: string; workers: Worker[] }> {
-  const teams = new Map<string, Worker[]>();
-  for (const worker of workers) {
-    const team = teams.get(worker.team);
-    if (team === undefined) teams.set(worker.team, [worker]);
-    else team.push(worker);
-  }
-  const all = [...teams].map(([team, workers]) => ({ team, name: workers[0]!.teamName, workers }));
-  return [...all.filter((t) => t.team === GENERAL_TEAM), ...all.filter((t) => t.team !== GENERAL_TEAM)];
-}
-
 /** PROJECTS: every project the user reads. */
 export type ProjectsView = { projects: Project[] };
 
@@ -245,57 +174,6 @@ export type ProjectsView = { projects: Project[] };
 export function projectsOf(snapshot: LoadedSnapshot): Section<ProjectsView> {
   if (!snapshot.projects.ok) return snapshot.projects;
   return { ok: true, value: { projects: snapshot.projects.value.rows } };
-}
-
-
-/** How many workers are in each status, and how many waits-on entries they have. */
-export type ShiftCounts = Record<ShiftStatus, number> & {
-  /** Each held task holding on a question for you plus each pending ask, across the workers counted. */
-  waiting: number;
-};
-
-/** The counts over every worker in `states`, or over one team's. */
-export function shiftCounts(states: WorkerStates, team?: string): ShiftCounts {
-  const counts: ShiftCounts = { "on shift": 0, "off shift": 0, waiting: 0 };
-  for (const { worker, status, waitsOnYou, asks } of states.workers.values()) {
-    if (team !== undefined && worker.team !== team) continue;
-    counts[status] += 1;
-    counts.waiting += waitsOnYou.length + asks.length;
-  }
-  return counts;
-}
-
-/** The team a Roster address picks, or `null` (All) when the inventory has no such team. */
-export function pickedTeam(workers: readonly Worker[], team: string | null): string | null {
-  return team !== null && workers.some((worker) => worker.team === team) ? team : null;
-}
-
-/**
- * The name a worker must carry to be the Shift Coordinator: an org worker's id, or a
- * team worker's name. The only place Shift Manager names a worker (D2).
- */
-const SHIFT_COORDINATOR = "shift-coordinator";
-
-const isShiftCoordinator = (idOrName: string) => idOrName.slice(idOrName.indexOf(".") + 1) === SHIFT_COORDINATOR;
-
-/** How the screens name a worker: `shift-coordinator` is the Shift Coordinator. */
-export function workerLabel(idOrName: string): string {
-  return isShiftCoordinator(idOrName) ? "Shift Coordinator" : idOrName;
-}
-
-/** Which worker Shift Manager talks to as the Shift Coordinator, if exactly one is. */
-export type ShiftCoordinator = { kind: "one"; worker: Worker } | { kind: "none" } | { kind: "several"; workers: Worker[] };
-
-/**
- * The Shift Coordinator among the inventory's workers (D2): the workers whose name is
- * exactly `shift-coordinator`. That is an org worker (`shift-coordinator`) or a
- * team's worker (`<team>.shift-coordinator`). One is the Shift Coordinator; two or
- * more are a state, never a guess.
- */
-export function shiftCoordinatorOf(workers: readonly Worker[]): ShiftCoordinator {
-  const found = workers.filter((worker) => isShiftCoordinator(worker.id));
-  if (found.length === 0) return { kind: "none" };
-  return found.length === 1 ? { kind: "one", worker: found[0]! } : { kind: "several", workers: found };
 }
 
 /** Whether a row is running. */
@@ -331,15 +209,4 @@ export function shiftSummary(snapshot: LoadedSnapshot): {
         ? { ok: true, value: { runs: running.length, workstreams: new Set(running.map((row) => row.ownerSessionId)).size } }
         : { ok: false, failure: failed },
   };
-}
-
-/** How long ago `since` was, in a short human form. */
-export function waited(since: number, now: number): string {
-  const seconds = Math.max(0, Math.round((now - since) / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours}h`;
-  return `${Math.round(hours / 24)}d`;
 }

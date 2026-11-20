@@ -57,110 +57,31 @@
  * session records as its owner (`flowId`), never the board's.
  */
 import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type SessionSummary } from "@flow-state-dev/client";
+import type { BoardTask } from "@flow-state-dev/workforce/browser";
 import type { FileContent, OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { isUserSuspension, suspendForUserKindOf, type ResumeAction } from "@flow-state-dev/core/types";
 import { suspensionShape } from "@flow-state-dev/react";
 import { deriveSuspensions } from "@flow-state-dev/react/internal";
-import { PROJECTS_PATTERN, ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import { PROJECTS_PATTERN, ROSTER_FLOW, sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 import { boardTaskOf, createWorkforceClient } from "@flow-state-dev/workforce/browser";
+import { describeFailure, type Failure as ScreenFailure } from "./failure";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "./boards";
+import { toProject, type Project as ScreenProject, type ProjectVisibility } from "./projects";
+import { toWorker, workerOf, type Worker as DirectoryWorker } from "./workers";
 import type { Client } from "@flow-state-dev/client";
 import { createInboxClient, inboxItems, taskActionName, type BoardActions, type InboxAnswer, type InboxHold, type InboxItem, type InboxTaskInput, type TaskHold } from "@flow-state-dev/orchestration/inbox";
-import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 
-/** Why a read did not load. */
-export type Failure = { message: string; httpStatus?: number };
-
-/**
- * The worker a session runs, as its state names it (`workerId`), or `null`
- * when it names none.
- */
-export function workerOf(session: SessionSummary): string | null {
-  return text(field((session as { state?: unknown }).state, WORKER_ID_STATE_KEY));
-}
-
-/**
- * The workstream a session leads, as its readonly `workstreamId` names it
- * (`<visibility>/<project>/<workstream>`), or `null` for a session outside
- * any workstream.
- */
-export function workstreamOf(session: SessionSummary): string | null {
-  return text(field((session as { state?: unknown }).state, WORKSTREAM_STATE_KEY));
-}
+/** Why a read did not load: the screens' own. */
+export type Failure = ScreenFailure;
 
 /** One section's outcome: its value, or why it has none. */
 export type Section<T> = { ok: true; value: T } | { ok: false; failure: Failure };
 
-/** A worker, as the worker inventory registers it: one worker. */
-export type Worker = {
-  /**
-   * The worker's id: `<team>.<name>`, or a bare name for an org worker. Boards
-   * name the worker by it, and its sessions carry it as their `workerId`.
-   */
-  id: string;
-  /** The worker flow the worker runs on, which is also that flow's copy id; `null` on a row that has none. */
-  kind: string | null;
-  /**
-   * The action that takes a user's message into this worker's sessions, as
-   * the hire published it; `null` when its worker flow takes none, or on a row
-   * written before doors were published.
-   */
-  door: string | null;
-  /**
-   * Whether the worker keeps standing rules: its worker flow declares the
-   * rules action, as the hire published it. `false` on a row written before
-   * the field.
-   */
-  rules: boolean;
-  /**
-   * Whether its door takes the task a line is sent from (`taskId`), and
-   * stamps the turn with it, as the hire published it. `false` on a row
-   * written before the field: such a door is sent no `taskId`.
-   */
-  doorTakesTask: boolean;
-  /** The id of the team it sits under, or {@link GENERAL_TEAM} for an org worker (see {@link toWorker}). */
-  team: string;
-  /** Its team's display name: the team's own, "General" for {@link GENERAL_TEAM}, else the team id. */
-  teamName: string;
-  /** Its id without the team: what a board may name it by. */
-  name: string;
-  /** What a user reads it by: its display name, or its id when it has none. */
-  displayName: string;
-  /**
-   * The coding harness it names in its `harness` setting, off the user's
-   * roster (`showSettings`); absent when it names none, or before the roster
-   * is read.
-   */
-  harness?: string;
-};
+/** A worker: the directory's row (`workers.ts`). */
+export type Worker = DirectoryWorker;
 
-/** Where a project lives: the organization's, or the user's own. */
-export type ProjectVisibility = "shared" | "private";
-
-/**
- * A project: a row of the organization's `projects` collection (shared), or of
- * the user's own (private). It names no team: its workstreams are its
- * entries, read on its screen. Its address is its
- * visibility and its id: a private project and a shared one can share an id.
- */
-export type Project = {
-  /** The row id; with the visibility, the project's address. */
-  id: string;
-  /** Where the row lives. */
-  visibility: ProjectVisibility;
-  title: string;
-  /** What the project is for; its Brief tab. `null` when none was given. */
-  brief: string | null;
-  status: string;
-  ownerUserId: string;
-  /** On a shared project, who may open workstreams in it. */
-  members: string[];
-  /**
-   * The git remote the project's code lives in, or `null` when it has none
-   * (its coding work runs on its files). A row written before the field
-   * existed reads as none.
-   */
-  repository: string | null;
-};
+/** A project: the screens' row (`projects.ts`). */
+export type Project = ScreenProject;
 
 /** The projects the user reads: the organization's, and their own private ones. */
 export type Projects = {
@@ -168,63 +89,11 @@ export type Projects = {
   rows: Project[];
 };
 
-/**
- * The run working a task, or the run that last worked it: the session a
- * dispatched attempt runs in, that attempt's request there, and the attempt
- * number. The board's claim gate writes it from inside the run; the next claim
- * clears it. It carries no flow: the run's flow is the one its session records
- * as its owner.
- */
-export type RunLink = { sessionId: string; requestId: string; attempt: number };
+/** The run working a task, or the run that last worked it: workforce's board task names it. */
+export type RunLink = NonNullable<BoardTask["run"]>;
 
-/** One task on a conversation's board, with the fields a board publishes to a browser. */
-export type BoardTaskView = {
-  /** The board's ref: `<sessionId>.tasks`, the conversation that holds it and the collection. */
-  boardRef: string;
-  /** The session id of the conversation that holds the board. */
-  ownerSessionId: string;
-  id: string;
-  title: string;
-  /** The row's goal, as filed. */
-  goal: string | null;
-  /** The rest of the brief beside the goal, as filed, or `null` when it has none. */
-  context: string | null;
-  // FIX-2522.
-  /** The brief's files, as references, in order: every run of the task gets them. Empty when it has none. */
-  attachments: FileContent[];
-  /** The status as stored (see `columns.ts` for how it is read). */
-  status: string;
-  assignee: string | null;
-  priority: string | null;
-  labels: string[];
-  /** The ids of the rows on the same board this one waits on. */
-  deps: string[];
-  /**
-   * The run the board's gate linked to this row, or `null`: never claimed,
-   * claimed but not yet started, or stored before the link existed.
-   */
-  run: RunLink | null;
-  error: string | null;
-  // FIX-2133.
-  /**
-   * What holds the row: its questions and confirms, and its run's
-   * stop for the user. Empty when nothing does. The Inbox lists the task's
-   * item from the open ones.
-   */
-  holds: TaskHold[];
-  /** Its steers as the Inbox reads them: which question each answers. A question is open while none does. */
-  steers: Array<{ id: string; answers?: string }>;
-  /**
-   * What its runs spent, folded by orchestration's task view: harness,
-   * model, tokens and the vendor's charge. `null` before it runs, or from a
-   * board that publishes no spend.
-   */
-  spend: TaskSpendView | null;
-  createdAt: number | null;
-  updatedAt: number | null;
-  startedAt: number | null;
-  completedAt: number | null;
-};
+/** One task on a conversation's board: workforce's board task. */
+export type BoardTaskView = BoardTask;
 
 /** A conversation's board and every row on it. */
 export type ConversationBoards = { refs: string[]; rows: BoardTaskView[] };
@@ -339,31 +208,6 @@ const ASK_READ_BATCH = 6;
  */
 const NO_ROSTER_FLOW = `Unknown flow "${ROSTER_FLOW}"`;
 
-// FIX-2624.
-/**
- * Every entry of a user or org collection the user may read, by scope and key
- * pattern, with no session: the direct read (`client.resource`), paged through
- * the client's one cursor loop (`readEveryCollectionPage`), whose ceiling and
- * repeated-cursor check it keeps. Each row carries the entry's client
- * projection as `clientData`, as a session-addressed read does, so one parser
- * reads either. A 404 is no flow declaring the collection, or a caller none of
- * them signs in. `topicPrefix` keeps the entries whose storage key starts with it.
- */
-export function readEveryScopeEntry(client: Client, scope: "user" | "org", pattern: string, topicPrefix?: string) {
-  const collection = client.resource({ scope, pattern });
-  const pages = {
-    listCollectionResources: async (_sessionId: string, _ref: string, options: { limit?: number; cursor?: string } = {}) => {
-      const page = await collection.list({ ...options, ...(topicPrefix === undefined ? {} : { topicPrefix }) });
-      return {
-        items: page.items.map((entry) => ({ topic: entry.topic, storageKey: entry.storageKey, clientData: entry.value })),
-        ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
-      };
-    },
-  };
-  // No session: the direct read takes none, so the loop's session and ref are the address's.
-  return readEveryCollectionPage(pages, scope, pattern, { limit: PAGE_SIZE });
-}
-
 /** What a user's ask asks for: an approval, a review, or a question (an input). */
 function askTypeOf(item: SuspensionItem): Ask["kind"] {
   const asked = suspendForUserKindOf(item) ?? (suspensionShape(item) === "approval" ? "approval" : "input");
@@ -394,108 +238,6 @@ export async function readPendingSuspensions(client: Client, sessionId: string):
   return deriveSuspensions(items).pending;
 }
 
-/** A failure, in the server's own words when it sent any. */
-export function describeFailure(error: unknown): Failure {
-  if (error instanceof ClientHttpError) {
-    const body = error.body as { error?: unknown; message?: unknown } | undefined;
-    const said = typeof body?.error === "string" ? body.error : typeof body?.message === "string" ? body.message : undefined;
-    return { httpStatus: error.status, message: said ?? error.message };
-  }
-  return { message: error instanceof Error ? error.message : String(error) };
-}
-
-function field(row: unknown, key: string): unknown {
-  return typeof row === "object" && row !== null ? (row as Record<string, unknown>)[key] : undefined;
-}
-function text(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-function time(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? null : parsed;
-  }
-  return null;
-}
-
-/**
- * The id of the group an org worker sits in: a worker whose address has no
- * team, such as a Shift Coordinator or a researcher. A user reads it as
- * {@link GENERAL_TEAM_NAME}. The underscore keeps it outside Workforce's team
- * ids (lowercase letters, digits and hyphens), so a team folder named
- * `general` stays its own team.
- */
-export const GENERAL_TEAM = "_general";
-
-/** {@link GENERAL_TEAM}'s display name. */
-export const GENERAL_TEAM_NAME = "General";
-
-/**
- * A worker's team and names, from its id and the display names its row
- * carries (each `null` when unset):
- *
- * - `<team>.<name>` sits under its team: a team id carries no dot, so the team
- *   is everything before the first one;
- * - an id with no dot is an org worker, and sits in {@link GENERAL_TEAM}.
- */
-export function workerNames(
-  id: string,
-  displayName: string | null,
-  teamName: string | null,
-): Pick<Worker, "team" | "teamName" | "name" | "displayName"> {
-  const dot = id.indexOf(".");
-  const team = dot > 0 ? id.slice(0, dot) : GENERAL_TEAM;
-  return {
-    team,
-    teamName: dot > 0 ? (teamName ?? team) : GENERAL_TEAM_NAME,
-    name: dot > 0 ? id.slice(dot + 1) : id,
-    displayName: displayName ?? id,
-  };
-}
-
-/** A worker inventory row, grouped and named by {@link workerNames}. */
-export function toWorker(row: unknown): Worker | undefined {
-  const id = text(field(row, "id"));
-  if (id === null) return undefined;
-  return {
-    id,
-    kind: text(field(row, "kind")),
-    door: text(field(row, "door")),
-    rules: field(row, "rules") === true,
-    doorTakesTask: field(row, "doorTakesTask") === true,
-    ...workerNames(id, text(field(row, "name")), text(field(row, "teamName"))),
-  };
-}
-
-// BP-030.
-/**
- * A project entry. A row missing its id, title or owner is not a project anyone
- * can address or own, and is left out; every other field reads as empty when
- * absent, so a row an earlier version wrote still reads.
- */
-export function toProject(row: unknown, visibility: ProjectVisibility = "shared"): Project | undefined {
-  const id = text(field(row, "id"));
-  const title = text(field(row, "title"));
-  const ownerUserId = text(field(row, "ownerUserId"));
-  if (id === null || title === null || ownerUserId === null) return undefined;
-  return {
-    id,
-    visibility,
-    title,
-    // An empty brief is still the brief the row was given; only a missing or non-string one is none.
-    brief: typeof field(row, "brief") === "string" ? (field(row, "brief") as string) : null,
-    status: text(field(row, "status")) ?? "active",
-    ownerUserId,
-    members: strings(field(row, "members")),
-    repository: text(field(row, "repository")),
-  };
-}
-
-function strings(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
-}
-
 // FIX-2774: workforce's `boardTaskOf` is the one mapper; the inbox view reads tasks through it too.
 // The snapshot's boards, and this wrapper with them, go with FIX-2775/2776.
 /**
@@ -507,30 +249,6 @@ function strings(value: unknown): string[] {
  */
 export function toBoardTaskView(boardRef: string, ownerSessionId: string, topic: string, stored: unknown): BoardTaskView {
   return boardTaskOf(boardRef, ownerSessionId, topic, stored);
-}
-
-/**
- * The collection every conversation's board keeps its rows in: Workforce's
- * conversation ledger (`CONVERSATION_LEDGER_ID`), which its browser entry
- * doesn't export. `static.test.ts` pins the two together.
- */
-export const CONVERSATION_BOARD_COLLECTION = "tasks";
-
-/**
- * A conversation board's ref: `<sessionId>.tasks`, so a task route and a row
- * name their board one way.
- */
-export function conversationBoardRef(sessionId: string): string {
-  return `${sessionId}.${CONVERSATION_BOARD_COLLECTION}`;
-}
-
-/**
- * The collection a board's tasks are stamped with on their runs' items (the
- * `collectionId` of each `task-change`): for a conversation's board, the one
- * collection every conversation shares; any other ref names its own.
- */
-export function collectionOfBoard(boardRef: string): string {
-  return boardRef.endsWith(`.${CONVERSATION_BOARD_COLLECTION}`) ? CONVERSATION_BOARD_COLLECTION : boardRef;
 }
 
 /**
@@ -735,8 +453,8 @@ export function createLabReader(client: Client): LabReader {
    */
   const readInventory = async (): Promise<Section<Inventory>> => {
     try {
-      const workers = (await readEveryScopeEntry(client, "org", WORKER_INVENTORY_PATTERN))
-        .map((r) => toWorker(r.clientData))
+      const workers = (await client.resource({ scope: "org", pattern: WORKER_INVENTORY_PATTERN }).listAll({ limit: PAGE_SIZE }))
+        .map((r) => toWorker(r.value))
         .filter((worker): worker is Worker => worker !== undefined);
       // Every Workforce Lab's roster flow declares the workers, so none there is the Lab not having
       // opened its inventory, or these pages looking for keys it no longer writes: said below.
@@ -768,8 +486,8 @@ export function createLabReader(client: Client): LabReader {
   const readProjects = async (): Promise<Section<Projects>> => {
     const rowsAt = async (scope: "org" | "user", visibility: ProjectVisibility) => {
       try {
-        return (await readEveryScopeEntry(client, scope, PROJECTS_PATTERN))
-          .map((row) => toProject(row.clientData, visibility))
+        return (await client.resource({ scope, pattern: PROJECTS_PATTERN }).listAll({ limit: PAGE_SIZE }))
+          .map((row) => toProject(row.value, visibility))
           .filter((p): p is Project => p !== undefined);
       } catch (error) {
         if (describeFailure(error).httpStatus === 404) return [];
