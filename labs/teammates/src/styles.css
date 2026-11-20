@@ -6,7 +6,9 @@
  * (`type.css`), as in the other labs.
  *
  * `sidebar` and `inspector` are the shell's two surfaces (the left pane, and
- * the right one); the theme sets them.
+ * the right one); the theme sets them, along with the shell's extra steps
+ * (`surface-raised`, `text-3`, `brand`, …), each mapped to a Tailwind colour
+ * name below so a component writes `bg-surface-raised` or `text-text-3`.
  */
 @import "tailwindcss" source(none);
 @import "./lib/theme.css";
@@ -19,6 +21,22 @@
 @theme inline {
   --color-sidebar: var(--sidebar);
   --color-inspector: var(--inspector);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-selected: var(--selected);
+  --color-border-strong: var(--border-strong);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-success-text: var(--success-text);
+  --color-success-soft: var(--success-soft);
+  --color-warning-text: var(--warning-text);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-line: var(--warning-line);
+  --color-danger: var(--danger);
+  --color-presence-idle: var(--presence-idle);
 }
 
 @layer base {
