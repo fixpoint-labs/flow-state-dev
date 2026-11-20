@@ -1,0 +1,85 @@
+<svg viewBox="0 0 940 380" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The territory of the Realtime / WebSockets project. Inside the project are three lanes of how a change reaches a screen. Done, FIX-2367: a notice with no rows, a bus with in-memory and Postgres adapters, one WebSocket per client on the Node host, and a 3 second polling fallback. Not filed: push on serverless hosts, starting with the Ably adapter FIX-380. Not filed: the client talking back over the socket, with interrupt, steer and presence. To the right, outside the project: rows on the push or live sync, item and request streams which stay on SSE, cross-flow events and worker messaging, and MCP transport and webhooks. Below a fence sits the substrate the project builds on and does not own: views, client.live and useView from epic FIX-2618, the stores profile and its slots, the engine's routes and read checks, and BullMQ's job queue modes. The fence asks whether the work is how a change reaches a screen.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-own  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-done { fill:var(--surface); stroke:var(--code); stroke-width:2.4; }
+    .n-todo { fill:var(--surface); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-sub  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-out  { fill:none; stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-out  { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:6 4; fill:none; }
+    .t-fence{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+  </style>
+
+  <g id="owned">
+    <rect class="n-own" x="16" y="16" width="640" height="220" rx="6"/>
+    <text class="t-lbl" x="32" y="36">THIS PROJECT · HOW A CHANGE REACHES A SCREEN</text>
+    <g id="long-lived">
+      <rect class="n-done" x="32" y="50" width="200" height="170" rx="5"/>
+      <text class="t-lbl" x="46" y="70">FIX-2367 · DONE</text>
+      <text class="t-b"  x="46" y="92">push on long-lived hosts</text>
+      <text class="t-s"  x="46" y="116">a notice, never rows</text>
+      <text class="t-s"  x="46" y="134">the bus: in-memory, Postgres</text>
+      <text class="t-s"  x="46" y="152">one WebSocket per client</text>
+      <text class="t-s"  x="46" y="170">on the Node host</text>
+      <text class="t-s"  x="46" y="188">polls at 3 s where push</text>
+      <text class="t-s"  x="46" y="206">can miss a change</text>
+    </g>
+    <g id="serverless">
+      <rect class="n-todo" x="240" y="50" width="200" height="170" rx="5"/>
+      <text class="t-lbl" x="254" y="70">FIX-XXX · NOT FILED</text>
+      <text class="t-b"  x="254" y="92">push on serverless hosts</text>
+      <text class="t-s"  x="254" y="116">Vercel and Next stop polling</text>
+      <text class="t-s"  x="254" y="134">the same two seams</text>
+      <text class="t-s"  x="254" y="152">first: the Ably adapter</text>
+      <text class="t-s"  x="254" y="170">FIX-380, in spec review</text>
+      <text class="t-s"  x="254" y="188">platform-native later</text>
+    </g>
+    <g id="talk-back">
+      <rect class="n-todo" x="448" y="50" width="192" height="170" rx="5"/>
+      <text class="t-lbl" x="462" y="70">FIX-XXX · NOT FILED</text>
+      <text class="t-b"  x="462" y="92">the client talks back</text>
+      <text class="t-s"  x="462" y="116">interrupt and steer a run</text>
+      <text class="t-s"  x="462" y="134">presence</text>
+      <text class="t-s"  x="462" y="152">over the same socket</text>
+      <text class="t-s"  x="462" y="170">no app asks for it yet</text>
+    </g>
+  </g>
+
+  <g id="not-here">
+    <rect class="n-out" x="672" y="16" width="252" height="220" rx="6"/>
+    <text class="t-lbl" x="688" y="36">NOT HERE</text>
+    <text class="t-out" x="688" y="62">rows on the push, live sync</text>
+    <text class="t-s"   x="688" y="78">ruled out, PD-1</text>
+    <text class="t-out" x="688" y="106">item and request streams</text>
+    <text class="t-s"   x="688" y="122">stay on SSE</text>
+    <text class="t-out" x="688" y="150">cross-flow events, worker messages</text>
+    <text class="t-s"   x="688" y="166">Reactive Flows · FIX-1989</text>
+    <text class="t-out" x="688" y="194">MCP transport, webhooks</text>
+    <text class="t-s"   x="688" y="210">their own projects</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M16 256 H924"/>
+    <text class="t-fence" x="16" y="250">Is it how a change reaches a screen?  Yes → above.  How the screen reads what changed → views, below.</text>
+  </g>
+
+  <g id="substrate">
+    <rect class="n-sub" x="16" y="272" width="908" height="92" rx="6"/>
+    <text class="t-lbl" x="32" y="292">SUBSTRATE · BUILT ON BY THIS PROJECT, OWNED ELSEWHERE</text>
+    <text class="t-b"  x="32" y="316">views: client.live and useView, epic FIX-2618 · the stores profile and its slots</text>
+    <text class="t-b"  x="32" y="338">the engine's routes and read checks · BullMQ's job queue modes</text>
+    <text class="t-s"  x="32" y="356">a notice wakes them · this project does not own them</text>
+  </g>
+</svg>
