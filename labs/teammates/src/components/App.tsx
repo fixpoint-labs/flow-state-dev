@@ -312,6 +312,7 @@ export function App() {
         onHire={hire}
         hiring={hiring}
         onHiring={setHiring}
+        workspace={context === undefined ? undefined : { name: context.folder.split(/[\\/]/).filter(Boolean).at(-1) ?? context.folder, path: context.folder }}
       />
       {worker && sessionId ? (
         <Conversation
