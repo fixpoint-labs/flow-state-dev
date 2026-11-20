@@ -110,7 +110,7 @@ describe("the Inbox against a real Lab", () => {
     const stops = items.flatMap((i) => i.holds).flatMap((h) => (h.detail === undefined ? [] : [h.detail]));
     const relist = (flowOf: (sessionId: string) => string | null | undefined, flowIdOf: (stop: InboxSuspensionDetail) => string | null) =>
       inboxItems<InboxSuspensionDetail>({
-        rows: rows.map((row) => ({ ...row, board: row.boardRef, holder: { sessionId: row.ownerSessionId, action: taskActionName("updateTask", CONVERSATION_BOARD_COLLECTION) } })),
+        rows: rows.map((task) => ({ ...task, board: task.boardRef, holder: { sessionId: task.ownerSessionId, action: taskActionName("updateTask", CONVERSATION_BOARD_COLLECTION) } })),
         suspensions: stops.map((stop) => ({ sessionId: stop.sessionId!, flowId: flowIdOf(stop), requestId: stop.requestId, suspensionId: stop.suspensionId, kind: stop.kind, prompt: stop.message, since: stop.createdAt, detail: stop })),
         flowOf,
       });
