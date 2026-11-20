@@ -523,7 +523,7 @@ const MAX_NAME_SLUG = 32;
 const NAME_HASH_LENGTH = 6;
 
 /** What a run's branch starts with when its app names no prefix of its own. */
-export const DEFAULT_BRANCH_PREFIX = "fsd/";
+const DEFAULT_BRANCH_PREFIX = "fsd/";
 
 /** What the long shape's branches start with, kept so a run recorded on one finds it. */
 const LONG_SHAPE_BRANCH_PREFIX = "conductor/";
@@ -532,7 +532,7 @@ const LONG_SHAPE_BRANCH_PREFIX = "conductor/";
 const MAX_BRANCH_PREFIX = 32;
 
 /** A branch prefix: lower-case segments of letters and digits with single `-` or `_`, each ending in `/`. */
-const BRANCH_PREFIX = /^(?:[a-z0-9]+(?:[-_][a-z0-9]+)*\/)+$/;
+const BRANCH_PREFIX_PATTERN = /^(?:[a-z0-9]+(?:[-_][a-z0-9]+)*\/)+$/;
 
 /**
  * `prefix` when it can lead a run's branch: lower-case letters and digits,
@@ -542,7 +542,7 @@ const BRANCH_PREFIX = /^(?:[a-z0-9]+(?:[-_][a-z0-9]+)*\/)+$/;
  * @throws When it can't, naming the value.
  */
 export function assertBranchPrefix(prefix: string): string {
-  if (prefix.length > MAX_BRANCH_PREFIX || !BRANCH_PREFIX.test(prefix)) {
+  if (prefix.length > MAX_BRANCH_PREFIX || !BRANCH_PREFIX_PATTERN.test(prefix)) {
     throw new Error(
       `[harness-manager] branchPrefix ${JSON.stringify(prefix)} can't lead a branch: use lower-case letters and ` +
         `digits with single "-" or "_", end it with "/" (such as "teammates/"), and keep it to ${MAX_BRANCH_PREFIX} characters.`,

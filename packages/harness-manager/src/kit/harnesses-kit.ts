@@ -37,6 +37,7 @@ import {
   type HarnessReadinessRead,
 } from "../readiness";
 import { CODER_FLOW, coderWorkerFlow, type CoderFlowOptions } from "./coder-flow";
+import { assertBranchPrefix } from "../workspace";
 
 export { HARNESSES_FLOW };
 
@@ -62,7 +63,16 @@ const configSchema: z.ZodType<HarnessesConfig, z.ZodTypeDef, HarnessesConfig> = 
     idleTimeoutMs: z.number().int().positive().optional(),
     // `0` turns the cap off.
     runTimeoutMs: z.number().int().nonnegative().optional(),
-    branchPrefix: z.string().optional(),
+    branchPrefix: z
+      .string()
+      .superRefine((prefix, refuse) => {
+        try {
+          assertBranchPrefix(prefix);
+        } catch (refused) {
+          refuse.addIssue({ code: z.ZodIssueCode.custom, message: (refused as Error).message });
+        }
+      })
+      .optional(),
     logReadiness: z.boolean().optional(),
   })
   .strict();
