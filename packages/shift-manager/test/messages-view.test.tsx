@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-/** Messages: both sides, newest first, grouped by exchange; a sent message is its own tool line. */
+/** Messages: both sides, newest first, grouped by exchange; a sent message is its own line in the conversation. */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClientHttpError } from "@flow-state-dev/client";
@@ -21,7 +21,7 @@ const lab = { client: { userId: "u_1", resources: {}, resource, live }, refresh:
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
 import { Messages } from "../src/surfaces/Messages";
-import { shiftManagerRenderers, ToolLineGroup } from "../src/components/ToolLine";
+import { shiftManagerRenderers, StepsLine } from "../src/components/ToolLine";
 import { conversationLines, FlowProvider, ItemsRenderer } from "@flow-state-dev/react";
 import type { DataItem } from "@flow-state-dev/core/items";
 
@@ -141,29 +141,43 @@ describe("the Messages view", () => {
 });
 
 describe("a message the worker sent, in its own conversation", () => {
-  const call = (id: string, args: unknown, output: unknown, status = "completed"): ToolOutputItem =>
-    ({ id, type: "tool_output", status, requestId: "r", toolCall: { name: "sendMessage", arguments: JSON.stringify(args) }, output }) as unknown as ToolOutputItem;
-  const other = { id: "t0", type: "tool_output", status: "completed", requestId: "r", toolCall: { name: "discover", arguments: "{}" } } as unknown as ToolOutputItem;
+  // The send's own line, as workforce writes it (`workforce:sent`), tied to the call that wrote it by its key.
+  const sent = (id: string, value: Record<string, unknown>, callId = `tc_${id}`) =>
+    ({
+      id,
+      type: "data",
+      status: "completed",
+      requestId: "r",
+      dataType: "workforce:sent",
+      key: `r:root/step[0]/tool[sendMessage][${callId}]`,
+      value,
+      provenance: { blockName: "sendMessage", blockInstanceId: `r:root/step[0]/tool[sendMessage][${callId}]:0`, phase: "main" },
+    }) as unknown as DataItem;
+  // The call that wrote it: the model reads it as that line, never as a step.
+  const sendCall = (id: string, callId = `tc_${id}`) =>
+    ({ id, type: "tool_output", status: "completed", requestId: "r", toolCall: { callId, name: "sendMessage", arguments: "{}" }, output: {}, provenance: { blockName: "gen", blockInstanceId: "r:root/step[0]:0", phase: "main" } }) as unknown as ToolOutputItem;
+  const other = { id: "t0", type: "tool_output", status: "completed", requestId: "r", toolCall: { callId: "tc_0", name: "discover", arguments: "{}" }, provenance: { blockName: "gen", blockInstanceId: "r:root/step[0]:0", phase: "main" } } as unknown as ToolOutputItem;
+  const drawLines = (items: unknown[]) =>
+    render(
+      <FlowProvider renderers={shiftManagerRenderers}>
+        <ItemsRenderer lines={conversationLines(items as never, [], { renderers: shiftManagerRenderers })} toolGroupRenderer={StepsLine} />
+      </FlowProvider>,
+    );
 
-  it("is its own line, To <recipient>: <text>, never folded into the run's tool count", () => {
-    render(<ToolLineGroup items={[other, call("t1", { to: "coordinator", text: "What is the codename?" }, { sent: "msg_a" })]} />);
-    const line = screen.getByTestId("message-call");
-    expect(line.textContent).toContain("To coordinator: What is the codename?");
+  it("is its own line, To <recipient>: <text>, drawn once, never folded into the run's tool count", () => {
+    drawLines([other, sendCall("t1", "tc_A"), sent("d1", { to: "coordinator", text: "What is the codename?", messageId: "msg_a" }, "tc_A")]);
+    expect(screen.getAllByTestId("message-call").map((line) => line.textContent)).toEqual([expect.stringContaining("To coordinator: What is the codename?")]);
     expect(screen.getByTestId("tool-group").textContent).toContain("Used discover");
     act(() => fireEvent.click(screen.getByTestId("message-call-messages")));
     expect(window.location.pathname).toBe("/messages");
   });
 
   it("reads Asked <recipient> for a send that asks for a reply, with a waited answer under it, or that it comes as a message (FIX-2318)", () => {
-    render(
-      <ToolLineGroup
-        items={[
-          call("t1", { to: "coordinator", text: "What is the codename?", wait: true }, { status: "answered", sent: "msg_a", reply: "BLUE-HERON" }),
-          call("t2", { to: "helper-b", text: "Ready?", wait: true }, { status: "running", sent: "msg_b", recipient: "waiting_on_person" }),
-          call("t3", { to: "pm", text: "The plan?", replyRequested: true }, { sent: "msg_c" }),
-        ]}
-      />,
-    );
+    drawLines([
+      sent("d1", { to: "coordinator", text: "What is the codename?", messageId: "msg_a", wait: { status: "answered", reply: "BLUE-HERON" } }),
+      sent("d2", { to: "helper-b", text: "Ready?", messageId: "msg_b", wait: { status: "running", recipient: "waiting_on_person" } }),
+      sent("d3", { to: "pm", text: "The plan?", messageId: "msg_c", replyRequested: true }),
+    ]);
     const [asked, running, later] = screen.getAllByTestId("message-call");
     expect(asked!.textContent).toContain("Asked coordinator: What is the codename?");
     expect(within(asked!).getByTestId("message-call-answer").textContent).toBe("BLUE-HERON");
@@ -174,61 +188,21 @@ describe("a message the worker sent, in its own conversation", () => {
   });
 
   it("says it wasn't sent, and why, when the send was refused", () => {
-    render(<ToolLineGroup items={[call("t1", { to: "eng.coder", text: "hi" }, { ok: false, error: "task_sessions_only: \"eng.coder\" answers only from its tasks' sessions" })]} />);
+    drawLines([sent("d1", { to: "eng.coder", text: "hi", refused: "task_sessions_only: \"eng.coder\" answers only from its tasks' sessions" })]);
     expect(screen.getByTestId("message-call").textContent).toContain("Not sent to eng.coder: hi");
     expect(screen.getByTestId("message-call-reason").textContent).toContain("task_sessions_only");
   });
 
-  // FIX-2848 D1: the server writes the send as its own line, keyed by its call; the call then draws as that line.
-  it("draws once, from the send's own line, when the server wrote one for its call", () => {
-    const path = "root/step[0]/tool[sendMessage][tc_A]";
-    const sendCall = { ...call("t1", { to: "coordinator", text: "What is the codename?" }, { sent: "msg_a" }), toolCall: { callId: "tc_A", name: "sendMessage", arguments: "{}" }, provenance: { blockName: "gen", blockInstanceId: "r:root/step[0]:0", phase: "main" } } as unknown as ToolOutputItem;
-    const sent = {
-      id: "d1",
-      type: "data",
-      status: "completed",
-      requestId: "r",
-      dataType: "workforce:sent",
-      key: `r:${path}`,
-      value: { to: "coordinator", text: "What is the codename?", messageId: "msg_a" },
-      provenance: { blockName: "sendMessage", blockInstanceId: `r:${path}:0`, phase: "main" },
-    } as unknown as DataItem;
-    const lines = conversationLines([sendCall, sent], [], { renderers: shiftManagerRenderers });
-    render(
-      <FlowProvider renderers={shiftManagerRenderers}>
-        <ItemsRenderer lines={lines} />
-      </FlowProvider>,
-    );
-    expect(screen.getAllByTestId("message-call").map((line) => line.textContent)).toEqual([expect.stringContaining("To coordinator: What is the codename?")]);
-  });
-
-  it("says why, from the send's own line, when a waited send's delivery failed", () => {
-    const failed = {
-      id: "d2",
-      type: "data",
-      status: "completed",
-      requestId: "r",
-      dataType: "workforce:sent",
-      value: { to: "coordinator", text: "Ping?", messageId: "msg_b", wait: { status: "failed", error: "not_delivered: the session is gone." } },
-      provenance: { blockName: "sendMessage", blockInstanceId: "r:root/step[0]/tool[sendMessage][tc_B]:0", phase: "main" },
-    } as unknown as DataItem;
-    render(
-      <FlowProvider renderers={shiftManagerRenderers}>
-        <ItemsRenderer lines={conversationLines([failed], [], { renderers: shiftManagerRenderers })} />
-      </FlowProvider>,
-    );
+  it("says why when a waited send's delivery failed", () => {
+    drawLines([sent("d2", { to: "coordinator", text: "Ping?", messageId: "msg_b", wait: { status: "failed", error: "not_delivered: the session is gone." } })]);
     expect(screen.getByTestId("message-call-reason").textContent).toBe("not_delivered: the session is gone.");
   });
 
   it("names a task or a conversation it was sent to, not 'another worker' (FIX-2160)", () => {
-    render(
-      <ToolLineGroup
-        items={[
-          call("t1", { to: { task: "task_42" }, text: "Done yet?" }, { sent: "msg_a" }),
-          call("t2", { to: { session: "s_other" }, text: "FYI" }, { ok: false, error: "no_session: no conversation" })
-        ]}
-      />
-    );
+    drawLines([
+      sent("d1", { to: { task: "task_42" }, text: "Done yet?", messageId: "msg_a" }),
+      sent("d2", { to: { session: "s_other" }, text: "FYI", refused: "no_session: no conversation" }),
+    ]);
     const [toTask, toSession] = screen.getAllByTestId("message-call");
     expect(toTask!.textContent).toContain("To task task_42: Done yet?");
     expect(toSession!.textContent).toContain("Not sent to conversation s_other: FYI");

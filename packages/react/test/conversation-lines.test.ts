@@ -191,7 +191,7 @@ describe("records that draw nothing", () => {
     expect(conversationLines([...records, user("u1", "r1")]).map((line) => line.kind)).toEqual(["user"]);
   });
 
-  // A record (a board row's change) is no line on screen: it must not take Retry off the failed turn before it.
+  // A record (a board's task change) is no line on screen: it must not take Retry off the failed turn before it.
   it("are no line: a data item the registry in use has no renderer for, or one it turns off", () => {
     const record = data("d1", "pass-1", { dataType: "task-change" });
     const shown = data("d2", "r1", { dataType: "workforce:sent" });

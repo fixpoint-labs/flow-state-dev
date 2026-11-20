@@ -6,7 +6,7 @@
  * task's ending names its task and how it ended (a cancelled task never reads
  * as failed), and opens the task. A message the worker sent opens its
  * exchange; one it couldn't send says so, and why, and opens nothing. A
- * filed task is its card from the filing, before the board's row arrives. A
+ * filed task is its card from the filing, before the board's task arrives. A
  * `user_approval` stop is a card until answered. A run of tool calls is one
  * line, open while it runs, and a call its turn left running reads failed
  * once the turn is over.
@@ -77,13 +77,13 @@ describe("a message another worker sent", () => {
 });
 
 describe("a task the worker filed", () => {
-  it("is its card from the filing, before the board's row arrives, and then from the row", () => {
+  it("is its card from the filing, before the board's task arrives, and then from that task", () => {
     const lines = linesOf([filed("f", "q1", { taskId: "task_1", title: "Draft the post", assignee: WRITER })]);
     const view = drawLines(lines, { nameOf: () => "writer" });
     expect(screen.getByRole("button", { name: "Asked writer to draft the post" }).getAttribute("data-status")).toBe("running");
     view.unmount();
-    const row = { id: "task_1", goal: "Draft the post", title: "Draft the post", assignee: WRITER, status: "completed", attempts: 1, asks: [], harness: null, review: null, landed: null, error: null, pullRequests: [], runFlow: null, detail: null };
-    drawLines(lines, { nameOf: () => "writer", tasks: [row as never] });
+    const task = { id: "task_1", goal: "Draft the post", title: "Draft the post", assignee: WRITER, status: "completed", attempts: 1, asks: [], harness: null, review: null, landed: null, error: null, pullRequests: [], runFlow: null, detail: null };
+    drawLines(lines, { nameOf: () => "writer", tasks: [task as never] });
     expect(screen.getByRole("button", { name: "Asked writer to draft the post" }).getAttribute("data-status")).toBe("done");
   });
 });
@@ -143,7 +143,7 @@ describe("how a sent message stands", () => {
     expect(answerIn([{ ...out, replyRequested: true as const }, reply], "msg_1")).toBe("replied");
   });
 
-  // The framework's "no answer" is a reply row too: it must not read as an answer.
+  // The framework's "no answer" is a reply too: it must not read as an answer.
   it("is no answer when the reply is the framework's no answer", () => {
     expect(answerIn([out, { ...reply, text: "No answer came back: the turn ended without saying anything.", noAnswer: true as const }], "msg_1")).toBe("no answer");
   });

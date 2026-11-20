@@ -31,8 +31,8 @@ export const shiftManager: AppInventory = {
    */
   screenTypes: {
     "src/gaps.ts": ["Gaps"],
-    "src/components/ToolLine.tsx": ["CallRunSegment"],
     "src/components/TurnComposer.tsx": ["TurnSendState"],
+    "src/components/TurnLines.tsx": ["TurnLineActions"],
     "src/components/flow-state/attachments.tsx": [
       "AttachmentUploader", "AttachmentRefusal", "PendingAttachment", "AttachmentLimitOverrides", "UseAttachmentsOptions",
       "Attachments", "AttachmentPreviewProps", "AttachmentStripProps", "AttachButtonProps",
@@ -54,6 +54,7 @@ export const shiftManager: AppInventory = {
       "MessageBranchPageProps", "MessageToolbarProps", "ReadMessageFile",
     ],
     "src/components/flow-state/reasoning.tsx": ["ReasoningProps", "ReasoningTriggerProps", "ReasoningContentProps"],
+    "src/components/flow-state/request-recovery.tsx": ["FailedRequestProps", "InterruptedRequestProps", "StoppedRequestProps", "RequestRecoveryProps"],
     "src/components/flow-state/review-hold.tsx": ["ReviewDetail", "ReviewAnswer", { name: "LandedWork", reason: "a registry copy, byte-equal to its packages/ui source (static.test.ts); the registry ships without harness-manager, so it inlines LandedWork" }],
     "src/components/flow-state/run-changes.tsx": ["RunChangesFile", "RunChangesPatch", "RunChangesProps"],
     "src/components/flow-state/run-checks.tsx": ["RunChecksProps", { name: "RunCheck", reason: "a registry copy, byte-equal to its packages/ui source (static.test.ts); the registry ships without harness-manager, so it inlines its ReviewCheck" }],

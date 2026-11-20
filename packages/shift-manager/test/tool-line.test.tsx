@@ -6,8 +6,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import { afterEach, describe, expect, it } from "vitest";
-import { conversationLines } from "@flow-state-dev/react";
-import { callRuns, ToolLine, ToolLineGroup } from "../src/components/ToolLine";
+import { conversationLines, FlowProvider, ItemsRenderer } from "@flow-state-dev/react";
+import { shiftManagerRenderers, StepsLine, ToolLine, ToolLineGroup } from "../src/components/ToolLine";
 
 afterEach(() => cleanup());
 
@@ -85,9 +85,15 @@ describe("a feed of calls keeps its thinking where it was", () => {
     ({ id, type: "reasoning", status: "completed", requestId: "r", summary: [{ type: "reasoning_text", text: "hm" }] }) as never;
   const said = (id: string) => ({ id, type: "message", status: "completed", requestId: "r", role: "assistant", content: [{ type: "output_text", text: "Done." }] }) as never;
 
-  it("splits a stretch back into runs of calls and the thoughts between them", () => {
-    const stream = conversationLines([thought("r1"), call("a", "completed", "a"), call("b", "completed", "b"), thought("r2"), call("c", "completed", "c"), said("m1")]);
-    const runs = callRuns(stream).map((s) => (s.kind === "group" ? `calls:${s.items.map((i) => i.id).join(",")}` : s.item.id));
-    expect(runs).toEqual(["r1", "calls:a,b", "r2", "calls:c", "m1"]);
+  it("draws a steps line as runs of calls, each one quiet line, with the thoughts between them where they were", () => {
+    const lines = conversationLines([thought("r1"), call("a", "completed", "a"), call("b", "completed", "b"), thought("r2"), call("c", "completed", "c"), said("m1")], [], { renderers: shiftManagerRenderers });
+    const { container } = render(
+      <FlowProvider renderers={shiftManagerRenderers}>
+        <ItemsRenderer lines={lines} toolGroupRenderer={StepsLine} />
+      </FlowProvider>,
+    );
+    const steps = container.querySelector('[data-testid="steps-line"]')!;
+    const parts = [...steps.children].map((part) => (part.matches('[data-testid="tool-group"]') ? `calls:${part.textContent}` : "thought"));
+    expect(parts).toEqual(["thought", "calls:Used 2 tools", "thought", "calls:Used c"]);
   });
 });

@@ -44,7 +44,7 @@ export const received = (id: string, requestId: string, value: Record<string, un
 export const filed = (id: string, requestId: string, value: Record<string, unknown>) => data(id, requestId, FILED_TASK_DATA_TYPE, value);
 export const result = (id: string, requestId: string, value: Record<string, unknown>) => data(id, requestId, TASK_RESULT_DATA_TYPE, value);
 
-/** A board pass's row change: a record, drawn as nothing. */
+/** A board pass's task change: a record, drawn as nothing. */
 export const boardPass = (id: string, requestId: string) => data(id, requestId, "task-change", { task: { id: "t1", status: "pending" } });
 
 /** A user's approval stop, and its answer. */

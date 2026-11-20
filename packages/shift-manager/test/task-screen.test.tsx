@@ -316,7 +316,7 @@ describe("following the row as the board moves it", () => {
 });
 
 describe("what the Session draws of the run's items", () => {
-  it("draws what the item renderers draw: a sub-agent's working steps stay out, a keyed snapshot shows once", async () => {
+  it("draws what the item renderers draw: a sub-agent's working steps stay out, and a record no renderer draws is no line", async () => {
     const opened = await openLab();
     const row = await finishedRow(opened);
     // A sub-agent's message is stored in the session and stamped with the task,
@@ -345,10 +345,10 @@ describe("what the Session draws of the run's items", () => {
     });
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
     await screen.findByTestId("session", {}, { timeout: 10_000 });
-    await waitFor(() => expect(itemIds()).toContain("item_data_keyed:progress"));
+    await waitFor(() => expect(itemIds().length).toBeGreaterThan(0));
     expect(itemIds()).not.toContain(working.id);
-    // The run wrote its progress snapshot twice; it shows once, at its latest.
-    expect(itemIds().filter((id) => id === "item_data_keyed:progress")).toHaveLength(1);
+    // The run's progress snapshot is a record Shift Manager's registry draws nothing for: no line, however often it was written.
+    expect(itemIds()).not.toContain("item_data_keyed:progress");
   }, 30_000);
 });
 

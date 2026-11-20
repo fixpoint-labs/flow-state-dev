@@ -290,7 +290,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
         </section>
       ) : null}
       {steps.length === 0 ? <Steps lines={steps} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} empty={starting} /> : null}
-      {/* What a coding run started on, from its row, once it has reported a line. */}
+      {/* What a coding run started on, from its task, once it has reported a line. */}
       {coding && harness !== undefined && steps.length > 0 ? (
         <div data-step="harness" className="font-mono text-xs text-muted-foreground">
           Started on {harness}

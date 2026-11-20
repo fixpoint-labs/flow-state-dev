@@ -23,7 +23,7 @@ import { answerIn, type Popup } from "./Popups";
 /** A small button in the conversation's header. */
 const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-xs tracking-widest uppercase hover:bg-accent";
 
-/** No board rows read yet: one array, so the lines' screen doesn't change for a new empty one. */
+/** No board tasks read yet: one array, so the lines' screen doesn't change for a new empty one. */
 const NO_TASKS: readonly CodingBoardTask[] = [];
 
 /** The ids of the messages the worker's sent lines sent. */

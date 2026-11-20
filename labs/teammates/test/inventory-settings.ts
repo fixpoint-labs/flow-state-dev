@@ -27,7 +27,7 @@ export const teammates: AppInventory = {
     "src/lib/conversation.ts": [
       {
         name: "ConversationView",
-        reason: "What the conversation's follower assembles from three reads: the session feed's items (as React's `conversationLines` reads them, with the turns), the session turns view's rows and the screen's own Stop.",
+        reason: "What the conversation's follower assembles from three reads: the session feed's items (as React's `conversationLines` reads them, with the turns), the session turns view's turns and the screen's own Stop.",
       },
       {
         name: "WindowMark",

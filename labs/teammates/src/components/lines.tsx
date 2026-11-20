@@ -12,7 +12,7 @@
  * the worker sent another is one line, "Messaged researcher", that opens the
  * exchange; one it couldn't send says so, and why. A message it received
  * lands under the sender's name. A task it filed is its card, from the
- * board's row once that is read. A task coming back is one line,
+ * board's task once that is read. A task coming back is one line,
  * "researcher finished: …", that opens the task. A run of tool calls is one
  * line that is open while it runs. A failed turn is the registry's
  * `request-recovery` line with its reason, and Retry when the model offers
@@ -20,7 +20,7 @@
  * waits for your yes is a card with Approve and Deny until you answer.
  *
  * What a line needs from the screen around it (names, looks, the board's
- * rows, opening a popup, Retry) comes from {@link LineContext}: outside a
+ * tasks, opening a popup, Retry) comes from {@link LineContext}: outside a
  * conversation (a popup) the defaults draw the line and offer no action.
  */
 import { createContext, memo, useContext, type ReactNode } from "react";
@@ -58,9 +58,9 @@ export interface LineScreen {
   lookOf: (id: string) => Look;
   /** The worker coding tasks run on: its results are the task's, not a teammate's. */
   isCoding: (id: string) => boolean;
-  /** A coding worker's harness, for a filed task's card before its row arrives. */
+  /** A coding worker's harness, for a filed task's card before the board's task arrives. */
   harnessOf: (id: string) => string | undefined;
-  /** The board's rows: a filed task's card draws from its row once it is read. */
+  /** The board's tasks: a filed task's card draws from the board's task once it is read. */
   tasks: readonly CodingBoardTask[];
   /** How a message the worker sent stands, by its id; `undefined` shows none. */
   answerOf: (messageId: string) => AnswerStatus | undefined;
@@ -236,7 +236,7 @@ function ReceivedLine({ item }: { item: DataItem }) {
   );
 }
 
-/** The card a filed task shows until its board row arrives: a pending row with what the filing said. One object per item, so the memoized card skips re-renders. */
+/** The card a filed task shows until the board's task arrives: a pending task with what the filing said. One object per item, so the memoized card skips re-renders. */
 const placeholders = new WeakMap<DataItem, CodingBoardTask>();
 function placeholderOf(item: DataItem, value: Partial<FiledTaskValue>, harness: string | undefined): CodingBoardTask {
   let task = placeholders.get(item);
@@ -248,7 +248,7 @@ function placeholderOf(item: DataItem, value: Partial<FiledTaskValue>, harness: 
   return task;
 }
 
-/** A task the worker filed: its card, from the filing until the board's row arrives, then from the row, in the same place. */
+/** A task the worker filed: its card, from the filing until the board's task arrives, then from that task, in the same place. */
 function TaskLine({ item }: { item: DataItem }) {
   const { tasks, harnessOf, nameOf, lookOf, isCoding, openTask } = useContext(LineContext);
   const value = item.value as Partial<FiledTaskValue>;

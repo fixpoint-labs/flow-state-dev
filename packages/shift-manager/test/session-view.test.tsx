@@ -15,7 +15,8 @@ const read = vi.fn();
 const listSessions = vi.fn();
 // One object, as the provider hands one: a fresh `client` each render would re-read forever.
 const lab = {
-  client: { userId: "u_1", sessions: { list: listSessions } },
+  // The conversation's turns read (a view) never answers here.
+  client: { userId: "u_1", sessions: { list: listSessions }, subscribe: () => ({ close: () => {} }), view: () => new Promise(() => {}) },
   refresh: vi.fn(),
   snapshot: { orgId: "org_1", sessions: [], inventory: { ok: true, value: { workers: [] } } },
 };
