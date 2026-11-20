@@ -28,6 +28,7 @@ import {
   type RunLocation,
   type RunPrincipal,
   type WorkspaceConfig,
+  assertBranchPrefix,
   encodeSegment,
   isStrictlyInside,
   releaseCheckout,
@@ -148,7 +149,7 @@ describe("provisioning", () => {
     }).trim();
     // A run's own short name, the same one its folder carries.
     expect(head).toBe(branchFor(at("FIX-1219", "implement")));
-    expect(head).toBe(`conductor/${basename(checkout.path)}`);
+    expect(head).toBe(`fsd/${basename(checkout.path)}`);
   });
 
   it("fails loudly when the branch was deleted underneath", async () => {
@@ -1784,7 +1785,7 @@ describe("a board-minted task id standing in for the issue", () => {
     const segment = taskIssueSegment(routed);
     expect(segment).not.toBe(routed);
     expect(() => harnessTaskId(segment, "answer")).not.toThrow();
-    expect(branchFor(at(segment, "answer"))).toMatch(new RegExp(`^conductor/${segment}-answer-[0-9a-f]{6}$`));
+    expect(branchFor(at(segment, "answer"))).toMatch(new RegExp(`^fsd/${segment}-answer-[0-9a-f]{6}$`));
   });
 
   it("gives distinct ids distinct segments, an id shaped like an encoding included", () => {
@@ -1894,10 +1895,10 @@ describe("a run's name — short, readable, and its own", () => {
     const branch = branchFor(deep);
     expect(Buffer.byteLength(`refs/heads/${branch}`, "utf8")).toBeLessThan(100);
     // The tracker issue leads, so a pull request from it links to the issue.
-    expect(branch).toMatch(/^conductor\/fix-2657-cap-failed-at-five-with-[0-9a-f]{6}$/);
+    expect(branch).toMatch(/^fsd\/fix-2657-cap-failed-at-five-with-[0-9a-f]{6}$/);
     // The branch and the folder end in one name, so either finds the other.
     const folder = checkoutPathFor(config, deep);
-    expect(basename(folder)).toBe(branch.slice("conductor/".length));
+    expect(basename(folder)).toBe(branch.slice("fsd/".length));
     expect(dirname(folder)).toBe(resolve(config.root));
   });
 
@@ -1916,7 +1917,7 @@ describe("a run's name — short, readable, and its own", () => {
 
   it("falls back to the issue for a task with no usable title", () => {
     const { trackerIssue: _issue, ...untracked } = deep;
-    expect(branchFor({ ...untracked, title: "!!!" })).toMatch(/^conductor\/task-62b5f71c45ac40a8b049-change-[0-9a-f]{6}$/);
+    expect(branchFor({ ...untracked, title: "!!!" })).toMatch(/^fsd\/task-62b5f71c45ac40a8b049-change-[0-9a-f]{6}$/);
     expect(branchFor({ ...deep, title: undefined })).toBe(branchFor({ ...deep, title: "!!!" }));
   });
 
@@ -1980,5 +1981,41 @@ describe("a run's name — short, readable, and its own", () => {
     expect(branchFor(kept)).toBe(long);
     // And a record that names the short name keeps it after a retitle.
     expect(branchFor(locationFor({ ...deep, title: "Something else" }, branchFor(deep)))).toBe(branchFor(deep));
+  });
+});
+
+// FIX-2857: the app names its runs' branches; `conductor/` was a retired concept's.
+describe("a run's branch prefix", () => {
+  const base = { principal: { orgId: "org_a", userId: "u" }, epic: EPIC, issue: "FIX-1", phase: "implement", title: "Fix the thing" };
+
+  it("leads the branch with the app's prefix, or fsd/ when it names none, and leaves the name and folder alone", () => {
+    const config = workspace();
+    const own = { ...base, branchPrefix: "teammates/" };
+    expect(branchFor(own)).toBe(`teammates/${basename(checkoutPathFor(config, own))}`);
+    expect(branchFor(base)).toBe(`fsd/${basename(checkoutPathFor(config, base))}`);
+    expect(checkoutPathFor(config, own)).toBe(checkoutPathFor(config, base));
+  });
+
+  it("keeps the branch a run's record names when the app's prefix has changed since, conductor/ included", () => {
+    const now = { ...base, branchPrefix: "teammates/" };
+    for (const recorded of [branchFor({ ...base, branchPrefix: "conductor/" }), branchFor(base), branchFor({ ...base, branchPrefix: "shift-manager/" })]) {
+      expect(branchFor(locationFor(now, recorded)), recorded).toBe(recorded);
+    }
+    // Another run's name under any prefix is not this run's: the hex still has to agree.
+    const other = branchFor({ ...base, issue: "FIX-2", branchPrefix: "conductor/" });
+    expect(branchFor(locationFor(now, other))).toBe(branchFor(now));
+  });
+
+  it("keeps the long shape under conductor/, whatever the app's prefix", () => {
+    const nested = { ...base, branchPrefix: "teammates/", nested: true as const };
+    expect(branchFor(nested).startsWith("conductor/")).toBe(true);
+    expect(branchFor(locationFor({ ...base, branchPrefix: "teammates/" }, branchFor(nested)))).toBe(branchFor(nested));
+  });
+
+  it("takes only a prefix a ref can carry", () => {
+    for (const good of ["teammates/", "shift-manager/", "claude_code/", "apps/teammates/"]) expect(assertBranchPrefix(good)).toBe(good);
+    for (const bad of ["", "teammates", "Teammates/", "/x/", "a b/", "a..b/", "a--b/", "x.lock/", `${"x".repeat(32)}/`]) {
+      expect(() => assertBranchPrefix(bad), bad).toThrow(/branchPrefix/);
+    }
   });
 });

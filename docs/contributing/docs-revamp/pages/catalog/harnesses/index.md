@@ -83,7 +83,7 @@ The body is the worker's instructions in the run's brief. [Harness runs](../../r
 
 <Figure svg={OneRun} caption="One run, with the kit's config keys" description={"Three boxes from left to right. The task fix-cart-test, with goal cart.test.ts passes, worker engineering.coder and harness claude-code, is on the board and has a hatched top because it outlives the request. An arrow leads to the run, claude-code in its own checkout, cut from workspace, on its own git branch and limited by runTimeoutMs. An arrow leads to the verdict: checks pnpm test, judge reads the goal, and review off unless set. The last row, then the task completes, is highlighted. A dashed arrow runs from the verdict back to the task, labelled not done. Three notes say the run starts in a checkout made from workspace, that checks, judge and review decide in that order, and that not done sends the task back to the board with the reason."} />
 
-Each task gets a git worktree on its own branch, such as `conductor/fix-cart-test-3fa9c1`, in a folder under `root`. A retry lands in the same directory. The checkout is where the agent is pointed, not a jail: Claude Code as installed above can run shell commands as the server's user. [Harness runs](../../reference/harness-runs.md) has the checkout layout, setup commands, sandboxes and the run timeout.
+Each task gets a git worktree on its own branch, such as `fsd/fix-cart-test-3fa9c1`, in a folder under `root`. A retry lands in the same directory. The checkout is where the agent is pointed, not a jail: Claude Code as installed above can run shell commands as the server's user. [Harness runs](../../reference/harness-runs.md) has the checkout layout, setup commands, sandboxes and the run timeout.
 
 ### The verdict
 

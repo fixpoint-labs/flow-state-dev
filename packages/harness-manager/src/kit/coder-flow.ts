@@ -100,6 +100,8 @@ export interface CoderFlowOptions {
   idleTimeoutMs?: number;
   /** A cap on one run's wall-clock time, however busy its harness is. Default 4 hours; `0` turns it off. */
   runTimeoutMs?: number;
+  /** What each run's branch starts with: the app's own name, such as `teammates/`. Default `fsd/`. */
+  branchPrefix?: string;
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -217,6 +219,7 @@ export function coderWorkerFlow(
           ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
           ...(options.runTimeoutMs === undefined ? {} : { runTimeoutMs: options.runTimeoutMs }),
           harnessLabel: harness.label ?? harness.id,
+          ...(options.branchPrefix === undefined ? {} : { branchPrefix: options.branchPrefix }),
           harness: harness.agent,
           reviewChanges,
           ...(options.judge === false ? {} : { judge: goalJudge({ name: `${name}-judge` }) }),

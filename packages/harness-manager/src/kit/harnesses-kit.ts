@@ -62,6 +62,7 @@ const configSchema: z.ZodType<HarnessesConfig, z.ZodTypeDef, HarnessesConfig> = 
     idleTimeoutMs: z.number().int().positive().optional(),
     // `0` turns the cap off.
     runTimeoutMs: z.number().int().nonnegative().optional(),
+    branchPrefix: z.string().optional(),
     logReadiness: z.boolean().optional(),
   })
   .strict();
