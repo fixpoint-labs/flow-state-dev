@@ -337,6 +337,35 @@ Use `data` for structured content: a record code reads, or output that needs cus
 
 Using `data` for things native types cover bypasses built-in history assembly and adds renderer maintenance overhead.
 
+## Conversation lines
+
+A conversation screen draws **lines**, not items. React's `conversationLines(items, turns)` (`packages/react/src/components/conversation-lines.ts`) is the one model that turns a session's items, and its turns (`{ id, status, retryable }`), into them; `ItemsRenderer` draws them through the registry. An app never reads items to decide what a line is: the model decides each kind, once, and a renderer decides only how it looks.
+
+| Line (`ItemLine.kind`) | From | What the model decides |
+|---|---|---|
+| `user`, `assistant` | `message` | An assistant line is `streaming` while its turn runs, `incomplete` when its turn failed or was stopped first; a reply that ended saying nothing is no line |
+| `steps` | `tool_output`, `reasoning` | One turn's calls and the thinking between them, one after another; never spans two turns. `ended` once its turn is over |
+| `failed` | `error` | `retryable` only on the newest turn that drew a line, and only when that turn's `retryable` (set by the engine, see [action forms](./action-forms.md)) says so |
+| `stopped` | the turn (`aborted`) | Not an item: placed after that turn's last line. The registry's `stopped` slot draws it |
+| `suspension` | `suspension` | Carries its `resolution` once a `suspension_resume` answers it |
+| `data` | `data` | Drawn by the renderer registered for its `dataType` |
+| `item` | anything else | Drawn by the registry |
+
+The filters `ItemsRenderer` always applied run first (latest keyed snapshot, sub-agent and trace items out, container-owned items left to their container). Records that draw nothing (`state_change`, `resource_change`, `suspension_resume`, `continuation`) make no line.
+
+**A tool call that wrote a line is that line, not a step.** A `data` item written inside a tool call and keyed by that call's logical id (`${requestId}:${path}`, whose last segment is `tool[name][callId]`) stands for the call, and the call's `tool_output` draws no step. Workforce writes its conversation lines this way:
+
+| `dataType` | Written by | Value |
+|---|---|---|
+| `workforce:received` | the message entry | `ReceivedMessageValue` |
+| `workforce:sent` | `sendMessage`, keyed by its call; refused sends too; a waited send is written again with its answer | `SentMessageValue` |
+| `workforce:task` | the conversation board's filing, keyed by the `createTask` call | `FiledTaskValue` |
+| `workforce:result` | the board's ending line for a task the conversation filed, keyed by the task | `TaskResultValue` |
+
+All four are client-only (`history: false`): the model reads the call and the board's message. Workforce's react entry exports `workforceRenderers` for a registry's `data` slot; an app spreads its own after them (`data: { ...workforceRenderers, ...appRenderers.data }`), in a registry built once at module level.
+
+Each line has an `id` that stays the same as it changes, for a key. The return type is `ItemLine`, not `ConversationLine`: that name is workforce's coordinator line (`coordinator-lines.ts`), a different thing.
+
 ## What doesn't belong in items
 
 **Block execution status** — the `status` field on `block_trace` already tracks `in_progress → completed/failed`. Don't emit a separate item type for each lifecycle transition.

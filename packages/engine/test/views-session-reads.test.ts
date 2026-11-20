@@ -245,7 +245,7 @@ describe("sessions.turns in a view", () => {
     const turns = answer.output as Array<Record<string, unknown>>;
     expect(turns).toHaveLength(1);
     expect(turns[0]).toMatchObject({ sessionId: "mine", action: "touch", status: "completed" });
-    expect(Object.keys(turns[0]!).sort()).toEqual(["action", "completedAtMs", "endedAtMs", "id", "sessionId", "source", "startedAtMs", "status", "updatedAt"]);
+    expect(Object.keys(turns[0]!).sort()).toEqual(["action", "completedAtMs", "endedAtMs", "id", "retryable", "sessionId", "source", "startedAtMs", "status", "updatedAt"]);
     expect(turns[0]!.endedAtMs).toBe(turns[0]!.completedAtMs);
     expect(answer.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["request", "state"] }]);
   });

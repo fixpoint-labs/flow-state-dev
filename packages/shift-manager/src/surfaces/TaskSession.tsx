@@ -20,7 +20,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext, useJumpToLatest } from "@flow-state-dev/react";
+import { conversationLines, FlowProvider, ItemRenderer, useFlowContext, useJumpToLatest } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
 import { shiftManagerRenderers } from "../components/ToolLine";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
@@ -167,7 +167,9 @@ function RunItems({ run }: { run: OpenRun }) {
     const keys = new Set(stored.items.map((item) => `${item.requestId}/${item.id}`));
     const held = [...claims.filter((item) => !keys.has(`${item.requestId}/${item.id}`)), ...stored.items];
     const mine = taskItems(held, collection, task.taskId, sentSet);
-    const items = buildItemRenderStream(mine.items.filter((item) => keys.has(`${item.requestId}/${item.id}`)), renderers).flatMap((segment) => (segment.kind === "item" ? [segment.item] : segment.items));
+    const items = conversationLines(mine.items.filter((item) => keys.has(`${item.requestId}/${item.id}`)), [], { renderers }).flatMap((line) =>
+      line.kind === "steps" ? line.items : line.kind === "stopped" ? [] : [line.item],
+    );
     return { items, shared: mine.shared };
   }, [stored, claims, collection, task.taskId, sentSet, renderers]);
 

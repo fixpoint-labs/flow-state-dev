@@ -101,7 +101,7 @@ const s1 = await deriveWorkerSessionId({ userId: "u_1", orgId: "org_1", flow: "a
 const worker = { id: "eng.reviewer", kind: "agent", door: "talk" } as unknown as Worker;
 const session = (id: string): SessionSummary =>
   ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "eng.reviewer" }, createdAt: 1, parentSessionId: null }) as unknown as SessionSummary;
-const item = (id: string, text: string) => ({ id, requestId: "r", type: "message", role: "assistant", ts: Date.UTC(2026, 9, 7, 17, 34), text });
+const item = (id: string, text: string) => ({ id, requestId: "r", type: "message", role: "assistant", ts: Date.UTC(2026, 9, 7, 17, 34), text, content: [{ type: "output_text", text }] });
 const delivered = { requestId: "q", suspended: false, stopped: null };
 
 beforeEach(() => {

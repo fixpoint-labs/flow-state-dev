@@ -21,6 +21,16 @@ export const SENDS_MESSAGES_MARK = Symbol.for("@flow-state-dev/workforce/sends-m
 /** The client-only data record a received message is drawn from. **Pinned**: an app's renderer is keyed by it. */
 export const RECEIVED_MESSAGE_DATA_TYPE = "workforce:received";
 
+// FIX-2848 D1.
+/** The client-only data record a message a worker sent (`sendMessage`) is drawn from, refused ones too. **Pinned**: an app's renderer is keyed by it. */
+export const SENT_MESSAGE_DATA_TYPE = "workforce:sent";
+
+/** The client-only data record a task a conversation filed is drawn from. **Pinned**: an app's renderer is keyed by it. */
+export const FILED_TASK_DATA_TYPE = "workforce:task";
+
+/** The client-only data record a task's ending is drawn from, under the worker that ran it. **Pinned**: an app's renderer is keyed by it. */
+export const TASK_RESULT_DATA_TYPE = "workforce:result";
+
 // FIX-2240.
 /** Server-written session state: the messages a session sent that haven't landed or ended yet, with the request that sent each. */
 export const WORKER_MESSAGES_OWED_STATE = "workerMessagesOwed";
