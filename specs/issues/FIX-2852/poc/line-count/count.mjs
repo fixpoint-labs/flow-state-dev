@@ -13,7 +13,7 @@
 //     renderer added under a new name can't hide from the count.
 //
 // Run from the repo root, against any checkout (a worktree of the branch):
-//   node specs/issues/FIX-2852/poc/line-count/count.mjs --root <checkout> [--files]
+//   node specs/issues/FIX-2852/poc/line-count/count.mjs --root <checkout> [--files] [--base <checkout>]
 // Negative control (plants in memory; every plant must be caught):
 //   node specs/issues/FIX-2852/poc/line-count/count.mjs --root <checkout> --control
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -34,6 +34,11 @@ const APPS = {
   "Kitchen Sink": ["apps/kitchen-sink/app", "apps/kitchen-sink/components", "apps/kitchen-sink/lib"],
 };
 const REGISTRY = "packages/ui/registry/components";
+/** The shared files this issue adds, extends or removes: the only ones the net's "shared" side counts. */
+const SHARED = [
+  ...["conversation-lines.tsx", "workforce-lines.tsx", "request-recovery.tsx", "approval.tsx", "tool.tsx", "tool-grouping.ts"].map((f) => `${REGISTRY}/${f}`),
+  "packages/workforce/src/react/components/lines.ts",
+];
 
 /** The files whose job is drawing a conversation's lines, or wiring what a line needs. A file deleted later simply counts 0. */
 const LINE_FILES = new Set([
@@ -150,10 +155,14 @@ function report(byApp) {
     if (listFiles) for (const c of cs.filter((c) => c.count > 0).sort((x, y) => y.count - x.count)) console.log(`   ${String(c.count).padStart(5)}  ${c.kind.padEnd(12)} ${c.rel}`);
   }
   console.log(`${"Apps, counted".padEnd(18)} ${String(total).padStart(5)}`);
-  const shared = [...walk(join(ROOT, REGISTRY)), join(ROOT, "packages/workforce/src/react/components/lines.ts")]
-    .filter(existsSync)
-    .reduce((n, p) => n + nonBlank(readFileSync(p, "utf8")).length, 0);
-  console.log(`${"Shared homes".padEnd(18)} ${String(shared).padStart(5)}   registry sources + workforce/react lines.ts; not app source, reported for the net`);
+  const sharedOf = (root) => SHARED.map((f) => join(root, f)).filter(existsSync).reduce((n, p) => n + nonBlank(readFileSync(p, "utf8")).length, 0);
+  const shared = sharedOf(ROOT);
+  console.log(`${"Shared homes".padEnd(18)} ${String(shared).padStart(5)}   the shared files this issue adds, extends or removes (SHARED); not app source, reported for the net`);
+  const baseRoot = arg("--base");
+  if (baseRoot !== undefined) {
+    const before = sharedOf(baseRoot);
+    console.log(`${"Shared, delta".padEnd(18)} ${String(shared - before >= 0 ? `+${shared - before}` : shared - before).padStart(5)}   against --base ${baseRoot} (${before})`);
+  }
 }
 
 if (!control) {
@@ -178,7 +187,9 @@ if (!control) {
     ["a byte-identical copy counts 0", counted([identicalCopy])["Kitchen Sink"] === base["Kitchen Sink"]],
     ["a line renderer under a new, unlisted name fails the run", throws([renamed])],
     ["a listed line file grown by 4 lines counts 4 more", (() => {
-      const path = "labs/teammates/src/components/lines.tsx";
+      // The first Teammates line file this checkout has, so the control runs before and after FIX-2848's second slice.
+      const path = [...LINE_FILES].find((p) => p.startsWith("labs/teammates/") && existsSync(join(ROOT, p)));
+      if (path === undefined) return false;
       const text = readFileSync(join(ROOT, path), "utf8");
       return counted([{ app: "Teammates", path, text: `${text}\nconst a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\n` }]).Teammates - base.Teammates === 4;
     })()],

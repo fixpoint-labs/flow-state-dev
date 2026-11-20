@@ -125,7 +125,7 @@ context says what a line can do there.
 
 Measured with [`count.mjs`](poc/line-count/count.mjs): app line source **2,098 → at most 1,450**
 across the three apps (about 1,300 expected); registry and `workforce/react` line source about
-+280. **Net: down**, by about 500 lines with the shared homes counted.
++280 (`count.mjs --base <main checkout>` prints that delta over the shared files this issue touches; 1,008 lines today). **Net: down**, by about 500 lines with the shared homes counted.
 
 ## Sign off
 
