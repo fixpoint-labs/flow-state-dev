@@ -59,11 +59,13 @@ var mine=[];
 function put(el){mine.push(el);document.documentElement.appendChild(el)}
 function keep(){new MutationObserver(function(){mine.forEach(function(el){if(!el.isConnected)document.documentElement.appendChild(el)})}).observe(document.documentElement,{childList:true})}
 function hover(el){el.onmouseenter=function(){el.style.opacity="1"};el.onmouseleave=function(){el.style.opacity=".75"}}
+// all:initial takes the browser's focus outline with it, so a keyboard user gets one back here.
+function ring(el){el.onfocus=function(){var v=true;try{v=el.matches(":focus-visible")}catch(e){}if(v){el.style.outline="2px solid #fbbf24";el.style.outlineOffset="2px"}};el.onblur=function(){el.style.outline=""}}
 function add(){
 if(document.getElementById("fsd-super-devtool"))return;
 var a=document.createElement("a");
 a.id="fsd-super-devtool";a.href=c.href;a.target="_blank";a.rel="noopener";a.title=c.label;a.setAttribute("aria-label",c.label);
-a.style.cssText=ROUND+"bottom:16px";hover(a);
+a.style.cssText=ROUND+"bottom:16px";hover(a);ring(a);
 a.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
 put(a);
 switcher();
@@ -73,44 +75,53 @@ keep();
 function switcher(){
 var b=document.createElement("button");
 b.id="fsd-super-switch";b.type="button";b.title="Switch app";b.setAttribute("aria-label","Switch app");b.setAttribute("aria-haspopup","menu");b.setAttribute("aria-expanded","false");
-b.style.cssText=ROUND+"bottom:60px";hover(b);
+b.style.cssText=ROUND+"bottom:60px";hover(b);ring(b);
 b.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
 var m=document.createElement("div");
 m.id="fsd-super-apps";m.setAttribute("role","menu");
-m.style.cssText="all:initial;position:fixed;right:60px;bottom:60px;z-index:2147483647;box-sizing:border-box;min-width:220px;padding:6px;display:none;flex-direction:column;gap:2px;border-radius:10px;background:#1c1b15;color:#e7e5e4;border:1px solid rgba(231,229,228,.2);box-shadow:0 8px 24px rgba(0,0,0,.45);font:13px/1.3 system-ui,sans-serif";
-var open=false;
-function item(text,note,href,current){
+m.style.cssText="all:initial;position:fixed;right:60px;bottom:60px;z-index:2147483647;box-sizing:border-box;min-width:220px;padding:6px;display:none;flex-direction:column;gap:2px;border-radius:10px;background:#1c1b15;color:#e7e5e4;border:1px solid rgba(231,229,228,.2);box-shadow:0 8px 24px rgba(0,0,0,.45);font:13px/1.3 system-ui,sans-serif;max-height:calc(100vh - 80px);overflow:auto";
+// want: the menu was asked for and not dismissed since. A list that arrives after a dismissal is dropped.
+var want=false,loading=false;
+function item(text,note,href,current,off){
 var el=document.createElement(href?"a":"div");
 el.setAttribute("role","menuitem");
-el.style.cssText="all:initial;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 10px;border-radius:6px;color:inherit;font:inherit;text-decoration:none;"+(href?"cursor:pointer;":"")+(current?"font-weight:600;background:rgba(231,229,228,.08);":"");
+el.style.cssText="all:initial;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 10px;border-radius:6px;color:inherit;font:inherit;text-decoration:none;"+(href?"cursor:pointer;":"")+(current?"font-weight:600;background:rgba(231,229,228,.08);":"")+(off?"opacity:.55;":"");
 var t=document.createElement("span");t.textContent=text;t.style.cssText="all:initial;color:inherit;font:inherit";el.appendChild(t);
 if(note){var n=document.createElement("span");n.textContent=note;n.style.cssText="all:initial;color:#a8a29e;font:11px system-ui,sans-serif";el.appendChild(n)}
-if(href){el.href=href;el.onmouseenter=function(){el.style.background="rgba(231,229,228,.12)"};el.onmouseleave=function(){el.style.background=""}}
+if(href){el.href=href;el.onmouseenter=function(){el.style.background="rgba(231,229,228,.12)"};el.onmouseleave=function(){el.style.background=""};ring(el)}
 if(current)el.setAttribute("aria-current","page");
+if(off)el.setAttribute("aria-disabled","true");
 return el;
 }
 function render(list){
 m.textContent="";
+if(!Array.isArray(list))list=[];
 list.forEach(function(x){
+// Only a running app is a link: a stopped or starting one would land the tab on the proxy's error page.
 var here=x.id===c.id,up=x.status==="running";
-m.appendChild(item(x.title,here?"here":up?"":x.status,here?null:x.prefix+"/",here));
+m.appendChild(item(x.title,here?"here":up?"":x.status,here||!up?null:x.prefix+"/",here,!here&&!up));
 });
 var hr=document.createElement("div");hr.style.cssText="all:initial;display:block;height:1px;margin:4px 2px;background:rgba(231,229,228,.15)";m.appendChild(hr);
 m.appendChild(item("All apps","","/",false));
 }
-function show(v){open=v;m.style.display=v?"flex":"none";b.setAttribute("aria-expanded",String(v))}
+function shown(v){m.style.display=v?"flex":"none";b.setAttribute("aria-expanded",String(v))}
+function close(){want=false;shown(false)}
 b.onclick=function(){
-if(open)return show(false);
-fetch(c.list,{cache:"no-store"}).then(function(res){return res.ok?res.json():[]},function(){return[]}).then(function(list){render(list);show(true)});
+if(want)return close();
+want=true;b.setAttribute("aria-expanded","true");
+if(loading)return;
+loading=true;
+fetch(c.list,{cache:"no-store"}).then(function(res){return res.ok?res.json():[]}).then(null,function(){return[]}).then(function(list){loading=false;if(!want)return;render(list);shown(true)});
 };
-document.addEventListener("click",function(e){if(open&&!m.contains(e.target)&&!b.contains(e.target))show(false)},true);
-document.addEventListener("keydown",function(e){if(open&&e.key==="Escape")show(false)});
+document.addEventListener("click",function(e){if(want&&!m.contains(e.target)&&!b.contains(e.target))close()},true);
+document.addEventListener("keydown",function(e){if(want&&e.key==="Escape")close()});
 put(b);put(m);
 }
 function watch(r){
 var p=document.createElement("button");
 p.id="fsd-super-changed";p.type="button";p.textContent="Server code changed · Restart";
 p.title="Restart "+r.title+"'s server to run the edited code";
+ring(p);
 p.style.cssText="all:initial;position:fixed;right:60px;bottom:20px;z-index:2147483647;box-sizing:border-box;height:28px;padding:0 12px;display:none;align-items:center;border-radius:14px;background:#d97706;color:#1c1b15;font:600 12px system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer";
 var busy=false,sent=false;
 function reset(){busy=false;sent=false;p.textContent="Server code changed · Restart"}
