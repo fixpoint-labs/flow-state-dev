@@ -179,7 +179,8 @@ export function Composer({
             {harnesses !== undefined && harnesses.length > 0 ? (
               <HarnessPicker rows={harnesses} current={coding} fallback={defaultHarness} onPick={choose} workerName={workerName} replyModel={replyModel} />
             ) : null}
-            <span className="ml-auto hidden font-mono text-[11px] text-text-3 sm:inline">⏎ send · ⇧⏎ newline</span>
+            <span aria-hidden className="flex-1" />
+            <span className="mr-2 hidden font-mono text-[11px] text-text-3 sm:inline">⏎ send · ⇧⏎ newline</span>
             {running || stopping ? (
               <button
                 type="button"
