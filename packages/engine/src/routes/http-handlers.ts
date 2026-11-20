@@ -654,7 +654,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           tenantId,
-          checkedSession: auth.session
+          checkedSession: auth.session,
+          publicReentrySources: runtimeConfig.publicReentrySources
         });
       }
 
