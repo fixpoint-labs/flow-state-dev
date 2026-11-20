@@ -16,4 +16,10 @@ describe("unread lines", () => {
     expect(unreadable(lines)).toBe(1);
     expect(unreadable(linesOf([thought("r3", "q4"), call("c1", "q4", "read")]))).toBe(1);
   });
+
+  it("never count an item the lab's registry turns off (a status or a source)", () => {
+    const status = { id: "st1", requestId: "q5", status: "completed", itemIndex: 0, ts: 0, provenance: { blockName: "worker", blockInstanceId: "worker", phase: "main" }, type: "status", message: "thinking" };
+    const source = { ...status, id: "so1", type: "source", sourceType: "url", url: "https://example.com" };
+    expect(unreadable(linesOf([status, source, message("a2", "q5", "assistant", "Done.")]))).toBe(1);
+  });
 });

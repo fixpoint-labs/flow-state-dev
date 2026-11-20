@@ -118,6 +118,14 @@ describe("a tool call that wrote a line", () => {
     expect(kinds(lines)).toEqual(["steps:c1", "data:d1"]);
   });
 
+  // A line nothing draws can't stand for its call: the call stays a step, so the screen still shows it was made.
+  it("stays a step when no renderer draws the line written in it", () => {
+    const items = [call("c2", "r1", "sendMessage", "tc_A"), lineOfCall("d1", "r1", "sendMessage", "tc_A")];
+    expect(kinds(conversationLines(items, [], { renderers: { data: {} } }))).toEqual(["steps:c2"]);
+    expect(kinds(conversationLines(items, [], { renderers: { data: { "workforce:sent": false } } }))).toEqual(["steps:c2"]);
+    expect(kinds(conversationLines(items, [], { renderers: { data: { "workforce:sent": () => null } } }))).toEqual(["data:d1"]);
+  });
+
   it("stays a step when the data item written in it carries no such key (a task board's change record)", () => {
     const record = data("d1", "r1", { dataType: "task-change", key: "board/t1", provenance: { blockName: "createTask", blockInstanceId: "r1:root/step[0]/tool[createTask][tc_B]:0", phase: "main" } });
     expect(kinds(conversationLines([call("c1", "r1", "createTask", "tc_B"), record]))).toEqual(["steps:c1", "data:d1"]);

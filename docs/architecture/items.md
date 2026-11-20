@@ -353,7 +353,7 @@ A conversation screen draws **lines**, not items. React's `conversationLines(ite
 
 The filters `ItemsRenderer` always applied run first (latest keyed snapshot, sub-agent and trace items out, container-owned items left to their container). Records that draw nothing (`state_change`, `resource_change`, `suspension_resume`, `continuation`) make no line.
 
-**A tool call that wrote a line is that line, not a step.** A `data` item written inside a tool call and keyed by that call's logical id (`${requestId}:${path}`, whose last segment is `tool[name][callId]`) stands for the call, and the call's `tool_output` draws no step. Workforce writes its conversation lines this way:
+**A tool call that wrote a line is that line, not a step.** A `data` item written inside a tool call and keyed by that call's logical id (`${requestId}:${path}`, whose last segment is `tool[name][callId]`) stands for the call, and the call's `tool_output` draws no step. Only a line the registry draws stands for its call: one it has no renderer for leaves the call a step. Workforce writes its conversation lines this way:
 
 | `dataType` | Written by | Value |
 |---|---|---|

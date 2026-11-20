@@ -17,7 +17,7 @@ import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connect
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlier } from "./LoadEarlier";
-import { Line, LineContext, teammatesRenderers, type LineScreen } from "./lines";
+import { drawsLine, Line, LineContext, teammatesRenderers, type LineScreen } from "./lines";
 import { answerIn, type Popup } from "./Popups";
 
 /** A small button in the conversation's header. */
@@ -121,11 +121,13 @@ export function Conversation({
     if (panel === "fire") keep.current?.focus();
   }, [panel]);
 
-  const last = lines[lines.length - 1];
+  // What is on screen: a line the lab draws as nothing neither ends an answer nor fills the conversation.
+  const drawn = useMemo(() => lines.filter(drawsLine), [lines]);
+  const last = drawn[drawn.length - 1];
   // An answer on screen, written or being written, is the sign it is answering; the line shows only before one starts.
   const answering = running && last?.kind !== "assistant";
   // What it is doing while it answers; a stale feed can't say, so the line falls back to "is answering".
-  const step = answering && !stale ? answeringStep(lines) : undefined;
+  const step = answering && !stale ? answeringStep(drawn) : undefined;
   const feed = useJumpToLatest({ resetKey: sessionId });
   const stopping = view?.stopping ?? false;
   // Why the server refused the last Stop, shown beside the button until the next one.
@@ -215,7 +217,7 @@ export function Conversation({
         <div ref={feed.ref} data-scroller className="relative flex-1 overflow-y-auto px-6 pt-4 pb-10">
           <div data-column className="mx-auto flex max-w-(--thread-width) flex-col gap-3">
             <LoadEarlier load={view?.loadEarlier} />
-            {lines.length === 0 ? (
+            {drawn.length === 0 ? (
               <div className="mt-24 flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
                 <p data-testid="conversation-empty">{emptyLine(worker, delegates)}</p>
                 <ul aria-label="Starter lines" className="flex flex-col gap-1.5">

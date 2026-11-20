@@ -80,3 +80,23 @@ describe("the answering line's step", () => {
     expect(line()).toBeNull();
   });
 });
+
+// A wait that isn't for your yes draws nothing here (the task popup shows it), so it can't stand in for what is on screen.
+describe("a line the conversation draws as nothing", () => {
+  const waitOnTask = { id: "w1", requestId: "r1", status: "completed", itemIndex: 0, ts: 0, provenance: { blockName: "worker", blockInstanceId: "worker", phase: "main" }, type: "suspension", reason: "task_hold", suspensionId: "s1", message: "waits on a task" };
+  const worker = rosterEntry({ id: "lead", name: "Lead", description: "Coordinates work" });
+  const shown = (initial: ConversationView) => {
+    const { Follower } = standInFollower("s1", initial);
+    return render(<TestProvider><Follower /><Conversation worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} harnessOf={() => undefined} onFire={async () => {}} onOpen={() => {}} /></TestProvider>);
+  };
+
+  it("doesn't bring the answering line back after an answer already on screen", () => {
+    const view = shown({ lines: linesOf([message("a", "r1", "assistant", "The answer", "in_progress"), waitOnTask]), running: true, stopping: false, backgroundRunning: 0 });
+    expect(view.container.querySelector("[data-chat-activity]")).toBeNull();
+  });
+
+  it("leaves a conversation with nothing drawn empty, with its starter lines", () => {
+    const view = shown({ lines: linesOf([waitOnTask]), running: false, stopping: false, backgroundRunning: 0 });
+    expect(view.getByRole("list", { name: "Starter lines" })).toBeTruthy();
+  });
+});

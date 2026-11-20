@@ -182,12 +182,15 @@ function ApprovalLine({ item, line }: { item: SuspensionItem; line?: ItemLine })
 /**
  * Whether the lab's look draws `line`: a stretch of thinking with no tool call
  * draws nothing ({@link StepsLine} shows calls only), nor does a wait that
- * isn't your yes ({@link ApprovalLine}; the task popup shows it). A count of
- * what is on screen (unread) reads this.
+ * isn't your yes ({@link ApprovalLine}; the task popup shows it), nor an item
+ * {@link teammatesRenderers} turns off (a status, a source, a trace). What reads
+ * what is on screen reads this: the unread count, the answering line, the
+ * empty conversation.
  */
 export function drawsLine(line: ItemLine): boolean {
   if (line.kind === "steps") return line.items.some((item) => item.type === "tool_output");
   if (line.kind === "suspension") return line.item.reason === "user_approval";
+  if (line.kind === "item") return (teammatesRenderers as Record<string, unknown>)[line.item.type] !== false;
   return true;
 }
 
