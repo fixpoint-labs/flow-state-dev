@@ -228,6 +228,14 @@ describe("ItemsRenderer live", () => {
     expect(groupProps(false)).toEqual([false, false]);
     expect(groupProps(undefined)).toEqual([false, false]);
   });
+
+  // A data item no renderer draws makes no line, so it can't take the trailing
+  // place from the steps the agent is still working in.
+  it("keeps the trailing group live past a data item nothing draws", () => {
+    const items = [toolItem("a", "read"), messageItem("m"), toolItem("b", "grep"), dataItem("d", "progress")];
+    const nodes = ItemsRenderer({ items, toolGroupRenderer: () => null, live: true }) as any[];
+    expect(nodes.filter((n) => n.props?.children?.props?.items).map((n) => n.props.children.props.live)).toEqual([false, true]);
+  });
 });
 
 // FIX-2848: ItemsRenderer draws the model's lines, and hands each registered renderer its line.

@@ -263,50 +263,50 @@ export function Conversation({
         ) : (
           <FlowProvider renderers={shiftManagerRenderers}>
             <TurnLineContext.Provider value={lineActions}>
-            <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
-              <LoadEarlierButton load={read.loadEarlier} testId={`${testId}-load-earlier`} />
-              <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
-                {shown.map((line) => {
-                  // A steps line is named by its first call or thought; a stopped line has no item of its own.
-                  const item = line.kind === "steps" ? line.items[0] : line.kind === "stopped" ? undefined : line.item;
-                  const role = (item as { role?: string } | undefined)?.role ?? "";
-                  // Another worker's message is drawn by the registry on every view, under its sender's name.
-                  const received = item?.type === "data" && item.dataType === RECEIVED_MESSAGE_DATA_TYPE;
-                  const own = line.kind === "steps" || item === undefined || received ? undefined : renderItem?.(item);
-                  const sender = line.kind === "assistant" ? senderOf(worker, line.item, known) : undefined;
-                  return (
-                    <li
-                      key={`${line.requestId}/${line.id}`}
-                      data-testid={`${testId}-item`}
-                      data-item-id={item?.id ?? line.id}
-                      data-request-id={line.requestId}
-                      data-item-type={item?.type ?? line.kind}
-                      data-role={role}
-                      {...(line.kind === "user" && !isTaskBrief(line.item) ? feed.mine(line.id) : {})}
-                    >
-                      {line.kind === "assistant" ? (
-                        // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
-                        <p className="mb-2.5 flex items-baseline gap-2 font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
-                          {(sender ?? name).toUpperCase()}
-                          <span className="tracking-normal" data-look="message-time">
-                            {clockTime(line.item.ts)}
-                          </span>
-                        </p>
-                      ) : null}
-                      {own !== undefined ? (
-                        own
-                      ) : line.kind === "steps" ? (
-                        <ItemsRenderer lines={[line]} toolGroupRenderer={StepsLine} />
-                      ) : (
-                        <div data-look="registry-item">
-                          <ItemsRenderer lines={[line]} />
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
-            </SessionScope>
+              <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
+                <LoadEarlierButton load={read.loadEarlier} testId={`${testId}-load-earlier`} />
+                <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
+                  {shown.map((line) => {
+                    // A steps line is named by its first call or thought; a stopped line has no item of its own.
+                    const item = line.kind === "steps" ? line.items[0] : line.kind === "stopped" ? undefined : line.item;
+                    const role = (item as { role?: string } | undefined)?.role ?? "";
+                    // Another worker's message is drawn by the registry on every view, under its sender's name.
+                    const received = item?.type === "data" && item.dataType === RECEIVED_MESSAGE_DATA_TYPE;
+                    const own = line.kind === "steps" || item === undefined || received ? undefined : renderItem?.(item);
+                    const sender = line.kind === "assistant" ? senderOf(worker, line.item, known) : undefined;
+                    return (
+                      <li
+                        key={`${line.requestId}/${line.id}`}
+                        data-testid={`${testId}-item`}
+                        data-item-id={item?.id ?? line.id}
+                        data-request-id={line.requestId}
+                        data-item-type={item?.type ?? line.kind}
+                        data-role={role}
+                        {...(line.kind === "user" && !isTaskBrief(line.item) ? feed.mine(line.id) : {})}
+                      >
+                        {line.kind === "assistant" ? (
+                          // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
+                          <p className="mb-2.5 flex items-baseline gap-2 font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
+                            {(sender ?? name).toUpperCase()}
+                            <span className="tracking-normal" data-look="message-time">
+                              {clockTime(line.item.ts)}
+                            </span>
+                          </p>
+                        ) : null}
+                        {own !== undefined ? (
+                          own
+                        ) : line.kind === "steps" ? (
+                          <ItemsRenderer lines={[line]} toolGroupRenderer={StepsLine} />
+                        ) : (
+                          <div data-look="registry-item">
+                            <ItemsRenderer lines={[line]} />
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </SessionScope>
             </TurnLineContext.Provider>
           </FlowProvider>
         )}

@@ -28,7 +28,7 @@ import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
 import { SessionOverlay } from "./flow-state/session-overlay";
 import { Steps } from "./Steps";
-import { RunsOn, runsOn, taskLabel, taskLine } from "./TaskCard";
+import { RunsOn, runsOn, taskLine } from "./TaskCard";
 import { teammatesRenderers } from "./lines";
 import { stepOf } from "./ToolRun";
 import { durationText } from "./flow-state/spend";
