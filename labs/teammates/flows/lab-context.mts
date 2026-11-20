@@ -21,9 +21,9 @@ const appContextSchema = z.object({
   model: z.string(),
   /** The harness a coding worker whose file names none runs on. */
   harness: z.string(),
-  /** The command each fresh coding worktree runs before its run (`TEAMMATES_SETUP`), or `null` when none. Absent from an older server. */
+  /** The command each fresh coding worktree runs before its run (`TEAMMATES_SETUP`), or `null` when none. Display only: its arguments joined by spaces, quoting lost, so never run it. Absent from an older server. */
   setup: z.string().nullable().optional(),
-  /** The commands a coding run's worktree must pass before its task is done (`TEAMMATES_CHECKS`). Absent from an older server. */
+  /** The commands a coding run's worktree must pass before its task is done (`TEAMMATES_CHECKS`). Display only, like `setup`. Absent from an older server. */
   checks: z.array(z.string()).optional(),
   /** Each worker's declared delegates, by worker id: ids, or `"all"`. A worker with none is absent. */
   delegates: z.record(z.string(), z.union([z.literal("all"), z.array(z.string())])),

@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ClockIcon, TerminalIcon } from "lucide-react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
@@ -107,10 +107,11 @@ export function TeammatePanel({
 }) {
   // The board's read can fail while the conversation's feed is live: its rows are then the last read, and stale too.
   const board = useTasks(sessionId);
-  const tasks = board.value ?? [];
+  const tasks = useMemo(() => board.value ?? [], [board.value]);
   const stale = useStale(sessionId) || board.stale;
   const [cleared, clearFailed] = useCleared(sessionId);
-  const groups = groupTasks(tasks, cleared);
+  // The clock below re-renders the panel each second; the grouping only changes with the board or what was cleared.
+  const groups = useMemo(() => groupTasks(tasks, cleared), [tasks, cleared]);
   // A running clock ticks each second; it holds while the feed is stale, as the status line's age does.
   const now = useNow(1_000, !stale);
   const [filter, setFilter] = useState<Filter>("running");

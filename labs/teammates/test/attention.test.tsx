@@ -51,6 +51,9 @@ describe("the status line puts what needs you first", () => {
     // Either order on the board: the line still names the newest.
     expect(status({ tasks: [stale, fresh] }).text).toBe("Running 2 tasks · Add day dividers");
     expect(status({ tasks: [fresh, stale] }).text).toBe("Running 2 tasks · Add day dividers");
+    // A task with no start yet (queued, never run) ranks oldest: one that has started is what is happening now.
+    const unstarted = task("queued", { title: "Queued work", startedAt: undefined, run: undefined });
+    expect(status({ tasks: [unstarted, fresh] }).text).toBe("Running 2 tasks · Add day dividers");
   });
 
   it("a coding task that just ended, for two minutes, a failure in red", () => {

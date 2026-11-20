@@ -889,6 +889,8 @@ describe("the teammates screen", () => {
     expect(resets()).toEqual(["teammates.researcher"]);
     await waitFor(() => expect(workerRow("researcher")).not.toBeNull());
     expect(within(conversation()).queryByRole("button", { name: /Reset/ })).toBeNull();
+    // The form closes with the reset: its fields still held "Ada", and Save would have put the old name back.
+    expect(within(conversation()).queryByRole("form", { name: /^Edit / })).toBeNull();
   });
 
   it("hires a teammate you can talk to, renames it and changes its instructions from its panel, and fires it; the files' workers can't be fired", async () => {

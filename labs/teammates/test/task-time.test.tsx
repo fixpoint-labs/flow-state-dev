@@ -21,7 +21,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { rosterEntry } from "./scripted-server";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 import { elapsedText, isLongRunning, LONG_RUNNING_MS, timeSignalOf } from "../src/lib/task";
-import { codingTask, standInFollower, stubServer, TestProvider, type StubData } from "./stub-server";
+import { codingTask, hold, standInFollower, stubServer, TestProvider, type StubData } from "./stub-server";
 
 afterEach(cleanup);
 
@@ -134,6 +134,15 @@ describe("the Long-running rule", () => {
     // A retry times itself: its earlier attempts don't make it long-running.
     const retried = codingTask({ id: "t", status: "in_progress", startedAt: now - 3 * LONG_RUNNING_MS, run: { sessionId: "r", requestId: "q", attempt: 2, startedAt: now - MIN } });
     expect(isLongRunning(retried, now)).toBe(false);
+  });
+
+  it("tags a task waiting on you or still queued past a day: the stall it exists to surface", () => {
+    // A review that has waited 72h on you is the case that asked for the tag; "active" has to include it.
+    const now = Date.now();
+    const started = { sessionId: "r", requestId: "q", attempt: 1, startedAt: now - 3 * LONG_RUNNING_MS };
+    const waiting = codingTask({ id: "t", status: "in_progress", run: started, asks: [hold("review", "Review the change", { taskId: "t" })] });
+    expect(isLongRunning(waiting, now)).toBe(true);
+    expect(isLongRunning(codingTask({ id: "t", status: "pending", run: started }), now)).toBe(true);
   });
 });
 

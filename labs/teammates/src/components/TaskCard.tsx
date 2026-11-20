@@ -89,13 +89,11 @@ export const TaskCard = memo(function TaskCard({
   const since = status === "running" && typeof started === "number" ? sinceShort(Date.now() - started) : undefined;
   // A coding task leads with its title (the tile says it is code); a teammate's says what was asked of whom.
   const title = coding ? task.title : line;
-  const open = () => onOpen(task.id);
   return (
     <div
       data-entry="task"
       data-status={status}
-      onClick={open}
-      className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm hover:border-border-strong"
+      className="relative flex w-full items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm hover:border-border-strong"
     >
       <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-sm border border-border bg-background text-text-2">
         {coding ? <TerminalIcon /> : avatar}
@@ -140,12 +138,9 @@ export const TaskCard = memo(function TaskCard({
       <button
         type="button"
         aria-label={coding ? taskLabel(line, runs) : line}
-        onClick={(event) => {
-          // The card opens it too: one open per click.
-          event.stopPropagation();
-          open();
-        }}
-        className="shrink-0 rounded-sm border border-border-strong px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-ring"
+        onClick={() => onOpen(task.id)}
+        // One control: its ::after stretches over the card, so a click anywhere on the card is this button's, with one tab stop.
+        className="shrink-0 rounded-sm border border-border-strong px-2.5 py-1 text-xs font-medium text-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-ring"
       >
         Open
       </button>

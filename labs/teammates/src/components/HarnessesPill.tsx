@@ -11,23 +11,24 @@
 import { RefreshCwIcon } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useState } from "react";
+import { HARNESS_DOT, harnessState } from "../lib/harness";
 import type { HarnessReadinessChipRow, HarnessReadinessProps } from "./flow-state/harness-readiness";
 
-/** Where a harness's dot sits on the scale: ready, not ready, or no answer to the check. */
-const DOT = { true: "bg-success", false: "bg-warning", unknown: "bg-presence-idle" } as const;
+/** The `data-ready` value each state is marked with. */
+const READY_MARK = { ready: "true", "not-ready": "false", unknown: "unknown" } as const;
 
 /** One harness in the pill: its dot and name, and for one that can't run, a Sign in that shows what to do. */
 function HarnessEntry({ row }: { row: HarnessReadinessChipRow }) {
-  const state = row.ready ? "true" : row.unanswered ? "unknown" : "false";
+  const state = harnessState(row);
   const why = [row.reason, row.remedy].filter(Boolean).join(". ");
   return (
     <span
       data-harness={row.harness}
-      data-ready={state}
+      data-ready={READY_MARK[state]}
       title={row.ready ? `${row.label} is ready` : row.unanswered ? `${row.label}: the check got no answer` : why}
       className="relative inline-flex items-center gap-1.5 px-2 text-xs"
     >
-      <span aria-hidden className={["size-1.5 shrink-0 rounded-full", DOT[state]].join(" ")} />
+      <span aria-hidden className={["size-1.5 shrink-0 rounded-full", HARNESS_DOT[state]].join(" ")} />
       <span className="text-foreground">{row.label}</span>
       {/* The remedy stays in the text for a screen reader; Sign in shows it to everyone else. */}
       {row.ready ? null : <span className="sr-only">: {why || (row.unanswered ? "the check got no answer" : "not ready")}</span>}

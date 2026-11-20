@@ -41,10 +41,18 @@ describe("harnessWarning", () => {
 });
 
 describe("withHarness", () => {
-  it("names a picked harness on the line, and adds nothing for the default or no pick", () => {
+  it("names a picked harness on the line, even when the pick equals the default", () => {
     expect(withHarness("fix it", "claude-code", "cursor")).toBe("fix it\n\nCoding harness: Claude Code");
-    expect(withHarness("fix it", "cursor", "cursor")).toBe("fix it");
+    // A pick that matched the default (or that the default moved to match) is still a pick: dropping it sent the task to Lead's fallback.
+    expect(withHarness("fix it", "cursor", "cursor")).toBe("fix it\n\nCoding harness: Cursor");
+    expect(withHarness("fix it", "codex", "codex")).toBe("fix it\n\nCoding harness: Codex");
+  });
+
+  it("names the lab's default only when Lead would otherwise fall back to a different harness", () => {
+    // The picker shows the lab's default; with no line Lead assigns Cursor, so a Codex default must be said.
+    expect(withHarness("fix it", undefined, "codex")).toBe("fix it\n\nCoding harness: Codex");
     expect(withHarness("fix it", undefined, "cursor")).toBe("fix it");
+    expect(withHarness("fix it", undefined, undefined)).toBe("fix it");
   });
 });
 
@@ -76,6 +84,24 @@ describe("the composer", () => {
     fireEvent.change(screen.getByLabelText("Message Lead"), { target: { value: "add day dividers" } });
     await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Send" })));
     expect(onSend).toHaveBeenCalledWith("add day dividers\n\nCoding harness: Claude Code", []);
+  });
+
+  it("works from the keyboard: opening focuses the current choice, arrows move, Esc closes back to the trigger", () => {
+    // A menu that left focus on its trigger, with no arrow keys, could only be reached by guessing at Tab.
+    open();
+    const trigger = screen.getByRole("button", { name: /^Code with Cursor/ });
+    fireEvent.click(trigger);
+    const items = within(screen.getByRole("menu", { name: "Start coding tasks on" })).getAllByRole("menuitemradio");
+    expect(document.activeElement).toBe(items[2]);
+    fireEvent.keyDown(items[2]!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(items[0]!, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(items[2]);
+    fireEvent.keyDown(items[2]!, { key: "Home" });
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(items[0]!, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("sends a line as typed when the default harness is kept", async () => {

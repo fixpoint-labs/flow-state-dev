@@ -197,6 +197,19 @@ describe("a task's line in the conversation", () => {
       unmount();
     }
   });
+
+  it("is one control: a keyboard reaches the card once, and one press opens it once", () => {
+    // A clickable card wrapping its own Open button gave two targets for one action, the card itself mouse-only.
+    const opened: string[] = [];
+    const { container } = render(<TaskCard task={TASKS[0]!} nameOf={(id) => id} onOpen={(id) => opened.push(id)} />);
+    const buttons = within(container).getAllByRole("button");
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]!);
+    expect(opened).toEqual([TASKS[0]!.id]);
+    // The card's own box has no handler: in a browser the button's ::after covers it, so a click there is the button's.
+    fireEvent.click(container.querySelector("[data-entry=task]")!);
+    expect(opened).toHaveLength(1);
+  });
 });
 
 describe("a board row's times, as the screen reads them", () => {

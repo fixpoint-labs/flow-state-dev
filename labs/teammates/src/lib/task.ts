@@ -49,14 +49,15 @@ export const LONG_RUNNING_MS = 24 * 60 * 60 * 1000;
 /**
  * A task card's elapsed time: the registry's `durationText` ("42s", "2m 23s",
  * "1h 3m") under a day, and days and hours past it ("2d 23h"), so a stalled
- * task never reads as a plausible "71h 24m".
+ * task never reads as a plausible "71h 24m". The conversation's task card uses
+ * the coarser `sinceShort` (TaskCard.tsx) on purpose: a glance, not a clock.
  */
 export function elapsedText(ms: number): string {
   const hours = Math.floor(Math.max(0, ms) / 3_600_000);
   return hours < 24 ? durationText(ms) : `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 
-/** It is still active (running, queued or waiting) and this attempt started more than {@link LONG_RUNNING_MS} before `now`. */
+/** It is still active and this attempt started more than {@link LONG_RUNNING_MS} before `now`. Active is `taskStatus`'s "running", which folds in queued and waiting-on-you, so a review left waiting a day is tagged too. */
 export function isLongRunning(task: Pick<CodingBoardTask, "status" | "run" | "startedAt">, now: number): boolean {
   const start = attemptStartedAt(task);
   return taskStatus(task) === "running" && start !== undefined && now - start > LONG_RUNNING_MS;

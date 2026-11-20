@@ -2,7 +2,7 @@ import type { FileContent } from "@flow-state-dev/core/items";
 import { interruptChordLabel, isSendKey, useDraftSend } from "@flow-state-dev/react";
 import { ArrowUpIcon, ChevronDownIcon, TerminalIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { harnessName, harnessState, harnessWarning, withHarness, type HarnessStatus } from "../lib/harness";
+import { HARNESS_DOT as DOT, HARNESS_STATUS_WORDS as STATE_WORDS, harnessName, harnessState, harnessWarning, withHarness } from "../lib/harness";
 import { cn } from "../lib/utils";
 import { AttachButton, AttachmentStrip, useAttachments, type AttachmentUploader } from "./flow-state/attachments";
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
@@ -250,8 +250,6 @@ export function Composer({
   );
 }
 
-const DOT: Record<HarnessStatus, string> = { ready: "bg-success", "not-ready": "bg-warning", unknown: "bg-presence-idle" };
-const STATE_WORDS: Record<HarnessStatus, string> = { ready: "ready", "not-ready": "not ready", unknown: "not checked" };
 
 /**
  * The toolbar's harness picker: a dot for whether the current harness can run
@@ -277,6 +275,14 @@ function HarnessPicker({
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const items = () => [...(menu.current?.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]") ?? [])];
+  // Opening moves focus into the menu, onto the current choice (else the first), so arrow keys work at once.
+  useEffect(() => {
+    if (!open) return;
+    const all = items();
+    (all.find((item) => item.getAttribute("aria-checked") === "true") ?? all[0])?.focus();
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const away = (event: PointerEvent) => {
@@ -295,10 +301,22 @@ function HarnessPicker({
       ref={root}
       className="relative"
       onKeyDown={(event) => {
-        if (event.key !== "Escape" || !open) return;
-        event.stopPropagation();
-        setOpen(false);
-        button.current?.focus();
+        if (!open) return;
+        if (event.key === "Escape") {
+          // The menu's own Esc: it closes the menu and never counts toward the composer's Esc-Esc stop.
+          event.stopPropagation();
+          setOpen(false);
+          button.current?.focus();
+          return;
+        }
+        if (event.key === "Tab") return setOpen(false);
+        const all = items();
+        const at = all.indexOf(document.activeElement as HTMLButtonElement);
+        const next =
+          event.key === "ArrowDown" ? (at + 1) % all.length : event.key === "ArrowUp" ? (at - 1 + all.length) % all.length : event.key === "Home" ? 0 : event.key === "End" ? all.length - 1 : undefined;
+        if (next === undefined || all.length === 0) return;
+        event.preventDefault();
+        all[next]?.focus();
       }}
     >
       <button
@@ -319,7 +337,7 @@ function HarnessPicker({
         <ChevronDownIcon aria-hidden className="size-3.5" />
       </button>
       {open ? (
-        <div role="menu" aria-label="Start coding tasks on" className="absolute bottom-full left-0 z-20 mb-1 min-w-52 rounded-md border border-border-strong bg-surface p-1 shadow-lg">
+        <div ref={menu} role="menu" aria-label="Start coding tasks on" className="absolute bottom-full left-0 z-20 mb-1 min-w-52 rounded-md border border-border-strong bg-surface p-1 shadow-lg">
           <div aria-hidden className="px-2 pt-1 pb-1.5 text-xs font-medium tracking-wide text-text-3 uppercase">
             Start coding tasks on
           </div>
@@ -331,6 +349,7 @@ function HarnessPicker({
                 type="button"
                 role="menuitemradio"
                 aria-checked={r.harness === current}
+                tabIndex={-1}
                 onClick={() => {
                   onPick(r.harness);
                   setOpen(false);

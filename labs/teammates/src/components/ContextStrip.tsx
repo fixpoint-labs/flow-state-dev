@@ -2,7 +2,7 @@ import { FolderIcon, TriangleAlertIcon } from "lucide-react";
 import type { AppContext } from "../../flows/lab-context.mts";
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { HarnessesPill } from "./HarnessesPill";
-import { harnessName } from "../lib/harness";
+import { harnessName, harnessState } from "../lib/harness";
 import { cn } from "../lib/utils";
 
 /** A setting's chip: label in the secondary colour, value in mono. */
@@ -26,8 +26,9 @@ export function folderDetail(context: Pick<AppContext, "folder" | "setup" | "che
   return lines.join("\n");
 }
 
+// FIX-2403
 /**
- * What the lab works on and with, over the conversation (FIX-2403): the working
+ * What the lab works on and with, over the conversation: the working
  * folder, the model, the default harness, and which coding harnesses can run
  * here, with Re-check. The folder chip shows the folder's last two segments; its
  * tooltip has the whole path and the setup and checks a coding worktree runs. A
@@ -46,7 +47,7 @@ export function ContextStrip({
 }) {
   const defaultRow = context === undefined ? undefined : harnesses?.find((row) => row.harness === context.harness);
   // Only a harness the check answered as not ready warns: an unanswered one may still run.
-  const defaultDown = defaultRow !== undefined && !defaultRow.ready && !defaultRow.unanswered;
+  const defaultDown = defaultRow !== undefined && harnessState(defaultRow) === "not-ready";
   return (
     <section aria-label="Working context" className="flex flex-col gap-1.5 border-b border-border bg-bg-subtle px-6 py-2.5">
       <div className="flex flex-wrap items-center gap-2">

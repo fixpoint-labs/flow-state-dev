@@ -221,7 +221,16 @@ export function Conversation({
             }}
             onCancel={() => setPanel(undefined)}
           />
-          {worker.edited ? <ResetButton name={displayName(worker)} onReset={async () => void (await workforce.reset(worker.id))} /> : null}
+          {/* A reset closes the form: left open, it would hold the old name and instructions, and Save would put them back. */}
+          {worker.edited ? (
+            <ResetButton
+              name={displayName(worker)}
+              onReset={async () => {
+                await workforce.reset(worker.id);
+                setPanel(undefined);
+              }}
+            />
+          ) : null}
         </div>
       ) : null}
       {onRecheck === undefined ? null : <ContextStrip context={context} harnesses={harnesses} onRecheck={onRecheck} />}
