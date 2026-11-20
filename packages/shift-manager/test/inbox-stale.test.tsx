@@ -7,12 +7,12 @@
  *
  * `useView` is replaced by a stand-in whose answer each step sets.
  */
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConnectionFeedStatus } from "../src/components/flow-state/connection-banner";
 import { GAPS } from "../src/gaps";
 import { FeedHealthContext } from "../src/lib/feed-health";
-import type { LoadedSnapshot } from "../src/lib/derive";
+import { useInbox } from "../src/lib/inbox";
 import { Inbox } from "../src/surfaces/Inbox";
 
 type Read = { value?: unknown; stale: boolean; failure?: { message: string; httpStatus?: number }; refresh: () => void };
@@ -38,7 +38,7 @@ describe("an Inbox whose refresh failed after a good read", () => {
     const report = (_key: string, state: ConnectionFeedStatus | null) => void reported.push(state);
     const screenOf = () => (
       <FeedHealthContext.Provider value={report}>
-        <Inbox snapshot={{} as LoadedSnapshot} itemId={null} gaps={GAPS} />
+        <Inbox itemId={null} gaps={GAPS} />
       </FeedHealthContext.Provider>
     );
 
@@ -63,5 +63,36 @@ describe("an Inbox whose refresh failed after a good read", () => {
     view.rerender(screenOf());
     expect(screen.queryByTestId("inbox-stale")).toBeNull();
     expect(reported.at(-1)).toBe("live");
+  });
+});
+
+// FIX-2775: *as of* says when the summary's reads last landed: the view's answer, not a whole-Lab read.
+describe("when the inbox view's answer last landed", () => {
+  it("is unset before an answer, set when one lands, moves when the next does, and stays put while a read fails", () => {
+    const at = (ms: number) => vi.setSystemTime(ms);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      read = { stale: false, refresh };
+      const hook = renderHook(() => useInbox());
+      expect(hook.result.current.readAt).toBeUndefined();
+
+      at(1_000);
+      read = { value: EMPTY, stale: false, refresh };
+      hook.rerender();
+      expect(hook.result.current.readAt).toBe(1_000);
+
+      at(5_000);
+      read = { value: { items: [], tasks: [] }, stale: false, refresh };
+      hook.rerender();
+      expect(hook.result.current.readAt).toBe(5_000);
+
+      // A failed read keeps the last answer, so *as of* keeps its time.
+      at(9_000);
+      read = { ...read, stale: true, failure: { message: "offline" } };
+      hook.rerender();
+      expect(hook.result.current.readAt).toBe(5_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

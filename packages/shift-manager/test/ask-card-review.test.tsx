@@ -14,8 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeLabClient, reviewHold } from "./helpers/ask-hold";
 
 const lab = fakeLabClient(undefined);
-const noteAnswered = vi.fn();
-vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client: lab.client, noteAnswered }) }));
+vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client: lab.client }) }));
 // The card reads the stop's data from the page's feed for the ask's session; its first read is the session's state.
 vi.mock("../src/lib/session-feeds", async () => (await import("./helpers/fake-feed")).fakeFeeds([], () => lab.client.sessions.state()));
 const { AskCard } = await import("../src/components/AskCard");
@@ -23,17 +22,15 @@ const { AskCard } = await import("../src/components/AskCard");
 afterEach(() => {
   cleanup();
   lab.answers.splice(0);
-  noteAnswered.mockClear();
 });
 
 describe("Inbox draws a coding run's review with the review card", () => {
-  it("Accept answers the ask with submit and { verdict: accepted }, and marks its session answered once", async () => {
+  it("Accept answers the ask with submit and { verdict: accepted }", async () => {
     render(<AskCard hold={reviewHold(true)} />);
     expect(await screen.findByText("Ready for review")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
     await waitFor(() => expect(lab.answers).toHaveLength(1));
     expect(lab.answers).toEqual([{ suspensionId: "susp-1", action: "submit", data: { verdict: "accepted" } }]);
-    expect(noteAnswered.mock.calls).toEqual([["sess-run"]]);
   });
 
   it("Ask for changes sends the words as a revision", async () => {

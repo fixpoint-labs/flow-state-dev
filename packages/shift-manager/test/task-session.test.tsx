@@ -45,7 +45,7 @@ vi.mock("../src/lib/task-items", async (original) => ({
 }));
 
 import { RECEIVED_MESSAGE_DATA_TYPE, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
-import { collectionOfBoard } from "../src/lib/reads";
+import { collectionOfBoard } from "../src/lib/boards";
 import { TaskSession } from "../src/surfaces/TaskSession";
 
 const step = (n: number) => ({

@@ -2,7 +2,7 @@
  * A conversation with a worker, as one component any view can draw: the worker's
  * session as a feed, and a composer under it that sends into that session.
  *
- *     <Conversation worker={worker} sessions={snapshot.sessions} gaps={gaps} name="Shift Coordinator" />
+ *     <Conversation worker={worker} sessions={sessions} gaps={gaps} name="Shift Coordinator" />
  *
  * That is the whole of it: the read, the feed (React's conversation model over
  * the session's items and turns, drawn by the registry's renderers, with a run
@@ -20,7 +20,7 @@
  * under it. It is exported for a screen that shows a named state in the same
  * column; split the feed or the composer out when a second view needs them apart.
  */
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { RECEIVED_MESSAGE_DATA_TYPE, sessionTurnsViewRef, type ProjectAddressRef } from "@flow-state-dev/workforce/browser";
 import type { SessionSummary } from "@flow-state-dev/client";
@@ -34,12 +34,13 @@ import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlierButton, SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { knownWorkers, senderOf, useWorkerConversation } from "../lib/conversation";
-import { workerLabel } from "../lib/derive";
+import { workerLabel } from "../lib/shift";
 import { SessionScope } from "./TaskBoardMeta";
 import { useLab } from "../lib/lab-data";
 import { cn } from "../lib/utils";
 import { STALE_CLASS } from "./flow-state/connection-banner";
-import type { Worker } from "../lib/reads";
+import type { Worker } from "../lib/workers";
+import { useWorkers } from "../lib/directory";
 import { useDeliverLine } from "../lib/deliver";
 import { useWorkforce } from "../lib/workforce";
 import { clockTime } from "../lib/shell";
@@ -132,24 +133,18 @@ export function Conversation({
   /** Why nothing can be sent here, whatever the worker: the session is read, never written to. */
   readOnly?: string;
 }) {
-  const { client, refresh, answered, snapshot, stale } = useLab();
+  const { client, stale } = useLab();
   const workforce = useWorkforce();
   const deliver = useDeliverLine();
   const conversation = useWorkerConversation(worker, sessions, session, project);
-  const inventory = snapshot !== undefined && "inventory" in snapshot && snapshot.inventory?.ok ? snapshot.inventory.value.workers : undefined;
-  const known = useMemo(() => knownWorkers(inventory ?? [], sessions), [inventory, sessions]);
+  const { workers } = useWorkers();
+  const known = useMemo(() => knownWorkers(workers, sessions), [workers, sessions]);
   // The feed opens where it starts; with `startAtEnd`, on the latest turn, and again on each
   // conversation it is shown. What arrives after stays below the arrow, except the user's own line.
   const feed = useJumpToLatest({ startAtEnd, resetKey: conversation.sessionId });
   const { sessionId, opened, read, failure, reread } = conversation;
   // A starter line picked before a first line: the composer's draft takes it.
   const [seed, setSeed] = useState<{ text: string; at: number }>();
-
-  // An ask in this conversation answered in Inbox or the summary: read the conversation back.
-  const answeredHere = answered !== undefined && answered.sessionId === sessionId ? answered.count : undefined;
-  useEffect(() => {
-    if (answeredHere !== undefined) reread();
-  }, [answeredHere, reread]);
 
   // The session's turns: how each ended, and whether the engine retries it.
   const turnsView = useMemo(() => sessionTurnsViewRef(), []);
@@ -212,10 +207,8 @@ export function Conversation({
           // The session's feed draws the line as it lands; `held` says the worker is on it.
           return await deliver({ sessionId: target }, message, { onHeld: held, attachments });
         } finally {
-          // Read the Lab again however it ended. Stopped short, it may have raised an ask Inbox
-          // should list; finished, it may have changed the organization, such as a project it
-          // created; failed, the Lab may have opened the session anyway, and the listing says so.
-          void refresh();
+          // What the turn changed elsewhere (an ask, a project it created, a worker it hired, the
+          // session a failed send opened anyway) reaches each screen through that read's own notices.
           settled?.();
           reread();
         }

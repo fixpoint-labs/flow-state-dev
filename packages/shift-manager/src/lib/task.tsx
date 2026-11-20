@@ -25,8 +25,8 @@
  * workforce's `stopRun` and draws *interrupted* only once the stream reads
  * `aborted` (the run's record decides).
  *
- * A task's asks are not read here: the screens read them from the snapshot
- * until the Inbox's own view answers them.
+ * A task's asks are not read here: the screens read them from the Inbox
+ * view (`inbox.ts`).
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { RequestStatus } from "@flow-state-dev/core/types";
@@ -34,7 +34,9 @@ import type { BoardActions } from "@flow-state-dev/orchestration/inbox";
 import { useRequestStream } from "@flow-state-dev/react";
 import { useConversationTasks, type ConversationTask } from "./conversation-tasks";
 import { useLab } from "./lab-data";
-import { describeFailure, type Failure } from "./reads";
+import { useSessions } from "./directory";
+import { useBoardActions } from "./inbox";
+import { describeFailure, type Failure } from "./failure";
 import { useWorkforce } from "./workforce";
 import { resolveRunFlow } from "./task-items";
 
@@ -153,17 +155,15 @@ function isOpen(row: OpenTask): boolean {
 
 /** Hold one open task. */
 export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { boardRef: string; taskId: string; devtoolUrl?: string; children: ReactNode }) {
-  const { client, reader, snapshot } = useLab();
+  const { client } = useLab();
+  const sessions = useSessions().list;
   const workforce = useWorkforce();
   const holder = holderSessionOf(boardRef);
   const conversationBoard = isConversationBoard(boardRef);
   // The board's actions run on the conversation that holds it, through the
   // flow that conversation's session names as its owner. No owner, no actions.
-  const holderFlowId =
-    snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || !conversationBoard
-      ? undefined
-      : (snapshot.sessions.find((session) => session.id === holder)?.flowId ?? undefined);
-  const board = useMemo(() => (holderFlowId === undefined ? undefined : reader.taskActions({ id: holder, flowId: holderFlowId })), [reader, holder, holderFlowId]);
+  const holderFlowId = !conversationBoard ? undefined : (sessions?.find((session) => session.id === holder)?.flowId ?? undefined);
+  const board = useBoardActions(holderFlowId === undefined ? undefined : { id: holder, flowId: holderFlowId });
 
   // ---- the row: the holding conversation's flow, read once, then its board's view.
   const [holderFlow, setHolderFlow] = useState<{ flow: string } | { failure: Failure } | undefined>(undefined);

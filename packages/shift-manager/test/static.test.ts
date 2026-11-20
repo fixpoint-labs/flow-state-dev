@@ -111,7 +111,7 @@ describe("V8", () => {
     // Workforce's conversation ledger id isn't exported; the boards' own
     // action name is, by the task tools' rule (`<tool>_<ledger id>`), and the
     // Lab tests that read a board end to end fail if either drifts.
-    const { CONVERSATION_BOARD_COLLECTION } = await import("../src/lib/reads");
+    const { CONVERSATION_BOARD_COLLECTION } = await import("../src/lib/boards");
     const { LIST_TASKS_ACTION } = await import("../src/lib/conversation-tasks");
     expect(LIST_TASKS_ACTION).toBe(`listTasks_${CONVERSATION_BOARD_COLLECTION}`);
   });
@@ -180,10 +180,11 @@ describe("V8", () => {
     for (const file of taskFiles) expect(writes(readFileSync(join(src, file), "utf8")), file).toEqual([]);
     // The abort is one run's stop, through workforce (FIX-2776 D3).
     expect(readFileSync(join(src, "lib/task.tsx"), "utf8")).toContain("await workforce.stopRun(openRun.sessionId, openRun.requestId)");
-    // The task changes only through the board's own actions, the reader's
-    // `taskActions`: the header hands them to the registry's row whole, and a
-    // failed run's line retries through them.
-    expect(readFileSync(join(src, "lib/task.tsx"), "utf8")).toContain("reader.taskActions(");
+    // The task changes only through the board's own actions, orchestration's
+    // `inbox.board(...)` (`useBoardActions`), built once for the task: the
+    // header hands them to the registry's row whole, and a failed run's line
+    // retries through them.
+    expect(readFileSync(join(src, "lib/task.tsx"), "utf8")).toContain("useBoardActions(");
     expect(readFileSync(join(src, "surfaces/TaskFrame.tsx"), "utf8")).toContain("const board = task.board;");
     expect(readFileSync(join(src, "surfaces/TaskSession.tsx"), "utf8")).toContain("const { board, retryRow, taskId } = task;");
     // Planted: a second write is caught.

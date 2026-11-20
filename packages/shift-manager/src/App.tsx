@@ -8,19 +8,21 @@
  * from a control on the panel or with `[` and `]`, and the centre takes the
  * width they give up.
  *
- * A Lab that refuses the first read for want of a verified organization, or
- * that names no organization for the user, gets the refusal screen and
- * nothing else: the sidebar, the tree and every other read wait behind
- * it. A first read that can't reach the Lab gets the couldn't-reach screen,
- * which reads again on its own. Once a read has landed, a later failure keeps
- * the shell and draws the connection bar above it instead.
+ * A Lab that refuses the organization read for want of a verified
+ * organization, or that names no organization for the user, gets the refusal
+ * screen and nothing else: the sidebar, the tree and every other read wait
+ * behind it (`lib/gate.ts`). An organization read that can't reach the Lab
+ * gets the couldn't-reach screen, whose Retry reads it again. Once in, a later
+ * failure keeps the shell and draws the connection bar above it instead.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useLayoutEffect, useState, type ReactNode } from "react";
 import { GAPS, type Gaps } from "./gaps";
 import type { ThemeLook } from "./lib/theme";
 import type { Connection } from "./lib/connection";
-import type { LoadedSnapshot } from "./lib/derive";
 import { LabProvider, useLab } from "./lib/lab-data";
+import { DirectoryProvider, useDirectoryLanded, useProjects, useSessions, useWorkers } from "./lib/directory";
+import { useGate } from "./lib/gate";
+import { PageReadsProvider, useReadPageAgain } from "./lib/page-reads";
 import { ConnectionBanner } from "./components/flow-state/connection-banner";
 import { ConnectionScreen } from "./components/flow-state/connection-screen";
 import { ResourceView } from "./surfaces/Resource";
@@ -68,11 +70,73 @@ function LabSessionFeeds({ children }: { children: ReactNode }) {
   return <SessionFeedsProvider client={client}>{children}</SessionFeedsProvider>;
 }
 
+/** What the page draws while the Lab is first read. */
+const READING = (
+  <p className="p-6 text-sm text-muted-foreground" data-testid="loading">
+    Reading the Lab…
+  </p>
+);
+
 function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ThemeLook | undefined }) {
-  const { snapshot, refresh, client, health } = useLab();
-  // FIX-2774: the Inbox, Tasks and a task's asks read the inbox view, once the Lab let Shift Manager in; R reads it again too.
-  const inbox = useInbox(snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined);
+  const { gate, retry } = useGate();
+  if (gate.state === "reading") return READING;
+  if (gate.state === "refused") {
+    return (
+      <ConnectionScreen kind="refused" title="This Lab won't let Shift Manager in" failure={gate.failure}>
+        {gate.failure.httpStatus === undefined
+          ? "Shift Manager opens a Lab only under an organization, and this Lab doesn't say which one you're in. Shift Manager shows nothing from the Lab until it does."
+          : "The Lab's server refused the first read because the request carried no verified organization. Shift Manager shows nothing from the Lab until it does. Check that the Lab's config hands Shift Manager a credential (its devtool block) and that Shift Manager is opened on the address its start script printed."}
+      </ConnectionScreen>
+    );
+  }
+  if (gate.state === "unreachable") {
+    return (
+      <ConnectionScreen kind="unreachable" title="Shift Manager couldn't reach the Lab" failure={gate.failure} onRetry={retry}>
+        The first read failed before the Lab said who you are. Check that the Lab's server is running, then retry.
+      </ConnectionScreen>
+    );
+  }
+  // Every read but the gate's waits behind it: the directory, the Inbox view and the screens' own.
+  return (
+    <DirectoryProvider>
+      <PageReadsProvider>
+        <Landed>
+          <Frame gaps={gaps} devtoolUrl={devtoolUrl} look={look} />
+        </Landed>
+      </PageReadsProvider>
+    </DirectoryProvider>
+  );
+}
+
+/**
+ * The frame, once the directory's first reads have landed; until then, the
+ * page is still reading the Lab. A session list whose first read failed is the
+ * couldn't-reach page, as a failed first whole-Lab read was: every screen
+ * draws its workers' sessions, and none may draw that as no sessions.
+ */
+function Landed({ children }: { children: ReactNode }) {
+  const landed = useDirectoryLanded();
+  const sessions = useSessions();
+  if (!landed) return READING;
+  if (sessions.list === undefined && sessions.failure !== undefined) {
+    return (
+      <ConnectionScreen kind="unreachable" title="Shift Manager couldn't reach the Lab" failure={sessions.failure} onRetry={sessions.refresh}>
+        The Lab let you in, but listing your sessions failed. Check that the Lab's server is running, then retry.
+      </ConnectionScreen>
+    );
+  }
+  return children;
+}
+
+/** The frame, once the Lab let Shift Manager in. */
+function Frame({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ThemeLook | undefined }) {
+  const { client, health } = useLab();
+  // FIX-2774: the Inbox, Tasks and a task's asks read the inbox view; R reads it again too.
+  const inbox = useInbox();
   const refreshInbox = inbox.refresh;
+  const refreshWorkers = useWorkers().refresh;
+  const refreshProjects = useProjects().refresh;
+  const readPageAgain = useReadPageAgain();
   const route = useRoute();
   // Null is closed; "" opens Jump to, MESSAGE_PREFIX opens it already in message mode.
   const [jumping, setJumping] = useState<string | null>(null);
@@ -82,7 +146,8 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   const { toggleNav, togglePanel } = panels;
   const hasPanel = PANEL_NAMES[route.level] !== undefined;
 
-  useEffect(() => {
+  // Bound as the frame commits, not after paint: a key pressed the moment the page draws is heard.
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -90,49 +155,31 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
         setJumping((j) => (j === null ? (e.shiftKey ? MESSAGE_PREFIX : "") : null));
         return;
       }
-      // `[` and `]` toggle the sidebar and the right panel, and R reads the Lab
-      // again, except while typing, and `]` only where there is a panel. AltGr,
-      // which types `[` on some layouts, reports Ctrl and Alt held.
+      // `[` and `]` toggle the sidebar and the right panel, and R reads again
+      // what the page holds, except while typing, and `]` only where there is
+      // a panel. AltGr, which types `[` on some layouts, reports Ctrl and Alt held.
       const altGraph = typeof e.getModifierState === "function" && e.getModifierState("AltGraph");
       if (e.repeat || e.metaKey || ((e.ctrlKey || e.altKey) && !altGraph) || isTypingTarget(e.target)) return;
       if (e.key === "[") toggleNav();
       else if (e.key === "]" && hasPanel) togglePanel();
       else if (e.key === "r" || e.key === "R") {
-        // Both reads: the inbox view for the Inbox, its count, Tasks and a task's asks; the snapshot for the screens still on it.
+        // The page's reads: the Inbox view, the worker directory and the sessions, the projects, and each screen's own.
         refreshInbox();
-        void refresh();
+        refreshWorkers();
+        refreshProjects();
+        readPageAgain();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleNav, togglePanel, hasPanel, refresh, refreshInbox]);
-
-  if (snapshot === undefined) {
-    return <p className="p-6 text-sm text-muted-foreground" data-testid="loading">Reading the Lab…</p>;
-  }
-  if (snapshot.refused !== undefined) {
-    return (
-      <ConnectionScreen kind="refused" title="This Lab won't let Shift Manager in" failure={snapshot.refused}>
-        {snapshot.refused.httpStatus === undefined
-          ? "Shift Manager opens a Lab only under an organization, and this Lab doesn't say which one you're in. Shift Manager shows nothing from the Lab until it does."
-          : "The Lab's server refused the first read because the request carried no verified organization. Shift Manager shows nothing from the Lab until it does. Check that the Lab's config hands Shift Manager a credential (its devtool block) and that Shift Manager is opened on the address its start script printed."}
-      </ConnectionScreen>
-    );
-  }
-  if (snapshot.unreachable !== undefined) {
-    return (
-      <ConnectionScreen kind="unreachable" title="Shift Manager couldn't reach the Lab" failure={snapshot.unreachable} onRetry={refresh}>
-        The first read failed before the Lab said who you are. Check that the Lab's server is running, then retry.
-      </ConnectionScreen>
-    );
-  }
+  }, [toggleNav, togglePanel, hasPanel, refreshInbox, refreshWorkers, refreshProjects, readPageAgain]);
 
   const levels = (
     <>
       <main className="min-w-0 flex-1 overflow-hidden" data-testid="centre" data-level={route.level}>
-        <Centre snapshot={snapshot} route={route} gaps={gaps} look={look} devtoolUrl={devtoolUrl} />
+        <Centre route={route} gaps={gaps} look={look} devtoolUrl={devtoolUrl} />
       </main>
-      <Panel snapshot={snapshot} route={route} gaps={gaps} open={panels.panelOpen} overlay={panels.overlay} onToggle={togglePanel} />
+      <Panel route={route} gaps={gaps} open={panels.panelOpen} overlay={panels.overlay} onToggle={togglePanel} />
     </>
   );
   return (
@@ -153,38 +200,38 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
         ) : (
           levels
         )}
-        {jumping !== null ? <JumpTo snapshot={snapshot} tasks={jumpTasks ?? (inbox.section?.ok === true ? inbox.section.value.tasks : undefined)} gaps={gaps} client={client} initialQuery={jumping} onClose={() => setJumping(null)} /> : null}
+        {jumping !== null ? <JumpTo tasks={jumpTasks ?? (inbox.section?.ok === true ? inbox.section.value.tasks : undefined)} gaps={gaps} client={client} initialQuery={jumping} onClose={() => setJumping(null)} /> : null}
       </div>
     </div>
   );
 }
 
-function Centre({ snapshot, route, gaps, look, devtoolUrl }: { snapshot: LoadedSnapshot; route: Route; gaps: Gaps; look: ThemeLook | undefined; devtoolUrl: string | undefined }) {
+function Centre({ route, gaps, look, devtoolUrl }: { route: Route; gaps: Gaps; look: ThemeLook | undefined; devtoolUrl: string | undefined }) {
   switch (route.level) {
     case "shift-coordinator":
-      return <ShiftCoordinatorView snapshot={snapshot} gaps={gaps} />;
+      return <ShiftCoordinatorView gaps={gaps} />;
     case "roster":
-      return <RosterView snapshot={snapshot} team={route.team} gaps={gaps} look={look} />;
+      return <RosterView team={route.team} gaps={gaps} look={look} />;
     case "inbox":
-      return <Inbox snapshot={snapshot} itemId={route.item} gaps={gaps} />;
+      return <Inbox itemId={route.item} gaps={gaps} />;
     case "tasks":
-      return <Tasks snapshot={snapshot} by={route.by} gaps={gaps} />;
+      return <Tasks by={route.by} gaps={gaps} />;
     case "task":
       return <TaskFrame tab={route.tab} gaps={gaps} />;
     case "messages":
-      return <Messages snapshot={snapshot} />;
+      return <Messages />;
     case "routines":
-      return <Routines snapshot={snapshot} />;
+      return <Routines />;
     case "usage":
-      return <Usage snapshot={snapshot} />;
+      return <Usage />;
     case "session":
-      return <SessionView snapshot={snapshot} sessionId={route.sessionId} gaps={gaps} />;
+      return <SessionView sessionId={route.sessionId} gaps={gaps} />;
     case "resource":
       return <ResourceView sessionId={route.sessionId} resourceRef={route.ref} />;
     case "project":
-      return <ProjectView snapshot={snapshot} route={route} gaps={gaps} />;
+      return <ProjectView route={route} gaps={gaps} />;
     case "worker-settings":
-      return <WorkerSettingsView snapshot={snapshot} workerId={route.worker} devtoolUrl={devtoolUrl} />;
+      return <WorkerSettingsView workerId={route.worker} devtoolUrl={devtoolUrl} />;
     case "settings":
       return <SettingsView />;
   }
@@ -208,14 +255,12 @@ const PANEL_NAMES: Partial<Record<Route["level"], string>> = { "shift-coordinato
  * has animated down, so it slides shut the way it slides open.
  */
 function Panel({
-  snapshot,
   route,
   gaps,
   open,
   overlay,
   onToggle,
 }: {
-  snapshot: LoadedSnapshot;
   route: Route;
   gaps: Gaps;
   open: boolean;
@@ -224,9 +269,9 @@ function Panel({
 }) {
   let content = null;
   if (route.level === "shift-coordinator") {
-    content = <ShiftCoordinatorPanel snapshot={snapshot} />;
+    content = <ShiftCoordinatorPanel />;
   } else if (route.level === "task") {
-    content = <TaskInspector snapshot={snapshot} gaps={gaps} />;
+    content = <TaskInspector gaps={gaps} />;
   }
   // Adjusted during render, not in an effect, so the frame after the click already has the panel kept.
   const [wasOpen, setWasOpen] = useState(open);

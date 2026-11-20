@@ -13,7 +13,7 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GAPS } from "../src/gaps";
-import type { Worker } from "../src/lib/reads";
+import type { Worker } from "../src/lib/workers";
 import { TurnNotDelivered } from "../src/lib/deliver";
 
 const read = vi.fn();
@@ -27,7 +27,7 @@ const lab = {
 };
 const upload = vi.fn();
 const retryTurn = vi.fn();
-const workforce = { ensureWorkerSession, upload, retryTurn };
+const workforce = { organization: async () => "org_1", ensureWorkerSession, upload, retryTurn };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
 /** The session's turns, as workforce's session turns view reads them: how each ended, and whether the engine retries it. */
@@ -496,11 +496,13 @@ describe("sending", () => {
     expect(read).toHaveBeenCalledTimes(1);
   });
 
-  it("reads the Lab again and shows the reason when the door refuses, keeping the line", async () => {
+  // FIX-2775: what a turn changes elsewhere reaches each screen through that read's own notices, so a send
+  // reads nothing of the Lab after it, refused or not.
+  it("shows the reason when the door refuses, keeping the line, and reads nothing of the Lab after it", async () => {
     sendTurn.mockRejectedValue(new TurnNotDelivered("refused", "no thanks"));
     drawn([session(s1)]);
     await send("nope");
-    expect(lab.refresh).toHaveBeenCalled();
+    expect(lab.refresh).not.toHaveBeenCalled();
     expect(screen.getByTestId("rev-composer-error").textContent).toContain("no thanks");
     expect((screen.getByTestId("rev-composer-input") as HTMLInputElement).value).toBe("nope");
   });

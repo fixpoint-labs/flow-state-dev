@@ -13,7 +13,9 @@ import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { connect } from "../src/lib/connection";
 import { readSessionItems } from "./helpers/session-reads";
-import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, createLabReader, toBoardTaskView, type BoardTaskView } from "../src/lib/reads";
+import { createLabReader, toBoardTaskView } from "../src/lib/reads";
+import type { BoardTaskView } from "../src/lib/boards";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "../src/lib/boards";
 import { openRunLab, RUN_LAB_ASK, RUN_LAB_FAILURE, RUN_LAB_SPEND, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 

@@ -16,7 +16,8 @@
  */
 import { useEffect, useState } from "react";
 import { COLUMNS, columnFor } from "../lib/columns";
-import { rosterOf, workerFor, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { workerFor, workerLabel } from "../lib/shift";
+import { useWorkers } from "../lib/directory";
 import { openBoardTasks, useInbox, type InboxBoardTask } from "../lib/inbox";
 import { navigate, TASK_GROUPINGS, type Route, type TaskGrouping } from "../lib/routes";
 import { elapsed, isQueued, summaryLine } from "../lib/tasks";
@@ -56,11 +57,11 @@ function streamLabel(holder: string): string {
   return holder.startsWith("@") ? holder : `#${holder}`;
 }
 
-export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: TaskGrouping; gaps: Gaps }) {
-  const { refresh, stale } = useLab();
+export function Tasks({ by, gaps }: { by: TaskGrouping; gaps: Gaps }) {
+  const { stale } = useLab();
   const inbox = useInbox();
   const [showQueued, setShowQueued] = useState(false);
-  const roster = rosterOf(snapshot);
+  const { inventory, workers, refresh } = useWorkers();
   const all = inbox.section?.ok === true ? openBoardTasks(inbox.section.value) : [];
   const queued = all.filter(isQueued).length;
   const rows = showQueued ? all : all.filter((row) => !isQueued(row));
@@ -68,7 +69,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
   const now = useNow(!stale && rows.some((row) => row.status === "in_progress"));
 
   const keyOf = (row: InboxBoardTask): string =>
-    by === "state" ? columnFor(row.status) : by === "worker" ? (workerFor(roster, row)?.id ?? row.assignee ?? "unassigned") : row.owner;
+    by === "state" ? columnFor(row.status) : by === "worker" ? (workerFor(workers, row)?.id ?? row.assignee ?? "unassigned") : row.owner;
   const groups =
     by === "state"
       ? OPEN_COLUMNS.map((column) => [column, rows.filter((r) => columnFor(r.status) === column)] as const)
@@ -85,7 +86,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
             </Meta>
           </div>
           <Meta role="control" className="mt-1 block text-muted-foreground" testId="tasks-summary">
-            {inbox.section === undefined ? "…" : summaryLine(inbox.section, snapshot)}
+            {inbox.section === undefined ? "…" : summaryLine(inbox.section, workers)}
           </Meta>
         </div>
         <div className="flex items-center gap-3 font-mono text-xs font-medium">
@@ -125,8 +126,8 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
             <SectionFailure what="The boards" failure={inbox.section.failure} onRetry={inbox.refresh} />
           </div>
         ) : null}
-        {!snapshot.inventory.ok ? (
-          <SectionFailure what="The boards" failure={snapshot.inventory.failure} onRetry={() => void refresh()} />
+        {inventory?.ok === false ? (
+          <SectionFailure what="The boards" failure={inventory.failure} onRetry={refresh} />
         ) : inbox.section === undefined ? (
           <p className="mt-3 text-sm text-muted-foreground" data-testid="tasks-loading">
             Reading the boards…
@@ -167,7 +168,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
               <tbody key={key} data-testid="tasks-group" data-group={key}>
                 <tr>
                   <th colSpan={8} className="pt-4 pb-1 text-left text-xs font-semibold">
-                    {by === "worker" ? workerLabel(roster.workers.find((worker) => worker.id === key)?.displayName ?? key) : key}{" "}
+                    {by === "worker" ? workerLabel(workers.find((worker) => worker.id === key)?.displayName ?? key) : key}{" "}
                     <span className="font-normal text-muted-foreground">{groupRows.length}</span>
                     {by === "state" && key === "IN REVIEW" ? (
                       <span className="ml-2 font-normal text-muted-foreground" data-testid="tasks-in-review-gap">
@@ -177,7 +178,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                   </th>
                 </tr>
                 {groupRows.map((row) => {
-                  const worker = workerFor(roster, row);
+                  const worker = workerFor(workers, row);
                   const time = elapsed(row, now);
                   return (
                     <tr

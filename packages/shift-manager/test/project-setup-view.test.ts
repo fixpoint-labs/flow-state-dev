@@ -11,8 +11,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { harnessStub } from "@flow-state-dev/harness-manager";
+import { projectSetupView } from "@flow-state-dev/workforce/browser";
 import { connect } from "../src/lib/connection";
-import { readProjectSetup } from "../src/lib/projects";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { LAB_USERS, openLab, PROJECTS_FLOW, type Lab } from "../teams/devteam/host.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -22,7 +22,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-describe("readProjectSetup on the DevTeam Lab", () => {
+describe("the project setup view on the DevTeam Lab", () => {
   it("names the projects flow and its project coordinator, read with no session", async () => {
     const root = mkdtempSync(join(tmpdir(), "sm-project-setup-"));
     cleanups.push(() => rmSync(root, { recursive: true, force: true }));
@@ -36,9 +36,10 @@ describe("readProjectSetup on the DevTeam Lab", () => {
     const before = await sessionIds();
 
     const client = connect({ userId: LAB_USERS.member.userId, baseUrl: served.baseUrl, bearerToken: LAB_USERS.member.bearer });
-    const setup = await readProjectSetup(client);
-    expect(setup?.flow).toBe(PROJECTS_FLOW);
-    expect(setup?.projectCoordinator).toEqual(expect.any(String));
+    // The read Project's Stream makes (`useProjectSetup`): workforce's view, on the projects flow.
+    expect(projectSetupView.flow).toBe(PROJECTS_FLOW);
+    const setup = (await client.view(projectSetupView, {})).value;
+    expect(setup.projectCoordinator).toEqual(expect.any(String));
     expect(await sessionIds()).toEqual(before);
   }, 60_000);
 });

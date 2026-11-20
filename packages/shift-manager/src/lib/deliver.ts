@@ -49,7 +49,7 @@ import { deriveSuspensions } from "@flow-state-dev/react/internal";
 import { sessionTurnsViewRef, type ListedTurn } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
 import { useLab } from "./lab-data";
-import { describeFailure } from "./reads";
+import { describeFailure } from "./failure";
 import { useSharedSessionFeed } from "./session-feeds";
 import { useWorkforce } from "./workforce";
 

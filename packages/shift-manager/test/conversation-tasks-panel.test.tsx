@@ -16,7 +16,7 @@ import { TasksPanel } from "../src/components/TasksPanel";
 
 /** The view's own timer where push can miss a change: `useView`'s default. */
 const VIEW_POLL_MS = 3_000;
-import { toWorker } from "../src/lib/reads";
+import { toWorker } from "../src/lib/workers";
 
 type StoredTask = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
 let rows: StoredTask[] = [];

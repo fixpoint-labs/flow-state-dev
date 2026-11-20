@@ -9,8 +9,9 @@
  */
 import { useState } from "react";
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
-import { workerLabel, type LoadedSnapshot } from "../lib/derive";
-import { useRoutines, type Routine, type RoutineChange } from "../lib/routines";
+import type { ListedRoutine } from "@flow-state-dev/workforce/browser";
+import { workerLabel } from "../lib/shift";
+import { clockOf, eventOf, taskOf, useRoutines, type RoutineChange } from "../lib/routines";
 
 /** When a clock routine is next due, in the page's time zone: weekday, date and 24-hour time. */
 export function nextRunLabel(nextRunAt: string | null, paused: boolean): string {
@@ -27,14 +28,17 @@ export function nextRunLabel(nextRunAt: string | null, paused: boolean): string 
 }
 
 /** Who made a routine, as the list says it. */
-export function madeByLabel(madeBy: Routine["madeBy"]): string {
-  if (madeBy === null) return "";
+export function madeByLabel(madeBy: ListedRoutine["madeBy"]): string {
+  if (madeBy === undefined) return "";
   if (madeBy.by === "user") return "made by you";
   if (madeBy.by === "worker") return `made by ${workerLabel(madeBy.worker)}`;
   return "the app's";
 }
 
-function RoutineLine({ routine, change }: { routine: Routine; change: RoutineChange }) {
+function RoutineLine({ routine, change }: { routine: ListedRoutine; change: RoutineChange }) {
+  const clock = clockOf(routine);
+  const event = eventOf(routine);
+  const { goal, assignee } = taskOf(routine);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const run = (wanted: Parameters<RoutineChange>[0]) => {
@@ -45,12 +49,13 @@ function RoutineLine({ routine, change }: { routine: Routine; change: RoutineCha
       setProblem(why);
     });
   };
-  const when = routine.clock !== null ? nextRunLabel(routine.clock.nextRunAt, routine.paused) : routine.paused ? "paused" : "on each event";
-  const title = routine.description ?? (routine.clock !== null ? (routine.goal ?? routine.name) : (routine.event?.interest ?? routine.name));
+  const when = clock !== null ? nextRunLabel(clock.nextRunAt, routine.paused) : routine.paused ? "paused" : "on each event";
+  // An empty description is none, as the list has always read it.
+  const title = (routine.description || null) ?? (clock !== null ? (goal ?? routine.name) : (event?.interest ?? routine.name));
   const detail =
-    routine.clock !== null
-      ? `${workerLabel(routine.worker)}'s board${routine.assignee === null ? "" : ` → ${workerLabel(routine.assignee)}`} · ${routine.clock.cron} · ${routine.clock.timezone}`
-      : `${routine.event!.thread}${routine.event!.kinds === null ? "" : ` · ${routine.event!.kinds.join(", ")}`} · heard by ${workerLabel(routine.worker)}`;
+    clock !== null
+      ? `${workerLabel(routine.worker)}'s board${assignee === null ? "" : ` → ${workerLabel(assignee)}`} · ${clock.cron} · ${clock.timezone}`
+      : `${event!.thread}${event!.kinds === null ? "" : ` · ${event!.kinds.join(", ")}`} · heard by ${workerLabel(routine.worker)}`;
   const maker = madeByLabel(routine.madeBy);
   const declared = routine.madeBy?.by === "app";
   return (
@@ -58,8 +63,8 @@ function RoutineLine({ routine, change }: { routine: Routine; change: RoutineCha
       className="grid grid-cols-[minmax(9rem,max-content)_1fr_max-content] items-baseline gap-x-4 border-b border-foreground/10 py-2"
       data-testid="routine"
       data-id={routine.id}
-      data-trigger={routine.clock !== null ? "clock" : "event"}
-      data-next-run={routine.clock?.nextRunAt ?? ""}
+      data-trigger={clock !== null ? "clock" : "event"}
+      data-next-run={clock?.nextRunAt ?? ""}
       data-paused={routine.paused}
     >
       <Meta className={routine.paused ? "text-muted-foreground" : ""} testId="routine-when">
@@ -99,8 +104,8 @@ function RoutineLine({ routine, change }: { routine: Routine; change: RoutineCha
   );
 }
 
-export function Routines({ snapshot }: { snapshot: LoadedSnapshot }) {
-  const { routines, failure, reread, change } = useRoutines(snapshot.readAt);
+export function Routines() {
+  const { routines, failure, reread, change } = useRoutines();
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="routines">

@@ -242,6 +242,14 @@ export type SessionRequestSummary = {
    * Guard with `== null`.
    */
   historyStart?: { requestId: string };
+  // FIX-2853.
+  /**
+   * Whether the server runs this request again when the caller retries it:
+   * the retry route's own rule, the same answer a session's turns carry.
+   * Offer Retry on a failed turn only when it is `true`. Absent on servers
+   * that predate the field; read absent as not retryable.
+   */
+  retryable?: boolean;
   completedAtMs?: number;
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
