@@ -213,6 +213,26 @@ describe("a line in an open task's session", () => {
     }
   });
 
+  it("is recorded on a waiting task with no run in a session, and the reply says no turn could be started, never a plain ok", async () => {
+    // A task kept open on the work it filed, whose run never linked a session: the steer is kept, but no turn can start.
+    const h = host([{ when: () => true, then: { text: "unused" } }]);
+    try {
+      const conv = await h.conversation("alice", "chief");
+      const filing = await h.filingOf("alice", conv);
+      const now = Date.now();
+      const parked = { id: "task_parked", goal: "Write the post", assignee: "otto", status: "in_progress", keptOpenBy: "filed", attempts: 1, maxAttempts: 2, createdAt: now, updatedAt: now } as Task;
+      await h.writeRow("alice", filing, parked);
+
+      const steered = await h.act("alice", conv, "updateTask_tasks", { id: "task_parked", message: "Use the word ember." });
+
+      expect(steered.error, messageOf(steered.error)).toBeUndefined();
+      expect(steered.output).toEqual({ ok: true, note: expect.stringMatching(/recorded.*no turn could be started/i) });
+      expect(((await h.row("alice", filing, "task_parked")) as Task).steers).toEqual([expect.objectContaining({ message: "Use the word ember." })]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("is a turn, as before, in a worker's own conversation that works no task", async () => {
     const h = host([{ when: () => true, then: { text: "hello back" } }]);
     try {
