@@ -38,7 +38,7 @@
  *
  * ## A run's name
  *
- * The branch is `conductor/<name>` and the folder `<root>/<name>`, where the
+ * The branch is `<prefix><name>` and the folder `<root>/<name>`, where the
  * name is a slug of the task's title and 6 hex of everything that keeps one
  * run apart from another (`runName`). The principal and the board are in the
  * hex rather than spelled out, so the ref stays short whatever the identity:
@@ -494,6 +494,13 @@ export interface RunLocation {
    */
   bump?: number;
   /**
+   * What the run's branch starts with ({@link branchFor}): the app's own, such
+   * as `teammates/`, else {@link DEFAULT_BRANCH_PREFIX}. A run found from its
+   * record keeps the prefix its branch was cut with. Not part of the run's
+   * identity: two runs that differ only here are the same run.
+   */
+  branchPrefix?: string;
+  /**
    * Derive the place and branch in the long shape every run had before runs
    * were named: the principal, board and issue-phase as nested segments, with
    * full digests. **Only for a run whose record already names that branch**
@@ -515,8 +522,34 @@ const MAX_NAME_SLUG = 32;
 /** Hex characters of a run name's suffix. */
 const NAME_HASH_LENGTH = 6;
 
-/** The prefix every run's branch carries. */
-const BRANCH_PREFIX = "conductor/";
+/** What a run's branch starts with when its app names no prefix of its own. */
+const DEFAULT_BRANCH_PREFIX = "fsd/";
+
+/** What the long shape's branches start with, kept so a run recorded on one finds it. */
+const LONG_SHAPE_BRANCH_PREFIX = "conductor/";
+
+/** How long a branch prefix may be, so a run's ref stays short. */
+const MAX_BRANCH_PREFIX = 32;
+
+/** A branch prefix: lower-case segments of letters and digits with single `-` or `_`, each ending in `/`. */
+const BRANCH_PREFIX_PATTERN = /^(?:[a-z0-9]+(?:[-_][a-z0-9]+)*\/)+$/;
+
+/**
+ * `prefix` when it can lead a run's branch: lower-case letters and digits,
+ * single `-` or `_`, `/` between segments and at the end (`teammates/`), at
+ * most 32 characters.
+ *
+ * @throws When it can't, naming the value.
+ */
+export function assertBranchPrefix(prefix: string): string {
+  if (prefix.length > MAX_BRANCH_PREFIX || !BRANCH_PREFIX_PATTERN.test(prefix)) {
+    throw new Error(
+      `[harness-manager] branchPrefix ${JSON.stringify(prefix)} can't lead a branch: use lower-case letters and ` +
+        `digits with single "-" or "_", end it with "/" (such as "teammates/"), and keep it to ${MAX_BRANCH_PREFIX} characters.`,
+    );
+  }
+  return prefix;
+}
 
 /** A run's name as a branch carries it: a slug, 6 hex, and an optional bump. */
 const RUN_NAME = /^([a-z0-9]+(?:-[a-z0-9]+)*)-([0-9a-f]{6})(?:-([2-9]|[1-9][0-9]+))?$/;
@@ -565,8 +598,8 @@ export function runIdentityKey(location: RunLocation): string {
 /**
  * A run's name: a slug of the task's title (or of its issue-phase, when the
  * title has none), led by the tracker issue when the task names one, then 6 hex of its identity, then `-<n>` when it was bumped.
- * The branch is `conductor/<name>` and the folder is `<root>/<name>`, so
- * `refs/heads/conductor/<name>` is at most 59 bytes however deep the run's
+ * The branch is `<prefix><name>` and the folder is `<root>/<name>`, so
+ * `refs/heads/<prefix><name>` is at most 81 bytes however deep the run's
  * identity is.
  */
 export function runName(location: RunLocation): string {
@@ -647,12 +680,17 @@ export function locationFor(
 ): RunLocation {
   if (recordedBranch == null) return location;
   // A run that already has a short name keeps it: the record's own spelling,
-  // bump included, so a retitle never moves the tree.
-  const named = recordedBranch.startsWith(BRANCH_PREFIX)
-    ? RUN_NAME.exec(recordedBranch.slice(BRANCH_PREFIX.length))
-    : null;
+  // bump and prefix included, so a retitle or an app's new prefix never moves
+  // the tree. A run cut as `conductor/<name>` keeps that branch.
+  const cut = recordedBranch.lastIndexOf("/") + 1;
+  const named = cut > 0 ? RUN_NAME.exec(recordedBranch.slice(cut)) : null;
   if (named !== null) {
-    const kept: RunLocation = { ...location, slug: named[1]!, ...(named[3] !== undefined ? { bump: Number(named[3]) - 1 } : {}) };
+    const kept: RunLocation = {
+      ...location,
+      branchPrefix: recordedBranch.slice(0, cut),
+      slug: named[1]!,
+      ...(named[3] !== undefined ? { bump: Number(named[3]) - 1 } : {}),
+    };
     // The slug is the record's own, so only the hex has to agree: with the
     // tracker issue, or without it for a run recorded before it named one.
     if (branchFor(kept) === recordedBranch) return kept;
@@ -757,8 +795,9 @@ export function runBoardSegment(ledgerId: string, partition: string | undefined)
 }
 
 /**
- * This issue-phase's branch, for this principal: `conductor/<name>`
- * ({@link runName}), or the long shape for a run recorded on it.
+ * This issue-phase's branch, for this principal: `<prefix><name>`
+ * ({@link RunLocation.branchPrefix}, {@link runName}), or the long shape,
+ * under `conductor/`, for a run recorded on it.
  *
  * Carries the principal (in the name's hex) for the same reason the path
  * does, and it is the half that is easier to miss: two users could be given separate directories and
@@ -767,7 +806,7 @@ export function runBoardSegment(ledgerId: string, partition: string | undefined)
  * check. Separate trees pushing one ref is not isolation.
  */
 export function branchFor(location: RunLocation): string {
-  if (!isNested(location)) return `${BRANCH_PREFIX}${runName(location)}`;
+  if (!isNested(location)) return `${location.branchPrefix ?? DEFAULT_BRANCH_PREFIX}${runName(location)}`;
   const scope = locationSegments(location).join("/");
   // The same leaf the checkout path uses. It was spelled with a SINGLE dash
   // here while the path used `--`, so the branch aliased on inputs the path
@@ -775,8 +814,8 @@ export function branchFor(location: RunLocation): string {
   // agree, which is the whole reason the leaf is now derived in one function.
   const leaf = issuePhaseSegment(location);
   return location.trackerIssue === undefined
-    ? `conductor/${scope}/${leaf}`
-    : `conductor/${scope}/${joinIdentity(assertSafeSegment("issue", location.trackerIssue), leaf)}`;
+    ? `${LONG_SHAPE_BRANCH_PREFIX}${scope}/${leaf}`
+    : `${LONG_SHAPE_BRANCH_PREFIX}${scope}/${joinIdentity(assertSafeSegment("issue", location.trackerIssue), leaf)}`;
 }
 /**
  * The place segments of a run, under whatever root its host keeps: the run's

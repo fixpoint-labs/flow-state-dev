@@ -158,3 +158,18 @@ describe("the harness kit's cap on run time", () => {
     expect(codingDrainBudgetMs({ runTimeoutMs: 6 * 60 * 60_000 })).toBeGreaterThan(6 * 60 * 60_000);
   });
 });
+
+// FIX-2857.
+describe("the harness kit's branch prefix", () => {
+  it("takes an app's own prefix", async () => {
+    const state = start([harnesses({ workspace, branchPrefix: "teammates/" }), workforce({ directory: tree(TEAM) })], {
+      [harnesses.slots.harnesses]: [harness("codex", true)],
+    });
+    await state.ready();
+    expect([...state.meta.flowKeys]).toContain("coder");
+  });
+
+  it("refuses one that can't lead a branch, at the kit's config", () => {
+    expect(() => harnesses({ workspace, branchPrefix: "Teammates" })).toThrow(/branchPrefix/);
+  });
+});

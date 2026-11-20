@@ -1,6 +1,6 @@
 import { useSubmit } from "@flow-state-dev/react";
 import { useState } from "react";
-import { useApp, type AppTask, type TaskWork } from "../app";
+import { useApp, type CodingBoardTask, type TaskWork } from "../app";
 import { cn } from "../lib/utils";
 import { LAND_LABEL, type LandedWork, orderedLands, type ReviewLand } from "./flow-state/review-hold";
 
@@ -11,7 +11,7 @@ import { LAND_LABEL, type LandedWork, orderedLands, type ReviewLand } from "./fl
  * moment it is sent until the run's next review stop arrives, so it never reads as accepted while the
  * landing is still going on.
  */
-export function useReviewAccept(sessionId: string, task: AppTask, work: TaskWork | undefined) {
+export function useReviewAccept(sessionId: string, task: CodingBoardTask, work: TaskWork | undefined) {
   const lab = useApp();
   const review = work?.review;
   const lands = review?.lands ?? [];
@@ -21,7 +21,7 @@ export function useReviewAccept(sessionId: string, task: AppTask, work: TaskWork
   // The round this accept answered. It holds only while the task still waits on a review: once a landing
   // moves the task on (say, to a pull request it waits on), the answered stop is history, and the composer is free.
   const [answered, setAnswered] = useState<string | null>(null);
-  const awaitingReview = task.openHold?.kind === "review";
+  const awaitingReview = task.asks[0]?.ask.kind === "review";
   const submit = useSubmit(async (land?: ReviewLand) => {
     await lab.resolve(sessionId, task, land);
     setAnswered(round);
@@ -30,7 +30,7 @@ export function useReviewAccept(sessionId: string, task: AppTask, work: TaskWork
     lands,
     failed,
     // A coding task's accept waits for its review to be read, so a plain Resolve can't go before the lands are known.
-    ready: review !== undefined || task.harness === undefined,
+    ready: review !== undefined || task.harness == null,
     waiting: submit.busy || (awaitingReview && answered === round),
     error: submit.error,
     accept: (land?: ReviewLand) => void submit.submit(undefined, land),

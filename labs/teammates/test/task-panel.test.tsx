@@ -16,7 +16,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ConversationView } from "../src/lib/conversation";
 import { scriptedServer, rosterEntry } from "./scripted-server";
 import { Conversation } from "../src/components/Conversation";
-import { attemptStartedAt, viewOf } from "../src/lib/task";
+import { attemptStartedAt, timeSignalOf } from "../src/lib/task";
 import { codingTask, hold, POPUP_READ, standInFollower, stubServer, TestProvider } from "./stub-server";
 import { TaskCard } from "../src/components/TaskCard";
 import { TeammatePanel } from "../src/components/TeammatePanel";
@@ -184,15 +184,16 @@ describe("a task's line in the conversation", () => {
 });
 
 describe("a board row's times, as the screen reads them", () => {
-  it("passes when it was filed, first started and ended through to the task's view", () => {
-    const row = codingTask({ id: "t1", status: "completed", createdAt: 1, startedAt: 2, completedAt: 3, updatedAt: 3 });
-    expect(viewOf(row).times).toMatchObject({ createdAt: 1, startedAt: 2, completedAt: 3 });
+  it("passes when it ended through to its time signal", () => {
+    const row = codingTask({ id: "t1", status: "completed", createdAt: 1, startedAt: 2, completedAt: 3, updatedAt: 4 });
+    expect(timeSignalOf(row).view).toEqual({ state: "done", times: { updatedAt: 4, completedAt: 3 } });
   });
 
   it("keeps the feed's start on this attempt, not the task's first start", () => {
     // A retried task: its first run started at 2, this attempt at 5.
     const row = codingTask({ id: "t1", status: "in_progress", createdAt: 1, startedAt: 2, run: { sessionId: "r", requestId: "q", attempt: 2, startedAt: 5 } });
     expect(attemptStartedAt(row)).toBe(5);
-    expect(viewOf(row).times.startedAt).toBe(2);
+    expect(timeSignalOf(row).run.startedAt).toBe(5);
+    expect(row.startedAt).toBe(2);
   });
 });

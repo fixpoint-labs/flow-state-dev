@@ -94,7 +94,7 @@ export async function openTeammates(options: TeammatesOptions) {
         routines: { index: sqliteScheduleIndex({ filename: beside("clock") }), providers: [github], poll: { index: sqliteScheduleIndex({ filename: beside("poll") }) } },
         github: { provider: github, poll: true },
       }),
-      harnesses({ workspace, defaultHarness: harness, review: true, checks, runTimeoutMs, logReadiness: true }),
+      harnesses({ workspace, defaultHarness: harness, review: true, checks, runTimeoutMs, branchPrefix: "teammates/", logReadiness: true }),
       scripted === undefined ? claudeCode() : claudeCode().without(harnesses.slots.harnesses, "claude-code"),
     ],
     fill: { [harnesses.slots.harnesses]: scripted === undefined ? [codexHarness(), cursorHarness({ model: "composer-2.5" })] : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")] },
