@@ -3,21 +3,15 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClientHttpError } from "@flow-state-dev/client";
-import { liveRead } from "@flow-state-dev/client/internal";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
-import type { LoadedSnapshot } from "../src/lib/derive";
 import { firstLine, exchangesOf, toMessages, type WorkerMessageResourceState } from "../src/lib/messages";
 import { parseRoute, pathFor } from "../src/lib/routes";
 
-const readPages = vi.fn();
-vi.mock("@flow-state-dev/client", async (original) => ({
-  ...(await original<typeof import("@flow-state-dev/client")>()),
-  readEveryCollectionPage: (...a: unknown[]) => readPages(...a),
-}));
-const resource = vi.fn((def: { scope: string; pattern?: string }) => ({ ...def, list: vi.fn() }));
-// The client's own live read, over a subscription that hears nothing: each view reads once on open.
-const live = (topics: Parameters<typeof liveRead>[1], options: Parameters<typeof liveRead>[2]) => liveRead(() => ({ close: () => {} }), topics, options);
-const lab = { client: { userId: "u_1", resources: {}, resource, live }, refresh: vi.fn() };
+// FIX-2775: the log is read whole through react's `useResource`, by `listAll()` on the client's direct read.
+const readAll = vi.fn();
+const resource = vi.fn((def: { scope: string; pattern?: string }) => ({ ...def, list: vi.fn(), listAll: (...a: unknown[]) => readAll(...a), entry: vi.fn() }));
+// A subscription that hears nothing: each view reads once on open.
+const lab = { client: { userId: "u_1", resources: {}, resource, subscribe: () => ({ close: () => {} }) }, refresh: vi.fn() };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
 import { Messages } from "../src/surfaces/Messages";
@@ -39,11 +33,12 @@ const ask = row({ id: "msg_a", from: "researcher", to: "coordinator", at: 1_000,
 const answer = row({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_000, exchange: "msg_a", inReplyTo: "msg_a", text: "BLUE-HERON", hop: 2 });
 const other = row({ id: "msg_c", from: "helper-a", to: "helper-b", at: 2_000, status: "refused", reason: "dispatch-rejected: down" });
 
-// FIX-2624: the user holds no session at all; the log is read by user scope.
-const snapshot = { sessions: [], readAt: 1 } as unknown as LoadedSnapshot;
+/** The log's entries as the direct read answers them. */
+const entries = (rows: WorkerMessageResourceState[]) =>
+  rows.map((r) => ({ topic: r.id, storageKey: `workforce/messages/${r.id}`, value: r, version: 1 }));
 
 beforeEach(() => {
-  readPages.mockReset();
+  readAll.mockReset();
   resource.mockClear();
   window.history.replaceState(null, "", "/messages");
 });
@@ -57,7 +52,7 @@ describe("the message log, as exchanges", () => {
   });
 
   it("leaves out a row that isn't a message, rather than drawing half of one", () => {
-    expect(toMessages([{ clientData: ask }, { clientData: { id: "x" } }, {}]).map((r) => r.id)).toEqual(["msg_a"]);
+    expect(toMessages([ask, { id: "x" }, undefined]).map((r) => r.id)).toEqual(["msg_a"]);
   });
 
   it("shows a message by its first line", () => {
@@ -67,10 +62,12 @@ describe("the message log, as exchanges", () => {
 
 describe("the Messages view", () => {
   it("lists every message with both sides, read by user scope with no session, and opens either side's session", async () => {
-    readPages.mockResolvedValue([ask, answer, other].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
-    render(<Messages snapshot={snapshot} />);
+    readAll.mockResolvedValue(entries([ask, answer, other]));
+    render(<Messages />);
     const lines = await screen.findAllByTestId("message");
-    expect(resource).toHaveBeenCalledWith({ scope: "user", pattern: "workforce/messages/*" });
+    expect(resource).toHaveBeenCalledWith(expect.objectContaining({ scope: "user", pattern: "workforce/messages/*" }), undefined);
+    // Every page, not the first: the log is read whole.
+    expect(readAll).toHaveBeenCalledTimes(1);
     expect(lines.map((l) => `${l.getAttribute("data-from")}>${l.getAttribute("data-to")}`)).toEqual([
       "coordinator>researcher",
       "researcher>coordinator",
@@ -88,8 +85,8 @@ describe("the Messages view", () => {
   it("says a message is on its way until its recipient takes it, and when it couldn't be delivered", async () => {
     const onItsWay = row({ id: "msg_d", from: "researcher", to: "helper-a", at: 4_000, status: "unconfirmed" });
     const gaveUp = row({ id: "msg_e", from: "researcher", to: "helper-b", at: 5_000, status: "undeliverable", reason: "it couldn't be delivered within 1440 minutes" });
-    readPages.mockResolvedValue([onItsWay, gaveUp].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
-    render(<Messages snapshot={snapshot} />);
+    readAll.mockResolvedValue(entries([onItsWay, gaveUp]));
+    render(<Messages />);
     const lines = await screen.findAllByTestId("message");
     const status = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).getByTestId("message-status").textContent;
     expect(status("msg_d")).toBe("on its way");
@@ -101,8 +98,8 @@ describe("the Messages view", () => {
     const onPerson = row({ id: "msg_g", from: "researcher", to: "helper-b", at: 7_000, status: "unconfirmed", replyRequested: true, queuedBehind: "user" });
     const answered = row({ id: "msg_h", from: "researcher", to: "coordinator", at: 8_000, replyRequested: true, deadlineAt: 68_000, answeredBy: "msg_x" });
     const late = row({ id: "msg_i", from: "researcher", to: "coordinator", at: 9_000, replyRequested: true, deadlineAt: 10_000, waitEndedAt: 10_000, answeredBy: "msg_y" });
-    readPages.mockResolvedValue([waiting, onPerson, answered, late, ask].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
-    render(<Messages snapshot={snapshot} />);
+    readAll.mockResolvedValue(entries([waiting, onPerson, answered, late, ask]));
+    render(<Messages />);
     const lines = await screen.findAllByTestId("message");
     const replyState = (id: string) => within(lines.find((l) => l.getAttribute("data-message-id") === id)!).queryByTestId("message-reply-state")?.textContent;
     expect(replyState("msg_f")).toBe("reply · waiting");
@@ -114,20 +111,20 @@ describe("the Messages view", () => {
   });
 
   it("says so when there are none", async () => {
-    readPages.mockResolvedValue([]);
-    render(<Messages snapshot={snapshot} />);
+    readAll.mockResolvedValue([]);
+    render(<Messages />);
     expect((await screen.findByTestId("messages-empty")).textContent).toContain("No messages yet");
   });
 
   it("says this Lab keeps no log when no flow declares it", async () => {
-    readPages.mockRejectedValue(new ClientHttpError("Request failed (404) Not Found", { status: 404, body: { error: "unknown_resource" } }));
-    render(<Messages snapshot={snapshot} />);
+    readAll.mockRejectedValue(new ClientHttpError("Request failed (404) Not Found", { status: 404, body: { error: "unknown_resource" } }));
+    render(<Messages />);
     expect((await screen.findByTestId("messages-empty")).textContent).toContain("keeps no roster");
   });
 
   it("says what the Lab answered when the log didn't load", async () => {
-    readPages.mockRejectedValue(new Error("store offline"));
-    render(<Messages snapshot={snapshot} />);
+    readAll.mockRejectedValue(new Error("store offline"));
+    render(<Messages />);
     await waitFor(() => expect(screen.getByTestId("messages-failure").textContent).toContain("store offline"));
   });
 

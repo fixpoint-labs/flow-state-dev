@@ -10,7 +10,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TasksPanel } from "../src/components/TasksPanel";
 import { pullRequestsWaitedOn, type ConversationTask } from "../src/lib/conversation-tasks";
-import { toWorker } from "../src/lib/reads";
+import { toWorker } from "../src/lib/workers";
 
 const URL_7 = "https://github.com/acme/app/pull/7";
 

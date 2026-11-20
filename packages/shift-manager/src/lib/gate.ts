@@ -9,7 +9,7 @@
  * - anything else (a 5xx, the network) is the Lab not being reached, which
  *   Retry reads again.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
 import { describeFailure, type Failure } from "./failure";
@@ -48,20 +48,23 @@ export function gateOf(userId: string, read: { orgId: unknown } | { error: unkno
  */
 export function useGate(): { gate: Gate; retry: () => void } {
   const { client } = useLab();
-  const workforce = useWorkforce();
-  const [read, setRead] = useState<{ workforce: unknown; tries: number; gate: Gate }>({ workforce, tries: 0, gate: { state: "reading" } });
+  // The connection decides the read; its workforce client is the one built over it.
+  const current = useWorkforce();
+  const workforce = useRef(current);
+  workforce.current = current;
+  const [read, setRead] = useState<{ client: unknown; gate: Gate }>({ client, gate: { state: "reading" } });
   const [tries, setTries] = useState(0);
   useEffect(() => {
     let closed = false;
-    workforce.organization().then(
-      (orgId) => !closed && setRead({ workforce, tries, gate: gateOf(client.userId, { orgId }) }),
-      (error: unknown) => !closed && setRead({ workforce, tries, gate: gateOf(client.userId, { error }) }),
+    workforce.current.organization().then(
+      (orgId) => !closed && setRead({ client, gate: gateOf(client.userId, { orgId }) }),
+      (error: unknown) => !closed && setRead({ client, gate: gateOf(client.userId, { error }) }),
     );
     return () => {
       closed = true;
     };
-  }, [client, workforce, tries]);
+  }, [client, tries]);
   const retry = useCallback(() => setTries((n) => n + 1), []);
   // A read for another connection is never this one's answer.
-  return { gate: read.workforce === workforce ? read.gate : { state: "reading" }, retry };
+  return { gate: read.client === client ? read.gate : { state: "reading" }, retry };
 }

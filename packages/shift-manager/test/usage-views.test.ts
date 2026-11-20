@@ -14,10 +14,21 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { HarnessUsageReader } from "@flow-state-dev/core/harness";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
+import type { Client } from "@flow-state-dev/client";
+import { harnessUsageViewRef, recheckHarnessUsage } from "@flow-state-dev/harness-manager/browser";
+import { workerUsageView } from "@flow-state-dev/workforce/browser";
 import { connect } from "../src/lib/connection";
-import { readHarnessUsageView, readWorkerUsageView } from "../src/lib/usage";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { serveLab } from "./helpers/serve-lab";
+
+// FIX-2775: the reads Usage makes, made once: Re-check, then the usage view; the worker usage view.
+async function readHarnessUsageView(client: Client) {
+  await recheckHarnessUsage(client);
+  return (await client.view(harnessUsageViewRef(), {})).value.harnesses;
+}
+async function readWorkerUsageView(client: Client, days: number) {
+  return (await client.view(workerUsageView, { days })).value.workers;
+}
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {

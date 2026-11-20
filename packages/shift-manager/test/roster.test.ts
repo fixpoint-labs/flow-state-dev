@@ -1,14 +1,15 @@
 /**
  * Roster's rules, below the screen: where a worker is grouped (BR-13a, BR-13b),
- * the one status rule every screen draws (BR-1 to BR-6, BR-20), the counts
- * reduced from it (BR-12, BR-14, BR-15), and the route (BR-13).
+ * the one status rule every screen draws (BR-1 to BR-6, BR-20), read from the
+ * worker directory against the Inbox view's one answer, the counts reduced
+ * from it (BR-12, BR-14, BR-15), and the route (BR-13).
  */
 import { describe, expect, it } from "vitest";
-import { pickedTeam, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../src/lib/derive";
+import { boardTaskOf, type InboxBoardTask, type InboxSuspensionDetail, type InboxViewValue } from "@flow-state-dev/workforce/browser";
+import type { InboxHold, InboxItem } from "@flow-state-dev/orchestration/inbox";
+import { pickedTeam, workerStates, shiftCounts, teamsOf } from "../src/lib/shift";
 import { parseRoute, pathFor } from "../src/lib/routes";
-import { GENERAL_TEAM, inboxSection, toBoardTaskView, toWorker, type Ask, type BoardTaskView, type Worker } from "../src/lib/reads";
-
-const ORG = "acme";
+import { GENERAL_TEAM, toWorker } from "../src/lib/workers";
 
 describe("BR-13a, BR-13b: which group a worker sits in", () => {
   it("an org worker (no dot) sits in General, never in a team of its own", () => {
@@ -48,34 +49,49 @@ describe("BR-13a, BR-13b: which group a worker sits in", () => {
   });
 });
 
-/** A loaded snapshot of `workers`, one conversation's board holding `rows`, and `asks` (or asks that failed). */
-function snapshotOf(workers: Worker[], rows: BoardTaskView[], asks: Ask[] | "failed" = []) {
-  const read = {
-    readAt: 0,
-    sessions: [],
-    orgId: ORG,
-    inventory: { ok: true, value: { workers } },
-    boards: { s_desk: { ok: true, value: { refs: ["s_desk.tasks"], rows } } },
-    asks: asks === "failed" ? { ok: false, failure: { message: "asks offline" } } : { ok: true, value: asks },
-    resources: { ok: true, value: [] },
-  } as unknown as Omit<LoadedSnapshot, "inbox">;
-  return { ...read, inbox: inboxSection(read.asks, read.boards, read.sessions) } as LoadedSnapshot;
+/**
+ * The Inbox view's answer over one conversation's board holding `rows`, with
+ * an item per task held on you and one per `asks` hold no task claims, as the
+ * server builds it. `"failed"` stands for a view that didn't load.
+ */
+function viewOf(rows: InboxBoardTask[], asks: InboxHold<InboxSuspensionDetail>[] = []): InboxViewValue {
+  const held: InboxItem<InboxSuspensionDetail>[] = rows
+    .filter((task) => task.holds.length > 0)
+    .map((task) => ({
+      id: `${task.boardRef}/${task.id}`,
+      task: { board: task.boardRef, taskId: task.id },
+      holds: task.holds.map((hold) => ({ ...hold, source: { kind: "task" as const } })) as unknown as InboxHold<InboxSuspensionDetail>[],
+    }) as unknown as InboxItem<InboxSuspensionDetail>);
+  const own = asks.map((hold) => ({ id: hold.id, holds: [hold] }) as unknown as InboxItem<InboxSuspensionDetail>);
+  return { items: [...held, ...own], tasks: rows };
 }
 
 const worker = (id: string) => toWorker({ id, kind: "worker" })!;
-const row = (id: string, status: string, assignee: string | null): BoardTaskView =>
-  toBoardTaskView("s_desk.tasks", "s_desk", id, { id, title: id, status, assignee });
+const task = (id: string, stored: Record<string, unknown>): InboxBoardTask => ({ ...boardTaskOf("s_desk.tasks", "s_desk", id, { id, title: id, ...stored }), owner: "@desk" });
+const row = (id: string, status: string, assignee: string | null): InboxBoardTask => task(id, { status, assignee });
 /** A running row held on a question for you (FIX-2131): what a task waiting on you is. */
-const waiting = (id: string, assignee: string | null): BoardTaskView =>
-  toBoardTaskView("s_desk.tasks", "s_desk", id, {
-    id,
-    title: id,
+const waiting = (id: string, assignee: string | null): InboxBoardTask =>
+  task(id, {
     status: "in_progress",
     assignee,
     holds: [{ id: `q-${id}`, actor: "user", openedAt: 1, source: { kind: "task", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
   });
-const ask = (workerId: string | null, suspensionId: string): Ask =>
-  ({ sessionId: `s_${suspensionId}`, workerId, flowId: workerId, parentSessionId: null, kind: "approval", item: { suspensionId }, since: 0, unanswerable: null }) as unknown as Ask;
+/** A pending approval the view lists, its detail naming the worker its session names (or none). */
+const ask = (workerId: string | null, suspensionId: string, openedAt = 0): InboxHold<InboxSuspensionDetail> =>
+  ({
+    id: suspensionId,
+    source: { kind: "suspension", flowId: workerId, sessionId: `s_${suspensionId}`, requestId: `r_${suspensionId}`, suspensionId },
+    ask: { kind: "approval", prompt: "May I?" },
+    openedAt,
+    answerable: true,
+    unanswerable: null,
+    detail: { suspensionId, sessionId: `s_${suspensionId}`, workerId },
+  }) as unknown as InboxHold<InboxSuspensionDetail>;
+
+/** The arguments `workerStates` takes: the directory's workers and the view's answer (`"failed"`: none). */
+function directory(workers: ReturnType<typeof worker>[], rows: InboxBoardTask[], asks: InboxHold<InboxSuspensionDetail>[] | "failed" = []) {
+  return [workers, asks === "failed" ? undefined : viewOf(rows, asks)] as const;
+}
 
 describe("BR-1 to BR-5: the one status rule", () => {
   const coder = worker("eng.coder");
@@ -83,21 +99,21 @@ describe("BR-1 to BR-5: the one status rule", () => {
   const idle = worker("eng.idle");
 
   it("returns every inventory worker once, in inventory order", () => {
-    const states = workerStates(snapshotOf([coder, reviewer, idle], []));
+    const states = workerStates(...directory([coder, reviewer, idle], []));
     expect([...states.workers.keys()]).toEqual(["eng.coder", "eng.reviewer", "eng.idle"]);
     expect([...states.workers.values()].map((s) => s.status)).toEqual(["off shift", "off shift", "off shift"]);
   });
 
   it("BR-1: a running task is on shift, and beats waiting", () => {
-    const states = workerStates(snapshotOf([coder], [waiting("a", "coder"), row("b", "in_progress", "coder")], [ask("eng.coder", "q1")]));
+    const states = workerStates(...directory([coder], [waiting("a", "coder"), row("b", "in_progress", "coder")], [ask("eng.coder", "q1")]));
     const state = states.workers.get("eng.coder")!;
     expect(state.status).toBe("on shift");
     expect(state.held.map((r) => r.id)).toEqual(["a", "b"]);
-    expect(state.asks.map((a) => a.item.suspensionId)).toEqual(["q1"]);
+    expect(state.asks.map((a) => a.id)).toEqual(["q1"]);
   });
 
   it("BR-2: a task held on a question for you alone, or an ask alone, is on shift: the worker is mid-task, waiting on you", () => {
-    const states = workerStates(snapshotOf([coder, reviewer], [waiting("a", "coder")], [ask("eng.reviewer", "q1")]));
+    const states = workerStates(...directory([coder, reviewer], [waiting("a", "coder")], [ask("eng.reviewer", "q1")]));
     expect(states.workers.get("eng.coder")!.status).toBe("on shift");
     expect(states.workers.get("eng.reviewer")!.status).toBe("on shift");
     expect(states.workers.get("eng.reviewer")!.held).toEqual([]);
@@ -105,7 +121,7 @@ describe("BR-1 to BR-5: the one status rule", () => {
 
   it("BR-3: queued, blocked, errored and finished alone are off shift, and hold no slot", () => {
     const rows = ["pending", "held", "errored", "completed", "cancelled"].map((s) => row(s, s, "coder"));
-    const state = workerStates(snapshotOf([coder], rows)).workers.get("eng.coder")!;
+    const state = workerStates(...directory([coder], rows)).workers.get("eng.coder")!;
     expect(state).toMatchObject({ status: "off shift", held: [] });
   });
 
@@ -113,7 +129,7 @@ describe("BR-1 to BR-5: the one status rule", () => {
     const ops = worker("ops.coder");
     // `coder` names a worker in two teams: no single worker.
     const states = workerStates(
-      snapshotOf([coder, ops], [row("a", "in_progress", "coder"), row("b", "in_progress", "ghost")], [ask(null, "q1"), ask("nobody.here", "q2")]),
+      ...directory([coder, ops], [row("a", "in_progress", "coder"), row("b", "in_progress", "ghost")], [ask(null, "q1"), ask("nobody.here", "q2")]),
     );
     expect([...states.workers.values()].map((s) => [s.status, s.held.length, s.asks.length])).toEqual([
       ["off shift", 0, 0],
@@ -121,16 +137,32 @@ describe("BR-1 to BR-5: the one status rule", () => {
     ]);
   });
 
-  it("BR-20: asks that did not load mark the whole result partial, and leave statuses from the boards alone", () => {
-    const states = workerStates(snapshotOf([coder, reviewer], [row("a", "in_progress", "coder"), waiting("b", "reviewer")], "failed"));
+  it("BR-20: an Inbox view that did not load marks the whole result partial: no status is drawn from a guess", () => {
+    const states = workerStates(...directory([coder, reviewer], [row("a", "in_progress", "coder")], "failed"));
     expect(states.partial).toBe(true);
-    expect([...states.workers.values()].map((s) => s.status)).toEqual(["on shift", "on shift"]);
-    expect(workerStates(snapshotOf([coder], [])).partial).toBe(false);
+    expect([...states.workers.values()].map((s) => s.status)).toEqual(["off shift", "off shift"]);
+    expect(workerStates(...directory([coder], [])).partial).toBe(false);
   });
 
-  it("is one result per snapshot, so every screen reads the same object", () => {
-    const snapshot = snapshotOf([coder], []);
-    expect(workerStates(snapshot)).toBe(workerStates(snapshot));
+  // FIX-2775: one answer. The Inbox lists an ask, and the worker whose session it waits in reads on shift
+  // from that same answer; when the answer drops it, the worker is off shift again. Nothing else is read.
+  it("one answer: a worker is on shift for exactly as long as the Inbox view lists its ask", () => {
+    const listed = viewOf([], [ask("eng.reviewer", "q1")]);
+    expect(listed.items.map((item) => item.id)).toEqual(["q1"]);
+    expect(workerStates([coder, reviewer], listed).workers.get("eng.reviewer")).toMatchObject({ status: "on shift", held: [] });
+    const answered = viewOf([], []);
+    expect(workerStates([coder, reviewer], answered).workers.get("eng.reviewer")!.status).toBe("off shift");
+  });
+
+  it("an ask held on a task's run counts for the worker its session names, beside the task's own slot", () => {
+    const run = waiting("a", "coder");
+    const view: InboxViewValue = { tasks: [run], items: [{ id: "s_desk.tasks/a", task: { board: "s_desk.tasks", taskId: "a" }, holds: [ask("eng.coder", "r1")] } as unknown as InboxItem<InboxSuspensionDetail>] };
+    const state = workerStates([coder], view).workers.get("eng.coder")!;
+    expect(state).toMatchObject({ status: "on shift" });
+    expect(state.held.map((t) => t.id)).toEqual(["a"]);
+    // A run's stop for you is an ask, never a question the task holds: it waits on you once.
+    expect(state.waitsOnYou).toEqual([]);
+    expect(state.asks.map((hold) => hold.id)).toEqual(["r1"]);
   });
 });
 
@@ -139,19 +171,19 @@ describe("BR-12, BR-14, BR-15: counts reduce from the one result", () => {
   const reviewer = worker("eng.reviewer");
   const asker = worker("ops.asker");
   const shiftCoordinator = worker("shift-coordinator");
-  const snapshot = snapshotOf(
+  const read = directory(
     [coder, reviewer, asker, shiftCoordinator],
     [row("a", "in_progress", "coder"), waiting("b", "coder"), waiting("c", "reviewer"), row("d", "pending", "asker")],
     [ask("ops.asker", "q1"), ask("ops.asker", "q2")],
   );
 
   it("counts each group, and every waits-on entry, an on-shift worker's included", () => {
-    expect(shiftCounts(workerStates(snapshot))).toEqual({ "on shift": 3, "off shift": 1, waiting: 4 });
+    expect(shiftCounts(workerStates(...read))).toEqual({ "on shift": 3, "off shift": 1, waiting: 4 });
   });
 
   it("counts only the workers shown when a team is picked", () => {
-    expect(shiftCounts(workerStates(snapshot), "ops")).toEqual({ "on shift": 1, "off shift": 0, waiting: 2 });
-    expect(shiftCounts(workerStates(snapshot), GENERAL_TEAM)).toEqual({ "on shift": 0, "off shift": 1, waiting: 0 });
+    expect(shiftCounts(workerStates(...read), "ops")).toEqual({ "on shift": 1, "off shift": 0, waiting: 2 });
+    expect(shiftCounts(workerStates(...read), GENERAL_TEAM)).toEqual({ "on shift": 0, "off shift": 1, waiting: 0 });
   });
 
   it("lists teams with General first, each with exactly its workers", () => {

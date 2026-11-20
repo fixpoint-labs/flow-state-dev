@@ -10,11 +10,7 @@ import type { Client } from "@flow-state-dev/client";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { connect } from "../src/lib/connection";
-import {
-  createLabReader,
-  UNOWNED_SESSION_UNANSWERABLE,
-  type LabSnapshot,
-} from "../src/lib/reads";
+import { createLabReader, UNOWNED_SESSION_UNANSWERABLE, type LabSnapshot } from "../src/lib/reads";
 import { workerStates, type LoadedSnapshot } from "../src/lib/derive";
 import { withRoster } from "../src/lib/roster";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";

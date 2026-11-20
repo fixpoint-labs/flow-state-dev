@@ -26,7 +26,7 @@ const lab = {
   snapshot: { orgId: "org_1", sessions: [], inventory: { ok: true, value: { workers: [] } } },
 };
 const upload = vi.fn();
-const workforce = { ensureWorkerSession, upload };
+const workforce = { organization: async () => "org_1", ensureWorkerSession, upload };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
 /**
@@ -440,11 +440,13 @@ describe("sending", () => {
     expect(read).toHaveBeenCalledTimes(1);
   });
 
-  it("reads the Lab again and shows the reason when the door refuses, keeping the line", async () => {
+  // FIX-2775: what a turn changes elsewhere reaches each screen through that read's own notices, so a send
+  // reads nothing of the Lab after it, refused or not.
+  it("shows the reason when the door refuses, keeping the line, and reads nothing of the Lab after it", async () => {
     sendTurn.mockRejectedValue(new TurnNotDelivered("refused", "no thanks"));
     drawn([session(s1)]);
     await send("nope");
-    expect(lab.refresh).toHaveBeenCalled();
+    expect(lab.refresh).not.toHaveBeenCalled();
     expect(screen.getByTestId("rev-composer-error").textContent).toContain("no thanks");
     expect((screen.getByTestId("rev-composer-input") as HTMLInputElement).value).toBe("nope");
   });

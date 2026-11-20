@@ -8,7 +8,7 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Conversation } from "../src/components/Conversation";
-import { toWorker } from "../src/lib/reads";
+import { toWorker } from "../src/lib/workers";
 
 vi.mock("../src/lib/lab-data", () => ({
   useLab: () => ({ client: { userId: "alice" }, refresh: async () => undefined, answered: undefined }),

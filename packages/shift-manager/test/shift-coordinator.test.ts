@@ -6,10 +6,12 @@
  */
 import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "@flow-state-dev/client";
-import { shiftCoordinatorOf, shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
+import { shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
+import { shiftCoordinatorOf } from "../src/lib/shift";
 import { conversationAt } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
-import { GENERAL_TEAM, inboxSection, toWorker, type Ask, type BoardTaskView, type Worker } from "../src/lib/reads";
+import { inboxSection, type Ask, type BoardTaskView, type Worker } from "../src/lib/reads";
+import { GENERAL_TEAM, toWorker } from "../src/lib/workers";
 
 const ORG = "org_1";
 const worker = (id: string, door: string | null = "run"): Worker => ({ ...toWorker({ id, kind: "agent", door })! });

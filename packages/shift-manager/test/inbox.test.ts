@@ -14,16 +14,8 @@ import { reconcileInbox, taskTruthOf, suspensionTruthOf, taskItemId, type InboxT
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
 import { connect } from "../src/lib/connection";
-import {
-  CONVERSATION_BOARD_COLLECTION,
-  conversationBoardRef,
-  conversationOfTopic,
-  createLabReader,
-  inboxSection,
-  toBoardTaskView,
-  type BoardTaskView,
-  type LabSnapshot,
-} from "../src/lib/reads";
+import { conversationOfTopic, createLabReader, inboxSection, toBoardTaskView, type BoardTaskView, type LabSnapshot } from "../src/lib/reads";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "../src/lib/boards";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { ASKER_FLOW } from "./fixtures/ask-lab/asker.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";

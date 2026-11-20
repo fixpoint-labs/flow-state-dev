@@ -8,8 +8,10 @@
 import { describe, expect, it } from "vitest";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { COLUMNS, columnFor, isHeld, isDone } from "../src/lib/columns";
-import { openTasks, workerFor, type LoadedSnapshot, type Roster } from "../src/lib/derive";
-import { toBoardTaskView, toWorker, type BoardTaskView } from "../src/lib/reads";
+import { openTasks, type LoadedSnapshot, type Roster } from "../src/lib/derive";
+import { workerFor } from "../src/lib/shift";
+import { toBoardTaskView, type BoardTaskView } from "../src/lib/reads";
+import { toWorker } from "../src/lib/workers";
 
 /** Where BR-12 puts each shipped status. */
 const EXPECTED: Record<string, (typeof COLUMNS)[number]> = {

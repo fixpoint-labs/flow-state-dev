@@ -13,7 +13,7 @@
  * a line opened here holds nothing the user hasn't seen. A lapse after the
  * first read keeps it on screen; only a failed first read shows.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { COORDINATOR_FLOW, deriveWorkerSessionId, type ProjectAddressRef } from "@flow-state-dev/workforce/browser";
@@ -79,7 +79,10 @@ interface Derived {
  */
 function useDerivedId(worker: Pick<Worker, "id" | "kind"> | undefined): Derived {
   const { client } = useLab();
-  const workforce = useWorkforce();
+  // The connection decides the organization; its workforce client is the one built over it.
+  const current = useWorkforce();
+  const workforce = useRef(current);
+  workforce.current = current;
   const flow = worker?.kind ?? null;
   const id = worker?.id;
   const [derived, setDerived] = useState<{ key: string; id: string | null; failure?: Failure } | null>(null);
@@ -87,21 +90,21 @@ function useDerivedId(worker: Pick<Worker, "id" | "kind"> | undefined): Derived 
   useEffect(() => {
     if (key === null || flow === null || id === undefined) return;
     let closed = false;
-    workforce
+    workforce.current
       .organization()
       .then((orgId) => derivedIdOf(`${key}\n${orgId}`, { userId: client.userId, orgId, flow, criteria: { worker: id } }))
       .then(
-      (sessionId) => {
-        if (!closed) setDerived({ key, id: sessionId });
-      },
-      (error: unknown) => {
-        if (!closed) setDerived({ key, id: null, failure: describeFailure(error) });
-      }
-    );
+        (sessionId) => {
+          if (!closed) setDerived({ key, id: sessionId });
+        },
+        (error: unknown) => {
+          if (!closed) setDerived({ key, id: null, failure: describeFailure(error) });
+        },
+      );
     return () => {
       closed = true;
     };
-  }, [key, workforce, client.userId, flow, id]);
+  }, [key, client.userId, flow, id]);
   if (key === null) return { id: null, failure: undefined };
   return derived !== null && derived.key === key ? { id: derived.id, failure: derived.failure } : { id: undefined, failure: undefined };
 }

@@ -7,9 +7,10 @@
  * the org's topics and each listed session but Shift Manager's own. Only the
  * notices that change what the snapshot reads start a read: never a streamed
  * item, never a resource the snapshot doesn't read, never Shift Manager's own
- * reading and usage sessions, or each read would start the next. The summary
- * says when it was last read (D1), and counts dim only while a read the user
- * asked for runs (D2).
+ * reading and usage sessions, or each read would start the next. No screen
+ * reads the snapshot any more (FIX-2775): the summary says when its own reads
+ * last landed (D1), and its refresh and R read those again, never the
+ * snapshot.
  *
  * The client's `subscribe` and the reader are swapped for ones the test drives.
  */
@@ -49,13 +50,21 @@ vi.mock("../src/lib/connection", async () => {
     readConnection: () => ({ userId: USER }),
   };
 });
-const workforce = { watchRoster: () => () => {} };
+const workforce = { organization: async () => "acme", watchRoster: () => () => {} };
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
 // FIX-2774: the summary's needs-you numbers read the inbox view, whose own subscription isn't this test's.
+/** When the view's answer last landed, as `useInbox` says it, and its refresh. */
+let viewReadAt = Date.UTC(2026, 10, 4, 14, 2);
+const viewRefresh = vi.fn();
 vi.mock("../src/lib/inbox", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/lib/inbox")>();
   const { viewOfSnapshot } = await import("./helpers/inbox-view");
-  return { ...real, useInbox: () => ({ section: viewOfSnapshot(snapshotOf()), stale: false, refresh: () => {} }) };
+  return { ...real, useInbox: () => ({ section: viewOfSnapshot(snapshotOf()), stale: false, refresh: viewRefresh, readAt: viewReadAt }) };
+});
+// FIX-2775: the directory's reads, whose own subscriptions aren't this test's either.
+vi.mock("../src/lib/directory-reads", async () => {
+  const { useFixedReads } = await import("./helpers/directory");
+  return { useDirectoryReads: () => useFixedReads(() => undefined) };
 });
 
 let sessions: SessionSummary[] = [];
@@ -112,6 +121,8 @@ beforeEach(() => {
   reads = 0;
   held = undefined;
   holdNext = false;
+  viewReadAt = Date.UTC(2026, 10, 4, 14, 2);
+  viewRefresh.mockClear();
 });
 afterEach(() => cleanup());
 
@@ -308,39 +319,33 @@ describe("the summary's age and R", () => {
     return screen.findByTestId("shift-coordinator-as-of");
   }
 
-  it("says when the snapshot was last read, never that it is live, and moves when a read lands (D1)", async () => {
+  it("says when the summary's own reads last landed, never that it is live (D1)", async () => {
+    viewReadAt = Date.UTC(2026, 10, 4, 14, 7);
     const line = await openShiftCoordinator();
-    expect(line.textContent).toBe(`as of ${clockTime(readAt)} · refresh`);
+    expect(line.textContent).toBe(`as of ${clockTime(viewReadAt)} · refresh`);
     expect(line.textContent).not.toMatch(/live/i);
-    readAt += 5 * 60_000;
-    await waitFor(() => expect(live()).toHaveLength(1));
-    await hear(notice({ scope: "session", id: "conv-1" }, "request"));
-    await waitFor(() => expect(screen.getByTestId("shift-coordinator-as-of").textContent).toBe(`as of ${clockTime(readAt)} · refresh`));
   });
 
-  it("reads now from its refresh link and from R, dimming the counts until the read lands, but not from R typed in a field", async () => {
+  it("reads the summary's reads again from its refresh link and from R, and nothing of the snapshot; not from R typed in a field", async () => {
     await openShiftCoordinator();
     await settle();
     const before = reads;
-    holdNext = true;
     fireEvent.click(screen.getByTestId("shift-coordinator-as-of-refresh"));
-    await waitFor(() => expect(held).toBeDefined());
-    expect(reads).toBe(before + 1);
-    expect(screen.getByTestId("nav-inbox-count").getAttribute("data-asking")).toBe("true");
-    expect(screen.getByTestId("shift-coordinator-summary").querySelector("[data-look='summary-prose']")!.getAttribute("data-asking")).toBe("true");
-    await act(async () => held!.land());
-    await waitFor(() => expect(screen.getByTestId("nav-inbox-count").getAttribute("data-asking")).toBeNull());
+    await settle();
+    expect(viewRefresh).toHaveBeenCalledTimes(1);
 
     act(() => void fireEvent.keyDown(window, { key: "r" }));
     await settle();
-    expect(reads).toBe(before + 2);
+    expect(viewRefresh).toHaveBeenCalledTimes(2);
 
     const field = document.createElement("input");
     document.body.appendChild(field);
     act(() => void fireEvent.keyDown(field, { key: "r" }));
     act(() => void fireEvent.keyDown(window, { key: "r", metaKey: true }));
     await settle();
-    expect(reads).toBe(before + 2);
+    expect(viewRefresh).toHaveBeenCalledTimes(2);
     field.remove();
+    // Nothing on screen asked the snapshot for a read.
+    expect(reads).toBe(before);
   });
 });
