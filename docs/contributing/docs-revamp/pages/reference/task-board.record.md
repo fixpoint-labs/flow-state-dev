@@ -45,11 +45,15 @@ Written by `docs-writer` (sonnet), 7328 words. Scenario: A `research` flow whose
 - After the loop (review): the open pass 7 findings were taken in one more round by docs-writer. "Filer" is defined at first use, and the `held` status has its own bullet; it is set by `held: true` at filing or by `updateTask` before the first start, from the filer or the board's `updateTask_<suffix>` action (packages/orchestration/src/tasks/collection/internal.ts:97,392-395). The lapsed-claim wording is fixed, the refused-lists cell keeps only what is refused, and the `maxEnqueuedTasks` default reads `100`, or the lifetime cap if that is lower (packages/orchestration/src/tasks/collection/task-caps.ts:341-346).
 - After the loop (review): the loop escalated, so it ran no final fact check. One was run by hand on the page as it closed (read-only, about 150 claims). It found 7 untrue and 7 imprecise claims, and all are fixed. A lapsed lease keeps a task `in_progress`: the next claim takes it with `attempts` and `abandonments` each up by one, and only `reclaim()` writes `pending` (packages/orchestration/src/tasks/collection/internal.ts:1053-1060,1396-1425). After 3 abandonments a claim settles it `errored` with the quoted message (internal.ts:512,1460-1475). The figure figures/task-board-states.svg now splits its first note in two, and the brand lint finds nothing. Only a delegation board reports `dispatched`. `counts` holds `total`. The action suffix is the sanitized collection id. `taskBoardStateSchema` is internal, so it is not named. A delegation board needs a registry. 4748 words. Page sha256 decabf6d614b: the page check exits 0. The Options table (22 rows) and the requirements table (8) are over six rows; the editor did not flag them.
 
+- After the loop (review): the Greptile review on the PR. The task tools sentence linked Tools, which does not document them. It now says they work on the collection operations in Task collections, and the tools' fields, results and refusal codes are queued for that page as a Reference row. 4746 words. Page sha256 991b05720d3a.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 84e0edadf0ea, and the 20 Reference row(s) pass 6 moved.
 
 - A refused dispatch fails the task with a `DispatchRefusedError` whose `refused` is one of eight values: `no-entry`, `flow-not-found`, `session-not-found`, `session-not-addressable`, `key-occupied`, `create-refused`, `no-dispatch-operation` or `dispatch-rejected`. Untrue: `DispatchRefusal` has ten values. Besides those eight it has `external-flow-runner` (an `id` delivery on a deployment whose runner hands work to an external queue and whose worker adapter supplies no shared lease backend) and `no-sender` (a `{ from: true }` target on a request the runtime did not dispatch). A `{ by: ... { id } }` session answer can reach `external-flow-runner`, so the list is incomplete for task dispatch. (/home/user/flow-state-dev/packages/core/src/types/dispatch.ts:484-516 (page: docs/contributing/docs-revamp/pages/reference/task-board.md:355))
+
+- Re-run after the review edit: no Reference page documents the task tools' fields yet; Task collections (R-24) owns the collection operations. True.
 
 ## 6 · Depth pass
 
@@ -100,3 +104,4 @@ Not sampled. The owner replaces this with `Read`, the date and what they found, 
 - reportProgress and filing questions: fields, limits (20 questions, 1,000 characters), confirm onNo, holdTaskForUser and askMidway → R-42
 - Workforce conversation boards: delegate-only pieces, keptOpenBy filed, completion rule, cascadeFiled, chain depth 5 and 100-task limit via hireWorkforce taskChainLimit → R-25
 - Patterns that run a board: fixed board settings per pattern, forwarded caps, maxAttemptsPerTask defaults, onSubTaskError values → R-41
+- Task tools: `createTask`, `getTask`, `listTasks`, `updateTask`, `reportProgress` and the `retryTask` action, with their fields, results and refusal codes → R-24

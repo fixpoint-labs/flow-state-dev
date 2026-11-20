@@ -47,11 +47,15 @@ Written by `docs-writer` (sonnet), 5418 words. Scenario: The `support` flow: `ha
 
 - After the loop (R-15 depth pass): the `FSDEV_TRACE_OBSERVABILITY` row points to this page's `lean` row for what a completed block leaves, since Environment variables no longer says it. 5220 words. Page sha256 b411e61e5522.
 
+- After the loop (review): the Greptile review on the PR. The 30 s silence row covers Postgres with a live-tail pool too (packages/store-postgres/src/request-store.ts:781-787) and names `LIVE_TAIL_LIVENESS_MS` (packages/engine/src/streaming/live-tail-liveness.ts:9-15). The after-a-suspension row resumes with `Last-Event-ID: <requestId>:N`, since a bare number is ignored (packages/engine/src/streaming/resume.ts:100-116). 5215 words. Page sha256 0633edeff1d5.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 f3553a830ff7, and the 22 Reference row(s) pass 6 moved.
 
 No untrue claim found.
+
+- Re-run after the review edit: the Postgres live-tail path takes the same liveness timeout, and `LIVE_TAIL_LIVENESS_MS` overrides it; a `Last-Event-ID` must carry the request id. Both true.
 
 ## 6 · Depth pass
 
