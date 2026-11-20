@@ -68,7 +68,7 @@ const OUTSIDE_COMPOSER = { name: (_name: string, element: Element) => element.cl
 const panel = (name: string) => screen.getByRole("complementary", { name: `${name}'s panel` });
 const teammates = () => within(workers()).getAllByRole("list")[0];
 const workerRow = (name: string) => workers().querySelector<HTMLElement>(`[data-worker="${name}"]`)!;
-const entries = (kind: string) => [...conversation().querySelectorAll(`[data-entry="${kind}"]`)];
+const entries = (kind: string) => [...conversation().querySelectorAll(`[data-entry="${kind}"], [data-line="${kind}"]`)];
 
 async function tell(worker: string, text: string) {
   const box = await screen.findByLabelText(`Message ${worker}`);
@@ -176,8 +176,8 @@ describe("the teammates screen", () => {
     expect(popup.contains(document.activeElement)).toBe(true);
     expect(conversation().contains(line)).toBe(true);
     // Live: researcher's reading of the message, then the reply it sent, arrive while the popup is open.
-    await waitFor(() => expect(popup.querySelector('[data-entry="received"]')?.textContent).toMatch(/What's our launch date\?/), { timeout: 2000 });
-    await waitFor(() => expect(popup.querySelector('[data-entry="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
+    await waitFor(() => expect(popup.querySelector('[data-line="received"]')?.textContent).toMatch(/What's our launch date\?/), { timeout: 2000 });
+    await waitFor(() => expect(popup.querySelector('[data-line="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
     await waitFor(() => expect(popup.querySelector("[data-overlay-status]")?.textContent).toBe("replied"));
     expect(line.querySelector("[data-sent-status]")?.textContent).toBe("replied");
 
@@ -565,7 +565,7 @@ describe("the teammates screen", () => {
       // The reply lands after it opened, and moves nothing.
       await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
       const opened = feeds.scrolls.filter((s) => s.feed === body).length;
-      await waitFor(() => expect(popup.querySelector('[data-entry="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
+      await waitFor(() => expect(popup.querySelector('[data-line="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
       expect(feeds.scrolls.filter((s) => s.feed === body).length).toBe(opened);
       expect(body.scrollTop).toBe(4500);
     } finally {
@@ -742,9 +742,9 @@ describe("the teammates screen", () => {
     await tell("writer", "Publish the draft.");
     const card = await within(conversation()).findByRole("region", { name: "writer asks" });
     expect(card.textContent).toContain("Publish the draft to the team page?");
-    expect(card.textContent).toContain("waiting for you");
+    expect(card.getAttribute("data-resolution")).toBe("waiting");
     await act(async () => fireEvent.click(within(card).getByRole("button", { name: "Approve" })));
-    await waitFor(() => expect(card.textContent).toContain("approved"));
+    await waitFor(() => expect(within(conversation()).getByRole("region", { name: "writer asks" }).getAttribute("data-resolution")).toBe("approved"));
     expect(within(card).queryByRole("button", { name: "Approve" })).toBeNull();
     expect(await within(conversation()).findByText("Published.", {}, { timeout: 2000 })).toBeTruthy();
   });

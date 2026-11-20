@@ -1,9 +1,8 @@
 import { FlowProvider, useInterruptKeys, useJumpToLatest, type ItemLine } from "@flow-state-dev/react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SENT_MESSAGE_DATA_TYPE, type RosterEntry, type SentMessageValue } from "@flow-state-dev/workforce/browser";
-import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import type { AppContext } from "../../flows/lab-context.mts";
-import { useAppClient, useConversation, useConversationCalls, useTasks } from "../app";
+import { useAppClient, useConversation, useConversationCalls } from "../app";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { Look } from "../lib/looks";
 import { displayName, roleOf } from "../lib/roster";
@@ -17,14 +16,12 @@ import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connect
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlier } from "./LoadEarlier";
-import { drawsLine, Line, LineContext, teammatesRenderers, type LineScreen } from "./lines";
+import { LineContext, type LineContextValue } from "./flow-state/conversation-lines";
+import { drawsLine, Line, teammatesRenderers, useLinesNames } from "./lines";
 import { answerIn, type Popup } from "./Popups";
 
 /** A small button in the conversation's header. */
 const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-xs tracking-widest uppercase hover:bg-accent";
-
-/** No board tasks read yet: one array, so the lines' screen doesn't change for a new empty one. */
-const NO_TASKS: readonly CodingBoardTask[] = [];
 
 /** The ids of the messages the worker's sent lines sent. */
 const sentIds = (lines: readonly ItemLine[]) =>
@@ -54,7 +51,6 @@ export function Conversation({
   nameOf,
   lookOf,
   isCoding,
-  harnessOf,
   onFire,
   onOpen,
   prefill,
@@ -77,8 +73,6 @@ export function Conversation({
   lookOf: (id: string) => Look;
   /** The worker is the one coding tasks run on, not a teammate. */
   isCoding: (id: string) => boolean;
-  /** A coding worker's harness, by the screen's name for it. */
-  harnessOf: (id: string) => string | undefined;
   onFire: () => Promise<void>;
   /** Open a popup over the conversation: a task it filed, or a message it sent. */
   onOpen: (popup: Popup) => void;
@@ -104,7 +98,6 @@ export function Conversation({
   const talk = useTalk(worker.id, answered) ?? [];
   const running = view?.running ?? false;
   const pending = pendingFor(worker.id, talk, lines, view?.since);
-  const tasks = useTasks(sessionId).value ?? NO_TASKS;
   const status = useStatusLine(worker.id, sessionId, nameOf, isCoding, stale);
   const [panel, setPanel] = useState<"fire">();
   const delegates = delegatesOf(worker, workers, context);
@@ -141,28 +134,25 @@ export function Conversation({
   const workerName = displayName(worker);
   const backgroundRunning = view?.backgroundRunning ?? undefined;
   const talkKey = answered.map((id) => `${id}:${answerIn(talk, id)}`).join(",");
-  // What each line needs from this screen, one object while none of it changes, so a memoized line doesn't redraw.
-  const screenOfLines = useMemo<LineScreen>(
+  const names = useLinesNames(nameOf, lookOf, isCoding);
+  // What each line can do on this screen, one object while none of it changes, so a memoized line doesn't redraw.
+  const screenOfLines = useMemo<LineContextValue>(
     () => ({
-      workerName,
-      nameOf,
-      lookOf,
-      isCoding,
-      harnessOf,
-      tasks,
-      answerOf: (messageId) => (answered.includes(messageId) ? answerIn(talk, messageId) : undefined),
+      who: workerName,
+      ...names,
+      sentStatusOf: (messageId) => (answered.includes(messageId) ? answerIn(talk, messageId) : undefined),
       openMessage: (sent) => onOpen({ kind: "message", from: worker.id, ...sent }),
       openTask: (taskId) => onOpen({ kind: "task", sessionId, taskId }),
       // Retry only the newest turn, and not while one runs: the engine runs a failed request again as a new one.
       ...(running ? {} : { retry: (requestId: string) => calls.retry(sessionId, requestId) }),
       // The count belongs to the newest stopped line, while no later turn has started.
       stillRunning: (lineId) => (lineId === last?.id && last?.kind === "stopped" && !running ? backgroundRunning : undefined),
-      viewTasks: onViewTasks,
+      onViewRunning: onViewTasks,
       readFile: calls.readFile,
-      answers: true,
+      canAnswer: true,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [workerName, nameOf, lookOf, isCoding, harnessOf, tasks, talkKey, onOpen, worker.id, sessionId, running, calls, last?.id, last?.kind, backgroundRunning, onViewTasks],
+    [workerName, names, talkKey, onOpen, worker.id, sessionId, running, calls, last?.id, last?.kind, backgroundRunning, onViewTasks],
   );
 
   const markAt = mark ? lines.findIndex((line) => line.id === mark.firstVerbatimLineId) : -1;
@@ -212,7 +202,8 @@ export function Conversation({
           </button>
         </div>
       ) : null}
-      <FlowProvider flowKind={flow} renderers={teammatesRenderers}>
+      {/* The session names the conversation's board, which a filed task's card reads. */}
+      <FlowProvider flowKind={flow} sessionId={sessionId} renderers={teammatesRenderers}>
         <LineContext.Provider value={screenOfLines}>
         <div ref={feed.ref} data-scroller className="relative flex-1 overflow-y-auto px-6 pt-4 pb-10">
           <div data-column className="mx-auto flex max-w-(--thread-width) flex-col gap-3">

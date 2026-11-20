@@ -15,6 +15,8 @@ import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import { answerIn } from "../src/components/Popups";
+import { linesNames } from "../src/components/lines";
+import { lookOf } from "../src/lib/looks";
 import { exchangeOf } from "../src/lib/talk";
 import { answered, approval, call, drawLines, filed, linesOf, message, received, result, sent } from "./lines";
 
@@ -37,7 +39,7 @@ describe("a task's ending", () => {
     drawLines(linesOf([
       result("a", "q1", { taskId: "task_x", from: CODER, title: "Fix it", text: "…", ending: "errored" }),
       result("b", "q1", { taskId: "task_c", from: CODER, title: "Tidy", text: "…", ending: "cancelled" }),
-    ]), { isCoding: (id) => id === CODER });
+    ]), { ...linesNames((id) => id, (id) => lookOf({ id, name: id }), (id) => id === CODER), openTask: () => undefined });
     expect(screen.getByRole("button", { name: "Coding task couldn't finish: Fix it" }).getAttribute("data-status")).toBe("failed");
     expect(screen.getByRole("button", { name: "Coding task was cancelled: Tidy" }).getAttribute("data-status")).toBe("cancelled");
   });
@@ -48,7 +50,7 @@ describe("a message the worker sent", () => {
     const opened: unknown[] = [];
     drawLines(linesOf([sent("s", "q1", { to: WRITER, text: "Draft it.", messageId: "msg_1" })]), {
       nameOf: () => "writer",
-      answerOf: (id) => (id === "msg_1" ? "replied" : undefined),
+      sentStatusOf: (id) => (id === "msg_1" ? "replied" : undefined),
       openMessage: (m) => void opened.push(m),
     });
     const line = screen.getByRole("button", { name: "Messaged writer: Draft it." });
@@ -60,15 +62,17 @@ describe("a message the worker sent", () => {
   it("says one it couldn't send wasn't sent, and why, and opens nothing", () => {
     drawLines(linesOf([sent("s", "q1", { to: WRITER, text: "Hi.", refused: "no_worker: Nothing was sent." })]), { nameOf: () => "writer", openMessage: () => undefined });
     expect(screen.queryByRole("button")).toBeNull();
-    const line = document.querySelector("[data-entry=sent]")!;
+    const line = document.querySelector("[data-line=sent]")!;
     expect(line.getAttribute("data-state")).toBe("refused");
     expect(line.textContent).toContain("Not sent to writer: Hi.");
     expect(line.textContent).toContain("no_worker: Nothing was sent.");
   });
 
   it("names a task or a conversation it went to, as workforce words it, not another worker", () => {
-    drawLines(linesOf([sent("s1", "q1", { to: { task: "task_42" }, text: "Done yet?", messageId: "msg_1" }), sent("s2", "q2", { to: { session: "s_other" }, text: "FYI", messageId: "msg_2" })]), { nameOf: (id) => id });
-    expect(screen.getAllByRole("button").map((line) => line.getAttribute("aria-label"))).toEqual(["Messaged task task_42: Done yet?", "Messaged conversation s_other: FYI"]);
+    drawLines(linesOf([sent("s1", "q1", { to: { task: "task_42" }, text: "Done yet?", messageId: "msg_1" }), sent("s2", "q2", { to: { session: "s_other" }, text: "FYI", messageId: "msg_2" })]), { nameOf: (id) => id, openMessage: () => undefined });
+    // Neither went to a worker, so neither has an exchange to open.
+    expect(screen.queryAllByRole("button")).toEqual([]);
+    expect([...document.querySelectorAll("[data-line=sent]")].map((line) => line.getAttribute("aria-label"))).toEqual(["Messaged task task_42: Done yet?", "Messaged conversation s_other: FYI"]);
   });
 });
 
@@ -82,33 +86,29 @@ describe("a message another worker sent", () => {
 });
 
 describe("a task the worker filed", () => {
-  it("is its card from the filing, before the board's task arrives, and then from that task", () => {
-    const lines = linesOf([filed("f", "q1", { taskId: "task_1", title: "Draft the post", assignee: WRITER })]);
-    const view = drawLines(lines, { nameOf: () => "writer" });
+  // From the board's task once it is read: `task-panel.test.tsx` draws the same card in a conversation over a board.
+  it("is its card from the filing, before the board's task arrives", () => {
+    drawLines(linesOf([filed("f", "q1", { taskId: "task_1", title: "Draft the post", assignee: WRITER })]), { nameOf: () => "writer" });
     expect(screen.getByRole("button", { name: "Asked writer to draft the post" }).getAttribute("data-status")).toBe("running");
-    view.unmount();
-    const task = { id: "task_1", goal: "Draft the post", title: "Draft the post", assignee: WRITER, status: "completed", attempts: 1, asks: [], harness: null, review: null, landed: null, error: null, pullRequests: [], runFlow: null, detail: null };
-    drawLines(lines, { nameOf: () => "writer", tasks: [task as never] });
-    expect(screen.getByRole("button", { name: "Asked writer to draft the post" }).getAttribute("data-status")).toBe("done");
   });
 });
 
 describe("a worker waiting for your yes", () => {
-  it("is a card with Approve and Deny until answered, and then says how", () => {
+  it("is a card with Approve and Reject until answered, and then says how", () => {
     const stop = approval("s1", "r1", "sus_1", "Publish the draft?");
-    drawLines(linesOf([stop]), { workerName: "writer", answers: true });
+    drawLines(linesOf([stop]), { who: "writer", canAnswer: true });
     const card = screen.getByRole("region", { name: "writer asks" });
     expect(within(card).getByRole("button", { name: "Approve" })).toBeTruthy();
     cleanup();
-    drawLines(linesOf([stop, answered("s2", "r1", "sus_1", "approved")]), { workerName: "writer" });
-    expect(screen.getByRole("region", { name: "writer asks" }).textContent).toContain("writer asks · approved");
+    drawLines(linesOf([stop, answered("s2", "r1", "sus_1", "approved")]), { who: "writer", canAnswer: true });
+    expect(screen.getByRole("region", { name: "writer asks" }).getAttribute("data-resolution")).toBe("approved");
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 
   // A popup has no flow to answer through: buttons there would do nothing.
-  it("offers no Approve or Deny on a screen that can't answer it (a popup), and says it waits", () => {
-    drawLines(linesOf([approval("s1", "r1", "sus_1", "Publish the draft?")]), { workerName: "writer" });
-    expect(screen.getByRole("region", { name: "writer asks" }).textContent).toContain("waiting for you");
+  it("offers no Approve or Reject on a screen that can't answer it (a popup), and says it waits", () => {
+    drawLines(linesOf([approval("s1", "r1", "sus_1", "Publish the draft?")]), { who: "writer" });
+    expect(screen.getByRole("region", { name: "writer asks" }).textContent).toContain("Waiting for you");
     expect(screen.queryByRole("button")).toBeNull();
   });
 });

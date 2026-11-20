@@ -232,3 +232,21 @@ export function withToolState(label: string, state: ToolStepStatus, count = 1, t
 export function toolRunOpen(state: ToolStepStatus): boolean {
   return state === "running";
 }
+
+/**
+ * Each step of a run with whether it was redone: a failed step that a later
+ * step of the same tool completed was an attempt, not an error, so it reads
+ * `completed` here (`redone: true`) and the run isn't failed for it. Only
+ * the tool's name is compared, and only within the run given.
+ */
+export function withRedone<T extends { tool: string; state: ToolStepStatus }>(steps: readonly T[]): Array<T & { redone: boolean }> {
+  return steps.map((step, i) => {
+    const redone = step.state === "error" && steps.slice(i + 1).some((later) => later.tool === step.tool && later.state === "completed");
+    return { ...step, state: redone ? "completed" : step.state, redone };
+  });
+}
+
+/** A redone step's words: "Tried openWorkstream", "Tried read src/a.ts". */
+export function triedLabel(label: string): string {
+  return `Tried ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
+}
