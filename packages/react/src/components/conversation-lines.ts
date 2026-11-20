@@ -176,14 +176,12 @@ function shownItems(items: readonly OutputItem[], options: ConversationLinesOpti
 
 /**
  * The logical ids of the tool calls the shown data items were written in:
- * a data item stands for a call when its `key` is that call's logical id
- * and `renderers` draws it.
+ * a data item stands for a call when its `key` is that call's logical id.
  */
-function callsThatWroteLines(items: readonly OutputItem[], renderers: RendererRegistry | undefined): (call: ToolOutputItem) => boolean {
+function callsThatWroteLines(items: readonly OutputItem[]): (call: ToolOutputItem) => boolean {
   const written = new Set<string>();
   for (const item of items) {
-    // Only a line that is drawn stands for its call; a call whose line nothing draws stays a step.
-    if (item.type !== "data" || !drawsData(item as DataItem, renderers)) continue;
+    if (item.type !== "data") continue;
     const { key, provenance } = item as DataItem;
     const parsed = key === undefined ? undefined : parseBlockInstanceId(provenance.blockInstanceId);
     if (parsed !== undefined && `${parsed.requestId}:${parsed.path}` === key) written.add(key);
@@ -242,7 +240,7 @@ export function conversationLines(
   }
 
   const shown = shownItems(items, options);
-  const wroteLine = callsThatWroteLines(shown, options.renderers);
+  const wroteLine = callsThatWroteLines(shown);
   const lines: ItemLine[] = [];
   /** Where each stopped turn's line goes: after its last line. */
   const stoppedAt = new Map<string, number>();
