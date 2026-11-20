@@ -172,16 +172,24 @@ describe("V8", () => {
     const taskFiles = ["lib/task.tsx", "lib/task-items.ts", "surfaces/TaskFrame.tsx", "surfaces/TaskSession.tsx", "surfaces/TaskInspector.tsx"];
     const WRITES = /\.(send|resume|answer|retry|continue|delete|updateMetadata)\(|\b(postLine|createCollectionResource|updateCollectionResource|deleteCollectionResource|createSession|retryRequest|continueRequest)\b|method:\s*"(POST|PUT|PATCH|DELETE)"/;
     const writes = (text: string) =>
-      text.split("\n").filter((line) => WRITES.test(line) || (/\.request\([^)]*\)\.abort\(/.test(line) && !/await actions\.request\(run\.requestId\)\.abort\(\)/.test(line)));
+      text
+        .split("\n")
+        // A failed run's Retry is the board's own retry, on the board `reader.taskActions` gives (below).
+        .filter((line) => !/^\s*await board\.retry\(taskId\);$/.test(line))
+        .filter((line) => WRITES.test(line) || (/\.request\([^)]*\)\.abort\(/.test(line) && !/await actions\.request\(run\.requestId\)\.abort\(\)/.test(line)));
     for (const file of taskFiles) expect(writes(readFileSync(join(src, file), "utf8")), file).toEqual([]);
     // The abort is one run's stop, through workforce (FIX-2776 D3).
     expect(readFileSync(join(src, "lib/task.tsx"), "utf8")).toContain("await workforce.stopRun(openRun.sessionId, openRun.requestId)");
-    // The header's action row changes the task only through the board's own
-    // actions, the reader's `taskActions`, handed to the registry's row whole.
-    expect(readFileSync(join(src, "surfaces/TaskFrame.tsx"), "utf8")).toContain("reader.taskActions(");
+    // The task changes only through the board's own actions, the reader's
+    // `taskActions`: the header hands them to the registry's row whole, and a
+    // failed run's line retries through them.
+    expect(readFileSync(join(src, "lib/task.tsx"), "utf8")).toContain("reader.taskActions(");
+    expect(readFileSync(join(src, "surfaces/TaskFrame.tsx"), "utf8")).toContain("const board = task.board;");
+    expect(readFileSync(join(src, "surfaces/TaskSession.tsx"), "utf8")).toContain("const { board, retryRow, taskId } = task;");
     // Planted: a second write is caught.
     expect(writes(`await client.flow(f).send("run", {});`)).toHaveLength(1);
     expect(writes(`await client.flow(f).request(id).abort();`)).toHaveLength(1);
+    expect(writes(`await client.retry(taskId);`)).toHaveLength(1);
   });
 
   it("goes to an address through a real link, so it opens in a new tab and can be copied (FIX-2414)", () => {
