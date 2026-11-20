@@ -13,20 +13,37 @@
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import type { Client } from "@flow-state-dev/client";
-import type { RosterEntry } from "@flow-state-dev/workforce/browser";
+import type { ItemLine } from "@flow-state-dev/react";
+import { RECEIVED_MESSAGE_DATA_TYPE, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { AppProvider, useAppClient } from "../app";
-import type { ConversationEntry } from "../lib/conversation";
 import { Conversation } from "../components/Conversation";
 import { SessionOverlay } from "../components/flow-state/session-overlay";
 import "../styles.css";
 import { exposeGoal, script, useConversation, useOpen, type Line } from "./script";
 
-const entryOf = (line: Line): ConversationEntry =>
-  line.who === "person"
-    ? { kind: "user", id: line.id, text: line.text }
-    : line.who === "worker"
-      ? { kind: "assistant", id: line.id, text: line.text, streaming: line.streaming }
-      : { kind: "received", id: line.id, messageId: line.id, from: "researcher", text: line.text };
+/** A script line as the conversation model would read it: what you said, what the worker said, a message from a teammate. */
+const lineOf = (line: Line): ItemLine => {
+  const base = { id: line.id, requestId: line.id, itemIndex: 0, ts: 0, provenance: { blockName: "worker", blockInstanceId: "worker", phase: "main" } };
+  const said = (role: "user" | "assistant") => ({
+    ...base,
+    type: "message",
+    status: line.streaming ? "in_progress" : "completed",
+    role,
+    content: [{ type: role === "user" ? "input_text" : "output_text", text: line.text }],
+  });
+  return (
+    line.who === "person"
+      ? { kind: "user", id: line.id, requestId: line.id, item: said("user") }
+      : line.who === "worker"
+        ? { kind: "assistant", id: line.id, requestId: line.id, item: said("assistant"), ...(line.streaming ? { streaming: true } : {}) }
+        : {
+            kind: "data",
+            id: line.id,
+            requestId: line.id,
+            item: { ...base, type: "data", status: "completed", dataType: RECEIVED_MESSAGE_DATA_TYPE, value: { from: "researcher", messageId: line.id, text: line.text } },
+          }
+  ) as ItemLine;
+};
 
 const worker: RosterEntry = { id: "helper", flow: "agent", standard: true, description: "helps out", name: "Helper", teamName: null, forkedFrom: null, edited: false, settings: {} };
 
@@ -53,7 +70,7 @@ function Follower({ sessionId }: { sessionId: string }) {
   const conversation = useConversation(sessionId);
   useEffect(() => {
     conversations.publish(sessionId, {
-      view: { entries: conversation.lines.map(entryOf), running: conversation.running, stopping: false, backgroundRunning: 0 },
+      view: { lines: conversation.lines.map(lineOf), running: conversation.running, stopping: false, backgroundRunning: 0 },
       connection: "live",
       mark: undefined,
       follow: () => undefined,

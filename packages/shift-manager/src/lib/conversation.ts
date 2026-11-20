@@ -117,6 +117,8 @@ export interface WorkerConversation {
   read: { items: OutputItem[]; truncated: boolean; loadEarlier?: () => Promise<void> } | undefined;
   /** Why the first read failed; cleared by the next that succeeds. A failed later read keeps the last one. */
   failure: Failure | undefined;
+  /** The session's background work still running, as its stream names it; `null` until it has. */
+  stillRunning: number | null;
   /** Read the session again from scratch after a failed first read (Retry): the page's feed for it opens anew. */
   reread(): void;
   /** The conversation's address is still being worked out: nothing is sent until it is. */
@@ -171,6 +173,7 @@ export function useWorkerConversation(
     opened,
     read,
     failure: (read === undefined ? failure : undefined) ?? underived,
+    stillRunning: feed?.runs == null ? null : feed.runs.length,
     reread,
     resolving,
     ensure

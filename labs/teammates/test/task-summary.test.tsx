@@ -27,7 +27,8 @@ import type { Client } from "@flow-state-dev/client";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRecordedFiles } from "../src/app";
-import { commandsRun, runSummaryLine, runSteps } from "../src/lib/steps";
+import { commandsRun, runSummaryLine } from "../src/components/Popups";
+import { call as itemCall, linesOf } from "./lines";
 import { App } from "../src/components/App";
 import { attemptDurationMs } from "../src/lib/task";
 import { scriptedServer } from "./scripted-server";
@@ -43,28 +44,21 @@ const LEAD = "teammates.chief-of-staff";
 const TASK = "Coding task: Fix the typo in the README's first line";
 
 /** A harness's tool call as a run's item. */
-const call = (name: string, args: Record<string, unknown>, status = "completed") => ({
-  id: `i-${Math.random()}`,
-  type: "tool_output",
-  status,
-  requestId: "q1",
-  toolCall: { name, arguments: JSON.stringify(args) },
-  output: {},
-});
+const call = (name: string, args: Record<string, unknown>, status = "completed", requestId = "q1") => itemCall(`i-${Math.random()}`, requestId, name, args, status);
 
 describe("a run's summary line", () => {
   it("counts the shell commands that ran, not one still running", () => {
-    const steps = runSteps([
+    const steps = linesOf([
       call("Bash", { command: "pnpm test" }),
       call("command_execution", { command: "pnpm lint" }, "incomplete"),
       call("shell", { command: "pnpm build" }, "in_progress"),
       call("Edit", { file_path: "/work/README.md" }),
-    ] as never);
+    ]);
     expect(commandsRun(steps)).toBe(2);
   });
 
   it("counts only the run's own request: a retry in the same session doesn't add the last attempt's commands", () => {
-    const steps = runSteps([{ ...call("Bash", { command: "ls" }), requestId: "attempt-1" }, { ...call("Bash", { command: "pwd" }), requestId: "attempt-2" }] as never);
+    const steps = linesOf([call("Bash", { command: "ls" }, "completed", "attempt-1"), call("Bash", { command: "pwd" }, "completed", "attempt-2")]);
     expect(commandsRun(steps, "attempt-2")).toBe(1);
     expect(commandsRun(steps)).toBe(2);
   });

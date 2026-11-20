@@ -3,22 +3,22 @@
  * One follower per open conversation (`ConversationFollower`) reads its items
  * on react's `useSessionFeed`, its turns on workforce's session turns view
  * (running, stopped, retryable, and `historyStart`, where the worker's window
- * began), the history summary's mark through `useResource` by session id, and
- * the roster, so a line under a worker's name reads as a task's ending. Every
+ * began), and the history summary's mark through `useResource` by session id;
+ * React's `conversationLines` turns the items and turns into lines. Every
  * screen on the conversation reads what it read (`useConversation`). Its
  * writes go through workforce's client (`useConversationCalls`): open it,
  * send a line (streamed into the follower's feed), stop it (`stopTurns`) and
  * retry a failed turn (`retryTurn`); an approval is answered by react's
- * `useApproval`, where its entry is drawn.
+ * `useApproval`, where its line is drawn.
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { UploadRequest } from "@flow-state-dev/client";
 import type { FileContent } from "@flow-state-dev/core/items";
-import { useResource, useSessionFeed, useView } from "@flow-state-dev/react";
-import { historySummaryResource, rosterView, sessionTurnsViewRef } from "@flow-state-dev/workforce/browser";
-import { answeringOf, RETRYABLE_SOURCES, toEntries, windowMarkOf, windowReadOf, type ConversationEntry, type ConversationView } from "../lib/conversation";
+import { conversationLines, useResource, useSessionFeed, useView, type ItemLine } from "@flow-state-dev/react";
+import { historySummaryResource, sessionTurnsViewRef } from "@flow-state-dev/workforce/browser";
+import { teammatesRenderers } from "../components/lines";
+import { answeringOf, windowMarkOf, windowReadOf, type ConversationView } from "../lib/conversation";
 import { fileReader } from "../lib/files";
-import type { Item } from "../lib/items";
 import { reuseById } from "../lib/stable";
 import { useAppClient } from "./provider";
 
@@ -31,13 +31,12 @@ export function ConversationFollower({ sessionId }: { sessionId: string }): null
   const feed = useSessionFeed(sessionId, { client });
   const turns = useView(sessionTurnsViewRef(), { sessionId }, { client, pollIntervalMs }).value;
   const summary = useResource(historySummaryResource, { sessionId, client, pollIntervalMs }).value;
-  const roster = useView(rosterView, undefined, { client, pollIntervalMs }).value;
   const stop = useSyncExternalStore(conversations.subscribe, () => conversations.stopOf(sessionId));
   // Kept for the follower's life: a stopped line stays once its turn leaves the turns read.
   const [stopped] = useState(() => new Set<string>());
-  // Unchanged entries keep their objects, so a streamed chunk redraws only the growing one.
-  const last = useRef<ConversationEntry[]>([]);
-  const items = feed?.items as unknown as Item[] | undefined;
+  // Unchanged lines keep their objects, so a streamed chunk redraws only the growing one.
+  const last = useRef<ItemLine[]>([]);
+  const items = feed?.items;
   const ended = useMemo(() => (turns ?? []).filter((t) => t.status !== "in_progress").map((t) => t.id), [turns]);
   // A stop ends once the turns show every turn it stopped ended. A full view (its newest fifty) that doesn't list
   // one has left it out only when the turn started before the view's oldest; otherwise the view hasn't read it yet.
@@ -51,23 +50,22 @@ export function ConversationFollower({ sessionId }: { sessionId: string }): null
     if (items === undefined) return { view: undefined, connection: feed.state, mark: undefined, follow: feed.followResponse };
     const read = turns ?? [];
     for (const turn of read) if (turn.status === "aborted") stopped.add(turn.id);
-    const workers = new Set((roster ?? []).map((w) => w.id));
-    // The turns the engine would retry for you; a turn that ended with a call still marked running reads that call failed.
-    const retryable = new Set(read.filter((t) => RETRYABLE_SOURCES.has(t.source)).map((t) => t.id));
-    const entries = (last.current = reuseById(last.current, toEntries(items, workers, ended, retryable, [...stopped])));
+    // A stopped turn that left the turns read still ends in its stopped line.
+    const lineTurns = [...read, ...[...stopped].filter((id) => !listed.has(id)).map((id) => ({ id, status: "aborted" }))];
+    const lines = (last.current = reuseById(last.current, conversationLines(items, lineTurns, { renderers: teammatesRenderers })));
     const inProgress = read.filter((t) => t.status === "in_progress").map((t) => t.id);
     const since: number | undefined = items[0]?.ts;
     const view: ConversationView = {
-      entries,
+      lines,
       running: answeringOf(items, inProgress, ended),
       stopping: stop !== undefined && !stopEnded,
       backgroundRunning: feed.runs === null ? null : feed.runs.length,
       ...(feed.hasEarlier ? { loadEarlier: feed.loadEarlier } : {}),
       ...(since === undefined ? {} : { since }),
     };
-    return { view, connection: feed.state, mark: windowMarkOf(items, entries, windowReadOf(read, summary)), follow: feed.followResponse };
+    return { view, connection: feed.state, mark: windowMarkOf(items, lines, windowReadOf(read, summary)), follow: feed.followResponse };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, feed?.state, feed?.runs, feed?.hasEarlier, turns, ended, summary, roster, stop, stopEnded]);
+  }, [items, feed?.state, feed?.runs, feed?.hasEarlier, turns, ended, summary, stop, stopEnded]);
   useEffect(() => {
     if (stopEnded) conversations.setStop(sessionId, undefined, stop);
   }, [stopEnded, stop, conversations, sessionId]);

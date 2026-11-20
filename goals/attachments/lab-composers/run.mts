@@ -33,6 +33,7 @@ import { openClaudeCodeStyle } from "../../../labs/claude-code-style/host.mts";
 import { appCalls } from "../../../labs/claude-code-style/src/app/index.ts";
 import { entriesOf as ccsEntriesOf, THREAD_ITEMS, type Item as CcsItem, type ThreadEntry } from "../../../labs/claude-code-style/src/lib/thread-entries.ts";
 import { openTeammates } from "../../../labs/teammates/host.mts";
+import { filesOf, textOf } from "../../../labs/teammates/src/components/lines.tsx";
 import type { ConversationView } from "../../../labs/teammates/src/lib/conversation.ts";
 import { teammatesScreen } from "../../teammates-lab/screen.mts";
 import {
@@ -246,7 +247,7 @@ await runGoal(async (failures, tell) => {
     lab(tm),
     lab(freshTm),
     (adapter, on) => (adapter as ReturnType<typeof lab>).screen.watch(leadSession, (view) => on(view)),
-    (view) => view.entries,
+    (view) => view.lines.map((line) => (line.kind === "user" || line.kind === "assistant" ? { kind: line.kind, text: textOf(line.item), files: filesOf(line.item) } : { kind: line.kind })),
     (view) => view.running,
     leadSession,
     [first, second],

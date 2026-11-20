@@ -8,12 +8,13 @@
  * log), or it is idle. Nothing is guessed: with no request, no running task
  * and no open message, it is idle.
  */
-import { useView } from "@flow-state-dev/react";
-import { sessionTurnsViewRef, workerSessionsViewRef, type ListedTurn, type ListedWorkerSession, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
+import { useView, type ItemLine } from "@flow-state-dev/react";
+import type { SuspensionItem, ToolOutputItem } from "@flow-state-dev/core/items";
+import { RECEIVED_MESSAGE_DATA_TYPE, sessionTurnsViewRef, workerSessionsViewRef, type ListedTurn, type ListedWorkerSession, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useAppClient, useConversation, useTasks } from "../app";
-import type { ConversationEntry } from "./conversation";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
+import { stepOf } from "../components/ToolRun";
 import { holdOf, taskStatus, titleOf, workerOf } from "./task";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom, useTalk } from "./talk";
@@ -23,7 +24,8 @@ import { age, useNow } from "./use-watch";
 export interface StatusInputs {
   /** Whether a turn runs in its default conversation, and when its last turn ended or started, in ms (0: none yet). */
   activity: { running: boolean; lastActiveAt: number } | undefined;
-  entries: readonly ConversationEntry[];
+  /** The conversation's lines. */
+  lines: readonly ItemLine[];
   talk: readonly WorkerMessageResourceState[];
   tasks: readonly CodingBoardTask[];
   now: number;
@@ -48,7 +50,8 @@ export interface Status {
 const upperFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** An approval it asked for that you haven't answered yet. */
-const openApproval = (e: ConversationEntry): boolean => e.kind === "approval" && e.resolution === undefined;
+const openApproval = (line: ItemLine): line is Extract<ItemLine, { kind: "suspension" }> =>
+  line.kind === "suspension" && line.item.reason === "user_approval" && line.resolution === undefined;
 
 /** One thing a teammate needs from you: its key (one per approval, or per hold of a task, for the notifier), what it asks, and, for a task, the task. */
 export type Need = { key: string; text: string } & ({ kind: "approval" } | { kind: "task"; task: CodingBoardTask });
@@ -58,9 +61,9 @@ export type Need = { key: string; text: string } & ({ kind: "approval" } | { kin
  * task that waits on you. The one rule for "needs you": the status line, the
  * row's badge, the tab's title and the notifications all read it.
  */
-export function needsOf({ entries, tasks }: Pick<StatusInputs, "entries" | "tasks">): Need[] {
+export function needsOf({ lines, tasks }: Pick<StatusInputs, "lines" | "tasks">): Need[] {
   return [
-    ...entries.flatMap((e): Need[] => (e.kind === "approval" && openApproval(e) ? [{ key: `approval:${e.suspensionId}`, text: e.text, kind: "approval" }] : [])),
+    ...lines.flatMap((line): Need[] => (openApproval(line) ? [{ key: `approval:${line.item.suspensionId}`, text: (line.item as SuspensionItem).message, kind: "approval" }] : [])),
     ...tasks.flatMap((t): Need[] => {
       const hold = holdOf(t);
       return taskStatus(t) === "running" && hold !== undefined ? [{ key: `waiting:${t.id}:${hold.id}`, text: hold.ask.prompt, kind: "task", task: t }] : [];
@@ -89,7 +92,7 @@ export function freshEndings(tasks: readonly CodingBoardTask[], now: number, isC
  * failed: X", "Messaging writer", or "Idle".
  */
 export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: string) => string, isCoding: (id: string) => boolean): Status {
-  const { activity, entries, talk, tasks, now } = inputs;
+  const { activity, lines, talk, tasks, now } = inputs;
   const need = needsOf(inputs)[0];
   if (need?.kind === "approval") return { text: `Needs your OK: ${need.text}`, tone: NEEDS_OK, needsYou: true };
   if (need?.kind === "task") {
@@ -99,8 +102,9 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
   const plain = (text: string): Status => ({ text, tone: PLAIN, needsYou: false });
   if (activity?.running) {
     // What it is answering: the last line it was given, yours or another worker's.
-    const given = [...entries].reverse().find((e) => e.kind === "user" || e.kind === "received");
-    return plain(given?.kind === "received" ? `Replying to ${nameOf(given.from)}` : "Replying to you");
+    const given = [...lines].reverse().find((line) => line.kind === "user" || (line.kind === "data" && line.item.dataType === RECEIVED_MESSAGE_DATA_TYPE));
+    const from = given?.kind === "data" ? (given.item.value as { from?: string })?.from : undefined;
+    return plain(from !== undefined ? `Replying to ${nameOf(from)}` : "Replying to you");
   }
   const coding = tasks.find((t) => taskStatus(t) === "running" && isCoding(workerOf(t)));
   if (coding) return plain(`Running coding task: ${titleOf(coding)}`);
@@ -125,15 +129,16 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
  * is doing for them. Only the registry's phrases are shown: an unknown tool
  * name may itself carry a payload, so it reads "using a tool".
  */
-export function answeringStep(entries: readonly ConversationEntry[]): Status | undefined {
+export function answeringStep(lines: readonly ItemLine[]): Status | undefined {
   // Only the tail can describe current work. Never revive a tool from an earlier turn.
-  const last = entries[entries.length - 1];
+  const last = lines[lines.length - 1];
   if (last?.kind !== "steps") return undefined;
-  for (let i = last.steps.length - 1; i >= 0; i--) {
-    const step = last.steps[i]!;
-    if (step.kind !== "tool") continue;
+  for (let i = last.items.length - 1; i >= 0; i--) {
+    const item = last.items[i]!;
+    if (item.type !== "tool_output") continue;
+    const step = stepOf(item as ToolOutputItem, last.ended === true);
     if (step.state === "waiting") return { text: "waiting on you", tone: NEEDS_OK, needsYou: true };
-    if (step.state === "running") return { text: (step.tool === undefined ? undefined : knownToolVerbs(step.tool)?.present) ?? "using a tool", tone: PLAIN, needsYou: false };
+    if (step.state === "running") return { text: knownToolVerbs(step.tool)?.present ?? "using a tool", tone: PLAIN, needsYou: false };
   }
   return undefined;
 }
@@ -170,5 +175,5 @@ export function useStatusLine(worker: string, sessionId: string | undefined, nam
   const talk = useTalk(worker) ?? [];
   const view = useConversation(sessionId)?.view;
   const tasks = useTasks(sessionId).value ?? [];
-  return statusOf(worker, { activity, entries: view?.entries ?? [], talk, tasks, now }, nameOf, isCoding).text;
+  return statusOf(worker, { activity, lines: view?.lines ?? [], talk, tasks, now }, nameOf, isCoding).text;
 }

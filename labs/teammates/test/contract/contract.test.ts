@@ -40,9 +40,12 @@ import { createInProcessFetch } from "@flow-state-dev/engine";
 import { pluggable, scriptedModels, waitFor } from "../../../test-support/contract";
 import { openTeammates } from "../../host.mts";
 import { AppProvider, ConversationFollower, useAppClient, useConversationCalls } from "../../src/app";
-import type { ConversationEntry, ConversationView } from "../../src/lib/conversation";
+import type { ItemLine } from "@flow-state-dev/react";
+import type { MessageItem } from "@flow-state-dev/core/items";
+import { FILED_TASK_DATA_TYPE, TASK_RESULT_DATA_TYPE, type FiledTaskValue, type TaskResultValue } from "@flow-state-dev/workforce/browser";
+import type { ConversationView } from "../../src/lib/conversation";
 import type { AppConnection } from "../../src/lib/files";
-import { Entry } from "../../src/components/Entry";
+import { LinesOf } from "../lines";
 import { scriptedServer } from "../scripted-server";
 
 // The scenarios drive the hooks from outside React, as the host's answers arrive: no act() to wrap them in.
@@ -375,12 +378,19 @@ async function stopAll(lab: Screen, id: string, view: Followed<ConversationView>
 }
 
 /** What a user line may carry: anything more is a state the screen could draw. */
-const USER_LINE_KEYS = new Set(["kind", "id", "text"]);
+const USER_LINE_KEYS = new Set(["kind", "id", "requestId", "item"]);
 
-/** The entries after your line `text`: what its turn, and any later one, wrote. */
+/** A line's words: a message's text parts, joined. */
+const wordsOf = (line: ItemLine) => ("item" in line && line.item.type === "message" ? (line.item as MessageItem).content.map((part) => ("text" in part ? part.text : "")).join("") : "");
+/** Your line `text`. */
+const yours = (line: ItemLine, text: string) => line.kind === "user" && wordsOf(line) === text;
+/** A data line's value, when it is of `dataType`. */
+const valueOf = <T,>(line: ItemLine, dataType: string): T | undefined => (line.kind === "data" && line.item.dataType === dataType ? (line.item.value as T) : undefined);
+
+/** The lines after your line `text`: what its turn, and any later one, wrote. */
 const afterLine = (view: ConversationView, text: string) => {
-  const at = view.entries.findIndex((e) => e.kind === "user" && e.text === text);
-  return at < 0 ? [] : view.entries.slice(at + 1);
+  const at = view.lines.findIndex((line) => yours(line, text));
+  return at < 0 ? [] : view.lines.slice(at + 1);
 };
 
 /**
@@ -388,10 +398,10 @@ const afterLine = (view: ConversationView, text: string) => {
  * draws nothing more for it, such as a mark that it waits for the worker's answer.
  */
 function expectPlainLine(view: ConversationView, text: string) {
-  const line = view.entries.find((e) => e.kind === "user" && e.text === text) as ConversationEntry | undefined;
+  const line = view.lines.find((l) => yours(l, text));
   expect(line, `the line "${text}" is in the conversation`).toBeDefined();
   expect(Object.keys(line!).filter((key) => !USER_LINE_KEYS.has(key))).toEqual([]);
-  const entry = createElement(Entry, { entry: line!, workerName: "Lead", nameOf: (id: string) => id, lookOf: () => ({ icon: "★", color: "amber" as const }) });
+  const entry = createElement(LinesOf, { lines: [line!] });
   expect(renderToStaticMarkup(entry).replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")).toBe(text);
 }
 
@@ -423,12 +433,17 @@ describe.each([
         const view = conversation(lab, id);
         const board = tasks(client, id);
         await lab.send(id, ASK.result);
-        const filed = await view.until((v) => v.entries.some((e) => e.kind === "task"));
-        const card = filed.entries.find((e) => e.kind === "task") as { taskId: string; to: string };
+        const filed = await view.until((v) => v.lines.some((line) => valueOf(line, FILED_TASK_DATA_TYPE) !== undefined));
+        const card = filed.lines.map((line) => valueOf<FiledTaskValue>(line, FILED_TASK_DATA_TYPE)).find((value) => value !== undefined)!;
         // A coding run that committed waits for your review, answerable once the view knows the run's flow.
         const held = await board.until((r) => r.some((t) => t.id === card.taskId && t.asks[0]?.ask.kind === "review" && t.asks[0].unanswerable === null), 30_000);
         await createInboxClient(client).answerOne(held.find((t) => t.id === card.taskId)!.asks[0]!, { value: { verdict: "accepted" } });
-        await view.until((v) => v.entries.some((e) => e.kind === "result" && e.taskId === card.taskId && e.from === card.to && e.failed !== true && e.text.length > 0));
+        await view.until((v) =>
+          v.lines.some((line) => {
+            const result = valueOf<TaskResultValue>(line, TASK_RESULT_DATA_TYPE);
+            return result?.taskId === card.taskId && result.from === card.assignee && result.ending === "completed" && result.text.length > 0;
+          }),
+        );
         await board.until((r) => r.some((t) => t.id === card.taskId && t.status === "completed"));
       });
     });
@@ -441,10 +456,10 @@ describe.each([
       const drawn: ConversationView[] = [];
       stops.push(lab.watch(id, (read) => drawn.push(read.view)));
       await lab.send(id, ASK.meanwhile);
-      await view.until((v) => v.running && v.entries.some((e) => e.kind === "user" && e.text === ASK.meanwhile));
+      await view.until((v) => v.running && v.lines.some((line) => yours(line, ASK.meanwhile)));
       for (const line of ASK.beside) await lab.send(id, line);
       // Both lines are in the conversation while it reads running.
-      await view.until((v) => v.running && ASK.beside.every((line) => v.entries.some((e) => e.kind === "user" && e.text === line)));
+      await view.until((v) => v.running && ASK.beside.every((text) => v.lines.some((line) => yours(line, text))));
       if (target!.turnsRunning !== undefined) {
         // On the server all three turns run at once: none waits to start.
         await readUntil(() => target!.turnsRunning!(id), (count) => count === 3);
@@ -453,7 +468,7 @@ describe.each([
         expect(view.latest()!.running).toBe(true);
       }
       // No line was ever drawn with a mark, in any view.
-      for (const v of drawn) for (const e of v.entries) if (e.kind === "user") expectPlainLine(v, e.text);
+      for (const v of drawn) for (const line of v.lines) if (line.kind === "user") expectPlainLine(v, wordsOf(line));
       // Stopped, so the host can close. A Stop stops the turns the view had read as running at the
       // press, and its request read can trail the sends, so Stop is pressed until none runs.
       await stopAll(lab, id, view);
@@ -479,11 +494,11 @@ describe.each([
       const view = conversation(lab, id);
       target!.failNextTurn();
       await lab.send(id, ASK.failing);
-      await view.until((v) => v.entries.some((e) => e.kind === "user" && e.text === ASK.failing));
+      await view.until((v) => v.lines.some((line) => yours(line, ASK.failing)));
       await waitFor(1_500);
       return view.until((v) => !v.running);
     };
-    const after = (view: ConversationView) => view.entries.slice(view.entries.findIndex((e) => e.kind === "user" && e.text === ASK.failing) + 1);
+    const after = (view: ConversationView) => view.lines.slice(view.lines.findIndex((line) => yours(line, ASK.failing)) + 1);
     check("stops running and shows no reply", async () => {
       const view = await failed();
       expect(after(view).filter((e) => e.kind === "assistant")).toEqual([]);
@@ -494,8 +509,8 @@ describe.each([
     });
     check("offers Retry on it, which runs it again as a new request that answers", async () => {
       const view = await failed();
-      const line = after(view).find((e): e is Extract<ConversationEntry, { kind: "failed" }> => e.kind === "failed");
-      expect(line).toMatchObject({ reason: expect.stringContaining(FAILURE), retryable: true });
+      const line = after(view).find((e): e is Extract<ItemLine, { kind: "failed" }> => e.kind === "failed");
+      expect(line).toMatchObject({ item: { message: expect.stringContaining(FAILURE) }, retryable: true });
       await target!.lab.retry(chiefId!, line!.requestId);
       const answered = await conversation(target!.lab, chiefId!).until((v) => !v.running && after(v).some((e) => e.kind === "assistant"), 30_000);
       // The failed line stays, with no Retry: the new request is the newest turn now.
@@ -543,7 +558,7 @@ describe.each([
       const view = conversation(lab, id);
       await lab.send(id, ASK.stopMe);
       // Stop is on screen while the view reads the worker answering.
-      await view.until((v) => v.running && v.entries.some((e) => e.kind === "user" && e.text === ASK.stopMe) && v.entries.filter((e) => e.kind === "task").length === filed, 30_000);
+      await view.until((v) => v.running && v.lines.some((line) => yours(line, ASK.stopMe)) && v.lines.filter((line) => valueOf(line, FILED_TASK_DATA_TYPE) !== undefined).length === filed, 30_000);
       return { lab, id, view };
     };
 
@@ -552,14 +567,14 @@ describe.each([
       const pressed = lab.interrupt(id);
       await view.until((v) => v.stopping);
       await pressed;
-      const ended = await view.until((v) => !v.running && !v.stopping && v.entries.some((e) => e.kind === "stopped"));
-      const stopped = ended.entries.filter((e) => e.kind === "stopped");
+      const ended = await view.until((v) => !v.running && !v.stopping && v.lines.some((e) => e.kind === "stopped"));
+      const stopped = ended.lines.filter((e) => e.kind === "stopped");
       expect(stopped).toHaveLength(1);
       // After the stopped turn's line and both its tasks, and last: nothing came after it.
-      const at = ended.entries.indexOf(stopped[0]!);
-      expect(ended.entries.findIndex((e) => e.kind === "user" && e.text === ASK.stopMe)).toBeLessThan(at);
-      expect(ended.entries.slice(0, at).filter((e) => e.kind === "task")).toHaveLength(filed);
-      expect(at).toBe(ended.entries.length - 1);
+      const at = ended.lines.indexOf(stopped[0]!);
+      expect(ended.lines.findIndex((line) => yours(line, ASK.stopMe))).toBeLessThan(at);
+      expect(ended.lines.slice(0, at).filter((line) => valueOf(line, FILED_TASK_DATA_TYPE) !== undefined)).toHaveLength(filed);
+      expect(at).toBe(ended.lines.length - 1);
       // One abort, for the answering turn: none for the board's own passes.
       if (target!.aborts !== undefined) expect(target!.aborts).toHaveLength(1);
     });
@@ -571,7 +586,7 @@ describe.each([
         const client = target!.client!;
         const board = tasks(client, id);
         await lab.interrupt(id);
-        await view.until((v) => !v.running && v.entries.some((e) => e.kind === "stopped"));
+        await view.until((v) => !v.running && v.lines.some((e) => e.kind === "stopped"));
         const counted = await view.until((v) => v.backgroundRunning !== null && v.backgroundRunning > 0, 30_000);
         // Stop stops the turn only: both tasks it filed still run, until their own end.
         expect(counted.backgroundRunning).toBe(2);
@@ -588,10 +603,10 @@ describe.each([
       await lab.send(id, ASK.meanwhile);
       await pressed;
       // Stopping ends with the stopped turn, while the later line's turn still answers.
-      const after = await view.until((v) => !v.stopping && v.running && v.entries.some((e) => e.kind === "stopped"), 30_000);
-      expect(after.entries.filter((e) => e.kind === "stopped")).toHaveLength(1);
-      const at = after.entries.findIndex((e) => e.kind === "stopped");
-      expect(after.entries.findIndex((e) => e.kind === "user" && e.text === ASK.meanwhile)).toBeGreaterThan(at);
+      const after = await view.until((v) => !v.stopping && v.running && v.lines.some((e) => e.kind === "stopped"), 30_000);
+      expect(after.lines.filter((e) => e.kind === "stopped")).toHaveLength(1);
+      const at = after.lines.findIndex((e) => e.kind === "stopped");
+      expect(after.lines.findIndex((line) => yours(line, ASK.meanwhile))).toBeGreaterThan(at);
       if (target!.aborts !== undefined) expect(target!.aborts).toHaveLength(1);
       // Stopped too, so the host can close.
       await lab.interrupt(id);
@@ -604,7 +619,7 @@ describe.each([
       // No wait for the view to read the second turn: Stop is pressed at once.
       await lab.interrupt(id);
       const after = await view.until((v) => !v.running && !v.stopping, 30_000);
-      expect(after.entries.some((e) => e.kind === "stopped")).toBe(true);
+      expect(after.lines.some((e) => e.kind === "stopped")).toBe(true);
       if (target!.aborts !== undefined) expect(target!.aborts).toHaveLength(2);
     });
 
@@ -616,20 +631,20 @@ describe.each([
       const after = view.latest()!;
       expect(after.running).toBe(true);
       expect(after.stopping).toBe(false);
-      expect(after.entries.some((e) => e.kind === "stopped")).toBe(false);
+      expect(after.lines.some((e) => e.kind === "stopped")).toBe(false);
       // Pressed again, it stops.
       await lab.interrupt(id);
-      await view.until((v) => !v.running && v.entries.some((e) => e.kind === "stopped"), 30_000);
+      await view.until((v) => !v.running && v.lines.some((e) => e.kind === "stopped"), 30_000);
     });
 
     check("gives a turn that completed no stopped line", async () => {
       const { lab, id } = await chief();
       const view = conversation(lab, id);
       await lab.send(id, ASK.hello);
-      await view.until((v) => !v.running && v.entries.some((e) => e.kind === "assistant"), 30_000);
+      await view.until((v) => !v.running && v.lines.some((e) => e.kind === "assistant"), 30_000);
       // The view reads the requests on the turn's ending notice; in process that lands well inside a second.
       await waitFor(1_500);
-      expect(view.latest()!.entries.some((e) => e.kind === "stopped")).toBe(false);
+      expect(view.latest()!.lines.some((e) => e.kind === "stopped")).toBe(false);
     });
   });
 
@@ -640,15 +655,16 @@ describe.each([
       const shot = await lab.upload({ data: new Blob([PNG], { type: "image/png" }), mediaType: "image/png", filename: "bug.png" });
       expect(shot.data).toMatch(/^fsd-blob:/);
       await lab.send(id, ASK.shot, [shot]);
-      const sent = await view.until((v) => v.entries.some((e) => e.kind === "user" && e.text === ASK.shot), 30_000);
-      const line = sent.entries.find((e) => e.kind === "user" && e.text === ASK.shot) as Extract<ConversationEntry, { kind: "user" }>;
+      const sent = await view.until((v) => v.lines.some((line) => yours(line, ASK.shot)), 30_000);
+      const line = sent.lines.find((l) => yours(l, ASK.shot)) as Extract<ItemLine, { kind: "user" }>;
       // A reference on the line, never the bytes.
-      expect(line.files).toEqual([{ type: "file", data: shot.data, mediaType: "image/png", filename: "bug.png" }]);
-      expect(new Uint8Array(await (await lab.readFile(line.files![0])).arrayBuffer())).toEqual(PNG);
+      const files = line.item.content.filter((part): part is FileContent => part.type === "file");
+      expect(files).toEqual([{ type: "file", data: shot.data, mediaType: "image/png", filename: "bug.png" }]);
+      expect(new Uint8Array(await (await lab.readFile(files[0]!)).arrayBuffer())).toEqual(PNG);
       // Only the real column has a model: its answer says the turn was handed the image.
       if (column === "real") {
         const answered = await view.until((v) => afterLine(v, ASK.shot).some((e) => e.kind === "assistant"), 30_000);
-        expect(afterLine(answered, ASK.shot).find((e) => e.kind === "assistant")).toMatchObject({ text: SAW_IMAGE });
+        expect(wordsOf(afterLine(answered, ASK.shot).find((e) => e.kind === "assistant")!)).toBe(SAW_IMAGE);
       }
       await stopAll(lab, id, view);
     });

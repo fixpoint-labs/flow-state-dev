@@ -13,19 +13,24 @@
  * tool in the run completed was an attempt, not an error: it reads "Tried
  * openWorkstream", and the run doesn't read as failed for it.
  *
- * A `sendMessage` call is talk, not background: it is its own line, *To
- * <recipient>: <text>*, with a link to Messages, and a refused one says it
- * wasn't sent and why. One that waits for the answer (a call) reads *Asked <recipient>* and shows the reply under it, or says no
- * answer came by its deadline.
+ * A message the worker sent is talk, not background: workforce writes it as
+ * its own line (`workforce:sent`), and the model leaves the call that wrote
+ * it out of the steps. It reads *To <recipient>: <text>*, with a link to
+ * Messages, and a refused one says it wasn't sent and why. One that waits for
+ * the answer (a call) reads *Asked <recipient>* and shows the reply under it,
+ * or says no answer came by its deadline.
+ *
+ * A steps line ({@link StepsLine}) draws its calls as these quiet lines and
+ * the thinking between them as the registry draws it.
  *
  * This is Shift Manager's own presentation: `flow-state/tool.tsx` is the
  * registry's copy and stays byte-equal to it. {@link shiftManagerRenderers}
  * swaps this in for its `tool_output` renderer.
  */
 import { Fragment, type ReactNode } from "react";
-import { isSuspensionWait, type DataItem, type OutputItem, type ToolOutputItem } from "@flow-state-dev/core/items";
+import { isSuspensionWait, type DataItem, type ToolOutputItem } from "@flow-state-dev/core/items";
 import { ChevronRightIcon } from "lucide-react";
-import type { ItemLine, RendererRegistry } from "@flow-state-dev/react";
+import { ItemRenderer, type ActivityItem, type ItemLine, type RendererRegistry } from "@flow-state-dev/react";
 import { workforceRenderers } from "@flow-state-dev/workforce/react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -34,8 +39,9 @@ import {
   COORDINATOR_ROUTE,
   FILED_TASK_DATA_TYPE,
   RECEIVED_MESSAGE_DATA_TYPE,
-  SEND_MESSAGE_TOOL,
   SENT_MESSAGE_DATA_TYPE,
+  sentTargetLabel,
+  TASK_RESULT_DATA_TYPE,
   type SentMessageValue,
 } from "@flow-state-dev/workforce/browser";
 import { RouteLink } from "./RouteLink";
@@ -45,6 +51,7 @@ import { ReceivedMessage } from "./ReceivedMessage";
 import { MessageOrBrief } from "./TaskBrief";
 import { TaskBoardMeta } from "./TaskBoardMeta";
 import { ToolInput, ToolOutput } from "./flow-state/tool";
+import { FailedTurn, StoppedTurn } from "./TurnLines";
 
 type CallStatus = "pending" | "running" | "waiting" | "completed" | "error" | "retried";
 
@@ -142,20 +149,6 @@ function QuietLine({ label, state, nested = false, children }: { label: string; 
   );
 }
 
-function isMessageCall(item: ToolOutputItem): boolean {
-  return item.toolCall?.name === SEND_MESSAGE_TOOL;
-}
-
-// FIX-2160.
-/** Who a message call names: a worker's id, a task, or a conversation. */
-function messageTargetLabel(to: unknown): string {
-  if (typeof to === "string") return to;
-  const target = (typeof to === "object" && to !== null ? to : {}) as { task?: unknown; session?: unknown };
-  if (typeof target.task === "string") return `task ${target.task}`;
-  if (typeof target.session === "string") return `conversation ${target.session}`;
-  return "another worker";
-}
-
 // FIX-2318.
 /** What a waited send's answer says under its line: the reply, or why none came yet. */
 function waitOutcomeLine(output: { status?: unknown; reply?: unknown; recipient?: unknown } | undefined): string | null {
@@ -168,7 +161,7 @@ function waitOutcomeLine(output: { status?: unknown; reply?: unknown; recipient?
   return null;
 }
 
-/** What a message line says, from a `sendMessage` call or from the send's own line ({@link SentMessage}). */
+/** What a message line says, from the send's own line ({@link SentMessage}). */
 type MessageCall = {
   to: string;
   text: string;
@@ -180,33 +173,14 @@ type MessageCall = {
   output: { status?: unknown; reply?: unknown; recipient?: unknown } | undefined;
 };
 
-function MessageCallLine({ item }: { item: ToolOutputItem }) {
-  const args = argsOf(item) as { to?: unknown; text?: unknown; wait?: unknown; replyRequested?: unknown } | undefined;
-  const waits = args?.wait === true;
-  const state = stateOf(item);
-  const output = item.output as { ok?: unknown; error?: unknown; status?: unknown; reply?: unknown; recipient?: unknown } | undefined;
-  return (
-    <MessageCallView
-      to={messageTargetLabel(args?.to)}
-      text={typeof args?.text === "string" ? args.text : ""}
-      waits={waits}
-      asks={waits || args?.replyRequested === true}
-      state={state}
-      refused={state === "error" || output?.ok === false || output?.status === "failed"}
-      reason={typeof output?.error === "string" ? output.error : item.error?.message}
-      output={output}
-    />
-  );
-}
-
-// FIX-2848: a send the server wrote as its own line (`workforce:sent`); its call is then drawn as this line and not as a step.
-/** A message this worker sent, from the send's line: the same line its `sendMessage` call draws. */
+// FIX-2848: a send the server wrote as its own line (`workforce:sent`); its call is not a step.
+/** A message this worker sent, from the send's line. */
 function SentMessage({ item }: { item: DataItem }) {
   const value = item.value as Partial<SentMessageValue>;
   const waits = value.wait !== undefined;
   return (
     <MessageCallView
-      to={messageTargetLabel(value.to)}
+      to={sentTargetLabel(value.to)}
       text={value.text ?? ""}
       waits={waits}
       asks={waits || value.replyRequested === true}
@@ -257,23 +231,6 @@ function MessageCallView({ to, text, waits, asks, state, refused, reason, output
  */
 export function ToolLineGroup({ items }: { items: readonly ToolOutputItem[] }) {
   if (items.length === 0) return null;
-  if (items.some(isMessageCall)) {
-    // Consecutive other calls stay one quiet line between the messages.
-    const parts: Array<{ message: ToolOutputItem } | { run: ToolOutputItem[] }> = [];
-    for (const item of items) {
-      const last = parts[parts.length - 1];
-      if (isMessageCall(item)) parts.push({ message: item });
-      else if (last !== undefined && "run" in last) last.run.push(item);
-      else parts.push({ run: [item] });
-    }
-    return (
-      <div className="flex flex-col gap-1.5">
-        {parts.map((part) =>
-          "message" in part ? <MessageCallLine key={part.message.id} item={part.message} /> : <ToolLineGroup key={part.run[0]!.id} items={part.run} />,
-        )}
-      </div>
-    );
-  }
   const states = statesInRun(items);
   const state = runState(states);
   if (items.length === 1) {
@@ -307,39 +264,32 @@ export function ToolLineGroup({ items }: { items: readonly ToolOutputItem[] }) {
   );
 }
 
-/** A feed segment: one item, or a run of calls and nothing else. */
-export type CallRunSegment = { kind: "item"; item: OutputItem } | { kind: "group"; items: ToolOutputItem[] };
-
 /**
- * The feed's lines with each steps line split back into runs of calls, which
- * {@link ToolLineGroup} draws, and the thoughts between them, which draw as
- * they always have. The model groups thinking with calls; Shift Manager's
- * quiet lines are for calls alone. A line with no item of its own (a stopped
- * turn's) is not drawn here.
+ * A steps line: each run of its calls as one quiet line ({@link ToolLineGroup}),
+ * and the thinking between them as the registry draws it. The model groups
+ * thinking with calls; Shift Manager's quiet lines are for calls alone.
  */
-export function callRuns(lines: readonly ItemLine[]): CallRunSegment[] {
-  const out: CallRunSegment[] = [];
-  for (const segment of lines) {
-    if (segment.kind === "stopped") continue;
-    if (segment.kind !== "steps") {
-      out.push({ kind: "item", item: segment.item });
-      continue;
-    }
-    let run: ToolOutputItem[] = [];
-    const flush = () => {
-      if (run.length > 0) out.push({ kind: "group", items: run });
-      run = [];
-    };
-    for (const item of segment.items) {
-      if (item.type === "tool_output") run.push(item);
-      else {
-        flush();
-        out.push({ kind: "item", item });
-      }
-    }
-    flush();
+export function StepsLine({ items }: { items: ActivityItem[]; line?: ItemLine }) {
+  const parts: Array<{ calls: ToolOutputItem[] } | { thought: ActivityItem }> = [];
+  for (const item of items) {
+    const last = parts[parts.length - 1];
+    if (item.type !== "tool_output") parts.push({ thought: item });
+    else if (last !== undefined && "calls" in last) last.calls.push(item as ToolOutputItem);
+    else parts.push({ calls: [item as ToolOutputItem] });
   }
-  return out;
+  return (
+    <div className="flex flex-col gap-2.5" data-testid="steps-line">
+      {parts.map((part) =>
+        "calls" in part ? (
+          <ToolLineGroup key={part.calls[0]!.id} items={part.calls} />
+        ) : (
+          <div key={part.thought.id} data-look="registry-item">
+            <ItemRenderer item={part.thought} />
+          </div>
+        ),
+      )}
+    </div>
+  );
 }
 
 /** One call, as the registry hands it to a `tool_output` renderer. */
@@ -348,12 +298,15 @@ export function ToolLine({ item }: { item: ToolOutputItem }) {
   return <ToolLineGroup items={[item]} />;
 }
 
-/** The chat registry with tool calls drawn as quiet lines and a task's brief folded. */
+/** The chat registry with tool calls drawn as quiet lines, a task's brief folded, and a turn that didn't finish as its recovery line. */
 export const shiftManagerRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
   // A task's brief folds to one line; every other message is the registry's copy.
   message: MessageOrBrief,
   tool_output: ToolLine,
+  // A failed turn says why, with Retry when its line offers it; a stopped one says so.
+  error: FailedTurn,
+  stopped: StoppedTurn,
   // A coordinator's routing record, drawn apart from the conversation's lines.
   // Its task board, with each row opening that task's session. Another
   // worker's message, under its sender's name.
@@ -362,8 +315,9 @@ export const shiftManagerRenderers: RendererRegistry = {
     [COORDINATOR_ROUTE]: CoordinatorRoute,
     "task-board-meta": TaskBoardMeta,
     [RECEIVED_MESSAGE_DATA_TYPE]: ReceivedMessage,
-    // A send's own line, drawn as its call was; a task it filed, as workforce draws it (FIX-2848).
+    // A send's own line; a task it filed, and the board's result for it, as workforce draws them (FIX-2848).
     [SENT_MESSAGE_DATA_TYPE]: SentMessage,
     [FILED_TASK_DATA_TYPE]: workforceRenderers[FILED_TASK_DATA_TYPE]!,
+    [TASK_RESULT_DATA_TYPE]: workforceRenderers[TASK_RESULT_DATA_TYPE]!,
   },
 };

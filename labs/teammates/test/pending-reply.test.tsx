@@ -2,7 +2,7 @@
 /**
  * A reply that has already landed never shows as pending. A waited send takes
  * its answer as the tool's result, so no received line ever lands for it, and
- * a received line older than the loaded page isn't among the entries: neither
+ * a received line older than the loaded page isn't among the lines: neither
  * may leave a "reads it next" line pinned under every newer message. The log
  * row's status says whether the message landed; the screen trusts it.
  */
@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import type { WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import { App } from "../src/components/App";
-import type { ConversationEntry } from "../src/lib/conversation";
+import { linesOf, message } from "./lines";
 import { pendingFor } from "../src/lib/talk";
 import { scriptedServer, ScriptedProvider } from "./scripted-server";
 
@@ -37,7 +37,7 @@ describe("which messages to a worker are still pending", () => {
   });
 
   it("leaves out a reply whose received line is older than the loaded page", () => {
-    const loaded: ConversationEntry[] = [{ kind: "user", id: "u_9", text: "Make section 2 about pricing." }];
+    const loaded = linesOf([message("u_9", "q9", "user", "Make section 2 about pricing.")]);
     expect(pendingFor(LEAD, [ask, { ...reply, status: "delivered" }], loaded)).toEqual([]);
   });
 

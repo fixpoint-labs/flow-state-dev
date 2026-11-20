@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { HireWorkerInput, RosterEntry } from "@flow-state-dev/workforce/browser";
+import type { ItemLine } from "@flow-state-dev/react";
 import { useConversation, useTasks } from "../app";
 import type { Look } from "../lib/looks";
 import { teammateAttention, supported, useAttention, useNotifyToggle, type TeammateAttention } from "../lib/attention";
@@ -13,14 +14,15 @@ import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
 import { HireForm } from "./TeammateForms";
+import { drawsLine } from "./lines";
 
-/** The entries that count toward unread: everything but your own lines. */
-const unreadable = (entries: { kind: string }[]) => entries.filter((e) => e.kind !== "user").length;
+/** The lines that count toward unread: every line the lab draws but your own. */
+export const unreadable = (lines: readonly ItemLine[]) => lines.filter((line) => line.kind !== "user" && drawsLine(line)).length;
 
 /**
  * The left pane: one row per teammate, never a list of sessions. Each row is
  * the teammate's icon on its color, its name, what it is doing, a dot while it answers, and how many
- * new entries its conversation has since you last looked. At the foot, hire
+ * new lines its conversation has since you last looked. At the foot, hire
  * a teammate of your own. A teammate's tasks are in its panel, on the right.
  *
  * A teammate that needs you (an approval it waits on, or a task of its that
@@ -139,7 +141,7 @@ function WorkerItem({
   const activity = useActivity(worker.id);
   const talk = useTalk(worker.id) ?? [];
   const view = useConversation(sessionId)?.view;
-  const count = view ? unreadable(view.entries) : undefined;
+  const count = view ? unreadable(view.lines) : undefined;
   // The open conversation is seen as it grows; a worker never seen starts with nothing unread.
   useEffect(() => {
     if (count !== undefined && (selected || seen === undefined)) onSeen(count);
@@ -150,7 +152,7 @@ function WorkerItem({
   const tasks = taskList ?? [];
   // Loaded once its conversation and its tasks have arrived; a teammate with no conversation yet has nothing to load.
   const loaded = sessionId === undefined || (view !== undefined && taskList !== undefined);
-  const inputs = { activity, entries: view?.entries ?? [], talk, tasks, now };
+  const inputs = { activity, lines: view?.lines ?? [], talk, tasks, now };
   const status = statusOf(worker.id, inputs, nameOf, isCoding);
   // Reported up for the tab's title and the notifications; the same object while its content holds, so it reports only on change.
   const attention = useStable(teammateAttention(displayName(worker), loaded, unread, needsOf(inputs), freshEndings(tasks, now, isCoding)));

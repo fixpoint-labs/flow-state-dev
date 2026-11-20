@@ -2,7 +2,7 @@
  * Goal check: in the Teammates lab, a worker's tool steps show in its
  * conversation during its turn, and fold once the turn is done (FIX-2393).
  * On a real model, against `fsdev dev --app @flow-state-dev/teammates`, graded
- * on the lab's own conversation entries: what its conversation's follower
+ * on the lab's own conversation lines: what its conversation's follower
  * reads (react's `useSessionFeed` and workforce's session turns view, under
  * the lab's provider), the surface the conversation draws.
  *
@@ -13,7 +13,7 @@
  *     steps in the turn reads done (or failed) and closed, and none is running.
  *
  * Control (`GOAL_CONTROL=popup-only`, same command): the conversation's
- * entries draw no steps, as before; *steps during the turn* must FAIL.
+ * lines draw no steps, as before; *steps during the turn* must FAIL.
  *
  * Run: pnpm tsx goals/teammates-lab/shows-a-workers-steps/run.mts
  */
@@ -34,7 +34,10 @@ import {
   stopProcessGroup,
   type ModulePatch,
 } from "../../lib/index.mts";
-import type { ConversationEntry, ConversationView } from "../../../labs/teammates/src/lib/conversation.ts";
+import type { ItemLine } from "@flow-state-dev/react";
+import { stepRun, stepsOf, type StepRun, type ToolStep } from "../../../labs/teammates/src/components/ToolRun.tsx";
+import { textOf } from "../../../labs/teammates/src/components/lines.tsx";
+import type { ConversationView } from "../../../labs/teammates/src/lib/conversation.ts";
 import { sleep, startTeammates } from "../lab.mts";
 import { teammatesScreen } from "../screen.mts";
 
@@ -50,9 +53,9 @@ const SETTLE_MS = 3_000;
 /** The `popup-only` control: the conversation draws no tool steps, as before FIX-2393; the popup still does. */
 const POPUP_ONLY: ModulePatch[] = [
   {
-    module: "labs/teammates/src/lib/conversation.ts",
-    from: String.raw`const step = toolStep\(item, ended\);`,
-    to: "return;",
+    module: "labs/teammates/src/app/conversations.ts",
+    from: String.raw`conversationLines\(items, lineTurns, \{ renderers: teammatesRenderers \}\)`,
+    to: `conversationLines(items, lineTurns, { renderers: teammatesRenderers }).filter((line) => line.kind !== "steps")`,
   },
 ];
 if (!["", "popup-only"].includes(CONTROL)) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"`);
@@ -85,18 +88,27 @@ function seedWorkdir(dir: string, value: string): string {
   return dir;
 }
 
-type Steps = Extract<ConversationEntry, { kind: "steps" }>;
+/** A steps line as the conversation draws it: its tool steps, and the one line they read as. */
+type Steps = StepRun & { steps: ToolStep[] };
+/** A line's words, when it is something said. */
+const wordsOf = (line: ItemLine) => (line.kind === "user" || line.kind === "assistant" ? textOf(line.item) : "");
+/** A steps line's tool steps and their line; thinking alone draws no run. */
+const runOf = (line: ItemLine): Steps[] => {
+  if (line.kind !== "steps") return [];
+  const steps = stepsOf(line.items, line.ended === true);
+  return steps.length === 0 ? [] : [{ ...stepRun(steps), steps }];
+};
 /** One view the conversation showed, and when. */
 type Seen = { at: number; view: ConversationView };
 
 /** What came after the question in a view: its runs of steps, and whether the answer naming the value is there. */
 function afterAsk(view: ConversationView, ask: string, value: string) {
-  const from = view.entries.findIndex((e) => e.kind === "user" && e.text === ask);
-  const turn = from < 0 ? [] : view.entries.slice(from + 1);
+  const from = view.lines.findIndex((line) => line.kind === "user" && wordsOf(line) === ask);
+  const turn = from < 0 ? [] : view.lines.slice(from + 1);
   return {
     asked: from >= 0,
-    runs: turn.filter((e): e is Steps => e.kind === "steps"),
-    answered: turn.some((e) => e.kind === "assistant" && e.text.includes(value)),
+    runs: turn.flatMap(runOf),
+    answered: turn.some((line) => line.kind === "assistant" && wordsOf(line).includes(value)),
   };
 }
 
@@ -138,7 +150,7 @@ await runGoal(async (failures, tell) => {
       if (final === undefined || !afterAsk(final, ask, value).asked) throw new Error(`run ${n}: the conversation never showed the question`);
       if (final.running) throw new Error(`run ${n}: the turn did not end within ${TURN_MS / 1000}s`);
       const end = afterAsk(final, ask, value);
-      if (!end.answered) throw new Error(`run ${n}: the answer never named ${value}, nothing to grade: ${JSON.stringify(final.entries.slice(-2)).slice(0, 400)}`);
+      if (!end.answered) throw new Error(`run ${n}: the answer never named ${value}, nothing to grade: ${JSON.stringify(final.lines.slice(-2).map(wordsOf)).slice(0, 400)}`);
 
       // ── Steps during the turn: before the answer landed, a step line named a file.
       const during = seen.map((s) => afterAsk(s.view, ask, value)).filter((a) => a.asked && !a.answered);

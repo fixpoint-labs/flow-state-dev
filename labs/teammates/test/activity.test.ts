@@ -17,7 +17,7 @@ const turn = (startedAt: number, completedAt: number | null): ListedTurn => ({
   id: `t${startedAt}`, action: "respond", status: completedAt === null ? "in_progress" : "completed", source: "http", startedAt, completedAt, endedAt: completedAt, error: null, historyStart: null, retryable: true,
 });
 const line = (activity: ReturnType<typeof activityOf>, now: number) =>
-  statusOf("lead", { activity, entries: [], talk: [], tasks: [], now }, (id) => id, () => false).text;
+  statusOf("lead", { activity, lines: [], talk: [], tasks: [], now }, (id) => id, () => false).text;
 
 describe("whether a teammate is busy, and since when", () => {
   it("ages from the last turn's end, not from a later dispatch that moved the session", () => {

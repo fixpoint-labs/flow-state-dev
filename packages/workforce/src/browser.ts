@@ -101,6 +101,7 @@ export type {
   SentMessageWait,
   TaskResultValue
 } from "./messages/line-values";
+export { sentTargetLabel } from "./messages/sent-target";
 export { SCHEDULES_PATTERN } from "./schedules/keys";
 export { LIST_ROUTINES_ACTION, ROUTINE_VERBS } from "./routines/keys";
 export { routinesView } from "./routines/routines-view-ref";

@@ -4,8 +4,9 @@
  *
  *     <Conversation worker={worker} sessions={snapshot.sessions} gaps={gaps} name="Shift Coordinator" />
  *
- * That is the whole of it: the read, the feed (the registry's renderers, with
- * tool calls as quiet lines), the jump to the latest turn, the working line, the
+ * That is the whole of it: the read, the feed (React's conversation model over
+ * the session's items and turns, drawn by the registry's renderers, with tool
+ * calls as quiet lines and a failed or stopped turn as its line), the jump to the latest turn, the working line, the
  * composer, and the one send path. A view varies it by props, never by a fork:
  * the session it is (`session`, for one a view found itself: a project
  * coordinator's, a workstream's lead's; `project`, for a project's conversation
@@ -21,11 +22,12 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { RECEIVED_MESSAGE_DATA_TYPE, type ProjectAddressRef } from "@flow-state-dev/workforce/browser";
+import { RECEIVED_MESSAGE_DATA_TYPE, sessionTurnsViewRef, type ProjectAddressRef } from "@flow-state-dev/workforce/browser";
 import type { SessionSummary } from "@flow-state-dev/client";
-import { conversationLines, FlowProvider, ItemRenderer, useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
+import { conversationLines, FlowProvider, ItemsRenderer, useJumpToLatest, useView, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
-import { callRuns, shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
+import { shiftManagerRenderers, StepsLine } from "./ToolLine";
+import { TurnLineContext, type TurnLineActions } from "./TurnLines";
 import { isTaskBrief } from "./TaskBrief";
 import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlierButton, SectionFailure } from "./ui";
@@ -129,7 +131,7 @@ export function Conversation({
   /** Why nothing can be sent here, whatever the worker: the session is read, never written to. */
   readOnly?: string;
 }) {
-  const { refresh, answered, snapshot, stale } = useLab();
+  const { client, refresh, answered, snapshot, stale } = useLab();
   const workforce = useWorkforce();
   const deliver = useDeliverLine();
   const conversation = useWorkerConversation(worker, sessions, session, project);
@@ -148,10 +150,24 @@ export function Conversation({
     if (answeredHere !== undefined) reread();
   }, [answeredHere, reread]);
 
-  // A run of tool calls stays one segment: the feed draws it as one quiet line. Items that draw no
-  // line are left out by the model, so a session holding only those (a standing-rules read writes a
-  // state change into it before any line is sent) counts as empty.
-  const shown = useMemo(() => (read === undefined ? [] : callRuns(conversationLines(read.items, [], { renderers: shiftManagerRenderers }))), [read]);
+  // The session's turns: how each ended, and whether the engine retries it.
+  const turnsView = useMemo(() => sessionTurnsViewRef(), []);
+  const { value: turns } = useView(turnsView, { sessionId: sessionId ?? "-" }, { client, enabled: sessionId !== null });
+  // The model's lines over the items and turns. Items that draw no line are left out by the model,
+  // so a session holding only those (a standing-rules read writes a state change into it before any
+  // line is sent) counts as empty.
+  const shown = useMemo(() => (read === undefined ? [] : conversationLines(read.items, turns ?? [], { renderers: shiftManagerRenderers })), [read, turns]);
+  const lastStopped = [...shown].reverse().find((line) => line.kind === "stopped")?.id;
+  const runs = conversation.stillRunning;
+  const lineActions = useMemo<TurnLineActions>(
+    () => ({
+      who: name,
+      ...(sessionId === null || readOnly !== undefined ? {} : { retry: (requestId: string) => workforce.retryTurn(sessionId, requestId) }),
+      // The work still running is the session's now: only its last stopped line says so.
+      stillRunning: (lineId) => (lineId === lastStopped && runs != null ? runs : undefined),
+    }),
+    [name, sessionId, readOnly, workforce, lastStopped, runs],
+  );
 
   // Nothing is sent into a conversation the screen hasn't read, or to a worker with no door.
   const blocked =
@@ -246,62 +262,52 @@ export function Conversation({
           </p>
         ) : (
           <FlowProvider renderers={shiftManagerRenderers}>
-            <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
-              <LoadEarlierButton load={read.loadEarlier} testId={`${testId}-load-earlier`} />
-              <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
-                {shown.map((segment) => {
-                  if (segment.kind === "group") {
-                    const first = segment.items[0]!;
+            <TurnLineContext.Provider value={lineActions}>
+              <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
+                <LoadEarlierButton load={read.loadEarlier} testId={`${testId}-load-earlier`} />
+                <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
+                  {shown.map((line) => {
+                    // A steps line is named by its first call or thought; a stopped line has no item of its own.
+                    const item = line.kind === "steps" ? line.items[0] : line.kind === "stopped" ? undefined : line.item;
+                    const role = (item as { role?: string } | undefined)?.role ?? "";
+                    // Another worker's message is drawn by the registry on every view, under its sender's name.
+                    const received = item?.type === "data" && item.dataType === RECEIVED_MESSAGE_DATA_TYPE;
+                    const own = line.kind === "steps" || item === undefined || received ? undefined : renderItem?.(item);
+                    const sender = line.kind === "assistant" ? senderOf(worker, line.item, known) : undefined;
                     return (
                       <li
-                        key={`${first.requestId}/${first.id}`}
+                        key={`${line.requestId}/${line.id}`}
                         data-testid={`${testId}-item`}
-                        data-item-id={first.id}
-                        data-request-id={first.requestId}
-                        data-item-type="tool_output"
-                        data-role=""
+                        data-item-id={item?.id ?? line.id}
+                        data-request-id={line.requestId}
+                        data-item-type={item?.type ?? line.kind}
+                        data-role={role}
+                        {...(line.kind === "user" && !isTaskBrief(line.item) ? feed.mine(line.id) : {})}
                       >
-                        <ToolLineGroup items={segment.items} />
+                        {line.kind === "assistant" ? (
+                          // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
+                          <p className="mb-2.5 flex items-baseline gap-2 font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
+                            {(sender ?? name).toUpperCase()}
+                            <span className="tracking-normal" data-look="message-time">
+                              {clockTime(line.item.ts)}
+                            </span>
+                          </p>
+                        ) : null}
+                        {own !== undefined ? (
+                          own
+                        ) : line.kind === "steps" ? (
+                          <ItemsRenderer lines={[line]} toolGroupRenderer={StepsLine} />
+                        ) : (
+                          <div data-look="registry-item">
+                            <ItemsRenderer lines={[line]} />
+                          </div>
+                        )}
                       </li>
                     );
-                  }
-                  const item = segment.item;
-                  const role = (item as { role?: string }).role ?? "";
-                  // Another worker's message is drawn by the registry on every view, under its sender's name.
-                  const received = item.type === "data" && item.dataType === RECEIVED_MESSAGE_DATA_TYPE;
-                  const own = received ? undefined : renderItem?.(item);
-                  const sender = item.type === "message" && role === "assistant" ? senderOf(worker, item, known) : undefined;
-                  return (
-                    <li
-                      key={`${item.requestId}/${item.id}`}
-                      data-testid={`${testId}-item`}
-                      data-item-id={item.id}
-                      data-request-id={item.requestId}
-                      data-item-type={item.type}
-                      data-role={role}
-                      {...(item.type === "message" && role === "user" && !isTaskBrief(item) ? feed.mine(item.id) : {})}
-                    >
-                      {item.type === "message" && role === "assistant" ? (
-                        // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
-                        <p className="mb-2.5 flex items-baseline gap-2 font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
-                          {(sender ?? name).toUpperCase()}
-                          <span className="tracking-normal" data-look="message-time">
-                            {clockTime(item.ts)}
-                          </span>
-                        </p>
-                      ) : null}
-                      {own !== undefined ? (
-                        own
-                      ) : (
-                        <div data-look="registry-item">
-                          <ItemRenderer item={item} />
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
-            </SessionScope>
+                  })}
+                </ol>
+              </SessionScope>
+            </TurnLineContext.Provider>
           </FlowProvider>
         )}
         {working ? (

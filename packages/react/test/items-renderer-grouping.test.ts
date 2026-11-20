@@ -228,6 +228,14 @@ describe("ItemsRenderer live", () => {
     expect(groupProps(false)).toEqual([false, false]);
     expect(groupProps(undefined)).toEqual([false, false]);
   });
+
+  // A data item no renderer draws makes no line, so it can't take the trailing
+  // place from the steps the agent is still working in.
+  it("keeps the trailing group live past a data item nothing draws", () => {
+    const items = [toolItem("a", "read"), messageItem("m"), toolItem("b", "grep"), dataItem("d", "progress")];
+    const nodes = ItemsRenderer({ items, toolGroupRenderer: () => null, live: true }) as any[];
+    expect(nodes.filter((n) => n.props?.children?.props?.items).map((n) => n.props.children.props.live)).toEqual([false, true]);
+  });
 });
 
 // FIX-2848: ItemsRenderer draws the model's lines, and hands each registered renderer its line.
@@ -245,5 +253,12 @@ describe("ItemsRenderer lines", () => {
     const nodes = ItemsRenderer({ lines }) as any[];
     expect(nodes).toHaveLength(2);
     expect(nodes[1].props.children.props["data-line"]).toBe("stopped");
+  });
+
+  // A steps renderer reads what the model decided of its line too: a call still marked running in a turn that ended never finished.
+  it("hands the steps renderer its line, ended once its turn is over", () => {
+    const lines = conversationLines([toolItem("t1", "read", { status: "in_progress" })], [{ id: "req", status: "failed" }]);
+    const [node] = ItemsRenderer({ lines, toolGroupRenderer: () => null }) as any[];
+    expect(node.props.children.props.line).toMatchObject({ kind: "steps", ended: true });
   });
 });

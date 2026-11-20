@@ -21,6 +21,7 @@ import { codingTask, hold, POPUP_READ, standInFollower, stubServer, TestProvider
 import { TaskCard } from "../src/components/TaskCard";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 import { lookOf } from "../src/lib/looks";
+import { filed, linesOf } from "./lines";
 
 afterEach(() => {
   cleanup();
@@ -151,8 +152,8 @@ describe("a busy panel stays short", () => {
 describe("a task's line in the conversation", () => {
   it("draws a filed task the moment it is filed and fills it in place from its board row: the same card from filing to done", async () => {
     // The conversation names the filing; the board has no row for it yet.
-    const view: ConversationView = { entries: [{ kind: "task", id: "k1", taskId: "t1", title: "Fix the typo", to: "teammates.cursor" }], running: false, stopping: false, backgroundRunning: 0 };
-    // The scripted server answers the roster and the conversation's other package views; its conversation is this one entry.
+    const view: ConversationView = { lines: linesOf([filed("k1", "q1", { taskId: "t1", title: "Fix the typo", assignee: "teammates.cursor" })]), running: false, stopping: false, backgroundRunning: 0 };
+    // The scripted server answers the roster and the conversation's other package views; its conversation is this one line.
     const { Follower } = standInFollower("s1", view);
     const server = stubServer({ board: { s1: [] } });
     render(
