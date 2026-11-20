@@ -44,7 +44,7 @@ vi.mock("../src/lib/task-items", async (original) => ({
   readTaskClaims: (...args: unknown[]) => readTaskClaims(...args),
 }));
 
-import { taskBriefMetadata } from "@flow-state-dev/workforce/browser";
+import { RECEIVED_MESSAGE_DATA_TYPE, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 import { collectionOfBoard } from "../src/lib/reads";
 import { TaskSession } from "../src/surfaces/TaskSession";
 
@@ -137,7 +137,7 @@ describe("the task's brief", () => {
     // The brief is what the session was handed: no user bubble, and not marked as the user's line.
     expect(within(briefRow!).queryByTestId("message")).toBeNull();
     expect(briefRow!.hasAttribute("data-sent-line")).toBe(false);
-    const line = within(briefRow!).getByTestId("task-brief");
+    const line = briefRow!.querySelector<HTMLElement>("[data-line=brief]")!;
     expect(line.textContent).toContain("Task brief");
     expect(line.textContent).not.toContain("fix the flaky test");
     fireEvent.click(within(line).getByRole("button"));
@@ -146,5 +146,43 @@ describe("the task's brief", () => {
     // Words the user typed still read as theirs, and are still the user's line for jump-to-latest.
     expect(within(typedRow!).getByTestId("message").getAttribute("data-message-role")).toBe("user");
     expect(typedRow!.getAttribute("data-sent-line")).toBe("u1");
+  });
+});
+
+describe("another worker's lines in a task's run", () => {
+  it("names the sender as the conversation does: the Shift Coordinator by its label, not its id", async () => {
+    const received = {
+      id: "r1",
+      type: "data",
+      dataType: RECEIVED_MESSAGE_DATA_TYPE,
+      status: "completed",
+      requestId: "req_run",
+      itemIndex: 1,
+      ts: 101,
+      taskId: "t1",
+      value: { id: "msg_1", from: "ops.shift-coordinator", text: "which branch?" },
+    };
+    render(<TaskSession />);
+    await act(async () => feeds.at(-1)!.onRead({ items: [claim, received], truncated: false }));
+
+    const line = document.querySelector<HTMLElement>("[data-line=received]")!;
+    expect(line.textContent).toContain("Shift Coordinator");
+    expect(line.textContent).not.toContain("ops.shift-coordinator");
+  });
+});
+
+// A run someone stopped says so after its last line, as a conversation does; the board runs it again, so no Retry.
+describe("a stopped run", () => {
+  it("draws its stopped line after its last step, with no Retry", async () => {
+    const stopped = Object.assign(task, { status: "aborted" });
+    try {
+      render(<TaskSession />);
+      await act(async () => feeds.at(-1)!.onRead({ items: [claim, step(1)], truncated: false }));
+      const items = screen.getAllByTestId("session-item");
+      expect(items.at(-1)!.querySelector("[data-line=stopped]")).not.toBeNull();
+      expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+    } finally {
+      delete (stopped as { status?: string }).status;
+    }
   });
 });

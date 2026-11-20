@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DataItem } from "@flow-state-dev/core/items";
 import { DelegatesPanel } from "../src/components/DelegatesPanel";
 import { CoordinatorRoute } from "../src/components/CoordinatorRoute";
-import { shiftManagerRenderers } from "../src/components/ToolLine";
+import { shiftManagerRenderers } from "../src/components/lines";
 import { knownWorkers, senderOf } from "../src/lib/conversation";
 import { toWorker } from "../src/lib/reads";
 

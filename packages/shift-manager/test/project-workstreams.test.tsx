@@ -613,10 +613,10 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     openApp(alice.connection, baseUrl, "/p/apollo/stream");
     const conversation = await screen.findByTestId("project-stream-conversation", undefined, { timeout: 10_000 });
     // The run of calls is one line, and the open that went through on its retry doesn't turn it red.
-    const line = await within(conversation).findByRole("button", { name: /^Used 3 tools$/ }, { timeout: 10_000 });
+    const line = await within(conversation).findByRole("button", { name: "Ran `listLeads` and ran `openWorkstream` 2 times" }, { timeout: 10_000 });
     act(() => fireEvent.click(line));
     expect(within(conversation).getByText("Tried openWorkstream")).toBeTruthy();
-    expect(within(conversation).queryByText("openWorkstream failed")).toBeNull();
+    expect(within(conversation).getByTestId("tool-group").getAttribute("data-state-kind")).toBe("completed");
   });
 
   it("lists a workstream opened while its Workstreams tab is open, with no reload or navigation", async () => {

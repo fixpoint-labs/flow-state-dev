@@ -195,6 +195,21 @@
     // for apps that draw holds.
     "apps/kitchen-sink/components/flow-state/review-hold.tsx",
     "packages/shift-manager/src/components/flow-state/review-hold.tsx",
+    // The apps' byte copies of the registry's conversation lines and workforce lines: each
+    // app's registry spreads the renderer maps; the single lines and types are for apps
+    // that draw one line on its own.
+    "apps/kitchen-sink/components/flow-state/conversation-lines.tsx",
+    "apps/kitchen-sink/components/flow-state/workforce-lines.tsx",
+    "labs/teammates/src/components/flow-state/conversation-lines.tsx",
+    "labs/teammates/src/components/flow-state/workforce-lines.tsx",
+    "packages/shift-manager/src/components/flow-state/conversation-lines.tsx",
+    "packages/shift-manager/src/components/flow-state/workforce-lines.tsx",
+    // The Teammates lab's byte copy of the registry's session-items context, installed with
+    // conversation-lines, which reads it; its provider is for apps that pass items down.
+    "labs/teammates/src/components/flow-state/session-items-context.tsx",
+    // Shift Manager's byte copy of the registry's tool item: its steps line draws ToolGroup;
+    // ToolInput and ToolOutput are for apps that draw one call's parts on their own.
+    "packages/shift-manager/src/components/flow-state/tool.tsx",
     // Shift Manager's byte copy of the registry's spend: it draws the line and the
     // charge; the copy's other formatters are for apps that show them apart.
     "packages/shift-manager/src/components/flow-state/spend.tsx",
@@ -203,7 +218,10 @@
     // its content and the download are for apps that take the whole item.
     "packages/shift-manager/src/components/flow-state/conversation.tsx",
     "labs/claude-code-style/src/components/flow-state/conversation.tsx",
-    "labs/teammates/src/components/flow-state/conversation.tsx"
+    "labs/teammates/src/components/flow-state/conversation.tsx",
+    // Kitchen Sink's byte copy of the registry's tool item: its steps line draws ToolGroup; the
+    // re-exported label helpers and the parts' prop types are for apps that draw one call on their own.
+    "apps/kitchen-sink/components/flow-state/tool.tsx"
   ],
 
   // One named export, not a whole file. Kitchen Sink's and Shift Manager's byte
@@ -218,8 +236,9 @@
     // Shift Manager's byte copy of the registry's connection screen: `retryDelayMs` is exported for
     // the registry's own test, and the copy stays byte-equal to its source (static.test.ts V8).
     { "file": "packages/shift-manager/src/components/flow-state/connection-screen.tsx", "exports": ["retryDelayMs"] },
-    { "file": "apps/kitchen-sink/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen", "knownToolVerbs"] },
-    { "file": "packages/shift-manager/src/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen", "knownToolVerbs"] },
+    // Both copies' caps and verb map are the label's own constants, exported for apps that word their own labels.
+    { "file": "apps/kitchen-sink/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen", "knownToolVerbs", "TOOL_GROUP_DISTINCT_CAP", "TOOL_GROUP_INTENT_CAP", "TOOL_VERB_MAP"] },
+    { "file": "packages/shift-manager/src/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen", "knownToolVerbs", "TOOL_GROUP_DISTINCT_CAP", "TOOL_GROUP_INTENT_CAP", "TOOL_VERB_MAP"] },
     // Kitchen Sink's copies of the registry's composer and message: the attach button,
     // the strip and the file row are for its composer once it passes a client.
     { "file": "apps/kitchen-sink/components/flow-state/prompt-input.tsx", "exports": ["PromptInputAttachButton", "PromptInputAttachButtonProps", "PromptInputAttachments", "PromptInputAttachmentsProps"] },

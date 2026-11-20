@@ -74,7 +74,8 @@ import { cn } from "@/lib/utils";
 import { railSessions } from "@/lib/rail-sessions";
 import { COORDINATOR_FLOWS, defaultConversation, isCoordinatorFlow, WORKER_FLOWS, SHELL_FLOW } from "@/lib/workforce-shell";
 import { createWorkforceClient, TASK_RESULT_DATA_TYPE, type RosterEntry } from "@flow-state-dev/workforce/browser";
-import { workforceRenderers } from "@flow-state-dev/workforce/react";
+import { StoppedLine } from "@/components/flow-state/conversation-lines";
+import { workforceLineRenderers } from "@/components/flow-state/workforce-lines";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
 import { SESSION_DRAFT } from "@/lib/session-draft";
@@ -91,10 +92,12 @@ const chatAgentRenderers: RendererRegistry = {
   // A failed turn's reason with Retry; which request gets Retry is the chat
   // panel's call, handed down through `FailedTurnRetryProvider`.
   error: ChatAgentFailedTurn,
+  // A stopped turn is the registry's line, as in the other apps.
+  stopped: StoppedLine,
   // A worker's sends and the tasks it filed are workforce's lines; the calls that wrote them draw
   // as those lines, not as steps. A task's ending still draws as the board's message, so its
   // result line is left out here: drawing both would say the ending twice.
-  data: { ...workforceRenderers, [TASK_RESULT_DATA_TYPE]: false, ...chatAssistantRenderers.data },
+  data: { ...workforceLineRenderers, [TASK_RESULT_DATA_TYPE]: false, ...chatAssistantRenderers.data },
 };
 
 

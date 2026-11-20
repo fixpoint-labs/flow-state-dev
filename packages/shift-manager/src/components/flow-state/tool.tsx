@@ -14,7 +14,9 @@
  * says, is one stretch: consecutive `tool_output` and `reasoning` items are
  * wrapped via ItemsRenderer's `toolGroupRenderer`. Collapsed, the line says what
  * the agent is doing now ("Reading foo.ts…", "Thinking…"); settled, it
- * summarizes the calls. It opens to every step in order.
+ * summarizes the calls. It opens to every step in order. A failed call that a
+ * later call of the same tool in the run got through reads "Tried …", and the
+ * run isn't failed for it.
  */
 
 import { Fragment, isValidElement, type ComponentProps, type ReactNode } from "react";
@@ -36,7 +38,7 @@ import {
 } from "lucide-react";
 
 import { CodeBlock } from "./code-block";
-import { composeToolCallsLabel, toolRunState, toolStepState, withToolState, type ToolStepStatus } from "./tool-grouping";
+import { composeToolCallsLabel, toolRunState, toolStepState, triedLabel, withRedone, withToolState, type ToolStepStatus } from "./tool-grouping";
 import { toolIntent, toolSubject } from "./tool-naming";
 
 export {
@@ -230,8 +232,9 @@ function lineState(item: ToolItem): ToolStepStatus {
   return toolStepState(status, getToolName(item), getToolOutput(item));
 }
 
-function runState(items: readonly ToolItem[]): ToolStepStatus {
-  return toolRunState(items.map(lineState));
+/** Each step's state in its run: a failed call a later call of the same tool got through reads done, and `redone`. */
+function runSteps(items: readonly ToolItem[]) {
+  return withRedone(items.map((item) => ({ tool: isThought(item) ? "" : getToolName(item), state: lineState(item) })));
 }
 
 function labelInput(item: Exclude<ToolItem, ReasoningItem>) {
@@ -341,7 +344,8 @@ function nowLabel({ name, intent, subject }: ReturnType<typeof labelInput>): str
 export function ToolGroup({ items, defaultOpen = false, live = false, className }: ToolGroupProps) {
   if (items.length === 0) return null;
 
-  const state = runState(items);
+  const steps = runSteps(items);
+  const state = toolRunState(steps.map((step) => step.state));
   const calls = items.filter((item): item is Exclude<ToolItem, ReasoningItem> => !isThought(item));
   const inputs = calls.map(labelInput);
   const one = items.length === 1;
@@ -364,14 +368,14 @@ export function ToolGroup({ items, defaultOpen = false, live = false, className 
     // live, between calls) the latest step there is.
     let current = -1;
     for (let i = items.length - 1; i >= 0; i--) {
-      if (lineState(items[i]!) === "running") {
+      if (steps[i]!.state === "running") {
         current = i;
         break;
       }
     }
     if (current < 0 && live) current = items.length - 1;
     const now = current >= 0 ? items[current]! : undefined;
-    const nowState = now === undefined ? state : lineState(now);
+    const nowState = now === undefined ? state : steps[current]!.state;
     label =
       now === undefined
         ? withToolState(summary, state)
@@ -379,7 +383,7 @@ export function ToolGroup({ items, defaultOpen = false, live = false, className 
           ? withToolState(thoughtLine(now) ?? thoughtWord(nowState), nowState)
           : withToolState(nowLabel(labelInput(now)), nowState);
   } else {
-    const count = one ? 1 : items.filter((item) => lineState(item) === state).length;
+    const count = one ? 1 : steps.filter((step) => step.state === state).length;
     label = withToolState(summary, state, count, items.length);
   }
 
@@ -389,9 +393,9 @@ export function ToolGroup({ items, defaultOpen = false, live = false, className 
         <ToolCallDetails item={items[0]!} />
       ) : (
         <ul className="space-y-1.5">
-          {items.map((item) => (
+          {items.map((item, i) => (
             <li key={item.id}>
-              <ToolRow item={item} />
+              <ToolRow item={item} redone={steps[i]!.redone} />
             </li>
           ))}
         </ul>
@@ -402,19 +406,21 @@ export function ToolGroup({ items, defaultOpen = false, live = false, className 
 
 export type ToolRowProps = {
   item: ToolItem;
+  /** A failed call a later call of the same tool in its run got through: it reads "Tried …", not failed. */
+  redone?: boolean;
   defaultOpen?: boolean;
   className?: string;
 };
 
 /** What the call stated or did (its intent, else its subject), else the tool name. A shell command is in mono. */
-export function ToolRow({ item, defaultOpen = false, className }: ToolRowProps) {
-  const state = lineState(item);
+export function ToolRow({ item, redone = false, defaultOpen = false, className }: ToolRowProps) {
+  const state = redone ? "completed" : lineState(item);
   const { name, intent, subject } = isThought(item)
     ? { name: thoughtWord(state), intent: undefined, subject: undefined }
     : labelInput(item);
   return (
     <ToolLine
-      label={withToolState(intent ?? subject?.text ?? name, state)}
+      label={redone ? triedLabel(intent ?? subject?.text ?? name) : withToolState(intent ?? subject?.text ?? name, state)}
       state={state}
       nested
       mono={intent === undefined && (subject?.code ?? !isThought(item))}

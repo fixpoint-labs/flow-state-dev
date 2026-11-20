@@ -14,7 +14,7 @@ import { RECEIVED_MESSAGE_DATA_TYPE, sessionTurnsViewRef, workerSessionsViewRef,
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useAppClient, useConversation, useTasks } from "../app";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
-import { stepOf } from "../components/ToolRun";
+import { stepOf } from "../components/flow-state/conversation-lines";
 import { holdOf, taskStatus, titleOf, workerOf } from "./task";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom, useTalk } from "./talk";

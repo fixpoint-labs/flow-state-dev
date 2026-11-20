@@ -52,14 +52,14 @@ const spendOn = (el: Element) => el.querySelector("[data-spend]")?.textContent ?
 
 describe("a coding task's spend", () => {
   it("shows on its line once its run reports: tokens and the vendor's charge", () => {
-    const { container, rerender } = render(<TaskCard task={ranOn("t1", "codex", null)} coding nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={() => {}} />);
+    const { container, rerender } = render(<TaskCard task={ranOn("t1", "codex", null)} coding nameOf={(id) => id} onOpen={() => {}} />);
     expect(spendOn(container)).toBeNull();
-    rerender(<TaskCard task={ranOn("t1", "codex", CODEX)} coding nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={() => {}} />);
+    rerender(<TaskCard task={ranOn("t1", "codex", CODEX)} coding nameOf={(id) => id} onOpen={() => {}} />);
     expect(spendOn(container)).toBe("14.7k tokens · $0.42");
   });
 
   it("shows no dollar figure for a run billed by subscription", () => {
-    const { container } = render(<TaskCard task={ranOn("t1", "claude-code", CLAUDE)} coding nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={() => {}} />);
+    const { container } = render(<TaskCard task={ranOn("t1", "claude-code", CLAUDE)} coding nameOf={(id) => id} onOpen={() => {}} />);
     expect(spendOn(container)).toBe("9.2k tokens");
   });
 

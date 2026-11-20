@@ -30,7 +30,7 @@ import { SessionOverlay } from "./flow-state/session-overlay";
 import { Steps } from "./Steps";
 import { RunsOn, runsOn, taskLine } from "./TaskCard";
 import { teammatesRenderers } from "./lines";
-import { stepOf } from "./ToolRun";
+import { stepOf } from "./flow-state/conversation-lines";
 import { durationText } from "./flow-state/spend";
 import { knownToolVerbs } from "./flow-state/tool-grouping";
 

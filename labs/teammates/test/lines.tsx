@@ -7,7 +7,9 @@ import { conversationLines, type ItemLine, type LineTurn } from "@flow-state-dev
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { FlowProvider } from "@flow-state-dev/react";
 import { render } from "@testing-library/react";
-import { Line, LineContext, quietScreen, teammatesRenderers, type LineScreen } from "../src/components/lines";
+import { Line, teammatesRenderers } from "../src/components/lines";
+import { LineContext, type LineContextValue } from "../src/components/flow-state/conversation-lines";
+import { TestProvider } from "./stub-server";
 import { FILED_TASK_DATA_TYPE, RECEIVED_MESSAGE_DATA_TYPE, SENT_MESSAGE_DATA_TYPE, TASK_RESULT_DATA_TYPE } from "@flow-state-dev/workforce/browser";
 
 const provenance = { blockName: "worker", blockInstanceId: "worker", phase: "main" };
@@ -58,18 +60,20 @@ export const answered = (id: string, requestId: string, suspensionId: string, re
 export const linesOf = (items: readonly object[], turns: readonly LineTurn[] = []): ItemLine[] =>
   conversationLines(items as unknown as OutputItem[], turns, { renderers: teammatesRenderers });
 
-/** `lines` drawn as the conversation draws them, on a screen with `screen`'s actions. */
-export function LinesOf({ lines, screen = {} }: { lines: readonly ItemLine[]; screen?: Partial<LineScreen> }) {
+/** `lines` drawn as the conversation draws them, on a screen with `screen`'s line context, over an app with no data. */
+export function LinesOf({ lines, screen = {} }: { lines: readonly ItemLine[]; screen?: LineContextValue }) {
   return (
-    <FlowProvider renderers={teammatesRenderers}>
-      <LineContext.Provider value={{ ...quietScreen, ...screen }}>
-        {lines.map((line) => (
-          <Line key={line.id} line={line} />
-        ))}
-      </LineContext.Provider>
-    </FlowProvider>
+    <TestProvider>
+      <FlowProvider renderers={teammatesRenderers}>
+        <LineContext.Provider value={screen}>
+          {lines.map((line) => (
+            <Line key={line.id} line={line} />
+          ))}
+        </LineContext.Provider>
+      </FlowProvider>
+    </TestProvider>
   );
 }
 
 /** {@link LinesOf}, rendered. */
-export const drawLines = (lines: readonly ItemLine[], screen: Partial<LineScreen> = {}) => render(<LinesOf lines={lines} screen={screen} />);
+export const drawLines = (lines: readonly ItemLine[], screen: LineContextValue = {}) => render(<LinesOf lines={lines} screen={screen} />);

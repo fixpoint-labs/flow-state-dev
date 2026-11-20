@@ -362,7 +362,14 @@ The filters `ItemsRenderer` always applied run first (latest keyed snapshot, sub
 | `workforce:task` | the conversation board's filing, keyed by the `createTask` call | `FiledTaskValue` |
 | `workforce:result` | the board's ending line for a task the conversation filed, keyed by the task | `TaskResultValue` |
 
-All four are client-only (`history: false`): the model reads the call and the board's message. Workforce's react entry exports `workforceRenderers` for a registry's `data` slot; an app spreads its own after them (`data: { ...workforceRenderers, ...appRenderers.data }`), in a registry built once at module level.
+All four are client-only (`history: false`): the model reads the call and the board's message.
+
+**The lines' look is the UI registry's, configured per screen.** Two registry items (`packages/ui/registry/components/`), installed into an app as byte-equal copies, draw every line kind but the plain `user`/`assistant` ones:
+
+- `conversation-lines`: the `failed` line (Retry when `line.retryable` and the screen gives `retry`), the `stopped` line, the approval card for a `user_approval` suspension, and `CompactSteps`, a compact `toolGroupRenderer`; the default steps look is the `tool` item's `ToolGroup`. One `LineContext` carries what each screen supplies (names, pictures, what a click opens, Retry, whether it can answer), each field optional: outside a provider a line shows ids and opens nothing.
+- `workforce-lines`: `workforceLineRenderers` for the four `dataType`s above, for a registry's `data` slot (`data: { ...workforceLineRenderers, ...appRenderers.data }`), and `withBrief(Message)`, which folds a task's brief to one line.
+
+An app keeps only what is its own in its registry, built once at module level. `workforce/react` holds no line renderers.
 
 Each line has an `id` that stays the same as it changes, for a key. The return type is `ItemLine`, not `ConversationLine`: that name is workforce's coordinator line (`coordinator-lines.ts`), a different thing.
 

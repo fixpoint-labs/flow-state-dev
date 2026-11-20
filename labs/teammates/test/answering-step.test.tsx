@@ -57,7 +57,7 @@ describe("the answering line's step", () => {
     const initial: ConversationView = { lines: steps(earlier, read), running: true, stopping: false, backgroundRunning: 0 };
     const { Follower, show, connect } = standInFollower("s1", initial);
     const worker = rosterEntry({ id: "lead", name: "Lead", description: "Coordinates work" });
-    const view = render(<TestProvider><Follower /><Conversation worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} harnessOf={() => undefined} onFire={async () => {}} onOpen={() => {}} /></TestProvider>);
+    const view = render(<TestProvider><Follower /><Conversation worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} onFire={async () => {}} onOpen={() => {}} /></TestProvider>);
     const line = () => view.container.querySelector("[data-chat-activity]");
     expect(line()?.textContent).toBe("Lead · reading a file…");
     expect(view.container.querySelector("details")?.open).toBe(true);
@@ -87,7 +87,7 @@ describe("a line the conversation draws as nothing", () => {
   const worker = rosterEntry({ id: "lead", name: "Lead", description: "Coordinates work" });
   const shown = (initial: ConversationView) => {
     const { Follower } = standInFollower("s1", initial);
-    return render(<TestProvider><Follower /><Conversation worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} harnessOf={() => undefined} onFire={async () => {}} onOpen={() => {}} /></TestProvider>);
+    return render(<TestProvider><Follower /><Conversation worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} onFire={async () => {}} onOpen={() => {}} /></TestProvider>);
   };
 
   it("doesn't bring the answering line back after an answer already on screen", () => {

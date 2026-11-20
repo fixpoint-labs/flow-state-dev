@@ -42,7 +42,7 @@ describe("a sent line's status", () => {
     const view = render(
       <TestProvider client={client}>
         <Follower />
-        <Conversation worker={rosterEntry({ id: LEAD, name: "Lead" })} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} harnessOf={() => undefined} onFire={async () => {}} onOpen={() => {}} />
+        <Conversation worker={rosterEntry({ id: LEAD, name: "Lead" })} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} onFire={async () => {}} onOpen={() => {}} />
       </TestProvider>,
     );
     const statusOf = (id: string) => [...view.container.querySelectorAll("[data-sent-status]")].find((s) => s.closest("button")?.getAttribute("aria-label")?.endsWith(`: ${id}`))?.textContent;
@@ -50,6 +50,7 @@ describe("a sent line's status", () => {
     expect(asked.at(-1)).toHaveLength(50);
     expect(statusOf("m01")).toBe("replied");
     // The oldest line is outside the 50 asked for: no status, never "working".
-    expect(statusOf("m00")).toBe("");
+    expect(statusOf("m00")).toBeUndefined();
+    expect(view.container.querySelector('[data-message-id="m00"]')).not.toBeNull();
   });
 });
