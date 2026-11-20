@@ -217,7 +217,7 @@ describe("a call the agent redid", () => {
     expect(line.getAttribute("data-state-kind")).toBe("completed");
     expect(within(line).getByRole("button").textContent).toBe("Ran `openWorkstream` 2 times");
     fireEvent.click(within(line).getAllByRole("button")[0]!);
-    expect(screen.getAllByTestId("tool-row").map((row) => row.getAttribute("data-state-kind"))).toEqual(["completed", "completed"]);
+    expect(screen.getAllByTestId("tool-row").map((step) => step.getAttribute("data-state-kind"))).toEqual(["completed", "completed"]);
     expect(screen.getByRole("button", { name: "Tried openWorkstream" })).toBeTruthy();
   });
 });

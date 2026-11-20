@@ -697,7 +697,7 @@
       "name": "conversation-lines",
       "title": "Conversation Lines",
       "type": "registry:component",
-      "description": "The lines a conversation screen configures instead of writing: a failed turn with Retry, a stopped turn with the work still running, a run of tool calls (the tool group, or a compact line), and a wait for the person's yes, answered or not. One line context, set by the screen, says what each line can do there: who works, Retry, the running count, whether the screen answers. Outside a provider a line draws with no action.",
+      "description": "The lines a conversation screen configures instead of writing: a failed turn with Retry, a stopped turn with the work still running, a run of tool calls (the tool group, or a compact line), and a wait for the user's yes, answered or not. One line context, set by the screen, says what each line can do there: who works, Retry, the running count, whether the screen answers. Outside a provider a line draws with no action.",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react"],
       "registryDependencies": ["request-recovery", "approval", "tool", "tokens"],
       "files": [{

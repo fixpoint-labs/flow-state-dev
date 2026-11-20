@@ -29,7 +29,7 @@
  *   message too, so a host that draws that message turns this one off
  *   (`[TASK_RESULT_DATA_TYPE]: false`), or the ending draws twice.
  * - brief: the words workforce hands a worker when it starts a task are
- *   what the session was given, not words the person typed, so they fold to
+ *   what the session was given, not words the user typed, so they fold to
  *   one *Task brief* line that opens to the message as the app draws it.
  *
  * Names, pictures and what a click opens come from the screen's line context

@@ -1335,7 +1335,7 @@ const EXEMPTIONS = [
   {
     id: "other-kinds",
     terms: ["kind"],
-    strip: /\b(?:block|item|content|event|channel|part|tool|error|message|node|trace|step|manifest|change|ask|path|entry)[ -]kinds?\b/gi,
+    strip: /\b(?:block|item|content|event|channel|part|tool|error|message|node|trace|step|manifest|change|ask|path|entry|state)[ -]kinds?\b/gi,
     why: "another subsystem's kind",
   },
   {
@@ -1439,9 +1439,9 @@ const EXEMPTIONS = [
   {
     id: "registry-copies",
     terms: ["kind", "person", "thread"],
-    where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\//.test(path),
+    where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\/|^packages\/ui\/registry\.json$/.test(path),
     strip: /\battachmentKind\b|\bkinds?\b|\bpersons?\b|\bperson's\b|\bthreads?\b/gi,
-    why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test: its words are the registry's",
+    why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test, and the registry's own manifest, which names workforce-lines' workforce dependency: its words are the registry's",
   },
   {
     id: "person-any-human",

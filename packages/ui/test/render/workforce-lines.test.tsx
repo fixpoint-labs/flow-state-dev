@@ -63,12 +63,12 @@ function draw(drawn: readonly OutputItem[] = items, screenOf?: LineContextValue,
   return render(<FlowProvider renderers={renderers}>{screenOf === undefined ? body : <LineContext.Provider value={screenOf}>{body}</LineContext.Provider>}</FlowProvider>);
 }
 
-const kinds = (container: HTMLElement) => [...container.querySelectorAll("[data-line]")].map((node) => node.getAttribute("data-line"));
+const linesOf = (container: HTMLElement) => [...container.querySelectorAll("[data-line]")].map((node) => node.getAttribute("data-line"));
 
 describe("workforce's lines", () => {
   it("draw a message received, each send (sent, answered, refused), a task filed and its ending, by name", () => {
     const { container } = draw(items, { nameOf: (id) => id.toUpperCase() });
-    expect(kinds(container)).toEqual(["received", "sent", "sent", "sent", "task", "result"]);
+    expect(linesOf(container)).toEqual(["received", "sent", "sent", "sent", "task", "result"]);
     expect(screen.getByRole("region", { name: "From ADA" }).textContent).toContain("Can you check the build?");
     expect(container.querySelector('[data-line="received"]')!.textContent).toContain("asks for a reply");
     expect(container.querySelector('[data-message-id="msg_1"]')!.textContent).toContain("Messaged ADA");
@@ -149,7 +149,7 @@ describe("a task's brief", () => {
   const said = { ...base("u1"), type: "message", role: "user", content: [{ type: "input_text", text: "Hello" }] } as unknown as MessageItem;
   const Mine = ({ item }: { item: MessageItem }) => <p data-mine>{(item.content[0] as { text: string }).text}</p>;
 
-  // The words a worker was handed are not words the person typed.
+  // The words a worker was handed are not words the user typed.
   it("folds to one line that opens to the brief, drawn by the app's own message look", () => {
     expect(isTaskBrief(brief)).toBe(true);
     expect(isTaskBrief(said)).toBe(false);
