@@ -20,14 +20,17 @@ import { toWorker, type Worker } from "./workers";
 /** One whole-collection read: its entries' parsed values once read (`undefined` before), why the last read failed, and a read on demand. */
 export type CollectionRead<T> = { values: T[] | undefined; failure: Failure | undefined; refresh: () => void };
 
+/** The user's listed sessions: `undefined` until a list lands, why the last list failed, and a list on demand. */
+export type Sessions = { list: readonly SessionSummary[] | undefined; failure: Failure | undefined; refresh: () => void };
+
 /** What the directory reads. */
 export type DirectoryReads = {
   /** The inventory's workers, as its rows publish them. */
   inventory: CollectionRead<Worker>;
   /** The user's roster. */
   roster: RosterRead;
-  /** The user's listed sessions, dispatch runs included: `undefined` until listed. */
-  sessions: { list: readonly SessionSummary[] | undefined; refresh: () => void };
+  /** The user's listed sessions, dispatch runs included: `undefined` until listed, and why the last list failed. */
+  sessions: Sessions;
   /** The organization's projects, then the user's private ones. */
   projects: { shared: CollectionRead<Project>; own: CollectionRead<Project> };
 };
@@ -67,11 +70,13 @@ export function useDirectoryReads(): DirectoryReads {
   const own = useParsed(useResource(privateProjectsResource, { client, all: true }), privateProject);
   const roster = useRoster();
   const listing = useSessionList({ client, includeDispatchRuns: true, includeStatus: false });
-  // Undefined only before the first list lands: a later read of an empty list is still a list.
-  const landed = useRef(false);
-  if (!listing.isLoading || listing.sessions.length > 0 || listing.error !== null) landed.current = true;
-  const listed = landed.current ? listing.sessions : undefined;
-  const sessions = useMemo(() => ({ list: listed, refresh: listing.refresh }), [listed, listing.refresh]);
+  // The last list that landed: undefined until one has. A failed read is its failure, never an empty
+  // list, and a failed read again keeps the list already drawn beside it.
+  const good = useRef<readonly SessionSummary[] | undefined>(undefined);
+  if (listing.error === null && (!listing.isLoading || listing.sessions.length > 0)) good.current = listing.sessions;
+  const listed = good.current;
+  const failure = useSameFailure(listing.error === null ? undefined : { message: listing.error });
+  const sessions = useMemo(() => ({ list: listed, failure, refresh: listing.refresh }), [listed, failure, listing.refresh]);
   const projects = useMemo(() => ({ shared, own }), [shared, own]);
   return { inventory, roster, sessions, projects };
 }

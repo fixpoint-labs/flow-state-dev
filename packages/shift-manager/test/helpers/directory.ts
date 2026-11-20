@@ -35,7 +35,7 @@ function readsOfSnapshot(snapshot: LabSnapshot | undefined, refresh: () => void)
   const projects = loaded?.projects ?? { ok: true as const, value: { rows: [] } };
   const fixed: Fixed = {
     inventory: loaded === undefined ? read(undefined) : read(loaded.inventory.ok ? { ok: true, value: loaded.inventory.value.workers } : loaded.inventory),
-    sessions: { list: loaded?.sessions, refresh },
+    sessions: { list: loaded?.sessions, failure: undefined, refresh },
     projects: {
       shared: loaded === undefined ? read(undefined) : read(projects!.ok ? { ok: true, value: projects!.value.rows.filter((p) => p.visibility === "shared") } : projects!),
       own: loaded === undefined ? read(undefined) : read(projects!.ok ? { ok: true, value: projects!.value.rows.filter((p) => p.visibility === "private") } : { ok: true, value: [] }),

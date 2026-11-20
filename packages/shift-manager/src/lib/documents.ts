@@ -73,5 +73,6 @@ export function useDocuments(): Section<DeclaredDocument[]> | undefined {
     // The flows decide what is read; a session list that names the same flows reads nothing new.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, flows]);
-  return read?.section;
+  // A read for another set of flows is never this one's answer: unread until it lands.
+  return read !== undefined && read.flows === flows ? read.section : undefined;
 }

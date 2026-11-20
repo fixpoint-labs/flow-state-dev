@@ -22,6 +22,8 @@ const hear = (notice: WireNotice) => opened.filter((o) => !o.closed).forEach((o)
 const stored: Record<string, Array<{ storageKey: string; value: unknown }>> = {};
 /** Every whole read made, by `<scope>:<pattern>`. */
 const lists: string[] = [];
+/** How the session list answers; a test swaps it. */
+let listSessions: (...args: unknown[]) => Promise<unknown> = async () => [];
 const client = {
   userId: "u_1",
   resource: ({ scope, pattern }: { scope: string; pattern: string }) => ({
@@ -39,26 +41,29 @@ const client = {
     opened.push(entry);
     return { close: () => void (entry.closed = true) };
   },
-  sessions: { list: async () => [] },
+  sessions: { list: (...args: unknown[]) => listSessions(...args) },
 };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client }) }));
 
 let rosterWatches = 0;
+const ROSTER = [
+  { id: "eng.coder", flow: "coder", standard: true, description: null, name: null, teamName: null, settings: { harness: "codex" } },
+  { id: "amber", flow: "coder", standard: false, description: null, name: "Amber", teamName: null },
+];
+/** When set, the roster watch holds its first answer until the test calls it. */
+let holdRoster = false;
+let releaseRoster: (() => void) | undefined;
 const workforce = {
   watchRoster: (onRoster: (entries: unknown[]) => void) => {
     rosterWatches += 1;
-    void Promise.resolve().then(() =>
-      onRoster([
-        { id: "eng.coder", flow: "coder", standard: true, description: null, name: null, teamName: null, settings: { harness: "codex" } },
-        { id: "amber", flow: "coder", standard: false, description: null, name: "Amber", teamName: null },
-      ]),
-    );
+    if (holdRoster) releaseRoster = () => onRoster(ROSTER);
+    else void Promise.resolve().then(() => onRoster(ROSTER));
     return () => {};
   },
 };
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
 
-import { DirectoryProvider, useWorkers } from "../src/lib/directory";
+import { DirectoryProvider, useDirectoryLanded, useSessions, useWorkers } from "../src/lib/directory";
 
 const INVENTORY = "inventory/workers/*";
 const drawn: Array<string[]> = [];
@@ -73,6 +78,9 @@ beforeEach(() => {
   lists.splice(0);
   drawn.splice(0);
   rosterWatches = 0;
+  holdRoster = false;
+  releaseRoster = undefined;
+  listSessions = async () => [];
   stored[INVENTORY] = [{ storageKey: "inventory/workers/eng.coder", value: { id: "eng.coder", kind: "coder", door: "run" } }];
 });
 afterEach(cleanup);
@@ -95,5 +103,49 @@ describe("the worker directory", () => {
     await act(async () => hear({ topic: { scope: "org", resource: "inventory/workers" }, kind: "resource" }));
     await waitFor(() => expect(drawn.at(-1)).toEqual(["eng.coder:coder:codex", "eng.reviewer:agent:-", "amber:coder:-"]));
     expect(lists.filter((list) => list === `org:${INVENTORY}`)).toHaveLength(2);
+  });
+});
+
+describe("the directory's first reads", () => {
+  type Seen = { landed: boolean; sessions: ReturnType<typeof useSessions> };
+  const seen: Seen[] = [];
+  function Probe() {
+    seen.push({ landed: useDirectoryLanded(), sessions: useSessions() });
+    return null;
+  }
+  beforeEach(() => void seen.splice(0));
+
+  it("a session list that fails its first read lands as that failure, never as no sessions, and a refresh that lands clears it", async () => {
+    listSessions = async () => {
+      throw new Error("the session store is down");
+    };
+    render(
+      <DirectoryProvider>
+        <Probe />
+      </DirectoryProvider>,
+    );
+    await waitFor(() => expect(seen.at(-1)!.sessions.failure?.message).toContain("the session store is down"));
+    // Not one drawn state says the user has no sessions.
+    expect(seen.some((s) => s.sessions.list !== undefined)).toBe(false);
+    expect(seen.at(-1)!.landed).toBe(true);
+
+    listSessions = async () => [];
+    act(() => seen.at(-1)!.sessions.refresh());
+    await waitFor(() => expect(seen.at(-1)!.sessions.list).toEqual([]));
+    expect(seen.at(-1)!.sessions.failure).toBeUndefined();
+  });
+
+  it("hasn't landed until the roster has: no frame draws the inventory's workers before the user's own join them", async () => {
+    holdRoster = true;
+    render(
+      <DirectoryProvider>
+        <Probe />
+      </DirectoryProvider>,
+    );
+    await waitFor(() => expect(seen.at(-1)!.sessions.list).toEqual([]));
+    await waitFor(() => expect(lists).toContain(`org:${INVENTORY}`));
+    expect(seen.some((s) => s.landed)).toBe(false);
+    act(() => releaseRoster!());
+    await waitFor(() => expect(seen.at(-1)!.landed).toBe(true));
   });
 });

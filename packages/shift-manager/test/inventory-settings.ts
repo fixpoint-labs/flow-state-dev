@@ -79,6 +79,7 @@ export const shiftManager: AppInventory = {
     "src/lib/conversation.ts": ["WorkerConversation"],
     "src/lib/directory-reads.ts": [
       { name: "CollectionRead", reason: "a useResource read of a whole collection as the directory holds it: its parsed values, its failure and its refresh" },
+      { name: "Sessions", reason: "useSessionList's sessions as the directory holds them: the last list that landed, why the last list failed, and its refresh" },
       { name: "DirectoryReads", reason: "the directory's reads, one hook's output assembled from useResource, the roster watch and useSessionList" },
     ],
     "src/lib/directory.tsx": [{ name: "Workers", reason: "the worker directory a screen draws: the inventory joined with the roster (D1), a hook's output assembled from two reads" }],

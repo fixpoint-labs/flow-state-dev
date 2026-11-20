@@ -10,8 +10,7 @@
  * who is on shift reads the Inbox view against them (`shift.ts`).
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { SessionSummary } from "@flow-state-dev/client";
-import { useDirectoryReads, type CollectionRead } from "./directory-reads";
+import { useDirectoryReads, type CollectionRead, type Sessions } from "./directory-reads";
 import type { Failure, Section } from "./failure";
 import type { Project } from "./project";
 import type { RosterRead } from "./roster";
@@ -48,7 +47,7 @@ export type Workers = {
 /** The directory: the workers, the sessions and the projects. */
 type Directory = {
   workers: Workers;
-  sessions: { list: readonly SessionSummary[] | undefined; refresh: () => void };
+  sessions: Sessions;
   projects: { section: Section<Project[]> | undefined; refresh: () => void };
 };
 
@@ -61,7 +60,7 @@ const nothing = () => {};
  */
 const UNREAD: Directory = {
   workers: { inventory: undefined, workers: [], own: [], roster: undefined, readAt: undefined, refresh: nothing },
-  sessions: { list: undefined, refresh: nothing },
+  sessions: { list: undefined, failure: undefined, refresh: nothing },
   projects: { section: undefined, refresh: nothing },
 };
 
@@ -151,11 +150,13 @@ export function useProjects(): Directory["projects"] {
 
 /**
  * Whether the directory's first reads have landed, or failed: the inventory,
- * the session list and the projects. The frame waits for it, as it waited for
- * the whole-Lab read before, so no screen draws half a directory. The roster
- * isn't waited for: a screen says when it hasn't loaded.
+ * the roster, the session list and the projects. The frame waits for it, as
+ * it waited for the whole-Lab read before, so no screen draws half a
+ * directory: not the inventory's workers before the user's own join them, and
+ * not a failed session list as no sessions (the frame draws that failure).
  */
 export function useDirectoryLanded(): boolean {
   const { workers, sessions, projects } = useDirectory();
-  return workers.inventory !== undefined && sessions.list !== undefined && projects.section !== undefined;
+  const listed = sessions.list !== undefined || sessions.failure !== undefined;
+  return workers.inventory !== undefined && workers.roster !== undefined && listed && projects.section !== undefined;
 }

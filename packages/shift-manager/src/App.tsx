@@ -20,7 +20,7 @@ import { GAPS, type Gaps } from "./gaps";
 import type { ThemeLook } from "./lib/theme";
 import type { Connection } from "./lib/connection";
 import { LabProvider, useLab } from "./lib/lab-data";
-import { DirectoryProvider, useDirectoryLanded, useProjects, useWorkers } from "./lib/directory";
+import { DirectoryProvider, useDirectoryLanded, useProjects, useSessions, useWorkers } from "./lib/directory";
 import { useGate } from "./lib/gate";
 import { PageReadsProvider, useReadPageAgain } from "./lib/page-reads";
 import { ConnectionBanner } from "./components/flow-state/connection-banner";
@@ -108,9 +108,24 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   );
 }
 
-/** The frame, once the directory's first reads have landed; until then, the page is still reading the Lab. */
+/**
+ * The frame, once the directory's first reads have landed; until then, the
+ * page is still reading the Lab. A session list whose first read failed is the
+ * couldn't-reach page, as a failed first whole-Lab read was: every screen
+ * draws its workers' sessions, and none may draw that as no sessions.
+ */
 function Landed({ children }: { children: ReactNode }) {
-  return useDirectoryLanded() ? children : READING;
+  const landed = useDirectoryLanded();
+  const sessions = useSessions();
+  if (!landed) return READING;
+  if (sessions.list === undefined && sessions.failure !== undefined) {
+    return (
+      <ConnectionScreen kind="unreachable" title="Shift Manager couldn't reach the Lab" failure={sessions.failure} onRetry={sessions.refresh}>
+        The Lab let you in, but listing your sessions failed. Check that the Lab's server is running, then retry.
+      </ConnectionScreen>
+    );
+  }
+  return children;
 }
 
 /** The frame, once the Lab let Shift Manager in. */
