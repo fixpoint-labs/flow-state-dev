@@ -155,13 +155,16 @@ function suppressedOwnersOf(items: readonly OutputItem[], containerRenderers: Re
   return suppressed.size > 0 ? suppressed : null;
 }
 
-/** The shown items: deduplicated, sub-agent and trace items out, container-owned ones left to their container. */
+/** The shown items: deduplicated, client-hidden items out, sub-agent and trace items out, container-owned ones left to their container. */
 function shownItems(items: readonly OutputItem[], options: ConversationLinesOptions): OutputItem[] {
   const { deduplicateByKey = true, showSubAgents = false, renderers } = options;
   const deduplicated = deduplicateByKey ? deduplicateKeyedItems(items) : [...items];
+  // An item the client isn't shown is no line. A feed that names its item types
+  // still hands these over (a task's ending, history-only beside its result line).
+  const forClient = deduplicated.filter((item) => item.itemVisibility?.client !== false);
   const visible = showSubAgents
-    ? deduplicated
-    : deduplicated.filter((item) => {
+    ? forClient
+    : forClient.filter((item) => {
         if (TRACE_TYPES.has(item.type)) return false;
         if (!CONVERSATIONAL_TYPES.has(item.type)) return true;
         return item.itemVisibility?.history !== false;
