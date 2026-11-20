@@ -46,7 +46,7 @@ Written by `docs-writer` (sonnet), 1054 words. Scenario: none: a catalog page ca
 
 - After the loop (review): the reference links now go to `../../reference/`, the depth the sibling starter pages use, and the Next line no longer implies Settings holds more than MCP keys (flag 10).
 - After the loop (review): the hire and fire line no longer says a fire waits for approval; the stock `fire` tool deletes the worker at once (`packages/workforce/src/workers/hire-blocks.ts:249-258`), and only an app-added wrapper makes it wait.
-- After the loop (review): drift fix: the Inbox also lists asks from the user's workers' runs with no conversation, answered on the card only, with the reply box disabled (packages/shift-manager/src/surfaces/Inbox.tsx:1-24, :54-55, :473; packages/shift-manager/src/gaps.ts:86). 936 words. Page sha256 7b44c818e60a.
+- After the loop (review): drift fix: the Inbox also lists asks from the user's workers' runs with no conversation, answered on the card only, with the reply box disabled (packages/shift-manager/src/surfaces/Inbox.tsx:1-24, :54-55, :473; packages/shift-manager/src/gaps.ts:86). An ask from a run with no conversation keeps the reply box, disabled with a reason (packages/shift-manager/src/surfaces/Inbox.tsx:503,536-542), not absent (Greptile review). 937 words. Page sha256 786937e13313.
 
 ## 5 · Fact check
 
