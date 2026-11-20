@@ -130,7 +130,7 @@ describe("a Stop after a turn that crashed mid-answer, long ago", () => {
     ]);
     h.turns([turn("r1", "completed", 2)]);
     const seen = follow(h);
-    await waitFor(() => expect(seen.current?.view.entries).toHaveLength(3));
+    await waitFor(() => expect(seen.current?.view.lines).toHaveLength(3));
     await waitFor(() => expect(seen.current?.view.running).toBe(false));
     await seen.calls!.stop("s1");
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -172,7 +172,7 @@ describe("a Stop of a turn older than the turns view's fifty", () => {
     h.turns(Array.from({ length: 50 }, (_, i) => turn(`d${i}`, "completed", 10 + i)));
     h.running([{ id: "r0", actionName: "respond", status: "in_progress", startedAtMs: 1 }]);
     const seen = follow(h);
-    await waitFor(() => expect(seen.current?.view.entries).toHaveLength(1));
+    await waitFor(() => expect(seen.current?.view.lines).toHaveLength(1));
     await seen.calls!.stop("s1");
     expect(h.aborted).toEqual(["r0"]);
     await waitFor(() => expect(seen.current!.view.stopping).toBe(false));
@@ -184,7 +184,7 @@ describe("a Stop of a turn older than the turns view's fifty", () => {
     h.turns([turn("r1", "completed", 1)]);
     h.running([{ id: "r2", actionName: "respond", status: "in_progress", startedAtMs: 2 }]);
     const seen = follow(h);
-    await waitFor(() => expect(seen.current?.view.entries).toHaveLength(1));
+    await waitFor(() => expect(seen.current?.view.lines).toHaveLength(1));
     await seen.calls!.stop("s1");
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(seen.current!.view.stopping).toBe(true);
@@ -200,7 +200,7 @@ describe("a Stop of a turn newer than a full turns view's last read", () => {
     h.turns(Array.from({ length: 50 }, (_, i) => turn(`d${i}`, "completed", 10 + i)));
     h.running([{ id: "r9", actionName: "respond", status: "in_progress", startedAtMs: 100 }]);
     const seen = follow(h);
-    await waitFor(() => expect(seen.current?.view.entries).toHaveLength(1));
+    await waitFor(() => expect(seen.current?.view.lines).toHaveLength(1));
     await seen.calls!.stop("s1");
     expect(h.aborted).toEqual(["r9"]);
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -215,11 +215,11 @@ describe("a stopped line", () => {
     const h = host();
     h.turns([turn("r1", "aborted", 1)]);
     const seen = follow(h);
-    await waitFor(() => expect(seen.current?.view.entries.some((e) => e.kind === "stopped")).toBe(true));
+    await waitFor(() => expect(seen.current?.view.lines.some((e) => e.kind === "stopped")).toBe(true));
     // Fifty later turns push r1 out of the view's read.
     h.turns(Array.from({ length: 50 }, (_, i) => turn(`d${i}`, "completed", 10 + i)));
     await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(seen.current!.view.entries.some((e) => e.kind === "stopped")).toBe(true);
+    expect(seen.current!.view.lines.some((e) => e.kind === "stopped")).toBe(true);
   });
 });
 
@@ -229,10 +229,10 @@ describe("the divider", () => {
     h.items([line("u1", "r1", 1), line("u2", "r2", 2), line("u3", "r3", 3)]);
     h.turns([turn("r1", "completed", 1), turn("r2", "completed", 2), turn("r3", "completed", 3, "r2")]);
     const seen = follow(h);
-    await waitFor(() => expect(seen.current?.mark).toEqual({ firstVerbatimEntryId: "u2", summarized: false }));
+    await waitFor(() => expect(seen.current?.mark).toEqual({ firstVerbatimLineId: "u2", summarized: false }));
     // The summary folds r1: the turns before the window's first are summarized, not dropped.
     h.summary({ throughRequestId: "r1", complete: true, folds: 1 });
-    await waitFor(() => expect(seen.current?.mark).toEqual({ firstVerbatimEntryId: "u2", summarized: true }));
+    await waitFor(() => expect(seen.current?.mark).toEqual({ firstVerbatimLineId: "u2", summarized: true }));
   });
 });
 
@@ -241,12 +241,12 @@ describe("a long conversation", () => {
     const h = host();
     h.items(Array.from({ length: 260 }, (_, n) => line(`msg_${n}`, `req_${n}`, n, { role: n % 2 === 0 ? "user" : "assistant" })));
     const seen = follow(h);
-    await waitFor(() => expect(seen.current?.view.entries).toHaveLength(200));
+    await waitFor(() => expect(seen.current?.view.lines).toHaveLength(200));
     expect(seen.current!.view.loadEarlier).toBeTypeOf("function");
     await seen.current!.view.loadEarlier!();
-    await waitFor(() => expect(seen.current?.view.entries).toHaveLength(260));
-    expect(seen.current!.view.entries[0]).toMatchObject({ id: "msg_0" });
-    expect(new Set(seen.current!.view.entries.map((entry) => entry.id)).size).toBe(260);
+    await waitFor(() => expect(seen.current?.view.lines).toHaveLength(260));
+    expect(seen.current!.view.lines[0]).toMatchObject({ id: "msg_0" });
+    expect(new Set(seen.current!.view.lines.map((line) => line.id)).size).toBe(260);
     expect(seen.current!.view.loadEarlier).toBeUndefined();
   });
 
@@ -254,7 +254,7 @@ describe("a long conversation", () => {
     const h = host();
     h.items([line("a", "r1", 1), line("b", "r1", 2), line("c", "r1", 3)]);
     const seen = follow(h);
-    await waitFor(() => expect(seen.current?.view.entries).toHaveLength(3));
+    await waitFor(() => expect(seen.current?.view.lines).toHaveLength(3));
     expect(seen.current!.view.loadEarlier).toBeUndefined();
   });
 });
@@ -263,7 +263,7 @@ describe("a conversation on several screens", () => {
   it("is read once: the list row, the header and the conversation share its one feed", async () => {
     const h = host();
     const seen = follow(h, 3);
-    await waitFor(() => expect(seen.current?.view.entries).toHaveLength(1));
+    await waitFor(() => expect(seen.current?.view.lines).toHaveLength(1));
     expect(h.streams()).toBe(1);
   });
 });

@@ -190,4 +190,17 @@ describe("records that draw nothing", () => {
     const records = ["state_change", "resource_change", "continuation"].map((type, n) => ({ ...base(`x${n}`, "r1"), type }) as unknown as OutputItem);
     expect(conversationLines([...records, user("u1", "r1")]).map((line) => line.kind)).toEqual(["user"]);
   });
+
+  // A record (a board row's change) is no line on screen: it must not take Retry off the failed turn before it.
+  it("are no line: a data item the registry in use has no renderer for, or one it turns off", () => {
+    const record = data("d1", "pass-1", { dataType: "task-change" });
+    const shown = data("d2", "r1", { dataType: "workforce:sent" });
+    const renderers = { data: { "workforce:sent": () => null, "routing": false as const } };
+    const lines = conversationLines([user("u1", "r1"), failure("e1", "r1"), record, data("d3", "pass-2", { dataType: "routing" })], [{ id: "r1", status: "failed", retryable: true }], { renderers });
+    expect(kinds(lines)).toEqual(["user:u1", "failed:e1"]);
+    expect(lines.at(-1)).toMatchObject({ retryable: true });
+    expect(kinds(conversationLines([shown], [], { renderers }))).toEqual(["data:d2"]);
+    // With no registry given, every data item is still a line: the model can't know what draws.
+    expect(kinds(conversationLines([record]))).toEqual(["data:d1"]);
+  });
 });

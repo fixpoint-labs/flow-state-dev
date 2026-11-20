@@ -246,4 +246,11 @@ describe("ItemsRenderer lines", () => {
     expect(nodes).toHaveLength(2);
     expect(nodes[1].props.children.props["data-line"]).toBe("stopped");
   });
+
+  // A steps renderer reads what the model decided of its line too: a call still marked running in a turn that ended never finished.
+  it("hands the steps renderer its line, ended once its turn is over", () => {
+    const lines = conversationLines([toolItem("t1", "read", { status: "in_progress" })], [{ id: "req", status: "failed" }]);
+    const [node] = ItemsRenderer({ lines, toolGroupRenderer: () => null }) as any[];
+    expect(node.props.children.props.line).toMatchObject({ kind: "steps", ended: true });
+  });
 });

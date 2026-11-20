@@ -1,10 +1,9 @@
-import { FlowProvider, useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import type { RosterEntry } from "@flow-state-dev/workforce/browser";
+import { FlowProvider, useInterruptKeys, useJumpToLatest, type ItemLine } from "@flow-state-dev/react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SENT_MESSAGE_DATA_TYPE, type RosterEntry, type SentMessageValue } from "@flow-state-dev/workforce/browser";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import type { AppContext } from "../../flows/lab-context.mts";
 import { useAppClient, useConversation, useConversationCalls, useTasks } from "../app";
-import type { ConversationEntry } from "../lib/conversation";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { Look } from "../lib/looks";
 import { displayName, roleOf } from "../lib/roster";
@@ -18,28 +17,18 @@ import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connect
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlier } from "./LoadEarlier";
-import { Entry } from "./Entry";
+import { Line, LineContext, teammatesRenderers, type LineScreen } from "./lines";
 import { answerIn, type Popup } from "./Popups";
-import { workerOf } from "../lib/task";
-import { TaskCard } from "./TaskCard";
 
 /** A small button in the conversation's header. */
 const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-xs tracking-widest uppercase hover:bg-accent";
 
-type TaskEntry = Extract<ConversationEntry, { kind: "task" }>;
-const placeholders = new WeakMap<TaskEntry, CodingBoardTask>();
-/**
- * The card a filed task shows until its board row arrives, as a pending row with what the filing said: one object per
- * (reused) entry, so the memoized card skips re-renders.
- */
-function placeholderOf(entry: TaskEntry, harness: string | undefined): CodingBoardTask {
-  let task = placeholders.get(entry);
-  if (task === undefined) {
-    task = { id: entry.taskId, goal: entry.title, title: entry.title, assignee: entry.to, status: "pending", attempts: 0, asks: [], harness: harness ?? null, review: null, landed: null, error: null, pullRequests: [], runFlow: null, detail: null };
-    placeholders.set(entry, task);
-  }
-  return task;
-}
+/** No board rows read yet: one array, so the lines' screen doesn't change for a new empty one. */
+const NO_TASKS: readonly CodingBoardTask[] = [];
+
+/** The ids of the messages the worker's sent lines sent. */
+const sentIds = (lines: readonly ItemLine[]) =>
+  lines.flatMap((line) => (line.kind === "data" && line.item.dataType === SENT_MESSAGE_DATA_TYPE && typeof (line.item.value as Partial<SentMessageValue>)?.messageId === "string" ? [(line.item.value as SentMessageValue).messageId!] : []));
 
 /**
  * The center: the worker's one conversation. A divider marks where the turns
@@ -109,13 +98,13 @@ export function Conversation({
   const mark = followed?.mark;
   // The flow the conversation runs on: what an approval's answer goes through (react's `useApproval`).
   const flow = useAppClient().conversations.flows.get(sessionId);
-  const entries = view?.entries ?? [];
+  const lines = view?.lines ?? [];
   // The worker's open messages, and the answers to the newest lines it sent: an older line shows no status, never a wrong one.
-  const answered = entries.flatMap((e) => (e.kind === "sent" ? [e.messageId] : [])).slice(-ANSWERED_LINES_MAX);
+  const answered = sentIds(lines).slice(-ANSWERED_LINES_MAX);
   const talk = useTalk(worker.id, answered) ?? [];
   const running = view?.running ?? false;
-  const pending = pendingFor(worker.id, talk, entries, view?.since);
-  const tasks = useTasks(sessionId).value ?? [];
+  const pending = pendingFor(worker.id, talk, lines, view?.since);
+  const tasks = useTasks(sessionId).value ?? NO_TASKS;
   const status = useStatusLine(worker.id, sessionId, nameOf, isCoding, stale);
   const [panel, setPanel] = useState<"fire">();
   const delegates = delegatesOf(worker, workers, context);
@@ -132,11 +121,11 @@ export function Conversation({
     if (panel === "fire") keep.current?.focus();
   }, [panel]);
 
-  const last = entries[entries.length - 1];
+  const last = lines[lines.length - 1];
   // An answer on screen, written or being written, is the sign it is answering; the line shows only before one starts.
   const answering = running && last?.kind !== "assistant";
   // What it is doing while it answers; a stale feed can't say, so the line falls back to "is answering".
-  const step = answering && !stale ? answeringStep(entries) : undefined;
+  const step = answering && !stale ? answeringStep(lines) : undefined;
   const feed = useJumpToLatest({ resetKey: sessionId });
   const stopping = view?.stopping ?? false;
   // Why the server refused the last Stop, shown beside the button until the next one.
@@ -147,24 +136,33 @@ export function Conversation({
   }, [calls, sessionId]);
   // On the document, so the keys work wherever focus is; a popup's Esc arrives already spent.
   const keys = useInterruptKeys({ enabled: running && !stopping, onInterrupt: stop, target: "document" });
-  // The count belongs to the newest stopped line, while no later turn has started.
-  const stillRunningFor = (entry: ConversationEntry) =>
-    entry === last && entry.kind === "stopped" && !running ? (view?.backgroundRunning ?? undefined) : undefined;
-
-  // Stable, so a memoized line doesn't redraw for a new function.
-  const openTask = useCallback((taskId: string) => onOpen({ kind: "task", sessionId, taskId }), [onOpen, sessionId]);
-  const openMessage = useCallback(
-    (sent: Extract<ConversationEntry, { kind: "sent" }>) => onOpen({ kind: "message", from: worker.id, to: sent.to, messageId: sent.messageId, text: sent.text }),
-    [onOpen, worker.id],
+  const workerName = displayName(worker);
+  const backgroundRunning = view?.backgroundRunning ?? undefined;
+  const talkKey = answered.map((id) => `${id}:${answerIn(talk, id)}`).join(",");
+  // What each line needs from this screen, one object while none of it changes, so a memoized line doesn't redraw.
+  const screenOfLines = useMemo<LineScreen>(
+    () => ({
+      workerName,
+      nameOf,
+      lookOf,
+      isCoding,
+      harnessOf,
+      tasks,
+      answerOf: (messageId) => (answered.includes(messageId) ? answerIn(talk, messageId) : undefined),
+      openMessage: (sent) => onOpen({ kind: "message", from: worker.id, ...sent }),
+      openTask: (taskId) => onOpen({ kind: "task", sessionId, taskId }),
+      // Retry only the newest turn, and not while one runs: the engine runs a failed request again as a new one.
+      ...(running ? {} : { retry: (requestId: string) => calls.retry(sessionId, requestId) }),
+      // The count belongs to the newest stopped line, while no later turn has started.
+      stillRunning: (lineId) => (lineId === last?.id && last?.kind === "stopped" && !running ? backgroundRunning : undefined),
+      viewTasks: onViewTasks,
+      readFile: calls.readFile,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workerName, nameOf, lookOf, isCoding, harnessOf, tasks, talkKey, onOpen, worker.id, sessionId, running, calls, last?.id, last?.kind, backgroundRunning, onViewTasks],
   );
 
-  // A line is drawn from the filing until the board's row arrives, then from the row, in the same place.
-  const taskTile = (entry: TaskEntry) => {
-    const task = tasks.find((t) => t.id === entry.taskId) ?? placeholderOf(entry, harnessOf(entry.to));
-    return <TaskCard task={task} nameOf={nameOf} lookOf={lookOf} coding={isCoding(workerOf(task))} onOpen={openTask} />;
-  };
-
-  const markAt = mark ? entries.findIndex((e) => e.id === mark.firstVerbatimEntryId) : -1;
+  const markAt = mark ? lines.findIndex((line) => line.id === mark.firstVerbatimLineId) : -1;
   return (
     <main aria-label="Conversation" className="flex h-full min-h-0 min-w-0 flex-col">
       <header className="flex items-center gap-3 border-b border-border px-6 py-3">
@@ -211,11 +209,12 @@ export function Conversation({
           </button>
         </div>
       ) : null}
-      <FlowProvider flowKind={flow}>
+      <FlowProvider flowKind={flow} renderers={teammatesRenderers}>
+        <LineContext.Provider value={screenOfLines}>
         <div ref={feed.ref} data-scroller className="relative flex-1 overflow-y-auto px-6 pt-4 pb-10">
           <div data-column className="mx-auto flex max-w-(--thread-width) flex-col gap-3">
             <LoadEarlier load={view?.loadEarlier} />
-            {entries.length === 0 ? (
+            {lines.length === 0 ? (
               <div className="mt-24 flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
                 <p data-testid="conversation-empty">{emptyLine(worker, delegates)}</p>
                 <ul aria-label="Starter lines" className="flex flex-col gap-1.5">
@@ -233,8 +232,8 @@ export function Conversation({
                 </ul>
               </div>
             ) : null}
-            {entries.map((entry, i) => (
-              <Fragment key={entry.id}>
+            {lines.map((line, i) => (
+              <Fragment key={line.id}>
                 {i === markAt && mark ? (
                   <div role="separator" aria-label={mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"} className="my-2 flex items-center gap-3">
                     <span className="h-px flex-1 bg-border" />
@@ -244,30 +243,13 @@ export function Conversation({
                     <span className="h-px flex-1 bg-border" />
                   </div>
                 ) : null}
+                {/* A line its renderer draws nothing for takes no room. */}
                 <div
-                  className={cn(i < markAt && "opacity-60")}
+                  className={cn("empty:hidden", i < markAt && "opacity-60")}
                   data-in-window={markAt < 0 || i >= markAt ? "true" : "false"}
-                  {...(entry.kind === "user" ? feed.mine(entry.id) : {})}
+                  {...(line.kind === "user" ? feed.mine(line.id) : {})}
                 >
-                  {entry.kind === "task" ? (
-                    taskTile(entry)
-                  ) : (
-                    <Entry
-                      entry={entry}
-                      workerName={displayName(worker)}
-                      nameOf={nameOf}
-                      lookOf={lookOf}
-                      isCoding={isCoding}
-                      answer={entry.kind === "sent" && answered.includes(entry.messageId) ? answerIn(talk, entry.messageId) : undefined}
-                      onOpenMessage={openMessage}
-                      onOpenTask={openTask}
-                      stillRunning={stillRunningFor(entry)}
-                      onViewTasks={onViewTasks}
-                      readFile={calls.readFile}
-                      // Retry only the newest turn, and not while one runs: the engine runs a failed request again as a new one.
-                      {...(entry.kind === "failed" && entry.retryable && !running ? { onRetry: () => calls.retry(sessionId, entry.requestId) } : {})}
-                    />
-                  )}
+                  <Line line={line} />
                 </div>
               </Fragment>
             ))}
@@ -288,6 +270,7 @@ export function Conversation({
           </div>
           <ConversationScrollButton feed={feed} className="size-8" />
         </div>
+        </LineContext.Provider>
       </FlowProvider>
       <Composer
         sessionId={sessionId}

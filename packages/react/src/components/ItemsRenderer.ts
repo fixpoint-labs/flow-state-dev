@@ -40,10 +40,11 @@ export type ItemsRendererProps = {
   showSubAgents?: boolean;
   /**
    * Draws a `steps` line (one turn's tool calls and the thinking between
-   * them) as one unit: it receives the line's items, in order. Without it,
+   * them) as one unit: it receives the line's items, in order, and the line
+   * itself (`ended` once its turn is over). Without it,
    * each of a steps line's items renders through the registry on its own.
    */
-  toolGroupRenderer?: ComponentType<{ items: ActivityItem[]; live?: boolean }>;
+  toolGroupRenderer?: ComponentType<{ items: ActivityItem[]; live?: boolean; line: Extract<ItemLine, { kind: "steps" }> }>;
   /**
    * The stream is still open after the last of these lines. The steps
    * renderer is then told, as `live`, which steps line is the trailing one:
@@ -85,7 +86,7 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
         return createElement(
           Fragment,
           { key: `tool-group-${line.id}` },
-          createElement(toolGroupRenderer, { items: line.items, live: props.live === true && index === lines.length - 1 })
+          createElement(toolGroupRenderer, { items: line.items, live: props.live === true && index === lines.length - 1, line })
         );
       }
       case "stopped": {

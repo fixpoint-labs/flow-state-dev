@@ -20,7 +20,9 @@
  * another worker waits until the worker has no turn running, as the server
  * defers it, then runs. Lead's conversation starts past the 50-turn history
  * window. `failTurn` leaves a failed turn in a conversation, as an engine
- * `error` item would; Retry runs that turn's line again.
+ * `error` item would; Retry runs that turn's line again. Each turn says
+ * whether the engine retries it (`retryable`) as the engine does: by its
+ * source, the built-in ones and a host's own (`retrySources`).
  */
 import { createElement, type ReactNode } from "react";
 import type { Client, ClientFetch, SessionConnectionStatus } from "@flow-state-dev/client";
@@ -29,7 +31,7 @@ import { CODER_FLOW } from "@flow-state-dev/harness-manager/browser";
 import {
   isOpenMessage,
   RECEIVED_MESSAGE_DATA_TYPE,
-  SEND_MESSAGE_TOOL,
+  SENT_MESSAGE_DATA_TYPE,
   TURN_ACTIONS,
   type RosterEntry,
   type WorkerMessageResourceState,
@@ -56,6 +58,8 @@ export interface ScriptedOptions {
   summary?: boolean;
   /** How many roster view reads fail as an unreachable server would, before one lands. */
   unreachableReads?: number;
+  /** A host's own request sources the engine also retries (its `publicReentrySources`). */
+  retrySources?: readonly string[];
   /** Every read of a conversation's items fails, as a server that can't read the session's history does. */
   historyUnreadable?: boolean;
 }
@@ -83,7 +87,7 @@ export interface ScriptedServer {
   /** Every conversation's feed hears `state` from now on, as its stream would say it. */
   setConnection(state: SessionConnectionStatus): void;
   /** The newest turn of conversation `sessionId` failed with `reason`: a reply under way is left incomplete. */
-  failTurn(sessionId: string, reason: string): void;
+  failTurn(sessionId: string, reason: string, options?: { source?: string }): void;
   /** Each retry the screen asked for, in order. */
   readonly retries: { sessionId: string; requestId: string }[];
   /** The next line's turn fails at its model call with `reason`, before any reply. */
@@ -124,6 +128,9 @@ const RESEARCHER = "teammates.researcher";
 const WRITER = "teammates.writer";
 
 type Job = { kind: "user"; text: string } | { kind: "receive"; message: Message };
+
+/** The request sources the engine's retry route runs again for a caller, before a host adds its own. */
+const RETRIED = new Set(["http", "mcp", "scheduled"]);
 
 /** One turn: a request of the worker's flow, as the session turns view and the requests read list it. */
 interface Turn {
@@ -231,7 +238,8 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
   const said = (text: string) => ({ type: "message", role: "assistant", content: [{ type: "output_text", text }] });
   const userLine = (text: string, files: readonly FileContent[] = []) => ({ type: "message", role: "user", content: [{ type: "input_text", text }, ...files] });
   const receivedOf = (m: Message) => ({ type: "data", dataType: RECEIVED_MESSAGE_DATA_TYPE, value: { id: m.id, from: m.from, text: m.text, ...(m.inReplyTo === undefined ? {} : { inReplyTo: m.inReplyTo }) } });
-  const sentOf = (m: Message) => ({ type: "tool_output", toolCall: { name: SEND_MESSAGE_TOOL, arguments: JSON.stringify({ to: m.to, text: m.text }) }, output: { sent: m.id } });
+  // The send's own line, as workforce writes it; the call it was written in is that line, not a step (React's model ties the two).
+  const sentOf = (m: Message) => ({ type: "data", dataType: SENT_MESSAGE_DATA_TYPE, value: { to: m.to, text: m.text, messageId: m.id, ...(m.inReplyTo === undefined ? { replyRequested: true } : { inReplyTo: m.inReplyTo }) } });
 
   const say = (w: ScriptedWorker, t: Turn, text: string): Step[1] => () => void store(w, t.id, said(text));
 
@@ -260,7 +268,7 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
   };
 
   /**
-   * `sendMessage`: a call in the sender's conversation, an entry in the log, and a
+   * `sendMessage`: a sent line in the sender's conversation, an entry in the log, and a
    * turn deferred for the recipient. A send that isn't an answer asks for one.
    */
   const sendMessage = (w: ScriptedWorker, t: Turn, to: string, text: string, inReplyTo?: string): Step[1] => () => {
@@ -512,6 +520,7 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
         action: t.action,
         status: t.status,
         source: t.source,
+        retryable: RETRIED.has(t.source) || (options.retrySources ?? []).includes(t.source),
         startedAt: t.startedAt,
         completedAt: t.status === "completed" ? t.endedAt : null,
         endedAt: t.endedAt,
@@ -742,12 +751,13 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
       }
     },
     retries,
-    failTurn(sessionId, reason) {
+    failTurn(sessionId, reason, failing = {}) {
       const w = ofSession(sessionId);
       const newest = w.turns.at(-1);
       if (newest === undefined) throw new Error(`no turn in ${sessionId}`);
       // The newest turn fails; one that already failed is run again, as a retry, and that run fails.
       const t = newest.status === "failed" && newest.text !== undefined ? startTurn(w, { kind: "user", text: newest.text }, undefined, [], false) : newest;
+      if (failing.source !== undefined) t.source = failing.source;
       t.status = "in_progress";
       failIn(w, t, reason);
     },

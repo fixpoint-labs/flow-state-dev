@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { useSessionFeed } from "@flow-state-dev/react";
+import { conversationLines, useSessionFeed, type ItemLine } from "@flow-state-dev/react";
+import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import type { RosterEntry, WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import type { CodingBoardTask, ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import {
@@ -10,7 +11,6 @@ import {
   useTaskDetail,
   useTaskWork,
 } from "../app";
-import { commandsRun, runSummaryLine, type SessionStep } from "../lib/steps";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
 import { waitsFor, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, titleOf, workerOf } from "../lib/task";
@@ -28,6 +28,10 @@ import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
 import { SessionOverlay } from "./flow-state/session-overlay";
 import { Steps } from "./Steps";
+import { teammatesRenderers } from "./lines";
+import { stepOf } from "./ToolRun";
+import { durationText } from "./flow-state/spend";
+import { knownToolVerbs } from "./flow-state/tool-grouping";
 
 /** What a popup shows: a task one conversation filed, or one message a worker sent. */
 export type Popup =
@@ -109,6 +113,48 @@ function PullRequestOpen({ task }: { task: Pick<CodingBoardTask, "pullRequests" 
   );
 }
 
+/** A tool the registry's words call running a command: each harness's shell tool. */
+const isCommand = (tool: string) => knownToolVerbs(tool)?.singular === "ran a command";
+
+/**
+ * How many shell commands a run's lines ran, done or failed; one still running
+ * isn't counted. Known by the tool's name in the registry's vocabulary. Given
+ * the run's request, only that request's calls count: a retry runs in the
+ * same session.
+ */
+export function commandsRun(lines: readonly ItemLine[], requestId?: string): number {
+  return lines
+    .flatMap((line) => (line.kind === "steps" ? line.items : []))
+    .filter((item): item is ToolOutputItem => item.type === "tool_output")
+    .map((call) => stepOf(call))
+    .filter((step) => isCommand(step.tool) && step.state !== "running" && (requestId === undefined || step.requestId === requestId)).length;
+}
+
+/** What a coding task's popup says the run did: the files it recorded, its commands, and how long it took. */
+export interface RunSummary {
+  /** The files the run's harness recorded touching; `null` when the harness records none (Codex and Cursor today). */
+  files: { count: number; truncated: boolean } | null;
+  commands: number;
+  /** Only once the task ended. */
+  durationMs?: number;
+}
+
+/**
+ * "Edited 2 files · ran 5 commands · 2m 14s", with what the run didn't do
+ * left out, and no file part for a harness that records none (never "0
+ * files"). Empty when there is nothing to say.
+ */
+export function runSummaryLine({ files, commands, durationMs }: RunSummary): string {
+  const n = files?.count ?? 0;
+  const parts = [
+    n === 0 ? null : `edited ${n}${files?.truncated ? "+" : ""} file${n === 1 && !files?.truncated ? "" : "s"}`,
+    commands === 0 ? null : `ran ${commands} command${commands === 1 ? "" : "s"}`,
+    durationMs === undefined ? null : durationText(durationMs),
+  ].filter((p): p is string => p !== null);
+  const line = parts.join(" · ");
+  return line.charAt(0).toUpperCase() + line.slice(1);
+}
+
 /** How a sent message stands. */
 export type AnswerStatus = "working" | "replied" | "no answer";
 
@@ -185,7 +231,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
     if (missing) onMissing?.();
   }, [missing, onMissing]);
   const work = useTaskWork(task);
-  const steps = work.steps;
+  const steps = work.lines;
   const to = task === undefined ? "" : workerOf(task);
   const coding = task !== undefined && isCoding(to);
   const line = task ? taskLine({ title: titleOf(task), to }, coding, nameOf) : "Task";
@@ -243,12 +289,18 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
           <ErrorBody message={task.error} />
         </section>
       ) : null}
-      {steps.length === 0 ? <Steps steps={steps} nameOf={nameOf} empty={starting} /> : null}
+      {steps.length === 0 ? <Steps lines={steps} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} empty={starting} /> : null}
+      {/* What a coding run started on, from its row, once it has reported a line. */}
+      {coding && harness !== undefined && steps.length > 0 ? (
+        <div data-step="harness" className="font-mono text-xs text-muted-foreground">
+          Started on {harness}
+        </div>
+      ) : null}
       {[...decisions, undefined].map((decision, i) => {
         const shown = steps.slice(decisions[i - 1]?.after ?? 0, decision?.after);
         return (
           <Fragment key={decision?.id ?? "latest"}>
-            {shown.length === 0 ? null : <Steps steps={shown} nameOf={nameOf} empty="" />}
+            {shown.length === 0 ? null : <Steps lines={shown} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} empty="" />}
             {decision === undefined ? null : (
               <p data-step="decision" className="font-mono text-xs whitespace-pre-wrap text-muted-foreground">
                 {decision.text}
@@ -285,7 +337,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
 const CHIPS_SHOWN = 8;
 
 /** "Edited 2 files · ran 5 commands · 2m 14s", and a chip per file the run recorded, named by its file name. */
-function TaskSummary({ task, steps }: { task: CodingBoardTask; steps: readonly SessionStep[] }) {
+function TaskSummary({ task, steps }: { task: CodingBoardTask; steps: readonly ItemLine[] }) {
   const files = useRecordedFiles(task) ?? null;
   // One per path (a steer or a review's changes record the path again), and only a path an edit landed on:
   // one whose every attempt failed was tried, not edited.
@@ -466,7 +518,7 @@ function MessagePopup({ popup, nameOf, lookOf, onClose }: {
   const talk = useTalk(popup.to, [popup.messageId]) ?? [];
   const { client } = useAppClient();
   const feed = useSessionFeed(talk.find((m) => m.id === popup.messageId)?.toSession, { client });
-  const steps = useMemo(() => exchangeOf(feed?.items ?? [], popup.messageId), [feed?.items, popup.messageId]);
+  const steps = useMemo(() => exchangeOf(conversationLines(feed?.items ?? [], [], { renderers: teammatesRenderers }), popup.messageId), [feed?.items, popup.messageId]);
   const to = nameOf(popup.to);
   const line = `Messaged ${to}`;
   return (
@@ -474,7 +526,7 @@ function MessagePopup({ popup, nameOf, lookOf, onClose }: {
       <p className="font-mono text-xs text-muted-foreground">
         {nameOf(popup.from)} → {to}
       </p>
-      <Steps steps={steps} nameOf={nameOf} empty={`${popup.text}\n\n${to} hasn't read it yet.`} />
+      <Steps lines={steps} nameOf={nameOf} lookOf={lookOf} empty={`${popup.text}\n\n${to} hasn't read it yet.`} />
     </SessionOverlay>
   );
 }

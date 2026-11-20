@@ -8,7 +8,7 @@
  * your answers go through orchestration's Inbox client (`useTaskActions`).
  */
 import { useEffect, useMemo, useState } from "react";
-import { useRequestStream, useSessionFeed, useView } from "@flow-state-dev/react";
+import { conversationLines, useRequestStream, useSessionFeed, useView } from "@flow-state-dev/react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { createInboxClient } from "@flow-state-dev/orchestration/inbox";
 import {
@@ -21,12 +21,11 @@ import {
   type CodingBoardTask,
   type RecordedWork,
 } from "@flow-state-dev/harness-manager/browser";
+import { teammatesRenderers } from "../components/lines";
 import { toolInFlight, type PlanRowNow } from "../components/flow-state/working-status";
 import type { ReviewAnswer } from "../components/flow-state/review-hold";
 import { inboxAnswerOf, rerunOverrides, taskStatus } from "../lib/task";
-import type { Item } from "../lib/items";
 import { useAppClient } from "./provider";
-import { runSteps } from "../lib/steps";
 
 /** The board a conversation files its tasks on: Workforce's `"tasks"`. */
 const TASK_BOARD = "tasks";
@@ -52,7 +51,7 @@ export function useTaskDetail(sessionId: string, taskId: string): { value: Codin
 }
 
 /**
- * A task's run, read only: its steps from its session's items, its latest
+ * A task's run, read only: its lines from its session's items, its latest
  * review stop (harness-manager's `reviewDetail`), and, while it runs, the call
  * in flight (the run request's own stream, which sends a call as it starts,
  * beside the feed, whose finished copy wins) and the plan its harness recorded.
@@ -69,13 +68,12 @@ export function useTaskWork(task: CodingBoardTask | undefined) {
   const streamed = useRequestStream({ client, flowKind, source: { requestId: requestId ?? "" }, filter: TOOL_CALLS, reconnect: true, flush: "immediate", enabled: running && flowKind !== undefined })
     .items as unknown as readonly OutputItem[];
   return useMemo(() => {
-    const items = (feed?.items ?? []) as unknown as Item[];
-    const stop = [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review");
-    const fed = items as unknown as OutputItem[];
+    const fed = (feed?.items ?? []) as readonly OutputItem[];
+    const stop = [...fed].reverse().find((item) => item.type === "suspension" && (item as { kind?: string }).kind === "review") as { data?: unknown } | undefined;
     const inFlight = running ? inFlightOf(streamed, fed, requestId) : undefined;
     const steps = running ? plan?.rows.map(({ title, status }): PlanRowNow => ({ title, status })) : undefined;
     return {
-      steps: runSession === null ? [] : runSteps(items),
+      lines: runSession === null ? [] : conversationLines(fed, [], { renderers: teammatesRenderers }),
       review: stop === undefined ? undefined : (reviewDetail(stop.data) ?? undefined),
       working: { ...(inFlight === undefined ? {} : { inFlight }), ...(steps === undefined ? {} : { plan: steps }) },
     };
