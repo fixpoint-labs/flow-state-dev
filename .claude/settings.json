@@ -144,8 +144,7 @@
     ]
   },
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
-    "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
   "statusLine": {
     "type": "command",
@@ -154,5 +153,8 @@
   "subagentStatusLine": {
     "type": "command",
     "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-statusline.cjs\""
-  }
+  },
+  "footerLinksRegexes": [
+    "graft/[\\w./-]+\\.md"
+  ]
 }
