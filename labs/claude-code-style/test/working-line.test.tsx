@@ -11,7 +11,8 @@
  */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AppTask } from "../src/app";
+import type { CodingBoardTask } from "../src/app";
+import { ask, codingBoardTask } from "./coding-board-task";
 import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import { TasksPane } from "../src/components/TasksPane";
 import { ThreadView } from "../src/components/ThreadView";
@@ -24,7 +25,7 @@ afterEach(() => {
 
 const STARTED = Date.UTC(2026, 10, 4, 9, 0, 0);
 
-const RUNNING: AppTask = { id: "t-1", title: "Fix session log ordering", goal: "Fix it", status: "in_progress", harness: "claude-code", startedAt: STARTED, runLink: { ...RUN } };
+const RUNNING: CodingBoardTask = codingBoardTask({ id: "t-1", title: "Fix session log ordering", goal: "Fix it", harness: "claude-code", startedAt: STARTED, run: { ...RUN, attempt: 1 } });
 
 /** A tool call of the run, as its session stores it: `in_progress` while it runs. */
 const call = (id: string, name: string, args: unknown, status: "completed" | "in_progress") => ({
@@ -56,10 +57,10 @@ function server(now: Now = {}) {
   });
 }
 
-function open(task: AppTask, now: Now = {}) {
+function open(task: CodingBoardTask, now: Now = {}) {
   const { wrap } = server(now);
   // The view is a sheet, which draws into the area a provider hosts.
-  const shown = (current: AppTask) =>
+  const shown = (current: CodingBoardTask) =>
     wrap(
       <SessionOverlayProvider>
         <SessionOverlayArea>
@@ -72,7 +73,7 @@ function open(task: AppTask, now: Now = {}) {
   return {
     pane,
     line: () => within(pane).queryByTestId("streaming-indicator"),
-    setTask: (next: Partial<AppTask>) => view.rerender(shown({ ...task, ...next })),
+    setTask: (next: Partial<CodingBoardTask>) => view.rerender(shown({ ...task, ...next })),
   };
 }
 
@@ -118,16 +119,16 @@ describe("a running task's view ends in a live working line", () => {
   });
 
   it("is not shown while the task waits on you", () => {
-    const view = open({ ...RUNNING, status: "held", openHold: { kind: "question", prompt: "Which region?" } });
+    const view = open({ ...RUNNING, status: "held", asks: [ask("question", "Which region?")] });
     expect(view.line()).toBeNull();
   });
 });
 
 /** Session mode's opened background task: the same line, in the sheet the tasks pane opens. */
-function openInPane(task: AppTask, now: Now = {}) {
+function openInPane(task: CodingBoardTask, now: Now = {}) {
   const { wrap } = server(now);
   // The app reads the rows and hands them to the pane (FIX-2399 E1): a row change is a new `tasks` prop.
-  const pane = (rows: AppTask[]) =>
+  const pane = (rows: CodingBoardTask[]) =>
     wrap(
       <SessionOverlayProvider>
         <SessionOverlayArea>
@@ -136,11 +137,11 @@ function openInPane(task: AppTask, now: Now = {}) {
       </SessionOverlayProvider>,
     );
   const { rerender } = render(pane([task]));
-  const showTasks = (rows: AppTask[]) => rerender(pane(rows));
+  const showTasks = (rows: CodingBoardTask[]) => rerender(pane(rows));
   const sheet = () => screen.getByRole("dialog", { name: `Work: ${task.title}` });
   return {
     line: () => within(sheet()).queryByTestId("streaming-indicator"),
-    setTask: (next: Partial<AppTask>) => act(() => showTasks([{ ...task, ...next }])),
+    setTask: (next: Partial<CodingBoardTask>) => act(() => showTasks([{ ...task, ...next }])),
   };
 }
 
@@ -156,7 +157,7 @@ describe("session mode's opened task ends in the same live working line", () => 
   it("is gone once the task ends, and while it waits on you", () => {
     const view = openInPane(RUNNING);
     expect(view.line()).not.toBeNull();
-    view.setTask({ openHold: { kind: "question", prompt: "Which region?" } });
+    view.setTask({ asks: [ask("question", "Which region?")] });
     expect(view.line()).toBeNull();
     view.setTask({ status: "completed" });
     expect(view.line()).toBeNull();

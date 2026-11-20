@@ -13,7 +13,7 @@ import {
 } from "../app";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
-import { waitsFor, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, titleOf, workerOf } from "../lib/task";
+import { waitsFor, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
 import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -163,7 +163,7 @@ export interface FollowUp {
 }
 
 /** What a follow-up puts in the filer's composer: the task by its title, and room for what to do next. */
-const followUpText = (task: CodingBoardTask) => `Follow up on "${titleOf(task)}": `;
+const followUpText = (task: CodingBoardTask) => `Follow up on "${task.title}": `;
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
 export function PopupView({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
@@ -216,7 +216,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const steps = work.lines;
   const to = task === undefined ? "" : workerOf(task);
   const coding = task !== undefined && isCoding(to);
-  const line = task ? taskLine({ title: titleOf(task), to }, coding, nameOf) : "Task";
+  const line = task ? taskLine({ title: task.title, to }, coding, nameOf) : "Task";
   // A teammate's task carries its look; a coding task is nobody's.
   const harness = task === undefined ? undefined : harnessOf(task);
   const on = task === undefined ? undefined : runsOn({ harness, model: modelOf(task) });

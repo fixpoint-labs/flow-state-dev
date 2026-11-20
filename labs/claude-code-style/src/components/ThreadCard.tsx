@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { usePullRequestLinks, useTaskWork, type AppTask } from "../app";
+import { usePullRequestLinks, useTaskWork, type CodingBoardTask } from "../app";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
 import { LandFailure } from "./flow-state/review-hold";
@@ -18,7 +18,7 @@ import { HarnessTag, PullRequestOpen, statusColumn, statusLine, ThreadIcon, wait
  */
 export function ThreadCard(props: {
   sessionId: string;
-  task: AppTask | undefined;
+  task: CodingBoardTask | undefined;
   onOpen: (taskId: string) => void;
 }) {
   return props.task ? <LoadedThreadCard {...props} task={props.task} /> : null;
@@ -33,7 +33,7 @@ function LoadedThreadCard({
   onOpen,
 }: {
   sessionId: string;
-  task: AppTask;
+  task: CodingBoardTask;
   onOpen: (taskId: string) => void;
 }) {
   const column = statusColumn(task);
@@ -64,11 +64,11 @@ function LoadedThreadCard({
           <HarnessTag task={task} />
         </div>
         {waitsOnPullRequest(task) ? (
-          <PullRequestOpen task={linked} className="block" />
+          <PullRequestOpen pullRequests={linked} className="block" />
         ) : (
           <div className="truncate text-xs text-muted-foreground">{statusLine(task)}</div>
         )}
-        {task.landed === undefined ? null : (
+        {task.landed == null ? null : (
           <div className="truncate">
             <LandedLink landed={task.landed} />
           </div>
@@ -103,7 +103,7 @@ function ReviewActions({
   viewThread,
 }: {
   sessionId: string;
-  task: AppTask;
+  task: CodingBoardTask;
   onOpen: (taskId: string) => void;
   viewThread: ReactNode;
 }) {

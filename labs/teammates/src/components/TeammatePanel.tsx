@@ -6,7 +6,7 @@ import { useTasks } from "../app";
 import type { Look } from "../lib/looks";
 import { displayName, roleOf, useWorkforce } from "../lib/roster";
 import { useNow, useStale } from "../lib/use-watch";
-import { holdOf, harnessOf, modelOf, runTimesOf, taskStatus, titleOf, viewOf, workerOf } from "../lib/task";
+import { holdOf, harnessOf, modelOf, timeSignalOf, taskStatus, workerOf } from "../lib/task";
 import { clearMark, useCleared } from "../lib/cleared";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -121,7 +121,7 @@ export function TeammatePanel({
   const { running, failed, clearedFailed, ended } = groupTasks(tasks, cleared);
   // A running clock ticks each second; it holds while the feed is stale, as the status line's age does.
   const now = useNow(1_000, !stale);
-  const counts = taskCounts(tasks.map((t) => viewOf(t, sessionId)));
+  const counts = taskCounts(tasks);
   const [editing, setEditing] = useState(false);
   const workforce = useWorkforce();
   // Every ended group starts collapsed; a click opens it.
@@ -135,7 +135,7 @@ export function TeammatePanel({
 
   const row = (t: CodingBoardTask) => {
     const coding = isCoding(workerOf(t));
-    const line = taskLine({ title: titleOf(t), to: workerOf(t) }, coding, nameOf);
+    const line = taskLine({ title: t.title, to: workerOf(t) }, coding, nameOf);
     const state = taskPresentation(t);
     const status = taskStatus(t);
     const reason = status === "failed" || status === "cancelled" ? reasonLine(t) : undefined;
@@ -162,7 +162,7 @@ export function TeammatePanel({
               {line}
             </span>
             <span className={cn("block truncate text-xs", state.tone, stale && STALE_CLASS)} data-status>
-              {holdOf(t) ? state.word : <StatusWords task={t} sessionId={sessionId} now={now} stale={stale} />}
+              {holdOf(t) ? state.word : <StatusWords task={t} now={now} stale={stale} />}
               {reason ? ` · ${reason}` : ""}
               {runsOn(runs) ? ` · ${runsOn(runs)}` : ""}
             </span>
@@ -320,9 +320,8 @@ function ResetButton({ name, onReset }: { name: string; onReset: () => Promise<v
  * for "running" ("working · 4m 12s", "quiet for 7m"), and an ended one's age
  * follows its status ("done · 12m ago").
  */
-function StatusWords({ task, sessionId, now, stale }: { task: CodingBoardTask; sessionId: string; now: number; stale: boolean }) {
-  const view = viewOf(task, sessionId);
-  const run = runTimesOf(task);
+function StatusWords({ task, now, stale }: { task: CodingBoardTask; now: number; stale: boolean }) {
+  const { view, run } = timeSignalOf(task);
   const status = taskStatus(task);
   const time = <TaskTime view={view} run={run} now={now} stale={stale} tone={(kind) => taskPresentation(task, kind).tone} fallback={status} />;
   if (status === "running" || taskSignal(view, run, now, { stale }) === null) return time;

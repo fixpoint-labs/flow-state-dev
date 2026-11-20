@@ -13,8 +13,8 @@
  */
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { taskView } from "@flow-state-dev/orchestration/inbox";
-import type { AppTask, TaskStatus } from "../src/app";
+import type { CodingBoardTask, TaskStatus } from "../src/app";
+import { codingBoardTask } from "./coding-board-task";
 import { stubServer } from "./stub-server";
 import { TasksPane } from "../src/components/TasksPane";
 import { ThreadsBoard } from "../src/components/ThreadsBoard";
@@ -23,18 +23,18 @@ afterEach(cleanup);
 
 const MIN = 60_000;
 
-/** A pane row as the lab reads one from the board's `listTasks` row. */
-function row(id: string, title: string, status: TaskStatus, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }): AppTask {
+/** A pane row as the coding board view answers it: its run link's start, and its lease deadline. */
+function row(id: string, title: string, status: TaskStatus, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }): CodingBoardTask {
   const { startedAt, leaseUntil, updatedAt } = times;
-  return {
+  return codingBoardTask({
     id,
     title,
     goal: title,
     status,
     updatedAt,
-    view: taskView({ id, title, goal: title, status, board: "s1", updatedAt }),
-    ...(startedAt === undefined && leaseUntil === undefined ? {} : { run: { ...(startedAt === undefined ? {} : { startedAt }), ...(leaseUntil === undefined ? {} : { leaseUntil }) } }),
-  };
+    ...(startedAt === undefined ? {} : { run: { sessionId: `run-${id}`, requestId: `q-${id}`, attempt: 1, startedAt } }),
+    ...(leaseUntil === undefined ? {} : { leaseUntil }),
+  });
 }
 
 const wrap = stubServer().wrap;

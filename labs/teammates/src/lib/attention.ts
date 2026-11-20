@@ -12,7 +12,6 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import { titleOf } from "./task";
 import { endedAt, type Need } from "./status";
 
 /** The page's own name, the title with nothing waiting. */
@@ -42,7 +41,7 @@ export function teammateAttention(name: string, loaded: boolean, unread: number,
     loaded,
     alerts: [
       ...needs.map((n) => ({ key: n.key, text: n.kind === "approval" ? `${name} needs your OK: ${n.text}` : `${name} is waiting on you: ${n.text}` })),
-      ...endings.map((t) => ({ key: `ended:${t.id}:${endedAt(t)}`, text: `Coding task ${t.status === "errored" ? "failed" : "finished"}: ${titleOf(t)}` })),
+      ...endings.map((t) => ({ key: `ended:${t.id}:${endedAt(t)}`, text: `Coding task ${t.status === "errored" ? "failed" : "finished"}: ${t.title}` })),
     ],
   };
 }
