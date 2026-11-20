@@ -26,7 +26,7 @@ import { boardTaskOf } from "@flow-state-dev/workforce/browser";
 import { App } from "../src/App";
 import { useReportFeedState, worstFeedState } from "../src/lib/feed-health";
 import { LabProvider, useLab } from "../src/lib/lab-data";
-import type { InboxViewValue } from "../src/lib/inbox";
+import { useInbox, type InboxViewValue } from "../src/lib/inbox";
 import { toWorker } from "../src/lib/workers";
 import type { ConnectionFeedStatus } from "../src/components/flow-state/connection-banner";
 import type { DirectoryFixture } from "./helpers/directory";
@@ -41,6 +41,8 @@ let view: InboxViewValue;
 let viewFailure: { message: string; httpStatus?: number } | undefined;
 /** Whether a read of the Inbox view has landed yet: a first read that fails has no answer to keep. */
 let viewLanded = true;
+/** The Inbox view's first read is still running: no answer and no failure yet. */
+let viewPending = false;
 /** The directory the page draws: one good read, as one landed. */
 let directory: DirectoryFixture;
 
@@ -66,6 +68,7 @@ vi.mock("@flow-state-dev/react", async (importOriginal) => {
     useView: (ref: unknown, _input: unknown, options: { enabled?: boolean } = {}) => {
       const [, redraw] = useReducer((n: number) => n + 1, 0);
       if (ref !== inboxViewRef || options.enabled === false) return { value: undefined, stale: false, refresh: redraw };
+      if (viewPending) return { value: undefined, stale: false, refresh: redraw };
       if (viewFailure === undefined) return { value: view, stale: false, refresh: redraw };
       return viewLanded ? { value: view, stale: true, failure: viewFailure, refresh: redraw } : { value: undefined, stale: false, failure: viewFailure, refresh: redraw };
     },
@@ -91,6 +94,7 @@ beforeEach(() => {
   organizationReads = 0;
   viewFailure = undefined;
   viewLanded = true;
+  viewPending = false;
   ({ directory, view } = lab());
   (window as unknown as { happyDOM: { setViewport(viewport: { width: number; height: number }): void } }).happyDOM.setViewport({ width: 1600, height: 900 });
 });
@@ -276,15 +280,26 @@ describe("an Inbox whose first read fails", () => {
   });
 
   it("shows no bar while the first read is still running", async () => {
+    // The real `useInbox`, its first read held: it has no answer and no failure, so it tells the bar nothing.
+    viewPending = true;
+    let mounted = false;
+    function Inbox() {
+      useInbox();
+      mounted = true;
+      return null;
+    }
     function Probe() {
       const { health } = useLab();
       return <p data-testid="health">{health}</p>;
     }
     render(
       <LabProvider connection={{ userId: "u_test" }}>
+        <Inbox />
         <Probe />
       </LabProvider>,
     );
-    await waitFor(() => expect(screen.getByTestId("health").textContent).toBe("live"));
+    await waitFor(() => expect(mounted).toBe(true));
+    await sleep(50);
+    expect(screen.getByTestId("health").textContent).toBe("live");
   });
 });

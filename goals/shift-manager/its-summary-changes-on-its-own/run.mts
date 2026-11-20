@@ -610,11 +610,17 @@ await runGoal(async (failures, tell) => {
         .resource({ scope: "user", pattern: SCHEDULES_PATTERN })
         .send<{ ok?: unknown; error?: unknown }>(ROUTINE_VERBS.save, { name: routine, trigger: { clock: { cron: "0 9 * * 1-5" } }, task: { filer: "lead", goal: `Write the stand-up notes ${RUN_STAMP}`, assignee: "eng.doer" } });
       if (saved?.ok !== true) throw new Error(`setup: saving the routine answered ${JSON.stringify(saved)}`);
+      // A shared project the page must list once its opening projects read lands: the sign it has, so a later
+      // project can only reach PROJECTS through a read the change itself starts.
+      const seeded = `seeded-${RUN_STAMP}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+      await writer.resource(projectsResource).send("createProject", { id: seeded, title: `Seeded ${RUN_STAMP}` });
       const page = mountDirectory(on);
       closers.push(page.close);
       const drawn = () => page.container.querySelector(`[data-testid="routine"][data-id="clock:${routine}"]`);
       if ((await until(drawn, (el) => el !== null, 15_000)) === null) throw new Error("setup: the Routines screen never drew the routine");
-      await until(() => page.container.querySelector('[data-testid="projects"]'), (el) => el !== null, 15_000);
+      if ((await until(() => page.container.querySelector(`[data-testid="nav-project-${seeded}"]`), (el) => el !== null, 15_000)) === null) {
+        throw new Error("setup: PROJECTS never listed the project saved before the page opened");
+      }
       // Let the page's opening reads, and any its socket's connect makes, land.
       await sleep(3_000);
 
@@ -656,7 +662,15 @@ await runGoal(async (failures, tell) => {
       const whole = made.filter((r) => WHOLE_LAB_READ.some((pattern) => pattern.test(r.path)));
       const routinesRead = paused.made.some((r) => r.path.endsWith("/views/routines"));
       const projectsRead = added.made.some((r) => /\/resources\/(org|user)\/projects\//.test(r.path));
-      if (whole.length > 0) failures.push(`live:own-reads: ${whole.length} whole-Lab read(s) while the changes showed: ${whole.map((r) => `${r.method} ${r.path}`).join(", ")}`);
+      const listings = whole.filter((r) => /\/sessions\?/.test(r.path));
+      if (whole.length > 0) {
+        failures.push(
+          `live:own-reads: ${whole.length} whole-Lab read(s) while the changes showed: ${whole.map((r) => `${r.method} ${r.path}`).join(", ")}` +
+            (listings.length === whole.length
+              ? " (owed by FIX-2864: every one is the session list, read again on each write's run notice, which names no session; this signal stays red until it lands)"
+              : ""),
+        );
+      }
       else if (!routinesRead || !projectsRead) failures.push(`live:own-reads: the changes showed without the screens' own reads (routines view ${routinesRead}, projects read ${projectsRead})`);
       else evidence.push(`live: ${made.length} request(s) while the changes showed, the routines view and the projects read among them, no session list, manifest, identity or inventory read`);
     }

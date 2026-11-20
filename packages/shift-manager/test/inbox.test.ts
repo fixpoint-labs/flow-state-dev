@@ -10,7 +10,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { readEveryCollectionPage, type Client } from "@flow-state-dev/client";
-import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, taskActionName, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, taskTruthOf, suspensionTruthOf, taskItemId, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { COORDINATOR_FLOW, sessionIdOfFiling } from "@flow-state-dev/workforce";
@@ -104,9 +104,21 @@ describe("the Inbox against a real Lab", () => {
     const droppedResult = reconcileInbox(items.filter((i) => i.task === null), truth);
     expect(droppedResult.green).toBe(false);
     expect(droppedResult.missing.sort()).toEqual(items.map((i) => i.id).sort());
-    // The answerable clause can still fail: the same items, each stop with no flow to answer through.
-    const noFlows = items.map((i) => ({ ...i, holds: i.holds.map((h) => ({ ...h, answerable: false, unanswerable: "no flow" })) }));
-    expect(reconcileInbox(noFlows, truth).unanswerable).toHaveLength(2);
+    // The answerable clause can still fail. The same rows and stops, listed again through the production
+    // list (orchestration's `inboxItems`, which the server's view lists through), once with each stop's flow
+    // and each session's owner as the view hands them over, and once with none of them naming a flow.
+    const stops = items.flatMap((i) => i.holds).flatMap((h) => (h.detail === undefined ? [] : [h.detail]));
+    const relist = (flowOf: (sessionId: string) => string | null | undefined, flowIdOf: (stop: InboxSuspensionDetail) => string | null) =>
+      inboxItems<InboxSuspensionDetail>({
+        rows: rows.map((row) => ({ ...row, board: row.boardRef, holder: { sessionId: row.ownerSessionId, action: taskActionName("updateTask", CONVERSATION_BOARD_COLLECTION) } })),
+        suspensions: stops.map((stop) => ({ sessionId: stop.sessionId!, flowId: flowIdOf(stop), requestId: stop.requestId, suspensionId: stop.suspensionId, kind: stop.kind, prompt: stop.message, since: stop.createdAt, detail: stop })),
+        flowOf,
+      });
+    const sessions = await client.sessions.list({ include: "dispatch-runs" });
+    const ownerOf = new Map(sessions.map((s) => [s.id, s.flowId ?? null]));
+    expect(stops).toHaveLength(2);
+    expect(reconcileInbox(relist((id) => ownerOf.get(id), (stop) => stop.flowId ?? null), truth).unanswerable).toEqual([]);
+    expect(reconcileInbox(relist(() => undefined, () => null), truth).unanswerable).toHaveLength(2);
 
     // Answer the first through the Inbox's one call. Its item goes, and stays gone.
     const answered = items[0]!;

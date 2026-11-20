@@ -94,10 +94,12 @@ export function useInbox(enabled = true): InboxRead {
 /**
  * Every task, finished ones too, for Jump to while it is open: `undefined`
  * until that read lands, or while `enabled` is false (it reads nothing then).
+ * Where push can miss a change it reads at the Inbox's pace, not the client's
+ * default: it is the same view, with finished tasks too.
  */
 export function useInboxTasks(enabled: boolean): readonly InboxBoardTask[] | undefined {
   const { client } = useLab();
-  const { value } = useView(inboxViewRef, { done: true }, { client, enabled });
+  const { value } = useView(inboxViewRef, { done: true }, { client, enabled, pollIntervalMs: INBOX_POLL_MS });
   return value?.tasks;
 }
 

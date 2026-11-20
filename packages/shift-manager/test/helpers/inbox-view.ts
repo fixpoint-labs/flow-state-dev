@@ -5,7 +5,7 @@
  * asks, each ask's detail the projection the server answers.
  */
 import type { SessionSummary } from "@flow-state-dev/client";
-import type { SuspendForUserKind } from "@flow-state-dev/core/types";
+import { suspensionShape, type SuspendForUserKind } from "@flow-state-dev/core/types";
 import { inboxItems, taskActionName } from "@flow-state-dev/orchestration/inbox";
 import type { InboxAsk, InboxViewValue } from "../../src/lib/inbox";
 import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, type BoardTaskView } from "../../src/lib/boards";
@@ -69,7 +69,9 @@ export function inboxViewOf(tasks: readonly BoardTaskView[], asks: readonly Fixt
           sessionId: ask.sessionId,
           workerId: ask.workerId,
           kind: ask.kind,
-          shape: "approval",
+          // The card's shape, by core's own rule (`suspensionShape`): a fixture ask offers no submit, so every one draws
+          // the approval card, an input among them, as the server would answer it.
+          shape: suspensionShape({ reason: ask.kind === "input" ? "user_input" : "user_approval" }),
           ...(ask.title === undefined ? {} : { title: ask.title }),
           message: ask.message,
           createdAt: ask.since,

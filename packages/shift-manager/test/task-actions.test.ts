@@ -79,6 +79,8 @@ describe("a conversation's task actions, against a real Lab", () => {
   it("control: bound to a flow that doesn't hold the board, every action rejects", async () => {
     const client = await lab();
     const flowId = (await client.sessions.get(CONVERSATION)).flowId!;
+    // The control's flow is not the one that holds the board, so every action it binds misses it.
+    expect(ASKER_FLOW).not.toBe(flowId);
     const row = await file(client, "a row the wrong flow can't reach", "none");
     const wrong = boardActions(client, ASKER_FLOW);
     await expect(wrong.steer(row.id, "hello")).rejects.toThrow();
