@@ -1,12 +1,11 @@
 import type { FileContent } from "@flow-state-dev/core/items";
 import { interruptChordLabel, isSendKey, useDraftSend } from "@flow-state-dev/react";
 import { ArrowUpIcon, ChevronDownIcon, TerminalIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState, type ComponentProps, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { HARNESS_DOT as DOT, HARNESS_STATUS_WORDS as STATE_WORDS, harnessName, harnessState, harnessWarning, withHarness } from "../lib/harness";
 import { cn } from "../lib/utils";
 import { AttachButton, AttachmentStrip, useAttachments, type AttachmentUploader } from "./flow-state/attachments";
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
-import { ReplyModelPicker } from "./ReplyModelPicker";
 
 /**
  * Where you type to the open worker. Enter or Cmd+Enter (Ctrl+Enter) sends,
@@ -61,19 +60,13 @@ export function Composer({
   harnesses,
   defaultHarness,
   replyModel,
-  models,
-  onPickModel,
 }: {
   /** Which coding harnesses can run here, or `undefined` while the first read is out. No rows: no harness picker. */
   harnesses?: readonly HarnessReadinessChipRow[];
   /** The harness a coding task runs on when none is picked (the lab's default). */
   defaultHarness?: string;
-  /** The model the teammate's own replies run on: the Respond with picker shows it, and Code with says it doesn't choose it. */
+  /** The model the teammate's own replies run on (set in Edit teammate): Code with says it doesn't choose it. */
   replyModel?: string;
-  /** The models the teammate may reply with, with their routes (the lab's context). With `onPickModel`, a Respond with picker. */
-  models?: ComponentProps<typeof ReplyModelPicker>["choices"];
-  /** Saves a reply model to the teammate. */
-  onPickModel?: (model: string) => Promise<void>;
   /** A line to put in the box, as a starter line's click hands it; `at` makes a second click of the same line count. Never sent by itself. */
   seed?: { text: string; at: number };
   /** The conversation it types to; `/` and a switch find its composer by it. */
@@ -183,9 +176,6 @@ export function Composer({
               attachments={attachments}
               className="size-8 rounded-sm text-text-2 hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
             />
-            {models !== undefined && onPickModel !== undefined && replyModel !== undefined ? (
-              <ReplyModelPicker choices={models} current={replyModel} workerName={workerName} onPick={onPickModel} />
-            ) : null}
             {harnesses !== undefined && harnesses.length > 0 ? (
               <HarnessPicker rows={harnesses} current={coding} fallback={defaultHarness} onPick={choose} workerName={workerName} replyModel={replyModel} />
             ) : null}

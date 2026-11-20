@@ -47,15 +47,15 @@ describe("the first run's lines", () => {
 });
 
 describe("the context strip", () => {
-  it("shows the folder and harness the server read, and the harness chips with their remedy; the reply model is the composer's", async () => {
+  it("shows the folder the server read and the harness chips with their remedy; the model and default harness are the teammate's", async () => {
     render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
     const strip = await screen.findByRole("region", { name: "Working context" });
     // The folder reads by its last two segments; the whole path is in its tooltip.
     await waitFor(() => expect(within(strip).getByTestId("context-folder").textContent).toBe("Working folder work / launch-site"));
     expect(within(strip).getByTestId("context-folder").title).toContain("Working folder: /work/launch-site");
-    // One place changes the reply model: the composer's Respond with, so the strip doesn't repeat it.
+    // A teammate's model and default harness are its own settings (Edit teammate), so the lab-wide strip shows neither.
     expect(within(strip).queryByTestId("context-model")).toBeNull();
-    expect(within(strip).getByTestId("context-harness").textContent).toBe("Default harness Cursor");
+    expect(within(strip).queryByTestId("context-harness")).toBeNull();
     const chips = within(strip).getByRole("group", { name: "Coding harnesses" });
     await waitFor(() => expect(chips.querySelector('[data-harness="codex"]')?.textContent).toContain("Run `codex login`"));
     // A harness that can't run shows How to fix, not its error, until asked: then what to do. Not "Sign in": the control only shows the remedy.
@@ -106,7 +106,7 @@ describe("the context strip", () => {
       },
     }) as unknown as Client;
 
-  it("warns on the default harness when it can't run here, so a coding task isn't sent to one that will fail", async () => {
+  it("warns in the composer when the teammate's default harness can't run here, so a coding task isn't sent to one that will fail", async () => {
     const lab = scriptedServer({ speed: 0.05 });
     const client = editedReads(lab, (view, value) =>
       view === "readiness"
@@ -114,9 +114,8 @@ describe("the context strip", () => {
         : value,
     );
     render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
-    const chip = await screen.findByTestId("context-harness");
-    await waitFor(() => expect(chip.dataset.ready).toBe("false"));
-    expect(chip.title).toContain("Set CURSOR_API_KEY");
+    const warning = await screen.findByTestId("harness-warning");
+    expect(warning.textContent).toContain("Set CURSOR_API_KEY");
   });
 
   it("says in the folder's tooltip what each coding worktree runs before and after its run", async () => {

@@ -805,20 +805,23 @@ describe("the teammates screen", () => {
   });
 
   it("hires with Cmd+Enter in the instructions and saves new ones with Ctrl+Enter, never from a form that can't send yet", async () => {
-    render(<TestProvider server={fast()}><App /></TestProvider>);
+    const lab = fast();
+    // The page behind the open dialog is hidden from queries, so what was sent is read off the roster's writes.
+    const hires = () => lab.rosterWrites.filter((w) => w.action === "hire");
+    render(<TestProvider server={lab}><App /></TestProvider>);
     await screen.findByLabelText("Message Lead");
     fireEvent.click(screen.getAllByRole("button", { name: "Hire a teammate" })[0]!);
     const form = screen.getByRole("form", { name: "Hire a teammate" });
     const instructions = within(form).getByLabelText("Teammate instructions");
     // No name or role yet: the shortcut sends nothing, as the disabled button wouldn't.
     await act(async () => fireEvent.keyDown(instructions, { key: "Enter", metaKey: true }));
-    expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3);
+    expect(hires()).toHaveLength(0);
     fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "tester" } });
     fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Runs the tests." } });
     fireEvent.change(instructions, { target: { value: "Run them all." } });
     // Plain Enter in the instructions is a new line.
     await act(async () => fireEvent.keyDown(instructions, { key: "Enter" }));
-    expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3);
+    expect(hires()).toHaveLength(0);
     await act(async () => fireEvent.keyDown(instructions, { key: "Enter", metaKey: true }));
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(4));
 
@@ -834,26 +837,29 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(screen.queryByRole("form", { name: "Edit tester" })).toBeNull());
   });
 
-  it("edits a teammate from the conversation's header: Edit teammate opens the form under it, and Reset sits beside it once edited", async () => {
+  it("edits a teammate from the conversation's header: Edit teammate opens the form in a dialog, and Reset sits in it once edited", async () => {
     const lab = fast();
     const resets = () => lab.rosterWrites.filter((w) => w.action === "reset").map((w) => w.input.id);
     render(<TestProvider server={lab} client={stubServer().client}><App /></TestProvider>);
     await waitFor(() => expect(workerRow("researcher")).not.toBeNull());
     fireEvent.click(workerRow("researcher"));
     const open = await within(conversation()).findByRole("button", { name: "Edit teammate" });
-    expect(open.getAttribute("aria-expanded")).toBe("false");
+    expect(open.getAttribute("aria-haspopup")).toBe("dialog");
     fireEvent.click(open);
-    const edit = within(conversation()).getByRole("form", { name: "Edit researcher" });
+    const dialog = screen.getByRole("dialog", { name: "Edit researcher" });
+    const edit = within(dialog).getByRole("form", { name: "Edit researcher" });
     // Not edited yet: nothing to reset.
-    expect(within(conversation()).queryByRole("button", { name: /Reset/ })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: /Reset/ })).toBeNull();
     fireEvent.change(within(edit).getByLabelText("Name of researcher"), { target: { value: "Ada" } });
     await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save" })));
-    // Saved: the form closes and the header names the new name.
+    // Saved: the dialog closes and the header names the new name.
     await waitFor(() => expect(within(conversation()).getByRole("heading", { name: "Ada" })).toBeTruthy());
-    expect(within(conversation()).queryByRole("form", { name: /^Edit / })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));
-    await act(async () => fireEvent.click(within(conversation()).getByRole("button", { name: "Reset Ada to default" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Reset Ada to default" })));
     expect(resets()).toEqual(["teammates.researcher"]);
+    // A reset closes the dialog: its fields still held "Ada", and Save would put the edited name back.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   // FIX-2526.
@@ -869,8 +875,8 @@ describe("the teammates screen", () => {
     // Not edited yet: nothing to reset.
     fireEvent.click(workerRow("researcher"));
     fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));
-    expect(within(conversation()).queryByRole("button", { name: /Reset/ })).toBeNull();
-    const edit = within(conversation()).getByRole("form", { name: "Edit researcher" });
+    expect(screen.queryByRole("button", { name: /Reset/ })).toBeNull();
+    const edit = screen.getByRole("form", { name: "Edit researcher" });
     fireEvent.change(within(edit).getByLabelText("Name of researcher"), { target: { value: "Ada" } });
     await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save" })));
 
@@ -886,12 +892,11 @@ describe("the teammates screen", () => {
     // Reset to default: the file's name is back everywhere, and there is nothing left to reset.
     fireEvent.click(workerRow("Ada"));
     fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));
-    await act(async () => fireEvent.click(within(conversation()).getByRole("button", { name: "Reset Ada to default" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Reset Ada to default" })));
     expect(resets()).toEqual(["teammates.researcher"]);
+    // The dialog closes with the reset: its fields still held "Ada", and Save would have put the old name back.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await waitFor(() => expect(workerRow("researcher")).not.toBeNull());
-    expect(within(conversation()).queryByRole("button", { name: /Reset/ })).toBeNull();
-    // The form closes with the reset: its fields still held "Ada", and Save would have put the old name back.
-    expect(within(conversation()).queryByRole("form", { name: /^Edit / })).toBeNull();
   });
 
   it("hires a teammate you can talk to, renames it and changes its instructions from its panel, and fires it; the files' workers can't be fired", async () => {
@@ -912,7 +917,7 @@ describe("the teammates screen", () => {
     expect(await screen.findByLabelText("Message tester")).toBeTruthy();
 
     fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));
-    const edit = within(conversation()).getByRole("form", { name: "Edit tester" });
+    const edit = screen.getByRole("form", { name: "Edit tester" });
     // The name starts as it is, and can be changed.
     const name = within(edit).getByLabelText("Name of tester") as HTMLInputElement;
     expect([name.value, name.readOnly]).toEqual(["tester", false]);
@@ -926,8 +931,9 @@ describe("the teammates screen", () => {
     expect(screen.getByLabelText("Message QA Bot")).toBeTruthy();
     // A teammate you hired has no file to go back to.
     fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));
-    expect(within(conversation()).queryByRole("button", { name: /Reset/ })).toBeNull();
-    fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));
+    expect(screen.queryByRole("button", { name: /Reset/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     // Fire asks in a row under the header, with Keep focused; Keep leaves the teammate where it is.
     window.confirm = () => {

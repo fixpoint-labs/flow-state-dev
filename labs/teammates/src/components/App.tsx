@@ -313,6 +313,8 @@ export function App() {
         hiring={hiring}
         onHiring={setHiring}
         workspace={context === undefined ? undefined : { name: context.folder.split(/[\\/]/).filter(Boolean).at(-1) ?? context.folder, path: context.folder }}
+        choices={{ models: context?.models, harnesses }}
+        defaults={{ model: context?.model, harness: context?.harness }}
       />
       {worker && sessionId ? (
         <Conversation

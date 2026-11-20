@@ -14,7 +14,7 @@ import { useNow, useStale } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
-import { HireForm } from "./TeammateForms";
+import { HireForm, TeammateDialog, type SettingsChoices } from "./TeammateForms";
 import { drawsLine } from "./lines";
 
 /** The lines that count toward unread: every line the lab draws but your own. */
@@ -44,6 +44,8 @@ export function WorkersList({
   hiring,
   onHiring,
   workspace,
+  choices,
+  defaults,
 }: {
   /** The teammates: the workers you can talk to. */
   workers: RosterEntry[];
@@ -59,6 +61,10 @@ export function WorkersList({
   onHiring: (open: boolean) => void;
   /** The working folder's name (and full path for its tooltip), shown under the app's name. */
   workspace?: { name: string; path: string };
+  /** What a new teammate's model and default coding harness are picked from. */
+  choices?: SettingsChoices;
+  /** The lab's model and default harness: where the hire form's settings start. */
+  defaults?: { model?: string; harness?: string };
 }) {
   const [seen, markSeen] = useSeen();
   const setHiring = onHiring;
@@ -123,24 +129,28 @@ export function WorkersList({
         </ul>
       </div>
       <div className="flex flex-col gap-3 border-t border-border px-4 py-3 text-xs text-text-2">
-        {hiring ? (
-          <HireForm
-            onHire={async (teammate) => {
-              await onHire(teammate);
-              setHiring(false);
-            }}
-            onCancel={() => setHiring(false)}
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={() => setHiring(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-sm border border-border-strong px-3 py-2 text-sm font-medium text-foreground hover:bg-accent"
-          >
-            <PlusIcon />
-            Hire a teammate
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setHiring(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-sm border border-border-strong px-3 py-2 text-sm font-medium text-foreground hover:bg-accent"
+        >
+          <PlusIcon />
+          Hire a teammate
+        </button>
+        <TeammateDialog open={hiring} onOpenChange={setHiring} title="Hire a teammate" description="A new teammate with its own conversation. Lead asks it for work that fits its role.">
+          {/* Mounted only while open, so each hire starts from an empty form. */}
+          {hiring ? (
+            <HireForm
+              choices={choices}
+              defaults={defaults}
+              onHire={async (teammate) => {
+                await onHire(teammate);
+                setHiring(false);
+              }}
+              onCancel={() => setHiring(false)}
+            />
+          ) : null}
+        </TeammateDialog>
         <div className={cn("flex flex-col gap-1.5", nudge && "-mx-2 rounded-sm border border-warning-line bg-warning-soft px-2 py-1.5")} data-notify-nudge={nudge ? "" : undefined}>
           <label className="flex items-center justify-between gap-2">
             <span>Notify me when tasks finish</span>

@@ -13,7 +13,7 @@ import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
 import { ContextStrip } from "./ContextStrip";
 import { Divider } from "./Divider";
-import { EditForm } from "./TeammateForms";
+import { EditForm, TeammateDialog } from "./TeammateForms";
 import { ResetButton } from "./TeammatePanel";
 import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
@@ -39,6 +39,12 @@ const pillTone = (status: Status) =>
 const pillDot = (status: Status) => (status.needsYou ? "bg-warning" : status.tone === PLAIN && status.text.startsWith("Idle") ? "bg-presence-idle" : status.tone !== PLAIN ? "bg-current" : "bg-success");
 
 /** The ids of the messages the worker's sent lines sent. */
+/** A teammate's own string setting (`model`, `harness`), or `undefined` when it follows the lab's. */
+const settingOf = (worker: RosterEntry, key: string): string | undefined => {
+  const value = worker.settings[key];
+  return typeof value === "string" ? value : undefined;
+};
+
 const sentIds = (lines: readonly ItemLine[]) =>
   lines.flatMap((line) => (line.kind === "data" && line.item.dataType === SENT_MESSAGE_DATA_TYPE && typeof (line.item.value as Partial<SentMessageValue>)?.messageId === "string" ? [(line.item.value as SentMessageValue).messageId!] : []));
 
@@ -202,7 +208,7 @@ export function Conversation({
             </p>
           )}
         </div>
-        <button type="button" onClick={() => setPanel(panel === "edit" ? undefined : "edit")} aria-expanded={panel === "edit"} className={HEADER_BUTTON}>
+        <button type="button" onClick={() => setPanel("edit")} aria-haspopup="dialog" className={HEADER_BUTTON}>
           Edit teammate
         </button>
         {worker.standard ? null : (
@@ -211,16 +217,22 @@ export function Conversation({
           </button>
         )}
       </header>
-      {panel === "edit" ? (
-        <div className="flex flex-col gap-2 border-b border-border bg-surface px-6 py-3">
-          <EditForm
-            name={displayName(worker)}
-            onSave={async (edit) => {
-              await workforce.edit({ id: worker.id, ...edit });
-              setPanel(undefined);
-            }}
-            onCancel={() => setPanel(undefined)}
-          />
+      <TeammateDialog
+        open={panel === "edit"}
+        onOpenChange={(open) => setPanel(open ? "edit" : undefined)}
+        title={`Edit ${displayName(worker)}`}
+        description={`${displayName(worker)}'s name, instructions, model and default coding harness. Changes apply from its next turn.`}
+      >
+        <EditForm
+          name={displayName(worker)}
+          choices={{ models: context?.models, harnesses }}
+          current={{ model: settingOf(worker, "model") ?? context?.model, harness: settingOf(worker, "harness") ?? context?.harness }}
+          onSave={async (edit) => {
+            await workforce.edit({ id: worker.id, ...edit });
+            setPanel(undefined);
+          }}
+          onCancel={() => setPanel(undefined)}
+        >
           {/* A reset closes the form: left open, it would hold the old name and instructions, and Save would put them back. */}
           {worker.edited ? (
             <ResetButton
@@ -231,8 +243,8 @@ export function Conversation({
               }}
             />
           ) : null}
-        </div>
-      ) : null}
+        </EditForm>
+      </TeammateDialog>
       {onRecheck === undefined ? null : <ContextStrip context={context} harnesses={harnesses} onRecheck={onRecheck} />}
       {/* A stopped feed comes back with the page: every conversation's feed reopens on load. */}
       <ConnectionBanner feed={{ state: connection }} onRetry={() => window.location.reload()} />
@@ -328,11 +340,9 @@ export function Conversation({
         onPrefilled={onPrefilled}
         uploader={calls}
         harnesses={harnesses}
-        defaultHarness={context?.harness}
-        // The teammate's own model when it has one set (a pick saved by Respond with), else the lab's.
-        replyModel={typeof worker.settings.model === "string" ? worker.settings.model : context?.model}
-        models={context?.models}
-        onPickModel={async (model) => void (await workforce.edit({ id: worker.id, settingsPatch: { model } }))}
+        // The teammate's own default coding harness and model when it has them set (in Edit teammate), else the lab's.
+        defaultHarness={settingOf(worker, "harness") ?? context?.harness}
+        replyModel={settingOf(worker, "model") ?? context?.model}
         onSend={(text, attachments) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();
