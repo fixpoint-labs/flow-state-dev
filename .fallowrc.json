@@ -302,6 +302,10 @@
     "@cursor/sdk-linux-x64",
     "@cursor/sdk-win32-x64",
     // TypeDoc loads it by name from its `plugin` option (apps/docs/scripts/api-reference).
-    "typedoc-plugin-markdown"
+    "typedoc-plugin-markdown",
+    // Core's model resolver loads the gateway packages by name at runtime
+    // (GATEWAY_PACKAGES in packages/core/src/models/createModelResolver.ts).
+    "@ai-sdk/gateway",
+    "@openrouter/ai-sdk-provider"
   ]
 }
