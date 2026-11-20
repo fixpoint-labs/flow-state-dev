@@ -12,6 +12,10 @@ import { durationText } from "./spend";
  *
  * - **working · 4m 12s**: a running row, timed from this attempt's run start
  *   (`run.startedAt`), so a retried task never counts its earlier attempts.
+ * - **waiting · 3d**: a running row no lease holds: no run is on it (it is
+ *   kept open, owes a turn, or waits on its pull request), so it is not
+ *   working, however long ago its run started. Counted from the row's last
+ *   write.
  * - **quiet for 7m**: a running row whose lease has lapsed, by the board's own
  *   rule (`leaseLapsed`): no live run renews it. A live run in one long step
  *   keeps renewing, so it never reads quiet. Counted from the row's last
@@ -36,7 +40,7 @@ export interface TaskSignalRun {
 }
 
 /** Which signal a row shows; an app maps each to its own tone. */
-export type TaskSignalKind = "working" | "quiet" | "ended";
+export type TaskSignalKind = "working" | "waiting" | "quiet" | "ended";
 
 export interface TaskSignal {
   kind: TaskSignalKind;
@@ -60,6 +64,14 @@ function quietFor(ms: number): string {
   return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
+/** "24m", "3h", "2d": how long a row no run holds has waited. */
+function waitedFor(ms: number): string {
+  const minutes = Math.floor(Math.max(0, ms) / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+}
+
 /**
  * A row's signal at `now`, or `null` when it has none: a queued, held or
  * waiting row, a running row whose run hasn't linked itself yet, or an ended
@@ -72,6 +84,8 @@ export function taskSignal(view: TaskSignalView, run: TaskSignalRun | null | und
     return at == null ? null : { kind: "ended", text: agoText(now - at) };
   }
   if (view.state !== "running") return null;
+  // No lease, no run on it: a kept-open or parked row waits, it doesn't work.
+  if (run?.leaseUntil == null) return { kind: "waiting", text: updatedAt == null ? "waiting" : `waiting · ${waitedFor(now - updatedAt)}` };
   // The board's rule, on the row as listed: only the status and the lease deadline are read.
   const lapsed = leaseLapsed({ status: "in_progress", leaseUntil: run?.leaseUntil ?? undefined } as Parameters<typeof leaseLapsed>[0], now);
   if (lapsed && options.stale !== true) return { kind: "quiet", text: updatedAt == null ? "quiet" : `quiet for ${quietFor(now - updatedAt)}` };

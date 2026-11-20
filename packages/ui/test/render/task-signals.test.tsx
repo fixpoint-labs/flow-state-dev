@@ -29,7 +29,6 @@ describe("taskSignal", () => {
 
   it("gives no clock to a running row whose run hasn't linked itself yet", () => {
     expect(taskSignal(view("running"), { leaseUntil: NOW + 90_000 }, NOW)).toBeNull();
-    expect(taskSignal(view("running"), undefined, NOW)).toBeNull();
   });
 
   it("keeps a live run in one long step working: its lease is renewed, however old updatedAt is", () => {
@@ -44,10 +43,19 @@ describe("taskSignal", () => {
     expect(taskSignal(view("running", { updatedAt: NOW - 2 * MIN }), { startedAt: NOW - 3 * MIN, leaseUntil: NOW }, NOW)?.kind).toBe("quiet");
   });
 
-  it("never reads quiet while the feed is stale, or on a row no lease holds (kept open)", () => {
+  it("never reads quiet while the feed is stale", () => {
     const lapsed = { startedAt: NOW - 45 * MIN, leaseUntil: NOW - 38 * MIN };
     expect(taskSignal(view("running", { updatedAt: NOW - 40 * MIN }), lapsed, NOW, { stale: true })?.kind).toBe("working");
-    expect(taskSignal(view("running", { updatedAt: NOW - 40 * MIN }), { startedAt: NOW - 45 * MIN }, NOW)?.kind).toBe("working");
+  });
+
+  it("never reads a running task no lease holds as working: no run is on it (kept open, waiting on a pull request), so it reads waiting since its last write", () => {
+    // A task parked for days with no live run must not read "working · 72h".
+    const parked = taskSignal(view("running", { updatedAt: NOW - 3 * 24 * 60 * MIN }), { startedAt: NOW - 4 * 24 * 60 * MIN }, NOW);
+    expect(parked).toEqual({ kind: "waiting", text: "waiting · 3d" });
+    expect(taskSignal(view("running", { updatedAt: NOW - 24 * MIN }), { startedAt: NOW - 30 * MIN, leaseUntil: null }, NOW)?.text).toBe("waiting · 24m");
+    // A stale feed doesn't make it working either: its last reading had no run.
+    expect(taskSignal(view("running", { updatedAt: NOW - 24 * MIN }), { startedAt: NOW - 30 * MIN }, NOW, { stale: true })?.kind).toBe("waiting");
+    expect(taskSignal(view("running"), undefined, NOW)).toEqual({ kind: "waiting", text: "waiting" });
   });
 
   it("says how long ago an ended row ended, from completedAt, else its last write", () => {
