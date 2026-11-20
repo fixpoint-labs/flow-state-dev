@@ -70,6 +70,7 @@ import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-k
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { useProjectWorkstreams } from "../../../packages/shift-manager/src/lib/projects.ts";
 import { useMessages } from "../../../packages/shift-manager/src/lib/messages.ts";
+import { PageReadsProvider, useReadPageAgain } from "../../../packages/shift-manager/src/lib/page-reads.tsx";
 import { conversationBoardRef } from "../../../packages/shift-manager/src/lib/boards.ts";
 import { TaskProvider, useTask } from "../../../packages/shift-manager/src/lib/task.tsx";
 
@@ -377,10 +378,11 @@ function mountViews(on: Host, sessionId: string) {
   pageReads.set(smToken, smReads);
   const smProject = record<ProjectShown>();
   const smMessages = record<string[]>();
-  let labRead: () => Promise<void> = async () => {};
+  let labRead: () => void = () => {};
   function ProjectProbe() {
-    const { snapshot, refresh } = useLab();
-    labRead = refresh;
+    const { snapshot } = useLab();
+    // FIX-2775: R reads again what the page holds, each screen's own reads included.
+    labRead = useReadPageAgain();
     const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot : undefined;
     // FIX-2775: the entries are read on their own, by the project's prefix, from the moment the view draws them.
     const { value } = useProjectWorkstreams({ visibility: "shared", id: PROJECT });
@@ -404,7 +406,7 @@ function mountViews(on: Host, sessionId: string) {
     return null;
   }
   const smRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
-  smRoot.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: smToken, baseUrl: on.base }, children: createElement(ProjectProbe) }));
+  smRoot.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: smToken, baseUrl: on.base }, children: createElement(PageReadsProvider, { children: createElement(ProjectProbe) }) }));
   const stops = [
     () => ccRoot.unmount(),
     () => tmRoot.unmount(),
@@ -433,7 +435,7 @@ function mountViews(on: Host, sessionId: string) {
   const logReads = () => smReads.filter((r) => r.url.includes("workforce/messages"));
   return {
     shown: { ccThread, ccPins, tmConversation, smItems, tmTalk, smProject, smMessages },
-    labRead: () => labRead(),
+    labRead: async () => labRead(),
     reads: {
       "claude-code-style thread (running turn)": () => turnReads(cc.reads),
       "claude-code-style pins": () => pinsClient.reads,
@@ -619,7 +621,7 @@ await runGoal(async (failures, tell) => {
       else if (waitReads === 0) evidence.push(`a: task screen read its board 0 times over ${IDLE_MS / 1000} s waiting, and showed the run link ${linkShown} ms after its write`);
       task.close();
 
-      // A Lab read (the snapshot read again, here as the user's Refresh) reads the log and the entries again, as it did before.
+      // A Lab read (Shift Manager's R, which reads again what the page holds) reads the log and the entries again, as it did before.
       await quiet(views.all);
       const onLabRead = ["Shift Manager message log", "Shift Manager project entries"];
       const readsBefore = new Map(onLabRead.map((name) => [name, views.reads[name]!().length]));

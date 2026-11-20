@@ -6,7 +6,7 @@
 **Signal:**
 - `a:within-1s` — after another client sends a slow turn into the watched session, the claude-code-style thread and the Teammates conversation report it running, Shift Manager's conversation shows its reply; after a pin the pins view shows it; after a message is logged the Talk panel and Shift Manager's message log show it; and after a workstream entry is written the project view lists it; each less than 1000 ms after the write.
 - `a:within-1s` (task screen) — the task screen shows the run the board links less than 1000 ms after the link's write.
-- `a:lab-read` — a Lab read (Shift Manager's Refresh) reads the message log and the project's entries again, each within 1000 ms.
+- `a:lab-read` — a Lab read (Shift Manager's R, which reads again what the page holds; its snapshot Refresh before FIX-2775) reads the message log and the project's entries again, each within 1000 ms.
 - `a:idle-0-reads` — over a 10 s idle window, each of the eight views makes 0 reads; and over 10 s waiting on its run's link, the task screen makes 0 board reads.
 - `b:as-short` — during a 200-item reply each request view (thread running turn, Teammates answering, divider) makes the same number of reads as during a 2-item reply that takes as long, and Shift Manager's conversation makes none. The two replies last the same time so they differ only in items: how a request's own notices coalesce depends on how far apart they land.
 - `c:within-poll` — with no crossing bus, the pins view shows a pin within 3 s + 1 s, the Teammates conversation a turn and the Talk panel a message within 1.5 s + 1 s, Shift Manager's message log a message and its project view an entry within 5 s + 1 s, and the task screen its run link within 2 s + 1 s.

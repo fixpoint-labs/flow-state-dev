@@ -19,6 +19,7 @@ import { useView } from "@flow-state-dev/react";
 import { harnessUsageViewRef, recheckHarnessUsage } from "@flow-state-dev/harness-manager/browser";
 import { workerUsageView } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
+import { useReadAgainOnR } from "./page-reads";
 import { describeFailure, type Failure } from "./failure";
 
 /** The harness usage view, read with no session. */
@@ -86,6 +87,7 @@ export function useHarnessUsage(): {
     setTries((n) => n + 1);
     refresh();
   }, [refresh]);
+  useReadAgainOnR(reread);
   const conflict = recheck.state === "failed" && recheck.failure.httpStatus === 409 ? recheck.failure : undefined;
   const refreshError = recheck.state === "failed" && conflict === undefined ? recheck.failure.message : null;
   const rows = useMemo(
@@ -118,6 +120,7 @@ export function useWorkerUsage(days: number): {
 } {
   const { client } = useLab();
   const { value, failure, refresh } = useView(workerUsageView, { days }, { client });
+  useReadAgainOnR(refresh);
   if (value === undefined && failure !== undefined && servesNone(failure, false)) return { rows: null, failure: undefined, reread: refresh };
   return { rows: value?.workers, failure, reread: refresh };
 }

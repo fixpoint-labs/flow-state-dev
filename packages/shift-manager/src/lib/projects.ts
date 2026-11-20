@@ -39,6 +39,7 @@ import {
   type ProjectSetup,
 } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
+import { useReadAgainOnR } from "./page-reads";
 import type { Failure } from "./failure";
 
 /** Where a project lives: the organization's, or the user's own. */
@@ -214,6 +215,7 @@ export type ScreenRead<T> = { value: T | undefined; failure: Failure | undefined
 export function useProjectWorkstreams(address: ProjectAddress): ScreenRead<ProjectWorkstreams> {
   const { client } = useLab();
   const read = useResource(WORKSTREAMS[scopeOf(address.visibility)], { client, all: true, topicPrefix: entriesPrefix(address.id) });
+  useReadAgainOnR(read.refresh);
   const listed = read.value;
   // Going quiet is the absence of writes, so the page's own clock says when:
   // one recompute at the next entry's threshold, with no read, then the next.
@@ -247,6 +249,7 @@ export function useProjectWorkstreams(address: ProjectAddress): ScreenRead<Proje
 export function useEntryReport(project: ProjectAddress, entry: Pick<WorkstreamEntry, "owner" | "id">): ScreenRead<string | null> {
   const { client } = useLab();
   const { value, failure, refresh } = useView(workstreamReportView, { project, owner: entry.owner, id: entry.id }, { client });
+  useReadAgainOnR(refresh);
   return { value: value === undefined ? undefined : value.report, failure, refresh };
 }
 
@@ -258,6 +261,7 @@ export function useEntryReport(project: ProjectAddress, entry: Pick<WorkstreamEn
 export function useProjectSetup(): ScreenRead<ProjectSetup | null> {
   const { client } = useLab();
   const { value, failure, refresh } = useView(projectSetupView, {}, { client });
+  useReadAgainOnR(refresh);
   const none = value === undefined && failure?.httpStatus === 404;
   return { value: none ? null : value, failure: none ? undefined : failure, refresh };
 }

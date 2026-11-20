@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import { useResource } from "@flow-state-dev/react";
 import { workerMessageResourceStateSchema, workerMessagesResource, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
+import { useReadAgainOnR } from "./page-reads";
 import type { Failure } from "./failure";
 
 export type { WorkerMessageResourceState };
@@ -61,6 +62,7 @@ export function firstLine(text: string): string {
 export function useMessages(): { rows: WorkerMessageResourceState[] | null | undefined; failure: Failure | undefined; reread: () => void } {
   const { client } = useLab();
   const { value, failure, refresh } = useResource(workerMessagesResource, { client, all: true });
+  useReadAgainOnR(refresh);
   const rows = useMemo(() => (value === null ? undefined : toMessages(value.map((entry) => entry.value))), [value]);
   if (rows !== undefined) return { rows, failure: undefined, reread: refresh };
   if (failure?.httpStatus === 404) return { rows: null, failure: undefined, reread: refresh };

@@ -12,6 +12,7 @@ import { useCallback, useMemo } from "react";
 import { useView } from "@flow-state-dev/react";
 import { ROUTINE_VERBS, SCHEDULES_PATTERN, listedRoutineSchema, routinesView, type ListedRoutine } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
+import { useReadAgainOnR } from "./page-reads";
 import { describeFailure, type Failure } from "./failure";
 
 const text = (value: unknown): string | null => (typeof value === "string" && value.length > 0 ? value : null);
@@ -65,6 +66,7 @@ export function useRoutines(): {
 } {
   const { client } = useLab();
   const { value, failure, refresh } = useView(routinesView, {}, { client });
+  useReadAgainOnR(refresh);
   const routines = useMemo(() => (value === undefined ? (failure?.httpStatus === 404 ? null : undefined) : toRoutines(value)), [value, failure?.httpStatus]);
   const change = useCallback<RoutineChange>(
     async (wanted) => {

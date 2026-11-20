@@ -22,6 +22,7 @@ import type { Connection } from "./lib/connection";
 import { LabProvider, useLab } from "./lib/lab-data";
 import { DirectoryProvider, useDirectoryLanded, useProjects, useWorkers } from "./lib/directory";
 import { useGate } from "./lib/gate";
+import { PageReadsProvider, useReadPageAgain } from "./lib/page-reads";
 import { ConnectionBanner } from "./components/flow-state/connection-banner";
 import { ConnectionScreen } from "./components/flow-state/connection-screen";
 import { ResourceView } from "./surfaces/Resource";
@@ -98,9 +99,11 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   // Every read but the gate's waits behind it: the directory, the Inbox view and the screens' own.
   return (
     <DirectoryProvider>
-      <Landed>
-        <Frame gaps={gaps} devtoolUrl={devtoolUrl} look={look} />
-      </Landed>
+      <PageReadsProvider>
+        <Landed>
+          <Frame gaps={gaps} devtoolUrl={devtoolUrl} look={look} />
+        </Landed>
+      </PageReadsProvider>
     </DirectoryProvider>
   );
 }
@@ -118,6 +121,7 @@ function Frame({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   const refreshInbox = inbox.refresh;
   const refreshWorkers = useWorkers().refresh;
   const refreshProjects = useProjects().refresh;
+  const readPageAgain = useReadPageAgain();
   const route = useRoute();
   // Null is closed; "" opens Jump to, MESSAGE_PREFIX opens it already in message mode.
   const [jumping, setJumping] = useState<string | null>(null);
@@ -144,15 +148,16 @@ function Frame({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
       if (e.key === "[") toggleNav();
       else if (e.key === "]" && hasPanel) togglePanel();
       else if (e.key === "r" || e.key === "R") {
-        // The page's reads: the Inbox view, the worker directory and the sessions, the projects.
+        // The page's reads: the Inbox view, the worker directory and the sessions, the projects, and each screen's own.
         refreshInbox();
         refreshWorkers();
         refreshProjects();
+        readPageAgain();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleNav, togglePanel, hasPanel, refreshInbox, refreshWorkers, refreshProjects]);
+  }, [toggleNav, togglePanel, hasPanel, refreshInbox, refreshWorkers, refreshProjects, readPageAgain]);
 
   const levels = (
     <>
