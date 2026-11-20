@@ -58,37 +58,37 @@ describe("the context strip", () => {
     expect(within(strip).getByTestId("context-harness").textContent).toBe("Default harness Cursor");
     const chips = within(strip).getByRole("group", { name: "Coding harnesses" });
     await waitFor(() => expect(chips.querySelector('[data-harness="codex"]')?.textContent).toContain("Run `codex login`"));
-    // A harness that can't run shows Sign in, not its error, until asked: then what to do.
+    // A harness that can't run shows How to fix, not its error, until asked: then what to do. Not "Sign in": the control only shows the remedy.
     const codex = chips.querySelector<HTMLElement>('[data-harness="codex"]')!;
-    const signIn = within(codex).getByRole("button", { name: "Sign in" });
-    const remedy = () => screen.queryByRole("dialog", { name: "Sign in to Codex" });
+    const howToFix = within(codex).getByRole("button", { name: "How to fix" });
+    const remedy = () => screen.queryByRole("dialog", { name: "How to fix Codex" });
     expect(remedy()).toBeNull();
-    fireEvent.click(signIn);
+    fireEvent.click(howToFix);
     expect(remedy()?.textContent).toContain("Run `codex login`");
-    expect(signIn.getAttribute("aria-expanded")).toBe("true");
+    expect(howToFix.getAttribute("aria-expanded")).toBe("true");
     expect(within(chips).getByRole("button", { name: "Re-check harnesses" })).toBeTruthy();
   });
 
-  // The remedy must never be stuck open: whichever way the user dismisses it, it closes and focus goes back to Sign in.
-  it("closes the Sign in remedy with Sign in again, Escape, or a click outside, and gives focus back to Sign in", async () => {
+  // The remedy must never be stuck open: whichever way the user dismisses it, it closes and focus goes back to How to fix.
+  it("closes the How to fix remedy with How to fix again, Escape, or a click outside, and gives focus back to How to fix", async () => {
     render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
     const chips = await screen.findByRole("group", { name: "Coding harnesses" });
     await waitFor(() => expect(chips.querySelector('[data-harness="codex"] button')).not.toBeNull());
-    const signIn = within(chips.querySelector<HTMLElement>('[data-harness="codex"]')!).getByRole("button", { name: "Sign in" });
-    const remedy = () => screen.queryByRole("dialog", { name: "Sign in to Codex" });
-    // Sign in again toggles it shut.
-    fireEvent.click(signIn);
+    const howToFix = within(chips.querySelector<HTMLElement>('[data-harness="codex"]')!).getByRole("button", { name: "How to fix" });
+    const remedy = () => screen.queryByRole("dialog", { name: "How to fix Codex" });
+    // How to fix again toggles it shut.
+    fireEvent.click(howToFix);
     expect(remedy()).not.toBeNull();
-    fireEvent.click(signIn);
+    fireEvent.click(howToFix);
     await waitFor(() => expect(remedy()).toBeNull());
-    expect(signIn.getAttribute("aria-expanded")).toBe("false");
-    // Escape closes it and puts focus back on Sign in.
-    fireEvent.click(signIn);
+    expect(howToFix.getAttribute("aria-expanded")).toBe("false");
+    // Escape closes it and puts focus back on How to fix.
+    fireEvent.click(howToFix);
     fireEvent.keyDown(remedy()!, { key: "Escape" });
     await waitFor(() => expect(remedy()).toBeNull());
-    expect(document.activeElement).toBe(signIn);
+    expect(document.activeElement).toBe(howToFix);
     // A click anywhere else closes it.
-    fireEvent.click(signIn);
+    fireEvent.click(howToFix);
     expect(remedy()).not.toBeNull();
     // The outside-click listener is armed a tick after the popover opens, as a real click would find it.
     await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));

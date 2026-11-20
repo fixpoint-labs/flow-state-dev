@@ -1,7 +1,7 @@
 /**
  * Which coding harnesses can run on this machine, as one *Harnesses* pill: a
  * status dot and name per harness (green ready, amber not ready, grey for a
- * check that got no answer), a *Sign in* on one that can't run that shows what
+ * check that got no answer), a *How to fix* on one that can't run that shows what
  * to do, and a refresh icon that reads them again.
  *
  * Teammates' own drawing of the rows harness-manager's readiness view answers.
@@ -17,7 +17,7 @@ import type { HarnessReadinessChipRow, HarnessReadinessProps } from "./flow-stat
 /** The `data-ready` value each state is marked with. */
 const READY_MARK = { ready: "true", "not-ready": "false", unknown: "unknown" } as const;
 
-/** One harness in the pill: its dot and name, and for one that can't run, a Sign in that shows what to do. */
+/** One harness in the pill: its dot and name, and for one that can't run, a How to fix that shows what to do. It is named for what it does: it shows the remedy, it signs in to nothing. */
 function HarnessEntry({ row }: { row: HarnessReadinessChipRow }) {
   const state = harnessState(row);
   const why = [row.reason, row.remedy].filter(Boolean).join(". ");
@@ -30,18 +30,18 @@ function HarnessEntry({ row }: { row: HarnessReadinessChipRow }) {
     >
       <span aria-hidden className={["size-1.5 shrink-0 rounded-full", HARNESS_DOT[state]].join(" ")} />
       <span className="text-foreground">{row.label}</span>
-      {/* The remedy stays in the text for a screen reader; Sign in shows it to everyone else. */}
+      {/* The remedy stays in the text for a screen reader; How to fix shows it to everyone else. */}
       {row.ready ? null : <span className="sr-only">: {why || (row.unanswered ? "the check got no answer" : "not ready")}</span>}
-      {/* A popover: Sign in again, Escape, or a click outside closes it, and focus goes back to Sign in. */}
+      {/* A popover: How to fix again, Escape, or a click outside closes it, and focus goes back to How to fix. */}
       {row.ready || row.unanswered || why === "" ? null : (
         <Popover.Root>
-          <Popover.Trigger className={LINK}>Sign in</Popover.Trigger>
+          <Popover.Trigger className={LINK}>How to fix</Popover.Trigger>
           <Popover.Portal>
             <Popover.Content
               side="bottom"
               align="start"
               sideOffset={6}
-              aria-label={`Sign in to ${row.label}`}
+              aria-label={`How to fix ${row.label}`}
               className="z-50 w-max max-w-72 rounded-sm border border-border-strong bg-popover px-2.5 py-1.5 text-xs text-text-2 shadow-lg"
             >
               {why}
