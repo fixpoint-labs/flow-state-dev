@@ -16,7 +16,7 @@
  * message, read before each model call: the roster's workers that have a
  * conversation, by id and description.
  */
-import { defineCapability, handler } from "@flow-state-dev/core";
+import { defineCapability, handler, SuspensionError } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { WorkerInstallation } from "../workers/installation";
@@ -171,7 +171,16 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
         if (refused !== undefined) return refuse(refused);
         if (wait === true) {
           writeSentLine(ctx, { ...line, wait: { status: "waiting" } });
-          const outcome = await sendAndWaitForReply(ctx, installation, flowKind, { ...message, ...(deadline === undefined ? {} : { deadline }) }, SEND_MESSAGE_TOOL);
+          let outcome: Awaited<ReturnType<typeof sendAndWaitForReply>>;
+          try {
+            outcome = await sendAndWaitForReply(ctx, installation, flowKind, { ...message, ...(deadline === undefined ? {} : { deadline }) }, SEND_MESSAGE_TOOL);
+          } catch (error) {
+            // A park is the wait holding, not ending: the line stays waiting. Anything else ends it, so the line says so.
+            if (!(error instanceof SuspensionError)) {
+              writeSentLine(ctx, { ...line, wait: { status: "failed", error: error instanceof Error ? error.message : String(error) } });
+            }
+            throw error;
+          }
           // A refusal reads as any send's.
           if ("ok" in outcome) return refuse(outcome.error);
           writeSentLine(ctx, { ...line, messageId: outcome.sent, wait: waitOf(outcome) });

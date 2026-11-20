@@ -11,7 +11,10 @@
  *   one; *Not sent to ada*, and why, when it was refused; *Not answered by
  *   ada*, and why, when a waited send's delivery failed.
  * - `workforce:task`: a task the conversation filed, and who it is for.
- * - `workforce:result`: a task's ending, under the worker that ran it.
+ * - `workforce:result`: a task's ending, under the worker that ran it. The
+ *   board still says each ending as a message too, so a host that draws that
+ *   message leaves this type out (`[TASK_RESULT_DATA_TYPE]: false`), or it
+ *   draws the ending twice.
  *
  * An app that wants its own look registers its own renderer for a type after
  * the spread. Nothing here publishes a class name and the package brings no
@@ -114,6 +117,8 @@ function TaskResultLine({ item }: { item: DataItem }): ReactNode {
 /**
  * Workforce's renderers for a registry's `data` slot, by `dataType`. Spread
  * them under an app's own: `data: { ...workforceRenderers, ...appRenderers.data }`.
+ * A host that draws the board's ending messages sets `[TASK_RESULT_DATA_TYPE]: false`
+ * after the spread, so a task's ending draws once.
  * Keep the registry object at module level (or in a `useMemo`), not built
  * per render.
  */

@@ -16,7 +16,7 @@
 
 import { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { conversationLines, ItemsRenderer, useFlowContext, type RendererRegistry } from "@flow-state-dev/react";
+import { conversationLines, ItemsRenderer, useFlowContext, type ItemLine } from "@flow-state-dev/react";
 import { useConversationFeed } from "./conversation";
 import { SourcesGroup } from "./sources";
 import { StreamingIndicator, WorkedFor } from "./streaming-indicator";
@@ -129,8 +129,8 @@ function settledAt(item: OutputItem): number {
  * (a trace, a hidden step, one a container owns) is not counted, and a call
  * running behind one that finished is.
  */
-function endsOnRunningStep(items: OutputItem[], renderers: RendererRegistry | undefined): boolean {
-  const last = conversationLines(items, [], { renderers }).at(-1);
+function endsOnRunningStep(lines: readonly ItemLine[]): boolean {
+  const last = lines.at(-1);
   return last?.kind === "steps" && last.items.some((item) => item.status === "in_progress");
 }
 
@@ -166,10 +166,8 @@ function RequestGroup({
   }, [group.items, owned]);
 
   const { renderers } = useFlowContext();
-  const stepInFlight = useMemo(
-    () => isLast && isStreaming && endsOnRunningStep(filteredItems, renderers),
-    [isLast, isStreaming, filteredItems, renderers],
-  );
+  const lines = useMemo(() => conversationLines(filteredItems, [], { renderers }), [filteredItems, renderers]);
+  const stepInFlight = isLast && isStreaming && endsOnRunningStep(lines);
 
   // The request began at its first item. Re-emitted keyed items can pull
   // that earlier than the request really started, which only lengthens the count.
@@ -194,7 +192,7 @@ function RequestGroup({
       className="flex flex-col gap-2"
       {...(feed && userItem ? feed.mine(userItem.requestId) : undefined)}
     >
-      <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} live={isLast && isStreaming} />
+      <ItemsRenderer lines={lines} toolGroupRenderer={ToolGroup} live={isLast && isStreaming} />
       <SourcesGroup items={group.items} />
       {/* While a step runs, its own line says what it is doing, so the indicator
           drops its words (not itself): the line keeps one stable label and the
