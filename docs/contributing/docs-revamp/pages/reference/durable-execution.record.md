@@ -35,7 +35,7 @@ Written by `docs-writer` (sonnet), 5603 words. Scenario: A `refunds` flow: `load
 - After revise round 3, page sha256 1f9483885326: exit 0.
 - After the final fact-check fix, page sha256 6d55f76b995e: exit 0.
 
-- After the loop (review): read the record and the final fact check. Spot-checked the abort fix: the page names `RequestHandle.abort()` and `useSession().abortRequest()` in React (packages/react/src/hooks/useSession.ts:448). The Concurrency page took this page's resumed-request rows in the depth pass; they are kept there and re-checked in concurrency.record.md. No change here. 4153 words. Page sha256 6d55f76b995e.
+- After the loop (review): read the record and the final fact check. Spot-checked the abort fix: the page names `RequestHandle.abort()` and `useSession().abortRequest()` in React (packages/react/src/hooks/useSession.ts:448). The Concurrency page took this page's resumed-request rows in the depth pass; they are kept there and re-checked in concurrency.record.md. One wording change: the `client.requests.interrupted` row says "Has the server sweep", since the vocabulary sweep reads "Asks" as the retired ask symbol. 4153 words. Page sha256 6559e947a90d.
 
 ## 5 · Fact check
 

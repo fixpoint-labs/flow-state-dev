@@ -299,7 +299,7 @@ What each caller gets back from the resume route, for a request Alice owns and B
 | Sweep interval and threshold | 30,000 ms and 60,000 ms. Set `staleSweepIntervalMs` and `staleSweepThresholdMs`. An interval of `0` or less turns the sweeper off. The threshold should be at least twice the heartbeat interval. |
 | After a restart | A request in flight shows `interrupted` once its last heartbeat is over 60 seconds old and a sweep has run. A finished request is never marked `interrupted`. |
 | Which stores | Filesystem, SQLite and Postgres. On the in-memory stores the record and registry die with the process, so nothing is left to mark. |
-| `client.requests.interrupted({ staleThresholdMs? })` | Asks the server to sweep, then lists every interrupted request of the user: `{ id, flow, sessionId?, flowKind, actionName, interruptedAt }`. Earlier results appear on every call until continued or removed. `staleThresholdMs` can only raise the host's threshold. |
+| `client.requests.interrupted({ staleThresholdMs? })` | Has the server sweep, then lists every interrupted request of the user: `{ id, flow, sessionId?, flowKind, actionName, interruptedAt }`. Earlier results appear on every call until continued or removed. `staleThresholdMs` can only raise the host's threshold. |
 | A request queued on an external runner | Never marked until `queuedGraceMs` (default 600,000 ms) passes. |
 
 | Choice | What it does |
