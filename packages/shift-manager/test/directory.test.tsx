@@ -18,8 +18,8 @@ type Opened = { topics: readonly WireTopic[]; onChange: (notice: WireNotice | nu
 const opened: Opened[] = [];
 const hear = (notice: WireNotice) => opened.filter((o) => !o.closed).forEach((o) => o.onChange(notice));
 
-/** Each collection's rows, by pattern. */
-const rows: Record<string, Array<{ storageKey: string; value: unknown }>> = {};
+/** each collection's entries, by pattern. */
+const stored: Record<string, Array<{ storageKey: string; value: unknown }>> = {};
 /** Every whole read made, by `<scope>:<pattern>`. */
 const lists: string[] = [];
 const client = {
@@ -30,9 +30,9 @@ const client = {
     list: async () => ({ items: [] }),
     listAll: async () => {
       lists.push(`${scope}:${pattern}`);
-      return (rows[pattern] ?? []).map((row) => ({ topic: row.storageKey, ...row, version: 1 }));
+      return (stored[pattern] ?? []).map((each) => ({ topic: each.storageKey, ...each, version: 1 }));
     },
-    entry: (storageKey: string) => ({ read: async () => ({ value: (rows[pattern] ?? []).find((row) => row.storageKey === storageKey)?.value ?? null, version: 1 }) }),
+    entry: (storageKey: string) => ({ read: async () => ({ value: (stored[pattern] ?? []).find((each) => each.storageKey === storageKey)?.value ?? null, version: 1 }) }),
   }),
   subscribe: (topics: readonly WireTopic[], options: { onChange: (notice: WireNotice | null) => void }) => {
     const entry: Opened = { topics, onChange: options.onChange, closed: false };
@@ -73,7 +73,7 @@ beforeEach(() => {
   lists.splice(0);
   drawn.splice(0);
   rosterWatches = 0;
-  rows[INVENTORY] = [{ storageKey: "inventory/workers/eng.coder", value: { id: "eng.coder", kind: "coder", door: "run" } }];
+  stored[INVENTORY] = [{ storageKey: "inventory/workers/eng.coder", value: { id: "eng.coder", kind: "coder", door: "run" } }];
 });
 afterEach(cleanup);
 
@@ -91,7 +91,7 @@ describe("the worker directory", () => {
     expect(rosterWatches).toBe(1);
 
     // A hire registers a worker: one notice, one read, every screen redrawn from it.
-    rows[INVENTORY] = [...rows[INVENTORY]!, { storageKey: "inventory/workers/eng.reviewer", value: { id: "eng.reviewer", kind: "agent" } }];
+    stored[INVENTORY] = [...stored[INVENTORY]!, { storageKey: "inventory/workers/eng.reviewer", value: { id: "eng.reviewer", kind: "agent" } }];
     await act(async () => hear({ topic: { scope: "org", resource: "inventory/workers" }, kind: "resource" }));
     await waitFor(() => expect(drawn.at(-1)).toEqual(["eng.coder:coder:codex", "eng.reviewer:agent:-", "amber:coder:-"]));
     expect(lists.filter((list) => list === `org:${INVENTORY}`)).toHaveLength(2);

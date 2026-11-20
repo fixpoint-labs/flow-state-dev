@@ -25,20 +25,20 @@ function readsOfSnapshot(snapshot: LabSnapshot | undefined, refresh: () => void)
   const found = held.get(key);
   if (found !== undefined) return found;
   const loaded = snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined ? undefined : snapshot;
-  const rows = <T,>(section: { ok: true; value: T[] } | { ok: false; failure: { message: string; httpStatus?: number } } | undefined) =>
+  const read = <T,>(section: { ok: true; value: T[] } | { ok: false; failure: { message: string; httpStatus?: number } } | undefined) =>
     section === undefined
-      ? { rows: undefined, failure: undefined, refresh }
+      ? { values: undefined, failure: undefined, refresh }
       : section.ok
-        ? { rows: section.value, failure: undefined, refresh }
-        : { rows: undefined, failure: section.failure, refresh };
+        ? { values: section.value, failure: undefined, refresh }
+        : { values: undefined, failure: section.failure, refresh };
   // A partial fixture with no projects section reads as a Lab with none.
   const projects = loaded?.projects ?? { ok: true as const, value: { rows: [] } };
   const fixed: Fixed = {
-    inventory: loaded === undefined ? rows(undefined) : rows(loaded.inventory.ok ? { ok: true, value: loaded.inventory.value.workers } : loaded.inventory),
+    inventory: loaded === undefined ? read(undefined) : read(loaded.inventory.ok ? { ok: true, value: loaded.inventory.value.workers } : loaded.inventory),
     sessions: { list: loaded?.sessions, refresh },
     projects: {
-      shared: loaded === undefined ? rows(undefined) : rows(projects!.ok ? { ok: true, value: projects!.value.rows.filter((p) => p.visibility === "shared") } : projects!),
-      own: loaded === undefined ? rows(undefined) : rows(projects!.ok ? { ok: true, value: projects!.value.rows.filter((p) => p.visibility === "private") } : { ok: true, value: [] }),
+      shared: loaded === undefined ? read(undefined) : read(projects!.ok ? { ok: true, value: projects!.value.rows.filter((p) => p.visibility === "shared") } : projects!),
+      own: loaded === undefined ? read(undefined) : read(projects!.ok ? { ok: true, value: projects!.value.rows.filter((p) => p.visibility === "private") } : { ok: true, value: [] }),
     },
   };
   held.set(key, fixed);

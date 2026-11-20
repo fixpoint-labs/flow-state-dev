@@ -42,8 +42,8 @@ export type Worker = {
   harness?: string;
 };
 
-function field(row: unknown, key: string): unknown {
-  return typeof row === "object" && row !== null ? (row as Record<string, unknown>)[key] : undefined;
+function field(value: unknown, key: string): unknown {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>)[key] : undefined;
 }
 function text(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -102,16 +102,16 @@ function workerNames(
 }
 
 /** A worker inventory row, as its browser read publishes it, grouped and named by {@link workerNames}. */
-export function toWorker(row: unknown): Worker | undefined {
-  const id = text(field(row, "id"));
+export function toWorker(value: unknown): Worker | undefined {
+  const id = text(field(value, "id"));
   if (id === null) return undefined;
   return {
     id,
-    kind: text(field(row, "kind")),
-    door: text(field(row, "door")),
-    rules: field(row, "rules") === true,
-    doorTakesTask: field(row, "doorTakesTask") === true,
-    ...workerNames(id, text(field(row, "name")), text(field(row, "teamName"))),
+    kind: text(field(value, "kind")),
+    door: text(field(value, "door")),
+    rules: field(value, "rules") === true,
+    doorTakesTask: field(value, "doorTakesTask") === true,
+    ...workerNames(id, text(field(value, "name")), text(field(value, "teamName"))),
   };
 }
 

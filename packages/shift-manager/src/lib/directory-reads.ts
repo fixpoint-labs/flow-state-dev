@@ -17,8 +17,8 @@ import { toProject, type Project } from "./projects";
 import { useRoster, type RosterRead } from "./roster";
 import { toWorker, type Worker } from "./workers";
 
-/** One whole-collection read: its rows once read (`undefined` before), why the last read failed, and a read on demand. */
-export type CollectionRead<T> = { rows: T[] | undefined; failure: Failure | undefined; refresh: () => void };
+/** One whole-collection read: its entries' parsed values once read (`undefined` before), why the last read failed, and a read on demand. */
+export type CollectionRead<T> = { values: T[] | undefined; failure: Failure | undefined; refresh: () => void };
 
 /** What the directory reads. */
 export type DirectoryReads = {
@@ -42,18 +42,18 @@ function useSameFailure(failure: Failure | undefined): Failure | undefined {
   );
 }
 
-/** A whole-collection read's rows, each parsed by `parse` (one that doesn't parse is left out), held while the read's value is. */
-function useRows<T>(
+/** A whole-collection read's entries, each parsed by `parse` (one that doesn't parse is left out), held while the read's value is. */
+function useParsed<T>(
   read: { value: readonly { value: unknown }[] | null; failure?: Failure; refresh(): void },
   parse: (value: unknown) => T | undefined,
 ): CollectionRead<T> {
   const value = read.value;
   // `parse` is a module-level function per call site.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const rows = useMemo(() => value?.map((entry) => parse(entry.value)).filter((row): row is T => row !== undefined), [value]);
+  const values = useMemo(() => value?.map((entry) => parse(entry.value)).filter((parsed): parsed is T => parsed !== undefined), [value]);
   const failure = useSameFailure(read.failure);
   const refresh = read.refresh;
-  return useMemo(() => ({ rows, failure, refresh }), [rows, failure, refresh]);
+  return useMemo(() => ({ values, failure, refresh }), [values, failure, refresh]);
 }
 
 const sharedProject = (value: unknown) => toProject(value, "shared");
@@ -62,9 +62,9 @@ const privateProject = (value: unknown) => toProject(value, "private");
 /** The directory's reads, once per page: only the directory provider calls this. */
 export function useDirectoryReads(): DirectoryReads {
   const { client } = useLab();
-  const inventory = useRows(useResource(workerInventoryResource, { client, all: true }), toWorker);
-  const shared = useRows(useResource(projectsResource, { client, all: true }), sharedProject);
-  const own = useRows(useResource(privateProjectsResource, { client, all: true }), privateProject);
+  const inventory = useParsed(useResource(workerInventoryResource, { client, all: true }), toWorker);
+  const shared = useParsed(useResource(projectsResource, { client, all: true }), sharedProject);
+  const own = useParsed(useResource(privateProjectsResource, { client, all: true }), privateProject);
   const roster = useRoster();
   const listing = useSessionList({ client, includeDispatchRuns: true, includeStatus: false });
   // Undefined only before the first list lands: a later read of an empty list is still a list.

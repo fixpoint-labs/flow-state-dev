@@ -30,11 +30,11 @@ type ViewHold = InboxHold<InboxSuspensionDetail>;
  * A name more than one worker carries, or none, is no worker: a row is never
  * shown against several workers, or against a guess.
  */
-export function workerFor(workers: readonly Worker[], row: { assignee: string | null }): Worker | undefined {
-  if (row.assignee === null) return undefined;
-  const exact = workers.find((worker) => worker.id === row.assignee);
+export function workerFor(workers: readonly Worker[], task: { assignee: string | null }): Worker | undefined {
+  if (task.assignee === null) return undefined;
+  const exact = workers.find((worker) => worker.id === task.assignee);
   if (exact !== undefined) return exact;
-  const named = workers.filter((worker) => worker.name === row.assignee);
+  const named = workers.filter((worker) => worker.name === task.assignee);
   return named.length === 1 ? named[0] : undefined;
 }
 

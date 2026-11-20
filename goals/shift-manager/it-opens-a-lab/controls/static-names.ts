@@ -26,7 +26,7 @@ declare const __STATIC_SEATS__: Array<{ id: string; kind: string }>;
 /** The real reads, with the inventory's seats swapped for the ones written in. */
 export function useDirectoryReads(): DirectoryReads {
   const reads = readsAsWritten();
-  const stored = reads.inventory.rows;
+  const stored = reads.inventory.values;
   const rows = useMemo(() => {
     if (stored === undefined) return undefined;
     const doors = new Map(stored.map((seat) => [seat.id, seat]));

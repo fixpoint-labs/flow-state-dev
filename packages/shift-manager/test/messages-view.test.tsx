@@ -34,8 +34,8 @@ const answer = row({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_0
 const other = row({ id: "msg_c", from: "helper-a", to: "helper-b", at: 2_000, status: "refused", reason: "dispatch-rejected: down" });
 
 /** The log's entries as the direct read answers them. */
-const entries = (rows: WorkerMessageResourceState[]) =>
-  rows.map((r) => ({ topic: r.id, storageKey: `workforce/messages/${r.id}`, value: r, version: 1 }));
+const entries = (stored: WorkerMessageResourceState[]) =>
+  stored.map((r) => ({ topic: r.id, storageKey: `workforce/messages/${r.id}`, value: r, version: 1 }));
 
 beforeEach(() => {
   readAll.mockReset();

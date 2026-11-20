@@ -69,8 +69,8 @@ const DirectoryContext = createContext<Directory>(UNREAD);
 
 /** The inventory's section: its workers, or why there are none. */
 function inventorySection(read: CollectionRead<Worker>): Section<Worker[]> | undefined {
-  if (read.rows !== undefined && read.rows.length > 0) return { ok: true, value: read.rows };
-  if (read.rows !== undefined || read.failure?.httpStatus === 404) return { ok: false, failure: NO_INVENTORY };
+  if (read.values !== undefined && read.values.length > 0) return { ok: true, value: read.values };
+  if (read.values !== undefined || read.failure?.httpStatus === 404) return { ok: false, failure: NO_INVENTORY };
   return read.failure === undefined ? undefined : { ok: false, failure: read.failure };
 }
 
@@ -81,15 +81,15 @@ function inventorySection(read: CollectionRead<Worker>): Section<Worker[]> | und
  * list. A read that fails after one landed keeps the rows it read.
  */
 function projectsSection(shared: CollectionRead<Project>, own: CollectionRead<Project>): Section<Project[]> | undefined {
-  const rowsOf = (read: CollectionRead<Project>): Section<Project[]> | undefined =>
-    read.rows !== undefined
-      ? { ok: true, value: read.rows }
+  const valuesOf = (read: CollectionRead<Project>): Section<Project[]> | undefined =>
+    read.values !== undefined
+      ? { ok: true, value: read.values }
       : read.failure === undefined
         ? undefined
         : read.failure.httpStatus === 404
           ? { ok: true, value: [] }
           : { ok: false, failure: read.failure };
-  const [a, b] = [rowsOf(shared), rowsOf(own)];
+  const [a, b] = [valuesOf(shared), valuesOf(own)];
   if (a?.ok === false) return a;
   if (b?.ok === false) return b;
   return a === undefined || b === undefined ? undefined : { ok: true, value: [...a.value, ...b.value] };
@@ -104,8 +104,8 @@ export function DirectoryProvider({ children }: { children: ReactNode }) {
   // When the directory's reads last landed: what Roster's *read* line says.
   const [readAt, setReadAt] = useState<number | undefined>(undefined);
   useEffect(() => {
-    if (inventory.rows !== undefined || entries !== undefined) setReadAt(Date.now());
-  }, [inventory.rows, entries]);
+    if (inventory.values !== undefined || entries !== undefined) setReadAt(Date.now());
+  }, [inventory.values, entries]);
   const refreshInventory = inventory.refresh;
   const refreshSessions = sessions.refresh;
   const refresh = useCallback(() => {
@@ -116,7 +116,7 @@ export function DirectoryProvider({ children }: { children: ReactNode }) {
     () => ({ inventory: section, workers: joined.workers, own: joined.own, roster, readAt, refresh }),
     [section, joined, roster, readAt, refresh],
   );
-  const projectRows = useMemo(() => projectsSection(projects.shared, projects.own), [projects]);
+  const projectList = useMemo(() => projectsSection(projects.shared, projects.own), [projects]);
   const refreshShared = projects.shared.refresh;
   const refreshOwn = projects.own.refresh;
   const refreshProjects = useCallback(() => {
@@ -124,8 +124,8 @@ export function DirectoryProvider({ children }: { children: ReactNode }) {
     refreshOwn();
   }, [refreshShared, refreshOwn]);
   const value = useMemo<Directory>(
-    () => ({ workers, sessions, projects: { section: projectRows, refresh: refreshProjects } }),
-    [workers, sessions, projectRows, refreshProjects],
+    () => ({ workers, sessions, projects: { section: projectList, refresh: refreshProjects } }),
+    [workers, sessions, projectList, refreshProjects],
   );
   return <DirectoryContext.Provider value={value}>{children}</DirectoryContext.Provider>;
 }

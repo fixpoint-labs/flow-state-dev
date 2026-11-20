@@ -68,8 +68,8 @@ export type Project = {
   repository: string | null;
 };
 
-function field(row: unknown, key: string): unknown {
-  return typeof row === "object" && row !== null ? (row as Record<string, unknown>)[key] : undefined;
+function field(value: unknown, key: string): unknown {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>)[key] : undefined;
 }
 function text(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -85,21 +85,21 @@ function strings(value: unknown): string[] {
  * and is left out; every other field reads as empty when absent, so a row an
  * earlier version wrote still reads.
  */
-export function toProject(row: unknown, visibility: ProjectVisibility = "shared"): Project | undefined {
-  const id = text(field(row, "id"));
-  const title = text(field(row, "title"));
-  const ownerUserId = text(field(row, "ownerUserId"));
+export function toProject(value: unknown, visibility: ProjectVisibility = "shared"): Project | undefined {
+  const id = text(field(value, "id"));
+  const title = text(field(value, "title"));
+  const ownerUserId = text(field(value, "ownerUserId"));
   if (id === null || title === null || ownerUserId === null) return undefined;
   return {
     id,
     visibility,
     title,
     // An empty brief is still the brief the row was given; only a missing or non-string one is none.
-    brief: typeof field(row, "brief") === "string" ? (field(row, "brief") as string) : null,
-    status: text(field(row, "status")) ?? "active",
+    brief: typeof field(value, "brief") === "string" ? (field(value, "brief") as string) : null,
+    status: text(field(value, "status")) ?? "active",
     ownerUserId,
-    members: strings(field(row, "members")),
-    repository: text(field(row, "repository")),
+    members: strings(field(value, "members")),
+    repository: text(field(value, "repository")),
   };
 }
 
@@ -131,8 +131,8 @@ function toEntry(storageKey: string, data: unknown): Omit<WorkstreamEntry, "stal
 }
 
 /** Every row of a read that parses as an entry. */
-function entriesOf(rows: readonly { storageKey: string; value: unknown }[]): Omit<WorkstreamEntry, "stale">[] {
-  return rows.map((row) => toEntry(row.storageKey, row.value)).filter((entry): entry is Omit<WorkstreamEntry, "stale"> => entry !== undefined);
+function entriesOf(stored: readonly { storageKey: string; value: unknown }[]): Omit<WorkstreamEntry, "stale">[] {
+  return stored.map((each) => toEntry(each.storageKey, each.value)).filter((entry): entry is Omit<WorkstreamEntry, "stale"> => entry !== undefined);
 }
 
 /**
@@ -170,12 +170,12 @@ export async function readProject(
   now = Date.now(),
 ): Promise<({ project: Project } & ProjectWorkstreams) | null> {
   const scope = scopeOf(address.visibility);
-  const [stored, rows] = await Promise.all([
+  const [stored, listed] = await Promise.all([
     client.resource({ scope, pattern: PROJECTS_PATTERN }).entry(`projects/${address.id}`).read(),
     client.resource({ scope, pattern: WORKSTREAMS_PATTERN }).listAll({ topicPrefix: entriesPrefix(address.id) }),
   ]);
   const project = stored.value === null ? undefined : toProject(stored.value, address.visibility);
-  return project === undefined ? null : { project, ...withProgress(entriesOf(rows), now) };
+  return project === undefined ? null : { project, ...withProgress(entriesOf(listed), now) };
 }
 
 /** The longest delay `setTimeout` keeps; a longer one fires at once. */
@@ -214,11 +214,11 @@ export type ScreenRead<T> = { value: T | undefined; failure: Failure | undefined
 export function useProjectWorkstreams(address: ProjectAddress): ScreenRead<ProjectWorkstreams> {
   const { client } = useLab();
   const read = useResource(WORKSTREAMS[scopeOf(address.visibility)], { client, all: true, topicPrefix: entriesPrefix(address.id) });
-  const rows = read.value;
+  const listed = read.value;
   // Going quiet is the absence of writes, so the page's own clock says when:
   // one recompute at the next entry's threshold, with no read, then the next.
   const [now, setNow] = useState(() => Date.now());
-  const value = useMemo(() => (rows === null ? undefined : withProgress(entriesOf(rows), now)), [rows, now]);
+  const value = useMemo(() => (listed === null ? undefined : withProgress(entriesOf(listed), now)), [listed, now]);
   useEffect(() => {
     if (value === undefined) return;
     const at = nextQuietAt(value.entries);
