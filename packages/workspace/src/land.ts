@@ -18,6 +18,10 @@
  * - **The run's branch is never touched.** Whatever fails, its commits stay
  *   where they are, so the person can try again.
  *
+ * - **A pull request goes into a branch the remote has.** When the run's base
+ *   is gone from the remote (its pull request merged and the branch was
+ *   deleted), it asks to merge into the remote's default branch instead.
+ *
  * Every failure is a `WorkspaceRefusedError` whose message says what
  * happened and, where there is one, what clears it.
  */
@@ -101,6 +105,13 @@ export type Landed =
       readonly branch: string;
       /** The branch the pull request asks to merge into, on the remote. */
       readonly base: string;
+      /**
+       * The base the run's work was cut from, when the remote no longer has
+       * that branch (its pull request merged and the branch was deleted), so
+       * the pull request asks to merge into the remote's default branch,
+       * `base`, instead. Absent when it went into the run's own base.
+       */
+      readonly baseGone?: string;
       /** The remote pushed to, with any credential removed. */
       readonly remote: string;
       /**
@@ -191,7 +202,10 @@ export async function existingPullRequest(
   const ghDir = scratchDir();
   try {
     const gh = { gh: options.gh ?? "gh", ghDir, ghEnv: { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) }, where: ["--repo", repo] };
-    const url = await openPullRequestOf(gh, branch, remote.base, left());
+    // Into the base a landing would ask for: the remote's default branch when the run's is gone.
+    const judged = checkRemoteShape(remote.url);
+    const base = "reason" in judged ? remote.base : await baseOnRemote(host, remote, judged, left).then((into) => into.base, () => remote.base);
+    const url = await openPullRequestOf(gh, branch, base, left());
     const ref = url === undefined ? null : pullRequestRefFromUrl(url);
     return url === undefined || ref === null ? null : { url, number: ref.number, branch };
   } finally {
@@ -208,7 +222,7 @@ export async function existingPullRequest(
  * landing: the branch is pushed to it, and no second one is opened.
  *
  * @throws WorkspaceRefusedError `branch-gone`, `base-unknown`, `no-push-remote`, `no-pull-request-repo`,
- *   `remote-repointed`, `push-failed`, `pull-request-failed`, `pull-request-gone`,
+ *   `remote-repointed`, `base-gone`, `push-failed`, `pull-request-failed`, `pull-request-gone`,
  *   `base-not-checked-out`, `checkout-dirty`, `checkout-busy`, `merge-conflict` or
  *   `merge-failed`, each saying what happened.
  */
@@ -611,8 +625,10 @@ async function openPullRequest(
   const ghDir = scratchDir();
   const ghEnv = { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) };
   const where = ["--repo", repo];
+  // Before anything is pushed, so a base gone with no default to fall back on pushes nothing.
+  const into = await baseOnRemote(host, remote, judged, left);
   try {
-    return await pushAndOpen(git, host, target, remote, judged, request, left, { gh, ghDir, ghEnv, where, repo });
+    return await pushAndOpen(git, host, target, { ...remote, base: into.base }, into.gone, judged, request, left, { gh, ghDir, ghEnv, where, repo });
   } finally {
     try {
       rmSync(ghDir, { recursive: true, force: true });
@@ -657,6 +673,7 @@ async function pushAndOpen(
   host: LandHost,
   target: LandTarget,
   remote: { remoteName: string; url: string; base: string },
+  baseGone: string | undefined,
   judged: AllowedRemote,
   request: Extract<LandRequest, { kind: "pull-request" }>,
   left: () => number,
@@ -671,6 +688,7 @@ async function pushAndOpen(
       branch: target.branch,
       base: remote.base,
       remote: redactRemote(remote.url),
+      ...(baseGone !== undefined ? { baseGone } : {}),
       ...(existing ? { existing: true } : {}),
     };
   };
@@ -761,29 +779,69 @@ function remoteConfig(host: LandHost, judged: AllowedRemote): string[] {
  * failure to tell answers no.
  */
 async function remoteHolds(git: Git, host: LandHost, target: LandTarget, judged: AllowedRemote, left: () => number): Promise<boolean> {
-  // Asked from an empty repository of its own, as `push` is: the run's config is never read.
-  let scratch: string | undefined;
   try {
     const local = await git(target.cwd, ["rev-parse", "--verify", `refs/heads/${target.branch}^{commit}`]);
-    scratch = scratchDir();
-    await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env: host.env });
-    const { stdout } = await run(
-      "git",
-      [...remoteConfig(host, judged), "ls-remote", "--", judged.url, `refs/heads/${target.branch}`],
-      { cwd: scratch, timeoutMs: left(), env: { ...host.env, GIT_DIR: scratch, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" } },
-    );
-    const remoteTip = stdout.trim().split(/\s+/)[0];
+    const remoteTip = (await lsRemote(host, judged, [`refs/heads/${target.branch}`], left)).trim().split(/\s+/)[0];
     if (!remoteTip) return false;
     if (remoteTip === local) return true;
     await git(target.cwd, ["merge-base", "--is-ancestor", local, remoteTip]);
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * `git ls-remote --symref` of `refs` on the pinned remote, asked from an empty
+ * repository of its own, as `push` is: the run's config is never read.
+ */
+async function lsRemote(host: LandHost, judged: AllowedRemote, refs: string[], left: () => number): Promise<string> {
+  let scratch: string | undefined;
+  try {
+    scratch = scratchDir();
+    await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env: host.env });
+    const { stdout } = await run(
+      "git",
+      [...remoteConfig(host, judged), "ls-remote", "--symref", "--", judged.url, ...refs],
+      { cwd: scratch, timeoutMs: left(), env: { ...host.env, GIT_DIR: scratch, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" } },
+    );
+    return stdout;
   } finally {
     try {
       if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
     } catch {}
   }
+}
+
+// FIX-2858.
+/**
+ * The branch a pull request asks to merge into: the run's base while the
+ * remote has it; else, when it is gone (its pull request merged and the
+ * branch was deleted), the remote's default branch, with the gone one as
+ * `gone`. When the remote can't be asked, the base as named: GitHub says if
+ * it is gone.
+ *
+ * @throws WorkspaceRefusedError `base-gone` when the base is gone and the remote names no default branch.
+ */
+async function baseOnRemote(host: LandHost, remote: PushRemote, judged: AllowedRemote, left: () => number): Promise<{ base: string; gone?: string }> {
+  let listed: string;
+  try {
+    listed = await lsRemote(host, judged, ["HEAD", `refs/heads/${remote.base}`], left);
+  } catch {
+    return { base: remote.base };
+  }
+  const lines = listed.split("\n");
+  if (lines.some((line) => line.endsWith(`\trefs/heads/${remote.base}`))) return { base: remote.base };
+  const fallback = lines.map((line) => /^ref: refs\/heads\/(.+)\tHEAD$/.exec(line)?.[1]).find((name) => name !== undefined);
+  if (fallback === undefined) {
+    throw new WorkspaceRefusedError(
+      "base-gone",
+      `The branch this work was started from, "${remote.base}", is no longer on ${redactRemote(remote.url)} ` +
+        `(its pull request was probably merged and the branch deleted), and the remote names no default branch to open the pull request into instead. ` +
+        `Nothing was pushed, and the run's commits are still on its branch: merge locally instead.`,
+    );
+  }
+  return { base: fallback, gone: remote.base };
 }
 
 async function push(

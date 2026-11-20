@@ -593,3 +593,79 @@ describe("landing a run whose work moved off its branch", () => {
     expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
   });
 });
+
+// FIX-2858.
+describe("a run whose base branch is gone from the remote", () => {
+  /**
+   * The person's checkout on `feature`, pushed and tracking origin/feature, then
+   * deleted on the remote, as GitHub does when its pull request merges: the
+   * normal state of a checkout after its branch's pull request lands.
+   */
+  async function runOnMergedBranch() {
+    git(repo, "checkout", "-q", "-b", "feature");
+    git(repo, "push", "-q", "-u", "origin", "feature");
+    const run = await runWithCommit();
+    git(upstream.bare, "branch", "-D", "feature");
+    return run;
+  }
+
+  it("opens the pull request into the remote's default branch, and says the base was gone", async () => {
+    const { h, place, commit } = await runOnMergedBranch();
+
+    const landed = await h.land!(
+      { cwd: place.cwd, branch: "fsd/run-1", baseRef: place.repo!.baseRef },
+      { kind: "pull-request", title: "t", body: "b", gh },
+    );
+
+    // Not --base feature, which GitHub refuses ("Base ref must be a branch").
+    const creates = ghCalls().filter((call) => call.startsWith("pr create"));
+    expect(creates).toHaveLength(1);
+    expect(creates[0]).toContain("--base main");
+    expect(upstream.rev("refs/heads/fsd/run-1")).toBe(commit);
+    expect(landed).toMatchObject({ kind: "pull-request", base: "main", baseGone: "feature" });
+  });
+
+  it("follows the remote's default branch, whatever its name", async () => {
+    upstream.commit("trunk", "trunk.txt", "trunk\n");
+    upstream.setDefault("trunk");
+    const { h, place } = await runOnMergedBranch();
+
+    const landed = await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    expect(landed).toMatchObject({ base: "trunk", baseGone: "feature" });
+    expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes("--base trunk"))).toBe(true);
+  });
+
+  it("keeps the base while the remote still has it", async () => {
+    git(repo, "checkout", "-q", "-b", "feature");
+    git(repo, "push", "-q", "-u", "origin", "feature");
+    const { h, place } = await runWithCommit();
+
+    const landed = await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    expect(landed).toMatchObject({ base: "feature" });
+    expect(landed).not.toHaveProperty("baseGone");
+    expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes("--base feature"))).toBe(true);
+  });
+
+  it("refuses base-gone, pushing nothing and asking GitHub nothing, when the remote names no default branch", async () => {
+    const { h, place } = await runOnMergedBranch();
+    // HEAD on a branch the remote doesn't have: no default to fall back on.
+    upstream.setDefault("nowhere");
+
+    const landing = h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    await expect(landing).rejects.toMatchObject({ reason: "base-gone" });
+    await expect(landing).rejects.toThrow(/"feature", is no longer on/);
+    expect(() => upstream.rev("refs/heads/fsd/run-1")).toThrow();
+    expect(ghCalls()).toEqual([]);
+  });
+
+  it("looks for the open pull request into the default branch, where a landing would open it", async () => {
+    const { h, place } = await runOnMergedBranch();
+    writeFileSync(gh, `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\necho '[{"number":9,"url":"https://github.com/acme/widgets/pull/9","baseRefName":"main"}]'\n`);
+    vi.stubEnv("PATH", `${join(gh, "..")}:${process.env.PATH ?? ""}`);
+
+    expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).toMatchObject({ number: 9 });
+  });
+});
