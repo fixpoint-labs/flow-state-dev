@@ -723,8 +723,8 @@ describe("a judged run on a board read from the claim, with review on", () => {
     });
     await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
-    const row = await lab.row(CONVERSATIONS, "t1", "conv-a");
-    const prompt = row.holds?.find((h) => h.source.kind === "suspension")?.ask.prompt;
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    const prompt = task.holds?.find((h) => h.source.kind === "suspension")?.ask.prompt;
     expect(prompt).toContain("2 commits on");
     expect(prompt).toContain("1 file changed (+1 −0).");
     expect(prompt).not.toContain("a teammate's change");
