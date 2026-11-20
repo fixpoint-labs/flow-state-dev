@@ -194,6 +194,7 @@ import {
   sameSegment,
   ASK_MARKER_IGNORED,
   acquireCheckout,
+  assertBranchPrefix,
   branchFor,
   freeRunLocation,
   locationFor,
@@ -716,6 +717,14 @@ export interface ManagerOptions {
    * fails with. Default `"the harness"`.
    */
   harnessLabel?: string;
+  /**
+   * What each run's branch starts with: the app's own name for its runs, such
+   * as `teammates/`, so a branch says which app cut it. Lower-case letters and
+   * digits with single `-` or `_`, ending in `/`; refused at construction
+   * otherwise. Default `fsd/`. A run already recorded on a branch keeps it,
+   * whatever this says now.
+   */
+  branchPrefix?: string;
   /**
    * How checkout contention is bounded. Defaults derive from the longest a live
    * attempt can hold the lock without marking it live — its silence window plus
@@ -2090,6 +2099,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // Checked here, before anything is claimed: a timer handed a bad number
   // fails the claimed attempt instead (`assertPositiveInt`).
   const idleTimeoutMs = assertPositiveInt("harnessManager's idleTimeoutMs", options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS);
+  const branchPrefix = options.branchPrefix === undefined ? undefined : assertBranchPrefix(options.branchPrefix);
   const runCapMs = resolveRunCap("harnessManager's runTimeoutMs", runTimeoutMs);
 
   // **The run's term is its silence window, not its length.** A run has no
@@ -2769,6 +2779,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           phase: phaseName,
           ...branchIssue(claim !== null, trackerIssue),
           ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(branchPrefix !== undefined ? { branchPrefix } : {}),
         },
         recorded?.branch,
       );
@@ -2874,6 +2885,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         issue: state.issue!,
         phase: state.phase!,
         ...branchIssue(state.claim !== null, state.trackerIssue),
+        ...(branchPrefix !== undefined ? { branchPrefix } : {}),
       },
       state.branch,
     );
@@ -2909,6 +2921,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             issue: state.issue!,
             phase: state.phase!,
             ...branchIssue(state.claim !== null, state.trackerIssue),
+            ...(branchPrefix !== undefined ? { branchPrefix } : {}),
           },
           state.branch,
         ),

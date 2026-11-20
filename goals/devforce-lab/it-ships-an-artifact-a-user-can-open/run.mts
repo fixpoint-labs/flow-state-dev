@@ -89,6 +89,7 @@ import { z } from "zod";
 import { RUN_STAMP, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { DRAIN_ENTRY, MESSAGE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { CODER_BRANCH_PREFIX } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
 import { ACCEPTANCE_MODULE, runAcceptance } from "../../../packages/shift-manager/teams/devteam/acceptance.mts";
 import {
   BASE_REF,
@@ -124,7 +125,7 @@ const POST_LINE = `${ISSUE}: ${GOAL}`;
 
 
 /** The branch prefix the manager cuts work on. */
-const BRANCH_PREFIX = "conductor/";
+const BRANCH_PREFIX = CODER_BRANCH_PREFIX;
 
 /**
  * The tokens the prompt must carry, and the file each one lives in.
@@ -602,7 +603,7 @@ await runGoal(async (failures) => {
       // that is not `completed` for the wrong reason. A forbidden fallback that
       // finished the child a moment later would not have reddened this control.
       const row = await runBoardUntilSettled(lab, CONTROL_SETTLE_TIMEOUT_MS);
-      // **Commits, not branches.** Provisioning cuts the `conductor/…` branch
+      // **Commits, not branches.** Provisioning cuts the `shift-manager/…` branch
       // before the harness runs, so a branch exists for an attempt that did
       // nothing — asserting none appeared measured the checkout rather than the
       // run, and reddened this control for the wrong reason. Observed.
