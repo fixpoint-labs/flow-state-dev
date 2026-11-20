@@ -437,6 +437,9 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     /** The task frame a click just opened: titled as stored, with a panel slot, and every tab drawing. */
     const reachTaskFrame = async (row: Store["rows"][string][number], titleLeg: string) => {
       await page.getByTestId("task-frame").waitFor();
+      // The frame draws as the click lands and titles the task by its id until its row is read (one
+      // session read and the board's view): grade the title once the row has landed, or after 20 s.
+      await page.waitForFunction((id) => document.querySelector("[data-testid=task-title]")?.textContent !== id, row.id, { timeout: 20_000 }).catch(() => undefined);
       const title = await page.getByTestId("task-title").textContent();
       if (title !== row.title) fail(titleLeg, `the task frame titles ${row.id} "${title}", stored "${row.title}"`);
       if (!(await visible(page, "task-panel-slot"))) fail("reach", `the task frame for ${row.id} has no panel slot`);
