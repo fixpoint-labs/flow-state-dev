@@ -22,13 +22,13 @@
  * Run:      pnpm tsx goals/teammates-lab/a-standard-teammate-takes-your-edits/run.mts
  * Controls: GOAL_CONTROL=ignore-edits  the turn reads the file, not the user's own
  *                                      row, for a standard id: must FAIL at a
+ *           GOAL_CONTROL=one-user      the host takes Bob as Alice: must FAIL at c
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomInt } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import {
   REPO_ROOT,
@@ -43,10 +43,16 @@ import {
   stopProcessGroup,
   type ModulePatch,
 } from "../../lib/index.mts";
+import { signedInClient } from "../lab.mts";
 
 const HOST = fileURLToPath(new URL("./host.mts", import.meta.url));
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS: Record<string, { does: string; patches: ModulePatch[] }> = {
+const CONTROLS: Record<string, { does: string; patches: ModulePatch[]; env?: Record<string, string> }> = {
+  "one-user": {
+    does: "the host takes every request as Alice, as the lab does, whoever is signed in",
+    patches: [],
+    env: { GOAL_ONE_USER: "1" },
+  },
   "ignore-edits": {
     does: "a standard id is always read from its file, so the user's own copy never reaches a turn",
     patches: [
@@ -98,7 +104,8 @@ await runGoal(async (failures) => {
       GOAL_STORE: join(dir, "teammates.sqlite"),
       GOAL_WORKDIR: workdir,
       GOAL_RUNS: join(dir, "runs"),
-      ...(control === undefined ? {} : modulePatchEnv(control.patches, REPO_ROOT, mark)),
+      ...(control === undefined || control.patches.length === 0 ? {} : modulePatchEnv(control.patches, REPO_ROOT, mark)),
+      ...control?.env,
     }),
   });
   const keep = (chunk: Buffer) => {
@@ -113,7 +120,7 @@ await runGoal(async (failures) => {
     }
 
     const as = (userId: string) => {
-      const fsd = createClient({ userId, baseUrl: origin });
+      const fsd = signedInClient(userId, origin);
       return { fsd, workforce: createWorkforceClient(fsd) };
     };
     const alice = as("alice");
@@ -184,7 +191,7 @@ await runGoal(async (failures) => {
     const tester = await row(alice, "tester");
     if (tester[0]?.id !== "tester" || tester[0]?.name !== "QA Bot") failures.push(`e:roster — ${JSON.stringify(tester)}`);
 
-    if (control !== undefined) assertPatched(control.patches, REPO_ROOT, mark);
+    if (control !== undefined && control.patches.length > 0) assertPatched(control.patches, REPO_ROOT, mark);
     return {
       failures,
       evidence: `edited ${CHIEF} as "${NEW_NAME}": next turn "You are ${identity(edited.said)}" with the new text, same session ${first.session}; Bob saw "${identity(bobTurn.said)}"; after Reset "You are ${identity(back.said)}"; tester renamed "${identity(renamed.said)}" on ${renamed.session}`,
