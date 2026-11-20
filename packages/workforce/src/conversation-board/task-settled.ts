@@ -79,7 +79,7 @@ import { anotherTurnWaitsOnItsPlan } from "./plan";
 import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
 import { messageTurnStateSchema } from "../messages/hop";
 import { answerTextOf, delegateAnswerMetadata } from "./delegate-answer";
-import { resultLineOf, writeResultLine } from "./result-line";
+import { ENDING_FOR_THE_MODEL, resultLineOf, writeResultLine } from "./result-line";
 import type { TaskResultValue } from "../messages/line-values";
 
 /** A notice, as the entries take it. */
@@ -314,7 +314,9 @@ const line = handler({
   execute: (settled: Settled, ctx) => {
     ctx.emit.message(settled.text ?? "", {
       ...(settled.worker !== undefined ? { agentName: settled.worker } : {}),
-      ...(settled.metadata !== undefined ? { metadata: settled.metadata } : {})
+      ...(settled.metadata !== undefined ? { metadata: settled.metadata } : {}),
+      // An ending an app draws as its result line is said to the model only.
+      ...(settled.result !== undefined ? { itemVisibility: ENDING_FOR_THE_MODEL } : {})
     });
     if (settled.result !== undefined) writeResultLine(ctx, settled.result as TaskResultValue);
     return {};

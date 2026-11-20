@@ -20,8 +20,7 @@ import type { Page } from "playwright";
 import { ClientHttpError, createClient } from "@flow-state-dev/client";
 import { STEER_POLL_MS } from "@flow-state-dev/harness-manager";
 import { createInboxClient, inboxItems, taskActionName, taskListViewRef, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
-import { parseNotice } from "@flow-state-dev/orchestration/tasks";
-import { createWorkforceClient, WORKER_ID_STATE_KEY, workerSessionsViewRef } from "@flow-state-dev/workforce/browser";
+import { createWorkforceClient, TASK_RESULT_DATA_TYPE, WORKER_ID_STATE_KEY, workerSessionsViewRef } from "@flow-state-dev/workforce/browser";
 import { goalTmpDir, loadFixture, REPO_ROOT, repoPath, runGoal, stopProcessGroup } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { itemsOf, sleep, startTeammates, type Fsd } from "../lab.mts";
@@ -352,12 +351,13 @@ await runGoal(async (failures, tell) => {
         const done = await until(async () => (await rowsOf(fsd, board)).find((r) => r.id === rerun!.row.id), (r) => r?.status === "completed", 120_000, 2_000);
         if (!done.held) failures.push(`result — the re-run reads ${done.value?.status} after its review was accepted, not completed`);
         const notice = await until(
-          async () => (await itemsOf(fsd, cos.sessionId)).filter((item) => parseNotice(item as never)?.taskId === rerun!.row.id),
+          // The ending's line a client reads: the board's message saying it is the model's only.
+          async () => (await itemsOf(fsd, cos.sessionId)).filter((item) => item.type === "data" && (item as { dataType?: string }).dataType === TASK_RESULT_DATA_TYPE && (item as { value?: { taskId?: string } }).value?.taskId === rerun!.row.id),
           (found) => found.length > 0,
           90_000,
           2_000,
         );
-        if (!notice.held) failures.push(`result — Lead's conversation holds no notice of the re-run's ending (${rerun.row.id}, filed on ${board.sessionId === cos.sessionId ? "its board" : "another conversation's board"})`);
+        if (!notice.held) failures.push(`result — Lead's conversation holds no result line for the re-run's ending (${rerun.row.id}, filed on ${board.sessionId === cos.sessionId ? "its board" : "another conversation's board"})`);
       }
     }
 

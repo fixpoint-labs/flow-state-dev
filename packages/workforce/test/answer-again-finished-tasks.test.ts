@@ -476,6 +476,8 @@ describe("the agent flow's `answerAgain: true`", () => {
       // FIX-2848 D1: and its line for an app to draw, in the same request, once.
       const results = ((request as unknown as { items?: any[] }).items ?? []).filter((item) => item.type === "data" && item.dataType === TASK_RESULT_DATA_TYPE);
       expect(results.map((item) => [item.value.from, item.value.ending, String(item.value.text).includes(nonce)])).toEqual([["eng.tasker", "completed", true]]);
+      // The board's message saying the same ending is the model's only, so a client draws the ending once.
+      expect(items[lineAt].itemVisibility).toEqual({ client: false, history: true });
       // The answer again read the result as the task's getTask read, not as the user's words (FIX-2345).
       const againCall = agentAnswer.calls.find((call) => text(call.input).includes(FINISHED))!;
       const messages = againCall.input as Array<{ role: string; content: unknown }>;

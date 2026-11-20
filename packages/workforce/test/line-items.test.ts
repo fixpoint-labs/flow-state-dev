@@ -15,6 +15,7 @@
 import { describe, expect, it } from "vitest";
 import { mockGenerator, type MockGeneratorScriptEntry } from "@flow-state-dev/testing";
 import { parseBlockInstanceId } from "@flow-state-dev/contracts/block-instance-id";
+import { resolveItemVisibility } from "@flow-state-dev/contracts/items";
 import { conversationLines } from "@flow-state-dev/react";
 import type { WorkerManifest } from "../src";
 import { FILED_TASK_DATA_TYPE, SENT_MESSAGE_DATA_TYPE, TASK_RESULT_DATA_TYPE } from "../src/messages/keys";
@@ -150,4 +151,36 @@ describe("workforce:task and workforce:result", () => {
       await h.dispose();
     }
   }, 30_000);
+
+  it("result · the ending draws once: the board's ending message stays in the model's history but never reaches a client, where the result line says it", async () => {
+    const h = bootBoardHost({
+      standard: [...boardWorkers(), { id: "ana", declared: { delegates: ["eng.tasker"] }, body: "You hand work to eng.tasker.", skills: [] }],
+      agentAnswer: mockGenerator({ script: files("Find the fact", "Look up the fact") })
+    });
+    try {
+      const created = await h.create("alice", "agent", { state: { workerId: "ana" } });
+      const session = created.body.session!.id;
+      await h.post("alice", session, "respond", { message: "Find the fact" }, "agent");
+      await h.settled(20_000);
+      const items = await itemsOf(h, session);
+      const [result] = linesOf(items, TASK_RESULT_DATA_TYPE);
+      // The board's message that says the same ending: the model still reads it.
+      const said = items.find((item) => item.type === "message" && wordsOf(item) === result.value.text);
+      expect(said, "the board's ending message").toBeDefined();
+      expect(resolveItemVisibility(said)).toEqual({ client: false, history: true });
+      // What a client holds, drawn with every renderer an app spreads: one line says the ending.
+      const client = items.filter((item) => resolveItemVisibility(item).client);
+      const drawn = conversationLines(client, [], { renderers: { message: () => null, data: { [TASK_RESULT_DATA_TYPE]: () => null } } });
+      const saysEnding = drawn.filter((l) => (l.kind === "data" && l.item.dataType === TASK_RESULT_DATA_TYPE) || ((l.kind === "assistant" || l.kind === "user") && JSON.stringify(l.item.content).includes(filedTitle)));
+      expect(saysEnding.map((l) => l.kind)).toEqual(["data"]);
+    } finally {
+      await h.dispose();
+    }
+  }, 30_000);
 });
+
+/** A message item's words. */
+const wordsOf = (item: any): string => (item.content ?? []).map((part: { text?: string }) => part.text ?? "").join("");
+
+/** The title the filed task is given, which the board's ending message quotes. */
+const filedTitle = "Look up the fact";

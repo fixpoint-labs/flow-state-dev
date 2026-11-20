@@ -362,7 +362,7 @@ The filters `ItemsRenderer` always applied run first (latest keyed snapshot, sub
 | `workforce:task` | the conversation board's filing, keyed by the `createTask` call | `FiledTaskValue` |
 | `workforce:result` | the board's ending line for a task the conversation filed, keyed by the task | `TaskResultValue` |
 
-All four are client-only (`history: false`): the model reads the call and the board's message.
+All four are client-only (`history: false`): the model reads the call and the board's message. Where a result line says a task's ending, the board's message saying it is the model's only (`{ client: false, history: true }`), so a client draws the ending once.
 
 **The lines' look is the UI registry's, configured per screen.** Two registry items (`packages/ui/registry/components/`), installed into an app as byte-equal copies, draw every line kind but the plain `user`/`assistant` ones:
 
