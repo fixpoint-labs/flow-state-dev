@@ -15,7 +15,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useAppClient, useConversation, useTasks } from "../app";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
 import { stepOf } from "../components/flow-state/conversation-lines";
-import { holdOf, taskStatus, titleOf, workerOf } from "./task";
+import { holdOf, taskStatus, workerOf } from "./task";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom, useTalk } from "./talk";
 import { age, useNow } from "./use-watch";
@@ -107,11 +107,11 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
     return plain(from !== undefined ? `Replying to ${nameOf(from)}` : "Replying to you");
   }
   const coding = tasks.find((t) => taskStatus(t) === "running" && isCoding(workerOf(t)));
-  if (coding) return plain(`Running coding task: ${titleOf(coding)}`);
+  if (coding) return plain(`Running coding task: ${coding.title}`);
   const ended = freshEndings(tasks, now, isCoding)[0];
   if (ended) {
     const state = taskPresentation(ended);
-    return { text: `Coding task ${ended.status === "errored" ? state.word : "finished"}: ${titleOf(ended)}`, tone: state.tone, needsYou: false };
+    return { text: `Coding task ${ended.status === "errored" ? state.word : "finished"}: ${ended.title}`, tone: state.tone, needsYou: false };
   }
   const waiting = owedRepliesFrom(worker, [...talk]);
   if (waiting.length > 0) return plain(`Messaging ${waiting.map(nameOf).join(", ")}`);

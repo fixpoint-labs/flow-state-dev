@@ -7,7 +7,8 @@
  */
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AppTask } from "../src/app";
+import type { CodingBoardTask } from "../src/app";
+import { boardRow } from "./board-row";
 import { ThreadCard } from "../src/components/ThreadCard";
 import { harnessLabelOf } from "../src/components/ThreadStatus";
 import { HarnessLabels } from "../src/lib/harness-labels";
@@ -15,15 +16,15 @@ import { stubServer } from "./stub-server";
 
 afterEach(cleanup);
 
-const planTask = {
+const planTask = boardRow({
   id: "t-1",
   title: "Plan the vendor switch",
   goal: "Plan it",
   status: "completed",
   harness: "claude-code-plan",
   assignee: "desk.thread-coder-plan",
-  spend: { harness: "claude-code-plan" },
-} as unknown as AppTask;
+  spend: { harness: "claude-code-plan", model: null, inputTokens: null, outputTokens: null, costUsd: null, unreported: true, live: false },
+});
 
 const LABELS = { "claude-code": "Claude Code", "claude-code-plan": "Claude Code (plan)" };
 
@@ -47,7 +48,7 @@ describe("a plan task's harness name", () => {
 
 describe("a coding run nobody reviewed by its deadline", () => {
   it("is marked Not reviewed on its card, so it never reads as approved, and an accepted one is not", () => {
-    const done: AppTask = { ...planTask, harness: "claude-code", assignee: "desk.thread-coder" };
+    const done: CodingBoardTask = { ...planTask, harness: "claude-code", assignee: "desk.thread-coder" };
     render(stubServer().wrap(<ThreadCard sessionId="s-1" task={{ ...done, review: "deadline" }} onOpen={() => {}} />));
     expect(screen.getByText("Not reviewed")).toBeTruthy();
     cleanup();

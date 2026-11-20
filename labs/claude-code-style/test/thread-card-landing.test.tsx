@@ -6,7 +6,8 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AppTask, ReviewDetail } from "../src/app";
+import type { CodingBoardTask, ReviewDetail } from "../src/app";
+import { boardRow } from "./board-row";
 import { ThreadCard } from "../src/components/ThreadCard";
 import { RUN, reviewStop, stubServer, underReview, verdictOf, type Posted } from "./stub-server";
 
@@ -21,11 +22,12 @@ const REVIEW: ReviewDetail = {
   lands: ["pull-request", "merge"],
 };
 
-const codingTask = (patch: Partial<AppTask> = {}): AppTask =>
-  ({
-    ...underReview({ id: "t-1", title: "Add a CHANGELOG line", goal: "Add a line", status: "in_progress", harness: "claude-code" }),
+const codingTask = (patch: Partial<CodingBoardTask> = {}): CodingBoardTask =>
+  boardRow({
+    ...underReview(boardRow({ id: "t-1", title: "Add a CHANGELOG line", goal: "Add a line", harness: "claude-code" })),
     ...patch,
-  }) as AppTask;
+    state: patch.state,
+  });
 
 /**
  * A run session holding `review` as its review stop (none: no stop yet), and the review answers
@@ -42,12 +44,12 @@ function stubRun(review: ReviewDetail | undefined, answer?: (posted: Posted) => 
 }
 
 /** Draws `task`'s card, its board holding `task` as drawn; `rerender` draws `next`, and the board holds it from then. */
-function renderCard(task: AppTask, run: ReturnType<typeof stubRun>, onOpen = vi.fn()) {
+function renderCard(task: CodingBoardTask, run: ReturnType<typeof stubRun>, onOpen = vi.fn()) {
   run.server.board["s-1"] = [task];
   const { rerender } = render(run.server.wrap(<ThreadCard sessionId="s-1" task={task} onOpen={onOpen} />));
   return {
     onOpen,
-    rerender: (next: AppTask) => {
+    rerender: (next: CodingBoardTask) => {
       run.server.board["s-1"] = [next];
       rerender(run.server.wrap(<ThreadCard sessionId="s-1" task={next} onOpen={onOpen} />));
     },
@@ -157,7 +159,6 @@ describe("a thread card's accept", () => {
     renderCard(
       codingTask({
         status: "completed",
-        openHold: undefined,
         asks: [],
         landed: { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: "t-1--code", base: "main" },
       }),

@@ -13,10 +13,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { conversationLines, FlowProvider } from "@flow-state-dev/react";
 import { FILED_TASK_DATA_TYPE, TASK_RESULT_DATA_TYPE } from "@flow-state-dev/workforce/browser";
-import type { AppTask } from "../src/app";
+import type { CodingBoardTask } from "../src/app";
+import { boardRow } from "./board-row";
 
 // The board's tasks the lines read, stood in for: a line reads the same view the pane does.
-const board = vi.hoisted(() => ({ tasks: [] as AppTask[] }));
+const board = vi.hoisted(() => ({ tasks: [] as CodingBoardTask[] }));
 vi.mock("../src/app/tasks", async (original) => ({
   ...(await original<typeof import("../src/app/tasks")>()),
   useTasks: (sessionId: string | undefined) => ({ value: sessionId === undefined ? undefined : board.tasks, stale: false }),
@@ -149,7 +150,7 @@ describe("a tool call in a thread or a task's work", () => {
 
 describe("a line that names a task", () => {
   // Only what the lines read of a board's task: its id, title and status.
-  const boardTask = (id: string, status: AppTask["status"]): AppTask => ({ id, title: "Fix the login copy", goal: "…", status });
+  const boardTask = (id: string, status: CodingBoardTask["status"]): CodingBoardTask => boardRow({ id, title: "Fix the login copy", goal: "…", status });
   const dotOf = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-task-dot]");
 
   it("opens its task from the result line, beside the fold, which still opens to the reply", () => {

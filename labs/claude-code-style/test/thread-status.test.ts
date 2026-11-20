@@ -7,20 +7,22 @@
  * it failed, from the board's error, and never a running note.
  */
 import { describe, expect, it } from "vitest";
-import type { AppTask } from "../src/app";
+import type { CodingBoardTask } from "../src/app";
+import { boardRow } from "./board-row";
 import { rowNote, statusLine } from "../src/components/ThreadStatus";
 
 /** The note a harness run leaves on the row: its last tool call. */
 const LAST_TOOL_CALL = "Bash: git push -u origin feat/claude-code-style-sheet";
 
-const taskRow = (patch: Partial<AppTask>): AppTask => ({
-  id: "t",
-  title: "Align task info to flyout popup",
-  goal: "g",
-  status: "errored",
-  statusNote: LAST_TOOL_CALL,
-  ...patch,
-});
+const taskRow = (patch: Partial<CodingBoardTask>): CodingBoardTask =>
+  boardRow({
+    id: "t",
+    title: "Align task info to flyout popup",
+    goal: "g",
+    status: "errored",
+    statusNote: LAST_TOOL_CALL,
+    ...patch,
+  });
 
 describe("statusLine on a settled task", () => {
   it("says why a failed task failed, not its last tool call", () => {
@@ -45,7 +47,7 @@ describe("statusLine on a settled task", () => {
   it("still shows the latest note while the task works", () => {
     expect(statusLine(taskRow({ status: "in_progress" }))).toBe(`Working · ${LAST_TOOL_CALL}`);
   });
-});
+  });
 
 describe("rowNote on a settled task", () => {
   it("leaves a resolved row's note empty, never its last tool call", () => {
@@ -59,4 +61,4 @@ describe("rowNote on a settled task", () => {
   it("still shows the latest note while the task works", () => {
     expect(rowNote(taskRow({ status: "in_progress" }))).toBe(LAST_TOOL_CALL);
   });
-});
+  });

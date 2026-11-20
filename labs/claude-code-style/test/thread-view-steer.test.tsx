@@ -5,27 +5,28 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AppTask } from "../src/app";
+import type { CodingBoardTask } from "../src/app";
+import { boardRow } from "./board-row";
 import { ThreadView } from "../src/components/ThreadView";
 import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import { RUN, reviewStop, stubServer, underReview, verdictOf } from "./stub-server";
 
 afterEach(cleanup);
 
-const workingTask: AppTask = {
+const workingTask: CodingBoardTask = boardRow({
   id: "t-1",
   title: "Add a CHANGELOG line",
   goal: "Add a line",
   status: "in_progress",
   harness: "claude-code",
   statusNote: "Editing CHANGELOG.md",
-} as AppTask;
+});
 
 /** The steers the board took: each `updateTask` send with a message. */
 const steersIn = (posts: ReturnType<typeof stubServer>["posts"]) =>
   posts.flatMap((posted) => (posted.path.endsWith("/actions/updateTask_tasks") && typeof (posted.body.input as { message?: unknown }).message === "string" ? [(posted.body.input as { message: string }).message] : []));
 
-const reviewTask: AppTask = underReview(workingTask);
+const reviewTask: CodingBoardTask = underReview(workingTask);
 
 const REVIEW = {
   branch: "conductor/t0/ha62-h01/t-1--code",
@@ -40,7 +41,7 @@ describe("a coding thread's composer after it accepts a review", () => {
   it("frees the composer once a landing moves the task on to its pull request, so you can say a merge", async () => {
     const server = stubServer({ items: { [RUN.sessionId]: [reviewStop("stop-1", REVIEW)] } });
     // The board holds the task as the view draws it.
-    const view = (task: AppTask) => {
+    const view = (task: CodingBoardTask) => {
       server.board["s-1"] = [task];
       return server.wrap(
         <SessionOverlayProvider>
@@ -54,7 +55,7 @@ describe("a coding thread's composer after it accepts a review", () => {
     fireEvent.click(await waitFor(() => within(screen.getByRole("dialog")).getByRole("button", { name: "Open a PR" })));
     await waitFor(() => expect(server.posts.map(verdictOf)).toContainEqual({ verdict: "accepted", land: "pull-request" }));
     // The landing opened a pull request: the task waits on it, with no review hold open.
-    rerender(view({ ...workingTask, runLink: { ...RUN } }));
+    rerender(view({ ...workingTask, run: { ...RUN, attempt: 1 } }));
     fireEvent.change(screen.getByLabelText("Message this task"), { target: { value: "Merged, I checked." } });
     const send = within(screen.getByRole("dialog")).getByRole("button", { name: "Send" }) as HTMLButtonElement;
     await waitFor(() => expect(send.disabled).toBe(false));

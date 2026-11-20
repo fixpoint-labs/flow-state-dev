@@ -13,7 +13,8 @@ import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import type { RecordedWorkView } from "@flow-state-dev/harness-manager/browser";
 import type { ViewOutput } from "@flow-state-dev/core/types";
-import { AppProvider, type AppTask } from "../src/app";
+import { AppProvider, type CodingBoardTask } from "../src/app";
+import { boardRow } from "./board-row";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
@@ -30,7 +31,7 @@ export interface StubData {
    * Each board's tasks by its session id, as the coding board view answers them: a row's `id` and
    * `asks`. Read on every view call, so a test that changes a row here changes what the server holds.
    */
-  board?: Record<string, AppTask[]>;
+  board?: Record<string, CodingBoardTask[]>;
   /** Answers a POST the screen made: a throw fails it as a lost connection does. Absent: done. */
   answer?: (posted: Posted) => Promise<void> | void;
 }
@@ -59,12 +60,13 @@ const reviewHold = (stop = "stop-1"): InboxHold =>
   }) as InboxHold;
 
 /** A coding task under review in {@link RUN}, as the coding board's row reads. */
-export const underReview = (task: AppTask, stop = "stop-1"): AppTask => ({
-  ...task,
-  openHold: { kind: "review", prompt: "Accept the changes, or ask for changes in words." },
-  asks: [reviewHold(stop)],
-  runLink: { ...RUN },
-});
+export const underReview = (task: CodingBoardTask, stop = "stop-1"): CodingBoardTask =>
+  boardRow({
+    ...task,
+    asks: [reviewHold(stop)],
+    state: undefined,
+    run: { ...RUN, attempt: 1 },
+  });
 
 /** A client over the stand-in, `wrap` to put a tree under the lab's provider on it, every POST made, `board` to change what the coding board holds, and `push` for a new item. */
 export function stubServer(data: StubData = {}) {
@@ -85,7 +87,7 @@ export function stubServer(data: StubData = {}) {
       if (path.endsWith("/views/sessionTurns")) return json({ output: [], topics: [] });
       if (path.endsWith("/views/codingBoard")) {
         const { sessionId } = body.input as { sessionId: string };
-        return json({ output: (board[sessionId] ?? []).map((task) => ({ id: task.id, asks: task.asks ?? [] })), topics: [] });
+        return json({ output: (board[sessionId] ?? []).map((task) => ({ id: task.id, asks: task.asks })), topics: [] });
       }
       const posted = { path, body };
       posts.push(posted);

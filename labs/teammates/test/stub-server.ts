@@ -13,7 +13,7 @@
 import { createElement, useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { createClient, type Client, type ClientFetch, type SessionConnectionStatus } from "@flow-state-dev/client";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { taskView, type InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { AppProvider, useAppClient } from "../src/app";
 import type { ConversationView, WindowMark } from "../src/lib/conversation";
 import type { ScriptedServer } from "./scripted-server";
@@ -53,21 +53,28 @@ export interface Posted {
 /** How long a test waits for what the first board read draws (a popup's title, a panel's row): the page draws, reads, then draws again, and a full suite's load can stretch that to seconds. */
 export const POPUP_READ = { timeout: 5_000 };
 
-/** A coding board row: the fields a test names over a plain pending row with nothing open. */
-export const codingTask = (fields: Partial<CodingBoardTask> & { id: string }): CodingBoardTask => ({
-  goal: fields.title ?? fields.id,
-  status: "pending",
-  attempts: 0,
-  asks: [],
-  harness: null,
-  review: null,
-  landed: null,
-  error: null,
-  pullRequests: [],
-  runFlow: null,
-  detail: null,
-  ...fields,
-});
+/**
+ * A coding board row: the fields a test names over a plain pending row with nothing open. Its
+ * `title` and `state` are the view's own (`taskView` of the row with its `asks`) unless the test names them.
+ */
+export const codingTask = (fields: Partial<CodingBoardTask> & { id: string }): CodingBoardTask => {
+  const row = {
+    goal: fields.title ?? fields.id,
+    status: "pending",
+    attempts: 0,
+    asks: [],
+    harness: null,
+    review: null,
+    landed: null,
+    error: null,
+    pullRequests: [],
+    runFlow: null,
+    detail: null,
+    ...fields,
+  };
+  const seen = taskView({ ...row, board: "s1" }, row.asks);
+  return { ...row, title: fields.title ?? seen.title, state: fields.state ?? seen.state };
+};
 
 /**
  * An open hold on task `taskId` of Lead's board, as the view's `asks` carries it: a question,

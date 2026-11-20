@@ -1,6 +1,6 @@
 import { isSendKey, useDraftSend, useJumpToLatest, useSubmit } from "@flow-state-dev/react";
 import { useMemo, type FormEvent, type KeyboardEvent } from "react";
-import { useApp, useTaskWork, withPullRequestLinks, type AppTask } from "../app";
+import { pullRequestLinks, useApp, useTaskWork, type CodingBoardTask } from "../app";
 import { useLines, WorkLines } from "./lines";
 import { LoadEarlier } from "./LoadEarlier";
 import { ReviewCard } from "./ReviewCard";
@@ -39,7 +39,7 @@ export function ThreadView({
   onClose,
 }: {
   sessionId: string;
-  task: AppTask;
+  task: CodingBoardTask;
   pinned: boolean;
   /** You dismissed this failed attempt: it no longer waits on you. */
   dismissed?: boolean;
@@ -52,7 +52,8 @@ export function ThreadView({
   // The board keys this view by task, so a change of task remounts it and the feed starts over.
   const feed = useJumpToLatest();
   const column = statusColumn(task);
-  const question = task.openHold && task.openHold.kind !== "review" ? task.openHold : undefined;
+  const ask = task.asks[0]?.ask;
+  const question = ask !== undefined && ask.kind !== "review" ? ask : undefined;
   const words = text.trim();
   const finished = task.status === "completed" || task.status === "cancelled" || task.status === "errored";
 
@@ -196,24 +197,24 @@ export function ThreadView({
           Couldn't {pinned ? "unpin" : "pin"}: {pin.error}
         </p>
       )}
-      {task.status === "errored" && task.error !== undefined ? (
+      {task.status === "errored" && task.error != null ? (
         <div role="alert" className="flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive [overflow-wrap:anywhere]">
           <ErrorBody message={task.error} />
         </div>
       ) : null}
       {/* Ready for review is said once, by its card at the end of the feed; a failure's reason, by the alert above. */}
-      {column === "review" || (task.status === "errored" && task.error !== undefined) ? null : waitsOnPullRequest(task) ? (
-        <PullRequestOpen task={withPullRequestLinks(task, work)} className="block" />
+      {column === "review" || (task.status === "errored" && task.error != null) ? null : waitsOnPullRequest(task) ? (
+        <PullRequestOpen pullRequests={pullRequestLinks(task, work)} className="block" />
       ) : (
         <div className="truncate text-xs text-muted-foreground" title={statusLine(task)}>{statusLine(task)}</div>
       )}
-      {task.landed === undefined ? null : <LandedOutcome landed={task.landed} />}
+      {task.landed == null ? null : <LandedOutcome landed={task.landed} />}
       <LoadEarlier load={work?.loadEarlier} />
       <WorkLines lines={lines} mine={feed.mine} />
       {/* Ready for review closes the feed, in the one scroll area, so a long review reads like the rest of it. The accept and the request for changes stay under it. */}
       {column === "review" ? <ReviewCard task={task} review={work?.review} /> : null}
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
-      {task.status === "in_progress" && task.openHold === undefined && !waitsOnPullRequest(task) ? (
+      {task.status === "in_progress" && task.asks.length === 0 && !waitsOnPullRequest(task) ? (
         <StreamingIndicator message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
     </SessionOverlay>

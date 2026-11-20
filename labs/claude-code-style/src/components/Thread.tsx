@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { FlowProvider, useInterruptKeys, useJumpToLatest, type ItemLine } from "@flow-state-dev/react";
 import { FILED_TASK_DATA_TYPE, type FiledTaskValue } from "@flow-state-dev/workforce/browser";
-import { useApp, useThread, type AppProject, type AppSession, type AppTask } from "../app";
+import { useApp, useThread, type AppProject, type AppSession, type CodingBoardTask } from "../app";
 import { elapsed, useNow } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
 import { cn } from "../lib/utils";
@@ -48,7 +48,7 @@ export function Thread({
   session: AppSession;
   project: AppProject | undefined;
   /** The session's task rows, as the app reads them for this thread and its pane; `undefined` until read. */
-  tasks: AppTask[] | undefined;
+  tasks: CodingBoardTask[] | undefined;
   onOpenThread: (taskId: string) => void;
   /** Show where this session's background tasks are listed. */
   onViewTasks?: () => void;
