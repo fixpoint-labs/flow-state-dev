@@ -479,7 +479,7 @@ The trace types are `block_trace`, `router_decision`, `state_snapshot` and `gene
 | --- | --- |
 | A client stream | Drops trace types by default. `?include=trace` keeps them. The JS client sends it with `includeTrace: true`, `useRequestStream` takes `includeTrace`, the DevTool requests it, and the `/continue` route takes the same parameter. |
 | `fsdev run` | Unfiltered. See [below](#what-fsdev-run-streams). |
-| `FSDEV_TRACE_OBSERVABILITY` | Turns trace events on or off. [Environment variables](./environment.md) lists the values, the default and what a completed block leaves when it is off. |
+| `FSDEV_TRACE_OBSERVABILITY` | Turns trace events on or off. [Environment variables](./environment.md) lists the values and the default. The `lean` row above says what a completed block leaves when it is off. |
 
 ### Where trace events are kept
 

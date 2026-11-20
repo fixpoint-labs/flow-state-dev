@@ -37,6 +37,8 @@ Written by `docs-writer` (sonnet), 2694 words. Scenario: A `research` flow that 
 
 - After the loop (review): section 1's "0 facts" is a miscount by the loop; environment.facts.md holds the facts. Read the record and the final fact check. Spot-checked the `GITHUB_TOKEN` default against packages/workforce/src/service-flows/github/operator.ts:20-34 (`GITHUB_TOKEN`, else `gh auth token`). `operatorGitHubToken` is on the package root through packages/workforce/src/index.ts:170. No change. 1393 words. Page sha256 943861ee84cc.
 
+- After the loop (review): the depth pass cut this page's example-app tables, so three pages that pointed at them were edited to say what this page now holds. catalog/starters/claude-code-style.md and catalog/starters/teammates.md say the app reads its variables in its `fsdev.config.mts` (labs/claude-code-style/fsdev.config.mts, labs/teammates/fsdev.config.mts) and that this page lists the model and search keys. reference/items.md's `FSDEV_TRACE_OBSERVABILITY` row points to its own `lean` row for what a completed block leaves. Kept.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 219fe8ab537e, and the 21 Reference row(s) pass 6 moved.
