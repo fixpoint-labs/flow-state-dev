@@ -15,12 +15,12 @@
  * gets the couldn't-reach screen, whose Retry reads it again. Once in, a later
  * failure keeps the shell and draws the connection bar above it instead.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useLayoutEffect, useState, type ReactNode } from "react";
 import { GAPS, type Gaps } from "./gaps";
 import type { ThemeLook } from "./lib/theme";
 import type { Connection } from "./lib/connection";
 import { LabProvider, useLab } from "./lib/lab-data";
-import { DirectoryProvider, useProjects, useWorkers } from "./lib/directory";
+import { DirectoryProvider, useDirectoryLanded, useProjects, useWorkers } from "./lib/directory";
 import { useGate } from "./lib/gate";
 import { ConnectionBanner } from "./components/flow-state/connection-banner";
 import { ConnectionScreen } from "./components/flow-state/connection-screen";
@@ -69,11 +69,16 @@ function LabSessionFeeds({ children }: { children: ReactNode }) {
   return <SessionFeedsProvider client={client}>{children}</SessionFeedsProvider>;
 }
 
+/** What the page draws while the Lab is first read. */
+const READING = (
+  <p className="p-6 text-sm text-muted-foreground" data-testid="loading">
+    Reading the Lab…
+  </p>
+);
+
 function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ThemeLook | undefined }) {
   const { gate, retry } = useGate();
-  if (gate.state === "reading") {
-    return <p className="p-6 text-sm text-muted-foreground" data-testid="loading">Reading the Lab…</p>;
-  }
+  if (gate.state === "reading") return READING;
   if (gate.state === "refused") {
     return (
       <ConnectionScreen kind="refused" title="This Lab won't let Shift Manager in" failure={gate.failure}>
@@ -93,9 +98,16 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   // Every read but the gate's waits behind it: the directory, the Inbox view and the screens' own.
   return (
     <DirectoryProvider>
-      <Frame gaps={gaps} devtoolUrl={devtoolUrl} look={look} />
+      <Landed>
+        <Frame gaps={gaps} devtoolUrl={devtoolUrl} look={look} />
+      </Landed>
     </DirectoryProvider>
   );
+}
+
+/** The frame, once the directory's first reads have landed; until then, the page is still reading the Lab. */
+function Landed({ children }: { children: ReactNode }) {
+  return useDirectoryLanded() ? children : READING;
 }
 
 /** The frame, once the Lab let Shift Manager in. */
@@ -115,7 +127,8 @@ function Frame({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   const { toggleNav, togglePanel } = panels;
   const hasPanel = PANEL_NAMES[route.level] !== undefined;
 
-  useEffect(() => {
+  // Bound as the frame commits, not after paint: a key pressed the moment the page draws is heard.
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();

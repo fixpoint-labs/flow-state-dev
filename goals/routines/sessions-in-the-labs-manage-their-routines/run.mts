@@ -13,7 +13,7 @@ import { REPO_ROOT, goalTmpDir, loadFixture, runGoal, silentLogger, sleep } from
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
 import * as contract from "../../../labs/test-support/contract.ts";
 import type { ScriptedCall, ScriptedStep } from "../../../labs/test-support/contract.ts";
-import type { Routine } from "../../../packages/shift-manager/src/lib/routines.ts";
+import type { ListedRoutine as Routine } from "@flow-state-dev/workforce/browser";
 import { build } from "esbuild";
 import { openTeammates } from "../../../labs/teammates/host.mts";
 import { openClaudeCodeStyle } from "../../../labs/claude-code-style/host.mts";

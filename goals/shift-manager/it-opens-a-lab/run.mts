@@ -135,7 +135,7 @@ const diff = (want: Iterable<string>, got: Iterable<string>) => {
 function swapFor(control: string): { targets: string[]; with: string } | undefined {
   const lib = (file: string) => join(SHIFT_MANAGER, "src", "lib", file);
   if (control === "static-names") {
-    return { targets: [lib("reads.ts")], with: join(HERE, "controls", "static-names.ts") };
+    return { targets: [lib("directory-reads.ts")], with: join(HERE, "controls", "static-names.ts") };
   }
   if (control === "optimistic-post") {
     return { targets: [lib("deliver.ts")], with: join(HERE, "controls", "optimistic-post.ts") };

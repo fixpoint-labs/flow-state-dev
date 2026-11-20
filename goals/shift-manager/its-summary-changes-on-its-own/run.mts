@@ -59,7 +59,7 @@ import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, installWorkers, modulePatchEnv, runGoal, silentLogger, sleep, workforceTree, type ModulePatch } from "../../lib/index.mts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { useInbox } from "../../../packages/shift-manager/src/lib/inbox.ts";
-import { readHarnessUsageView } from "../../../packages/shift-manager/src/lib/usage.ts";
+import { recheckHarnessUsage } from "@flow-state-dev/harness-manager/browser";
 import { Inbox } from "../../../packages/shift-manager/src/surfaces/Inbox.tsx";
 import { GAPS } from "../../../packages/shift-manager/src/gaps.ts";
 
@@ -321,7 +321,8 @@ function mountProvider(on: Host) {
       if (inbox.section === undefined) return;
       shown.push({ at: Date.now(), needsYou: inbox.section.ok ? inbox.section.value.items.length : undefined, failure: inbox.section.ok ? undefined : inbox.section.failure.message });
       void client.view(routinesView, {}).catch(() => {});
-      void readHarnessUsageView(client).catch(() => {});
+      // Usage's Re-check, as the screen sends it when it opens (FIX-2775: the rows are then the view's).
+      void recheckHarnessUsage(client).catch(() => {});
     }, [inbox.section, client]);
     return loaded === undefined ? null : createElement(Inbox, { snapshot: loaded, itemId: null, gaps: GAPS } as never);
   }

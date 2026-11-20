@@ -148,3 +148,14 @@ export function useSessions(): Directory["sessions"] {
 export function useProjects(): Directory["projects"] {
   return useDirectory().projects;
 }
+
+/**
+ * Whether the directory's first reads have landed, or failed: the inventory,
+ * the session list and the projects. The frame waits for it, as it waited for
+ * the whole-Lab read before, so no screen draws half a directory. The roster
+ * isn't waited for: a screen says when it hasn't loaded.
+ */
+export function useDirectoryLanded(): boolean {
+  const { workers, sessions, projects } = useDirectory();
+  return workers.inventory !== undefined && sessions.list !== undefined && projects.section !== undefined;
+}

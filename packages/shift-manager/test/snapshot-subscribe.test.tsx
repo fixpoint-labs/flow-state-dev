@@ -55,6 +55,8 @@ vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
 // FIX-2774: the summary's needs-you numbers read the inbox view, whose own subscription isn't this test's.
 /** When the view's answer last landed, as `useInbox` says it, and its refresh. */
 let viewReadAt = Date.UTC(2026, 10, 4, 14, 2);
+/** The directory the page draws: one good read, as one landed. */
+let directoryShown: LabSnapshot | undefined;
 const viewRefresh = vi.fn();
 vi.mock("../src/lib/inbox", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/lib/inbox")>();
@@ -64,7 +66,7 @@ vi.mock("../src/lib/inbox", async (importOriginal) => {
 // FIX-2775: the directory's reads, whose own subscriptions aren't this test's either.
 vi.mock("../src/lib/directory-reads", async () => {
   const { useFixedReads } = await import("./helpers/directory");
-  return { useDirectoryReads: () => useFixedReads(() => undefined) };
+  return { useDirectoryReads: () => useFixedReads(() => directoryShown) };
 });
 
 let sessions: SessionSummary[] = [];
@@ -123,6 +125,7 @@ beforeEach(() => {
   holdNext = false;
   viewReadAt = Date.UTC(2026, 10, 4, 14, 2);
   viewRefresh.mockClear();
+  directoryShown = snapshotOf();
 });
 afterEach(() => cleanup());
 

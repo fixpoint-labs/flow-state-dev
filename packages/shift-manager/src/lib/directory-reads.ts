@@ -7,7 +7,7 @@
  * Every one is kept current by its own notices, so nothing here re-reads on
  * a whole-Lab clock.
  */
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { useResource, useSessionList } from "@flow-state-dev/react";
 import { privateProjectsResource, projectsResource, workerInventoryResource } from "@flow-state-dev/workforce/browser";
@@ -67,7 +67,10 @@ export function useDirectoryReads(): DirectoryReads {
   const own = useRows(useResource(privateProjectsResource, { client, all: true }), privateProject);
   const roster = useRoster();
   const listing = useSessionList({ client, includeDispatchRuns: true, includeStatus: false });
-  const listed = listing.isLoading && listing.sessions.length === 0 && listing.error === null ? undefined : listing.sessions;
+  // Undefined only before the first list lands: a later read of an empty list is still a list.
+  const landed = useRef(false);
+  if (!listing.isLoading || listing.sessions.length > 0 || listing.error !== null) landed.current = true;
+  const listed = landed.current ? listing.sessions : undefined;
   const sessions = useMemo(() => ({ list: listed, refresh: listing.refresh }), [listed, listing.refresh]);
   const projects = useMemo(() => ({ shared, own }), [shared, own]);
   return { inventory, roster, sessions, projects };

@@ -12,7 +12,7 @@
  * id), both read by the conversation's follower, and its Talk lines (`useTalk`,
  * workforce's worker messages view), under its `AppProvider`, and Shift Manager's worker
  * conversation (the client's `sessionFeed`, which its shared session feed holds), its message log
- * (`useMessages`), a project's entries (`useProjectRead`) and a task screen
+ * (`useMessages`), a project's entries (`useProjectWorkstreams`) and a task screen
  * waiting on its run's link (`TaskProvider`), the last three under the real
  * `LabProvider`, rendered by react-dom over happy-dom. Each view has its own
  * client, whose fetcher counts the reads it makes.
@@ -68,9 +68,9 @@ import type { ConversationView } from "../../../labs/teammates/src/lib/conversat
 import { useTalk } from "../../../labs/teammates/src/lib/talk.ts";
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
-import { useProjectRead } from "../../../packages/shift-manager/src/lib/projects.ts";
+import { useProjectWorkstreams } from "../../../packages/shift-manager/src/lib/projects.ts";
 import { useMessages } from "../../../packages/shift-manager/src/lib/messages.ts";
-import { conversationBoardRef } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { conversationBoardRef } from "../../../packages/shift-manager/src/lib/boards.ts";
 import { TaskProvider, useTask } from "../../../packages/shift-manager/src/lib/task.tsx";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -382,18 +382,19 @@ function mountViews(on: Host, sessionId: string) {
     const { snapshot, refresh } = useLab();
     labRead = refresh;
     const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot : undefined;
-    const { read } = useProjectRead({ visibility: "shared", id: PROJECT }, loaded !== undefined, loaded?.readAt ?? 0);
-    const entries = read !== undefined && "value" in read && read.value !== null ? read.value.entries.map((e) => e.id) : undefined;
+    // FIX-2775: the entries are read on their own, by the project's prefix, from the moment the view draws them.
+    const { value } = useProjectWorkstreams({ visibility: "shared", id: PROJECT });
+    const entries = value === undefined ? undefined : value.entries.map((e) => e.id);
     const key = entries === undefined ? null : entries.join(",");
     useEffect(() => {
       if (entries !== undefined) smProject.push({ at: Date.now(), value: { entries } });
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [key]);
-    // The Messages view reads the log once the snapshot has landed, on its `readAt`.
-    return loaded === undefined ? null : createElement(MessagesProbe, { readAt: loaded.readAt });
+    // The Messages view reads the log once the Lab has let Shift Manager in.
+    return loaded === undefined ? null : createElement(MessagesProbe);
   }
-  function MessagesProbe({ readAt }: { readAt: number }) {
-    const { rows } = useMessages(readAt);
+  function MessagesProbe() {
+    const { rows } = useMessages();
     const ids = rows == null ? undefined : rows.map((m) => m.id);
     const key = ids === undefined ? null : ids.join(",");
     useEffect(() => {
