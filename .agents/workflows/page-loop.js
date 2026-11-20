@@ -36,8 +36,8 @@
  *   - pass 5 runs after pass 6, and checks the Reference rows pass 6 moved as well as the page: a
  *     row keeps no claim the fact check found untrue;
  *   - every revision is followed by pass 4 again, and pass 9 reads the page pass 4 last read.
- *   - a Reference page that closes gets a final fact check of the page as it closed; its findings
- *     go through one last revise round and pass 4, and the record lists them under pass 5.
+ *   - a Reference page gets a final fact check of the page as it closed, escalated or not; its
+ *     findings go through one last revise round and pass 4, and the record lists them under pass 5.
  *
  * REVISE. Passes 4 (a failing check), 5 (an untrue claim), 6 (mechanism on the page), 7
  * (`docs-editor` says REVISE) and 9 (a question most readers missed) send the page back to pass 8.
@@ -620,9 +620,11 @@ ${pending.map((f, i) => `${i + 1}. [${f.from}] ${one(f.text)}`).join('\n')}`,
 // Pass 5 reads the page once, after the draft. A Reference page is long and keeps changing through the
 // revise rounds, so on the pilots the closed page still carried untrue rows pass 5 never saw. One more
 // fact check reads the page as it closed; what it finds goes through one last revise round and pass 4.
+// It runs on an escalated page too: the long pages that escalate are the ones that changed most, and an
+// open prose finding is no reason to leave an untrue row for the owner to find.
 
 let finalCheck = null
-if (plan.type === 'reference' && !escalated) {
+if (plan.type === 'reference') {
   phase('Check')
   const closedSha = checkRuns.at(-1).sha
   const finalFacts = await agent(
@@ -652,7 +654,7 @@ ${finalFacts.untrue.map((u, i) => `${i + 1}. ${one(u.claim)} Untrue: ${one(u.tru
       ...fix.declined.map((d) => ({ from: 'final fact check', text: `Declined: ${one(d.finding)} (${one(d.why)})` })),
       ...(checks.ok ? [] : [{ from: 'pass 4', text: `After the final fact-check fix: ${checks.checks.filter((x) => !x.ok).map((x) => one(x.check)).join(', ')}` }]),
     ]
-    if (open.length) escalated = open
+    if (open.length) escalated = [...(escalated ?? []), ...open]
   }
 }
 

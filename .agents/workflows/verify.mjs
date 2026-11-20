@@ -10910,6 +10910,18 @@ check('page-loop: a correction the final fix declines stays open, and the record
   assert.doesNotMatch(result.recordText, /^## 10 · Owner read/m)
 })
 
+check('page-loop: an escalated Reference page still gets the final fact check, and stays escalated', async () => {
+  const tree = { [`${LOOP_DIR}/reference/blocks.md`]: { recordSitemap: 'R-01', title: 'Blocks', type: 'reference' } }
+  const finalUntrue = [{ row: 0, claim: 'X is exported from /types.', truth: 'X is exported from /internal only.', where: 'core/src/internal/index.ts:1', corrected: '' }]
+  const { result, calls } = await run('page-loop.js', { args: { ...loopArgs, page: 'R-01' }, respond: loopResponder({ entries: blocksEntries, tree, editor: ['REVISE'], finalUntrue }) })
+  assert.equal(result.status, 'escalated', 'the open pass 7 findings still escalate')
+  assert.equal(labels(calls, 'final-fact-check').length, 1, 'the closed page is fact-checked all the same')
+  assert.equal(labels(calls, 'final-fix').length, 1)
+  assert.match(result.recordText, /Final fact check of the page as it closed, sha256 \S+: 1 untrue, fixed in a last round/)
+  assert.match(result.recordText, /^- \[pass 7\] /m, 'the open editor findings are still listed for the owner')
+  assert.doesNotMatch(result.recordText, /^## 10 · Owner read/m)
+})
+
 check('page-loop: a page that is not Reference gets no final fact check', async () => {
   const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ finalUntrue: [{ row: 0, claim: 'c', truth: 't', where: 'w', corrected: '' }] }) })
   assert.equal(result.status, 'complete')
