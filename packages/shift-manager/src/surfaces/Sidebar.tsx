@@ -328,27 +328,27 @@ function ProjectWorkstreams({ project, route, to }: { project: Project; route: R
   const here = route.level === "project" && route.projectId === project.id && (route.visibility ?? "shared") === project.visibility;
   return (
     <div className="pl-6" data-testid="nav-project-workstreams">
-          {entries === undefined && failure !== undefined ? (
-          <p className="px-1.5 py-[5px] text-xs text-muted-foreground" data-testid="nav-workstreams-failure">
-            Workstreams didn't load.{" "}
-            <button type="button" className="underline" onClick={reread}>
-              Retry
-            </button>
-          </p>
-        ) : entries === undefined ? null : entries.length === 0 ? (
-          <p className="px-1.5 py-[5px] text-xs text-muted-foreground" data-testid="nav-workstreams-none">
-            No workstreams
-          </p>
-        ) : (
-          entries.map((entry) => (
-            <StreamItem
-              key={`${entry.owner}/${entry.id}`}
-              entry={entry}
-              active={here && route.entry?.owner === entry.owner && route.entry.id === entry.id}
-              to={to({ owner: entry.owner, id: entry.id })}
-            />
-          ))
-        )}
+      {entries === undefined && failure !== undefined ? (
+        <p className="px-1.5 py-[5px] text-xs text-muted-foreground" data-testid="nav-workstreams-failure">
+          Workstreams didn't load.{" "}
+          <button type="button" className="underline" onClick={reread}>
+            Retry
+          </button>
+        </p>
+      ) : entries === undefined ? null : entries.length === 0 ? (
+        <p className="px-1.5 py-[5px] text-xs text-muted-foreground" data-testid="nav-workstreams-none">
+          No workstreams
+        </p>
+      ) : (
+        entries.map((entry) => (
+          <StreamItem
+            key={`${entry.owner}/${entry.id}`}
+            entry={entry}
+            active={here && route.entry?.owner === entry.owner && route.entry.id === entry.id}
+            to={to({ owner: entry.owner, id: entry.id })}
+          />
+        ))
+      )}
     </div>
   );
 }

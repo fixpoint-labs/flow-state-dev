@@ -25,8 +25,8 @@
  * workforce's `stopRun` and draws *interrupted* only once the stream reads
  * `aborted` (the run's record decides).
  *
- * A task's asks are not read here: the screens read them from the snapshot
- * until the Inbox's own view answers them.
+ * A task's asks are not read here: the screens read them from the Inbox
+ * view (`inbox.ts`).
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { RequestStatus } from "@flow-state-dev/core/types";

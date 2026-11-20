@@ -66,8 +66,8 @@ function isConversationTaskChange(item: OutputItem): boolean {
 /**
  * Watches the conversation's task-list view (`useConversationTasks`): current
  * on each board change, with the view's own timer where push can miss one. A
- * failed read leaves the last answer, or the feed's record. The snapshot hears
- * the same moves on its own (`lab-data.tsx`), so what it counts agrees with
+ * failed read leaves the last answer, or the feed's record. The Inbox view
+ * hears the same moves on its own (`inbox.ts`), so what it counts agrees with
  * the card.
  */
 function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sessionId: string; boardRef: string; children: ReactNode }) {

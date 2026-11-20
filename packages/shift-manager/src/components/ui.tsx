@@ -2,8 +2,8 @@
  * Shift Manager's small shared pieces: the named empty state, a failed section with
  * Retry, tabs whose selection lives in the URL, a worker's status mark, a feed's
  * Load earlier, and the parts of design v2's look every screen draws with: a screen's title,
- * mono meta text, a task's state square, and the snapshot's *as of* line with
- * the dimming its counts take while a read the user asked for runs.
+ * mono meta text, a task's state square, and the *as of* line that says when
+ * a screen's reads last landed.
  *
  * Every piece is square (v2 draws no rounded corner) and paints only tokens.
  */
@@ -195,14 +195,8 @@ export function Meta({
 }
 
 /**
- * Classes for counts while a read the user asked for runs (`useLab().asking`):
- * dimmed until it lands. A read nobody asked for gives no sign.
- */
-export const ASKING_CLASS = "opacity-60 transition-opacity";
-
-/**
- * When the snapshot was last read, *as of 14:02 · refresh*, never that it is
- * live. *refresh* reads the Lab now, as R does.
+ * When a screen's reads last landed, *as of 14:02 · refresh*, never that they
+ * are live. *refresh* reads them again now, as R does.
  */
 export function AsOf({ readAt, onRefresh, testId }: { readAt: number; onRefresh: () => void; testId?: string }) {
   return (
