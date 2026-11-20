@@ -50,11 +50,51 @@ describe("the context strip", () => {
   it("shows the folder, model and harness the server read, and the harness chips with their remedy", async () => {
     render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
     const strip = await screen.findByRole("region", { name: "Working context" });
-    await waitFor(() => expect(within(strip).getByTestId("context-folder").textContent).toBe("folder /work/launch-site"));
-    expect(within(strip).getByTestId("context-model").textContent).toBe("model openai/gpt-6-luna");
-    expect(within(strip).getByTestId("context-harness").textContent).toBe("default harness Cursor");
+    // The folder reads by its last two segments; the whole path is in its tooltip.
+    await waitFor(() => expect(within(strip).getByTestId("context-folder").textContent).toBe("Working folder work / launch-site"));
+    expect(within(strip).getByTestId("context-folder").title).toContain("Working folder: /work/launch-site");
+    expect(within(strip).getByTestId("context-model").textContent).toBe("Model gpt-6-luna");
+    expect(within(strip).getByTestId("context-harness").textContent).toBe("Default harness Cursor");
     const chips = within(strip).getByRole("group", { name: "Coding harnesses" });
     await waitFor(() => expect(chips.querySelector('[data-harness="codex"]')?.textContent).toContain("Run `codex login`"));
+    // A harness that can't run shows Sign in, not its error, until asked: then what to do.
+    const codex = chips.querySelector<HTMLElement>('[data-harness="codex"]')!;
+    expect(within(codex).queryByRole("note")).toBeNull();
+    fireEvent.click(within(codex).getByRole("button", { name: "Sign in" }));
+    expect(within(codex).getByRole("note").textContent).toContain("Run `codex login`");
+    expect(within(chips).getByRole("button", { name: "Re-check harnesses" })).toBeTruthy();
+  });
+
+  /** A client whose lab-context and readiness reads are changed by `edit`. */
+  const editedReads = (lab: ReturnType<typeof scriptedServer>, edit: (view: string, value: unknown) => unknown) =>
+    ({
+      ...lab.client,
+      view: async (ref: { view: string }, input: unknown, options?: unknown) => {
+        const read = await lab.client.view(ref as never, input as never, options as never);
+        return { ...read, value: edit(ref.view, read.value) };
+      },
+    }) as unknown as Client;
+
+  it("warns on the default harness when it can't run here, so a coding task isn't sent to one that will fail", async () => {
+    const lab = scriptedServer({ speed: 0.05 });
+    const client = editedReads(lab, (view, value) =>
+      view === "readiness"
+        ? (value as { harness: string }[]).map((row) => (row.harness === "cursor" ? { ...row, ready: false, reason: "Cursor has no key", remedy: "Set CURSOR_API_KEY" } : row))
+        : value,
+    );
+    render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
+    const chip = await screen.findByTestId("context-harness");
+    await waitFor(() => expect(chip.dataset.ready).toBe("false"));
+    expect(chip.title).toContain("Set CURSOR_API_KEY");
+  });
+
+  it("says in the folder's tooltip what each coding worktree runs before and after its run", async () => {
+    const lab = scriptedServer({ speed: 0.05 });
+    const client = editedReads(lab, (view, value) => (view === "context" ? { ...(value as object), setup: "pnpm install --frozen-lockfile", checks: ["pnpm typecheck", "pnpm test"] } : value));
+    render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
+    const folder = await screen.findByTestId("context-folder");
+    await waitFor(() => expect(folder.title).toContain("Worktree setup: pnpm install --frozen-lockfile"));
+    expect(folder.title).toContain("Run checks: pnpm typecheck; pnpm test");
   });
 
   it("warns when a coding run's checkout of the folder would be refused", async () => {

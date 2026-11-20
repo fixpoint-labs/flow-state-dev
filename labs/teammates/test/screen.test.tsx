@@ -836,6 +836,28 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(screen.queryByRole("form", { name: "Edit tester" })).toBeNull());
   });
 
+  it("edits a teammate from the conversation's header: Edit teammate opens the form under it, and Reset sits beside it once edited", async () => {
+    const lab = fast();
+    const resets = () => lab.rosterWrites.filter((w) => w.action === "reset").map((w) => w.input.id);
+    render(<TestProvider server={lab} client={stubServer().client}><App /></TestProvider>);
+    await waitFor(() => expect(workerRow("researcher")).not.toBeNull());
+    fireEvent.click(workerRow("researcher"));
+    const open = await within(conversation()).findByRole("button", { name: "Edit teammate" });
+    expect(open.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(open);
+    const edit = within(conversation()).getByRole("form", { name: "Edit researcher" });
+    // Not edited yet: nothing to reset.
+    expect(within(conversation()).queryByRole("button", { name: /Reset/ })).toBeNull();
+    fireEvent.change(within(edit).getByLabelText("Name of researcher"), { target: { value: "Ada" } });
+    await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save" })));
+    // Saved: the form closes and the header names the new name.
+    await waitFor(() => expect(within(conversation()).getByRole("heading", { name: "Ada" })).toBeTruthy());
+    expect(within(conversation()).queryByRole("form", { name: /^Edit / })).toBeNull();
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));
+    await act(async () => fireEvent.click(within(conversation()).getByRole("button", { name: "Reset Ada to default" })));
+    expect(resets()).toEqual(["teammates.researcher"]);
+  });
+
   // FIX-2526.
   it("renames a teammate from the files, and the new name shows in the list, header, task lines and Messaged lines; Reset puts the file's name back", async () => {
     const server = stubServer({ board: { [LEAD]: [codingTask({ id: "t-ask", assignee: "teammates.researcher", title: "Check the launch date", status: "in_progress" })] } });

@@ -98,7 +98,7 @@ export async function openTeammates(options: TeammatesOptions) {
       scripted === undefined ? claudeCode() : claudeCode().without(harnesses.slots.harnesses, "claude-code"),
     ],
     fill: { [harnesses.slots.harnesses]: scripted === undefined ? [codexHarness(), cursorHarness({ model: "composer-2.5" })] : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")] },
-    flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, model: options.model, harness, delegates }))],
+    flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, harness, delegates }))],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
     dispatchDrainTimeoutMs: codingDrainBudgetMs({ runTimeoutMs, checks }),
