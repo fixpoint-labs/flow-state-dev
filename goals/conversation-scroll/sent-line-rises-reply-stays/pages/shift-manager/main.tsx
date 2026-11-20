@@ -11,7 +11,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Conversation } from "../../components/Conversation";
-import { toWorker } from "../../lib/reads";
+import { toWorker } from "../../lib/workers";
 import { TaskSession } from "../../surfaces/TaskSession";
 import "../../styles.css";
 import { exposeGoal, script } from "../script";
