@@ -38,13 +38,27 @@ export interface RunCommits {
 /**
  * Git as the commit history really is, not as the checkout says it is. A run
  * shares its checkout's object store and refs, so it can plant a replace ref,
- * a graft or a commit-graph that gives the base its own work as history,
- * and its work would count none. Every read here ignores all three.
+ * a graft or a commit-graph that gives the base its own work as history, or a
+ * shallow file that cuts its own history short, and its work would count
+ * none. Every read here ignores all four. `--shallow-file ""` is how git's own
+ * fetch says "no shallow file"; in a checkout whose history really is cut
+ * short, a read then fails on the missing parents and answers unverified.
  */
-const TRUE_HISTORY = { env: { GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: devNull }, config: ["-c", "core.commitGraph=false"] };
+const TRUE_HISTORY = {
+  env: { GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: devNull },
+  args: ["--shallow-file", "", "-c", "core.commitGraph=false"],
+};
 
-async function git(cwd: string, args: string[]): Promise<string> {
-  return (await run("git", [...TRUE_HISTORY.config, ...args], { cwd, timeoutMs: GIT_READ_TIMEOUT_MS, env: TRUE_HISTORY.env })).stdout;
+/** One git read in `cwd`, as {@link TRUE_HISTORY} reads it. With `onLine`, standard output is handed over line by line instead of returned. */
+async function git(cwd: string, args: string[], onLine?: (line: string) => void): Promise<string> {
+  return (
+    await run("git", [...TRUE_HISTORY.args, ...args], {
+      cwd,
+      timeoutMs: GIT_READ_TIMEOUT_MS,
+      env: TRUE_HISTORY.env,
+      ...(onLine === undefined ? {} : { onLine }),
+    })
+  ).stdout;
 }
 
 /** The commit `cwd`'s checkout is on, or `null` when git can't read one there. */
@@ -61,8 +75,9 @@ export async function headCommit(cwd: string): Promise<string | null> {
  * workspace host fetched it, `WorkspaceHost.baseTip`) when it has the recorded
  * cut in its history, else the cut. A run that merged the moved-on base into
  * its branch then owns none of the base's commits, as its pull request
- * doesn't. Any other tip (one that doesn't descend from the cut, one git can't
- * read in `cwd`, or none) leaves the cut, so a tip can only ever take the
+ * doesn't. Any other tip (one that doesn't descend from the cut, one that
+ * already has `cwd`'s HEAD in its history, one git can't read in `cwd`, or
+ * none) leaves the cut, so a tip can only ever take the
  * base's own commits out of a read. `null` for a record with no cut: the reads
  * fall back to the base's named copies, as {@link readRunCommits} says.
  */
@@ -70,9 +85,15 @@ export async function effectiveCut(cwd: string, cut: string | null, tip: string 
   if (cut === null || tip === null) return cut;
   try {
     await git(cwd, ["merge-base", "--is-ancestor", cut, tip]);
-    return tip;
   } catch {
     return cut;
+  }
+  // A tip that already has the run's HEAD (a run that pushed its own branch to the base) would read its work as none.
+  try {
+    await git(cwd, ["merge-base", "--is-ancestor", "HEAD", tip]);
+    return cut;
+  } catch {
+    return tip;
   }
 }
 
@@ -318,17 +339,13 @@ export async function readRunFilePatch(
     let patch = "";
     let truncated = false;
     // Line by line, so a huge patch is never held whole: past the cut, lines are dropped.
-    await run("git", ["diff", "--no-renames", "--no-color", start, head, "--", `:(literal)${path}`], {
-      cwd,
-      timeoutMs: GIT_READ_TIMEOUT_MS,
-      onLine: (line) => {
-        if (truncated) return;
-        const next = patch === "" ? line : `${patch}\n${line}`;
-        if (next.length > MAX_PATCH_CHARS) {
-          truncated = true;
-          patch = next.slice(0, MAX_PATCH_CHARS);
-        } else patch = next;
-      },
+    await git(cwd, ["diff", "--no-renames", "--no-color", start, head, "--", `:(literal)${path}`], (line) => {
+      if (truncated) return;
+      const next = patch === "" ? line : `${patch}\n${line}`;
+      if (next.length > MAX_PATCH_CHARS) {
+        truncated = true;
+        patch = next.slice(0, MAX_PATCH_CHARS);
+      } else patch = next;
     });
     return { path, patch, truncated, verified: true };
   } catch (error) {

@@ -151,6 +151,26 @@ describe("readRunFilePatch", () => {
     expect((await readRunFilePatch(dir, "main", cut, "*.txt")).patch).toBe("");
   });
 
+  it("answers the run's own patch after it planted a replace ref that swaps its HEAD for a harmless one", async () => {
+    const { dir, cut } = repo();
+    commitFiles(dir, "change", { "a.txt": "one\n2\nthree\n" });
+    const head = git(dir, "rev-parse", "HEAD").trim();
+    const harmless = git(dir, "commit-tree", `${cut}^{tree}`, "-p", cut, "-m", "harmless").trim();
+    git(dir, "replace", head, harmless);
+    const read = await readRunFilePatch(dir, "main", cut, "a.txt");
+    expect(read.verified).toBe(true);
+    expect(read.patch).toContain("+2");
+  });
+
+  it("answers the run's whole diff after it planted a shallow file that cuts its history at its HEAD", async () => {
+    const { dir, cut } = repo();
+    commitFiles(dir, "first change", { "b.txt": "b\n" });
+    commitFiles(dir, "second change", { "c.txt": "c\n" });
+    writeFileSync(join(dir, ".git", "shallow"), `${git(dir, "rev-parse", "HEAD").trim()}\n`);
+    expect(await readRunDiff(dir, "main", cut)).toMatchObject({ fileCount: 2, added: 2, removed: 0, verified: true });
+    expect((await readRunFilePatch(dir, "main", cut, "b.txt")).patch).toContain("+b");
+  });
+
   it(`cuts a patch at ${MAX_PATCH_CHARS} characters and says so`, async () => {
     const { dir, cut } = repo();
     commitFiles(dir, "big", { "big.txt": `${"x".repeat(99)}\n`.repeat(1_000) });

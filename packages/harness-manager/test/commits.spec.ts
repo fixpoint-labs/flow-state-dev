@@ -234,6 +234,21 @@ describe("a run that rewrites history in its own checkout", () => {
       expect(await readRunCommits(dir, "main", base)).toEqual({ count: 1, subjects: ["the run's change"], verified: true });
     });
   }
+
+  it("still counts every one of the run's commits after it planted a shallow file that cuts its history at its HEAD", async () => {
+    const dir = repo("local");
+    git(dir, "checkout", "-q", "-b", "run", "main");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    commit(dir, "the run's first change");
+    commit(dir, "the run's second change");
+    // Git would read HEAD as having no parents: one commit, and no meeting point with the base.
+    writeFileSync(join(dir, ".git", "shallow"), `${git(dir, "rev-parse", "HEAD").trim()}\n`);
+    expect(await readRunCommits(dir, "main", cut)).toEqual({
+      count: 2,
+      subjects: ["the run's second change", "the run's first change"],
+      verified: true,
+    });
+  });
 });
 
 describe("effectiveCut", () => {
@@ -243,8 +258,11 @@ describe("effectiveCut", () => {
   it("takes the base's tip in the cut's place when the tip has the cut in its history", async () => {
     const dir = repo("local");
     const cut = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "branch", "-q", "run");
     commit(dir, "a teammate's change");
     const tip = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "run");
+    commit(dir, "the run's change");
     expect(await effectiveCut(dir, cut, tip)).toBe(tip);
   });
 
@@ -255,6 +273,17 @@ describe("effectiveCut", () => {
     commit(dir, "unrelated");
     const unrelated = git(dir, "rev-parse", "HEAD").trim();
     for (const tip of [unrelated, "0".repeat(40), "not a commit", null]) expect(await effectiveCut(dir, cut, tip)).toBe(cut);
+  });
+
+  it("keeps the cut for a tip that already has the run's HEAD in its history", async () => {
+    // A run that pushed its own branch to the base: read against that tip, its work would count none and skip review.
+    const dir = repo("local");
+    git(dir, "checkout", "-q", "-b", "run", "main");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    commit(dir, "the run's change");
+    const head = git(dir, "rev-parse", "HEAD").trim();
+    const above = git(dir, "commit-tree", `${head}^{tree}`, "-p", head, "-m", "on top").trim();
+    for (const tip of [head, above]) expect(await effectiveCut(dir, cut, tip)).toBe(cut);
   });
 
   it("answers no cut for a record with none, whatever the tip", async () => {
