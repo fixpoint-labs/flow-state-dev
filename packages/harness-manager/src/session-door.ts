@@ -114,7 +114,7 @@ export interface HarnessSessionDoorOptions extends HarnessTalkTurnOptions {
    * nothing): start the turn the steer is owed. A Workforce host passes
    * `startOwedSteerTurn`.
    */
-  readonly onSteered?: (ctx: BlockContext, row: Task) => Promise<void>;
+  readonly onSteered?: (ctx: BlockContext, row: Task) => Promise<unknown>;
 }
 
 /** The newest of `rows`, by filing time, then attempts. */

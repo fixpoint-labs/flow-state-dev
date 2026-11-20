@@ -67,3 +67,28 @@ describe("a teammate's finished task's popup", () => {
     expect(within(popup).queryByRole("region", { name: "No result" })).toBeNull();
   });
 });
+
+describe("a task's popup before its own read answers", () => {
+  // A running task whose line reads "working · 24m": its popup must never say it hasn't started.
+  const started = doneRow(null, { status: "in_progress", run: { sessionId: "run_r", requestId: "q1", attempt: 1, startedAt: 1 }, leaseUntil: Date.now() + 60_000 });
+
+  it("says it is loading, never \"Not started yet.\", while the read hasn't answered", async () => {
+    const { popup } = openTask(started);
+    expect(popup.textContent).not.toContain("Not started yet.");
+    expect(within(popup).getByText("Loading…")).toBeTruthy();
+    // Once it answers, the task's own state shows: its run started.
+    await within(popup).findByText("Starting…");
+  });
+
+  it("says the task couldn't be loaded when its read fails, never \"Not started yet.\"", async () => {
+    const server = stubServer({ board: { wks_cos: [started] }, boardFails: true });
+    render(
+      <TestProvider client={server.client}>
+        <PopupView popup={{ kind: "task", sessionId: "wks_cos", taskId: "task_r" }} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => false} coders={[]} onClose={() => {}} />
+      </TestProvider>,
+    );
+    const popup = screen.getByRole("dialog");
+    await within(popup).findByText("This task couldn't be loaded.");
+    expect(popup.textContent).not.toContain("Not started yet.");
+  });
+});
