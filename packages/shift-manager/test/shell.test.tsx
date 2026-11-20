@@ -453,6 +453,9 @@ describe("Shift Coordinator (FIX-1722)", () => {
     setURL(`${lab.baseUrl}${path}`);
     render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
     await screen.findByTestId("shift-coordinator");
+    // The screen draws before the page's reads land (FIX-2775): wait for the directory and the session list,
+    // so a case acts on the page as drawn, not on one still reading.
+    await waitFor(() => expect(screen.queryByTestId("shift-coordinator-reading")).toBeNull(), { timeout: 10_000 });
     return { lab, client };
   }
 

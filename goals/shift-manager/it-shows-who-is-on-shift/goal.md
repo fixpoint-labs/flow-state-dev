@@ -28,7 +28,7 @@
 
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-shows-who-is-on-shift/run.mts`
 
-**Controls:** each rebuilds Shift Manager with `src/lib/derive.ts` swapped for a module under `controls/`.
+**Controls:** each rebuilds Shift Manager with `src/lib/shift.ts` swapped for a module under `controls/` (`src/lib/derive.ts` before FIX-2775, when status read the snapshot).
 - `GOAL_CONTROL=ignore-asks`: status reads board rows only. Must fail at **status** on the worker whose only wait is an ask.
 - `GOAL_CONTROL=count-queued`: queued rows count as slots. Must fail at **slots** on the worker holding a queued row.
 

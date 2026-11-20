@@ -27,7 +27,7 @@
  *   TEAMS     one row per team, General first, a square per worker with its status
  *   filter    a TEAMS row opens Roster for exactly that team
  *
- * Controls rebuild Shift Manager with `src/lib/derive.ts` swapped for a module
+ * Controls rebuild Shift Manager with `src/lib/shift.ts` swapped for a module
  * under `controls/` (a Vite `resolveId` plugin; the build fails if the swap
  * never fired):
  *
@@ -93,7 +93,7 @@ async function buildShiftManager(control: string): Promise<string> {
   const outDir = join(SCRATCH, `pages-${control === "" ? "as-written" : control}`);
   const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
   const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
-  const swap = control === "" ? undefined : { target: join(SHIFT_MANAGER, "src", "lib", "derive.ts"), with: join(HERE, "controls", `${control}.ts`) };
+  const swap = control === "" ? undefined : { target: join(SHIFT_MANAGER, "src", "lib", "shift.ts"), with: join(HERE, "controls", `${control}.ts`) };
   let swapped = 0;
   await vite.build({
     root: SHIFT_MANAGER,

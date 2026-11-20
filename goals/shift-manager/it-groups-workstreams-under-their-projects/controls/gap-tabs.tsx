@@ -6,7 +6,6 @@
  * Lab holds. The goal must fail at "a project's four tabs".
  */
 import { EmptyState, Tabs } from "../../../../packages/shift-manager/src/components/ui";
-import type { LoadedSnapshot } from "../../../../packages/shift-manager/src/lib/derive";
 import { navigate, PROJECT_TABS, type ProjectTab, type Route } from "../../../../packages/shift-manager/src/lib/routes";
 import type { Gaps } from "../../../../packages/shift-manager/src/gaps";
 
@@ -24,7 +23,7 @@ const GAP_COPY: Record<ProjectTab, { title: string; body: string }> = {
   brief: { title: "No project brief yet", body: "A project's brief arrives with FIX-1650." },
 };
 
-export function ProjectView({ route }: { snapshot: LoadedSnapshot; route: Extract<Route, { level: "project" }>; gaps: Gaps }) {
+export function ProjectView({ route }: { route: Extract<Route, { level: "project" }>; gaps: Gaps }) {
   const { projectId, tab } = route;
   const gap = GAP_COPY[tab];
   return (
