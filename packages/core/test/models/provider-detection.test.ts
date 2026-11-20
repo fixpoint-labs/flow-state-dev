@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  describeModelRoute,
   detectAvailableProviders,
   parseModelString,
 } from "../../src/models/providerDetection";
@@ -216,5 +217,25 @@ describe("detectAvailableProviders", () => {
 
     expect(result.get("anthropic")?.source).toBe("gateway");
     expect(result.get("anthropic")?.apiKey).toBe("env-gw-key");
+  });
+});
+
+describe("describeModelRoute", () => {
+  // A picker shows where each model's calls would go, so a person can see a missing key before a reply fails on it.
+  it("names a provider's own key first, the gateway when there's none, and why a model can't go anywhere", () => {
+    const env = { ANTHROPIC_API_KEY: "a", AI_GATEWAY_API_KEY: "g" };
+    expect(describeModelRoute("anthropic/claude-opus-5-5", env)).toEqual({ available: true, via: "anthropic key" });
+    expect(describeModelRoute("openai/gpt-6-luna", env)).toEqual({ available: true, via: "Vercel AI Gateway" });
+    expect(describeModelRoute("openai/gpt-6-luna", {})).toEqual({ available: false, reason: "no key or gateway for openai" });
+  });
+
+  it("follows a named gateway route by its own key, and never returns a key", () => {
+    expect(describeModelRoute("openrouter:openai/gpt-6-sol", { OPENROUTER_API_KEY: "secret" })).toEqual({ available: true, via: "OpenRouter" });
+    expect(describeModelRoute("openrouter:openai/gpt-6-sol", { AI_GATEWAY_API_KEY: "g" })).toEqual({ available: false, reason: "OPENROUTER_API_KEY is not set" });
+    expect(JSON.stringify(describeModelRoute("openrouter:x/y", { OPENROUTER_API_KEY: "secret" }))).not.toContain("secret");
+  });
+
+  it("reports a malformed string instead of throwing", () => {
+    expect(describeModelRoute("nope")).toMatchObject({ available: false });
   });
 });
