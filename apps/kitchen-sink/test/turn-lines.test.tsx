@@ -3,7 +3,8 @@
  * Flow State mode's failed turn: the registry's failed line, with Retry on
  * the turns the other apps offer it on. `conversationLines` decides that from
  * the session's turns: the newest turn that drew a line, when the engine runs
- * it again (`retryable`).
+ * it again (`retryable`). That only the newest group offers it is the
+ * registry's own contract, tested with `RequestGroupRenderer` in packages/ui.
  *
  * Why each case matters: a Retry on a turn the engine won't run again (one a
  * notification started) is a button that answers 409; a Retry on an older
@@ -13,8 +14,6 @@
  *
  * Red states produced before these were trusted:
  *   - ignore the engine's flag (`retryable: true`): the notification case fails.
- *   - hand every group the session's turns as they are: the newest-group
- *     case fails (Retry drawn on an older line).
  *   - give `retry` while a turn runs: the running case fails.
  *   - pass `shownError: session.error` through: the refused-retry case fails.
  */
@@ -102,23 +101,6 @@ describe("Flow State mode's failed turn", () => {
   it("keeps the reason on an older failed turn, without Retry", () => {
     render(<Panel session={fakeSession()} items={twoFailedTurns()} />);
     expect(lineOf("req_1").textContent).toContain("first failure");
-    expect(lineOf("req_1").querySelector("button")).toBeNull();
-    expect(lineOf("req_2").querySelector("button")).not.toBeNull();
-  });
-
-  it("offers Retry in the newest group only, handed every turn of the session", () => {
-    // Each group reads its own lines, so without the guard an older group is the newest in itself.
-    const turns = [
-      { id: "req_1", status: "failed", retryable: true },
-      { id: "req_2", status: "failed", retryable: true },
-    ];
-    render(
-      <FlowProvider renderers={RENDERERS}>
-        <LineContext.Provider value={{ retry: vi.fn(async () => {}) }}>
-          <RequestGroupRenderer items={twoFailedTurns()} isStreaming={false} turns={turns} />
-        </LineContext.Provider>
-      </FlowProvider>,
-    );
     expect(lineOf("req_1").querySelector("button")).toBeNull();
     expect(lineOf("req_2").querySelector("button")).not.toBeNull();
   });

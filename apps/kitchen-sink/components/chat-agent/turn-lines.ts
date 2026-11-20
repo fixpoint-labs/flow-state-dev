@@ -45,7 +45,9 @@ export function useTurnLines(
       ...(running
         ? {}
         : {
-            retry: async () => {
+            retry: async (requestId: string) => {
+              // Only the latest request is handed in as a turn, so it is the only line offering Retry.
+              if (requestId !== latestRequest?.id) return;
               try {
                 await resumeLatestRequest();
               } catch (error) {
@@ -55,7 +57,7 @@ export function useTurnLines(
             },
           }),
     }),
-    [who, running, resumeLatestRequest],
+    [who, running, latestRequest?.id, resumeLatestRequest],
   );
 
   return { turns, lineContext, shownError: session.error !== null && session.error === refusal ? null : session.error };

@@ -8,6 +8,7 @@
  */
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FlowProvider } from "@flow-state-dev/react";
 import { RequestGroupRenderer } from "../../registry/components/request-group";
 import { messageItem, reasoningItem, toolItem } from "../../stories/fixtures/items";
 
@@ -160,5 +161,38 @@ describe("the worked-for line after a request", () => {
   it("stays quiet for a run under a second", () => {
     render(<RequestGroupRenderer items={done([settled(START + 400)])} isStreaming={false} showWorkedFor />);
     expect(screen.queryByTestId("worked-for")).toBeNull();
+  });
+});
+
+// FIX-2853.
+/**
+ * Each group reads its own lines, so handed every turn of the session an
+ * older failed group would be the newest in itself and offer Retry too: a
+ * Retry that runs another turn than the one it sits on. Only the last group
+ * keeps the turns' `retryable`. Red state: hand every group `turns` as they
+ * are, and the older group's line reads retryable.
+ */
+describe("a failed turn's Retry across groups", () => {
+  it("is offered in the newest group only, given every turn of the session", () => {
+    const failed = (requestId: string) =>
+      ({ id: `err_${requestId}`, type: "error", status: "failed", requestId, message: "boom", code: "E", ts: 2 }) as unknown as StreamItem;
+    const asked = (requestId: string) => ({ ...messageItem({ role: "user" }), id: `msg_${requestId}`, requestId }) as StreamItem;
+    const Probe = ({ item, line }: { item: { requestId: string }; line?: { kind: string; retryable?: boolean } }) => (
+      <div data-testid={`failed-${item.requestId}`} data-retryable={String(line?.kind === "failed" && line.retryable)} />
+    );
+    render(
+      <FlowProvider renderers={{ error: Probe as never }}>
+        <RequestGroupRenderer
+          items={[asked("req_1"), failed("req_1"), asked("req_2"), failed("req_2")]}
+          isStreaming={false}
+          turns={[
+            { id: "req_1", status: "failed", retryable: true },
+            { id: "req_2", status: "failed", retryable: true },
+          ]}
+        />
+      </FlowProvider>,
+    );
+    expect(screen.getByTestId("failed-req_1").getAttribute("data-retryable")).toBe("false");
+    expect(screen.getByTestId("failed-req_2").getAttribute("data-retryable")).toBe("true");
   });
 });
