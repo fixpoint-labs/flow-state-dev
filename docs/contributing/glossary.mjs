@@ -968,6 +968,13 @@ const EXEMPTIONS = [
     why: "FIX-2703: a pass-5 fact check quoting Shift Manager's UI string \"Asked <id>\" verbatim; the rule's backtick pattern spans the prose between two code spans",
   },
   {
+    // The UI components reference quotes the registry's own button and header text.
+    path: /^docs\/contributing\/docs-revamp\/pages\/reference\/ui-components(?:\.facts)?\.md$/,
+    line: /Ask for changes|"Asking ada…", "Asked ada"/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: ReviewHold's \"Ask for changes\" button and the workforce lines' \"Asking ada…\" / \"Asked ada\" headers, quoted as the registry renders them (packages/ui/registry/components/review-hold.tsx:410); the rule's backtick pattern spans the prose between two code spans",
+  },
+  {
     // The docs-revamp pages that describe the Teammates lab name its worker as the lab does.
     path: /^docs\/contributing\/docs-revamp\/pages\/(?:start\/(?:run-a-starter|what-flow-state-is)|catalog\/starters\/teammates|catalog\/workforce\/messaging)(?:\.facts|\.record)?\.md$/,
     rules: ["shift-coordinator-names", "shift-coordinator-prose"],

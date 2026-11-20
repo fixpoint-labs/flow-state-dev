@@ -395,7 +395,7 @@ A resolver can accept the bearer secret for scheduled calls only by branching on
 | No resolver, or no config | User `devuser`, organization `DEFAULT_ORG_ID`, printed as `__fsd_default_org__` |
 | A resolver that checks a credential | It refuses the terminal, because the CLI carries none. The run stops before it writes anything, exit `2`, with `Flow "<f>" refused this terminal: <reason>` and a second line pointing at `--org` |
 | `--org <id>` | Skips the resolver and runs as `--user`, or `devuser`. It must be a valid organization id and not `DEFAULT_ORG_ID`, or the exit is `2` |
-| `--user <id>` alone | Asks the resolver as usual, keeps its organization, and replaces only the user. Blank is exit `2` |
+| `--user <id>` alone | Calls the resolver as usual, keeps its organization, and replaces only the user. Blank is exit `2` |
 
 | What else is checked | What happens |
 | --- | --- |
