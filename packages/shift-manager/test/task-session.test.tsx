@@ -170,3 +170,19 @@ describe("another worker's lines in a task's run", () => {
     expect(line.textContent).not.toContain("ops.shift-coordinator");
   });
 });
+
+// A run someone stopped says so after its last line, as a conversation does; the board runs it again, so no Retry.
+describe("a stopped run", () => {
+  it("draws its stopped line after its last step, with no Retry", async () => {
+    const stopped = Object.assign(task, { status: "aborted" });
+    try {
+      render(<TaskSession />);
+      await act(async () => feeds.at(-1)!.onRead({ items: [claim, step(1)], truncated: false }));
+      const items = screen.getAllByTestId("session-item");
+      expect(items.at(-1)!.querySelector("[data-line=stopped]")).not.toBeNull();
+      expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+    } finally {
+      delete (stopped as { status?: string }).status;
+    }
+  });
+});

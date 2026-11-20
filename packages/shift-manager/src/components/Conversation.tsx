@@ -27,7 +27,7 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { conversationLines, FlowProvider, ItemsRenderer, useJumpToLatest, useView, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
 import { shiftManagerRenderers } from "./lines";
-import { LineContext, type LineContextValue } from "./flow-state/conversation-lines";
+import { LineContext, stillRunningLine, type LineContextValue } from "./flow-state/conversation-lines";
 import { ToolGroup } from "./flow-state/tool";
 import { isTaskBrief } from "./flow-state/workforce-lines";
 import { ConversationScrollButton } from "./flow-state/conversation";
@@ -158,17 +158,18 @@ export function Conversation({
   // so a session holding only those (a standing-rules read writes a state change into it before any
   // line is sent) counts as empty.
   const shown = useMemo(() => (read === undefined ? [] : conversationLines(read.items, turns ?? [], { renderers: shiftManagerRenderers })), [read, turns]);
-  const lastStopped = [...shown].reverse().find((line) => line.kind === "stopped")?.id;
   const runs = conversation.stillRunning;
+  // The one stopped line that says what still runs, by the registry's rule. An id, so the line
+  // context below stays one object across reads that don't move it.
+  const runningLine = stillRunningLine(shown, turns?.some((turn) => turn.status === "in_progress") === true);
   const lineActions = useMemo<LineContextValue>(
     () => ({
       who: name,
       nameOf: workerLabel,
       ...(sessionId === null || readOnly !== undefined ? {} : { retry: (requestId: string) => workforce.retryTurn(sessionId, requestId) }),
-      // The work still running is the session's now: only its last stopped line says so.
-      stillRunning: (lineId) => (lineId === lastStopped && runs != null ? runs : undefined),
+      stillRunning: (lineId) => (lineId === runningLine && runs != null ? runs : undefined),
     }),
-    [name, sessionId, readOnly, workforce, lastStopped, runs],
+    [name, sessionId, readOnly, workforce, runningLine, runs],
   );
 
   // Nothing is sent into a conversation the screen hasn't read, or to a worker with no door.

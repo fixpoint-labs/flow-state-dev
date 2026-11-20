@@ -127,14 +127,16 @@ export function SentLine({ item }: { item: DataItem }) {
   const to = worker === undefined ? sentTargetLabel(value.to) : name(worker);
   const text = value.text ?? "";
   const messageId = value.messageId;
-  const state = value.refused !== undefined || messageId === undefined ? "refused" : value.wait?.status === "waiting" ? "waiting" : value.wait?.status === "failed" ? "failed" : "sent";
+  // A waited send's line is written before the message has an id, and again if the wait fails: its wait says how it stands.
+  const state =
+    value.refused !== undefined ? "refused" : value.wait?.status === "waiting" ? "waiting" : value.wait?.status === "failed" ? "failed" : messageId === undefined ? "refused" : "sent";
   const said =
     state === "refused" ? `Not sent to ${to}` : state === "waiting" ? `Asking ${to}…` : state === "failed" ? `Not answered by ${to}` : value.wait !== undefined ? `Asked ${to}` : `Messaged ${to}`;
   const answer = state === "sent" ? waitAnswer(value.wait) : null;
   const reason = state === "refused" ? value.refused : state === "failed" ? value.wait?.error : undefined;
   const status = messageId === undefined ? undefined : sentStatusOf?.(messageId);
-  // Only a message that went to a worker has an exchange to open.
-  const opens = state !== "refused" && worker !== undefined && openMessage !== undefined ? () => openMessage({ to: worker, messageId: messageId!, text }) : undefined;
+  // Only a message that went to a worker, and has its id, has an exchange to open.
+  const opens = state !== "refused" && worker !== undefined && messageId !== undefined && openMessage !== undefined ? () => openMessage({ to: worker, messageId, text }) : undefined;
   return (
     <Row
       label={`${said}: ${text}`}
@@ -147,7 +149,10 @@ export function SentLine({ item }: { item: DataItem }) {
     >
       {worker === undefined ? null : avatar(worker)}
       <span className={cn("shrink-0", state === "refused" || state === "failed" ? "text-destructive" : undefined)}>{said}:</span>{" "}
-      <span className="min-w-0 flex-1 truncate text-muted-foreground">{text}</span>
+      {/* Cut to the line when a click opens the whole exchange; else these words are all there is, so they wrap. */}
+      <span className={cn("min-w-0 flex-1 text-muted-foreground", opens === undefined ? "whitespace-pre-wrap break-words" : "truncate")} data-part="text">
+        {text}
+      </span>
       {status === undefined ? null : (
         <span className="shrink-0 text-xs text-muted-foreground" data-sent-status>
           {status}

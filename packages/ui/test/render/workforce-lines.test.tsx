@@ -126,6 +126,36 @@ describe("workforce's lines", () => {
     expect(drawn.textContent).toContain("undeliverable: cy's session is gone.");
   });
 
+  // The tool writes a waited send's line before it has a message id, and again if the wait fails: neither was refused.
+  it("draw a waited send that has no message id yet as asking, and one whose wait failed as failed, with why", () => {
+    const { container } = draw(
+      [
+        sendCall("c5", "tc_E"),
+        sentIn("waiting", "tc_E", { to: "cy", text: "Codename?", wait: { status: "waiting" } }),
+        sendCall("c6", "tc_F"),
+        sentIn("lost", "tc_F", { to: "cy", text: "Ping?", wait: { status: "failed", error: "undeliverable: cy's session is gone." } }),
+      ],
+      { openMessage: () => undefined },
+    );
+    const [waiting, lost] = [...container.querySelectorAll('[data-line="sent"]')];
+    expect(waiting!.getAttribute("data-state")).toBe("waiting");
+    expect(waiting!.textContent).toContain("Asking cy…: Codename?");
+    expect(lost!.getAttribute("data-state")).toBe("failed");
+    expect(lost!.textContent).toContain("undeliverable: cy's session is gone.");
+    // With no message there is no exchange to open.
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+
+  // A line that opens nothing is all there is to read: its words wrap rather than cut.
+  it("cut a sent message's words to the line only when the line opens its exchange", () => {
+    const sent = [sendCall("c1", "tc_A"), sentIn("out", "tc_A", { to: "ada", text: "On it.", messageId: "msg_1" })];
+    draw(sent);
+    expect(document.querySelector('[data-line="sent"] [data-part="text"]')!.classList.contains("truncate")).toBe(false);
+    cleanup();
+    draw(sent, { openMessage: () => undefined });
+    expect(document.querySelector('[data-line="sent"] [data-part="text"]')!.classList.contains("truncate")).toBe(true);
+  });
+
   it("say a task that errored couldn't finish, and a cancelled one was cancelled, never failed", () => {
     draw([
       line("a", TASK_RESULT_DATA_TYPE, { taskId: "x", from: "cy", title: "Fix it", text: "…", ending: "errored" }),

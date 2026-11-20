@@ -12,11 +12,12 @@
  * and the lines it sent to a door that keeps no task id, with their replies,
  * and says so.
  *
- * The run's lines are React's conversation model over this task's items,
- * drawn as a conversation draws them (Shift Manager's registry,
- * `components/lines.tsx`: a run of tool calls as one tool group, a task's
- * brief folded), with no Retry: the run is the board's to run again. An ask the run raised and that still waits is
- * drawn inline, with the one ask card Inbox uses.
+ * The run's lines are React's conversation model over this task's items and
+ * its run's status (a stopped run draws its stopped line), drawn as a
+ * conversation draws them (Shift Manager's registry, `components/lines.tsx`:
+ * a run of tool calls as one tool group, a task's brief folded), with no
+ * Retry: the run is the board's to run again. An ask the run raised and that
+ * still waits is drawn inline, with the one ask card Inbox uses.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -165,15 +166,19 @@ function RunItems({ run }: { run: OpenRun }) {
   const { renderers } = useFlowContext();
   // Every line this composer sent shows by its request: a stamping door's turns carry the stamp too.
   const sentSet = useMemo(() => new Set(task.sent), [task.sent]);
+  // The run's one turn, as its request stream last said: a stopped run draws its stopped line. No
+  // `retryable`, so a failed run offers no Retry: the board runs it again.
+  const status = task.status;
+  const turns = useMemo(() => (status === undefined ? [] : [{ id: run.requestId, status }]), [run.requestId, status]);
   const shown = useMemo(() => {
     if (stored === undefined) return undefined;
     // The claims only teach the attribution which tasks are this board's; they are never drawn.
     const keys = new Set(stored.items.map((item) => `${item.requestId}/${item.id}`));
     const held = [...claims.filter((item) => !keys.has(`${item.requestId}/${item.id}`)), ...stored.items];
     const mine = taskItems(held, collection, task.taskId, sentSet);
-    const lines = conversationLines(mine.items.filter((item) => keys.has(`${item.requestId}/${item.id}`)), [], { renderers });
+    const lines = conversationLines(mine.items.filter((item) => keys.has(`${item.requestId}/${item.id}`)), turns, { renderers });
     return { lines, shared: mine.shared };
-  }, [stored, claims, collection, task.taskId, sentSet, renderers]);
+  }, [stored, claims, collection, task.taskId, sentSet, renderers, turns]);
 
   const shownFailure = failure ?? claimsFailure;
   if (shownFailure !== undefined) {

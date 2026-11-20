@@ -55,7 +55,7 @@ export type LineContextValue = {
   sentStatusOf?: (messageId: string) => string | undefined;
   /** Run a failed turn again. Failed, when the model offers Retry; give it only while the screen can. */
   retry?: (requestId: string) => Promise<unknown>;
-  /** The background work still running, by the stopped line's id; `undefined` says nothing. Stopped. */
+  /** The background work still running, by the stopped line's id ({@link stillRunningLine} says which); `undefined` says nothing. Stopped. */
   stillRunning?: (lineId: string) => number | undefined;
   /** Show where that work is listed. Stopped, as View beside the count. */
   onViewRunning?: () => void;
@@ -86,6 +86,17 @@ export function FailedLine({ item, line }: { item: ErrorItem; line?: ItemLine })
       />
     </div>
   );
+}
+
+/**
+ * The stopped line that may say what still runs: the conversation's last
+ * line, when it is a stopped one and no turn is running. What still runs is
+ * the session's now, so an older stop, or one a later turn has run past, says
+ * nothing of it. A screen's `stillRunning` answers for this line only.
+ */
+export function stillRunningLine(lines: readonly ItemLine[], running: boolean): string | undefined {
+  const last = lines.at(-1);
+  return last?.kind === "stopped" && !running ? last.id : undefined;
 }
 
 /** A turn the person stopped, after its last line, with the work still running when the screen says so. */
@@ -209,7 +220,7 @@ function StepText({ step }: { step: ToolStep }) {
  * while it runs, folded once it isn't. A failed call says "(failed)" in
  * words; the thinking between the calls is not drawn.
  */
-export const CompactSteps = memo(function CompactSteps({ items, line }: { items: readonly { type: string }[]; live?: boolean; line?: Extract<ItemLine, { kind: "steps" }> }) {
+export const CompactSteps = memo(function CompactSteps({ items, line }: { items: readonly { type: string }[]; line?: Extract<ItemLine, { kind: "steps" }> }) {
   const steps = stepsOf(items, line?.ended === true);
   if (steps.length === 0) return null;
   const run = stepRun(steps);

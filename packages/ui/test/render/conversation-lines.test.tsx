@@ -11,7 +11,7 @@ import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { conversationLines, FlowProvider, ItemsRenderer, type ItemLine, type LineTurn } from "@flow-state-dev/react";
-import { CompactSteps, conversationLineRenderers, LineContext, type LineContextValue } from "../../registry/components/conversation-lines";
+import { CompactSteps, conversationLineRenderers, LineContext, stillRunningLine, type LineContextValue } from "../../registry/components/conversation-lines";
 import { ToolGroup } from "../../registry/components/tool";
 import { suspensionItem, suspensionResumeItem, toolItem } from "../../stories/fixtures/items";
 
@@ -62,6 +62,16 @@ describe("a stopped turn", () => {
     expect(seen).toEqual([stopped().at(-1)!.id]);
     fireEvent.click(within(line as HTMLElement).getByRole("button", { name: "View" }));
     expect(viewed).toBe(1);
+  });
+
+  // What still runs is the session's now: an older stop, or one a turn has run past, would say it of a moment gone.
+  it("is the line that says what still runs only while it is the conversation's last and no turn runs", () => {
+    const lines = stopped();
+    const id = lines.at(-1)!.id;
+    expect(stillRunningLine(lines, false)).toBe(id);
+    expect(stillRunningLine(lines, true)).toBeUndefined();
+    const later = linesOf([toolItem({ requestId: "q1" }), failure("q2")], [{ id: "q1", status: "aborted" }, { id: "q2", status: "failed" }]);
+    expect(stillRunningLine(later, false)).toBeUndefined();
   });
 
   it("says only that it was stopped outside a provider", () => {

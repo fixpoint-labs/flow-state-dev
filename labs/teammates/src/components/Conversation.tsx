@@ -16,7 +16,7 @@ import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connect
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlier } from "./LoadEarlier";
-import { LineContext, type LineContextValue } from "./flow-state/conversation-lines";
+import { LineContext, stillRunningLine, type LineContextValue } from "./flow-state/conversation-lines";
 import { drawsLine, Line, teammatesRenderers, useLinesNames } from "./lines";
 import { answerIn, type Popup } from "./Popups";
 
@@ -135,6 +135,7 @@ export function Conversation({
   const backgroundRunning = view?.backgroundRunning ?? undefined;
   const talkKey = answered.map((id) => `${id}:${answerIn(talk, id)}`).join(",");
   const names = useLinesNames(nameOf, lookOf, isCoding);
+  const runningLine = stillRunningLine(drawn, running);
   // What each line can do on this screen, one object while none of it changes, so a memoized line doesn't redraw.
   const screenOfLines = useMemo<LineContextValue>(
     () => ({
@@ -145,14 +146,15 @@ export function Conversation({
       openTask: (taskId) => onOpen({ kind: "task", sessionId, taskId }),
       // Retry only the newest turn, and not while one runs: the engine runs a failed request again as a new one.
       ...(running ? {} : { retry: (requestId: string) => calls.retry(sessionId, requestId) }),
-      // The count belongs to the newest stopped line, while no later turn has started.
-      stillRunning: (lineId) => (lineId === last?.id && last?.kind === "stopped" && !running ? backgroundRunning : undefined),
+      stillRunning: (lineId) => (lineId === runningLine ? backgroundRunning : undefined),
       onViewRunning: onViewTasks,
       readFile: calls.readFile,
       canAnswer: true,
     }),
+    // `answered` and `talk` are left out: `talkKey` stands for them, and changes only when how a sent message stands does,
+    // where the message log's array is new on every read.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [workerName, names, talkKey, onOpen, worker.id, sessionId, running, calls, last?.id, last?.kind, backgroundRunning, onViewTasks],
+    [workerName, names, talkKey, onOpen, worker.id, sessionId, running, calls, runningLine, backgroundRunning, onViewTasks],
   );
 
   const markAt = mark ? lines.findIndex((line) => line.id === mark.firstVerbatimLineId) : -1;

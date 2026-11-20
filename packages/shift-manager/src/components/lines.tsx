@@ -52,7 +52,7 @@ function LabMessage({ item }: { item: MessageItem }) {
 export const shiftManagerRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
   ...conversationLineRenderers,
-  // A question or a form waits as the chat registry's card; a yes is one of them.
+  // The line registry draws only a wait for a yes; the chat registry's card draws that and a question or a form too.
   suspension: chatAssistantRenderers.suspension,
   // A task's brief folds to one line; every other message is the registry's copy.
   message: withBrief(LabMessage),
