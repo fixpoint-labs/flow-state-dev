@@ -981,6 +981,11 @@ const EXEMPTIONS = [
     why: "FIX-2614: published pages may name the released schedule and subscription surface until /release-docs rewrites them, and deletes this in the same PR",
   },
   {
+    path: /^\.changeset\/one-conversation-model\.md$/,
+    rules: ["buildItemRenderStream", "ItemRenderSegment", "BuildItemRenderStreamOptions"],
+    why: "FIX-2848: the release note that tells consumers which renamed React exports to replace",
+  },
+  {
     path: /^\.changeset\/user-suspension-reasons\.md$/,
     rules: ["human-reasons"],
     why: "FIX-2151: the release note that tells consumers which old reasons to replace",
