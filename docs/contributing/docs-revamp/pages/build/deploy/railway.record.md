@@ -38,6 +38,7 @@ Skipped: B-09 is kept in the sitemap, and the page was already at `railway.md`.
 - After revise round 2, page sha256 79696c585405: exit 0.
 - After revise round 3, page sha256 04901962a47d: exit 1. Failed: node scripts/check-docs-page.mjs docs/contributing/docs-revamp/pages/build/deploy/railway.md.
 - After the loop (review): Pass 4 banned word: the 503 row reads 'the stores are opening', without 'still'. The old-site deployment link points at Choose where to deploy (../deploy.md). 562 words. Page sha256 a01068c641b2: the page check exits 0 and the brand lint has 0 findings.
+- After the loop (review): drift fix: `serve(flowState)` now refuses a network bind like `fsdev serve`, overridden by `allowUnauthenticated: true` (packages/node/src/serve.ts:192-196). The `503` health row now holds only with the check overridden: with it on, the stores open before the port listens, so connections are refused until then (packages/node/src/bind-guard.ts:67-72). 577 words. Page sha256 b436cbd98284.
 
 ## 5 · Fact check
 
@@ -51,6 +52,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 8: Row 8: SQLite is single-writer, so concurrent replicas' writes fail. Untrue: SQLite allows one writer at a time, but connections set `busy_timeout = 5000` with WAL, so a second writer waits and fails only after the timeout. The filesystem store's data is per-process disk, so it is not shared across replicas. (/home/user/flow-state-dev/packages/store-sqlite/src/schema.ts:4-5,718-721) The row is recorded corrected.
 - Reference row 10: Row 10: filesystem store rootDir (default shown `.flow-state-data`). Untrue: `rootDir` is a required option with no default. `.flow-state-data` is only the value the page's example passes. (/home/user/flow-state-dev/packages/engine/src/stores/index.ts:136-138) The row is recorded corrected.
 - Re-run after the review edit: no new claim; the 503 row's meaning is unchanged (fact sheet section 2, SERVE:178-182), and the link target is B-07 in the sitemap.
+- Re-run after the review edit: network binds await the guard, which resolves the router and opens the stores, before listening (packages/node/src/bind-guard.ts:67-72, :86); loopback and the override bind at once and answer `/healthz` 503 until init (packages/node/src/serve.ts:182-184); `fsdev serve` passes `allowUnauthenticated` through to `serve()` (packages/fsdev/src/commands/serve.ts:107-109).
 
 ## 6 · Depth pass
 

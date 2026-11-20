@@ -64,7 +64,7 @@ aptPkgs = ["build-essential", "python3"]
 
 `fsdev serve` refuses to bind a network address when a flow has no `authentication.resolvePrincipal`, because the server would trust any `userId` a caller sends. Configure authentication on your flows. To deploy without it, use `fsdev serve --allow-unauthenticated`.
 
-To own the entry file instead, call `serve(flowState)` from `@flow-state-dev/node`. It does not run the authentication check.
+To own the entry file instead, call `serve(flowState)` from `@flow-state-dev/node`. It refuses the same way; pass `allowUnauthenticated: true` to override.
 
 ## 3. Set variables
 
@@ -103,7 +103,7 @@ The path is `/healthz`, not `/health`. What comes back:
 | Response | Meaning |
 | --- | --- |
 | `200` `{"status":"ok"}` | The server is ready and the stores are open. |
-| `503` `{"status":"initializing"}` | The port is bound but the stores are opening. The server answers the platform's health check during a cold start, so this is normal for a moment. Retry. |
+| `503` `{"status":"initializing"}` | Only with the authentication check overridden: the port is bound but the stores are opening, so this is normal for a moment. Retry. With the check on, the stores open before the port listens, and until then connections are refused. |
 | `500` | Store initialization failed for good. The process is up but requests error, and the deploy fails fast. Read the service logs. |
 
 Under `fsdev serve`, an initialization failure exits the process with code `3` instead of returning `500`.
