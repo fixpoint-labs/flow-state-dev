@@ -8,6 +8,7 @@ import type { Look } from "../lib/looks";
 import { displayName, roleOf } from "../lib/roster";
 import { answeringStep, useStatusLine } from "../lib/status";
 import { ANSWERED_LINES_MAX, pendingFor, useTalk } from "../lib/talk";
+import { dayBreaks, lineTime } from "../lib/days";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
@@ -29,7 +30,8 @@ const sentIds = (lines: readonly ItemLine[]) =>
 
 /**
  * The center: the worker's one conversation. A divider marks where the turns
- * the worker reads word for word begin. A message another worker sent that
+ * the worker reads word for word begin, and another where the next line was
+ * written on a different day (Today, Yesterday, or its date). A message another worker sent that
  * waits for the current answer shows as a pending line until it lands. A
  * teammate the user hired also gets a fire control in the header; its
  * instructions are edited from its panel. Fire asks first in a row under the header, with Keep focused,
@@ -157,6 +159,8 @@ export function Conversation({
     [workerName, names, talkKey, onOpen, worker.id, sessionId, running, calls, runningLine, backgroundRunning, onViewTasks],
   );
 
+  // Where the day changes between two drawn lines; a line drawn as nothing has no say.
+  const days = useMemo(() => dayBreaks(lines.map((line) => (drawsLine(line) ? lineTime(line) : undefined)), new Date()), [lines]);
   const markAt = mark ? lines.findIndex((line) => line.id === mark.firstVerbatimLineId) : -1;
   return (
     <main aria-label="Conversation" className="flex h-full min-h-0 min-w-0 flex-col">
@@ -230,6 +234,13 @@ export function Conversation({
             ) : null}
             {lines.map((line, i) => (
               <Fragment key={line.id}>
+                {days[i] === undefined ? null : (
+                  <div role="separator" aria-label={days[i]} data-day-divider className="my-2 flex items-center gap-3">
+                    <span className="h-px flex-1 bg-border" />
+                    <span className="font-mono text-xs tracking-widest text-muted-foreground uppercase">{days[i]}</span>
+                    <span className="h-px flex-1 bg-border" />
+                  </div>
+                )}
                 {i === markAt && mark ? (
                   <div role="separator" aria-label={mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"} className="my-2 flex items-center gap-3">
                     <span className="h-px flex-1 bg-border" />
