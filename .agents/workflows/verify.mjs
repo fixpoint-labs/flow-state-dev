@@ -10922,6 +10922,13 @@ check('page-loop: an escalated Reference page still gets the final fact check, a
   assert.doesNotMatch(result.recordText, /^## 10 · Owner read/m)
 })
 
+check('page-loop: pass 4 runs the brand lint on the page itself, so a page that does not parse as MDX fails there', async () => {
+  const { calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder() })
+  const prompt = calls.find((c) => c.label === 'pass-4:0').prompt
+  assert.match(prompt, /lint-brand\.mjs \S+concepts\/state-and-scopes\.md`/, 'the page path, not only its figures')
+  assert.match(prompt, /does not parse as MDX/)
+})
+
 check('page-loop: a page that is not Reference gets no final fact check', async () => {
   const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ finalUntrue: [{ row: 0, claim: 'c', truth: 't', where: 'w', corrected: '' }] }) })
   assert.equal(result.status, 'complete')
