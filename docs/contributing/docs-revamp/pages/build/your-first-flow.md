@@ -191,11 +191,13 @@ export default createFlowState({ flows: [helloChat] });
 import { createNextHandler } from "@flow-state-dev/next";
 import flowstate from "@/fsdev.config";
 
-export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
+export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate, {
+  allowUnauthenticated: process.env.NODE_ENV !== "production",
+});
 export const dynamic = "force-dynamic";
 ```
 
-In this layout `@/` is the project root. Write the folder name with double brackets; the [HTTP API reference](../reference/http-api.md) says why. [Add to an existing app](../start/add-to-an-existing-app.md) covers the route in full.
+The flow has no sign-in yet, so `allowUnauthenticated` lets the handler serve it outside production, and in production it refuses every request until the flow checks who is calling: [Auth and tenancy](../concepts/auth-and-tenancy.md). In this layout `@/` is the project root. Write the folder name with double brackets; the [HTTP API reference](../reference/http-api.md) says why. [Add to an existing app](../start/add-to-an-existing-app.md) covers the route in full.
 
 ```tsx title="app/page.tsx"
 "use client";

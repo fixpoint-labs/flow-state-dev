@@ -74,10 +74,12 @@ import flowstate from "../../../../../fsdev.config";
 
 export const dynamic = "force-dynamic";
 
-export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
+export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate, {
+  allowUnauthenticated: process.env.NODE_ENV !== "production",
+});
 ```
 
-One route file serves every flow under `/api/flows`. A second flow is one more entry in `flows`.
+The flow has no sign-in yet, so `allowUnauthenticated` lets the handler serve it outside production, and in production it refuses every request until the flow checks who is calling: [Auth and tenancy](../concepts/auth-and-tenancy.md). One route file serves every flow under `/api/flows`. A second flow is one more entry in `flows`.
 
 **No Next.js app?** Run `pnpm add @flow-state-dev/node`. It starts a long-lived HTTP server for the same config.
 
@@ -138,7 +140,7 @@ function Support() {
 
 `useFlow` finds the user's newest session, or creates one, and gives back its id. The id is empty on the first render, so the button waits for it. `session.items` is the transcript, in order, and `ItemsRenderer` draws it with plain defaults. `sendAction` resolves when the request is accepted, and the answer arrives in `items`. If the request is refused, it rejects and `session.error` holds why, so the form clears the text only on success.
 
-**Every call says who is calling.** The provider's `userId` goes with each request, and a call without one is refused. With no sign-in configured, the server believes whatever `userId` the request carries, so a setup like this one is only for development. [Auth and tenancy](../concepts/auth-and-tenancy.md) covers verifying callers.
+**Every call says who is calling.** The provider's `userId` goes with each request, and a call without one is refused. With no sign-in configured, the server believes whatever `userId` the request carries, so a setup like this one is only for development. Only `serve()` and `fsdev dev` on a loopback host serve it without an override. The Next.js, Vercel and Lambda handlers refuse every request unless given `allowUnauthenticated: true`. [Auth and tenancy](../concepts/auth-and-tenancy.md) covers verifying callers.
 
 ## Common pitfalls
 

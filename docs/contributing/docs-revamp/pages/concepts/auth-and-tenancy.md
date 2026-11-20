@@ -73,7 +73,7 @@ Every route that names a session or a request checks that the principal owns it.
 
 A session also keeps the user and organization it was created with. If Alice opens a session while acting for `acme`, then reads it while acting for `globex`, she gets 403. A `reply` call on it gets 404, as for a session that does not exist. To work under another organization, or to hand a conversation to someone else, create a new session.
 
-With no resolver, the framework takes `userId` from the request body, and any caller can read any session. Use that for development only.
+With no resolver, the framework takes `userId` from the request body, and any caller can read any session. Use that for development only. Only `serve()` and `fsdev dev` on a loopback host serve such a flow without an override. The Next.js, Vercel and Lambda handlers refuse every request with a 500 unless given `allowUnauthenticated: true`.
 
 ## Tenants
 
