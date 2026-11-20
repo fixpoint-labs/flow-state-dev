@@ -47,17 +47,33 @@ export async function headCommit(cwd: string): Promise<string | null> {
   }
 }
 
+/** Whether `tip` is a commit in `cwd` that has `cut` in its history. `false` for no tip, or one git can't read there. */
+async function descendsFrom(cwd: string, tip: string | null, cut: string): Promise<boolean> {
+  if (tip === null) return false;
+  try {
+    await git(cwd, ["merge-base", "--is-ancestor", cut, tip]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The copies of the base that exist in `cwd`, by the rule {@link readRunCommits}
  * documents. Empty when there is no base, or none of its copies is there.
  */
-async function resolveBases(cwd: string, baseRef: string | null, baseCommit: string | null): Promise<string[]> {
+async function resolveBases(
+  cwd: string,
+  baseRef: string | null,
+  baseCommit: string | null,
+  baseTip: string | null = null,
+): Promise<string[]> {
   if (baseRef === null) return [];
   const bases: string[] = [];
   // In the run's own checkout, a bare `HEAD` is the run's branch, never its base.
   const copies =
     baseCommit !== null
-      ? [baseCommit]
+      ? [(await descendsFrom(cwd, baseTip, baseCommit)) ? baseTip! : baseCommit]
       : baseRef === "HEAD"
         ? [`refs/remotes/origin/HEAD`]
         : [`refs/remotes/origin/${baseRef}`, baseRef];
@@ -80,14 +96,19 @@ async function resolveBases(cwd: string, baseRef: string | null, baseCommit: str
  * shares the checkout's refs and config, so any named copy of the base is one
  * it could point at its own work. A record without it falls back to the named
  * copies: the remote's (`origin/<baseRef>`) and the local branch. No base, or
- * no checkout git can read, answers none, unverified.
+ * no checkout git can read, answers none, unverified. With `baseTip`, the
+ * base branch's tip takes the cut's place as {@link RunDiffOptions.baseTip}
+ * says; with `since`, only the commits past that one count too (a round's own).
  */
 export async function readRunCommits(
   cwd: string,
   baseRef: string | null,
   baseCommit: string | null = null,
+  options: Pick<RunDiffOptions, "baseTip"> & { since?: string | null } = {},
 ): Promise<RunCommits> {
-  const bases = await resolveBases(cwd, baseRef, baseCommit);
+  const resolved = await resolveBases(cwd, baseRef, baseCommit, options.baseTip ?? null);
+  // `since` counts on its own too, as a round read always has: a record with no cut and no named copy still has its round.
+  const bases = options.since == null || baseRef === null ? resolved : [...resolved, options.since];
   if (bases.length === 0) return { count: 0, subjects: [], verified: false };
   try {
     const count = Number.parseInt((await git(cwd, ["rev-list", "--count", "HEAD", "--not", ...bases])).trim(), 10);
@@ -157,6 +178,15 @@ export interface RunDiffOptions {
    * meeting point back, and would read that earlier turn's work as its own.
    */
   exactBase?: boolean;
+  /**
+   * The base branch's tip now, as the workspace host fetched it
+   * (`WorkspaceHost.baseTip`). When it has the recorded cut in its history,
+   * it is the base in the cut's place: a run that merged the moved-on base
+   * into its branch then owns none of the base's commits, as its pull
+   * request doesn't. Any other tip, or none, leaves the cut as the base, so
+   * a tip can only ever take the base's own commits out of a read.
+   */
+  baseTip?: string | null;
 }
 
 /** {@link RunDiff}, as a schema: what a review's data and a changes read carry. */
@@ -225,7 +255,7 @@ export async function readRunDiff(
   options: RunDiffOptions = {},
 ): Promise<RunDiff> {
   const head = options.head ?? "HEAD";
-  const bases = await resolveBases(cwd, baseRef, baseCommit);
+  const bases = await resolveBases(cwd, baseRef, baseCommit, options.baseTip ?? null);
   if (bases.length === 0) return UNVERIFIED_DIFF;
   try {
     const start = await diffStart(cwd, head, bases, options.exactBase);
@@ -272,7 +302,7 @@ export async function readRunFilePatch(
 ): Promise<RunFilePatch> {
   const unverified: RunFilePatch = { path, patch: "", truncated: false, verified: false };
   const head = options.head ?? "HEAD";
-  const bases = await resolveBases(cwd, baseRef, baseCommit);
+  const bases = await resolveBases(cwd, baseRef, baseCommit, options.baseTip ?? null);
   if (bases.length === 0) return unverified;
   try {
     const start = await diffStart(cwd, head, bases, options.exactBase);

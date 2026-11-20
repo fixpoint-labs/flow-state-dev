@@ -119,6 +119,36 @@ describe("readRunCommits", () => {
     expect(await readRunCommits(dir, "main", cut)).toEqual({ count: 1, subjects: ["the run's change"], verified: true });
   });
 
+  it("counts none of the base's later commits after the run merged them in, given the base branch's tip now", async () => {
+    // What a judge reads: the subjects a pull request into the base would carry.
+    const dir = repo("local");
+    git(dir, "checkout", "-q", "-b", "run", "main");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    commit(dir, "the run's change");
+    git(dir, "checkout", "-q", "main");
+    commit(dir, "a teammate's change");
+    const tip = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "run");
+    git(dir, "merge", "-q", "--no-edit", "-m", "merge main", "main");
+    expect((await readRunCommits(dir, "main", cut)).subjects).toContain("a teammate's change");
+    expect(await readRunCommits(dir, "main", cut, { baseTip: tip })).toEqual({
+      count: 2,
+      subjects: ["merge main", "the run's change"],
+      verified: true,
+    });
+    // A round that began past the cut and merged the base counts only its own commits.
+    git(dir, "reset", "-q", "--hard", "HEAD~1");
+    const roundStart = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "merge", "-q", "--no-edit", "-m", "merge main again", "main");
+    commit(dir, "the round's change");
+    expect(await readRunCommits(dir, "main", cut, { baseTip: tip, since: roundStart })).toEqual({
+      count: 2,
+      subjects: ["the round's change", "merge main again"],
+      verified: true,
+    });
+    expect(await readRunCommits(dir, "main", cut, { since: roundStart })).toMatchObject({ count: 3 });
+  });
+
   it("answers none for a base the checkout doesn't have, and says it couldn't tell", async () => {
     const dir = repo("local");
     expect(await readRunCommits(dir, "no-such-branch")).toEqual({ count: 0, subjects: [], verified: false });

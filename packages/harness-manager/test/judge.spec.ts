@@ -15,7 +15,7 @@ import { z } from "zod";
 import { handler, sequencer } from "@flow-state-dev/core";
 import { openOwnHolds } from "@flow-state-dev/orchestration/internal";
 import { harnessJudgeInputSchema, type HarnessJudgeInput } from "../src";
-import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
+import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, mergeTeammateWork, messageOf } from "./claim-host";
 
 afterAll(cleanUpHosts);
 
@@ -87,6 +87,32 @@ describe("a judged run on a board read from the claim", () => {
 
     expect(read).toHaveLength(1);
     expect(await lab.row(CONVERSATIONS, "t1", "conv-a")).toMatchObject({ status: "completed", attempts: 1, output: { commits: 1, judged: true } });
+  }, 60_000);
+
+  it("shows the judge only the run's own work after the run merged the moved-on base in", async () => {
+    // The pull request's diff: what the base's tip doesn't have. Read against
+    // the commit the branch was cut at, the teammate's merged work reads as
+    // the run's, and a judge weighs files nobody on the run touched.
+    const { judge, read } = scriptedJudge([verdict("done", 0.9, "it answers the goal")]);
+    const lab = claimHost({
+      mode: "claim",
+      upstream: true,
+      script: [{ answer: "changed it", commits: 1, during: async () => mergeTeammateWork(lab.upstream, lab.seen.at(-1)!.cwd) }],
+      manager: { judge },
+    });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "change call1-0.txt", input: {} });
+
+    const { result } = await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+
+    expect(read).toEqual([
+      {
+        goal: "change call1-0.txt",
+        answer: "changed it",
+        commits: { count: 2, subjects: ["merge main", "call1 commit 0"] },
+        diff: { files: [{ path: "call1-0.txt", added: 1, removed: 0 }], fileCount: 1, added: 1, removed: 0, verified: true },
+      },
+    ]);
   }, 60_000);
 
   it("shows the judge an empty change for a run that committed nothing", async () => {

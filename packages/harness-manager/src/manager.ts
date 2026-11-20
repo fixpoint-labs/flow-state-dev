@@ -3195,6 +3195,23 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       followRecordedPullRequests(ctx, onPullRequestRecorded, followingRun(ctx));
       await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
+      // FIX-2859.
+      /**
+       * The base branch's tip now, as the host fetches it (`WorkspaceHost.baseTip`),
+       * read once for every read below: a run that merged the moved-on base into
+       * its branch is read as its pull request would be, not against the commit
+       * it was cut at. `null` where the host can't say, and the reads keep the cut.
+       */
+      let tip: Promise<string | null> | undefined;
+      const baseTip = (): Promise<string | null> =>
+        (tip ??=
+          state.filesOnly === true || host.baseTip === undefined || state.workspacePath == null
+            ? Promise.resolve(null)
+            : host.baseTip({ cwd: state.workspacePath, baseRef: state.baseRef }).then(
+                (commit) => commit ?? null,
+                () => null,
+              ));
+
       /**
        * What this attempt hands back, kept on state for `settle`: the run's
        * answer (cut), its branch (none for a run with only kept files) and
@@ -3225,12 +3242,15 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // Read once here, so the review's prompt and data come from state alone.
         const diff: RunDiff | null =
           reviewChanges && settle === "complete" && state.filesOnly !== true && commits.verified && commits.count > 0
-            ? (read ?? (await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)))
+            ? (read ?? (await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit, { baseTip: await baseTip() })))
             : null;
         // This round's commits, apart from the branch's earlier ones (FIX-2782): only when the round began past the base.
         const round: RunCommits | null =
           diff !== null && state.roundStart != null && state.roundStart !== state.baseCommit
-            ? await readRunCommits(state.workspacePath!, state.baseRef, state.roundStart)
+            ? await readRunCommits(state.workspacePath!, state.baseRef, state.baseCommit ?? state.roundStart, {
+                baseTip: await baseTip(),
+                since: state.roundStart,
+              })
             : null;
         await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, diff, round, reviewed: null, landed: null, checks } });
         return judgeInput;
@@ -3239,7 +3259,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const commitsOf = (): Promise<RunCommits> =>
         state.filesOnly === true
           ? Promise.resolve({ count: 0, subjects: [], verified: true })
-          : readRunCommits(state.workspacePath!, state.baseRef, state.baseCommit);
+          : baseTip().then((baseTip) => readRunCommits(state.workspacePath!, state.baseRef, state.baseCommit, { baseTip }));
 
       // Everything the run reported goes on the row before anything is decided,
       // so a failed attempt's row is as complete as a successful one's.
@@ -3412,7 +3432,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           // The judge reads what the commits changed, read once and kept for the review too.
           const diff =
             judged && state.filesOnly !== true && commits.verified
-              ? await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)
+              ? await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit, { baseTip: await baseTip() })
               : null;
           const judgeInput = judged
             ? {

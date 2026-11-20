@@ -606,6 +606,18 @@ export interface WorkspaceHost {
    * (git or GitHub can't be read), so the caller can say so.
    */
   existingPullRequest?(target: LandTarget): Promise<ExistingPullRequest | null>;
+  /**
+   * The commit the run's base branch is at now, fetched from the remote the
+   * host pinned: what a pull request from the run's branch would be diffed
+   * against, so a review can leave out the base's commits a run merged in.
+   * Only a commit this fetch brought, by the rules a new branch's fetch
+   * follows (`fetchUpstream`), into the checkout's own object store: never a
+   * local branch or tracking ref, which the run shares and could point at its
+   * own work. `undefined` for a checkout not in a listed repository, a base
+   * with no pinned upstream, and a fetch that fails. Never rejects. Optional,
+   * as `remove` is.
+   */
+  baseTip?(target: Pick<LandTarget, "cwd" | "baseRef">): Promise<string | undefined>;
 }
 
 /**
@@ -2289,6 +2301,24 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     return repo === undefined ? null : await existingPullRequest(landHost(repo), target);
   }
 
+  /** `WorkspaceHost.baseTip`: the fetched commit `localBase` would compare, and never the local one. */
+  async function baseTip(target: Pick<LandTarget, "cwd" | "baseRef">): Promise<string | undefined> {
+    const repo = await listedRepositoryOf(target.cwd).catch(() => undefined);
+    if (repo === undefined) return undefined;
+    const deadline = now() + provisionTimeoutMs;
+    const left = () => remainingBudget(deadline, now);
+    const base = target.baseRef ?? "HEAD";
+    try {
+      const remoteBranch = await pinnedRemoteBranch(repo, base, left);
+      if (remoteBranch !== undefined) return (await fetchPinned(repo, base, remoteBranch, left))?.commit;
+      const full = await git(repo, ["rev-parse", "--symbolic-full-name", base], left());
+      if (!full.startsWith("refs/heads/")) return undefined;
+      return (await fetchUpstream(repo, base, full, left))?.commit;
+    } catch {
+      return undefined;
+    }
+  }
+
   async function recordCheckout(
     target: { place: readonly string[] },
     recordOptions: { worktrees: WorktreeCollection; by?: WorktreeOwner },
@@ -2455,6 +2485,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     land,
     landWays: ways,
     existingPullRequest: existing,
+    baseTip,
     async checkpoint(place, recorded) {
       const holding = place.holding;
       if (heldWork === undefined || holding === undefined || place.kind !== "repo") return null;

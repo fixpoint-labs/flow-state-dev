@@ -45,7 +45,7 @@ import {
 import { harnessTaskId } from "../src/workspace";
 import { reviewDetail } from "../src/browser";
 import { seedRepo } from "./fixtures";
-import { CONVERSATIONS, claimHost, cleanUpHosts } from "./claim-host";
+import { CONVERSATIONS, claimHost, cleanUpHosts, mergeTeammateWork } from "./claim-host";
 
 const BOARD_ID = "eng.feature.work";
 const FLOW = "review-host";
@@ -668,6 +668,24 @@ describe("a judged run on a board read from the claim, with review on", () => {
     expect(hold?.ask).toMatchObject({ kind: "review" });
     expect(hold?.ask.prompt).toContain("The judge: done (0.86): the line is in");
     expect(hold?.ask.prompt).toContain("- call1 commit 0");
+  }, 60_000);
+
+  it("shows the reviewer only the run's own work after the run merged the moved-on base in", async () => {
+    // What the person accepts is the pull request: the base's commits the run merged in are not in it.
+    const lab = claimHost({
+      mode: "claim",
+      durable: true,
+      upstream: true,
+      script: [{ answer: "added the line", commits: 1, during: async () => mergeTeammateWork(lab.upstream, lab.seen.at(-1)!.cwd) }],
+      manager: { reviewChanges: true },
+    });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    const row = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    const prompt = row.holds?.find((h) => h.source.kind === "suspension")?.ask.prompt;
+    expect(prompt).toContain("2 commits on");
+    expect(prompt).toContain("1 file changed (+1 −0).");
+    expect(prompt).not.toContain("a teammate's change");
   }, 60_000);
 
   it("holds a judge's ask on a question, with no review", async () => {

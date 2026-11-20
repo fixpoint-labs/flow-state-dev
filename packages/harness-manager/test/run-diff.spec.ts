@@ -75,6 +75,39 @@ describe("readRunDiff", () => {
     }
   });
 
+  it("leaves out what the base changed after the run merged it in, given the base branch's tip now", async () => {
+    // The pull request's diff starts where the run's branch and the base's
+    // tip meet: a run that merged the moved-on base in owns none of its files.
+    const { dir, cut } = repo();
+    commitFiles(dir, "the run's change", { "b.txt": "run\n" });
+    git(dir, "checkout", "-q", "main");
+    commitFiles(dir, "someone else's", { "z.txt": "theirs\n" });
+    const tip = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "run");
+    git(dir, "merge", "-q", "--no-edit", "main");
+    expect((await readRunDiff(dir, "main", cut)).files.map((file) => file.path)).toEqual(["b.txt", "z.txt"]);
+    const diff = await readRunDiff(dir, "main", cut, { baseTip: tip });
+    expect(diff.files.map((file) => file.path)).toEqual(["b.txt"]);
+    expect(diff.verified).toBe(true);
+    expect((await readRunFilePatch(dir, "main", cut, "z.txt", { baseTip: tip })).patch).toBe("");
+  });
+
+  it("ignores a tip that doesn't descend from the cut, and reads against the cut as before", async () => {
+    // A tip from a rewritten base (or anything else not past the cut) is no
+    // evidence of what the run didn't make: the read over-reports, never hides.
+    const { dir, cut } = repo();
+    commitFiles(dir, "the run's change", { "b.txt": "run\n" });
+    git(dir, "checkout", "-q", "--orphan", "rewritten");
+    commitFiles(dir, "unrelated", { "b.txt": "other\n" });
+    const unrelated = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "-f", "run");
+    for (const baseTip of [unrelated, "0".repeat(40)]) {
+      const diff = await readRunDiff(dir, "main", cut, { baseTip });
+      expect(diff.files.map((file) => file.path)).toEqual(["b.txt"]);
+      expect(diff.verified).toBe(true);
+    }
+  });
+
   it("reads up to an end commit, so a later turn's work isn't counted in an earlier one", async () => {
     const { dir, cut } = repo();
     commitFiles(dir, "turn one", { "b.txt": "one\n" });
