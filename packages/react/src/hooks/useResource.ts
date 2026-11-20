@@ -273,11 +273,13 @@ export function useResource<TDef extends ScopeResourceDef>(
   // A collection's entries as last read, for this handle read this way, while no other
   // read is out: a notice that names entries re-reads just those over them (FIX-2625).
   const how = useMemo<CollectionRead>(() => ({ all, topicPrefix }), [all, topicPrefix]);
-  const held = useRef<{ handle: unknown; how: CollectionRead; entries: ScopeEntry<TValue>[] } | undefined>(undefined);
+  // Held entries are a baseline only for the same read mode, named by value so the match never rests on `how`'s identity.
+  const mode = all ? `all:${topicPrefix ?? ""}` : "page";
+  const held = useRef<{ handle: unknown; mode: string; entries: ScopeEntry<TValue>[] } | undefined>(undefined);
   const reading = useRef(0);
   const { data, error, cause, refresh } = useFencedRead<TValue | ScopeEntry<TValue>[] | null>(
     // `client` too: by `sessionId` there is no handle, and a value one client read is never shown under another.
-    [handle, scope, key, sessionId, client, how],
+    [handle, scope, key, sessionId, client, mode],
     null,
     `Failed to read "${key}"`,
     async (stillCurrent, notice) => {
@@ -287,7 +289,7 @@ export function useResource<TDef extends ScopeResourceDef>(
       }
       if (handle === undefined) return null;
       if (!("list" in handle)) return (await handle.read()).value;
-      const last = held.current?.handle === handle && held.current.how === how && reading.current === 0 ? held.current.entries : undefined;
+      const last = held.current?.handle === handle && held.current.mode === mode && reading.current === 0 ? held.current.entries : undefined;
       reading.current += 1;
       try {
         const entries =
@@ -296,7 +298,7 @@ export function useResource<TDef extends ScopeResourceDef>(
             ? await handle.listAll({ limit: ENTRY_PAGE, ...(topicPrefix === undefined ? {} : { topicPrefix }) })
             : (await handle.list({ limit: ENTRY_PAGE })).items);
         // Only the read in play is a baseline: one a newer read superseded is older than what's shown.
-        if (stillCurrent()) held.current = { handle, how, entries };
+        if (stillCurrent()) held.current = { handle, mode, entries };
         return entries;
       } catch (error) {
         if (stillCurrent()) held.current = undefined;
