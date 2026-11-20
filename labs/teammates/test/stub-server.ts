@@ -58,7 +58,7 @@ export const POPUP_READ = { timeout: 5_000 };
  * `title` and `state` are the view's own (`taskView` of the row with its `asks`) unless the test names them.
  */
 export const codingTask = (fields: Partial<CodingBoardTask> & { id: string }): CodingBoardTask => {
-  const row = {
+  const task = {
     goal: fields.title ?? fields.id,
     status: "pending",
     attempts: 0,
@@ -72,8 +72,8 @@ export const codingTask = (fields: Partial<CodingBoardTask> & { id: string }): C
     detail: null,
     ...fields,
   };
-  const seen = taskView({ ...row, board: "s1" }, row.asks);
-  return { ...row, title: fields.title ?? seen.title, state: fields.state ?? seen.state };
+  const seen = taskView({ ...task, board: "s1" }, task.asks);
+  return { ...task, title: fields.title ?? seen.title, state: fields.state ?? seen.state };
 };
 
 /**

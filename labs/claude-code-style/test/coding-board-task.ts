@@ -20,7 +20,7 @@ export const ask = (kind: InboxHold["ask"]["kind"], prompt: string, id = `hold-$
 
 /** A coding board row: `patch` over a plain worker's running task with nothing set. */
 export function codingBoardTask(patch: Partial<CodingBoardTask> = {}): CodingBoardTask {
-  const row = {
+  const task = {
     id: "t1",
     goal: "Fix the typo",
     status: "in_progress",
@@ -35,6 +35,6 @@ export function codingBoardTask(patch: Partial<CodingBoardTask> = {}): CodingBoa
     detail: null,
     ...patch,
   };
-  const seen = taskView({ ...row, board: "s1" }, row.asks);
-  return { ...row, title: patch.title ?? seen.title, state: patch.state ?? seen.state };
+  const seen = taskView({ ...task, board: "s1" }, task.asks);
+  return { ...task, title: patch.title ?? seen.title, state: patch.state ?? seen.state };
 }
