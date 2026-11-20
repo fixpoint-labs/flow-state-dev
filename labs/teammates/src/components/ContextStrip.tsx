@@ -14,9 +14,6 @@ export function shortFolder(path: string): string {
   return parts.slice(-2).join(" / ") || path;
 }
 
-/** A model id without its provider: `openai/gpt-6-luna` reads `gpt-6-luna`. */
-const shortModel = (model: string) => model.slice(model.lastIndexOf("/") + 1) || model;
-
 /** What the folder chip's tooltip says: the whole path, and what a coding worktree of it runs before and after its run. */
 export function folderDetail(context: Pick<AppContext, "folder" | "setup" | "checks">): string {
   const lines = [`Working folder: ${context.folder}`, "Every coding task works in a worktree of it."];
@@ -29,7 +26,7 @@ export function folderDetail(context: Pick<AppContext, "folder" | "setup" | "che
 // FIX-2403
 /**
  * What the lab works on and with, over the conversation: the working
- * folder, the model, the default harness, and which coding harnesses can run
+ * folder, the default harness, and which coding harnesses can run
  * here, with Re-check. The folder chip shows the folder's last two segments; its
  * tooltip has the whole path and the setup and checks a coding worktree runs. A
  * default harness that can't run here shows as a warning. A folder whose
@@ -59,9 +56,6 @@ export function ContextStrip({
               <FolderIcon aria-hidden className="size-3.5 shrink-0 text-text-3" />
               <span className="sr-only">Working folder </span>
               <span className="truncate font-mono text-foreground">{shortFolder(context.folder)}</span>
-            </span>
-            <span className={CHIP} data-testid="context-model" title={`The model the teammates answer on: ${context.model}`}>
-              Model <span className="font-mono text-foreground">{shortModel(context.model)}</span>
             </span>
             <span
               className={cn(CHIP, defaultDown && "border-warning-line bg-warning-soft text-warning-text")}

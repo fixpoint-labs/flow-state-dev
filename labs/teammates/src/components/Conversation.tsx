@@ -329,7 +329,10 @@ export function Conversation({
         uploader={calls}
         harnesses={harnesses}
         defaultHarness={context?.harness}
-        replyModel={context?.model}
+        // The teammate's own model when it has one set (a pick saved by Respond with), else the lab's.
+        replyModel={typeof worker.settings.model === "string" ? worker.settings.model : context?.model}
+        models={context?.models}
+        onPickModel={async (model) => void (await workforce.edit({ id: worker.id, settingsPatch: { model } }))}
         onSend={(text, attachments) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();
