@@ -21,7 +21,9 @@ const lab = { client: { userId: "u_1", resources: {}, resource, live }, refresh:
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
 import { Messages } from "../src/surfaces/Messages";
-import { ToolLineGroup } from "../src/components/ToolLine";
+import { shiftManagerRenderers, ToolLineGroup } from "../src/components/ToolLine";
+import { conversationLines, FlowProvider, ItemsRenderer } from "@flow-state-dev/react";
+import type { DataItem } from "@flow-state-dev/core/items";
 
 const row = (over: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResourceState, "id" | "from" | "to" | "at">): WorkerMessageResourceState => ({
   text: "hello",
@@ -175,6 +177,29 @@ describe("a message the worker sent, in its own conversation", () => {
     render(<ToolLineGroup items={[call("t1", { to: "eng.coder", text: "hi" }, { ok: false, error: "task_sessions_only: \"eng.coder\" answers only from its tasks' sessions" })]} />);
     expect(screen.getByTestId("message-call").textContent).toContain("Not sent to eng.coder: hi");
     expect(screen.getByTestId("message-call-reason").textContent).toContain("task_sessions_only");
+  });
+
+  // FIX-2848 D1: the server writes the send as its own line, keyed by its call; the call then draws as that line.
+  it("draws once, from the send's own line, when the server wrote one for its call", () => {
+    const path = "root/step[0]/tool[sendMessage][tc_A]";
+    const sendCall = { ...call("t1", { to: "coordinator", text: "What is the codename?" }, { sent: "msg_a" }), toolCall: { callId: "tc_A", name: "sendMessage", arguments: "{}" } } as unknown as ToolOutputItem;
+    const sent = {
+      id: "d1",
+      type: "data",
+      status: "completed",
+      requestId: "r",
+      dataType: "workforce:sent",
+      key: `r:${path}`,
+      value: { to: "coordinator", text: "What is the codename?", messageId: "msg_a" },
+      provenance: { blockName: "sendMessage", blockInstanceId: `r:${path}:0`, phase: "main" },
+    } as unknown as DataItem;
+    const lines = conversationLines([sendCall, sent], [], { renderers: shiftManagerRenderers });
+    render(
+      <FlowProvider renderers={shiftManagerRenderers}>
+        <ItemsRenderer lines={lines} />
+      </FlowProvider>,
+    );
+    expect(screen.getAllByTestId("message-call").map((line) => line.textContent)).toEqual([expect.stringContaining("To coordinator: What is the codename?")]);
   });
 
   it("names a task or a conversation it was sent to, not 'another worker' (FIX-2160)", () => {

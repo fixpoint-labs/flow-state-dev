@@ -58,6 +58,7 @@ import { CONVERSATION_LEDGER_ID, conversationLedgerResources, ownConversationLed
 import { conversationBoardStateShape, settleTakenNotice } from "./task-settled";
 import { subscriptionResources } from "../subscriptions/rows";
 import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
+import { resultLineOf, writeResultLine } from "./result-line";
 
 /** One task that finished while the turn ran, as {@link takeFinishedTasks} hands it back. */
 export const finishedTaskSchema = z.object({
@@ -132,6 +133,9 @@ export const takeFinishedTasks = handler({
           ...(row.assignee !== undefined ? { agentName: row.assignee } : {}),
           metadata: noticeMetadata(notice, row)
         });
+        // Its line for an app to draw (FIX-2848 D1).
+        const result = resultLineOf(notice, row, line);
+        if (result !== undefined) writeResultLine(ctx, result);
         finished.push({
           taskId: row.id,
           ending: notice.ending as FinishedTask["ending"],
