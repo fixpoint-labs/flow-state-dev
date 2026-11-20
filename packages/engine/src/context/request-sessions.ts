@@ -69,6 +69,7 @@ import { LLM_AUDIENCE_TYPES, selectRequestsByLimit } from "./history";
 import { sessionRequestScope } from "./session-request-scope";
 import { parkedInterruptedIds } from "../durability/stop-suspended";
 import { readSettledTurns } from "./settled-turns";
+import { isPublicReentryAllowed } from "../routes/public-reentry";
 import type { SessionReadObserver } from "./view-reads";
 
 /** The most turns `history` reads from the store, whatever its limit asks. */
@@ -119,6 +120,9 @@ export type RequestSessionsInputs = {
   now?: () => number;
   /** A view's recording: told of each session a verb answers, and of each list. */
   observe?: SessionReadObserver;
+  // FIX-2848 D3.
+  /** The host's `publicReentrySources`: what `turns` reads each turn's `retryable` with, as the retry route does. */
+  publicReentrySources?: readonly string[];
   /** Server-derived identity of the running request. */
   identity: { userId: string; tenantId: string | undefined; orgId: string };
   /** The running request's flow. */
@@ -273,7 +277,9 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     ...(terminalAtMs(request) != null ? { endedAtMs: terminalAtMs(request) } : {}),
     updatedAt: request.updatedAt,
     ...(request.result?.error != null ? { error: { code: request.result.error.code, message: request.result.error.message } } : {}),
-    ...(request.historyStart != null ? { historyStart: { requestId: request.historyStart.requestId } } : {})
+    ...(request.historyStart != null ? { historyStart: { requestId: request.historyStart.requestId } } : {}),
+    // The retry route's own rule, with the same host sources (FIX-2848 D3).
+    retryable: isPublicReentryAllowed(request.source, inputs.publicReentrySources)
   });
 
   async function turns(target: string, query?: SessionTurnsQuery): Promise<SessionTurn[] | undefined>;

@@ -171,6 +171,9 @@ export type RequestHostInputs = {
   suspensionAdmission?: SuspensionAdmission;
   /** A view run's recording of each session read that answers (`RequestSessionsInputs.observe`). */
   sessionReads?: SessionReadObserver;
+  // FIX-2848 D3.
+  /** The host's `publicReentrySources` (`RequestSessionsInputs.publicReentrySources`). */
+  publicReentrySources?: readonly string[];
   // FIX-1077.
   /**
    * The config this request runs under, handed to the dispatch operation so
@@ -878,6 +881,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     requests: stores.request,
     ...(inputs.sessionAdmission !== undefined ? { admit: inputs.sessionAdmission } : {}),
     ...(inputs.sessionReads !== undefined ? { observe: inputs.sessionReads } : {}),
+    ...(inputs.publicReentrySources !== undefined ? { publicReentrySources: inputs.publicReentrySources } : {}),
     // The principal's pending asks (FIX-2770), read on the engine's clock.
     ...(stores.suspensions !== undefined ? { suspensions: stores.suspensions } : {}),
     ...(inputs.suspensionAdmission !== undefined ? { admitSuspension: inputs.suspensionAdmission } : {}),

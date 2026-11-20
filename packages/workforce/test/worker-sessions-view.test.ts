@@ -293,6 +293,25 @@ describe("a session's turns", () => {
     }
   }, 30_000);
 
+  // FIX-2848 D3: a screen offers Retry from this, never from its own copy of the retry route's sources.
+  it("retryable · a turn the user started is one the engine runs again; a turn another worker's message started is not", async () => {
+    const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: tellsOtto() }) });
+    try {
+      const main = await h.client("alice").ensureWorkerSession({ worker: "otto" });
+      await use(h, "alice", main.id);
+      const helper = await open(h, "alice", "helper-a");
+      await h.post("alice", helper, "respond", { message: "Tell otto hello" }, "agent");
+      await h.settled();
+      const { value } = await h.fsd("alice").view(sessionTurnsViewRef(), { sessionId: main.id });
+      expect(value.map((turn) => [turn.action, turn.source, turn.retryable])).toEqual([
+        [RESPOND_ACTION, "http", true],
+        [MESSAGE_RECEIVED_ENTRY, "internal", false]
+      ]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("turn-set · names the four entries that run a session's turn", () => {
     expect([...TURN_ACTIONS].sort()).toEqual(["onMessageReceived", "onTaskSettled", "respond", "routeOn"]);
   });

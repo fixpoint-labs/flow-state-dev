@@ -59,7 +59,7 @@ export type RunViewOptions = {
   sessionId?: string;
   tenantId?: string;
   stores: StoreRegistry;
-  runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel">;
+  runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel" | "publicReentrySources">;
   signal?: AbortSignal;
   // FIX-2625 D1.
   /** The change the caller asks the view to answer for: `ctx.view.changed`. A view with no `key` ignores it. */
@@ -280,7 +280,7 @@ type ReadOnlyRun = {
   sessionId?: string;
   tenantId?: string;
   stores: StoreRegistry;
-  runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel">;
+  runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel" | "publicReentrySources">;
   signal?: AbortSignal;
   /** The run's source label. */
   source: "view";
@@ -337,7 +337,9 @@ async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
       },
       ...(run.resolveFlow !== undefined ? { resolveFlow: run.resolveFlow } : {}),
       ...(run.admitSession !== undefined ? { sessionAdmission: run.admitSession } : {}),
-      ...(run.admitSuspension !== undefined ? { suspensionAdmission: run.admitSuspension } : {})
+      ...(run.admitSuspension !== undefined ? { suspensionAdmission: run.admitSuspension } : {}),
+      // A turn's `retryable` is the retry route's answer, with the host's sources (FIX-2848 D3).
+      ...(run.runtimeConfig?.publicReentrySources !== undefined ? { publicReentrySources: run.runtimeConfig.publicReentrySources } : {})
     }
   });
 

@@ -14,7 +14,7 @@ const session = (fields: Partial<ListedWorkerSession>): ListedWorkerSession => (
   id: "wks_lead", title: "Untitled", worker: "lead", updatedAt: 0, running: false, state: {}, isDefault: true, waiting: [], ...fields,
 });
 const turn = (startedAt: number, completedAt: number | null): ListedTurn => ({
-  id: `t${startedAt}`, action: "respond", status: completedAt === null ? "in_progress" : "completed", source: "http", startedAt, completedAt, endedAt: completedAt, error: null, historyStart: null,
+  id: `t${startedAt}`, action: "respond", status: completedAt === null ? "in_progress" : "completed", source: "http", startedAt, completedAt, endedAt: completedAt, error: null, historyStart: null, retryable: true,
 });
 const line = (activity: ReturnType<typeof activityOf>, now: number) =>
   statusOf("lead", { activity, entries: [], talk: [], tasks: [], now }, (id) => id, () => false).text;
