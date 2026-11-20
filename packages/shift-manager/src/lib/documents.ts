@@ -34,13 +34,19 @@ function manifestFor(client: Pick<Client, "resources">, flow: string, sessionId:
   return found;
 }
 
-/** Every listed flow's single resources whose content a client may read, by ref. */
-async function documentsOf(client: Pick<Client, "resources">, sessions: readonly SessionSummary[]): Promise<DeclaredDocument[]> {
+/** Each listed flow, and the first listed session of it: the address its documents are read through. */
+function sessionByFlow(sessions: readonly SessionSummary[]): Map<string, string> {
   const byFlow = new Map<string, string>();
   for (const session of sessions) {
     const flow = session.flowId ?? session.flowKind;
     if (!byFlow.has(flow)) byFlow.set(flow, session.id);
   }
+  return byFlow;
+}
+
+/** Every listed flow's single resources whose content a client may read, by ref. */
+async function documentsOf(client: Pick<Client, "resources">, sessions: readonly SessionSummary[]): Promise<DeclaredDocument[]> {
+  const byFlow = sessionByFlow(sessions);
   const found = new Map<string, DeclaredDocument>();
   for (const [flow, sessionId] of byFlow) {
     for (const entry of (await manifestFor(client, flow, sessionId)).resources) {
@@ -50,29 +56,36 @@ async function documentsOf(client: Pick<Client, "resources">, sessions: readonly
   return [...found.values()].sort((a, b) => a.ref.localeCompare(b.ref));
 }
 
+/** Each listed flow with the session its documents are read through, as one comparable string. */
+function addressesOf(sessions: readonly SessionSummary[]): string {
+  return [...sessionByFlow(sessions)].map(([flow, id]) => `${flow}=${id}`).sort().join("\n");
+}
+
 /**
  * The declared documents, read while the screen that draws them is open (Jump
- * to), once the session list has landed, and again when a flow appears in it.
+ * to), once the session list has landed, and again when a flow appears in it
+ * or the session a flow's documents are addressed through leaves it.
  * `undefined` while they are read.
  */
 export function useDocuments(): Section<DeclaredDocument[]> | undefined {
   const { client } = useLab();
   const sessions = useSessions().list;
-  const [read, setRead] = useState<{ flows: string; section: Section<DeclaredDocument[]> } | undefined>(undefined);
-  const flows = sessions === undefined ? undefined : [...new Set(sessions.map((s) => s.flowId ?? s.flowKind))].sort().join("\n");
+  const [read, setRead] = useState<{ addresses: string; section: Section<DeclaredDocument[]> } | undefined>(undefined);
+  const addresses = sessions === undefined ? undefined : addressesOf(sessions);
   useEffect(() => {
-    if (sessions === undefined || flows === undefined) return;
+    if (sessions === undefined || addresses === undefined) return;
     let live = true;
     documentsOf(client, sessions).then(
-      (documents) => live && setRead({ flows, section: { ok: true, value: documents } }),
-      (error: unknown) => live && setRead({ flows, section: { ok: false, failure: describeFailure(error) } }),
+      (documents) => live && setRead({ addresses, section: { ok: true, value: documents } }),
+      (error: unknown) => live && setRead({ addresses, section: { ok: false, failure: describeFailure(error) } }),
     );
     return () => {
       live = false;
     };
-    // The flows decide what is read; a session list that names the same flows reads nothing new.
+    // Each flow and the session it is read through decide what is read: a session list that keeps
+    // both reads nothing new. A new address for a known flow reuses its cached manifest.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, flows]);
-  // A read for another set of flows is never this one's answer: unread until it lands.
-  return read !== undefined && read.flows === flows ? read.section : undefined;
+  }, [client, addresses]);
+  // A read for other addresses is never this one's answer: unread until it lands.
+  return read !== undefined && read.addresses === addresses ? read.section : undefined;
 }

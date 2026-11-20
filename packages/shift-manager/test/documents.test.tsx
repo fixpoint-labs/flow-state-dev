@@ -48,4 +48,20 @@ describe("Jump to's documents", () => {
       }),
     );
   });
+
+  it("move to another session of the same flow when the one they were read through is deleted", async () => {
+    manifests.gamma = Promise.resolve({ resources: [doc("gamma-notes")] });
+    listed = [
+      { id: "s-gamma", flowKind: "gamma" },
+      { id: "s-gamma-2", flowKind: "gamma" },
+    ];
+    const { result, rerender } = renderHook(() => useDocuments());
+    await waitFor(() => expect(result.current).toEqual({ ok: true, value: [{ ref: "gamma-notes", sessionId: "s-gamma" }] }));
+
+    // The same flow set, but the session the document was addressed through is gone: opening it
+    // through that id would be a dead link.
+    listed = [{ id: "s-gamma-2", flowKind: "gamma" }];
+    rerender();
+    await waitFor(() => expect(result.current).toEqual({ ok: true, value: [{ ref: "gamma-notes", sessionId: "s-gamma-2" }] }));
+  });
 });

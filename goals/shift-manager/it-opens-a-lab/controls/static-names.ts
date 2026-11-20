@@ -32,6 +32,6 @@ export function useDirectoryReads(): DirectoryReads {
     const doors = new Map(stored.map((seat) => [seat.id, seat]));
     return __STATIC_SEATS__.map((row) => toWorker({ ...row, door: doors.get(row.id)?.door ?? null })).filter((s): s is Worker => s !== undefined);
   }, [stored]);
-  const inventory = useMemo(() => ({ ...reads.inventory, rows }), [reads.inventory, rows]);
+  const inventory = useMemo(() => ({ ...reads.inventory, values: rows }), [reads.inventory, rows]);
   return { ...reads, inventory };
 }
