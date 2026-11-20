@@ -72,12 +72,12 @@ function MessageLine({ item, line }: { item: MessageItem; line?: ItemLine }) {
         {files.length > 0 ? <MessageFiles files={files} readFile={readFile} /> : null}
         {/* A line of files alone has no words to box. */}
         {text !== "" || files.length === 0 ? (
-          <div className="max-w-[min(560px,85%)] rounded-[16px_16px_4px_16px] border border-border bg-surface-raised px-4 py-3 text-[14.5px] leading-[1.6] whitespace-pre-wrap" data-entry="user">
+          <div className="max-w-[min(560px,85%)] rounded-[16px_16px_4px_16px] border border-border bg-surface-raised px-4 py-3 text-base leading-[1.6] whitespace-pre-wrap" data-entry="user">
             {text}
           </div>
         ) : null}
         {at === undefined ? null : (
-          <time dateTime={new Date(item.ts).toISOString()} className="px-1 font-mono text-[11px] text-text-3" data-part="time">
+          <time dateTime={new Date(item.ts).toISOString()} className="px-1 font-mono text-xs text-text-3" data-part="time">
             {at}
           </time>
         )}
@@ -86,7 +86,7 @@ function MessageLine({ item, line }: { item: MessageItem; line?: ItemLine }) {
   }
   const incomplete = line?.kind === "assistant" && line.incomplete === true;
   return (
-    <div className="py-1 text-[14.5px] leading-[1.65]" data-entry="assistant" data-incomplete={incomplete ? "true" : undefined}>
+    <div className="py-1 text-base leading-[1.65]" data-entry="assistant" data-incomplete={incomplete ? "true" : undefined}>
       <MarkdownText text={textOf(item)} />
       {incomplete ? <span className="mt-1 block text-xs text-text-3">Incomplete</span> : null}
     </div>
@@ -123,7 +123,7 @@ function ReportLine({ item }: { item: DataItem }) {
           {notes.length === 0 ? null : <span className="truncate text-text-2">{notes.join(" · ")}</span>}
           <span className="flex-1" />
           {at === undefined ? null : (
-            <time dateTime={new Date(item.ts).toISOString()} className="shrink-0 font-mono text-[11px] text-text-3">
+            <time dateTime={new Date(item.ts).toISOString()} className="shrink-0 font-mono text-xs text-text-3">
               {at}
             </time>
           )}
@@ -135,7 +135,7 @@ function ReportLine({ item }: { item: DataItem }) {
           </CollapsibleTrigger>
         </div>
         <CollapsibleContent className="px-4 py-3 outline-none">
-          <MarkdownText className="text-[14px] leading-[1.6]" text={value.text ?? ""} />
+          <MarkdownText className="text-sm leading-[1.6]" text={value.text ?? ""} />
         </CollapsibleContent>
       </section>
     </Collapsible>

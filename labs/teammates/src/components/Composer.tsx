@@ -169,7 +169,7 @@ export function Composer({
             onKeyDown={onKeyDown}
             onPaste={attachments.onPaste}
             placeholder={`Message ${workerName}…`}
-            className="block field-sizing-content max-h-48 min-h-14 w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 pb-1 text-[14.5px] leading-[1.6] outline-none placeholder:text-text-3"
+            className="block field-sizing-content max-h-48 min-h-14 w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 pb-1 text-base leading-[1.6] outline-none placeholder:text-text-3"
           />
           <div className="flex items-center gap-1 px-2 pb-2">
             <AttachButton
@@ -180,7 +180,7 @@ export function Composer({
               <HarnessPicker rows={harnesses} current={coding} fallback={defaultHarness} onPick={choose} workerName={workerName} replyModel={replyModel} />
             ) : null}
             <span aria-hidden className="flex-1" />
-            <span className="mr-2 hidden font-mono text-[11px] text-text-3 sm:inline">⏎ send · ⇧⏎ newline</span>
+            <span className="mr-2 hidden font-mono text-xs text-text-3 sm:inline">⏎ send · ⇧⏎ newline</span>
             {running || stopping ? (
               <button
                 type="button"
@@ -320,7 +320,7 @@ function HarnessPicker({
       </button>
       {open ? (
         <div role="menu" aria-label="Start coding tasks on" className="absolute bottom-full left-0 z-20 mb-1 min-w-52 rounded-md border border-border-strong bg-surface p-1 shadow-lg">
-          <div aria-hidden className="px-2 pt-1 pb-1.5 text-[11px] font-medium tracking-wide text-text-3 uppercase">
+          <div aria-hidden className="px-2 pt-1 pb-1.5 text-xs font-medium tracking-wide text-text-3 uppercase">
             Start coding tasks on
           </div>
           {rows.map((r) => {

@@ -91,7 +91,7 @@ export function WorkersList({
         </span>
       </div>
       <div className="flex items-center justify-between px-4 pt-2 pb-1.5">
-        <span className="text-[11px] font-medium tracking-wider text-text-3 uppercase">Team · {workers.length}</span>
+        <span className="text-xs font-medium tracking-wider text-text-3 uppercase">Team · {workers.length}</span>
         <button
           type="button"
           aria-label="Hire a teammate"

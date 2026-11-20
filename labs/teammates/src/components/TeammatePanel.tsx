@@ -161,7 +161,7 @@ export function TeammatePanel({
           )}
         >
           <span className="flex items-start justify-between gap-3">
-            <span className="line-clamp-2 text-[13px] leading-snug font-medium" title={line}>
+            <span className="line-clamp-2 text-sm leading-snug font-medium" title={line}>
               {coding ? titleOf(t) : line}
             </span>
             {elapsed === undefined ? null : (

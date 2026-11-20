@@ -11,7 +11,7 @@ export function Divider({ label, ariaLabel, className, ...data }: { label: strin
   return (
     <div role="separator" aria-label={ariaLabel ?? label} className={cn("my-3 flex items-center gap-3", className)} {...data}>
       <span aria-hidden className="h-px flex-1 bg-border" />
-      <span className="text-[11px] font-medium tracking-[0.08em] text-text-3 uppercase">{label}</span>
+      <span className="text-xs font-medium tracking-[0.08em] text-text-3 uppercase">{label}</span>
       <span aria-hidden className="h-px flex-1 bg-border" />
     </div>
   );
