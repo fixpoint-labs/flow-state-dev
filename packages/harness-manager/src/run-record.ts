@@ -236,6 +236,15 @@ export const runRecordStateSchema = z.object({
    * field existed.
    */
   baseCommit: z.string().nullable().default(null),
+  // FIX-2859; BP-030.
+  /**
+   * The base branch's tip as the host fetched it when the run last settled
+   * (`WorkspaceHost.baseTip`), so a file's patch read later is read as the
+   * review's files were: against it when it has {@link baseCommit} in its
+   * history, else against the cut. `null` where the host couldn't say, and
+   * on a record written before it was kept: the read keeps the cut.
+   */
+  baseTip: z.string().nullable().default(null),
   // BP-030.
   /**
    * The run was first provisioned with no repository: its kept files alone.

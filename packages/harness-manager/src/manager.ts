@@ -3252,6 +3252,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
                 since: state.roundStart,
               })
             : null;
+        // The tip the review's files were read against, for a file's patch read later.
+        if (diff !== null) await fenced(writeRunRecord(ctx, identity, { baseTip: await baseTip() }), "the base's tip was recorded");
         await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, diff, round, reviewed: null, landed: null, checks } });
         return judgeInput;
       };

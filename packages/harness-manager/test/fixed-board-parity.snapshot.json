@@ -5,6 +5,7 @@
     "attempt": 1,
     "baseCommit": "string",
     "baseRef": "main",
+    "baseTip": null,
     "branch": "conductor/fix-1-implement-fba6a9",
     "checks": null,
     "childSessionId": "string",

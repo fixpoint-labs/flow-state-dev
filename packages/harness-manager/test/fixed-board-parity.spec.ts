@@ -11,7 +11,7 @@
  * run's checkout and branch, and again when a run's branch and folder became
  * its short name; a run recorded before either keeps its older place
  * (`org-place.spec.ts`). A field added to the record (`landedPullRequests`)
- * adds a line, and changes none of the keys.
+ * adds a line, and changes none of the keys; so did `baseTip`.
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { relative } from "node:path";

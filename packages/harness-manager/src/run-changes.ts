@@ -103,7 +103,10 @@ export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
           ? { taskId: row.id, diff: { files: [], fileCount: 0, added: 0, removed: 0, verified: false }, patch: null }
           : { taskId: row.id, diff: null, patch: { path: input.path, patch: "", truncated: false, verified: false } };
       }
-      const changes = await readRunChanges(record.workspacePath, record.baseRef ?? null, record.baseCommit ?? null, at);
+      const changes = await readRunChanges(record.workspacePath, record.baseRef ?? null, record.baseCommit ?? null, {
+        ...at,
+        baseTip: record.baseTip ?? null,
+      });
       return { taskId: row.id, ...changes };
     },
   });
