@@ -23,8 +23,10 @@
  *   5  you ask for a fix; lead starts a coding task with no question and no
  *      project anywhere on the screen, the run goes through
  *      Claude Code, a worktree of the checkout gets one commit that changes the
- *      README's first line and nothing else, the checkout itself is untouched,
- *      and the result lands in lead's conversation as the coding task's.
+ *      README's first line and nothing else, the checkout itself is untouched
+ *      until you accept the review from its popup (merge locally), which lands
+ *      the checkout at that commit, and the result lands in lead's
+ *      conversation as the coding task's.
  *
  * Inputs are held out: the launch date is drawn at random and written into the
  * working folder's README, where researcher reads it, the codename is drawn at random, and the
@@ -355,7 +357,8 @@ async function stepFour(
   }
 
   // The divider: labelled summarized, with the codename line and researcher's reply above it.
-  const divider = conversation(page).getByRole("separator");
+  // Read by its own name: a Markdown rule (`---`) in an answer is a separator too, drawn above it.
+  const divider = conversation(page).getByRole("separator", { name: /^Earlier turns / });
   const shown = await divider.first().waitFor({ timeout: 15_000 }).then(() => true, () => false);
   const label = shown ? await divider.first().getAttribute("aria-label") : null;
   if (!shown) fail("4", "no divider in lead's conversation");
