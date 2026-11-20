@@ -31,6 +31,7 @@ import {
   FILED_TASK_DATA_TYPE,
   RECEIVED_MESSAGE_DATA_TYPE,
   SENT_MESSAGE_DATA_TYPE,
+  sentTargetLabel,
   TASK_RESULT_DATA_TYPE,
   type FiledTaskValue,
   type ReceivedMessageValue,
@@ -76,6 +77,8 @@ export interface LineScreen {
   viewTasks?: () => void;
   /** Reads the bytes of a file your line carries, for its thumbnail. */
   readFile?: (file: FileContent) => Promise<Blob>;
+  /** The screen answers a wait for your yes (Approve, Deny) through its flow: the conversation does, a popup doesn't. */
+  answers?: true;
 }
 
 /** A screen that offers no action on a line: a popup's, and the default. */
@@ -149,7 +152,7 @@ function StoppedLine({ line }: { line: ItemLine }) {
 
 /** What a worker waits on you for: Approve and Deny, until answered; then how. Any other wait is the task popup's. */
 function ApprovalLine({ item, line }: { item: SuspensionItem; line?: ItemLine }) {
-  const { workerName } = useContext(LineContext);
+  const { workerName, answers } = useContext(LineContext);
   const resolution = line?.kind === "suspension" ? line.resolution : undefined;
   const { error, isResolving: busy, approve, reject } = useApproval(item, { isResolved: resolution !== undefined });
   if (item.reason !== "user_approval") return null;
@@ -157,7 +160,7 @@ function ApprovalLine({ item, line }: { item: SuspensionItem; line?: ItemLine })
     <section aria-label={`${workerName} asks`} data-entry="approval" className="max-w-[85%] rounded-md border border-attention bg-attention/10 px-3 py-2 text-sm">
       <div className="font-mono text-xs tracking-widest text-attention uppercase">{workerName} asks · {resolution ?? "waiting for you"}</div>
       <p className="mt-0.5 whitespace-pre-wrap">{item.message}</p>
-      {resolution === undefined ? (
+      {resolution === undefined && answers === true ? (
         <div className="mt-2 flex gap-2 text-xs">
           <button type="button" disabled={busy} onClick={approve} className="rounded-sm bg-primary px-2 py-1 font-semibold text-primary-foreground disabled:opacity-40">
             Approve
@@ -176,20 +179,33 @@ function ApprovalLine({ item, line }: { item: SuspensionItem; line?: ItemLine })
   );
 }
 
+/**
+ * Whether the lab's look draws `line`: a stretch of thinking with no tool call
+ * draws nothing ({@link StepsLine} shows calls only), nor does a wait that
+ * isn't your yes ({@link ApprovalLine}; the task popup shows it). A count of
+ * what is on screen (unread) reads this.
+ */
+export function drawsLine(line: ItemLine): boolean {
+  if (line.kind === "steps") return line.items.some((item) => item.type === "tool_output");
+  if (line.kind === "suspension") return line.item.reason === "user_approval";
+  return true;
+}
+
 /** One turn's tool calls, as one run. */
 function StepsLine({ items, line }: { items: readonly { type: string }[]; line: Extract<ItemLine, { kind: "steps" }> }) {
   return <ToolRun steps={stepsOf(items, line.ended === true)} />;
 }
 
-/** Who a sent message went to: a worker's id, else a task or a conversation. */
-const targetOf = (to: SentMessageTarget | undefined): string | undefined => (typeof to === "string" ? to : undefined);
+/** The worker a sent message went to, by id; `undefined` when it went to a task or a conversation. */
+const sentWorkerOf = (to: SentMessageTarget | undefined): string | undefined => (typeof to === "string" ? to : undefined);
 
 /** A message to another worker: one line, "Messaged researcher", that opens the exchange; one it couldn't send says why. */
 function SentLine({ item }: { item: DataItem }) {
   const { nameOf, lookOf, answerOf, openMessage } = useContext(LineContext);
   const value = item.value as Partial<SentMessageValue>;
-  const to = targetOf(value.to);
-  const name = to === undefined ? "another conversation" : nameOf(to);
+  const to = sentWorkerOf(value.to);
+  // A worker by its name; a task or a conversation in workforce's words.
+  const name = to === undefined ? sentTargetLabel(value.to) : nameOf(to);
   const text = value.text ?? "";
   if (value.refused !== undefined || value.messageId === undefined) {
     return (

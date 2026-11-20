@@ -40,6 +40,7 @@ import {
   FILED_TASK_DATA_TYPE,
   RECEIVED_MESSAGE_DATA_TYPE,
   SENT_MESSAGE_DATA_TYPE,
+  sentTargetLabel,
   TASK_RESULT_DATA_TYPE,
   type SentMessageValue,
 } from "@flow-state-dev/workforce/browser";
@@ -148,16 +149,6 @@ function QuietLine({ label, state, nested = false, children }: { label: string; 
   );
 }
 
-// FIX-2160.
-/** Who a message names: a worker's id, a task, or a conversation. */
-function messageTargetLabel(to: unknown): string {
-  if (typeof to === "string") return to;
-  const target = (typeof to === "object" && to !== null ? to : {}) as { task?: unknown; session?: unknown };
-  if (typeof target.task === "string") return `task ${target.task}`;
-  if (typeof target.session === "string") return `conversation ${target.session}`;
-  return "another worker";
-}
-
 // FIX-2318.
 /** What a waited send's answer says under its line: the reply, or why none came yet. */
 function waitOutcomeLine(output: { status?: unknown; reply?: unknown; recipient?: unknown } | undefined): string | null {
@@ -189,7 +180,7 @@ function SentMessage({ item }: { item: DataItem }) {
   const waits = value.wait !== undefined;
   return (
     <MessageCallView
-      to={messageTargetLabel(value.to)}
+      to={sentTargetLabel(value.to)}
       text={value.text ?? ""}
       waits={waits}
       asks={waits || value.replyRequested === true}

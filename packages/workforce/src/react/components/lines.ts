@@ -25,19 +25,12 @@
 import { createElement, type ComponentType, type ReactNode } from "react";
 import type { DataItem } from "@flow-state-dev/core/items";
 import { FILED_TASK_DATA_TYPE, RECEIVED_MESSAGE_DATA_TYPE, SENT_MESSAGE_DATA_TYPE, TASK_RESULT_DATA_TYPE } from "../../messages/keys";
-import type { FiledTaskValue, ReceivedMessageValue, SentMessageTarget, SentMessageValue, TaskResultValue } from "../../messages/line-values";
+import type { FiledTaskValue, ReceivedMessageValue, SentMessageValue, TaskResultValue } from "../../messages/line-values";
+import { sentTargetLabel } from "../../messages/sent-target";
 
 const lineStyle = { margin: 0, whiteSpace: "pre-wrap", color: "var(--fsd-panel-fg, inherit)" } as const;
 const labelStyle = { fontWeight: 600 } as const;
 const mutedStyle = { margin: 0, fontSize: "var(--fsd-panel-note-font-size, 12px)", color: "var(--fsd-panel-muted-fg, inherit)" } as const;
-
-/** Who a sent message went to, in words. */
-function targetLabel(to: SentMessageTarget | undefined): string {
-  if (typeof to === "string") return to;
-  if (to !== undefined && "task" in to) return `task ${to.task}`;
-  if (to !== undefined && "session" in to) return `conversation ${to.session}`;
-  return "another worker";
-}
 
 /** A line's text, after its label: "**To ada:** hello". */
 function said(label: string, text: string): ReactNode {
@@ -74,7 +67,7 @@ function waitAnswer(wait: SentMessageValue["wait"]): string | null {
 /** A message this worker sent (`workforce:sent`), refused and failed ones too. */
 function SentMessageLine({ item }: { item: DataItem }): ReactNode {
   const value = item.value as Partial<SentMessageValue>;
-  const to = targetLabel(value.to);
+  const to = sentTargetLabel(value.to);
   const asks = value.replyRequested === true || value.wait !== undefined;
   const state =
     value.refused !== undefined ? "refused" : value.wait?.status === "waiting" ? "waiting" : value.wait?.status === "failed" ? "failed" : "sent";

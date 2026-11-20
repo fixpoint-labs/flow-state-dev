@@ -65,6 +65,11 @@ describe("a message the worker sent", () => {
     expect(line.textContent).toContain("Not sent to writer: Hi.");
     expect(line.textContent).toContain("no_worker: Nothing was sent.");
   });
+
+  it("names a task or a conversation it went to, as workforce words it, not another worker", () => {
+    drawLines(linesOf([sent("s1", "q1", { to: { task: "task_42" }, text: "Done yet?", messageId: "msg_1" }), sent("s2", "q2", { to: { session: "s_other" }, text: "FYI", messageId: "msg_2" })]), { nameOf: (id) => id });
+    expect(screen.getAllByRole("button").map((line) => line.getAttribute("aria-label"))).toEqual(["Messaged task task_42: Done yet?", "Messaged conversation s_other: FYI"]);
+  });
 });
 
 describe("a message another worker sent", () => {
@@ -91,13 +96,20 @@ describe("a task the worker filed", () => {
 describe("a worker waiting for your yes", () => {
   it("is a card with Approve and Deny until answered, and then says how", () => {
     const stop = approval("s1", "r1", "sus_1", "Publish the draft?");
-    drawLines(linesOf([stop]), { workerName: "writer" });
+    drawLines(linesOf([stop]), { workerName: "writer", answers: true });
     const card = screen.getByRole("region", { name: "writer asks" });
     expect(within(card).getByRole("button", { name: "Approve" })).toBeTruthy();
     cleanup();
     drawLines(linesOf([stop, answered("s2", "r1", "sus_1", "approved")]), { workerName: "writer" });
     expect(screen.getByRole("region", { name: "writer asks" }).textContent).toContain("writer asks · approved");
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+  });
+
+  // A popup has no flow to answer through: buttons there would do nothing.
+  it("offers no Approve or Deny on a screen that can't answer it (a popup), and says it waits", () => {
+    drawLines(linesOf([approval("s1", "r1", "sus_1", "Publish the draft?")]), { workerName: "writer" });
+    expect(screen.getByRole("region", { name: "writer asks" }).textContent).toContain("waiting for you");
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });
 

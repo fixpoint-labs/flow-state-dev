@@ -14,9 +14,10 @@ import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
 import { HireForm } from "./TeammateForms";
+import { drawsLine } from "./lines";
 
-/** The lines that count toward unread: every line but your own. */
-const unreadable = (lines: readonly ItemLine[]) => lines.filter((line) => line.kind !== "user").length;
+/** The lines that count toward unread: every line the lab draws but your own. */
+export const unreadable = (lines: readonly ItemLine[]) => lines.filter((line) => line.kind !== "user" && drawsLine(line)).length;
 
 /**
  * The left pane: one row per teammate, never a list of sessions. Each row is

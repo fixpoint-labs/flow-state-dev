@@ -28,6 +28,7 @@ import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
 import { SessionOverlay } from "./flow-state/session-overlay";
 import { Steps } from "./Steps";
+import { RunsOn, runsOn, taskLabel, taskLine } from "./TaskCard";
 import { teammatesRenderers } from "./lines";
 import { stepOf } from "./ToolRun";
 import { durationText } from "./flow-state/spend";
@@ -38,31 +39,12 @@ export type Popup =
   | { kind: "task"; sessionId: string; taskId: string }
   | { kind: "message"; from: string; to: string; messageId: string; text: string };
 
-/** "Draft the PM role" as it reads after "Asked writer to". */
-const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
-
-/** A task's line, the same in the conversation and on the popup: a coding task, or what was asked of whom. */
-export function taskLine(task: { title: string; to: string }, coding: boolean, nameOf: (id: string) => string): string {
-  return coding ? `Coding task: ${task.title}` : `Asked ${nameOf(task.to)} to ${lowerFirst(task.title)}`;
-}
-
 /** A failed or cancelled task's reason, its first line only; the popup has the whole. */
 export function reasonLine(task: Pick<CodingBoardTask, "error">): string | undefined {
   const line = task.error?.split("\n").find((l) => l.trim() !== "")?.trim();
   return line === "" ? undefined : line;
 }
 
-/** What a coding task runs on, as its line names it: the harness, and the model when its run reported one. */
-export function runsOn(task: { harness?: string; model?: string }): string | undefined {
-  if (task.harness === undefined) return undefined;
-  return task.model === undefined ? task.harness : `${task.harness} · ${task.model}`;
-}
-
-/** A coding task line's accessible name: its line, and what it runs on. */
-export const taskLabel = (line: string, task: { harness?: string; model?: string }) => {
-  const on = runsOn(task);
-  return on === undefined ? line : `${line}, on ${on}`;
-};
 
 /**
  * The coding workers a coding task can be re-run on: each one whose
@@ -537,15 +519,6 @@ function Titled({ look, line }: { look: Look; line: string }) {
     <span className="flex items-center gap-2">
       <Avatar look={look} size="sm" />
       {line}
-    </span>
-  );
-}
-
-/** What a coding task runs on, as a small tag after its line. */
-export function RunsOn({ on }: { on: string }) {
-  return (
-    <span className="shrink-0 rounded-sm border border-border px-1.5 py-0.5 font-mono text-xs font-normal text-muted-foreground" data-harness>
-      {on}
     </span>
   );
 }

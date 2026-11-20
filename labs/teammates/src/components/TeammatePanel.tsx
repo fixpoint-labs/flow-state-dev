@@ -14,7 +14,8 @@ import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
 import { costAmount, tokenCount } from "./flow-state/spend";
 import { TaskTime, taskCounts, taskSignal } from "./flow-state/task-signals";
-import { reasonLine, runsOn, taskLabel, taskLine, type Popup } from "./Popups";
+import { reasonLine, type Popup } from "./Popups";
+import { runsOn, taskLabel, taskLine } from "./TaskCard";
 import { EditForm } from "./TeammateForms";
 
 /** The heading over each of the panel's sections. */

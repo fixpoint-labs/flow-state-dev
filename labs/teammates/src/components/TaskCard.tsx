@@ -6,7 +6,34 @@ import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import { Spend } from "./flow-state/spend";
-import { RunsOn, runsOn, taskLabel, taskLine } from "./Popups";
+
+/** "Draft the PM role" as it reads after "Asked writer to". */
+const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
+
+/** A task's line, the same in the conversation and on the popup: a coding task, or what was asked of whom. */
+export function taskLine(task: { title: string; to: string }, coding: boolean, nameOf: (id: string) => string): string {
+  return coding ? `Coding task: ${task.title}` : `Asked ${nameOf(task.to)} to ${lowerFirst(task.title)}`;
+}
+
+/** What a coding task runs on, as its line names it: the harness, and the model when its run reported one. */
+export function runsOn(task: { harness?: string; model?: string }): string | undefined {
+  if (task.harness === undefined) return undefined;
+  return task.model === undefined ? task.harness : `${task.harness} · ${task.model}`;
+}
+
+/** A coding task line's accessible name: its line, and what it runs on. */
+export const taskLabel = (line: string, task: { harness?: string; model?: string }) => {
+  const on = runsOn(task);
+  return on === undefined ? line : `${line}, on ${on}`;
+};
+/** What a coding task runs on, as a small tag after its line. */
+export function RunsOn({ on }: { on: string }) {
+  return (
+    <span className="shrink-0 rounded-sm border border-border px-1.5 py-0.5 font-mono text-xs font-normal text-muted-foreground" data-harness>
+      {on}
+    </span>
+  );
+}
 
 /**
  * A task a conversation filed, as one line in the thread: what was asked of

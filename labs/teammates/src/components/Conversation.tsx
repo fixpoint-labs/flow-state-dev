@@ -157,6 +157,7 @@ export function Conversation({
       stillRunning: (lineId) => (lineId === last?.id && last?.kind === "stopped" && !running ? backgroundRunning : undefined),
       viewTasks: onViewTasks,
       readFile: calls.readFile,
+      answers: true,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [workerName, nameOf, lookOf, isCoding, harnessOf, tasks, talkKey, onOpen, worker.id, sessionId, running, calls, last?.id, last?.kind, backgroundRunning, onViewTasks],

@@ -29,6 +29,9 @@ export const call = (id: string, requestId: string, name: string, args: Record<s
   output,
 });
 
+/** What the worker thought, between its calls. */
+export const thought = (id: string, requestId: string) => ({ ...base(id, requestId), type: "reasoning", summary: [{ type: "reasoning_text", text: "hm" }] });
+
 /** A call parked on your answer. */
 export const parked = (id: string, requestId: string, name: string) => ({ ...call(id, requestId, name, {}, "failed"), error: { code: "SUSPENSION", message: "waits on you" } });
 
