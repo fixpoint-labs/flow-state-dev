@@ -174,6 +174,12 @@ export const ENTRIES = [
     decision: "Owner, 2026-11-14 and 2026-11-15 (FIX-2738): the payload is `value` (`record`, `fact` and `payload` were rejected); one kind, the `component` item removed, a component is a dataType with a renderer",
     retires: [],
   },
+  {
+    term: "Line",
+    means: "What a conversation screen draws: one `ItemLine` from React's `conversationLines(items, turns)` (user, assistant, steps, failed, stopped, suspension, data, item). The model decides each kind; a renderer decides only how it looks. Not workforce's coordinator `ConversationLine`, which is a line of a conversation's recent history read for the coordinator.",
+    decision: "Owner, 2026-11-19 (FIX-2848): React's render stream becomes the conversation model, renamed with no alias; its type is `ItemLine` so it doesn't reuse `ConversationLine`",
+    retires: [{ name: "buildItemRenderStream" }, { name: "ItemRenderSegment" }, { name: "BuildItemRenderStreamOptions" }],
+  },
 
   // Dispatch, wait, ask and hand-off ----------------------------------------------------------
   {
@@ -973,6 +979,11 @@ const EXEMPTIONS = [
     path: /^(?:apps\/docs\/docs\/workforce\/delegating-work\.md|apps\/docs\/docs\/shift-manager\/overview\.md|packages\/workforce\/README\.md|packages\/shift-manager\/README\.md)$/,
     rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "recurring-work-prose"],
     why: "FIX-2614: published pages may name the released schedule and subscription surface until /release-docs rewrites them, and deletes this in the same PR",
+  },
+  {
+    path: /^\.changeset\/one-conversation-model\.md$/,
+    rules: ["buildItemRenderStream", "ItemRenderSegment", "BuildItemRenderStreamOptions"],
+    why: "FIX-2848: the release note that tells consumers which renamed React exports to replace",
   },
   {
     path: /^\.changeset\/user-suspension-reasons\.md$/,

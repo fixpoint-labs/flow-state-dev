@@ -44,6 +44,13 @@ export type RendererRegistry = {
    * When unset, `<ApprovalRenderer>` renders as the built-in fallback.
    */
   suspension?: BlockComponentType | false;
+  // FIX-2848.
+  /**
+   * Renderer for a `stopped` conversation line: a turn the user stopped,
+   * drawn after its last line. Not an item type: it receives `{ line }`.
+   * When unset, a plain "Stopped" line renders; `false` draws none.
+   */
+  stopped?: BlockComponentType | false;
   /**
    * Renderers a suspension item names with `render.component`, for a schema
    * richer than the built-in cards handle. Not an item type.

@@ -328,7 +328,8 @@ describe("starting work on a conversation's board (BR-8 to BR-11, BR-24)", () =>
   });
 });
 
-describe("retryTask on a conversation's board (FIX-2383)", () => {
+// Real engine: `settled()` waits up to 10s, so the test budget must not be the shorter 5s default.
+describe("retryTask on a conversation's board (FIX-2383)", { timeout: 30_000 }, () => {
   it("starts a cancelled task again as the same row, with no other touch of the board", async () => {
     const host = bootBoardHost();
     try {

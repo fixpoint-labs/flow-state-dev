@@ -23,7 +23,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { RECEIVED_MESSAGE_DATA_TYPE, type ProjectAddressRef } from "@flow-state-dev/workforce/browser";
 import type { SessionSummary } from "@flow-state-dev/client";
-import { buildItemRenderStream, FlowProvider, ItemRenderer, useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
+import { conversationLines, FlowProvider, ItemRenderer, useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
 import { callRuns, shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
 import { isTaskBrief } from "./TaskBrief";
@@ -40,12 +40,6 @@ import type { Worker } from "../lib/reads";
 import { useDeliverLine } from "../lib/deliver";
 import { useWorkforce } from "../lib/workforce";
 import { clockTime } from "../lib/shell";
-
-/**
- * Items the feed never draws: `ItemRenderer` paints nothing for them. Keep in step with
- * `NON_RENDERABLE_TYPES` in `@flow-state-dev/react`'s `ItemRenderer.ts`.
- */
-const UNDRAWN = new Set<string>(["state_change", "resource_change", "suspension_resume", "continuation"]);
 
 /** v2's scrolling column (v2:122-180): padded 36/32, `max-w-[720px]`, with the composer pinned under it. */
 export function ConversationFrame({
@@ -154,22 +148,10 @@ export function Conversation({
     if (answeredHere !== undefined) reread();
   }, [answeredHere, reread]);
 
-  // A run of tool calls stays one segment: the feed draws it as one quiet line. Items it never draws
-  // are left out, so a session holding only those (a standing-rules read writes a state change into
-  // it before any line is sent) counts as empty.
-  const shown = useMemo(
-    () =>
-      read === undefined
-        ? []
-        : callRuns(
-            buildItemRenderStream(
-              read.items.filter((item) => !UNDRAWN.has(item.type)),
-              shiftManagerRenderers,
-              { groupToolCalls: true },
-            ),
-          ),
-    [read],
-  );
+  // A run of tool calls stays one segment: the feed draws it as one quiet line. Items that draw no
+  // line are left out by the model, so a session holding only those (a standing-rules read writes a
+  // state change into it before any line is sent) counts as empty.
+  const shown = useMemo(() => (read === undefined ? [] : callRuns(conversationLines(read.items, [], { renderers: shiftManagerRenderers }))), [read]);
 
   // Nothing is sent into a conversation the screen hasn't read, or to a worker with no door.
   const blocked =

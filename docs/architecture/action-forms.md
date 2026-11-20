@@ -220,6 +220,13 @@ transports' sources with the `publicReentrySources` host option, since
 `task` or `internal`, because the reason each is excluded is a property of the
 framework rather than of the deployment.
 
+A screen never copies this list to decide where to offer Retry. Each
+`SessionTurn` that `ctx.sessions.turns` reads carries `retryable`, set by the
+engine with `isPublicReentryAllowed` and the host's `publicReentrySources`, so
+it is the retry route's own answer for that turn
+(`packages/engine/test/turn-retryable.test.ts` pins the two together).
+Workforce's session turns view carries it through.
+
 Where the child runs, what `dispose()` waits for, and what recovers a child
 its process abandoned is [Dispatched Work](./dispatched-work.md).
 

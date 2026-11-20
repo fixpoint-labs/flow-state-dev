@@ -79,6 +79,8 @@ import { anotherTurnWaitsOnItsPlan } from "./plan";
 import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
 import { messageTurnStateSchema } from "../messages/hop";
 import { answerTextOf, delegateAnswerMetadata } from "./delegate-answer";
+import { resultLineOf, writeResultLine } from "./result-line";
+import type { TaskResultValue } from "../messages/line-values";
 
 /** A notice, as the entries take it. */
 export const taskNoticeSchema = z
@@ -117,7 +119,10 @@ const settledSchema = z.object({
   /** On a routed ending: what the conversation's routing is handed. */
   routed: z.unknown().optional(),
   /** On a routed ending: the notice, acknowledged once the routing's handling has run. `act` is what is said after that. */
-  notice: taskNoticeSchema.optional()
+  notice: taskNoticeSchema.optional(),
+  // FIX-2848 D1.
+  /** The ending's line for an app to draw (`workforce:result`), said with `text`. */
+  result: z.record(z.string(), z.unknown()).optional()
 });
 
 type Settled = z.infer<typeof settledSchema>;
@@ -311,9 +316,16 @@ const line = handler({
       ...(settled.worker !== undefined ? { agentName: settled.worker } : {}),
       ...(settled.metadata !== undefined ? { metadata: settled.metadata } : {})
     });
+    if (settled.result !== undefined) writeResultLine(ctx, settled.result as TaskResultValue);
     return {};
   }
 });
+
+/** The `result` a settled line carries, when its ending is one an app draws as a result. */
+function resultField(notice: TaskNotice, task: Task, said: string): { result?: Record<string, unknown> } {
+  const result = resultLineOf(notice, task, said);
+  return result === undefined ? {} : { result };
+}
 
 /** Run the board's pass in this conversation: one at a time, never inline. */
 const runPass = handler({
@@ -396,6 +408,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
           notice: notice as Settled["notice"],
           text,
           metadata: noticeMetadata(notice, row),
+          ...resultField(notice, row, text),
           ...(row.assignee !== undefined ? { worker: row.assignee } : {})
         };
       }
@@ -406,7 +419,8 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     await ref.patchMetadata(row.id, clearNotice(notice));
     if (first !== true) return { act: "none" };
     const act = unrouted && decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
-    return { act, ...resultLine(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
+    const said = resultLine(notice, row);
+    return { act, ...said, ...resultField(notice, row, said.text), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
   };
 
   const settle = handler({
@@ -444,6 +458,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
         act: decision.act,
         text,
         metadata: noticeMetadata(notice, row),
+        ...resultField(notice, row, text),
         ...(row.assignee !== undefined ? { worker: row.assignee } : {})
       };
     }

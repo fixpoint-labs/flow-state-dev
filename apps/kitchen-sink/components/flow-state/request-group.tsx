@@ -16,7 +16,7 @@
 
 import { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { buildItemRenderStream, ItemsRenderer, useFlowContext, type RendererRegistry } from "@flow-state-dev/react";
+import { conversationLines, ItemsRenderer, useFlowContext, type ItemLine } from "@flow-state-dev/react";
 import { useConversationFeed } from "./conversation";
 import { SourcesGroup } from "./sources";
 import { StreamingIndicator, WorkedFor } from "./streaming-indicator";
@@ -123,16 +123,15 @@ function settledAt(item: OutputItem): number {
 }
 
 /**
- * Whether the stream ends on a run of tool calls and thoughts with one still
+ * Whether the stream ends on a steps line with a call or thought still
  * running. The group's own line names that step, so the indicator would repeat
- * it. Read from the same render stream the group draws, so an item it drops
+ * it. Read from the same lines the group draws, so an item they drop
  * (a trace, a hidden step, one a container owns) is not counted, and a call
  * running behind one that finished is.
  */
-function endsOnRunningStep(items: OutputItem[], renderers: RendererRegistry | undefined): boolean {
-  const stream = buildItemRenderStream(items, renderers, { groupToolCalls: true });
-  const last = stream[stream.length - 1];
-  return last?.kind === "group" && last.items.some((item) => item.status === "in_progress");
+function endsOnRunningStep(lines: readonly ItemLine[]): boolean {
+  const last = lines.at(-1);
+  return last?.kind === "steps" && last.items.some((item) => item.status === "in_progress");
 }
 
 function RequestGroup({
@@ -167,10 +166,8 @@ function RequestGroup({
   }, [group.items, owned]);
 
   const { renderers } = useFlowContext();
-  const stepInFlight = useMemo(
-    () => isLast && isStreaming && endsOnRunningStep(filteredItems, renderers),
-    [isLast, isStreaming, filteredItems, renderers],
-  );
+  const lines = useMemo(() => conversationLines(filteredItems, [], { renderers }), [filteredItems, renderers]);
+  const stepInFlight = isLast && isStreaming && endsOnRunningStep(lines);
 
   // The request began at its first item. Re-emitted keyed items can pull
   // that earlier than the request really started, which only lengthens the count.
@@ -195,7 +192,7 @@ function RequestGroup({
       className="flex flex-col gap-2"
       {...(feed && userItem ? feed.mine(userItem.requestId) : undefined)}
     >
-      <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} live={isLast && isStreaming} />
+      <ItemsRenderer lines={lines} toolGroupRenderer={ToolGroup} live={isLast && isStreaming} />
       <SourcesGroup items={group.items} />
       {/* While a step runs, its own line says what it is doing, so the indicator
           drops its words (not itself): the line keeps one stable label and the

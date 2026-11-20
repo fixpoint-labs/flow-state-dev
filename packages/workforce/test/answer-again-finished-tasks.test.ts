@@ -70,6 +70,7 @@ import { z } from "zod";
 import { defineSessionBoard, finishedTasksAnswerAgain, MAX_ANSWERS_AGAIN, workerConfigSchema, type WorkerManifest } from "../src";
 import { ownConversationLedger } from "../src/conversation-board/ledger";
 import { takesNotice } from "../src/conversation-board/take-finished";
+import { TASK_RESULT_DATA_TYPE } from "../src/messages/keys";
 import { REPLY_CONCURRENCY } from "../src/conversation-board/task-settled";
 import { markUserTurnStep } from "../src/standing-rules/user-turn";
 import type { WorkerInstallation } from "../src/workers/installation";
@@ -472,6 +473,9 @@ describe("the agent flow's `answerAgain: true`", () => {
       // Once in the session.
       const all = (await delegateLines(h, session)).filter((line) => line.text.includes(nonce) && line.agentName === "eng.tasker");
       expect(all).toHaveLength(1);
+      // FIX-2848 D1: and its line for an app to draw, in the same request, once.
+      const results = ((request as unknown as { items?: any[] }).items ?? []).filter((item) => item.type === "data" && item.dataType === TASK_RESULT_DATA_TYPE);
+      expect(results.map((item) => [item.value.from, item.value.ending, String(item.value.text).includes(nonce)])).toEqual([["eng.tasker", "completed", true]]);
       // The answer again read the result as the task's getTask read, not as the user's words (FIX-2345).
       const againCall = agentAnswer.calls.find((call) => text(call.input).includes(FINISHED))!;
       const messages = againCall.input as Array<{ role: string; content: unknown }>;

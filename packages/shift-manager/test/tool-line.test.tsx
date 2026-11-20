@@ -6,7 +6,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildItemRenderStream } from "@flow-state-dev/react";
+import { conversationLines } from "@flow-state-dev/react";
 import { callRuns, ToolLine, ToolLineGroup } from "../src/components/ToolLine";
 
 afterEach(() => cleanup());
@@ -83,14 +83,10 @@ describe("a tool call is a quiet line", () => {
 describe("a feed of calls keeps its thinking where it was", () => {
   const thought = (id: string) =>
     ({ id, type: "reasoning", status: "completed", requestId: "r", summary: [{ type: "reasoning_text", text: "hm" }] }) as never;
-  const said = (id: string) => ({ id, type: "message", status: "completed", requestId: "r", role: "assistant", content: [] }) as never;
+  const said = (id: string) => ({ id, type: "message", status: "completed", requestId: "r", role: "assistant", content: [{ type: "output_text", text: "Done." }] }) as never;
 
   it("splits a stretch back into runs of calls and the thoughts between them", () => {
-    const stream = buildItemRenderStream(
-      [thought("r1"), call("a", "completed", "a"), call("b", "completed", "b"), thought("r2"), call("c", "completed", "c"), said("m1")],
-      undefined,
-      { groupToolCalls: true },
-    );
+    const stream = conversationLines([thought("r1"), call("a", "completed", "a"), call("b", "completed", "b"), thought("r2"), call("c", "completed", "c"), said("m1")]);
     const runs = callRuns(stream).map((s) => (s.kind === "group" ? `calls:${s.items.map((i) => i.id).join(",")}` : s.item.id));
     expect(runs).toEqual(["r1", "calls:a,b", "r2", "calls:c", "m1"]);
   });
