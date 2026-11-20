@@ -661,6 +661,55 @@ describe("a run whose base branch is gone from the remote", () => {
     expect(ghCalls()).toEqual([]);
   });
 
+  /**
+   * `feature` with a commit of its own, cut from by the run, then merged into
+   * main on the remote (`how`) and deleted.
+   */
+  async function runOnLandedFeature(how: "merge" | "squash") {
+    git(repo, "checkout", "-q", "-b", "feature");
+    writeFileSync(join(repo, "feature.txt"), "the feature\n");
+    git(repo, "add", "feature.txt");
+    git(repo, "commit", "-q", "-m", "The feature");
+    git(repo, "push", "-q", "-u", "origin", "feature");
+    const run = await runWithCommit();
+    const work = join(tempDir("land-merger"), "work");
+    git(join(work, ".."), "clone", "-q", upstream.url, work);
+    git(work, "merge", "-q", ...(how === "squash" ? ["--squash"] : ["--no-ff", "--no-edit"]), "origin/feature");
+    if (how === "squash") git(work, "commit", "-q", "-m", "The feature (squashed)");
+    git(work, "push", "-q", "origin", "main");
+    git(upstream.bare, "branch", "-D", "feature");
+    return run;
+  }
+
+  it("opens into the default branch when the gone base was merged into it with its commits", async () => {
+    const { h, place, commit } = await runOnLandedFeature("merge");
+
+    const landed = await h.land!(
+      { cwd: place.cwd, branch: "fsd/run-1", baseRef: place.repo!.baseRef, baseCommit: place.repo!.baseCommit },
+      { kind: "pull-request", title: "t", body: "b", gh },
+    );
+
+    expect(landed).toMatchObject({ base: "main", baseGone: "feature" });
+    expect(upstream.rev("refs/heads/fsd/run-1")).toBe(commit);
+  });
+
+  it("refuses base-gone, pushing nothing, when the gone base was squashed into the default branch", async () => {
+    // A pull request into main from the run's branch would show the feature's changes again beside the run's.
+    const { h, place } = await runOnLandedFeature("squash");
+
+    const landing = h.land!(
+      { cwd: place.cwd, branch: "fsd/run-1", baseRef: place.repo!.baseRef, baseCommit: place.repo!.baseCommit },
+      { kind: "pull-request", title: "t", body: "b", gh },
+    );
+
+    await expect(landing).rejects.toMatchObject({ reason: "base-gone" });
+    await expect(landing).rejects.toThrow(/squashed or rebased/);
+    expect(() => upstream.rev("refs/heads/fsd/run-1")).toThrow();
+    expect(ghCalls()).toEqual([]);
+    // No ref of the person's moved.
+    expect(git(repo, "for-each-ref", "--format=%(refname)").split("\n")).not.toContain("refs/default");
+  });
+
   it("looks for the open pull request into the default branch, where a landing would open it", async () => {
     const { h, place } = await runOnMergedBranch();
     writeFileSync(gh, `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\necho '[{"number":9,"url":"https://github.com/acme/widgets/pull/9","baseRefName":"main"}]'\n`);

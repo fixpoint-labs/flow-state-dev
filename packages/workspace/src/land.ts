@@ -626,7 +626,9 @@ async function openPullRequest(
   const ghEnv = { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) };
   const where = ["--repo", repo];
   // Before anything is pushed, so a base gone with no default to fall back on pushes nothing.
-  const into = await baseOnRemote(host, remote, judged, left);
+  const objects = join(await git(host.repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]), "objects");
+  const cutAt = target.baseCommit == null ? undefined : { commit: target.baseCommit, objects };
+  const into = await baseOnRemote(host, remote, judged, left, cutAt);
   try {
     return await pushAndOpen(git, host, target, { ...remote, base: into.base }, into.gone, judged, request, left, { gh, ghDir, ghEnv, where, repo });
   } finally {
@@ -821,9 +823,21 @@ async function lsRemote(host: LandHost, judged: AllowedRemote, refs: string[], l
  * `gone`. When the remote can't be asked, the base as named: GitHub says if
  * it is gone.
  *
- * @throws WorkspaceRefusedError `base-gone` when the base is gone and the remote names no default branch.
+ * With `cutAt` (the commit the run was cut at, and the person's object
+ * store), the default branch is taken only when it holds that commit. A base
+ * merged by squash or rebase left its commits off the default branch, so the
+ * run's branch would carry them all again into the pull request.
+ *
+ * @throws WorkspaceRefusedError `base-gone` when the base is gone and the remote names no default branch,
+ *   or one that doesn't hold the commit the run was cut at.
  */
-async function baseOnRemote(host: LandHost, remote: PushRemote, judged: AllowedRemote, left: () => number): Promise<{ base: string; gone?: string }> {
+async function baseOnRemote(
+  host: LandHost,
+  remote: PushRemote,
+  judged: AllowedRemote,
+  left: () => number,
+  cutAt?: { readonly commit: string; readonly objects: string },
+): Promise<{ base: string; gone?: string }> {
   let listed: string;
   try {
     listed = await lsRemote(host, judged, ["HEAD", `refs/heads/${remote.base}`], left);
@@ -841,7 +855,54 @@ async function baseOnRemote(host: LandHost, remote: PushRemote, judged: AllowedR
         `Nothing was pushed, and the run's commits are still on its branch: merge locally instead.`,
     );
   }
+  if (cutAt !== undefined && (await remoteBranchHolds(host, judged, fallback, cutAt, left)) === false) {
+    throw new WorkspaceRefusedError(
+      "base-gone",
+      `The branch this work was started from, "${remote.base}", is no longer on ${redactRemote(remote.url)}, ` +
+        `and its commits aren't on "${fallback}" as they were (it was probably squashed or rebased when it merged). ` +
+        `A pull request into "${fallback}" would carry all of "${remote.base}"'s changes again, so none was opened and nothing was pushed. ` +
+        `The run's commits are still on its branch: ask for changes to move them onto "${fallback}", or merge locally.`,
+    );
+  }
   return { base: fallback, gone: remote.base };
+}
+
+/**
+ * Whether the remote's `branch` holds `cutAt.commit`: `undefined` when it
+ * can't be told. Fetched into an empty repository of its own over the
+ * person's objects, as `push` pushes from, with the commit as its one ref, so
+ * only what the person lacks is sent. The objects it adds are a fetch's, and
+ * no ref of the person's moves.
+ */
+async function remoteBranchHolds(
+  host: LandHost,
+  judged: AllowedRemote,
+  branch: string,
+  cutAt: { readonly commit: string; readonly objects: string },
+  left: () => number,
+): Promise<boolean | undefined> {
+  let scratch: string | undefined;
+  try {
+    scratch = scratchDir();
+    const env = { ...host.env, GIT_DIR: scratch, GIT_OBJECT_DIRECTORY: cutAt.objects, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" };
+    await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env: host.env });
+    await run("git", [...NO_HOOKS, "update-ref", "refs/cut", cutAt.commit], { cwd: scratch, timeoutMs: left(), env });
+    await run(
+      "git",
+      [...remoteConfig(host, judged), "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--", judged.url, `+refs/heads/${branch}:refs/default`],
+      { cwd: scratch, timeoutMs: left(), env },
+    );
+    return await run("git", [...NO_HOOKS, "merge-base", "--is-ancestor", cutAt.commit, "refs/default"], { cwd: scratch, timeoutMs: left(), env }).then(
+      () => true,
+      (error: { code?: unknown }) => (error.code === 1 ? false : undefined),
+    );
+  } catch {
+    return undefined;
+  } finally {
+    try {
+      if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
+    } catch {}
+  }
 }
 
 async function push(
