@@ -631,6 +631,8 @@ export const ENTRIES = [
   },
   { term: "Project", means: "A body of work, private to you or shared with your org.", decision: "Workforce vocabulary", published: true, retires: [] },
   { term: "Workstream", means: "One area of a shared project, with one owner.", decision: "Workforce vocabulary", published: true, retires: [] },
+  // FIX-2775 D3 coins it for the keys route's public names; FIX-2645 renames the MCP vocabulary to it and decides what it retires.
+  { term: "Connector", means: "An outside tool server a host offers its projects' runs, which each user holds their own key for.", decision: "FIX-2775 D3, a working name until FIX-2645", published: false, retires: [] },
   {
     term: "Project coordinator",
     means: "Your coordinator for one project: one session per user per project. Never a room or a talk session.",

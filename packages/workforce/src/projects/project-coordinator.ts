@@ -34,8 +34,8 @@
  * and the coordinator's file names in its `tools:`. Bob's entries included:
  * shared means the organization reads it. It hands work only to its user's.
  */
-import { handler } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import { defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { DelegateChecker } from "../delegates/delegate-check";
 import { DELEGATES_STATE } from "../delegates/delegate-keys";
@@ -298,3 +298,41 @@ const readLinkedProject = handler({
  * workstream's delegate record by its `target`.
  */
 export const projectCoordinatorTools = { readProject: readLinkedProject } as const;
+
+// FIX-2775 D3.
+/** What the project setup view answers: the worker each user's project coordinator runs as, or `null`. */
+export const projectSetupOutputSchema = z.object({ projectCoordinator: z.string().nullable() });
+
+/** @see projectSetupOutputSchema */
+export type ProjectSetup = z.infer<typeof projectSetupOutputSchema>;
+
+const projectSetupInputSchema = z.object({}).strict();
+
+/** The project setup as a view, as `defineProjectBlocks` builds it. */
+export type ProjectSetupView = ViewDefinition<
+  BlockDefinition<typeof projectSetupInputSchema, typeof projectSetupOutputSchema>,
+  "user"
+>;
+
+// FIX-2775 D3.
+/**
+ * The project setup as a user-scope view, read with no session: the worker
+ * each user's project coordinator runs as (an installation's
+ * `projectCoordinator()?.worker`), or `null` when the host names none. The
+ * host's configuration, the same for every caller, asked on each read; it
+ * reads no resource, so its answer names no topic.
+ *
+ * @param projectCoordinator The host's answer. Absent: `null`.
+ */
+export function defineProjectSetupView(projectCoordinator?: () => string | null): ProjectSetupView {
+  return defineView({
+    scope: "user",
+    description: "Name this host's project setup: the worker each user's project coordinator runs as, or null when it has none.",
+    block: handler({
+      name: "project-setup",
+      inputSchema: projectSetupInputSchema,
+      outputSchema: projectSetupOutputSchema,
+      execute: (): ProjectSetup => ({ projectCoordinator: projectCoordinator?.() ?? null })
+    })
+  }) as ProjectSetupView;
+}

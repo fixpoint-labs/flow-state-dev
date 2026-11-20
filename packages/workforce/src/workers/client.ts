@@ -125,6 +125,15 @@ export type EditWorkerInput = {
 
 /** A user's roster, and their sessions with each worker. */
 export interface WorkforceClient {
+  // FIX-2775.
+  /**
+   * The organization the server acts in for this user under the roster
+   * flow's sign-in: the verified principal's, never one the caller names, and
+   * the one a worker's conversation is derived under. Read once per client,
+   * with no session; a failed read is not kept, so the next call asks again.
+   * Rejects with the server's `ClientHttpError`: a 401 or 403 is a refusal.
+   */
+  organization(): Promise<string>;
   /**
    * The user's roster: their own workers and every standard worker, by id,
    * each naming its flow. Read again after any turn: a turn that hires, forks
@@ -511,6 +520,7 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
   };
 
   const client: WorkforceClient = {
+    organization: orgOf,
     roster: readRoster,
     // The roster view names the topics it read; the shared watch listens to them.
     watchRoster: (onRoster, watchOptions) =>

@@ -1,12 +1,13 @@
 /**
- * The user's own keys for the Lab's MCP servers, through the Lab's
- * `/api/flows/mcp-credentials` route (`teams/devteam/mcp-credentials.mts`).
+ * The user's own keys for the Lab's MCP servers, through the connector keys
+ * route a Lab's project blocks serve (workforce's `defineProjectBlocks().connectorKeys`).
  *
  * A read answers each server the Lab offers and when the user's key for it
  * was set, never the key. A set sends the key once and gets back only when it
  * was set; nothing here keeps it.
  */
 import { withBearerToken } from "@flow-state-dev/devtool/react";
+import { CONNECTOR_KEYS_PATH } from "@flow-state-dev/workforce/browser";
 import type { Connection } from "./connection";
 import type { Failure } from "./reads";
 
@@ -16,11 +17,8 @@ export type McpServerKey = { name: string; setAt: string | null };
 /** What a read found: the servers, a Lab that offers none, or a failure. */
 export type McpKeysRead = { servers: McpServerKey[] } | { none: true } | { failure: Failure };
 
-/** Where the Lab's route lives, under the engine's own `/api/flows` mount: the route and this client both read it. */
-export const MCP_CREDENTIALS_PATH = "/api/flows/mcp-credentials";
-
 const pathOf = (connection: Connection, server?: string) =>
-  `${connection.baseUrl ?? ""}${MCP_CREDENTIALS_PATH}${server === undefined ? "" : `/${encodeURIComponent(server)}`}`;
+  `${connection.baseUrl ?? ""}${CONNECTOR_KEYS_PATH}${server === undefined ? "" : `/${encodeURIComponent(server)}`}`;
 
 /**
  * The connection's fetch, its bearer token on every request. This is the
