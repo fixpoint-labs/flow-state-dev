@@ -106,7 +106,7 @@ export function TaskSession() {
  * what is shown. The run's request stream reports only its status.
  */
 function RunItems({ run }: { run: OpenRun }) {
-  const { client, refresh } = useLab();
+  const { client } = useLab();
   const task = useTask();
   const inbox = useInbox().section;
   const asks = taskAsks(inbox?.ok === true ? inbox.value.items : [], task.row);
@@ -170,29 +170,11 @@ function RunItems({ run }: { run: OpenRun }) {
   // The run's one turn, as its request stream last said: a stopped run draws its stopped line. A
   // failed run is retryable while its task stands failed: the board runs it again, on Retry.
   const status = task.status;
-  const { board, retryRow, taskId } = task;
-  const retryable = board !== undefined && task.row?.status === "errored";
+  const { retryTask } = task;
+  const retryable = retryTask !== undefined && task.row?.status === "errored";
   const turns = useMemo(() => (status === undefined ? [] : [{ id: run.requestId, status, retryable }]), [run.requestId, status, retryable]);
   // What a run's lines can do here: name the workers, as the conversation does, and Retry the task.
-  const lineActions = useMemo<LineContextValue>(
-    () => ({
-      nameOf: workerLabel,
-      ...(board === undefined
-        ? {}
-        : {
-            retry: async () => {
-              // Read the board and the Lab again either way, as the task's own Retry does.
-              try {
-                await board.retry(taskId);
-              } finally {
-                retryRow();
-                void refresh();
-              }
-            },
-          }),
-    }),
-    [board, retryRow, refresh, taskId],
-  );
+  const lineActions = useMemo<LineContextValue>(() => ({ nameOf: workerLabel, ...(retryTask === undefined ? {} : { retry: retryTask }) }), [retryTask]);
   const shown = useMemo(() => {
     if (stored === undefined) return undefined;
     // The claims only teach the attribution which tasks are this board's; they are never drawn.

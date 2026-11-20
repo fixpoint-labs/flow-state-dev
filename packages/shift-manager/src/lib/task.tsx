@@ -133,6 +133,8 @@ export type TaskView = {
   devtoolUrl: string | undefined;
   /** The board's task actions, on the conversation that holds the board; `undefined` with no owner to run them. */
   board: BoardActions | undefined;
+  /** Run the task again through the board's own retry, then read the row and the Lab again; `undefined` with no board actions. */
+  retryTask: (() => Promise<void>) | undefined;
   // FIX-2009.
   /** Request ids this composer started, newest last, for this open task only: the Session follows each. */
   sent: readonly string[];
@@ -155,7 +157,7 @@ function isOpen(row: OpenTask): boolean {
 
 /** Hold one open task. */
 export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { boardRef: string; taskId: string; devtoolUrl?: string; children: ReactNode }) {
-  const { client } = useLab();
+  const { client, refresh } = useLab();
   const sessions = useSessions().list;
   const workforce = useWorkforce();
   const holder = holderSessionOf(boardRef);
@@ -289,6 +291,29 @@ export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { board
     }
   }, [workforce, openRun, interrupt.kind]);
 
+  // The view is live: Retry reads the holder's flow again when that failed, and waits a fresh deadline.
+  const holderFlowFailed = holderFlow !== undefined && "failure" in holderFlow;
+  const readTaskAgain = useCallback(() => {
+    setMissedOut(false);
+    setRowRetries((n) => n + 1);
+    if (holderFlowFailed) setFlowReads((n) => n + 1);
+  }, [holderFlowFailed]);
+  // The task's Retry is the board's own; the row and the Lab are read again either way.
+  const retryTask = useMemo(
+    () =>
+      board === undefined
+        ? undefined
+        : async () => {
+            try {
+              await board.retry(taskId);
+            } finally {
+              readTaskAgain();
+              void refresh();
+            }
+          },
+    [board, taskId, readTaskAgain, refresh],
+  );
+
   const [sent, setSent] = useState<string[]>([]);
   useEffect(() => setSent([]), [boardRef, taskId]);
   const noteSent = useCallback((requestId: string) => setSent((held) => (held.includes(requestId) ? held : [...held, requestId])), []);
@@ -301,12 +326,7 @@ export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { board
     rowFailure,
     waiting,
     gaveUp,
-    // The view is live: Retry reads the holder's flow again when that failed, and waits a fresh deadline.
-    retryRow: () => {
-      setMissedOut(false);
-      setRowRetries((n) => n + 1);
-      if (holderFlow !== undefined && "failure" in holderFlow) setFlowReads((n) => n + 1);
-    },
+    retryRow: readTaskAgain,
     run,
     retryRun: () => setRetries((n) => n + 1),
     status,
@@ -315,6 +335,7 @@ export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { board
     stoppedAt: status === "aborted" ? stream.completedAt : undefined,
     devtoolUrl,
     board,
+    retryTask,
     sent,
     noteSent,
   };
