@@ -79,7 +79,7 @@ const helloChat = defineFlow({
 export default helloChat();
 ```
 
-A request with a missing or wrong secret in its `Authorization: Bearer` header is refused, and the resolver throws on an empty secret when the module loads. For signed-in users, write `resolvePrincipal` around your own session, as [Auth and tenancy](../../concepts/auth-and-tenancy.md) shows.
+Runs and session reads need the secret; `/healthz`, the flow list and `/api/flows/capabilities` answer without it. An empty secret throws when the module loads. For signed-in users, write `resolvePrincipal` around your own session, as [Auth and tenancy](../../concepts/auth-and-tenancy.md) shows.
 
 ---
 
@@ -165,8 +165,7 @@ Past a first deploy, use SAM, CDK, or Terraform with the same pieces: a Node 22 
 curl https://YOUR_URL.lambda-url.REGION.on.aws/healthz
 
 # 2. List flows
-curl https://YOUR_URL.lambda-url.REGION.on.aws/api/flows \
-  -H "Authorization: Bearer $FLOW_API_SECRET"
+curl https://YOUR_URL.lambda-url.REGION.on.aws/api/flows
 
 # 3. Run an action and stream its events in the same response
 curl -N -X POST https://YOUR_URL.lambda-url.REGION.on.aws/api/flows/hello-chat/actions/chat \
