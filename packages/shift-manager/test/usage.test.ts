@@ -4,7 +4,7 @@
  * The rows themselves are the Lab's; these only name them. And the usage
  * reads (FIX-2775): the two views, through `useView`, with Re-check first.
  */
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ClientHttpError } from "@flow-state-dev/client";
 import {
@@ -134,12 +134,18 @@ const STORED: HarnessUsage = {
 let lab: { client: unknown };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
+/** How many Re-checks and view reads the fake has answered, resolved or refused. */
+let answered = { recheck: 0, view: 0 };
+
 function fakeLab(answers: { recheck?: () => Promise<unknown>; view?: () => Promise<unknown> }) {
+  answered = { recheck: 0, view: 0 };
+  // Counted before the hook's own handlers run: they are chained on the promise this returns.
+  const counted = <T,>(which: keyof typeof answered, answer: () => Promise<T>) => answer().finally(() => (answered[which] += 1));
   lab = {
     client: {
       userId: "alice",
-      resource: () => ({ send: answers.recheck ?? (async () => ({ asked: [] })) }),
-      view: async () => ({ value: await (answers.view ?? (async () => ({ harnesses: [STORED], workers: [] })))(), topics: [] }),
+      resource: () => ({ send: () => counted("recheck", answers.recheck ?? (async () => ({ asked: [] }))) }),
+      view: () => counted("view", async () => ({ value: await (answers.view ?? (async () => ({ harnesses: [STORED], workers: [] })))(), topics: [] })),
       // The views are kept current by their notices; none arrive here.
       subscribe: () => ({ close: () => {} }),
     },
@@ -154,9 +160,9 @@ const refused = (status: number, error: string) => async () => {
 async function harnessRead(answers: Parameters<typeof fakeLab>[0]) {
   fakeLab(answers);
   const { result } = renderHook(() => useHarnessUsage());
-  await waitFor(() => expect(result.current.rows !== undefined || result.current.failure !== undefined).toBe(true));
-  // Re-check and the view settle on their own; give the other one its turn.
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  // Re-check and the view settle on their own: wait for both answers, then let the hook take them.
+  await waitFor(() => expect(answered.recheck > 0 && answered.view > 0).toBe(true));
+  await act(async () => {});
   return result.current;
 }
 
