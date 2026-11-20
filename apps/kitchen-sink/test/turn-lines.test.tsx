@@ -14,7 +14,8 @@
  *
  * Red states produced before these were trusted:
  *   - ignore the engine's flag (`retryable: true`): the notification case fails.
- *   - give `retry` while a turn runs: the running case fails.
+ *   - give `retry` while a turn runs, or read `retryable` whatever the
+ *     request's status: the running case fails.
  *   - pass `shownError: session.error` through: the refused-retry case fails.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -111,6 +112,10 @@ describe("Flow State mode's failed turn", () => {
     expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
 
     rerender(<Panel session={fakeSession({ isFinishing: true })} items={items} />);
+    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+
+    // An error item on a request that still completed: `resumeLatestRequest` won't run it.
+    rerender(<Panel session={fakeSession({}, { status: "completed" })} items={items} />);
     expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
 
     // A retry's new request is the newest turn; the failed one is older now.

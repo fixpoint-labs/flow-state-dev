@@ -79,7 +79,8 @@ type RequestGroupRendererProps = {
   /** The session's turns, for `conversationLines`: which turn failed or was
    *  stopped, and which failed one offers Retry (`retryable`). Only the last
    *  group offers Retry, as `conversationLines` offers it on the newest turn
-   *  only. Without them no line offers Retry and no turn draws as stopped. */
+   *  only, and a stopped request draws its stopped line once, after its last
+   *  group. Without them no line offers Retry and no turn draws as stopped. */
   turns?: readonly LineTurn[];
 };
 
@@ -93,8 +94,7 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFini
   // Read over every item, not one request's: a task plan and its tasks' work
   // can sit in different requests.
   const owned = useMemo(() => collectTaskOwnedItemIds(items), [items]);
-  // Each group reads its own lines, so an older group would count as newest in itself.
-  const olderTurns = useMemo(() => turns.map((turn) => ({ ...turn, retryable: false })), [turns]);
+  const groupTurns = useMemo(() => turnsByGroup(groups, turns), [groups, turns]);
 
   return groups.map((group, index) => {
     const isLast = index === groups.length - 1;
@@ -119,7 +119,7 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFini
         isFinishing={isFinishing}
         showWorkedFor={showWorkedFor}
         completedAtMs={isLast ? latestCompletedAtMs : undefined}
-        turns={isLast ? turns : olderTurns}
+        turns={groupTurns[index]!}
       />
     );
   });
@@ -127,6 +127,23 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFini
 
 /** No turns: a stable default, so a group's lines aren't read again each render. */
 const NO_TURNS: readonly LineTurn[] = [];
+
+/**
+ * The turn each group's lines read. Each group reads its own lines, so a
+ * turn goes only to its request's last group: an earlier group of a stopped
+ * request would draw a second stopped line. And `retryable` stays only in the
+ * last group overall: `conversationLines` offers Retry on the newest turn only,
+ * and an older group would be the newest in itself.
+ */
+function turnsByGroup(groups: readonly RequestGroup[], turns: readonly LineTurn[]): (readonly LineTurn[])[] {
+  const byId = new Map(turns.map((turn) => [turn.id, turn]));
+  const lastOf = new Map(groups.map((group, index) => [group.requestId, index]));
+  return groups.map((group, index) => {
+    const turn = byId.get(group.requestId);
+    if (turn === undefined || lastOf.get(group.requestId) !== index) return NO_TURNS;
+    return [index === groups.length - 1 ? turn : { ...turn, retryable: false }];
+  });
+}
 
 /** When an item last changed: its completion if it has one, else when it began. */
 function settledAt(item: OutputItem): number {

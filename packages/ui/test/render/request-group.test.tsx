@@ -196,3 +196,32 @@ describe("a failed turn's Retry across groups", () => {
     expect(screen.getByTestId("failed-req_2").getAttribute("data-retryable")).toBe("true");
   });
 });
+
+// FIX-2853.
+/**
+ * A keyed item re-emitted by a later request splits that request into two
+ * groups. A stopped request says so once, after its last line; a second
+ * "Interrupted by you" in the middle of its output reads as two stops.
+ * Red state: hand every group its request's turn, and two stopped lines draw.
+ */
+describe("a stopped turn across groups", () => {
+  it("draws its stopped line once, after the request's last group", () => {
+    const said = (id: string, requestId: string) => messageItem({ role: "assistant", id, requestId, text: `said ${id}` }) as StreamItem;
+    const plan = messageItem({ role: "assistant", id: "plan", requestId: "req_1", text: "the plan" }) as StreamItem;
+    const Stopped = ({ line }: { line: { requestId: string } }) => <div data-testid="stopped" data-request={line.requestId} />;
+    render(
+      <FlowProvider renderers={{ stopped: Stopped as never }}>
+        <RequestGroupRenderer
+          items={[said("a", "req_2"), plan, said("b", "req_2")]}
+          isStreaming={false}
+          turns={[{ id: "req_2", status: "aborted" }]}
+        />
+      </FlowProvider>,
+    );
+    const stopped = screen.getAllByTestId("stopped");
+    expect(stopped).toHaveLength(1);
+    // After the request's last group, not between its two.
+    const groups = [...document.querySelectorAll("[data-request-id]")];
+    expect(groups.at(-1)!.contains(stopped[0]!)).toBe(true);
+  });
+});

@@ -33,7 +33,8 @@ export function useTurnLines(
     () =>
       latestRequest === null
         ? []
-        : [{ id: latestRequest.id, status: latestRequest.status, retryable: latestRequest.retryable === true }],
+        : // A completed request can still hold an error item; `resumeLatestRequest` runs a failed one only.
+          [{ id: latestRequest.id, status: latestRequest.status, retryable: latestRequest.status === "failed" && latestRequest.retryable === true }],
     [latestRequest],
   );
 
