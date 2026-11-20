@@ -52,8 +52,9 @@ export function ThreadView({
   // The board keys this view by task, so a change of task remounts it and the feed starts over.
   const feed = useJumpToLatest();
   const column = statusColumn(task);
-  const ask = task.asks[0]?.ask;
-  const question = ask !== undefined && ask.kind !== "review" ? ask : undefined;
+  // The question it waits on you for, if its first open ask is one and not a review.
+  const prompt = task.asks[0]?.ask.kind === "review" ? undefined : task.asks[0]?.ask.prompt;
+  const question = prompt === undefined ? undefined : { prompt };
   const words = text.trim();
   const finished = task.status === "completed" || task.status === "cancelled" || task.status === "errored";
 

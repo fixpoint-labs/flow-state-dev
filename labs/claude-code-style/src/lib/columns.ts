@@ -41,8 +41,8 @@ export function columnOf(task: CodingBoardTask, pinned: boolean, dismissed = fal
   if (pinned) return "pinned";
   if (task.status === "completed" || task.status === "cancelled") return "resolved";
   if (task.status === "errored") return dismissed ? "resolved" : "waiting";
-  const ask = task.asks[0]?.ask;
-  if (ask?.kind === "review") return "review";
-  if (ask !== undefined) return "waiting";
+  const kind = task.asks[0]?.ask.kind;
+  if (kind === "review") return "review";
+  if (kind !== undefined) return "waiting";
   return "working";
 }
