@@ -21,7 +21,8 @@ const lab = { client: { userId: "u_1", resources: {}, resource, live }, refresh:
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
 import { Messages } from "../src/surfaces/Messages";
-import { shiftManagerRenderers, StepsLine } from "../src/components/ToolLine";
+import { shiftManagerRenderers } from "../src/components/lines";
+import { ToolGroup } from "../src/components/flow-state/tool";
 import { conversationLines, FlowProvider, ItemsRenderer } from "@flow-state-dev/react";
 import type { DataItem } from "@flow-state-dev/core/items";
 
@@ -160,51 +161,55 @@ describe("a message the worker sent, in its own conversation", () => {
   const drawLines = (items: unknown[]) =>
     render(
       <FlowProvider renderers={shiftManagerRenderers}>
-        <ItemsRenderer lines={conversationLines(items as never, [], { renderers: shiftManagerRenderers })} toolGroupRenderer={StepsLine} />
+        <ItemsRenderer lines={conversationLines(items as never, [], { renderers: shiftManagerRenderers })} toolGroupRenderer={ToolGroup} />
       </FlowProvider>,
     );
 
-  it("is its own line, To <recipient>: <text>, drawn once, never folded into the run's tool count", () => {
+  const sentLines = () => [...document.querySelectorAll<HTMLElement>('[data-line="sent"]')];
+  const partOf = (line: HTMLElement, part: string) => line.querySelector(`[data-part="${part}"]`);
+
+  it("is its own line, Messaged <recipient>: <text>, drawn once, never folded into the run's tool count, with a link to Messages", () => {
     drawLines([other, sendCall("t1", "tc_A"), sent("d1", { to: "coordinator", text: "What is the codename?", messageId: "msg_a" }, "tc_A")]);
-    expect(screen.getAllByTestId("message-call").map((line) => line.textContent)).toEqual([expect.stringContaining("To coordinator: What is the codename?")]);
-    expect(screen.getByTestId("tool-group").textContent).toContain("Used discover");
-    act(() => fireEvent.click(screen.getByTestId("message-call-messages")));
+    expect(sentLines().map((line) => line.textContent)).toEqual([expect.stringContaining("Messaged coordinator: What is the codename?")]);
+    expect(screen.getByTestId("tool-group").textContent).toContain("discover");
+    expect(screen.getByTestId("tool-group").textContent).not.toContain("sendMessage");
+    act(() => fireEvent.click(screen.getByTestId("messages-link")));
     expect(window.location.pathname).toBe("/messages");
   });
 
-  it("reads Asked <recipient> for a send that asks for a reply, with a waited answer under it, or that it comes as a message (FIX-2318)", () => {
+  it("reads Asked <recipient> for a waited send, with its answer under it, or that it comes as a message; one that only asks for a reply is a message", () => {
     drawLines([
       sent("d1", { to: "coordinator", text: "What is the codename?", messageId: "msg_a", wait: { status: "answered", reply: "BLUE-HERON" } }),
       sent("d2", { to: "helper-b", text: "Ready?", messageId: "msg_b", wait: { status: "running", recipient: "waiting_on_person" } }),
       sent("d3", { to: "pm", text: "The plan?", messageId: "msg_c", replyRequested: true }),
     ]);
-    const [asked, running, later] = screen.getAllByTestId("message-call");
+    const [asked, running, later] = sentLines();
     expect(asked!.textContent).toContain("Asked coordinator: What is the codename?");
-    expect(within(asked!).getByTestId("message-call-answer").textContent).toBe("BLUE-HERON");
-    expect(within(running!).getByTestId("message-call-answer").textContent).toBe("No answer by the deadline: it waits on the user. The answer comes as a message.");
-    // Asked and went on: the answer is a message of its own, so nothing is drawn under the line.
-    expect(later!.textContent).toContain("Asked pm: The plan?");
-    expect(within(later!).queryByTestId("message-call-answer")).toBeNull();
+    expect(partOf(asked!, "answer")!.textContent).toBe("BLUE-HERON");
+    expect(partOf(running!, "answer")!.textContent).toBe("No answer by the deadline: it waits on the user. The answer comes as a message.");
+    // Asked for a reply and went on: the answer is a message of its own, so nothing is drawn under the line.
+    expect(later!.textContent).toContain("Messaged pm: The plan?");
+    expect(partOf(later!, "answer")).toBeNull();
   });
 
   it("says it wasn't sent, and why, when the send was refused", () => {
     drawLines([sent("d1", { to: "eng.coder", text: "hi", refused: "task_sessions_only: \"eng.coder\" answers only from its tasks' sessions" })]);
-    expect(screen.getByTestId("message-call").textContent).toContain("Not sent to eng.coder: hi");
-    expect(screen.getByTestId("message-call-reason").textContent).toContain("task_sessions_only");
+    expect(sentLines()[0]!.textContent).toContain("Not sent to eng.coder: hi");
+    expect(partOf(sentLines()[0]!, "reason")!.textContent).toContain("task_sessions_only");
   });
 
   it("says why when a waited send's delivery failed", () => {
     drawLines([sent("d2", { to: "coordinator", text: "Ping?", messageId: "msg_b", wait: { status: "failed", error: "not_delivered: the session is gone." } })]);
-    expect(screen.getByTestId("message-call-reason").textContent).toBe("not_delivered: the session is gone.");
+    expect(partOf(sentLines()[0]!, "reason")!.textContent).toBe("not_delivered: the session is gone.");
   });
 
-  it("names a task or a conversation it was sent to, not 'another worker' (FIX-2160)", () => {
+  it("names a task or a conversation it was sent to, not 'another worker'", () => {
     drawLines([
       sent("d1", { to: { task: "task_42" }, text: "Done yet?", messageId: "msg_a" }),
       sent("d2", { to: { session: "s_other" }, text: "FYI", refused: "no_session: no conversation" }),
     ]);
-    const [toTask, toSession] = screen.getAllByTestId("message-call");
-    expect(toTask!.textContent).toContain("To task task_42: Done yet?");
+    const [toTask, toSession] = sentLines();
+    expect(toTask!.textContent).toContain("Messaged task task_42: Done yet?");
     expect(toSession!.textContent).toContain("Not sent to conversation s_other: FYI");
   });
 });

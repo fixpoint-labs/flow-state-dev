@@ -12,17 +12,19 @@
  * and the lines it sent to a door that keeps no task id, with their replies,
  * and says so.
  *
- * Each item is drawn by Shift Manager's copy of the registry's item components
- * (`chatAssistantRenderers`: message, reasoning, tool, status, error, task
- * plan), the same copies the design system skins; a task's brief is one folded
- * line (`TaskBrief`), never the user's line. An ask the run raised and
- * that still waits is drawn inline, with the one ask card Inbox uses.
+ * The run's lines are React's conversation model over this task's items,
+ * drawn as a conversation draws them (Shift Manager's registry,
+ * `components/lines.tsx`: a run of tool calls as one tool group, a task's
+ * brief folded), with no Retry: the run is the board's to run again. An ask the run raised and that still waits is
+ * drawn inline, with the one ask card Inbox uses.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { conversationLines, FlowProvider, ItemRenderer, useFlowContext, useJumpToLatest } from "@flow-state-dev/react";
+import { conversationLines, FlowProvider, ItemsRenderer, useFlowContext, useJumpToLatest } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
-import { shiftManagerRenderers } from "../components/ToolLine";
+import { shiftManagerRenderers } from "../components/lines";
+import { ToolGroup } from "../components/flow-state/tool";
+import { isTaskBrief } from "../components/flow-state/workforce-lines";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { ConversationScrollButton } from "../components/flow-state/conversation";
 import { EmptyState, LoadEarlierButton, SectionFailure } from "../components/ui";
@@ -34,7 +36,6 @@ import { collectionOfBoard, describeFailure, type Failure } from "../lib/reads";
 import { useRetrySessionFeed, useSharedSessionFeed } from "../lib/session-feeds";
 import { readTaskClaims, taskItems } from "../lib/task-items";
 import { RouteLink } from "../components/RouteLink";
-import { isTaskBrief } from "../components/TaskBrief";
 import { useTask, type OpenRun } from "../lib/task";
 
 export function TaskSession() {
@@ -154,9 +155,8 @@ function RunItems({ run }: { run: OpenRun }) {
     if (grew) showSent();
   }, [sent.length, showSent]);
 
-  // This task's items, then the same render filters `ItemsRenderer` applies:
-  // a keyed snapshot shows its latest version only, and a container with its
-  // own renderer draws the items it owns.
+  // This task's lines, through the same filters `ItemsRenderer` applies: a keyed snapshot shows its
+  // latest version only, and a container with its own renderer draws the items it owns.
   const { renderers } = useFlowContext();
   // Every line this composer sent shows by its request: a stamping door's turns carry the stamp too.
   const sentSet = useMemo(() => new Set(task.sent), [task.sent]);
@@ -166,10 +166,8 @@ function RunItems({ run }: { run: OpenRun }) {
     const keys = new Set(stored.items.map((item) => `${item.requestId}/${item.id}`));
     const held = [...claims.filter((item) => !keys.has(`${item.requestId}/${item.id}`)), ...stored.items];
     const mine = taskItems(held, collection, task.taskId, sentSet);
-    const items = conversationLines(mine.items.filter((item) => keys.has(`${item.requestId}/${item.id}`)), [], { renderers }).flatMap((line) =>
-      line.kind === "steps" ? line.items : line.kind === "stopped" ? [] : [line.item],
-    );
-    return { items, shared: mine.shared };
+    const lines = conversationLines(mine.items.filter((item) => keys.has(`${item.requestId}/${item.id}`)), [], { renderers });
+    return { lines, shared: mine.shared };
   }, [stored, claims, collection, task.taskId, sentSet, renderers]);
 
   const shownFailure = failure ?? claimsFailure;
@@ -198,24 +196,29 @@ function RunItems({ run }: { run: OpenRun }) {
       {/* The whole session, not only this task's items: the task plan card reads every task change in it. */}
       <SessionItemsProvider value={stored.items}>
         <ol className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-4" data-testid="session-items">
-          {shown.items.map((item) => (
-            <li
-              key={`${item.requestId}/${item.id}`}
-              data-testid="session-item"
-              data-item-id={item.id}
-              data-item-type={item.type}
-              {...(item.type === "message" && item.role === "user" && !isTaskBrief(item) ? feed.mine(item.id) : {})}
-            >
-              {item.type === "suspension" ? (
-                <PendingAsk ask={asks.find((ask) => ask.id === item.suspensionId)} />
-              ) : (
-                <ItemRenderer item={item} />
-              )}
-            </li>
-          ))}
+          {shown.lines.map((line) => {
+            // A steps line is named by its first call or thought, and typed as the run of steps it is.
+            const item = line.kind === "steps" ? line.items[0] : line.kind === "stopped" ? undefined : line.item;
+            const type = line.kind === "steps" ? "steps" : (item?.type ?? line.kind);
+            return (
+              <li
+                key={`${line.requestId}/${line.id}`}
+                data-testid="session-item"
+                data-item-id={item?.id ?? line.id}
+                data-item-type={type}
+                {...(line.kind === "user" && !isTaskBrief(line.item) ? feed.mine(line.id) : {})}
+              >
+                {line.kind === "suspension" ? (
+                  <PendingAsk ask={asks.find((ask) => ask.id === line.item.suspensionId)} />
+                ) : (
+                  <ItemsRenderer lines={[line]} toolGroupRenderer={ToolGroup} />
+                )}
+              </li>
+            );
+          })}
           {/* An ask the framework raised without this task's stamp is not among the task's items; it waits at the run's end. */}
           {asks
-            .filter((ask) => !shown.items.some((item) => item.type === "suspension" && item.suspensionId === ask.id))
+            .filter((ask) => !shown.lines.some((line) => line.kind === "suspension" && line.item.suspensionId === ask.id))
             .map((ask) => (
               <li key={ask.id} data-testid="session-pending-ask">
                 <PendingAsk ask={ask} />
@@ -223,7 +226,7 @@ function RunItems({ run }: { run: OpenRun }) {
             ))}
         </ol>
       </SessionItemsProvider>
-      {shown.items.length === 0 ? (
+      {shown.lines.length === 0 ? (
         <p className="px-4 pb-4 text-sm text-muted-foreground" data-testid="session-empty">
           The run hasn't recorded a step yet.
         </p>

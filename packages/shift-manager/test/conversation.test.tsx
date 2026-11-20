@@ -245,11 +245,12 @@ describe("what a view of its own draws", () => {
     await screen.findAllByTestId("mine");
     // The view's renderItem draws its own messages, never another worker's.
     expect(screen.getAllByTestId("mine").map((n) => n.textContent)).toEqual(["BLUE-HERON"]);
-    const drawnMessage = screen.getByTestId("received-message");
-    expect(drawnMessage.textContent).toContain("ENG.AUTHOR");
+    const drawnMessage = document.querySelector<HTMLElement>("[data-line=received]")!;
+    // Under the sender's name; the label is set in capitals by its style, not its text.
+    expect(drawnMessage.textContent).toContain("eng.author");
     expect(drawnMessage.textContent).toContain("the codename?");
-    expect(screen.getByTestId("received-message-answers")).toBeTruthy();
-    expect(screen.getAllByTestId("received-message-messages")).toHaveLength(1);
+    expect(drawnMessage.textContent).toContain("· reply");
+    expect(screen.getAllByTestId("messages-link")).toHaveLength(1);
     expect(screen.getAllByText("REVIEWER")).toHaveLength(1);
   });
 

@@ -5,8 +5,8 @@
  *     <Conversation worker={worker} sessions={snapshot.sessions} gaps={gaps} name="Shift Coordinator" />
  *
  * That is the whole of it: the read, the feed (React's conversation model over
- * the session's items and turns, drawn by the registry's renderers, with tool
- * calls as quiet lines and a failed or stopped turn as its line), the jump to the latest turn, the working line, the
+ * the session's items and turns, drawn by the registry's renderers, with a run
+ * of tool calls as the registry's tool group and a failed or stopped turn as its line), the jump to the latest turn, the working line, the
  * composer, and the one send path. A view varies it by props, never by a fork:
  * the session it is (`session`, for one a view found itself: a project
  * coordinator's, a workstream's lead's; `project`, for a project's conversation
@@ -26,9 +26,10 @@ import { RECEIVED_MESSAGE_DATA_TYPE, sessionTurnsViewRef, type ProjectAddressRef
 import type { SessionSummary } from "@flow-state-dev/client";
 import { conversationLines, FlowProvider, ItemsRenderer, useJumpToLatest, useView, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
-import { shiftManagerRenderers, StepsLine } from "./ToolLine";
-import { TurnLineContext, type TurnLineActions } from "./TurnLines";
-import { isTaskBrief } from "./TaskBrief";
+import { shiftManagerRenderers } from "./lines";
+import { LineContext, type LineContextValue } from "./flow-state/conversation-lines";
+import { ToolGroup } from "./flow-state/tool";
+import { isTaskBrief } from "./flow-state/workforce-lines";
 import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlierButton, SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
@@ -159,9 +160,10 @@ export function Conversation({
   const shown = useMemo(() => (read === undefined ? [] : conversationLines(read.items, turns ?? [], { renderers: shiftManagerRenderers })), [read, turns]);
   const lastStopped = [...shown].reverse().find((line) => line.kind === "stopped")?.id;
   const runs = conversation.stillRunning;
-  const lineActions = useMemo<TurnLineActions>(
+  const lineActions = useMemo<LineContextValue>(
     () => ({
       who: name,
+      nameOf: workerLabel,
       ...(sessionId === null || readOnly !== undefined ? {} : { retry: (requestId: string) => workforce.retryTurn(sessionId, requestId) }),
       // The work still running is the session's now: only its last stopped line says so.
       stillRunning: (lineId) => (lineId === lastStopped && runs != null ? runs : undefined),
@@ -262,7 +264,7 @@ export function Conversation({
           </p>
         ) : (
           <FlowProvider renderers={shiftManagerRenderers}>
-            <TurnLineContext.Provider value={lineActions}>
+            <LineContext.Provider value={lineActions}>
               <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
                 <LoadEarlierButton load={read.loadEarlier} testId={`${testId}-load-earlier`} />
                 <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
@@ -296,7 +298,7 @@ export function Conversation({
                         {own !== undefined ? (
                           own
                         ) : line.kind === "steps" ? (
-                          <ItemsRenderer lines={[line]} toolGroupRenderer={StepsLine} />
+                          <ItemsRenderer lines={[line]} toolGroupRenderer={ToolGroup} />
                         ) : (
                           <div data-look="registry-item">
                             <ItemsRenderer lines={[line]} />
@@ -307,7 +309,7 @@ export function Conversation({
                   })}
                 </ol>
               </SessionScope>
-            </TurnLineContext.Provider>
+            </LineContext.Provider>
           </FlowProvider>
         )}
         {working ? (

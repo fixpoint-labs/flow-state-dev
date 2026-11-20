@@ -137,7 +137,7 @@ describe("the task's brief", () => {
     // The brief is what the session was handed: no user bubble, and not marked as the user's line.
     expect(within(briefRow!).queryByTestId("message")).toBeNull();
     expect(briefRow!.hasAttribute("data-sent-line")).toBe(false);
-    const line = within(briefRow!).getByTestId("task-brief");
+    const line = briefRow!.querySelector<HTMLElement>("[data-line=brief]")!;
     expect(line.textContent).toContain("Task brief");
     expect(line.textContent).not.toContain("fix the flaky test");
     fireEvent.click(within(line).getByRole("button"));
