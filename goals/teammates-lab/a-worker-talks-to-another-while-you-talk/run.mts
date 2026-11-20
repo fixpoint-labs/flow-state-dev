@@ -229,10 +229,11 @@ interface Drawn {
 /** The open conversation's entries in order, as drawn. */
 async function entriesOf(page: Page): Promise<Drawn[]> {
   return await conversation(page)
-    .locator("[data-entry]")
+    // The lab's own entries, and the registry's lines (a run of steps and a folded brief aside).
+    .locator("[data-entry], [data-line]:not([data-line=steps]):not([data-line=brief])")
     .evaluateAll((els) =>
       els.map((el) => ({
-        kind: (el as HTMLElement).dataset.entry ?? "",
+        kind: (el as HTMLElement).dataset.entry ?? (el as HTMLElement).dataset.line ?? "",
         label: el.getAttribute("aria-label") ?? el.querySelector("[aria-label]")?.getAttribute("aria-label") ?? "",
         // As shown: block breaks between the label and a Markdown body, and the label in its uppercase style.
         text: (el as HTMLElement).innerText,

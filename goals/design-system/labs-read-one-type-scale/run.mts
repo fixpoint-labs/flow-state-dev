@@ -89,7 +89,7 @@ const say = (s: string) => console.error(`[type-scale] ${s}`);
 /** What a feed body is, in every lab: the registry's message, the labs' own entries and steps, the Shift Coordinator's prose. */
 const BODY = [
   "[data-testid=message]",
-  "[data-look=received-message-text]",
+  "[data-line=received] > :not([data-part=label])",
   "[data-look=summary-prose]",
   "[data-entry=user]",
   "[data-entry=assistant]",
