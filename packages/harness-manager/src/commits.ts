@@ -17,6 +17,7 @@
  * Git runs through the workspace package's bounded `run`, the one place a
  * child process is started for this package.
  */
+import { devNull } from "node:os";
 import { run } from "@flow-state-dev/workspace";
 import { z } from "zod";
 
@@ -34,8 +35,16 @@ export interface RunCommits {
   verified: boolean;
 }
 
+/**
+ * Git as the commit history really is, not as the checkout says it is. A run
+ * shares its checkout's object store and refs, so it can plant a replace ref,
+ * a graft or a commit-graph that gives the base its own work as history,
+ * and its work would count none. Every read here ignores all three.
+ */
+const TRUE_HISTORY = { env: { GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: devNull }, config: ["-c", "core.commitGraph=false"] };
+
 async function git(cwd: string, args: string[]): Promise<string> {
-  return (await run("git", args, { cwd, timeoutMs: GIT_READ_TIMEOUT_MS })).stdout;
+  return (await run("git", [...TRUE_HISTORY.config, ...args], { cwd, timeoutMs: GIT_READ_TIMEOUT_MS, env: TRUE_HISTORY.env })).stdout;
 }
 
 /** The commit `cwd`'s checkout is on, or `null` when git can't read one there. */
@@ -47,14 +56,23 @@ export async function headCommit(cwd: string): Promise<string | null> {
   }
 }
 
-/** Whether `tip` is a commit in `cwd` that has `cut` in its history. `false` for no tip, or one git can't read there. */
-async function descendsFrom(cwd: string, tip: string | null, cut: string): Promise<boolean> {
-  if (tip === null) return false;
+/**
+ * The base a run's reads start from: the base branch's tip now (`tip`, as the
+ * workspace host fetched it, `WorkspaceHost.baseTip`) when it has the recorded
+ * cut in its history, else the cut. A run that merged the moved-on base into
+ * its branch then owns none of the base's commits, as its pull request
+ * doesn't. Any other tip (one that doesn't descend from the cut, one git can't
+ * read in `cwd`, or none) leaves the cut, so a tip can only ever take the
+ * base's own commits out of a read. `null` for a record with no cut: the reads
+ * fall back to the base's named copies, as {@link readRunCommits} says.
+ */
+export async function effectiveCut(cwd: string, cut: string | null, tip: string | null): Promise<string | null> {
+  if (cut === null || tip === null) return cut;
   try {
     await git(cwd, ["merge-base", "--is-ancestor", cut, tip]);
-    return true;
+    return tip;
   } catch {
-    return false;
+    return cut;
   }
 }
 
@@ -62,18 +80,13 @@ async function descendsFrom(cwd: string, tip: string | null, cut: string): Promi
  * The copies of the base that exist in `cwd`, by the rule {@link readRunCommits}
  * documents. Empty when there is no base, or none of its copies is there.
  */
-async function resolveBases(
-  cwd: string,
-  baseRef: string | null,
-  baseCommit: string | null,
-  baseTip: string | null = null,
-): Promise<string[]> {
+async function resolveBases(cwd: string, baseRef: string | null, baseCommit: string | null): Promise<string[]> {
   if (baseRef === null) return [];
   const bases: string[] = [];
   // In the run's own checkout, a bare `HEAD` is the run's branch, never its base.
   const copies =
     baseCommit !== null
-      ? [(await descendsFrom(cwd, baseTip, baseCommit)) ? baseTip! : baseCommit]
+      ? [baseCommit]
       : baseRef === "HEAD"
         ? [`refs/remotes/origin/HEAD`]
         : [`refs/remotes/origin/${baseRef}`, baseRef];
@@ -96,19 +109,24 @@ async function resolveBases(
  * shares the checkout's refs and config, so any named copy of the base is one
  * it could point at its own work. A record without it falls back to the named
  * copies: the remote's (`origin/<baseRef>`) and the local branch. No base, or
- * no checkout git can read, answers none, unverified. With `baseTip`, the
- * base branch's tip takes the cut's place as {@link RunDiffOptions.baseTip}
- * says; with `since`, only the commits past that one count too (a round's own).
+ * no checkout git can read, answers none, unverified. A caller passes
+ * {@link effectiveCut} as `baseCommit`, so a run that merged the moved-on base
+ * owns none of its commits.
+ *
+ * With `since`, only the commits past that one count too: a round's own. A
+ * round needs both exclusions, the base (so the base's commits it merged in
+ * aren't its work) and its start (so an earlier round's aren't), and one base
+ * argument carries only the first.
  */
 export async function readRunCommits(
   cwd: string,
   baseRef: string | null,
   baseCommit: string | null = null,
-  options: Pick<RunDiffOptions, "baseTip"> & { since?: string | null } = {},
+  options: { since?: string | null } = {},
 ): Promise<RunCommits> {
-  const resolved = await resolveBases(cwd, baseRef, baseCommit, options.baseTip ?? null);
+  const resolved = await resolveBases(cwd, baseRef, baseCommit);
   // `since` counts on its own too, as a round read always has: a record with no cut and no named copy still has its round.
-  const bases = options.since == null || baseRef === null ? resolved : [...resolved, options.since];
+  const bases = options.since == null || baseRef === null || resolved.includes(options.since) ? resolved : [...resolved, options.since];
   if (bases.length === 0) return { count: 0, subjects: [], verified: false };
   try {
     const count = Number.parseInt((await git(cwd, ["rev-list", "--count", "HEAD", "--not", ...bases])).trim(), 10);
@@ -178,15 +196,6 @@ export interface RunDiffOptions {
    * meeting point back, and would read that earlier turn's work as its own.
    */
   exactBase?: boolean;
-  /**
-   * The base branch's tip now, as the workspace host fetched it
-   * (`WorkspaceHost.baseTip`). When it has the recorded cut in its history,
-   * it is the base in the cut's place: a run that merged the moved-on base
-   * into its branch then owns none of the base's commits, as its pull
-   * request doesn't. Any other tip, or none, leaves the cut as the base, so
-   * a tip can only ever take the base's own commits out of a read.
-   */
-  baseTip?: string | null;
 }
 
 /** {@link RunDiff}, as a schema: what a review's data and a changes read carry. */
@@ -255,7 +264,7 @@ export async function readRunDiff(
   options: RunDiffOptions = {},
 ): Promise<RunDiff> {
   const head = options.head ?? "HEAD";
-  const bases = await resolveBases(cwd, baseRef, baseCommit, options.baseTip ?? null);
+  const bases = await resolveBases(cwd, baseRef, baseCommit);
   if (bases.length === 0) return UNVERIFIED_DIFF;
   try {
     const start = await diffStart(cwd, head, bases, options.exactBase);
@@ -302,7 +311,7 @@ export async function readRunFilePatch(
 ): Promise<RunFilePatch> {
   const unverified: RunFilePatch = { path, patch: "", truncated: false, verified: false };
   const head = options.head ?? "HEAD";
-  const bases = await resolveBases(cwd, baseRef, baseCommit, options.baseTip ?? null);
+  const bases = await resolveBases(cwd, baseRef, baseCommit);
   if (bases.length === 0) return unverified;
   try {
     const start = await diffStart(cwd, head, bases, options.exactBase);

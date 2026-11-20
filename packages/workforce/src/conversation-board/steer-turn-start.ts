@@ -30,7 +30,8 @@ export const STEER_TURN_NOT_STARTED =
  *
  * @param flowKind The flow that session runs on, when it isn't the running one.
  * @returns Whether the turn was started or owed: `false` when the task names no
- *   session, or neither the wake nor the start could be written.
+ *   session, or neither the wake nor the start could be written (a start the
+ *   runtime refused counts as not written).
  */
 export async function startOwedSteerTurn(ctx: BlockContext, row: Task, flowKind?: string): Promise<boolean> {
   const sessionId = row.run?.sessionId;
@@ -48,7 +49,7 @@ export async function startOwedSteerTurn(ctx: BlockContext, row: Task, flowKind?
     });
   }
   try {
-    await dispatchThroughSeam(ctx, {
+    const outcome = await dispatchThroughSeam(ctx, {
       type: "internal",
       action: STEER_TURN_ENTRY,
       ...(flowKind !== undefined ? { flowKind } : {}),
@@ -56,7 +57,8 @@ export async function startOwedSteerTurn(ctx: BlockContext, row: Task, flowKind?
       payload: {},
       from: "workforce-steer-turn"
     });
-    return true;
+    // A refusal starts nothing, as a throw doesn't: only the wake, if one was owed.
+    return outcome.ok || owed;
   } catch {
     // Not definitive: the wake starts it.
     return owed;

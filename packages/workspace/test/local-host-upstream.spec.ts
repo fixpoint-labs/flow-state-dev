@@ -417,6 +417,17 @@ describe("the base branch's tip after a run started: what a review diffs against
     expect(tip).not.toBe(runHead);
   });
 
+  it("answers none for a base named only as HEAD: whichever branch the repository is on now, which can be switched mid-run", async () => {
+    // Someone switches the repository to a branch with the run's work on it:
+    // resolved now, that branch's upstream would be the base, and hide the work.
+    const place = await provision("main");
+    upstream.commit("main", "merged.txt", "a teammate's merge");
+    expect(await host().baseTip!({ cwd: place.cwd, baseRef: "HEAD" })).toBeUndefined();
+    expect(await host().baseTip!({ cwd: place.cwd, baseRef: null })).toBeUndefined();
+    // Nor any other spelling git resolves to the branch it is on.
+    expect(await host().baseTip!({ cwd: place.cwd, baseRef: "@" })).toBeUndefined();
+  });
+
   it("answers none for a base with no upstream, an upstream it can't fetch, or a checkout it doesn't list", async () => {
     git(repo, "branch", "-q", "solo");
     const place = await provision("solo");

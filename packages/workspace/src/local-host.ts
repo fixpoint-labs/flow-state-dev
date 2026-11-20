@@ -614,7 +614,9 @@ export interface WorkspaceHost {
    * follows (`fetchUpstream`), into the checkout's own object store: never a
    * local branch or tracking ref, which the run shares and could point at its
    * own work. `undefined` for a checkout not in a listed repository, a base
-   * with no pinned upstream, and a fetch that fails. Never rejects. Optional,
+   * named only as `HEAD` (or none), whose branch is whichever the repository
+   * is on when asked, a base with no pinned upstream, and a fetch that fails.
+   * Never rejects. Optional,
    * as `remove` is.
    */
   baseTip?(target: Pick<LandTarget, "cwd" | "baseRef">): Promise<string | undefined>;
@@ -2307,12 +2309,15 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     if (repo === undefined) return undefined;
     const deadline = now() + provisionTimeoutMs;
     const left = () => remainingBudget(deadline, now);
-    const base = target.baseRef ?? "HEAD";
+    // A base named only as `HEAD` is whichever branch the repository is on now, which someone can switch mid-run: none.
+    const base = target.baseRef;
+    if (base == null || base === "HEAD") return undefined;
     try {
       const remoteBranch = await pinnedRemoteBranch(repo, base, left);
       if (remoteBranch !== undefined) return (await fetchPinned(repo, base, remoteBranch, left))?.commit;
       const full = await git(repo, ["rev-parse", "--symbolic-full-name", base], left());
-      if (!full.startsWith("refs/heads/")) return undefined;
+      // Only the branch named itself: never another spelling (`@`) of whichever one the repository is on.
+      if (!full.startsWith("refs/heads/") || (full !== base && full !== `refs/heads/${base}`)) return undefined;
       return (await fetchUpstream(repo, base, full, left))?.commit;
     } catch {
       return undefined;

@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { MAX_DIFF_FILES, MAX_PATCH_CHARS, readRunDiff, readRunFilePatch } from "../src/commits";
+import { MAX_DIFF_FILES, MAX_PATCH_CHARS, effectiveCut, readRunDiff, readRunFilePatch } from "../src/commits";
 
 const dirs: string[] = [];
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -75,7 +75,7 @@ describe("readRunDiff", () => {
     }
   });
 
-  it("leaves out what the base changed after the run merged it in, given the base branch's tip now", async () => {
+  it("leaves out what the base changed after the run merged it in, read against the effective cut", async () => {
     // The pull request's diff starts where the run's branch and the base's
     // tip meet: a run that merged the moved-on base in owns none of its files.
     const { dir, cut } = repo();
@@ -86,10 +86,11 @@ describe("readRunDiff", () => {
     git(dir, "checkout", "-q", "run");
     git(dir, "merge", "-q", "--no-edit", "main");
     expect((await readRunDiff(dir, "main", cut)).files.map((file) => file.path)).toEqual(["b.txt", "z.txt"]);
-    const diff = await readRunDiff(dir, "main", cut, { baseTip: tip });
+    const base = await effectiveCut(dir, cut, tip);
+    const diff = await readRunDiff(dir, "main", base);
     expect(diff.files.map((file) => file.path)).toEqual(["b.txt"]);
     expect(diff.verified).toBe(true);
-    expect((await readRunFilePatch(dir, "main", cut, "z.txt", { baseTip: tip })).patch).toBe("");
+    expect((await readRunFilePatch(dir, "main", base, "z.txt")).patch).toBe("");
   });
 
   it("ignores a tip that doesn't descend from the cut, and reads against the cut as before", async () => {
@@ -101,8 +102,8 @@ describe("readRunDiff", () => {
     commitFiles(dir, "unrelated", { "b.txt": "other\n" });
     const unrelated = git(dir, "rev-parse", "HEAD").trim();
     git(dir, "checkout", "-q", "-f", "run");
-    for (const baseTip of [unrelated, "0".repeat(40)]) {
-      const diff = await readRunDiff(dir, "main", cut, { baseTip });
+    for (const tip of [unrelated, "0".repeat(40)]) {
+      const diff = await readRunDiff(dir, "main", await effectiveCut(dir, cut, tip));
       expect(diff.files.map((file) => file.path)).toEqual(["b.txt"]);
       expect(diff.verified).toBe(true);
     }

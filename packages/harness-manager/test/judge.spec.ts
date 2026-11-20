@@ -10,11 +10,13 @@
  * verdict, and the run settles on its check alone: an outage never fails work
  * that passed. Only a board read from the claim is judged.
  */
+import { execFileSync } from "node:child_process";
 import { afterAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler, sequencer } from "@flow-state-dev/core";
 import { openOwnHolds } from "@flow-state-dev/orchestration/internal";
-import { harnessJudgeInputSchema, type HarnessJudgeInput } from "../src";
+import { harnessJudgeInputSchema, runTopic, type HarnessJudgeInput } from "../src";
+import { runBoardSegment } from "../src/workspace";
 import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, mergeTeammateWork, messageOf } from "./claim-host";
 
 afterAll(cleanUpHosts);
@@ -114,6 +116,65 @@ describe("a judged run on a board read from the claim", () => {
       },
     ]);
   }, 60_000);
+
+  it("records the cut the judge read against, with no review, so a file's patch read later is the pull request's too", async () => {
+    // A changes read opens a file against the record: a judged run with no
+    // review must leave the same cut there, or a person opens the base's lines as the run's.
+    const { judge } = scriptedJudge([verdict("done", 0.9, "it answers the goal")]);
+    const lab = claimHost({
+      mode: "claim",
+      upstream: true,
+      script: [{ answer: "changed it", commits: 1, during: async () => mergeTeammateWork(lab.upstream, lab.seen.at(-1)!.cwd) }],
+      manager: { judge },
+    });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "change call1-0.txt", input: {} });
+    const { result } = await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    const tip = execFileSync("git", ["rev-parse", "main"], { cwd: lab.upstream, encoding: "utf8" }).trim();
+    const record = await lab.record(runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "t1", PHASE));
+    expect(record?.effectiveCut).toBe(tip);
+    expect(record?.baseCommit).not.toBe(tip);
+  }, 60_000);
+
+  for (const [what, baseTip] of [
+    ["can't say where the base is now", async () => undefined],
+    ["fails to fetch the base", async () => Promise.reject(new Error("fetch failed"))],
+  ] as const) {
+    it(`reads against the recorded cut when the host ${what}`, async () => {
+      // Safe on a checkout the host can't fetch for: no tip, no change to the read.
+      const { judge, read } = scriptedJudge([verdict("done", 0.9, "it answers the goal")]);
+      const lab = claimHost({
+        mode: "claim",
+        upstream: true,
+        baseTip,
+        script: [{ answer: "changed it", commits: 1, during: async () => mergeTeammateWork(lab.upstream, lab.seen.at(-1)!.cwd) }],
+        manager: { judge },
+      });
+      await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "change call1-0.txt", input: {} });
+      const { result } = await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+      expect(result.error, messageOf(result.error)).toBeUndefined();
+      expect(read).toEqual([
+        {
+          goal: "change call1-0.txt",
+          answer: "changed it",
+          // The teammate's commit is the run's on a read against the cut: over-reported, never hidden.
+          commits: { count: 3, subjects: expect.arrayContaining(["merge main", "a teammate's change", "call1 commit 0"]) },
+          diff: {
+            files: [
+              { path: "call1-0.txt", added: 1, removed: 0 },
+              { path: "teammate.txt", added: 1, removed: 0 },
+            ],
+            fileCount: 2,
+            added: 2,
+            removed: 0,
+            verified: true,
+          },
+        },
+      ]);
+      const record = await lab.record(runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "t1", PHASE));
+      expect(record?.effectiveCut).toBe(record?.baseCommit);
+    }, 60_000);
+  }
 
   it("shows the judge an empty change for a run that committed nothing", async () => {
     const { judge, read } = scriptedJudge([verdict("done", 0.9, "it answers the goal")]);

@@ -48,14 +48,27 @@ describe("taskSignal", () => {
     expect(taskSignal(view("running", { updatedAt: NOW - 40 * MIN }), lapsed, NOW, { stale: true })?.kind).toBe("working");
   });
 
-  it("never reads a running task no lease holds as working: no run is on it (kept open, waiting on a pull request), so it reads waiting since its last write", () => {
-    // A task parked for days with no live run must not read "working · 72h".
+  it("never reads a running task no lease holds as working: no run is on it (kept open, waiting on a pull request), so it reads idle since its last write", () => {
+    // A task parked for days with no live run must not read "working · 72h"; nor
+    // "waiting", which a pane's counts use for a task held for a person.
     const parked = taskSignal(view("running", { updatedAt: NOW - 3 * 24 * 60 * MIN }), { startedAt: NOW - 4 * 24 * 60 * MIN }, NOW);
-    expect(parked).toEqual({ kind: "waiting", text: "waiting · 3d" });
-    expect(taskSignal(view("running", { updatedAt: NOW - 24 * MIN }), { startedAt: NOW - 30 * MIN, leaseUntil: null }, NOW)?.text).toBe("waiting · 24m");
+    expect(parked).toEqual({ kind: "idle", text: "idle · 3d" });
+    expect(taskSignal(view("running", { updatedAt: NOW - 24 * MIN }), { startedAt: NOW - 30 * MIN, leaseUntil: null }, NOW)?.text).toBe("idle · 24m");
     // A stale feed doesn't make it working either: its last reading had no run.
-    expect(taskSignal(view("running", { updatedAt: NOW - 24 * MIN }), { startedAt: NOW - 30 * MIN }, NOW, { stale: true })?.kind).toBe("waiting");
-    expect(taskSignal(view("running"), undefined, NOW)).toEqual({ kind: "waiting", text: "waiting" });
+    expect(taskSignal(view("running", { updatedAt: NOW - 24 * MIN }), { startedAt: NOW - 30 * MIN }, NOW, { stale: true })?.kind).toBe("idle");
+    expect(taskSignal(view("running"), {}, NOW)).toEqual({ kind: "idle", text: "idle" });
+  });
+
+  it("says nothing of a running row it was given no run for: it can't tell a live lease from none", () => {
+    expect(taskSignal(view("running", { updatedAt: NOW - MIN }), undefined, NOW)).toBeNull();
+    expect(taskSignal(view("running", { updatedAt: NOW - MIN }), null, NOW)).toBeNull();
+  });
+
+  it("reads quiet and idle spans on the one ladder its ages use: minutes, hours, days", () => {
+    const lapsed = { startedAt: NOW - 3 * 24 * 60 * MIN, leaseUntil: NOW - 2 * 24 * 60 * MIN };
+    expect(taskSignal(view("running", { updatedAt: NOW - 50 * 60 * MIN }), lapsed, NOW)?.text).toBe("quiet for 2d");
+    expect(taskSignal(view("running", { updatedAt: NOW - 63 * MIN }), { ...lapsed, leaseUntil: NOW - MIN }, NOW)?.text).toBe("quiet for 1h");
+    expect(taskSignal(view("running", { updatedAt: NOW - 3 * 60 * MIN }), {}, NOW)?.text).toBe("idle · 3h");
   });
 
   it("says how long ago an ended row ended, from completedAt, else its last write", () => {

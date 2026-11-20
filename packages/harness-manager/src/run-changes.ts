@@ -18,7 +18,7 @@ import { defineCapability, defineView, handler, type DefinedCapability } from "@
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { tasksInSession } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
-import { readRunChanges, runChangesSchema, type RunChanges } from "./commits";
+import { effectiveCut, readRunChanges, runChangesSchema, type RunChanges } from "./commits";
 import { readRunRecord, RUNS, runRecordCollection, runTopic } from "./run-record";
 import { sessionTask, type SessionDoorBoard } from "./session-door";
 import { runBoardSegment } from "./workspace";
@@ -103,10 +103,9 @@ export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
           ? { taskId: row.id, diff: { files: [], fileCount: 0, added: 0, removed: 0, verified: false }, patch: null }
           : { taskId: row.id, diff: null, patch: { path: input.path, patch: "", truncated: false, verified: false } };
       }
-      const changes = await readRunChanges(record.workspacePath, record.baseRef ?? null, record.baseCommit ?? null, {
-        ...at,
-        baseTip: record.baseTip ?? null,
-      });
+      // The cut the settle read against, re-guarded: never a commit the recorded cut isn't in.
+      const cut = await effectiveCut(record.workspacePath, record.baseCommit ?? null, record.effectiveCut ?? null);
+      const changes = await readRunChanges(record.workspacePath, record.baseRef ?? null, cut, at);
       return { taskId: row.id, ...changes };
     },
   });

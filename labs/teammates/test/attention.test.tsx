@@ -51,6 +51,8 @@ describe("the status line puts what needs you first", () => {
     // Kept open with no run on it (a steer no turn took), or a run that stopped renewing: never "Running".
     expect(status({ tasks: [task("t1", {})] }).text).toBe("Idle");
     expect(status({ tasks: [task("t1", { leaseUntil: NOW - 1 })] }).text).toBe("Idle");
+    // At its deadline the lease has lapsed, as the board and the row's time signal read it.
+    expect(status({ tasks: [task("t1", { leaseUntil: NOW })] }).text).toBe("Idle");
     // A live run outranks a parked task.
     expect(status({ tasks: [task("t1", { pullRequests: [7] }), task("t2", { leaseUntil: NOW + 60_000 })] }).text).toBe("Running coding task: Task t2");
   });

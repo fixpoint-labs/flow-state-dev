@@ -1477,7 +1477,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
               const outcome = await ref.steer!(id, steer);
               const after = ref.get(id);
               if (outcome.outcome === "recorded" && (after?.keptOpenBy === "steer" || after?.turnOwed === true) && after.assignee !== undefined) {
-                // Kept, but no turn runs it: say so, so the sender isn't told it is under way.
+                // Kept, but no turn runs it: say so, so the sender isn't told it is under way. Only this path has a
+                // sender to tell: an answer's turn (`goOnAfterAnswer`) has none, and a line in the task's own session
+                // (`./steer`) is in the session the turn starts in.
                 if (!(await startOwedSteerTurn(ctx, after, (await reach(ctx)).available.get(after.assignee)))) {
                   return { outcome: "recorded" as const, note: STEER_TURN_NOT_STARTED };
                 }

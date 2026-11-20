@@ -7,6 +7,7 @@
  */
 import type { InboxAnswer, RefileOverrides } from "@flow-state-dev/orchestration/inbox";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { leaseLapsed } from "@flow-state-dev/orchestration/tasks";
 import type { ReviewAnswer } from "../components/flow-state/review-hold";
 import type { TaskSignalRun, TaskSignalView } from "../components/flow-state/task-signals";
 import { harnessName } from "./harness";
@@ -43,7 +44,9 @@ export const attemptStartedAt = (task: Pick<CodingBoardTask, "run" | "startedAt"
  * open, owing a turn or waiting on its pull request holds none.
  */
 export const runsNow = (task: Pick<CodingBoardTask, "status" | "leaseUntil">, now: number): boolean =>
-  taskStatus(task) === "running" && typeof task.leaseUntil === "number" && task.leaseUntil > now;
+  taskStatus(task) === "running" &&
+  task.leaseUntil != null &&
+  !leaseLapsed({ status: "in_progress", leaseUntil: task.leaseUntil } as Parameters<typeof leaseLapsed>[0], now);
 
 /** Whether it waits on its pull request: its run ended, and it stays open until the pull request merges or closes. */
 export const waitsOnPullRequest = (task: Pick<CodingBoardTask, "status" | "pullRequests">): boolean => task.status === "in_progress" && task.pullRequests.length > 0;

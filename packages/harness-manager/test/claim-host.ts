@@ -44,6 +44,7 @@ import {
   type RunRecordState,
 } from "../src";
 import { RUNS, collectionRef } from "../src/run-record";
+import { hostForConfig } from "../src/workspace";
 import { WORKTREES, worktreesCollection, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
 
@@ -170,6 +171,8 @@ export interface HostOptions {
    * move the base on while a run works.
    */
   upstream?: boolean;
+  /** Stand in for the workspace host's `baseTip`, as a host that can't say where the base is now. */
+  baseTip?: () => Promise<string | undefined>;
 }
 
 /** Build one host. */
@@ -239,7 +242,10 @@ export function claimHost(options: HostOptions) {
         return options.isDone?.({ answer }) ?? true;
       },
     },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace:
+      options.baseTip === undefined
+        ? { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }
+        : { ...hostForConfig({ root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }), baseTip: options.baseTip },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script ?? [], seen, options.accepts),
