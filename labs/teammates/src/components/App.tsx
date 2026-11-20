@@ -345,9 +345,13 @@ export function App() {
           sessionId={sessionId}
           openTask={popup?.kind === "task" ? popup.taskId : undefined}
           nameOf={nameOf}
-          lookOf={lookOf}
           isCoding={isCoding}
           onOpen={openPopup}
+          // Routines are asked for in words: *New routine* starts the sentence in this teammate's composer.
+          onNewRoutine={() => {
+            followUps.current += 1;
+            setPrefill({ sessionId, text: "Set up a routine: ", n: followUps.current });
+          }}
         />
       ) : null}
       <Switcher
