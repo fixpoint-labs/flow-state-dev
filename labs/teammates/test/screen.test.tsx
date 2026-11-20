@@ -298,7 +298,7 @@ describe("the teammates screen", () => {
     expect(screen.queryByRole("button", { name: /talk/i })).toBeNull();
     // Its tasks and a place for its routines; who it is lives in the conversation's header.
     expect(within(panel("Lead")).getByRole("region", { name: "Routines" })).toBeTruthy();
-    expect(within(panel("Lead")).getByText("Schedule recurring work for Lead.")).toBeTruthy();
+    expect(within(panel("Lead")).getByText("Schedule a routine for Lead.")).toBeTruthy();
   });
 
   it("lists only the open teammate's tasks in its panel, and switching teammates switches them", async () => {

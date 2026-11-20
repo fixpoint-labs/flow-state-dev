@@ -15,7 +15,7 @@ import type { HarnessReadinessChipRow } from "../src/components/flow-state/harne
 
 afterEach(cleanup);
 
-const row = (harness: string, label: string, state: "ready" | "no" | "unanswered"): HarnessReadinessChipRow => ({
+const chip = (harness: string, label: string, state: "ready" | "no" | "unanswered"): HarnessReadinessChipRow => ({
   harness,
   label,
   ready: state === "ready",
@@ -24,18 +24,18 @@ const row = (harness: string, label: string, state: "ready" | "no" | "unanswered
   unanswered: state === "unanswered",
 });
 
-const ROWS = [row("claude-code", "Claude Code", "ready"), row("codex", "Codex", "ready"), row("cursor", "Cursor", "no")];
+const CHIPS = [chip("claude-code", "Claude Code", "ready"), chip("codex", "Codex", "ready"), chip("cursor", "Cursor", "no")];
 
 describe("harnessWarning", () => {
   it("warns about a harness that can't run, naming the fix and the ones that can", () => {
-    const warning = harnessWarning(ROWS, "cursor");
+    const warning = harnessWarning(CHIPS, "cursor");
     expect(warning?.why).toBe("Set CURSOR_API_KEY");
     expect(warning?.ready.map((r) => r.harness)).toEqual(["claude-code", "codex"]);
   });
 
-  it("stays quiet for a ready harness, an unanswered check, and before the rows arrive", () => {
-    expect(harnessWarning(ROWS, "claude-code")).toBeUndefined();
-    expect(harnessWarning([row("cursor", "Cursor", "unanswered")], "cursor")).toBeUndefined();
+  it("stays quiet for a ready harness, an unanswered check, and before the chips arrive", () => {
+    expect(harnessWarning(CHIPS, "claude-code")).toBeUndefined();
+    expect(harnessWarning([chip("cursor", "Cursor", "unanswered")], "cursor")).toBeUndefined();
     expect(harnessWarning(undefined, "cursor")).toBeUndefined();
   });
 });
@@ -51,7 +51,7 @@ describe("withHarness", () => {
 describe("the composer", () => {
   const open = (onSend = vi.fn(async () => {})) => {
     render(
-      <Composer sessionId="s1" workerName="Lead" running={false} onStop={() => {}} onSend={onSend} harnesses={ROWS} defaultHarness="cursor" />,
+      <Composer sessionId="s1" workerName="Lead" running={false} onStop={() => {}} onSend={onSend} harnesses={CHIPS} defaultHarness="cursor" />,
     );
     return onSend;
   };
@@ -59,7 +59,7 @@ describe("the composer", () => {
   // The picker reads like a choice of what the teammate answers on unless it says otherwise; it only picks where coding tasks start.
   it("says the picker chooses where coding tasks start, not the model the teammate replies on", () => {
     render(
-      <Composer sessionId="s1" workerName="Lead" running={false} onStop={() => {}} onSend={vi.fn(async () => {})} harnesses={ROWS} defaultHarness="claude-code" replyModel="openai/gpt-6-luna" />,
+      <Composer sessionId="s1" workerName="Lead" running={false} onStop={() => {}} onSend={vi.fn(async () => {})} harnesses={CHIPS} defaultHarness="claude-code" replyModel="openai/gpt-6-luna" />,
     );
     const picker = screen.getByRole("button", { name: "Code with Claude Code, ready" });
     expect(picker.title).toBe("Coding tasks start on this harness. Lead's replies use gpt-6-luna.");

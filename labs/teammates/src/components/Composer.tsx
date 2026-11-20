@@ -2,7 +2,7 @@ import type { FileContent } from "@flow-state-dev/core/items";
 import { interruptChordLabel, isSendKey, useDraftSend } from "@flow-state-dev/react";
 import { ArrowUpIcon, ChevronDownIcon, TerminalIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { harnessName, harnessState, harnessWarning, withHarness, type HarnessState } from "../lib/harness";
+import { harnessName, harnessState, harnessWarning, withHarness, type HarnessStatus } from "../lib/harness";
 import { cn } from "../lib/utils";
 import { AttachButton, AttachmentStrip, useAttachments, type AttachmentUploader } from "./flow-state/attachments";
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
@@ -250,8 +250,8 @@ export function Composer({
   );
 }
 
-const DOT: Record<HarnessState, string> = { ready: "bg-success", "not-ready": "bg-warning", unknown: "bg-presence-idle" };
-const STATE_WORDS: Record<HarnessState, string> = { ready: "ready", "not-ready": "not ready", unknown: "not checked" };
+const DOT: Record<HarnessStatus, string> = { ready: "bg-success", "not-ready": "bg-warning", unknown: "bg-presence-idle" };
+const STATE_WORDS: Record<HarnessStatus, string> = { ready: "ready", "not-ready": "not ready", unknown: "not checked" };
 
 /**
  * The toolbar's harness picker: a dot for whether the current harness can run

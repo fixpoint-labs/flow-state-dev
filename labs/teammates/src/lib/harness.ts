@@ -10,22 +10,22 @@ const HARNESS_NAME: Record<string, string> = { "claude-code": "Claude Code", cod
 export const harnessName = (harness: string) => HARNESS_NAME[harness] ?? harness;
 
 /** Whether a coding task can run on a harness: ready, not ready, or a check that got no answer. */
-export type HarnessState = "ready" | "not-ready" | "unknown";
+export type HarnessStatus = "ready" | "not-ready" | "unknown";
 
 /** A row's state; a check that got no answer is unknown, never "not ready". */
-export const harnessState = (row: HarnessReadinessChipRow): HarnessState => (row.ready ? "ready" : row.unanswered ? "unknown" : "not-ready");
+export const harnessState = (chip: HarnessReadinessChipRow): HarnessStatus => (chip.ready ? "ready" : chip.unanswered ? "unknown" : "not-ready");
 
 /**
  * The warning for coding on `harness`, or `undefined` when there is nothing to
- * warn about: no rows yet, a harness the rows don't list, one that is ready,
+ * warn about: no chips yet, a harness the chips don't list, one that is ready,
  * or one whose check got no answer (an unanswered check isn't evidence it fails).
  * Otherwise the harness, its label, why it can't run, and the harnesses that can.
  */
-export function harnessWarning(rows: readonly HarnessReadinessChipRow[] | undefined, harness: string | undefined) {
-  if (rows === undefined || harness === undefined) return undefined;
-  const row = rows.find((r) => r.harness === harness);
-  if (row === undefined || harnessState(row) !== "not-ready") return undefined;
-  return { harness, label: row.label, why: row.remedy ?? row.reason, ready: rows.filter((r) => r.ready) };
+export function harnessWarning(chips: readonly HarnessReadinessChipRow[] | undefined, harness: string | undefined) {
+  if (chips === undefined || harness === undefined) return undefined;
+  const chip = chips.find((c) => c.harness === harness);
+  if (chip === undefined || harnessState(chip) !== "not-ready") return undefined;
+  return { harness, label: chip.label, why: chip.remedy ?? chip.reason, ready: chips.filter((c) => c.ready) };
 }
 
 /**

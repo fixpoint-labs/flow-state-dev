@@ -68,7 +68,7 @@ describe("the context strip", () => {
     expect(within(chips).getByRole("button", { name: "Re-check harnesses" })).toBeTruthy();
   });
 
-  // The remedy must never be stuck open: whichever way the person dismisses it, it closes and focus goes back to Sign in.
+  // The remedy must never be stuck open: whichever way the user dismisses it, it closes and focus goes back to Sign in.
   it("closes the Sign in remedy with Sign in again, Escape, or a click outside, and gives focus back to Sign in", async () => {
     render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
     const chips = await screen.findByRole("group", { name: "Coding harnesses" });
@@ -109,7 +109,7 @@ describe("the context strip", () => {
     const lab = scriptedServer({ speed: 0.05 });
     const client = editedReads(lab, (view, value) =>
       view === "readiness"
-        ? (value as { harness: string }[]).map((row) => (row.harness === "cursor" ? { ...row, ready: false, reason: "Cursor has no key", remedy: "Set CURSOR_API_KEY" } : row))
+        ? (value as { harness: string }[]).map((chip) => (chip.harness === "cursor" ? { ...chip, ready: false, reason: "Cursor has no key", remedy: "Set CURSOR_API_KEY" } : chip))
         : value,
     );
     render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);

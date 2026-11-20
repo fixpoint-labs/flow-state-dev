@@ -274,7 +274,7 @@ export function TeammatePanel({
               <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-sm bg-surface text-text-3">
                 <ClockIcon className="size-3.5" />
               </span>
-              Schedule recurring work for {name}.
+              Schedule a routine for {name}.
             </p>
             {onNewRoutine === undefined ? null : (
               <button type="button" onClick={onNewRoutine} className="rounded-sm border border-border-strong px-3 py-1 text-xs font-medium hover:bg-surface-raised">
@@ -325,7 +325,7 @@ export function ResetButton({ name, onReset }: { name: string; onReset: () => Pr
 
 /**
  * What a card says of how its task stands, beside its meta, when that adds to
- * its time: *waiting on you* (a person must act), how long a run has been
+ * its time: *waiting on you* (the user must act), how long a run has been
  * quiet, a failed or cancelled task's reason. A running task whose run
  * answers says nothing more: its clock and bar say it.
  */
