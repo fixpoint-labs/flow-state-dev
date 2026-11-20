@@ -208,3 +208,17 @@ describe("a stretch of thinking and tool calls as one line", () => {
     expect(screen.getByRole("button", { name: /^Thought$/ })).toBeTruthy();
   });
 });
+
+// A failed call the agent made again and got through was an attempt: the run doesn't read as failed for it.
+describe("a call the agent redid", () => {
+  it("reads as tried, and leaves the run done", () => {
+    render(<ToolGroup items={[toolItem({ name: "openWorkstream", status: "failed" }), toolItem({ name: "openWorkstream" })]} />);
+    const line = screen.getByTestId("tool-group");
+    expect(line.getAttribute("data-state-kind")).toBe("completed");
+    expect(within(line).getByRole("button").textContent).toBe("Ran `openWorkstream` 2 times");
+    fireEvent.click(within(line).getAllByRole("button")[0]!);
+    expect(screen.getAllByTestId("tool-row").map((row) => row.getAttribute("data-state-kind"))).toEqual(["completed", "completed"]);
+    expect(screen.getByRole("button", { name: "Tried openWorkstream" })).toBeTruthy();
+  });
+});
+
