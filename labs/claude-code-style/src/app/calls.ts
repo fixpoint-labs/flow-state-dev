@@ -14,7 +14,7 @@ import { parseBlobRef } from "@flow-state-dev/core/attachments";
 import { modeById, MODES, type ModeId } from "../modes";
 import { projectIdOf, refuseExisting } from "../lib/new-project";
 import { dismissalKey, taskOfDismissal } from "../lib/columns";
-import { acceptOf } from "../lib/thread-entries";
+import { acceptOf } from "../lib/review-stop";
 import { NEW_SESSION_TITLE } from "../lib/session-title";
 import type { HarnessReadinessChipRow } from "../components/flow-state/harness-readiness";
 import type { ReviewLand } from "../components/flow-state/review-hold";

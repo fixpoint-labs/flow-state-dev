@@ -200,6 +200,8 @@
     // that draw one line on its own.
     "apps/kitchen-sink/components/flow-state/conversation-lines.tsx",
     "apps/kitchen-sink/components/flow-state/workforce-lines.tsx",
+    "labs/claude-code-style/src/components/flow-state/conversation-lines.tsx",
+    "labs/claude-code-style/src/components/flow-state/workforce-lines.tsx",
     "labs/teammates/src/components/flow-state/conversation-lines.tsx",
     "labs/teammates/src/components/flow-state/workforce-lines.tsx",
     "packages/shift-manager/src/components/flow-state/conversation-lines.tsx",

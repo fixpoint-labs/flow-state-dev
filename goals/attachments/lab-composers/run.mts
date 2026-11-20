@@ -27,11 +27,13 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, sessionFeed, type Client } from "@flow-state-dev/client";
 import { sessionTurnsViewRef } from "@flow-state-dev/workforce/browser";
-import type { FileContent } from "@flow-state-dev/core/items";
+import type { FileContent, OutputItem } from "@flow-state-dev/core/items";
+import { conversationLines } from "@flow-state-dev/react";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { openClaudeCodeStyle } from "../../../labs/claude-code-style/host.mts";
 import { appCalls } from "../../../labs/claude-code-style/src/app/index.ts";
-import { entriesOf as ccsEntriesOf, THREAD_ITEMS, type Item as CcsItem, type ThreadEntry } from "../../../labs/claude-code-style/src/lib/thread-entries.ts";
+import { THREAD_ITEMS } from "../../../labs/claude-code-style/src/app/feed.ts";
+import { textOf as ccsTextOf } from "../../../labs/claude-code-style/src/components/lines.tsx";
 import { openTeammates } from "../../../labs/teammates/host.mts";
 import { filesOf, textOf } from "../../../labs/teammates/src/components/lines.tsx";
 import type { ConversationView } from "../../../labs/teammates/src/lib/conversation.ts";
@@ -111,9 +113,16 @@ function until<T>(watch: (on: (value: T) => void) => () => void, check: (value: 
 }
 
 /** The Claude Code-style thread as its screen reads it: the session's items on the feed, and whether a turn runs, from workforce's session turns view. */
-type CcsThread = { entries: ThreadEntry[]; running: boolean };
+type CcsThread = { entries: Array<{ kind: string; text?: string; files?: FileContent[] }>; running: boolean };
+/** The thread's lines (React's conversation model, as the lab draws them), with what a line of words says and carries. */
+const ccsEntriesOf = (items: OutputItem[]): CcsThread["entries"] =>
+  conversationLines(items).map((line) =>
+    line.kind === "user" || line.kind === "assistant"
+      ? { kind: line.kind, text: ccsTextOf(line.item), files: line.item.content.filter((part): part is FileContent => part.type === "file") }
+      : { kind: line.kind },
+  );
 function watchCcsThread(client: Client, sessionId: string, on: (view: CcsThread) => void): () => void {
-  let items: CcsItem[] | undefined;
+  let items: OutputItem[] | undefined;
   let running: boolean | undefined;
   const tell = () => {
     if (items !== undefined && running !== undefined) on({ entries: ccsEntriesOf(items), running });
@@ -121,7 +130,7 @@ function watchCcsThread(client: Client, sessionId: string, on: (view: CcsThread)
   const feed = sessionFeed(client, sessionId, { itemTypes: [...THREAD_ITEMS] });
   const stopFeed = feed.subscribe(({ items: next, state }) => {
     if (next.length === 0 && state === "connecting") return;
-    items = next as unknown as CcsItem[];
+    items = next as unknown as OutputItem[];
     tell();
   });
   const stopTurns = client.live<{ status: string }[]>([], {

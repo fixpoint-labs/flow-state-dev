@@ -319,7 +319,7 @@ function mountViews(on: Host, sessionId: string) {
   const pinsClient = clientOf(on);
   // The Claude Code-style lab's thread and pins, as its screen reads them: each on its own client.
   function CcThreadProbe() {
-    const view = useCcThread(sessionId, false);
+    const view = useCcThread(sessionId);
     useEffect(() => {
       if (view !== undefined) ccThread.push({ at: Date.now(), value: view });
     }, [view]);

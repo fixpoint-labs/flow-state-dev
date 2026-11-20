@@ -64,7 +64,7 @@ async function mainThread(page: import("playwright").Page) {
   return page.evaluate(() => {
     const thread = document.querySelector('main[aria-label="Main thread"]');
     return {
-      user: [...(thread?.querySelectorAll('[data-entry="user"]') ?? [])].map((el) => (el.parentElement?.textContent ?? "").trim()),
+      user: [...(thread?.querySelectorAll('[data-entry="user"]') ?? [])].map((el) => (el.closest("[data-request-id]")?.textContent ?? "").trim()),
       replies: [...(thread?.querySelectorAll('[data-entry="assistant"]:not([data-incomplete])') ?? [])].map((el) => (el.textContent ?? "").trim()),
       cards: [...(thread?.querySelectorAll('[data-entry="thread"]') ?? [])].length,
       rows: [...document.querySelectorAll('aside[aria-label="Tasks"] [data-task-id]')].length,

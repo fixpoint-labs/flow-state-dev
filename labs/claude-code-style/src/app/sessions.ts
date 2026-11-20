@@ -4,13 +4,13 @@
  * feed with its turns from workforce's session turns view.
  */
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { useView } from "@flow-state-dev/react";
+import type { OutputItem } from "@flow-state-dev/core/items";
+import { useView, type LineTurn } from "@flow-state-dev/react";
 import { sessionTurnsViewRef, WORK_PROJECT_STATE_KEY, workerSessionsViewRef } from "@flow-state-dev/workforce/browser";
 import { MODES } from "../modes";
 import { dismissalKey } from "../lib/columns";
-import { entriesOf, RETRYABLE_SOURCES, THREAD_ITEMS, withStopped, type ThreadEntry } from "../lib/thread-entries";
 import { useAppContext } from "./provider";
-import { useFeed, type ConnectionState } from "./feed";
+import { THREAD_ITEMS, useFeed, type ConnectionState } from "./feed";
 import { useDismissed } from "./marks";
 
 /** One row of the sessions list: the worker sessions view's row, with what waits on you less your dismissals. */
@@ -30,7 +30,10 @@ export interface AppSession {
 
 /** What a thread shows now. */
 export interface ThreadView {
-  entries: ThreadEntry[];
+  /** The session's items its lines are drawn from, in order. */
+  items: OutputItem[];
+  /** The session's turns as the lines read them: how each ended and whether the engine retries it. A turn you stopped stays stopped once it leaves the turns read. */
+  turns: LineTurn[];
   running: boolean;
   connection?: ConnectionState;
   /** When the running turn started, in ms. */
@@ -75,7 +78,7 @@ export function useSessions(): AppSession[] | undefined {
 }
 
 /** What a session's main thread shows: its items on the session feed, its turns from the session turns view. */
-export function useThread(sessionId: string, threads: boolean): ThreadView | undefined {
+export function useThread(sessionId: string): ThreadView | undefined {
   const { client, pollIntervalMs, stops, threadFeeds } = useAppContext();
   const feed = useFeed(client, sessionId, THREAD_ITEMS);
   const follow = feed?.followResponse;
@@ -90,21 +93,22 @@ export function useThread(sessionId: string, threads: boolean): ThreadView | und
   useSyncExternalStore(stops.subscribe, stops.snapshot);
   // A stopped line stays once its turn leaves the turns read.
   const [stoppedSeen] = useState(() => new Set<string>());
-  const entries = useMemo(() => {
-    if (feed?.items === undefined || turns === undefined) return undefined;
+  const lineTurns = useMemo(() => {
+    if (turns === undefined) return undefined;
     for (const turn of turns) if (turn.status === "aborted") stoppedSeen.add(turn.id);
-    const retryable = new Set(turns.filter((turn) => RETRYABLE_SOURCES.has(turn.source)).map((turn) => turn.id));
-    return withStopped(entriesOf(feed.items, threads, retryable), stoppedSeen);
-  }, [feed?.items, turns, threads, stoppedSeen]);
+    const read = new Set(turns.map((turn) => turn.id));
+    return [...turns, ...[...stoppedSeen].filter((id) => !read.has(id)).map((id) => ({ id, status: "aborted" }))];
+  }, [turns, stoppedSeen]);
   const stop = stops.get(sessionId);
   const ended = stop?.ids != null && turns !== undefined && [...stop.ids].every((id) => turns.some((turn) => turn.id === id && turn.status !== "in_progress"));
   useEffect(() => {
     if (ended && stops.get(sessionId) === stop) stops.set(sessionId, undefined);
   }, [ended, stop, stops, sessionId]);
-  if (entries === undefined || feed === undefined || turns === undefined) return undefined;
+  if (feed?.items === undefined || turns === undefined || lineTurns === undefined) return undefined;
   const turn = turns.find((t) => t.status === "in_progress");
   return {
-    entries,
+    items: feed.items,
+    turns: lineTurns,
     running: turn !== undefined,
     stopping: stop !== undefined && !ended,
     backgroundRunning: feed.runs,

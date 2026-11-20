@@ -186,6 +186,14 @@ describe("a suspension", () => {
 });
 
 describe("records that draw nothing", () => {
+  // A feed that names its item types gets client-hidden items too: a task's ending
+  // message is history-only beside its result line, and must not draw a second time.
+  it("are no line: an item the client isn't shown, even with sub-agents shown", () => {
+    const ending = said("a1", "r1", { itemVisibility: { client: false, history: true } } as Partial<MessageItem>);
+    expect(kinds(conversationLines([user("u1", "r1"), ending]))).toEqual(["user:u1"]);
+    expect(kinds(conversationLines([user("u1", "r1"), ending], [], { showSubAgents: true }))).toEqual(["user:u1"]);
+  });
+
   it("are no line: a state change, a resource change, a continuation", () => {
     const records = ["state_change", "resource_change", "continuation"].map((type, n) => ({ ...base(`x${n}`, "r1"), type }) as unknown as OutputItem);
     expect(conversationLines([...records, user("u1", "r1")]).map((line) => line.kind)).toEqual(["user"]);

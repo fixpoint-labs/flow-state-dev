@@ -186,3 +186,41 @@ describe("a stopped run", () => {
     }
   });
 });
+
+// A failed run's turn is the board's to run again: its failed line offers Retry while the task
+// stands failed on the board, and Retry sends the task back to run, as the task's own Retry does.
+describe("a failed run", () => {
+  const failed = { id: "e1", type: "error", status: "completed", requestId: "req_run", itemIndex: 2, ts: 102, taskId: "t1", message: "the harness crashed", code: "HARNESS" };
+
+  it("draws the shared failed line with Retry while its task stands failed, and Retry runs the task again on its board", async () => {
+    const retryTask = vi.fn(async () => undefined);
+    const held = Object.assign(task, { status: "failed", row: { id: "t1", status: "errored" }, retryTask });
+    try {
+      render(<TaskSession />);
+      await act(async () => feeds.at(-1)!.onRead({ items: [claim, step(1), failed], truncated: false }));
+      const line = document.querySelector<HTMLElement>("[data-line=failed]")!;
+      expect(line.textContent).toContain("the harness crashed");
+      await act(async () => fireEvent.click(within(line).getByRole("button", { name: /Retry/ })));
+      // The task's own Retry, the board's, which reads the row again (task-provider.test).
+      expect(retryTask).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (held as { status?: string }).status;
+      delete (held as { retryTask?: unknown }).retryTask;
+      Object.assign(held, { row: undefined });
+    }
+  });
+
+  it("offers no Retry while the board still runs the task again on its own", async () => {
+    const held = Object.assign(task, { status: "failed", row: { id: "t1", status: "pending" }, retryTask: vi.fn() });
+    try {
+      render(<TaskSession />);
+      await act(async () => feeds.at(-1)!.onRead({ items: [claim, step(1), failed], truncated: false }));
+      expect(document.querySelector("[data-line=failed]")).not.toBeNull();
+      expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+    } finally {
+      delete (held as { status?: string }).status;
+      delete (held as { retryTask?: unknown }).retryTask;
+      Object.assign(held, { row: undefined });
+    }
+  });
+});

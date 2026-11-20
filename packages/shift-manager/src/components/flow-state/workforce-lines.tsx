@@ -25,9 +25,7 @@
  *   how it stands (`sentStatusOf`) where the screen says.
  * - task (`workforce:task`): *Filed a task for ada: …*, opening the task.
  * - result (`workforce:result`): *ada finished: …*, *couldn't finish*, *was
- *   cancelled*, opening the task. The board still says each ending as a
- *   message too, so a host that draws that message turns this one off
- *   (`[TASK_RESULT_DATA_TYPE]: false`), or the ending draws twice.
+ *   cancelled*, opening the task.
  * - brief: the words workforce hands a worker when it starts a task are
  *   what the session was given, not words the user typed, so they fold to
  *   one *Task brief* line that opens to the message as the app draws it.

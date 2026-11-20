@@ -11,24 +11,24 @@
  * What the screen reads is held by {@link TaskProvider}; this file only draws
  * it. The screen writes three ways: the abort behind Interrupt, the
  * composer's message, which goes through the one send path (`lib/deliver.ts`),
- * and the task actions, the board's own through `useBoardActions`.
+ * and the task actions, the board's own through the task's `board`.
  *
  * The keyboard stop is deliberate: Esc twice within the window, or Cmd/Ctrl+.
  * One Esc only dismisses, and an Esc in the composer is the composer's.
  */
 import { interruptChordLabel, useInterruptKeys } from "@flow-state-dev/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor } from "../lib/columns";
 import { doorOf, workerFor, workerLabel, waited } from "../lib/shift";
-import { taskAsks, useBoardActions, useInbox } from "../lib/inbox";
-import { useSessions, useWorkers } from "../lib/directory";
+import { taskAsks, useInbox } from "../lib/inbox";
+import { useWorkers } from "../lib/directory";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import { useDeliverLine } from "../lib/deliver";
 import { useWorkforce } from "../lib/workforce";
-import { holderSessionOf, isConversationBoard, useTask } from "../lib/task";
+import { useTask } from "../lib/task";
 import { distinctTitle, legacyTaskDraftKey, taskDraftKey } from "../lib/tasks";
 import { TurnComposer } from "../components/TurnComposer";
 import type { Gaps } from "../gaps";
@@ -201,14 +201,9 @@ function Activity({ worker, armed }: { worker: string | null; armed: boolean }) 
 /** Interrupt, the task's actions, and the controls with no shipped operation (D2). */
 function Actions({ gaps }: { gaps: Gaps }) {
   const task = useTask();
-  const sessions = useSessions().list;
   const running = task.run.kind === "open" && task.status === "in_progress";
   const pending = task.interrupt.kind === "pending";
-  // The board's actions run on the conversation that holds it, through the
-  // flow that conversation's session names as its owner. No owner, no actions.
-  const holder = holderSessionOf(task.boardRef);
-  const flowId = !isConversationBoard(task.boardRef) ? undefined : (sessions?.find((session) => session.id === holder)?.flowId ?? undefined);
-  const board = useBoardActions(flowId === undefined ? undefined : { id: holder, flowId });
+  const board = task.board;
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 pb-2" data-testid="task-actions">
       <button

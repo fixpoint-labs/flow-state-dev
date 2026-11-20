@@ -4,12 +4,20 @@
  * the conversation that filed the task, beside the board's ending message, by
  * whichever path says that message (the notice's line, or the answer's
  * read of a task that finished during its turn). Client-only: the model reads
- * the message.
+ * the message, which is history-only ({@link ENDING_FOR_THE_MODEL}), so the
+ * ending draws once.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { TaskNotice } from "@flow-state-dev/orchestration/tasks";
 import { TASK_RESULT_DATA_TYPE } from "../messages/keys";
 import type { TaskResultValue } from "../messages/line-values";
+
+/**
+ * The board's ending message's visibility when a result line says the same
+ * ending: the model reads it, and no client gets it, so an app draws the
+ * ending once, as the result line.
+ */
+export const ENDING_FOR_THE_MODEL = { client: false, history: true } as const;
 
 /**
  * The result line for `notice` on the task `task`, or `undefined` for an ending

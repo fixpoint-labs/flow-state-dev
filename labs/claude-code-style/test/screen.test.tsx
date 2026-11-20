@@ -522,9 +522,7 @@ describe("the session-mode screen", () => {
     await pick();
     await ask("Compare Acme and Globex for us.");
     await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("in_progress"), SLOW);
-    // The two calls that filed the tasks are one run of the turn's: open it to its line per call.
-    const run = await within(thread()).findByRole("button", { name: /Start/, expanded: false }, SLOW);
-    fireEvent.click(run);
+    // Each call that filed a task is that task's line, not a step of the turn's run.
     await waitFor(() => expect(within(thread()).getAllByText(/Start a task: Research Globex/).length).toBeGreaterThan(0), SLOW);
     const start = within(thread())
       .getAllByText(/Start a task: Research Globex/)
