@@ -13,7 +13,7 @@ import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import { AppProvider, useTaskWork, type CodingBoardTask, type TaskWork } from "../src/app";
-import { boardRow } from "./board-row";
+import { codingBoardTask } from "./coding-board-task";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
@@ -95,7 +95,7 @@ const until = async (check: () => boolean) => {
 afterEach(cleanup);
 
 /** A coding task the board names as running in `run1`, as request `requestId`. */
-const running = (requestId: string): CodingBoardTask => boardRow({ title: "Fix it", goal: "Fix it", harness: "claude-code", run: { sessionId: "run1", requestId, attempt: 1 }, runFlow: "f" });
+const running = (requestId: string): CodingBoardTask => codingBoardTask({ title: "Fix it", goal: "Fix it", harness: "claude-code", run: { sessionId: "run1", requestId, attempt: 1 }, runFlow: "f" });
 
 /** Every work value the hook hands back, in order, deduped by identity. */
 function watch(h: ReturnType<typeof host>, task: CodingBoardTask) {

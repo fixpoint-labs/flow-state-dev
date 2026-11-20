@@ -6,14 +6,14 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CodingBoardTask } from "../src/app";
-import { boardRow } from "./board-row";
+import { codingBoardTask } from "./coding-board-task";
 import { ThreadView } from "../src/components/ThreadView";
 import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import { RUN, reviewStop, stubServer, underReview, verdictOf } from "./stub-server";
 
 afterEach(cleanup);
 
-const workingTask: CodingBoardTask = boardRow({
+const workingTask: CodingBoardTask = codingBoardTask({
   id: "t-1",
   title: "Add a CHANGELOG line",
   goal: "Add a line",

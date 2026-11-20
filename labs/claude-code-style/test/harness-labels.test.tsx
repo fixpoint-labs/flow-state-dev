@@ -8,7 +8,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CodingBoardTask } from "../src/app";
-import { boardRow } from "./board-row";
+import { codingBoardTask } from "./coding-board-task";
 import { ThreadCard } from "../src/components/ThreadCard";
 import { harnessLabelOf } from "../src/components/ThreadStatus";
 import { HarnessLabels } from "../src/lib/harness-labels";
@@ -16,7 +16,7 @@ import { stubServer } from "./stub-server";
 
 afterEach(cleanup);
 
-const planTask = boardRow({
+const planTask = codingBoardTask({
   id: "t-1",
   title: "Plan the vendor switch",
   goal: "Plan it",

@@ -14,7 +14,7 @@ import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import type { RecordedWorkView } from "@flow-state-dev/harness-manager/browser";
 import type { ViewOutput } from "@flow-state-dev/core/types";
 import { AppProvider, type CodingBoardTask } from "../src/app";
-import { boardRow } from "./board-row";
+import { codingBoardTask } from "./coding-board-task";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
@@ -61,7 +61,7 @@ const reviewHold = (stop = "stop-1"): InboxHold =>
 
 /** A coding task under review in {@link RUN}, as the coding board's row reads. */
 export const underReview = (task: CodingBoardTask, stop = "stop-1"): CodingBoardTask =>
-  boardRow({
+  codingBoardTask({
     ...task,
     asks: [reviewHold(stop)],
     state: undefined,

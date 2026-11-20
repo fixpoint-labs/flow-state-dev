@@ -19,7 +19,7 @@ export const ask = (kind: InboxHold["ask"]["kind"], prompt: string, id = `hold-$
 });
 
 /** A coding board row: `patch` over a plain worker's running task with nothing set. */
-export function boardRow(patch: Partial<CodingBoardTask> = {}): CodingBoardTask {
+export function codingBoardTask(patch: Partial<CodingBoardTask> = {}): CodingBoardTask {
   const row = {
     id: "t1",
     goal: "Fix the typo",

@@ -18,7 +18,7 @@ import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/fl
 import { TasksPane } from "../src/components/TasksPane";
 import { ThreadCard } from "../src/components/ThreadCard";
 import { ThreadView } from "../src/components/ThreadView";
-import { boardRow } from "./board-row";
+import { codingBoardTask } from "./coding-board-task";
 import { RUN, stubServer, underReview } from "./stub-server";
 
 afterEach(cleanup);
@@ -26,7 +26,7 @@ afterEach(cleanup);
 const REVIEW_PROMPT = "Accept the changes, or ask for changes in words.";
 
 /** A plain worker's task (no harness) stopped for your review in {@link RUN}. */
-const plainReview = (): CodingBoardTask => underReview(boardRow({ id: "t-1", title: "Draft the summary", goal: "Draft it", harness: null }));
+const plainReview = (): CodingBoardTask => underReview(codingBoardTask({ id: "t-1", title: "Draft the summary", goal: "Draft it", harness: null }));
 
 function openView(task: CodingBoardTask) {
   render(
@@ -44,9 +44,9 @@ function openView(task: CodingBoardTask) {
 describe("a row whose harness is null: a plain worker's task", () => {
   it("never reads a run's recorded work, which only a coding run has", () => {
     const run = { ...RUN, attempt: 1 };
-    expect(readsRecordedWork(boardRow({ harness: null, run }))).toBe(false);
-    expect(readsRecordedWork(boardRow({ harness: "codex", run }))).toBe(true);
-    expect(readsRecordedWork(boardRow({ harness: "codex" }))).toBe(false);
+    expect(readsRecordedWork(codingBoardTask({ harness: null, run }))).toBe(false);
+    expect(readsRecordedWork(codingBoardTask({ harness: "codex", run }))).toBe(true);
+    expect(readsRecordedWork(codingBoardTask({ harness: "codex" }))).toBe(false);
   });
 
   it("can be resolved at once from its card: there is no coding review to wait for", async () => {
@@ -63,7 +63,7 @@ describe("a row whose harness is null: a plain worker's task", () => {
 });
 
 describe("a row whose landing is null: nothing landed", () => {
-  const settled = boardRow({ id: "t-2", title: "Rename the log", status: "completed", harness: "codex", landed: null });
+  const settled = codingBoardTask({ id: "t-2", title: "Rename the log", status: "completed", harness: "codex", landed: null });
 
   it("draws no landing on its card", () => {
     render(stubServer().wrap(<ThreadCard sessionId="s-1" task={settled} onOpen={() => {}} />));
@@ -76,7 +76,7 @@ describe("a row whose landing is null: nothing landed", () => {
 });
 
 describe("a row whose error is null: a failure the board gave no reason for", () => {
-  const failed = boardRow({ id: "t-3", title: "Export the report", status: "errored", error: null });
+  const failed = codingBoardTask({ id: "t-3", title: "Export the report", status: "errored", error: null });
 
   it("draws no empty alert in its view, and says it failed", () => {
     const view = openView(failed);

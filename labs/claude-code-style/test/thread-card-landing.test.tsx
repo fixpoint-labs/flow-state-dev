@@ -7,7 +7,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CodingBoardTask, ReviewDetail } from "../src/app";
-import { boardRow } from "./board-row";
+import { codingBoardTask } from "./coding-board-task";
 import { ThreadCard } from "../src/components/ThreadCard";
 import { RUN, reviewStop, stubServer, underReview, verdictOf, type Posted } from "./stub-server";
 
@@ -23,8 +23,8 @@ const REVIEW: ReviewDetail = {
 };
 
 const codingTask = (patch: Partial<CodingBoardTask> = {}): CodingBoardTask =>
-  boardRow({
-    ...underReview(boardRow({ id: "t-1", title: "Add a CHANGELOG line", goal: "Add a line", harness: "claude-code" })),
+  codingBoardTask({
+    ...underReview(codingBoardTask({ id: "t-1", title: "Add a CHANGELOG line", goal: "Add a line", harness: "claude-code" })),
     ...patch,
     state: patch.state,
   });

@@ -6,11 +6,11 @@
  */
 import { describe, expect, it } from "vitest";
 import type { CodingBoardTask } from "../src/app";
-import { boardRow } from "./board-row";
+import { codingBoardTask } from "./coding-board-task";
 import { spendLine } from "../src/components/flow-state/spend";
 import { harnessLabelOf } from "../src/components/ThreadStatus";
 
-const task = (spend?: CodingBoardTask["spend"]): CodingBoardTask => boardRow({ title: "t", goal: "g", ...(spend ? { spend } : {}) });
+const task = (spend?: CodingBoardTask["spend"]): CodingBoardTask => codingBoardTask({ title: "t", goal: "g", ...(spend ? { spend } : {}) });
 const spend = (inputTokens: number | null, outputTokens: number | null, unreported = false, costUsd: number | null = null): NonNullable<CodingBoardTask["spend"]> => ({
   harness: "claude-code",
   model: "claude-sonnet-4-5",

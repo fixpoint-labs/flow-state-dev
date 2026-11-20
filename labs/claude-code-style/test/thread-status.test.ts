@@ -8,14 +8,14 @@
  */
 import { describe, expect, it } from "vitest";
 import type { CodingBoardTask } from "../src/app";
-import { boardRow } from "./board-row";
+import { codingBoardTask } from "./coding-board-task";
 import { rowNote, statusLine } from "../src/components/ThreadStatus";
 
 /** The note a harness run leaves on the row: its last tool call. */
 const LAST_TOOL_CALL = "Bash: git push -u origin feat/claude-code-style-sheet";
 
 const taskRow = (patch: Partial<CodingBoardTask>): CodingBoardTask =>
-  boardRow({
+  codingBoardTask({
     id: "t",
     title: "Align task info to flyout popup",
     goal: "g",

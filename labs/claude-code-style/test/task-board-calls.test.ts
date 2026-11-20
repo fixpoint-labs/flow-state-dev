@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { appCalls } from "../src/app";
-import { boardRow } from "./board-row";
+import { codingBoardTask } from "./coding-board-task";
 
 type Sent = { flow: string; action: string; input: Record<string, unknown>; sessionId: string };
 
@@ -72,14 +72,14 @@ const RUNNING = { id: "t1", goal: "Fix the typo", status: "in_progress", attempt
 describe("the lab's task actions", () => {
   it("sends a steer typed in a thread with no open question through the board client's steer", async () => {
     const lab = fakeClient([RUNNING]);
-    await appCalls(lab.client).sayInThread("s1", boardRow({ asks: [] }), "Use the British spelling.");
+    await appCalls(lab.client).sayInThread("s1", codingBoardTask({ asks: [] }), "Use the British spelling.");
     expect(lab.sent).toEqual([{ flow: "agent", action: "updateTask_tasks", input: { id: "t1", message: "Use the British spelling." }, sessionId: "s1" }]);
   });
 
   it("answers the question the board holds now, even when the drawn row was read before it opened", async () => {
     // The screen drew the row with no question; the run has since asked one. The line answers it, not steers.
     const lab = fakeClient([{ ...RUNNING, asks: [questionHold("ask-1")] }]);
-    await appCalls(lab.client).sayInThread("s1", boardRow({ asks: [] }), "British.");
+    await appCalls(lab.client).sayInThread("s1", codingBoardTask({ asks: [] }), "British.");
     expect(lab.sent).toEqual([{ flow: "agent", action: "updateTask_tasks", input: { id: "t1", answers: "ask-1", message: "British." }, sessionId: "s1" }]);
   });
 
@@ -87,7 +87,7 @@ describe("the lab's task actions", () => {
     // The screen drew round 1's review; the run has since answered it and stopped for round 2.
     // Accepting round 2 unseen would land work nobody read, so nothing is sent.
     const lab = fakeClient([{ ...RUNNING, asks: [reviewHold("stop-2")] }]);
-    const drawn = boardRow({ asks: [reviewHold("stop-1")] });
+    const drawn = codingBoardTask({ asks: [reviewHold("stop-1")] });
     await expect(appCalls(lab.client).resolve("s1", drawn)).rejects.toThrow(`The thread "t1" has a newer review; look it over first.`);
     await expect(appCalls(lab.client).requestChanges("s1", drawn, "Shorter, please.")).rejects.toThrow(/newer review/);
     expect(lab.answered).toEqual([]);
@@ -95,14 +95,14 @@ describe("the lab's task actions", () => {
 
   it("answers the review round it drew while the board still holds it", async () => {
     const lab = fakeClient([{ ...RUNNING, asks: [reviewHold("stop-1")] }]);
-    const drawn = boardRow({ asks: [reviewHold("stop-1")] });
+    const drawn = codingBoardTask({ asks: [reviewHold("stop-1")] });
     await appCalls(lab.client).requestChanges("s1", drawn, "Shorter, please.");
     expect(lab.answered.map((a) => a.body.suspensionId)).toEqual(["stop-1"]);
   });
 
   it("refuses a review answer when the board holds no review, whatever the drawn row says", async () => {
     const lab = fakeClient([{ ...RUNNING, asks: [] }]);
-    const drawn = boardRow({ asks: [reviewHold("stop-1")] });
+    const drawn = codingBoardTask({ asks: [reviewHold("stop-1")] });
     await expect(appCalls(lab.client).resolve("s1", drawn)).rejects.toThrow(`The thread "t1" isn't waiting on your review.`);
     expect(lab.answered).toEqual([]);
   });

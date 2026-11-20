@@ -5,10 +5,10 @@
  */
 import { describe, expect, it } from "vitest";
 import type { CodingBoardTask } from "../src/app";
-import { ask, boardRow } from "./board-row";
+import { ask, codingBoardTask } from "./coding-board-task";
 import { columnOf, dismissalKey, waitingOnYou } from "../src/lib/columns";
 
-const task = (patch: Partial<CodingBoardTask>): CodingBoardTask => boardRow({ id: "t", title: "t", goal: "g", ...patch });
+const task = (patch: Partial<CodingBoardTask>): CodingBoardTask => codingBoardTask({ id: "t", title: "t", goal: "g", ...patch });
 
 describe("columnOf", () => {
   it.each([

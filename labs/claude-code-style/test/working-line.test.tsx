@@ -12,7 +12,7 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CodingBoardTask } from "../src/app";
-import { ask, boardRow } from "./board-row";
+import { ask, codingBoardTask } from "./coding-board-task";
 import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import { TasksPane } from "../src/components/TasksPane";
 import { ThreadView } from "../src/components/ThreadView";
@@ -25,7 +25,7 @@ afterEach(() => {
 
 const STARTED = Date.UTC(2026, 10, 4, 9, 0, 0);
 
-const RUNNING: CodingBoardTask = boardRow({ id: "t-1", title: "Fix session log ordering", goal: "Fix it", harness: "claude-code", startedAt: STARTED, run: { ...RUN, attempt: 1 } });
+const RUNNING: CodingBoardTask = codingBoardTask({ id: "t-1", title: "Fix session log ordering", goal: "Fix it", harness: "claude-code", startedAt: STARTED, run: { ...RUN, attempt: 1 } });
 
 /** A tool call of the run, as its session stores it: `in_progress` while it runs. */
 const call = (id: string, name: string, args: unknown, status: "completed" | "in_progress") => ({

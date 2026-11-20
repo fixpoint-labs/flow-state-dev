@@ -14,7 +14,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CodingBoardTask, TaskStatus } from "../src/app";
-import { boardRow } from "./board-row";
+import { codingBoardTask } from "./coding-board-task";
 import { stubServer } from "./stub-server";
 import { TasksPane } from "../src/components/TasksPane";
 import { ThreadsBoard } from "../src/components/ThreadsBoard";
@@ -26,7 +26,7 @@ const MIN = 60_000;
 /** A pane row as the coding board view answers it: its run link's start, and its lease deadline. */
 function row(id: string, title: string, status: TaskStatus, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }): CodingBoardTask {
   const { startedAt, leaseUntil, updatedAt } = times;
-  return boardRow({
+  return codingBoardTask({
     id,
     title,
     goal: title,
