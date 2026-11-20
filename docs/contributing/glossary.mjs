@@ -1083,6 +1083,13 @@ const EXEMPTIONS = [
     why: "FIX-2131: the worker's question, which holds its task for the user, and the turn-asked fact it is refused on",
   },
   {
+    // The Task board reference names the midway question helper as orchestration exports it.
+    path: /^docs\/contributing\/docs-revamp\/pages\/reference\/task-board(?:\.facts)?\.md$/,
+    line: /\baskMidway\(/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: `askMidway(ctx, board, …)`, the exported helper that opens a question midway (packages/orchestration/src/task-board/task-request.ts), named on the Reference page as the published task-board page already does",
+  },
+  {
     path: /^packages\/devtool\/(src\/react\/lib\/task-collection-state\.ts|test\/(task-collections-reason\.test\.tsx|task-collection-state\.test\.ts))$/,
     // The DevTool's wire mirror of a question's `ask` only, and the reason slot reading its prompt.
     line: /^\s*ask: \{ kind: string|\bask: \{ kind: "(question|review)"|\)\?\.ask\.prompt;$/,
