@@ -646,7 +646,13 @@ ${finalFacts.untrue.map((u, i) => `${i + 1}. ${one(u.claim)} Untrue: ${one(u.tru
     checkRuns.push(checks)
     finalCheck.fixed = true
     finalCheck.changed = fix.changed
-    if (!checks.ok) escalated = [{ from: 'pass 4', text: `After the final fact-check fix: ${checks.checks.filter((x) => !x.ok).map((x) => one(x.check)).join(', ')}` }]
+    finalCheck.declined = fix.declined
+    // A correction the writer declines is not fixed: it stays open for the owner, like a finding at the cap.
+    const open = [
+      ...fix.declined.map((d) => ({ from: 'final fact check', text: `Declined: ${one(d.finding)} (${one(d.why)})` })),
+      ...(checks.ok ? [] : [{ from: 'pass 4', text: `After the final fact-check fix: ${checks.checks.filter((x) => !x.ok).map((x) => one(x.check)).join(', ')}` }]),
+    ]
+    if (open.length) escalated = open
   }
 }
 
@@ -685,7 +691,7 @@ section(
 section(
   5,
   'Fact check',
-  `Checked against the code: the page as pass 4 read it after ${checkRuns[0].after}, sha256 ${checkRuns[0].sha}, and the ${depth.rows.length} Reference row(s) pass 6 moved.\n\n${list(factCheck.untrue.map((u) => `${u.row ? `Reference row ${u.row}: ` : ''}${u.claim} Untrue: ${u.truth} (${u.where})${u.row ? ' The row is recorded corrected.' : ''}`), 'No untrue claim found.')}${finalCheck ? `\n\nFinal fact check of the page as it closed, sha256 ${finalCheck.sha}: ${finalCheck.untrue.length ? `${finalCheck.untrue.length} untrue, fixed in a last round.\n\n${list(finalCheck.untrue.map((u) => `${u.claim} Untrue: ${u.truth} (${u.where})`), '')}` : 'no untrue claim found.'}` : ''}`,
+  `Checked against the code: the page as pass 4 read it after ${checkRuns[0].after}, sha256 ${checkRuns[0].sha}, and the ${depth.rows.length} Reference row(s) pass 6 moved.\n\n${list(factCheck.untrue.map((u) => `${u.row ? `Reference row ${u.row}: ` : ''}${u.claim} Untrue: ${u.truth} (${u.where})${u.row ? ' The row is recorded corrected.' : ''}`), 'No untrue claim found.')}${finalCheck ? `\n\nFinal fact check of the page as it closed, sha256 ${finalCheck.sha}: ${finalCheck.untrue.length ? `${finalCheck.untrue.length} untrue, ${finalCheck.declined && finalCheck.declined.length ? `${finalCheck.untrue.length - finalCheck.declined.length} fixed and ${finalCheck.declined.length} declined in a last round` : 'fixed in a last round'}.\n\n${list(finalCheck.untrue.map((u) => `${u.claim} Untrue: ${u.truth} (${u.where})`), '')}` : 'no untrue claim found.'}` : ''}`,
 )
 section(6, 'Depth pass', depth.rows.length ? `${depth.rows.length} paragraph(s) of mechanism, moved in revise round 1; see Reference rows.` : 'Every paragraph is the model; none moved.')
 section(
@@ -703,7 +709,7 @@ section(
     : 'No findings from passes 4 to 7; the page was not changed.',
 )
 if (finalCheck && finalCheck.fixed) {
-  sections[sections.length - 1] += `\n- Last round, from the final fact check (${finalCheck.untrue.length} finding(s)). Changed: ${finalCheck.changed.map(one).join(' · ') || 'nothing'}.`
+  sections[sections.length - 1] += `\n- Last round, from the final fact check (${finalCheck.untrue.length} finding(s)). Changed: ${finalCheck.changed.map(one).join(' · ') || 'nothing'}.${finalCheck.declined.length ? ` Declined: ${finalCheck.declined.map((d) => `${one(d.finding)} (${one(d.why)})`).join(' · ')}.` : ''}`
 }
 section(
   9,

@@ -10522,7 +10522,7 @@ const LOOP_PAGE = '---\ntitle: State and scopes\ntype: concept\n---\n\n# State a
  * A stub for every page-loop agent, by label. `editor` lists pass 7's verdicts in order (the last
  * repeats); `missed` lists, per cold read, the question numbers every reader gets wrong.
  */
-function loopResponder({ entries = { 'C-07': { slug: 'concepts/state-and-scopes', title: 'State and scopes', type: 'concept' } }, tree = {}, unscanned = [], status = 'new', found = true, editor = ['SHIP'], untrue = [], depthEntries = [], missed = [], questions = loopQuestions, dead = [], page = LOOP_PAGE, checksRed = [], finalUntrue = [], recorded = { written: true, checkerExit: 0, checkerOutput: 'ok' } } = {}) {
+function loopResponder({ entries = { 'C-07': { slug: 'concepts/state-and-scopes', title: 'State and scopes', type: 'concept' } }, tree = {}, unscanned = [], status = 'new', found = true, editor = ['SHIP'], untrue = [], depthEntries = [], missed = [], questions = loopQuestions, dead = [], page = LOOP_PAGE, checksRed = [], finalUntrue = [], finalDeclined = [], recorded = { written: true, checkerExit: 0, checkerOutput: 'ok' } } = {}) {
   let editorCalls = 0
   let checkCalls = 0
   return (prompt, opts) => {
@@ -10560,7 +10560,7 @@ function loopResponder({ entries = { 'C-07': { slug: 'concepts/state-and-scopes'
       return { grades: [1, 2, 3].flatMap((reader) => questions.map((_, i) => ({ reader, question: i + 1, correct: !wrong.includes(i + 1) }))) }
     }
     if (label === 'final-fact-check') return { untrue: finalUntrue }
-    if (label === 'final-fix') return { changed: ['corrected the row'], declined: [] }
+    if (label === 'final-fix') return { changed: ['corrected the row'], declined: finalDeclined }
     if (label === 'record') return recorded
     throw new Error(`page-loop stub: no response for ${label}`)
   }
@@ -10897,6 +10897,17 @@ check('page-loop: a Reference page gets a final fact check of the closed page, a
   const clean = await run('page-loop.js', { args: { ...loopArgs, page: 'R-01' }, respond: loopResponder({ entries: blocksEntries, tree }) })
   assert.equal(labels(clean.calls, 'final-fix').length, 0)
   assert.match(clean.result.recordText, /Final fact check of the page as it closed, sha256 \S+: no untrue claim found/)
+})
+
+check('page-loop: a correction the final fix declines stays open, and the record says so', async () => {
+  const tree = { [`${LOOP_DIR}/reference/blocks.md`]: { recordSitemap: 'R-01', title: 'Blocks', type: 'reference' } }
+  const finalUntrue = [{ row: 0, claim: 'X is on /types.', truth: 'X is on /internal.', where: 'a.ts:1', corrected: '' }]
+  const finalDeclined = [{ finding: 'X is on /types.', why: 'the code is ambiguous' }]
+  const { result } = await run('page-loop.js', { args: { ...loopArgs, page: 'R-01' }, respond: loopResponder({ entries: blocksEntries, tree, finalUntrue, finalDeclined }) })
+  assert.equal(result.status, 'escalated', 'a declined correction is not reported as fixed')
+  assert.match(result.recordText, /1 untrue, 0 fixed and 1 declined in a last round/)
+  assert.match(result.recordText, /Declined: X is on \/types\. \(the code is ambiguous\)/)
+  assert.doesNotMatch(result.recordText, /^## 10 · Owner read/m)
 })
 
 check('page-loop: a page that is not Reference gets no final fact check', async () => {
