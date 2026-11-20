@@ -52,13 +52,13 @@ const STOP_TIMEOUT_MS = 30_000;
 const CONVERSATION_BOARD = "tasks";
 
 /** The session a board ref names as its holder: everything before its last dot. */
-export function holderSessionOf(boardRef: string): string {
+function holderSessionOf(boardRef: string): string {
   const dot = boardRef.lastIndexOf(".");
   return dot > 0 ? boardRef.slice(0, dot) : boardRef;
 }
 
 /** Whether `boardRef` names a conversation's board (`<sessionId>.tasks`), the only boards there are. */
-export function isConversationBoard(boardRef: string): boolean {
+function isConversationBoard(boardRef: string): boolean {
   return boardRef === `${holderSessionOf(boardRef)}.${CONVERSATION_BOARD}`;
 }
 

@@ -206,9 +206,8 @@
     "labs/teammates/src/components/flow-state/workforce-lines.tsx",
     "packages/shift-manager/src/components/flow-state/conversation-lines.tsx",
     "packages/shift-manager/src/components/flow-state/workforce-lines.tsx",
-    // The labs' byte copies of the registry's session-items context, installed with
+    // The Teammates lab's byte copy of the registry's session-items context, installed with
     // conversation-lines, which reads it; its provider is for apps that pass items down.
-    "labs/claude-code-style/src/components/flow-state/session-items-context.tsx",
     "labs/teammates/src/components/flow-state/session-items-context.tsx",
     // Shift Manager's byte copy of the registry's tool item: its steps line draws ToolGroup;
     // ToolInput and ToolOutput are for apps that draw one call's parts on their own.
