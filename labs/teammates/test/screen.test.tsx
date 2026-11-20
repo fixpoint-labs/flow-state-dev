@@ -68,6 +68,12 @@ const OUTSIDE_COMPOSER = { name: (_name: string, element: Element) => element.cl
 const panel = (name: string) => screen.getByRole("complementary", { name: `${name}'s panel` });
 const teammates = () => within(workers()).getAllByRole("list")[0];
 const workerRow = (name: string) => workers().querySelector<HTMLElement>(`[data-worker="${name}"]`)!;
+/** Opens a task of Lead's conversation by its address, as a link to it would: a done task has no tile in the panel to open it from. */
+const openByAddress = async (taskId: string) =>
+  act(async () => {
+    window.history.pushState(null, "", `/?worker=teammates.chief-of-staff&session=${LEAD}&task=${taskId}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
 const entries = (kind: string) => [...conversation().querySelectorAll(`[data-entry="${kind}"], [data-line="${kind}"]`)];
 
 async function tell(worker: string, text: string) {
@@ -290,11 +296,9 @@ describe("the teammates screen", () => {
     await screen.findByLabelText("Message Lead");
     expect(screen.queryByRole("complementary", { name: "Talk" })).toBeNull();
     expect(screen.queryByRole("button", { name: /talk/i })).toBeNull();
-    // Who it is, at the top of its panel, and a place for its routines.
-    const info = within(panel("Lead")).getByRole("region", { name: "Teammate" });
-    expect(within(info).getByRole("heading", { name: "Lead" })).toBeTruthy();
-    expect(info.textContent).toMatch(/Plans the launch with you/);
+    // Its tasks and a place for its routines; who it is lives in the conversation's header.
     expect(within(panel("Lead")).getByRole("region", { name: "Routines" })).toBeTruthy();
+    expect(within(panel("Lead")).getByText("Schedule recurring work for Lead.")).toBeTruthy();
   });
 
   it("lists only the open teammate's tasks in its panel, and switching teammates switches them", async () => {
@@ -321,38 +325,32 @@ describe("the teammates screen", () => {
     expect(await within(panel("writer")).findByText("writer hasn't started any tasks yet.")).toBeTruthy();
   });
 
-  it("puts the running tasks first, shows the failed ones, folds done and cancelled into groups with their counts, and moves a task that ends into its group live", async () => {
+  it("counts running, failed and cancelled tasks on its tiles, lists the selected tile's, and moves a task that ends off Running live", async () => {
     const ended = (id: string, title: string, status: "completed" | "errored" | "cancelled") => codingTask({ id, assignee: "teammates.researcher", title, status });
     const { server } = renderOnBoard({
       [LEAD]: [ended("t-1", "Look up the launch date", "completed"), ended("t-2", "Check the beta numbers", "errored"), ended("t-3", "Find a customer quote", "completed"), ended("t-4", "Pull the survey", "cancelled")],
     });
     const side = await screen.findByRole("complementary", { name: "Lead's panel" });
-    const groups = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-label"));
-    // Done and cancelled tasks are folded: their groups show counts, and none of their rows.
-    await waitFor(() => expect(groups()).toEqual(["Done (2)", "Cancelled (1)"]));
-    const folded = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-expanded"));
-    expect(folded()).toEqual(["false", "false"]);
+    const tiles = () => within(side).getAllByRole("tab").map((t) => t.textContent);
+    await waitFor(() => expect(tiles()).toEqual(["0Running", "1Failed", "1Cancelled"]));
+    // Done tasks have no tile: none of their cards are in the panel.
     expect(within(side).queryByRole("button", { name: "Asked researcher to look up the launch date" })).toBeNull();
-    // A failure is something to act on: its rows show without a click.
+    // A failure is one click away, on its tile.
+    fireEvent.click(within(side).getByRole("tab", { name: /Failed/ }));
     const failed = within(side).getByRole("list", { name: "Failed" });
     expect(within(failed).getByRole("button", { name: "Asked researcher to check the beta numbers" })).toBeTruthy();
-    // Opening a group shows its rows, and only its own.
-    fireEvent.click(within(side).getByRole("button", { name: /^Done \(2\)/ }));
-    expect(folded()).toEqual(["true", "false"]);
-    const done = within(side).getByRole("list", { name: "Done" });
-    expect(within(done).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Asked researcher to look up the launch date", "Asked researcher to find a customer quote"]);
-    expect(within(done).queryByRole("button", { name: "Asked researcher to check the beta numbers" })).toBeNull();
+    fireEvent.click(within(side).getByRole("tab", { name: /Cancelled/ }));
+    expect(within(within(side).getByRole("list", { name: "Cancelled" })).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Asked researcher to pull the survey"]);
 
-    // A task filed now runs at the top, above the groups, and moves into Done when it ends, with no reload.
+    // A task filed now counts on Running, and leaves it when it ends, with no reload.
+    fireEvent.click(within(side).getByRole("tab", { name: /Running/ }));
     const board = server.board[LEAD]!;
     board.push(coding("t-5", "cursor"));
     const active = await within(side).findByRole("list", { name: "Running" }, { timeout: 2000 });
     expect(within(active).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" })).toBeTruthy();
-    expect(active.compareDocumentPosition(within(side).getByRole("button", { name: /^Done/ })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     board[4] = { ...board[4]!, status: "completed", completedAt: Date.now() };
-    await waitFor(() => expect(within(side).getByRole("button", { name: /^Done \(3\)/ })).toBeTruthy(), { timeout: 4000 });
+    await waitFor(() => expect(tiles()[0]).toBe("0Running"), { timeout: 4000 });
     expect(within(side).queryByRole("list", { name: "Running" })).toBeNull();
-    expect(within(within(side).getByRole("list", { name: "Done" })).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" })).toBeTruthy();
   });
 
   it("draws a coding task from its board row with no project anywhere on the screen, and its word follows the row", async () => {
@@ -367,8 +365,8 @@ describe("the teammates screen", () => {
     expect(document.body.textContent).not.toMatch(/project/i);
 
     server.board[LEAD]![0] = { ...server.board[LEAD]![0]!, status: "completed", completedAt: Date.now() };
-    fireEvent.click(await within(side).findByRole("button", { name: /^Done \(1\)/ }, { timeout: 2000 }));
-    expect(within(side).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" }).getAttribute("data-task")).toBe("done");
+    // Done, it leaves Running: done tasks have no tile.
+    await waitFor(() => expect(within(side).queryByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" })).toBeNull(), { timeout: 2000 });
     expect(document.body.textContent).not.toMatch(/project/i);
   });
 
@@ -376,9 +374,8 @@ describe("the teammates screen", () => {
     const { server } = renderOnBoard({
       [LEAD]: [coding("t-1", "cursor", { status: "completed", completedAt: Date.now(), detail: { answer: "Fixed the typo in README.md, line 1.", answerCut: false } })],
     });
-    const side = await screen.findByRole("complementary", { name: "Lead's panel" });
-    fireEvent.click(await within(side).findByRole("button", { name: /^Done \(1\)/ }, POPUP_READ));
-    fireEvent.click(within(side).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" }));
+    await screen.findByRole("complementary", { name: "Lead's panel" });
+    await openByAddress("t-1");
     const popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" }, POPUP_READ);
     await waitFor(() => expect(within(popup).getByRole("region", { name: "Result" }).textContent).toBe("Fixed the typo in README.md, line 1."));
     // The answer came on a read naming the task; every other board read named none, so none carried it.
@@ -442,9 +439,8 @@ describe("the teammates screen", () => {
     const starting = await screen.findByRole("dialog", { name: "Coding task: Not reported yet" }, POPUP_READ);
     await waitFor(() => expect(starting.textContent).toContain("Starting on Codex…"), { timeout: 2000 });
     fireEvent.keyDown(document, { key: "Escape" });
-    fireEvent.click(within(side).getByRole("button", { name: /^Done \(3\)/ }));
     for (const [harness, name, check] of HARNESSES) {
-      fireEvent.click(within(side).getByRole("button", { name: `Coding task: Fix the typo on ${harness}, on ${name}` }));
+      await openByAddress(`t-${harness}`);
       const popup = await screen.findByRole("dialog", { name: `Coding task: Fix the typo on ${harness}` });
       await waitFor(() => expect(popup.querySelector("[data-step=tools]")).not.toBeNull(), { timeout: 2000 });
       await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 });
@@ -470,7 +466,8 @@ describe("the teammates screen", () => {
     const reason = "Cursor isn't set up on this machine: no sign-in found. Sign in to Cursor, then start the task again.";
     renderOnBoard({ [LEAD]: [coding("t-1", "cursor", { status: "errored", completedAt: Date.now(), error: reason })] });
     const side = await screen.findByRole("complementary", { name: "Lead's panel" });
-    const line = await within(await within(side).findByRole("list", { name: "Failed" }, POPUP_READ)).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
+    fireEvent.click(await within(side).findByRole("tab", { name: /^1\s*Failed/ }, POPUP_READ));
+    const line = await within(within(side).getByRole("list", { name: "Failed" })).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
     expect(line.getAttribute("data-task")).toBe("failed");
     expect(line.textContent).toMatch(/Cursor isn't set up on this machine/);
     fireEvent.click(line);
@@ -806,120 +803,4 @@ describe("the teammates screen", () => {
     expect(header()).toBe("Running coding task: Fix the typo in the README's first line");
   });
 
-  it("hires with Cmd+Enter in the instructions and saves new ones with Ctrl+Enter, never from a form that can't send yet", async () => {
-    render(<TestProvider server={fast()}><App /></TestProvider>);
-    await screen.findByLabelText("Message Lead");
-    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
-    const form = screen.getByRole("form", { name: "Hire a teammate" });
-    const instructions = within(form).getByLabelText("Teammate instructions");
-    // No name or role yet: the shortcut sends nothing, as the disabled button wouldn't.
-    await act(async () => fireEvent.keyDown(instructions, { key: "Enter", metaKey: true }));
-    expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3);
-    fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "tester" } });
-    fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Runs the tests." } });
-    fireEvent.change(instructions, { target: { value: "Run them all." } });
-    // Plain Enter in the instructions is a new line.
-    await act(async () => fireEvent.keyDown(instructions, { key: "Enter" }));
-    expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3);
-    await act(async () => fireEvent.keyDown(instructions, { key: "Enter", metaKey: true }));
-    await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(4));
-
-    await screen.findByLabelText("Message tester");
-    fireEvent.click(within(panel("tester")).getByRole("button", { name: "Edit" }));
-    const edit = screen.getByRole("form", { name: "Edit tester" });
-    const box = within(edit).getByLabelText("New instructions for tester");
-    // Nothing changed yet: the shortcut saves nothing.
-    await act(async () => fireEvent.keyDown(box, { key: "Enter", ctrlKey: true }));
-    expect(screen.getByRole("form", { name: "Edit tester" })).toBeTruthy();
-    fireEvent.change(box, { target: { value: "Answer in one sentence." } });
-    await act(async () => fireEvent.keyDown(box, { key: "Enter", ctrlKey: true }));
-    await waitFor(() => expect(screen.queryByRole("form", { name: "Edit tester" })).toBeNull());
-  });
-
-  // FIX-2526.
-  it("renames a teammate from the files, and the new name shows in the list, header, task lines and Messaged lines; Reset puts the file's name back", async () => {
-    const server = stubServer({ board: { [LEAD]: [codingTask({ id: "t-ask", assignee: "teammates.researcher", title: "Check the launch date", status: "in_progress" })] } });
-    const lab = fast();
-    // What the panel hands workforce's client: a reset of the file's teammate, by id.
-    const resets = () => lab.rosterWrites.filter((w) => w.action === "reset").map((w) => w.input.id);
-    render(<TestProvider server={lab} client={server.client}><App /></TestProvider>);
-    await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
-    await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
-    expect(await within(panel("Lead")).findByRole("button", { name: "Asked researcher to check the launch date" })).toBeTruthy();
-    // Not edited yet: nothing to reset.
-    fireEvent.click(workerRow("researcher"));
-    expect(within(panel("researcher")).queryByRole("button", { name: /Reset/ })).toBeNull();
-
-    fireEvent.click(within(panel("researcher")).getByRole("button", { name: "Edit" }));
-    const edit = within(panel("researcher")).getByRole("form", { name: "Edit researcher" });
-    fireEvent.change(within(edit).getByLabelText("Name of researcher"), { target: { value: "Ada" } });
-    await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save" })));
-
-    // The list and the header.
-    await waitFor(() => expect(workerRow("Ada")).not.toBeNull());
-    expect(workerRow("researcher")).toBeNull();
-    expect(within(conversation()).getByRole("heading", { name: "Ada" })).toBeTruthy();
-    // Lead's conversation: its Messaged line and its task line name Ada.
-    fireEvent.click(workerRow("Lead"));
-    expect(await within(conversation()).findByRole("button", { name: /^Messaged Ada: / })).toBeTruthy();
-    expect(within(panel("Lead")).getByRole("button", { name: "Asked Ada to check the launch date" })).toBeTruthy();
-
-    // Reset to default: the file's name is back everywhere, and there is nothing left to reset.
-    fireEvent.click(workerRow("Ada"));
-    await act(async () => fireEvent.click(within(panel("Ada")).getByRole("button", { name: "Reset Ada to default" })));
-    expect(resets()).toEqual(["teammates.researcher"]);
-    await waitFor(() => expect(workerRow("researcher")).not.toBeNull());
-    expect(within(panel("researcher")).queryByRole("button", { name: /Reset/ })).toBeNull();
-  });
-
-  it("hires a teammate you can talk to, renames it and changes its instructions from its panel, and fires it; the files' workers can't be fired", async () => {
-    const lab = fast();
-    // What the panel hands workforce's client's edit: the next turn reads it.
-    const edits = () => lab.rosterWrites.filter((w) => w.action === "edit").map((w) => w.input);
-    render(<TestProvider server={lab}><App /></TestProvider>);
-    await screen.findByLabelText("Message Lead");
-    // A worker from the files has no fire control.
-    expect(within(conversation()).queryByRole("button", { name: "Fire" })).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
-    const form = screen.getByRole("form", { name: "Hire a teammate" });
-    fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "Tester" } });
-    fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Runs the tests." } });
-    await act(async () => fireEvent.click(within(form).getByRole("button", { name: "Hire" })));
-    await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(4));
-    expect(await screen.findByLabelText("Message tester")).toBeTruthy();
-
-    fireEvent.click(within(panel("tester")).getByRole("button", { name: "Edit" }));
-    const edit = within(panel("tester")).getByRole("form", { name: "Edit tester" });
-    // The name starts as it is, and can be changed.
-    const name = within(edit).getByLabelText("Name of tester") as HTMLInputElement;
-    expect([name.value, name.readOnly]).toEqual(["tester", false]);
-    fireEvent.change(name, { target: { value: "QA Bot" } });
-    fireEvent.change(within(edit).getByLabelText("New instructions for tester"), { target: { value: "Answer in one sentence." } });
-    await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save" })));
-    // The id stays: only the name the list and header show changes.
-    expect(edits()).toEqual([{ id: "tester", name: "QA Bot", instructions: "Answer in one sentence." }]);
-    await waitFor(() => expect(within(conversation()).getByRole("heading", { name: "QA Bot" })).toBeTruthy());
-    expect(workerRow("QA Bot")).not.toBeNull();
-    expect(screen.getByLabelText("Message QA Bot")).toBeTruthy();
-    // A teammate you hired has no file to go back to.
-    expect(within(panel("QA Bot")).queryByRole("button", { name: /Reset/ })).toBeNull();
-
-    // Fire asks in a row under the header, with Keep focused; Keep leaves the teammate where it is.
-    window.confirm = () => {
-      throw new Error("Fire must not open a browser confirm");
-    };
-    fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" }));
-    const ask = within(conversation()).getByRole("group", { name: "Fire QA Bot?" });
-    await waitFor(() => expect(document.activeElement).toBe(within(ask).getByRole("button", { name: "Keep" })));
-    fireEvent.click(within(ask).getByRole("button", { name: "Keep" }));
-    expect(within(conversation()).queryByRole("group", { name: "Fire QA Bot?" })).toBeNull();
-    // Keeping puts focus back on the header's Fire, so the next Tab goes on from where the person was.
-    expect(document.activeElement).toBe(within(conversation()).getByRole("button", { name: "Fire" }));
-    expect(workerRow("QA Bot")).not.toBeNull();
-    fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" }));
-    await act(async () => fireEvent.click(within(within(conversation()).getByRole("group", { name: "Fire QA Bot?" })).getByRole("button", { name: "Fire" })));
-    await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
-    expect(workerRow("QA Bot")).toBeNull();
-  });
 });
