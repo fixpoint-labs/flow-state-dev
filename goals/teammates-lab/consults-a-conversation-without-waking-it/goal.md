@@ -6,7 +6,7 @@
 
 **Input:** `fixtures/input.json`: two wordings (a venue, a booth number), each a line to say and a question to ask, and the leg 2 and leg 3 questions. The value is drawn each run (`Hall K-41`-shaped, a new letter and number every time), so it is in no worker file, project or other conversation. **Held out**: another wording and value pass a correct lab.
 
-**Signal:** `fsdev dev --app @flow-state-dev/teammates` on a copy of the lab's workers and a fresh store, and `fsdev dev --config labs/claude-code-style/fsdev.config.mts` on a fresh data folder, driven over HTTP.
+**Signal:** `fsdev dev --app @flow-state-dev/teammates --config lab.config.mts` on a copy of the lab's workers and a fresh store, and `fsdev dev --config labs/claude-code-style/fsdev.config.mts` on a fresh data folder, driven over HTTP. The lab takes every request as its own user, so leg 2's second user needs a host that tells the two apart: `lab.config.mts` here is the lab's own host (`openTeammates`) with its `user` option, taking each request as the user its client signed in as (`signedInClient` in `../lab.mts`).
 
 - **Leg 1** (Teammates): the user says the line to `teammates.writer` in writer's conversation, then asks `teammates.chief-of-staff` the question in Lead's.
   - *value named*: Lead's reply contains the value.
@@ -46,3 +46,7 @@ Each leg passes in 3 runs of 3 (`GOAL_RUNS`, default 3).
 | 2026-10-30 | 863a0e13 | gpt-6-luna | FAIL (expected) | `no-owner-check`: [2] *no value*, *refused no_session*, all 3 runs |
 | 2026-10-30 | 07753056 | gpt-6-luna | PASS | Closure re-run after #4262. 3 of 3 |
 | 2026-10-30 | 07753056 | gpt-6-luna | FAIL (expected) | `no-owner-check`: [2] *no value*, *refused no_session*, all 3 runs |
+| 2026-11-20 | 5a30c190 | gpt-6-luna, openai/gpt-5.4 | FAIL | FIX-2763, 1 run. Leg 1 green; leg 2 threw 403 on the second user's conversation: the lab takes every request as its own user |
+| 2026-11-20 | 5a30c190 + FIX-2763 | gpt-6-luna, openai/gpt-5.4 | PASS | 3 of 3 on `lab.config.mts`. Every consult on gpt-6-luna; writer 1/5 → 1/5, 1/7 → 1/7, 1/5 → 1/5; session A 1 → 1 |
+| 2026-11-20 | 5a30c190 + FIX-2763 | gpt-6-luna | FAIL (expected) | `no-owner-check`, 1 run: [2] *no value* and *refused no_session*: the consult read the other user's value |
+| 2026-11-20 | 5a30c190 + FIX-2763 | gpt-6-luna | FAIL (expected) | `no-consult`, 1 run: [1] *reading names it*, *writer not woken* (lead messaged writer, 1 → 4 requests), *writer unchanged*, *no message*, *utility model*; [2] no consult |
