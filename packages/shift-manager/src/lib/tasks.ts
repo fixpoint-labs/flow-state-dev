@@ -92,10 +92,10 @@ export function runningSessions(rows: readonly BoardTaskView[]): number {
  * and the runs going with how many workstreams they run in.
  */
 export function shiftSummary(view: InboxViewValue): { needsYou: number; running: { runs: number; workstreams: number } } {
-  const inFlight = openBoardTasks(view).filter((row) => row.status === "in_progress");
+  const inFlight = openBoardTasks(view).filter((task) => task.status === "in_progress");
   return {
     needsYou: view.items.length,
-    running: { runs: inFlight.length, workstreams: new Set(inFlight.map((row) => row.ownerSessionId)).size },
+    running: { runs: inFlight.length, workstreams: new Set(inFlight.map((task) => task.ownerSessionId)).size },
   };
 }
 

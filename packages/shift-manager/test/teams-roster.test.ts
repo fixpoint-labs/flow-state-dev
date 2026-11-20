@@ -35,8 +35,8 @@ function clientsFor(lab: Lab): Client {
 
 /** The organization's workers, as the directory reads them (`directory-reads.ts`): the inventory read whole, each row parsed. */
 async function inventoryOf(client: Client): Promise<{ workers: Worker[] }> {
-  const rows = await client.resource(workerInventoryResource).listAll();
-  return { workers: rows.flatMap((row) => toWorker(row.value) ?? []) };
+  const entries = await client.resource(workerInventoryResource).listAll();
+  return { workers: entries.flatMap((entry) => toWorker(entry.value) ?? []) };
 }
 
 async function teams(lab: Lab) {

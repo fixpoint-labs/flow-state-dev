@@ -31,7 +31,7 @@ const render = (ui: ReactElement) => draw(ui, { wrapper: DirectoryProvider });
 const withWorkers = (workers: unknown[]) =>
   ({
     sessions: [],
-    projects: { ok: true, value: { rows: [] } },
+    projects: { ok: true, value: [] },
     inventory: { ok: true, value: { workers } },
   }) as unknown as DirectoryFixture;
 const lab = withWorkers([{ id: "shift-coordinator", displayName: "shift-coordinator", team: "general", teamName: "General", kind: "agent", door: "talk" }]);

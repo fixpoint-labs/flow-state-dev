@@ -35,7 +35,7 @@ async function lab(): Promise<Client> {
 
 /** The conversation's board, as the inbox view answers it: finished rows too, as Jump to asks. */
 async function readBoard(client: Client) {
-  return (await client.view(inboxViewRef, { done: true })).value.tasks.filter((row) => row.ownerSessionId === CONVERSATION);
+  return (await client.view(inboxViewRef, { done: true })).value.tasks.filter((task) => task.ownerSessionId === CONVERSATION);
 }
 
 /** The task actions a screen binds for the conversation: `useBoardActions`' call. */

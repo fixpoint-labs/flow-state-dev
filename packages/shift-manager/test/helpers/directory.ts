@@ -28,7 +28,7 @@ export type DirectoryFixture = {
   /** The user's listed sessions. */
   sessions?: SessionSummary[];
   /** Both projects collections' reads: every project, each by its visibility, or why they failed. */
-  projects?: Section<{ rows: Project[] }>;
+  projects?: Section<Project[]>;
 };
 
 type Fixed = Omit<DirectoryReads, "roster">;
@@ -47,14 +47,14 @@ function readsOf(fixture: DirectoryFixture | undefined, refresh: () => void): Fi
         ? { values: section.value, failure: undefined, refresh }
         : { values: undefined, failure: section.failure, refresh };
   // A fixture with no projects reads as a Lab with none.
-  const projects = fixture?.projects ?? { ok: true as const, value: { rows: [] } };
+  const projects: Section<Project[]> = fixture?.projects ?? { ok: true, value: [] };
   const inventory = fixture?.inventory;
   const fixed: Fixed = {
     inventory: read(inventory === undefined ? undefined : inventory.ok ? { ok: true, value: inventory.value.workers } : inventory),
     sessions: { list: fixture?.sessions, failure: undefined, refresh },
     projects: {
-      shared: fixture === undefined ? read(undefined) : read(projects.ok ? { ok: true, value: projects.value.rows.filter((p) => p.visibility === "shared") } : projects),
-      own: fixture === undefined ? read(undefined) : read(projects.ok ? { ok: true, value: projects.value.rows.filter((p) => p.visibility === "private") } : { ok: true, value: [] }),
+      shared: fixture === undefined ? read(undefined) : read(projects.ok ? { ok: true, value: projects.value.filter((p) => p.visibility === "shared") } : projects),
+      own: fixture === undefined ? read(undefined) : read(projects.ok ? { ok: true, value: projects.value.filter((p) => p.visibility === "private") } : { ok: true, value: [] }),
     },
   };
   held.set(key, fixed);

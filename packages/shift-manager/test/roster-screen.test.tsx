@@ -103,7 +103,7 @@ function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "fai
   return {
     sessions: [],
     inventory: options.inventory === "failed" ? { ok: false, failure: { message: "inventory offline" } } : { ok: true, value: { workers } },
-    projects: { ok: true, value: { rows: [] } },
+    projects: { ok: true, value: [] },
     boards:
       options.inventory === "failed"
         ? {}

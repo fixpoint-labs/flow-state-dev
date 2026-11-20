@@ -28,28 +28,28 @@ export type FixtureAsk = {
   since: number;
 };
 
-/** What a row's board is called on a screen: the workstream its conversation leads, else `@<worker>`, else the conversation's id. */
-function ownerOf(sessions: readonly SessionSummary[], row: BoardTaskView): string {
-  const session = sessions.find((s) => s.id === row.ownerSessionId);
-  if (session === undefined) return row.ownerSessionId;
+/** What a task's board is called on a screen: the workstream its conversation leads, else `@<worker>`, else the conversation's id. */
+function ownerOf(sessions: readonly SessionSummary[], task: BoardTaskView): string {
+  const session = sessions.find((s) => s.id === task.ownerSessionId);
+  if (session === undefined) return task.ownerSessionId;
   const workstream = workstreamOf(session);
   if (workstream !== null) return workstream;
   const worker = workerOf(session);
-  return worker === null ? row.ownerSessionId : `@${worker}`;
+  return worker === null ? task.ownerSessionId : `@${worker}`;
 }
 
-/** The view's answer over `rows` and `asks`, as the server builds it. */
-export function inboxViewOf(rows: readonly BoardTaskView[], asks: readonly FixtureAsk[] = [], sessions: readonly SessionSummary[] = []): InboxViewValue {
+/** The view's answer over `tasks` and `asks`, as the server builds it. */
+export function inboxViewOf(tasks: readonly BoardTaskView[], asks: readonly FixtureAsk[] = [], sessions: readonly SessionSummary[] = []): InboxViewValue {
   const flows = new Map(sessions.map((session) => [session.id, session.flowId ?? null]));
   return {
-    tasks: rows.map((row) => ({ ...row, owner: ownerOf(sessions, row) })),
+    tasks: tasks.map((task) => ({ ...task, owner: ownerOf(sessions, task) })),
     items: inboxItems<InboxAsk>({
-      rows: rows.map((row) => ({
-        ...row,
-        board: row.boardRef,
+      rows: tasks.map((task) => ({
+        ...task,
+        board: task.boardRef,
         holder:
-          row.boardRef === conversationBoardRef(row.ownerSessionId)
-            ? { sessionId: row.ownerSessionId, action: taskActionName("updateTask", CONVERSATION_BOARD_COLLECTION) }
+          task.boardRef === conversationBoardRef(task.ownerSessionId)
+            ? { sessionId: task.ownerSessionId, action: taskActionName("updateTask", CONVERSATION_BOARD_COLLECTION) }
             : null,
       })),
       suspensions: asks.map((ask) => ({

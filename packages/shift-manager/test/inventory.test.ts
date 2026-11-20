@@ -4,7 +4,7 @@
  * by the shared module (`labs/test-support/inventory.mts`) with Shift
  * Manager's settings (`inventory-settings.ts`). Its allowlist
  * (`inventory-allowlist.json`, one entry per finding, keyed by file, symbol
- * and kind) is empty. The test fails on a finding not on the list, an entry
+ * and the finding's type) is empty. The test fails on a finding not on the list, an entry
  * whose finding is gone, an entry the merge-base's list doesn't have, and a
  * type moved to the screen-type list with no reason.
  *

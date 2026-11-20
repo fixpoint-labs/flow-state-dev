@@ -62,7 +62,7 @@ function lab(...more: Worker[]): DirectoryFixture {
   return {
     sessions: [],
     inventory: { ok: true, value: { workers: [toWorker({ id: "researcher", kind: "agent", rules: true })!, toWorker({ id: "eng.coder", kind: "coder" })!, toWorker({ id: "eng.helper", kind: "agent", rules: false })!, ...more] } },
-    projects: { ok: true, value: { rows: [] } },
+    projects: { ok: true, value: [] },
   };
 }
 

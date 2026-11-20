@@ -243,7 +243,7 @@ describe("a project's tabs (BR-25 to BR-29)", () => {
   });
 });
 
-describe("a project row, as PROJECTS reads it (V4)", () => {
+describe("a project, as PROJECTS reads it (V4)", () => {
   it("a row's brief: an empty one stays an empty string; absent or not a string is no brief", () => {
     const row = { id: "p", title: "P", ownerUserId: ASK_LAB_USER_ID };
     expect(toProject({ ...row, brief: "" })?.brief).toBe("");

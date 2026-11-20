@@ -117,8 +117,8 @@ describe.each([
       return listed.find((r) => r.id === sent.id)?.result?.output?.taskId;
     }, "the filing's answer");
 
-    const rows = (await inboxOf(client)).tasks.filter((r) => r.ownerSessionId === conversation);
-    expect(rows.map((r) => [r.id, r.assignee, r.boardRef])).toEqual([[taskId, assignee, `${conversation}.tasks`]]);
+    const tasks = (await inboxOf(client)).tasks.filter((t) => t.ownerSessionId === conversation);
+    expect(tasks.map((t) => [t.id, t.assignee, t.boardRef])).toEqual([[taskId, assignee, `${conversation}.tasks`]]);
   }, 60_000);
 
   // Jump to finds a document through the flow of a session the user has. fsd
@@ -188,8 +188,8 @@ describe("devteam: an approved task's run", () => {
     // Live: the run's request stream (what the Session tab follows) delivers
     // its steps, stamped with this task, before anything is stored.
     const running = await eventually<InboxBoardTask>(async () => {
-      const row = (await inboxOf(client)).tasks[0];
-      return row?.status === "in_progress" && row.run !== null ? row : undefined;
+      const task = (await inboxOf(client)).tasks[0];
+      return task?.status === "in_progress" && task.run !== null ? task : undefined;
     }, "the approved row to start", 30_000);
     const flowId = await readRunFlow(client, running.run!.sessionId);
     const streamed: OutputItem[] = [];
