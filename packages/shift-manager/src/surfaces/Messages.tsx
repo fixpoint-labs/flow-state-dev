@@ -9,7 +9,7 @@
  */
 import { useMemo } from "react";
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
-import { workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { workerLabel } from "../lib/shift";
 import { firstLine, exchangesOf, useMessages, type WorkerMessageResourceState } from "../lib/messages";
 import { RouteLink } from "../components/RouteLink";
 import { clockTime } from "../lib/shell";
@@ -81,8 +81,8 @@ function MessageLine({ row }: { row: WorkerMessageResourceState }) {
   );
 }
 
-export function Messages({ snapshot }: { snapshot: LoadedSnapshot }) {
-  const { rows, failure, reread } = useMessages(snapshot.readAt);
+export function Messages() {
+  const { rows, failure, reread } = useMessages();
   const exchanges = useMemo(() => (rows == null ? [] : exchangesOf(rows)), [rows]);
 
   return (

@@ -33,7 +33,7 @@ import type { RequestStatus } from "@flow-state-dev/core/types";
 import { useRequestStream } from "@flow-state-dev/react";
 import { useConversationTasks, type ConversationTask } from "./conversation-tasks";
 import { useLab } from "./lab-data";
-import { describeFailure, type Failure } from "./reads";
+import { describeFailure, type Failure } from "./failure";
 import { useWorkforce } from "./workforce";
 import { resolveRunFlow } from "./task-items";
 

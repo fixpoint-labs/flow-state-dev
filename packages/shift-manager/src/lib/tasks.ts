@@ -2,13 +2,15 @@
  * The numbers and words Tasks and Inbox draw in design v2's form: a row's
  * TIME, which rows the Queued toggle hides, Tasks' summary line and the empty
  * Inbox's sentence. The rows and the Inbox come from the inbox view the other
- * screens read (`inbox.ts`), and who is on shift from `workerStates`, so
- * Tasks, Inbox and Roster agree.
+ * screens read (`inbox.ts`), and who is on shift from `workerStates` over the
+ * same answer, so Tasks, Inbox and Roster agree.
  */
 import { columnFor } from "./columns";
-import { workerStates, shiftCounts, type LoadedSnapshot } from "./derive";
+import { workerStates, shiftCounts } from "./shift";
 import { openBoardTasks, type InboxViewValue } from "./inbox";
-import type { BoardTaskView, Section } from "./reads";
+import type { BoardTaskView } from "./boards";
+import type { Section } from "./failure";
+import type { Worker } from "./workers";
 
 /**
  * Where a task's composer keeps its unsent line and *unconfirmed* warning. A
@@ -58,11 +60,11 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * Inbox items waiting on the user, who is on shift, and how many
  * streams (the conversations holding their boards) the rows in flight run in.
  */
-export function summaryLine(inbox: Section<InboxViewValue>, snapshot: LoadedSnapshot): string {
+export function summaryLine(inbox: Section<InboxViewValue>, workers: readonly Worker[]): string {
   const inFlight = inbox.ok ? openBoardTasks(inbox.value).filter((row) => !isQueued(row)) : [];
   // An Inbox that didn't load says so: a count of 0 would read as all clear.
   const waiting = inbox.ok ? `${inbox.value.items.length} ${inbox.value.items.length === 1 ? "needs" : "need"} you` : "Inbox didn't load";
-  const counts = shiftCounts(workerStates(snapshot));
+  const counts = shiftCounts(workerStates(workers, inbox.ok ? inbox.value : undefined));
   return [
     `${inFlight.length} in flight`,
     waiting,

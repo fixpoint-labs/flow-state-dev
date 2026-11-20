@@ -6,7 +6,7 @@
  * so an add or a remove from anywhere, the coordinator's own tool's included,
  * shows as it lands; reading it writes nothing. A change goes through
  * workforce's `addDelegate` and `removeDelegate`. The roster it picks from is
- * the connection's one roster watch (`useRoster`), so a worker hired
+ * the page's one roster watch (the directory's), so a worker hired
  * meanwhile is offered without a remount. What it shows is what the session
  * holds, never a guess: a refused add shows its reason and leaves the list
  * as it was.
@@ -17,16 +17,17 @@
 import { useMemo, useState } from "react";
 import { useView } from "@flow-state-dev/react";
 import { delegatesViewRef } from "@flow-state-dev/workforce/browser";
-import { workerLabel } from "../lib/derive";
+import { workerLabel } from "../lib/shift";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, type Worker } from "../lib/reads";
-import { useRoster } from "../lib/roster";
+import { describeFailure } from "../lib/failure";
+import type { Worker } from "../lib/workers";
+import { useWorkers } from "../lib/directory";
 import { useWorkforce } from "../lib/workforce";
 
 export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionId: string | null }) {
   const { client } = useLab();
   const workforce = useWorkforce();
-  const rosterRead = useRoster();
+  const rosterRead = useWorkers().roster;
   const roster = rosterRead !== undefined && "entries" in rosterRead ? rosterRead.entries : [];
   const [picked, setPicked] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);

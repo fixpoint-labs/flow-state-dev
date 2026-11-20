@@ -9,9 +9,9 @@
  */
 import { useState, type ReactNode } from "react";
 import type { Column } from "../lib/columns";
-import type { ShiftStatus } from "../lib/derive";
+import type { ShiftStatus } from "../lib/shift";
 import { clockTime } from "../lib/shell";
-import type { Failure } from "../lib/reads";
+import type { Failure } from "../lib/failure";
 import { cn } from "../lib/utils";
 
 /**

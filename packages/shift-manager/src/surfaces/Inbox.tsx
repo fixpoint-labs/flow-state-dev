@@ -32,10 +32,11 @@ import { AskCard } from "../components/AskCard";
 import { TurnComposer } from "../components/TurnComposer";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { askSessionOf, type SessionCall, type SessionReply } from "../lib/ask-session";
-import { doorOf, rosterOf, waited, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { doorOf, waited, workerLabel } from "../lib/shift";
+import { useWorkers, type Workers } from "../lib/directory";
 import type { InboxHold, InboxAnswer, InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
-import { describeFailure, type Failure } from "../lib/reads";
+import { describeFailure, type Failure } from "../lib/failure";
 import { useInbox, useInboxAnswer, type InboxAsk } from "../lib/inbox";
 import { groupedByWorker, itemAtRoute, sessionOfHold, workerOfHold } from "../lib/inbox-list";
 import { navigate } from "../lib/routes";
@@ -137,7 +138,7 @@ function ItemButton({ item, selected, from, now }: { item: InboxItem; selected: 
   );
 }
 
-export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; itemId: string | null; gaps: Gaps }) {
+export function Inbox({ itemId, gaps }: { itemId: string | null; gaps: Gaps }) {
   const inbox = useInbox();
   const [filter, setFilter] = useState<Filter>("All");
   // Bumped when a reply is delivered, so the ask's session is read again then.
@@ -233,7 +234,6 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
         ) : (
           <AskDetail
             hold={selected.holds[0]!}
-            snapshot={snapshot}
             gaps={gaps}
             replies={replies}
             onDelivered={() => setReplies((n) => n + 1)}
@@ -247,13 +247,11 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
 /** A suspension's detail: its card, its session, and the reply box under it. */
 function AskDetail({
   hold: selected,
-  snapshot,
   gaps,
   replies,
   onDelivered,
 }: {
   hold: InboxViewHold;
-  snapshot: LoadedSnapshot;
   gaps: Gaps;
   replies: number;
   onDelivered: () => void;
@@ -280,7 +278,6 @@ function AskDetail({
                 <Reply
                   key={selected.id}
                   hold={selected}
-                  snapshot={snapshot}
                   gaps={gaps}
                   onDelivered={onDelivered}
                 />
@@ -500,15 +497,16 @@ function AskSession({ hold }: { hold: InboxViewHold; reread?: number }) {
 }
 
 /** Why a reply can't go into the ask's session, or the door it goes through. */
-function replyRoute(hold: InboxViewHold, snapshot: LoadedSnapshot, gaps: Gaps): { blocked: string } | { blocked: null; sessionId: string; flowId: string; door: string } {
+function replyRoute(hold: InboxViewHold, directory: Workers, gaps: Gaps): { blocked: string } | { blocked: null; sessionId: string; flowId: string; door: string } {
   const sessionId = sessionOfHold(hold);
   // A run with no conversation has no session to reply into.
   if (sessionId === null) return { blocked: NO_CONVERSATION_REPLY };
   const flowId = hold.source.flowId;
   // A session written before instance ownership names no flow, so no door.
   if (flowId === null) return { blocked: hold.unanswerable ?? "This session names no flow to send through." };
-  if (!snapshot.inventory.ok) return { blocked: snapshot.inventory.failure.message };
-  const door = doorOf(rosterOf(snapshot).workers, flowId);
+  if (directory.inventory === undefined) return { blocked: "Reading the Lab's workers first…" };
+  if (!directory.inventory.ok) return { blocked: directory.inventory.failure.message };
+  const door = doorOf(directory.workers, flowId);
   if (door === null) return { blocked: `${workerLabel(workerOfHold(hold) ?? flowId)} ${gaps.turn.replyNoDoor}` };
   return { blocked: null, sessionId, flowId, door };
 }
@@ -517,16 +515,14 @@ function replyRoute(hold: InboxViewHold, snapshot: LoadedSnapshot, gaps: Gaps): 
 /** The reply box under an ask. */
 function Reply({
   hold,
-  snapshot,
   gaps,
   onDelivered,
 }: {
   hold: InboxViewHold;
-  snapshot: LoadedSnapshot;
   gaps: Gaps;
   onDelivered: () => void;
 }) {
-  const route = replyRoute(hold, snapshot, gaps);
+  const route = replyRoute(hold, useWorkers(), gaps);
   const worker = workerOfHold(hold);
   const workforce = useWorkforce();
   const deliver = useDeliverLine();

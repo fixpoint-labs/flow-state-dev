@@ -11,7 +11,7 @@
  * What the screen reads is held by {@link TaskProvider}; this file only draws
  * it. The screen writes three ways: the abort behind Interrupt, the
  * composer's message, which goes through the one send path (`lib/deliver.ts`),
- * and the task actions, the board's own through the reader's `taskActions`.
+ * and the task actions, the board's own through `useBoardActions`.
  *
  * The keyboard stop is deliberate: Esc twice within the window, or Cmd/Ctrl+.
  * One Esc only dismisses, and an Esc in the composer is the composer's.
@@ -20,8 +20,9 @@ import { interruptChordLabel, useInterruptKeys } from "@flow-state-dev/react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor } from "../lib/columns";
-import { doorOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
-import { taskAsks, useInbox } from "../lib/inbox";
+import { doorOf, workerFor, workerLabel, waited } from "../lib/shift";
+import { taskAsks, useBoardActions, useInbox } from "../lib/inbox";
+import { useSessions, useWorkers } from "../lib/directory";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
@@ -41,7 +42,8 @@ import { TaskActions } from "../components/flow-state/task-actions";
 
 export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   const task = useTask();
-  const { snapshot, stale } = useLab();
+  const { stale } = useLab();
+  const { workers } = useWorkers();
   const { row, boardRef, taskId } = task;
   const stoppable = task.run.kind === "open" && task.status === "in_progress" && task.interrupt.kind !== "pending";
   const keys = useInterruptKeys({ enabled: stoppable, onInterrupt: () => void task.requestInterrupt() });
@@ -61,7 +63,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
 
   // The same resolver the inspector and Tasks use, so a name two teams share
   // resolves to no worker at all.
-  const found = row === undefined || snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined ? undefined : workerFor(rosterOf(snapshot), row);
+  const found = row === undefined ? undefined : workerFor(workers, row);
   const worker = row?.assignee == null ? null : workerLabel(found?.id ?? row.assignee);
 
   return (
@@ -199,17 +201,14 @@ function Activity({ worker, armed }: { worker: string | null; armed: boolean }) 
 /** Interrupt, the task's actions, and the controls with no shipped operation (D2). */
 function Actions({ gaps }: { gaps: Gaps }) {
   const task = useTask();
-  const { reader, snapshot, refresh } = useLab();
+  const sessions = useSessions().list;
   const running = task.run.kind === "open" && task.status === "in_progress";
   const pending = task.interrupt.kind === "pending";
   // The board's actions run on the conversation that holds it, through the
   // flow that conversation's session names as its owner. No owner, no actions.
   const holder = holderSessionOf(task.boardRef);
-  const flowId =
-    snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || !isConversationBoard(task.boardRef)
-      ? undefined
-      : (snapshot.sessions.find((session) => session.id === holder)?.flowId ?? undefined);
-  const board = useMemo(() => (flowId === undefined ? undefined : reader.taskActions({ id: holder, flowId })), [reader, holder, flowId]);
+  const flowId = !isConversationBoard(task.boardRef) ? undefined : (sessions?.find((session) => session.id === holder)?.flowId ?? undefined);
+  const board = useBoardActions(flowId === undefined ? undefined : { id: holder, flowId });
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 pb-2" data-testid="task-actions">
       <button
@@ -230,16 +229,15 @@ function Actions({ gaps }: { gaps: Gaps }) {
       {board === undefined || task.row === undefined ? null : (
         // No Steer box: the composer below reaches the run. After each press the
         // row is read again, so the buttons follow the board's new status (and a
-        // released or retried row is followed until a run claims it); the Lab is
-        // read too, for the Tasks list and the sidebar's counts, which a cancel's
-        // dependents also change.
+        // released or retried row is followed until a run claims it); the Tasks
+        // list and the sidebar's counts follow the Inbox view, which hears the
+        // board's writes, a cancel's dependents' included.
         <TaskActions
           id={task.taskId}
           status={task.row.status}
           actions={board}
           onSettled={() => {
             task.retryRow();
-            void refresh();
           }}
         />
       )}
@@ -318,14 +316,10 @@ function Brief({ gaps }: { gaps: Gaps }) {
  */
 function Composer({ gaps, worker, workerId }: { gaps: Gaps; worker: string | null; workerId: string | null }) {
   const task = useTask();
-  const { snapshot, refresh } = useLab();
+  const { workers } = useWorkers();
   const workforce = useWorkforce();
   const deliver = useDeliverLine();
   const { row } = task;
-  const workers =
-    snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined
-      ? []
-      : rosterOf(snapshot).workers;
   const flowId = task.run.kind === "open" ? task.run.run.flowId : undefined;
   const door = flowId === undefined ? null : doorOf(workers, flowId);
   const blocked =
@@ -354,13 +348,11 @@ function Composer({ gaps, worker, workerId }: { gaps: Gaps; worker: string | nul
       // A file found after the task started goes here, as a line to its run, not into its brief (FIX-2522 D1).
       // The task's id goes only to a door that stamps it on the line and its reply: workforce's `send` decides.
       send={async (message, _held, attachments) => {
-        const sent = await deliver({ sessionId: row!.run!.sessionId, taskId: task.taskId }, message, {
+        // Stopped short on a new ask, the Inbox view hears the suspension and lists it.
+        return await deliver({ sessionId: row!.run!.sessionId, taskId: task.taskId }, message, {
           attachments,
           onStarted: (requestId) => task.noteSent(requestId),
         });
-        // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
-        if (sent.suspended) void refresh();
-        return sent;
       }}
       extra={
         <label className="flex items-center gap-1.5" title={gaps.task.alsoPost}>

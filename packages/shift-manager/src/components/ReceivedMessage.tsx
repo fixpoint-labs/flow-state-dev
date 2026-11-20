@@ -9,7 +9,7 @@
  * only and never reaches the page.
  */
 import type { DataItem } from "@flow-state-dev/core/items";
-import { workerLabel } from "../lib/derive";
+import { workerLabel } from "../lib/shift";
 import { RouteLink } from "./RouteLink";
 import { clockTime } from "../lib/shell";
 import { MarkdownText } from "./flow-state/message-response";

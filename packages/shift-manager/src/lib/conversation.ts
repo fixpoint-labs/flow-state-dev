@@ -8,7 +8,7 @@
  * `ensureWorkerSession({ worker, projectId })` opens, on its first line. Items are read when the view opens and then
  * followed on the session stream, through the page's one feed for the session (`useSharedSessionFeed`): a line sent here,
  * a reply, another worker's message, each shows as it is stored, from any
- * process, and nothing is read on a clock or on the snapshot's refresh.
+ * process, and nothing is read on a clock.
  * Nothing is sent until the first read has landed, and a session
  * a line opened here holds nothing the user hasn't seen. A lapse after the
  * first read keeps it on screen; only a failed first read shows.
@@ -19,7 +19,8 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { COORDINATOR_FLOW, deriveWorkerSessionId, type ProjectAddressRef } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
 import { useReportFeedState } from "./feed-health";
-import { describeFailure, workerOf, type Failure, type Worker } from "./reads";
+import { describeFailure, type Failure } from "./failure";
+import { workerOf, type Worker } from "./workers";
 import { useRetrySessionFeed, useSharedSessionFeed } from "./session-feeds";
 import { useWorkforce } from "./workforce";
 
@@ -72,19 +73,24 @@ interface Derived {
 }
 
 /**
- * The worker's derived conversation id for the signed-in user.
+ * The worker's derived conversation id for the signed-in user, under the
+ * organization workforce's `organization()` reads (once per page: the gate
+ * already read it).
  */
 function useDerivedId(worker: Pick<Worker, "id" | "kind"> | undefined): Derived {
-  const { client, snapshot } = useLab();
-  const orgId = snapshot !== undefined && "orgId" in snapshot ? snapshot.orgId : undefined;
+  const { client } = useLab();
+  const workforce = useWorkforce();
   const flow = worker?.kind ?? null;
   const id = worker?.id;
   const [derived, setDerived] = useState<{ key: string; id: string | null; failure?: Failure } | null>(null);
-  const key = orgId === undefined || flow === null || id === undefined ? null : `${client.userId}\n${orgId}\n${flow}\n${id}`;
+  const key = flow === null || id === undefined ? null : `${client.userId}\n${flow}\n${id}`;
   useEffect(() => {
-    if (key === null || orgId === undefined || flow === null || id === undefined) return;
+    if (key === null || flow === null || id === undefined) return;
     let closed = false;
-    derivedIdOf(key, { userId: client.userId, orgId, flow, criteria: { worker: id } }).then(
+    workforce
+      .organization()
+      .then((orgId) => derivedIdOf(`${key}\n${orgId}`, { userId: client.userId, orgId, flow, criteria: { worker: id } }))
+      .then(
       (sessionId) => {
         if (!closed) setDerived({ key, id: sessionId });
       },
@@ -95,12 +101,12 @@ function useDerivedId(worker: Pick<Worker, "id" | "kind"> | undefined): Derived 
     return () => {
       closed = true;
     };
-  }, [key, client.userId, orgId, flow, id]);
+  }, [key, workforce, client.userId, flow, id]);
   if (key === null) return { id: null, failure: undefined };
   return derived !== null && derived.key === key ? { id: derived.id, failure: derived.failure } : { id: undefined, failure: undefined };
 }
 
-/** The derived session once the snapshot lists it, for a view that reads the session without drawing it. */
+/** The derived session once the session list holds it, for a view that reads the session without drawing it. */
 export function useConversationSession(worker: Pick<Worker, "id" | "kind"> | undefined, sessions: readonly SessionSummary[]): string | null {
   return conversationAt(sessions, useDerivedId(worker).id ?? null, null);
 }
@@ -108,7 +114,7 @@ export function useConversationSession(worker: Pick<Worker, "id" | "kind"> | und
 export interface WorkerConversation {
   /** The conversation's session, or `null` before a first line. */
   sessionId: string | null;
-  /** The session a first line opened here, until the snapshot lists it. */
+  /** The session a first line opened here, until the session list holds it. */
   opened: string | null;
   /**
    * What the session stores, once read, for the session shown: its newest
@@ -126,7 +132,7 @@ export interface WorkerConversation {
 }
 
 /**
- * `pinned` is the session the view found: that one, whatever the snapshot lists.
+ * `pinned` is the session the view found: that one, whatever the session list holds.
  * `project`, with nothing pinned, is the project a view's conversation is linked to (a
  * project's Stream): it has no session until the first line opens one linked to it,
  * and the worker's own conversation is never read in its place.

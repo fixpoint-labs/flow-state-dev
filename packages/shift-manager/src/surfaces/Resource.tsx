@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { EmptyState, SectionFailure } from "../components/ui";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, type Failure } from "../lib/reads";
+import { describeFailure, type Failure } from "../lib/failure";
 
 export function ResourceView({ sessionId, resourceRef }: { sessionId: string; resourceRef: string }) {
   const { client } = useLab();

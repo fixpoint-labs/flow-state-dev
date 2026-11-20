@@ -30,7 +30,8 @@ import { askWord, holdsOnYou, taskAsks, useInbox, type InboxAsk } from "../lib/i
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { useLab } from "../lib/lab-data";
 import { useReportFeedState } from "../lib/feed-health";
-import { collectionOfBoard, describeFailure, type Failure } from "../lib/reads";
+import { collectionOfBoard } from "../lib/boards";
+import { describeFailure, type Failure } from "../lib/failure";
 import { useRetrySessionFeed, useSharedSessionFeed } from "../lib/session-feeds";
 import { readTaskClaims, taskItems } from "../lib/task-items";
 import { RouteLink } from "../components/RouteLink";

@@ -14,9 +14,11 @@ import { STATE_OF_COLUMN, StateSquare } from "./ui";
 import { columnFor } from "../lib/columns";
 import { useConversationSession } from "../lib/conversation";
 import { useConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
-import { workerLabel } from "../lib/derive";
+import { workerLabel } from "../lib/shift";
 import { useLab } from "../lib/lab-data";
-import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "../lib/reads";
+import type { SessionSummary } from "@flow-state-dev/client";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "../lib/boards";
+import { useSessions, useWorkers } from "../lib/directory";
 import { RouteLink } from "./RouteLink";
 
 /** The board the surrounding feed's session keeps, and its tasks as last read; `{}` outside a {@link SessionScope}. */
@@ -128,16 +130,19 @@ function TaskCard({ task, boardRef }: { task: Pick<ConversationTask, "id" | "goa
   );
 }
 
+/** No sessions, while the list is read. */
+const NO_SESSIONS: readonly SessionSummary[] = [];
+
 /**
  * Under a cancelled task: a cancel isn't reported, so a user who cancelled
  * because something went wrong tells the Error Reporter, naming the task.
  * Drawn only when the Lab's inventory has an Error Reporter.
  */
 function CancelledNote({ taskId }: { taskId: string }) {
-  const { snapshot } = useLab();
-  const loaded = snapshot !== undefined && "inventory" in snapshot ? snapshot : undefined;
-  const reporter = loaded?.inventory?.ok ? loaded.inventory.value.workers.find((worker) => worker.kind === ERROR_REPORTER_FLOW) : undefined;
-  const sessionId = useConversationSession(reporter, loaded?.sessions ?? []);
+  const { workers } = useWorkers();
+  const sessions = useSessions().list;
+  const reporter = workers.find((worker) => worker.kind === ERROR_REPORTER_FLOW);
+  const sessionId = useConversationSession(reporter, sessions ?? NO_SESSIONS);
   if (reporter === undefined) return null;
   const name = reporter.name || "the Error Reporter";
   return (
