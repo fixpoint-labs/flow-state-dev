@@ -19,7 +19,7 @@ import type { FileContent, MessageItem } from "@flow-state-dev/core/items";
 import { conversationLines, type ItemLine } from "@flow-state-dev/react";
 import { TASK_RESULT_DATA_TYPE, type TaskResultValue } from "@flow-state-dev/workforce/browser";
 import { waitFor } from "../../../test-support/contract";
-import { useApp, useTasks, useThread, type AppCalls, type AppTask, type ThreadView } from "../../src/app";
+import { useApp, useTasks, useThread, type AppCalls, type CodingBoardTask, type ThreadView } from "../../src/app";
 import { claudeCodeRenderers, textOf, WorkLines } from "../../src/components/lines";
 import type { ModeId } from "../../src/modes";
 import { closeApps, openTestApp, type Script, type TestApp } from "../app-host";
@@ -218,7 +218,7 @@ function shownOf(view: ThreadView): Shown {
 /** What a screen watching session `sessionId` reads: its thread and its tasks, and the calls under the same provider. */
 function watch(sessionId: string) {
   const thread = followed<Shown>();
-  const tasks = followed<AppTask[]>();
+  const tasks = followed<CodingBoardTask[]>();
   const drawn: Shown[] = [];
   const hook = renderHook(
     () => {
@@ -394,12 +394,14 @@ describe("the lab's screen reads", () => {
       const screen = watch(id);
       const board = screen.tasks;
       await screen.calls().send(id, ASK.question);
-      const held = await board.until((r) => r.some((t) => t.openHold?.kind === "question"));
-      const task = held.find((t) => t.openHold?.kind === "question")!;
-      expect(task.openHold!.prompt).toBe(QUESTION);
+      const held = await board.until((r) => r.some((t) => t.asks[0]?.ask.kind === "question"));
+      const task = held.find((t) => t.asks[0]?.ask.kind === "question")!;
+      expect(task.asks[0]!.ask.prompt).toBe(QUESTION);
+      // The view says it waits on you, from the same ask: the time signal and the counts read this.
+      expect(task.state).toBe("waiting");
       expect(["in_progress", "held"]).toContain(task.status);
       await screen.calls().sayInThread(id, task, "EU");
-      await board.until((r) => r.some((t) => t.id === task.id && t.openHold === undefined && t.status !== "held"));
+      await board.until((r) => r.some((t) => t.id === task.id && t.asks.length === 0 && t.status !== "held"));
     });
   });
 

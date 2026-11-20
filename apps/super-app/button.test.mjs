@@ -22,6 +22,48 @@ async function inject(chunks) {
   return Buffer.concat(out).toString("utf8");
 }
 
+/**
+ * Just enough of a loaded page to run the button script in: elements that know whether they are
+ * attached to `<html>` and carry their attributes and text, the document's listeners (to send a key
+ * or a click to), and the MutationObservers the script registers, to be fired by hand. `fetch` is
+ * whatever the test hands `run`.
+ */
+function fakePage() {
+  const make = (tag) => {
+    const el = {
+      tagName: tag.toUpperCase(), id: "", style: {}, children: [], parent: null, attrs: {}, text: "",
+      setAttribute(name, value) { el.attrs[name] = String(value); },
+      getAttribute(name) { return el.attrs[name] ?? null; },
+      get textContent() { return el.text + el.children.map((c) => c.textContent).join(""); },
+      set textContent(value) { el.text = value; el.children = []; },
+      appendChild(child) { child.parent = el; el.children.push(child); return child; },
+      contains(other) { for (let n = other; n; n = n.parent) if (n === el) return true; return false; },
+      get isConnected() { return el === root || (el.parent !== null && el.parent.children.includes(el) && el.parent.isConnected); },
+    };
+    return el;
+  };
+  const root = make("html");
+  const observers = [];
+  const listeners = {};
+  const document = {
+    readyState: "complete",
+    documentElement: root,
+    createElement: make,
+    getElementById: (id) => root.children.find((c) => c.id === id && c.isConnected) ?? null,
+    addEventListener(type, fn) { (listeners[type] ??= []).push(fn); },
+  };
+  const dispatch = (type, event) => { for (const fn of listeners[type] ?? []) fn(event); };
+  class MutationObserver {
+    constructor(callback) { this.callback = callback; }
+    observe() { observers.push(() => this.callback([])); }
+  }
+  const run = (script, fetch = () => new Promise(() => {})) => {
+    const body = script.replace(/^<script>/, "").replace(/<\/script>$/, "");
+    new Function("document", "addEventListener", "setTimeout", "MutationObserver", "fetch", body)(document, () => {}, (fn) => fn(), MutationObserver, fetch);
+  };
+  return { root, observers, run, dispatch };
+}
+
 describe("insertBeforeBodyClose", () => {
   it("puts the snippet inside the body, not after the document", () => {
     assert.equal(insertBeforeBodyClose("<body>x</body></html>", MARK), `<body>x${MARK}</body></html>`);
@@ -90,6 +132,79 @@ describe("buttonScript", () => {
     assert.match(script, /\/devtool\/\?app=shift-manager/);
     assert.match(script, /target="_blank"|\.target="_blank"/);
     assert.match(script, /noopener/);
+  });
+
+  it("offers the hosted apps to switch to, from the live list, and knows which one this page is", () => {
+    const script = buttonScript({ id: "shift-manager", title: "Shift Manager" });
+    // Read from the list the proxy serves when the menu opens, so a stopped app shows as stopped.
+    assert.match(script, /"list":"\/devtool\/apps\.json"/);
+    // The page's own app id is carried, so the menu can mark it "here" rather than link to itself.
+    assert.match(script, /"id":"shift-manager"/);
+    assert.match(script, /fsd-super-switch/);
+  });
+
+  it("writes a script that parses, with and without the restart pill", () => {
+    for (const restartable of [false, true]) {
+      const body = buttonScript({ id: "lab", title: "Lab" }, { restartable }).replace(/^<script>/, "").replace(/<\/script>$/, "");
+      assert.doesNotThrow(() => new Function(body), `restartable: ${restartable}`);
+    }
+  });
+
+  it("puts its buttons back when the page clears them from <html>", () => {
+    // React renders Next's document root on the client to recover from a hydration error, and that
+    // removes every child of <html> it didn't render. The buttons have to survive it.
+    const { root, observers, run } = fakePage();
+    run(buttonScript({ id: "kitchen-sink", title: "Kitchen Sink" }));
+    const ids = () => root.children.map((c) => c.id);
+    assert.deepEqual(ids(), ["fsd-super-devtool", "fsd-super-switch", "fsd-super-apps"]);
+    root.children.length = 0; // what React does to nodes it didn't render
+    for (const o of observers) o();
+    assert.deepEqual(ids(), ["fsd-super-devtool", "fsd-super-switch", "fsd-super-apps"]);
+  });
+
+  it("offers only apps it can open: this one marked here, a stopped one shown but not a link", async () => {
+    // The list is read when the menu opens so it can say which apps are up. A stopped app as a link
+    // would land the tab on the proxy's error page, and a list that arrives after the menu was
+    // dismissed (a slow answer) must not open it again.
+    const { root, run, dispatch } = fakePage();
+    const pending = [];
+    const fetch = () => new Promise((resolve) => pending.push(resolve));
+    run(buttonScript({ id: "kitchen-sink", title: "Kitchen Sink" }), fetch);
+    const byId = (id) => root.children.find((c) => c.id === id);
+    const button = byId("fsd-super-switch");
+    const menu = byId("fsd-super-apps");
+    const answer = async (list) => {
+      pending.shift()({ ok: true, json: async () => list });
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    };
+    const apps = [
+      { id: "kitchen-sink", title: "Kitchen Sink", prefix: "/kitchen-sink", status: "running" },
+      { id: "teammates", title: "Teammates", prefix: "/teammates", status: "running" },
+      { id: "shift-manager", title: "Shift Manager", prefix: "/shift-manager", status: "stopped" },
+    ];
+
+    button.onclick();
+    await answer(apps);
+    assert.equal(menu.style.display, "flex");
+    const rows = menu.children.filter((c) => c.attrs.role === "menuitem");
+    const row = (title) => rows.find((r) => r.textContent.startsWith(title));
+    assert.equal(row("Kitchen Sink").tagName, "DIV", "this app isn't a link to itself");
+    assert.equal(row("Kitchen Sink").attrs["aria-current"], "page");
+    assert.match(row("Kitchen Sink").textContent, /here$/);
+    assert.equal(row("Teammates").tagName, "A");
+    assert.equal(row("Teammates").href, "/teammates/");
+    assert.equal(row("Shift Manager").tagName, "DIV", "a stopped app isn't a link");
+    assert.equal(row("Shift Manager").attrs["aria-disabled"], "true");
+    assert.match(row("Shift Manager").textContent, /stopped$/);
+    assert.equal(row("All apps").href, "/");
+
+    dispatch("keydown", { key: "Escape" });
+    assert.equal(menu.style.display, "none");
+
+    button.onclick(); // asked for again, then dismissed before the list arrives
+    dispatch("keydown", { key: "Escape" });
+    await answer(apps);
+    assert.equal(menu.style.display, "none", "a late answer doesn't reopen a dismissed menu");
   });
 
   it("can't be broken out of by an app title", () => {

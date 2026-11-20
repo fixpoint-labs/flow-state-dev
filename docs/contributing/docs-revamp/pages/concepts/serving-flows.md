@@ -51,16 +51,16 @@ The flows do not change with the host. What changes is the file that mounts the 
 import { serve } from "@flow-state-dev/node";
 import flowstate from "../fsdev.config";
 
-await serve(flowstate);
+await serve(flowstate, { host: "127.0.0.1" });
 ```
 
-`serve` starts a long-lived server for the app. It binds every network interface and does not check that your flows have a resolver. `fsdev serve` does the same from the terminal, using `fsdev.config.ts`, and refuses to bind a network address while a flow has none; with `serve`, pass `host: "127.0.0.1"` until one is set. [Runtime options](../reference/runtime.md) has the port, health check and shutdown behaviour.
+`serve` starts a long-lived server for the app. It runs the same check as `fsdev serve`, which does this from the terminal using `fsdev.config.ts`: on any host but loopback, it refuses to start while a flow has no resolver, and refuses calls to a flow registered later without one. `allowUnauthenticated: true` turns the check off. With no `host`, `serve` binds every network interface, so the sample binds `127.0.0.1` until a resolver is set. [Runtime options](../reference/runtime.md) has the port, health check and shutdown behaviour.
 
 ## Other ways in
 
 HTTP is the built-in door. From a terminal, `fsdev run support reply -i '{"message":"hi"}'` calls the action directly, with the stores and models from `fsdev.config.ts`.
 
-MCP, webhooks and schedules are adapters you add to `createFlowState` with `adapters`. Each one hands the app the same kind of request.
+MCP and webhooks are adapters you add to `createFlowState` with `adapters`. Each one hands the app the same kind of request. Schedules need no adapter.
 
 **MCP.** The Model Context Protocol is how clients such as Claude Desktop use outside tools. With the MCP adapter, the actions of `support` become tools, and an MCP call is an action call. See [MCP server](../reference/mcp-server.md).
 
@@ -95,7 +95,7 @@ A delivery with a bad signature is refused with `401` and nothing runs. A verifi
 
 With no `sessionId` on the binding, each event runs in its own fresh session. Derive one from the payload, as in ``sessionId: (e) => `customer-${e.payload.data.object.customer}` ``, and one customer's invoices share a session while another customer gets a separate one. No end user is involved, so the run uses `defaultUserId: "system"`, with `requireUser: false`. Those two fields name the user the run acts as; they do not authenticate anyone. `verify` guards the webhook route; the app's other routes need a resolver. See [Webhooks](../reference/webhooks.md) and the [Stripe recipe](../build/webhooks/stripe.md).
 
-**A schedule.** A schedule is a name and a cron string on the flow, with the block to run. The app keeps the clock: when the time comes it calls a URL the schedule adapter serves for that schedule, and the adapter runs the block. On a serverless host, one cron route wakes the app to do it. It is not an action call either. See [Schedules](../reference/schedules.md).
+**A schedule.** A schedule is a name and a cron string on the flow, with the block to run. The app keeps the clock: when the time comes it calls that schedule's dispatch route, which every app serves under `/api/flows`, and the route runs the block. On a serverless host, one cron route wakes the app to do it. It is not an action call either. See [Schedules](../reference/schedules.md).
 
 ## What it gets you
 

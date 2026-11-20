@@ -1,6 +1,6 @@
 import { memo, type ReactNode } from "react";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import { harnessOf, modelOf, taskStatus, titleOf, workerOf } from "../lib/task";
+import { harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
@@ -54,7 +54,7 @@ export const TaskCard = memo(function TaskCard({
   coding?: boolean;
   onOpen: (taskId: string) => void;
 }) {
-  const line = taskLine({ title: titleOf(task), to: workerOf(task) }, coding, nameOf);
+  const line = taskLine({ title: task.title, to: workerOf(task) }, coding, nameOf);
   const runs = { harness: harnessOf(task), model: modelOf(task) };
   const on = coding ? runsOn(runs) : undefined;
   const state = taskPresentation(task);

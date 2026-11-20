@@ -690,6 +690,8 @@ describe("an accepted run's work lands where the person chose (FIX-2543)", () =>
   const PR_URL = "https://github.com/acme/widgets/pull/42";
   const PATH = process.env.PATH;
   let ghLog: string;
+  /** While this file exists, `gh pr create` fails the way GitHub refuses a pull request into a deleted base. */
+  let failCreate: string;
   const ghCalls = () => (existsSync(ghLog) ? readFileSync(ghLog, "utf8").trim().split("\n") : []);
   const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
   const isAncestor = (cwd: string, commit: string, ref: string) => {
@@ -706,11 +708,16 @@ describe("an accepted run's work lands where the person chose (FIX-2543)", () =>
     const bin = mkdtempSync(join(tmpdir(), "harness-manager-land-gh-"));
     dirs.push(bin);
     ghLog = join(bin, "calls.log");
+    failCreate = join(bin, "fail-create");
     writeFileSync(
       join(bin, "gh"),
       `#!/usr/bin/env node
 const args = process.argv.slice(2);
 require("node:fs").appendFileSync(${JSON.stringify(ghLog)}, args.join(" ") + "\\n");
+if (args[1] === "create" && require("node:fs").existsSync(${JSON.stringify(failCreate)})) {
+  process.stderr.write("pull request create failed: GraphQL: Base sha can't be blank, Base ref must be a branch (createPullRequest)\\n");
+  process.exit(1);
+}
 process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify(PR_URL)} + "\\n" : "[]");
 `,
     );
@@ -838,7 +845,9 @@ process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify
       expect(h.review(again)!.ask.prompt).toContain("Opening the pull request failed");
       expect(existsSync(h.seen[0]!.cwd)).toBe(true);
 
+      // Back as it was: with its main, which the pull request goes into.
       execFileSync("git", ["init", "-q", "--bare", h.remote]);
+      git(h.seen[0]!.cwd, "push", "-q", h.remote, "HEAD~1:refs/heads/main");
       await h.answer({ verdict: "accepted", land: "pull-request" });
       const done = await h.until((t) => t.status === "completed", "the retry to land");
       expect(done.output).toMatchObject({ landed: { kind: "pull-request", url: PR_URL } });
@@ -922,6 +931,29 @@ process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify
       await h.dispose();
     }
   }, 90_000);
+
+  // FIX-2858: GitHub refused the pull request, the failure was handed to the
+  // coding session, and the coder opened one itself with gh, outside the landing.
+  it("asks the person again when GitHub refuses the pull request, and hands the coding session nothing", async () => {
+    const h = host({ script: ["commits", "no-commit"], remote: true });
+    try {
+      await h.start();
+      const first = await h.until(h.waiting, "the review");
+      writeFileSync(failCreate, "");
+      await h.answer({ verdict: "accepted", land: "pull-request" });
+      const again = await h.until((t) => h.waiting(t) && h.review(t)!.id !== h.review(first)!.id, "the review asked again");
+
+      // No step of the coding session: only landing opens the pull request.
+      expect(h.seen).toHaveLength(1);
+      const detail = reviewDetail((await h.stop(h.review(again)!))?.data);
+      expect(detail?.landAttempts).toHaveLength(1);
+      expect(detail?.landFailed).toMatchObject({ land: "pull-request" });
+      expect(h.review(again)!.ask.prompt).toContain("Opening the pull request failed");
+    } finally {
+      rmSync(failCreate, { force: true });
+      await h.dispose();
+    }
+  }, 60_000);
 });
 
 // FIX-2781.

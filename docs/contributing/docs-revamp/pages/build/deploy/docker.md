@@ -96,7 +96,7 @@ curl -X POST http://localhost:3000/api/flows/support/sessions \
 # {"session":{"id":"sess_...", ...}}
 ```
 
-`/healthz` returns `200` once the stores are open and `503` while they open. An orchestrator should probe that path and wait through the `503`. The `node:22-slim` image has no `curl`, so probe from outside the container or install it in the image.
+`/healthz` returns `200` once the stores are open. The server opens them before it listens, so until then the port refuses connections; only with `--allow-unauthenticated` does it listen at once and answer `503` while they open. An orchestrator should probe that path and wait until it answers `200`. The `node:22-slim` image has no `curl`, so probe from outside the container or install it in the image.
 
 To check persistence, run the `POST` above and copy the `id` from its response. Then run `docker restart support-app` and fetch it with `curl -H "authorization: Bearer $TOKEN" http://localhost:3000/api/flows/sessions/<id>`. The same session comes back. Remove the container and start a new one with the same `-v`, and the data is there too. Without the volume, the file lives on the container's own disk and goes with it.
 
