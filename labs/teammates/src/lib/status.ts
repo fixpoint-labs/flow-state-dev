@@ -3,7 +3,7 @@
  * state only. First, anything it needs from you: an approval it asked for and
  * you haven't answered, or a task of its that waits on you. Then it is
  * answering in its conversation (a running request), a coding task it
- * started is running (the board's row holds a live lease), a coding task of
+ * started is running (its task holds a live lease), a coding task of
  * its waits on its pull request, a coding task of its just ended (for
  * two minutes after), it sent a message and waits for the reply (the message
  * log), or it is idle. Nothing is guessed: with no request, no running task
