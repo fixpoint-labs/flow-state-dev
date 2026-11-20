@@ -2,7 +2,7 @@
  * The reads a screen holds, for R to read again. Each screen read registers
  * its read-again with {@link useReadAgainOnR} while it is mounted, and R reads
  * again every one registered, beside the directory's and the Inbox view's: a
- * person pressing R on Messages reads the message log again, and on a project
+ * user pressing R on Messages reads the message log again, and on a project
  * its workstreams. Outside a {@link PageReadsProvider} (a component under test
  * on its own) registering does nothing.
  */
