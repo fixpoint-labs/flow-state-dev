@@ -13,7 +13,7 @@ import {
 } from "../app";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
-import { waitsFor, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, titleOf, workerOf } from "../lib/task";
+import { waitsFor, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, titleOf, waitsOnPullRequest as onPullRequest, workerOf } from "../lib/task";
 import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -249,7 +249,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
     ) : task && waiting === "question" ? (
       <QuestionPopup task={task} answer={actions.answer} />
     ) : null;
-  const waitsOnPullRequest = task?.status === "in_progress" && task.pullRequests.length > 0;
+  const waitsOnPullRequest = task !== undefined && onPullRequest(task);
   const answer = task?.detail?.answer ?? undefined;
   return (
     <SessionOverlay variant="modal" label={line} title={title} status={waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : waitsOnPullRequest ? "PR open" : status} onClose={onClose} footer={pinned}>

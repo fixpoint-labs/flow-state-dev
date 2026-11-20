@@ -42,6 +42,17 @@ export const viewOf = (task: CodingBoardTask, board = ""): TaskView => taskView(
 /** When this attempt's run started: its run link's start, else the task's own (a retry keeps its first start). */
 export const attemptStartedAt = (task: Pick<CodingBoardTask, "run" | "startedAt">): number | undefined => task.run?.startedAt ?? task.startedAt;
 
+/**
+ * Whether a run is on it now: it is running and holds a lease that hasn't
+ * lapsed (the board's rule, `leaseLapsed`: lapsed at its deadline). A task kept
+ * open, owing a turn or waiting on its pull request holds none.
+ */
+export const runsNow = (task: Pick<CodingBoardTask, "status" | "leaseUntil">, now: number): boolean =>
+  taskStatus(task) === "running" && typeof task.leaseUntil === "number" && task.leaseUntil > now;
+
+/** Whether it waits on its pull request: its run ended, and it stays open until the pull request merges or closes. */
+export const waitsOnPullRequest = (task: Pick<CodingBoardTask, "status" | "pullRequests">): boolean => task.status === "in_progress" && task.pullRequests.length > 0;
+
 /** Its run's start and lease deadline, for the time signal; each absent until the row has it. */
 export const runTimesOf = (task: Pick<CodingBoardTask, "run" | "leaseUntil">) => ({
   ...(typeof task.run?.startedAt === "number" ? { startedAt: task.run.startedAt } : {}),

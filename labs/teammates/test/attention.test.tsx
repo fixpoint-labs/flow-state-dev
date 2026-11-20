@@ -42,7 +42,17 @@ describe("the status line puts what needs you first", () => {
   it("a task that waits on you, above the same task running", () => {
     const asks = task("t1", { asks: [openHold("question", "Which branch?")] });
     expect(status({ tasks: [asks] })).toEqual({ text: "Waiting on you: Which branch?", tone: "text-attention", needsYou: true });
-    expect(status({ tasks: [task("t1", {})] }).text).toBe("Running coding task: Task t1");
+    expect(status({ tasks: [task("t1", { leaseUntil: NOW + 60_000 })] }).text).toBe("Running coding task: Task t1");
+  });
+
+  it("says a coding task is running only while a run holds its lease: one parked on its pull request says so, and one nothing runs claims nothing", () => {
+    // Its run ended and its work is pull request 7: no lease, it waits on the merge.
+    expect(status({ tasks: [task("t1", { pullRequests: [7] })] }).text).toBe("Waiting on its pull request: Task t1");
+    // Kept open with no run on it (a steer no turn took), or a run that stopped renewing: never "Running".
+    expect(status({ tasks: [task("t1", {})] }).text).toBe("Idle");
+    expect(status({ tasks: [task("t1", { leaseUntil: NOW - 1 })] }).text).toBe("Idle");
+    // A live run outranks a parked task.
+    expect(status({ tasks: [task("t1", { pullRequests: [7] }), task("t2", { leaseUntil: NOW + 60_000 })] }).text).toBe("Running coding task: Task t2");
   });
 
   it("a coding task that just ended, for two minutes, a failure in red", () => {
