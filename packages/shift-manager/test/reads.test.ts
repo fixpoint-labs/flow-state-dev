@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { connect } from "../src/lib/connection";
 import { createLabReader, UNOWNED_SESSION_UNANSWERABLE, type LabSnapshot } from "../src/lib/reads";
 import { workerStates, type LoadedSnapshot } from "../src/lib/derive";
-import { withRoster } from "../src/lib/roster";
+import { joinWorkers } from "../src/lib/workers";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { ROSTER_FLOW, rosterView } from "@flow-state-dev/workforce/browser";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
@@ -404,7 +404,8 @@ describe("asks through a coordinator's delivery (V7)", () => {
 
     // Roster and TEAMS join the roster the same way, so the worker is on shift there.
     const entries = await createWorkforceClient(client).roster();
-    const states = workerStates(withRoster(snapshot, { entries }).snapshot);
+    const { workers } = joinWorkers(snapshot.inventory.ok ? snapshot.inventory.value.workers : undefined, entries);
+    const states = workerStates({ ...snapshot, inventory: { ok: true, value: { workers } } });
     expect(states.workers.get("ops.mine")?.status).toBe("on shift");
   });
 

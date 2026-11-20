@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { COLUMNS, columnFor, isHeld, isDone } from "../src/lib/columns";
-import { openTasks, type LoadedSnapshot, type Roster } from "../src/lib/derive";
+import { openTasks, type LoadedSnapshot } from "../src/lib/derive";
 import { workerFor } from "../src/lib/shift";
 import { toBoardTaskView, type BoardTaskView } from "../src/lib/reads";
 import { toWorker } from "../src/lib/workers";
@@ -56,17 +56,17 @@ describe("which worker holds a row, when a bare name is in more than one team", 
   const rowFor = (assignee: string) => toBoardTaskView("s_1.tasks", "s_1", "r", { id: "r", title: "r", status: "in_progress", assignee });
 
   it("attributes the row to no worker, never to several", () => {
-    const roster: Roster = { workers: [ops, eng] };
+    const roster = [ops, eng];
     expect(workerFor(roster, rowFor("builder"))).toBeUndefined();
   });
 
   it("resolves a name only one worker carries", () => {
-    const roster: Roster = { workers: [ops, toWorker({ id: "eng.reviewer", kind: "worker" })!] };
+    const roster = [ops, toWorker({ id: "eng.reviewer", kind: "worker" })!];
     expect(workerFor(roster, rowFor("builder"))?.id).toBe("ops.builder");
   });
 
   it("a full worker id always wins", () => {
-    const roster: Roster = { workers: [ops, eng] };
+    const roster = [ops, eng];
     expect(workerFor(roster, rowFor("ops.builder"))?.id).toBe("ops.builder");
   });
 });

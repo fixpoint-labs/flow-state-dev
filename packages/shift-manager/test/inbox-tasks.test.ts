@@ -154,9 +154,8 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
       row("C", "pending"),
       row("D", "completed", { ownerSessionId: "s_other" }),
     ];
-    // Who is on shift is still the snapshot's (FIX-2775); the tasks and the Inbox are the view's.
-    const s = snapshot(tasks, asks, workers);
-    expect(summaryLine({ ok: true, value: viewOf(tasks, [{ suspensionId: "a1", workerId: "eng.em" }]) }, s)).toBe("2 in flight · 2 need you · 2 on shift · 2 streams");
+    // Who is on shift is the view's too (FIX-2775): the tasks, the Inbox and the on-shift count are one answer.
+    expect(summaryLine({ ok: true, value: viewOf(tasks, [{ suspensionId: "a1", workerId: "eng.em" }]) }, workers)).toBe("2 in flight · 2 need you · 2 on shift · 2 streams");
   });
 
   it("an Inbox link written with a suspension id still opens the task's item that holds it", () => {
@@ -195,8 +194,7 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
   });
 
   it("an Inbox that didn't load says so in the summary, never 0 need you, which reads as all clear", () => {
-    const s = snapshot([row("A", "in_progress")]);
-    const line = summaryLine({ ok: false, failure: { message: "asks offline" } }, s);
+    const line = summaryLine({ ok: false, failure: { message: "asks offline" } }, []);
     // With no answer there are no rows to count either: the line says the Inbox didn't load.
     expect(line).toBe("0 in flight · Inbox didn't load · 0 on shift · 0 streams");
     expect(line).not.toMatch(/need/);

@@ -111,7 +111,7 @@ describe("V8", () => {
     // Workforce's conversation ledger id isn't exported; the boards' own
     // action name is, by the task tools' rule (`<tool>_<ledger id>`), and the
     // Lab tests that read a board end to end fail if either drifts.
-    const { CONVERSATION_BOARD_COLLECTION } = await import("../src/lib/reads");
+    const { CONVERSATION_BOARD_COLLECTION } = await import("../src/lib/boards");
     const { LIST_TASKS_ACTION } = await import("../src/lib/conversation-tasks");
     expect(LIST_TASKS_ACTION).toBe(`listTasks_${CONVERSATION_BOARD_COLLECTION}`);
   });
@@ -177,8 +177,8 @@ describe("V8", () => {
     // The abort is one run's stop, through workforce (FIX-2776 D3).
     expect(readFileSync(join(src, "lib/task.tsx"), "utf8")).toContain("await workforce.stopRun(openRun.sessionId, openRun.requestId)");
     // The header's action row changes the task only through the board's own
-    // actions, the reader's `taskActions`, handed to the registry's row whole.
-    expect(readFileSync(join(src, "surfaces/TaskFrame.tsx"), "utf8")).toContain("reader.taskActions(");
+    // actions, orchestration's `inbox.board(...)` (`useBoardActions`), handed to the registry's row whole.
+    expect(readFileSync(join(src, "surfaces/TaskFrame.tsx"), "utf8")).toContain("useBoardActions(");
     // Planted: a second write is caught.
     expect(writes(`await client.flow(f).send("run", {});`)).toHaveLength(1);
     expect(writes(`await client.flow(f).request(id).abort();`)).toHaveLength(1);

@@ -36,7 +36,16 @@ import { WORKER_ID_STATE_KEY, type RosterEntry } from "@flow-state-dev/workforce
 import { runAction } from "./helpers/run-action";
 import type { Client } from "@flow-state-dev/client";
 import { connect, type Connection } from "../src/lib/connection";
-import { readProject, readProjectSetup, type ProjectAddress, type ProjectSetup } from "../src/lib/projects";
+import { readProject, type ProjectAddress } from "../src/lib/projects";
+import { PROJECTS_FLOW, projectSetupView } from "@flow-state-dev/workforce/browser";
+
+/** The project setup as these tests drive it: the flow that opens workstreams, and the coordinator the view names. */
+type ProjectSetup = { flow: string; projectCoordinator: string | null };
+
+/** The setup, from workforce's view, as Project's Stream reads it (`useProjectSetup`). */
+async function readProjectSetup(client: Client): Promise<ProjectSetup> {
+  return { flow: PROJECTS_FLOW, projectCoordinator: (await client.view(projectSetupView, {})).value.projectCoordinator };
+}
 import { createLabReader } from "../src/lib/reads";
 import { readSessionItems } from "./helpers/session-reads";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
