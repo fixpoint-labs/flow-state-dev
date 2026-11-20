@@ -9,7 +9,7 @@
 | **starts an app from claude-code-style and copies its task screens** | Copies `AppTask`, a second hand-written row type, and `appTaskOf`, 30 lines that copy each coding board row into it. Half of it only turns `null` into a missing key | Copies screens that read harness-manager's `CodingBoardTask` as it is, with `?.` and `== null` at each call site. No row type of its own |
 | **uses claude-code-style's task board** | Sees each card's title, column, time signal, review note, landed line and PR wait | Sees the same on every card. A check that tested a `null` field with `=== undefined` would have stopped matching without an error; each one is converted and tested |
 | **maintains Teammates' task cards** | Keeps its own `titleOf` and `viewOf`, the same two derivations claude-code-style keeps | Reads `task.title` and `task.state` from the view. One rule for each, in the view |
-| **maintains harness-manager's coding board view** | Has a row whose `title` may be missing and no display state, so each app works both out | Has a row that answers both: `title` is always set (the goal when it has no title), and `state` is orchestration's `taskView` state ([D1](DECISIONS.md#d1)) |
+| **maintains harness-manager's coding board view** | Has a row whose `title` may be missing and no display state, so each app works both out | Has a row that answers both: `title` is always set and `state` is given, both projected from one orchestration `taskView` result ([D1](DECISIONS.md#d1)) |
 
 ## The goal, and how we'll know it's met
 
@@ -46,7 +46,7 @@ The inventory proves the row type is gone; the screen tests prove no `null` slip
 | **Signal** | Both inventories green with `AppTask` deleted from `screenTypes`; each goal's every leg PASS; and a one-off type-aware lint (`@typescript-eslint/no-unnecessary-condition`, not committed) over both labs' `src/` reports no `=== undefined` on a nullable row field, its output in the PR |
 | **Input** | The rows the screen tests already build, plus one row per nullable field set to `null` (`harness`, `review`, `landed`, `error`, `runFlow`, `spend`) |
 | **Anti-game** | Don't assert on a helper that rebuilds the old shape: the inventory reads the source. Don't build test rows with the field missing where the view sends `null`; that is the case the strict checks hid |
-| **Control that must fail** | (1) On `main`, `AppTask` deleted from `screenTypes`: the inventory fails L4 naming `src/app/tasks.ts`. (2) For each converted check that decides something a person sees (a card's column, the errored note, the review note, the landed line, the PR wait), putting `=== undefined` back makes a named test fail. (3) The view test for `state` fails on `main`'s row, which has none |
+| **Control that must fail** | (1) On `main`, `AppTask` deleted from `screenTypes`: the inventory fails L4 naming `src/app/tasks.ts`. (2) For each converted check whose result changes behaviour, seen or not (a card's column, the errored note, the review note, the landed line, the PR wait, Resolve's `ready` in `ReviewAccept`, and `useTaskWork`'s `coding` flag that enables the recorded-work read), putting `=== undefined` back makes a named test fail. (3) The view test for `state` fails on `main`'s row, which has none |
 
 ## What changes
 
@@ -115,7 +115,7 @@ its new `state`.
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | `state` on the coding board row | The whole `TaskView` on the row; each app calling `taskView` | **Composed** from `taskView(row, asks)`, keeping only the field the row lacks ([D1](DECISIONS.md#d1)) |
-| `title` always set on the row | Each app's `title ?? goal` | **Extends** the row's existing `title`; `taskView` already falls back the same way |
+| `title` always set on the row | Each app's `title ?? goal`; a fallback written in the view | **Composed** from the same `taskView(row, asks)` result as `state` (its title, else goal, else id), so the rule stays orchestration's alone |
 
 | The debt | |
 |---|---|
