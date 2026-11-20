@@ -84,3 +84,4 @@ earlier cycle files are records and are not rewritten.
 | 29 | same pieces, different apps epic wrap (FIX-2152) (2026-10-30) | [`cycle-29.md`](cycle-ledger/cycle-29.md) |
 | 30 | webhook routing epic wrap (FIX-2471) (2026-11-11) | [`cycle-30.md`](cycle-ledger/cycle-30.md) |
 | 31 | Clean SDK epic wrap (FIX-2447) (2026-11-15) | [`cycle-31.md`](cycle-ledger/cycle-31.md) |
+| 32 | push-channel epic wrap (FIX-2367) (2026-11-20) | [`cycle-32.md`](cycle-ledger/cycle-32.md) |
