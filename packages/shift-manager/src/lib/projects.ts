@@ -80,9 +80,9 @@ function strings(value: unknown): string[] {
 
 // BP-030.
 /**
- * A project row, as the projects collection's browser read publishes it. A row
+ * A project entry, as the projects collection's browser read publishes it. One
  * missing its id, title or owner is not a project anyone can address or own,
- * and is left out; every other field reads as empty when absent, so a row an
+ * and is left out; every other field reads as empty when absent, so an entry an
  * earlier version wrote still reads.
  */
 export function toProject(value: unknown, visibility: ProjectVisibility = "shared"): Project | undefined {

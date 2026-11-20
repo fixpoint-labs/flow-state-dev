@@ -6,7 +6,7 @@
  * {@link useProjects}. N screens drawing workers is still one inventory read
  * and one roster watch, so one org notice is one read, not N.
  *
- * The worker rows are the inventory joined with the roster (`workers.ts`);
+ * The workers are the inventory joined with the roster (`workers.ts`);
  * who is on shift reads the Inbox view against them (`shift.ts`).
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -45,7 +45,7 @@ export type Workers = {
   refresh: () => void;
 };
 
-/** The directory: the worker rows, the sessions and the projects. */
+/** The directory: the workers, the sessions and the projects. */
 type Directory = {
   workers: Workers;
   sessions: { list: readonly SessionSummary[] | undefined; refresh: () => void };

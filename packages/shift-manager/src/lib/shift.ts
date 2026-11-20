@@ -142,7 +142,7 @@ export function teamsOf(workers: readonly Worker[]): Array<{ team: string; name:
     if (team === undefined) teams.set(worker.team, [worker]);
     else team.push(worker);
   }
-  const all = [...teams].map(([team, members]) => ({ team, name: members[0]!.teamName, workers: members }));
+  const all = [...teams].map(([team, onTeam]) => ({ team, name: onTeam[0]!.teamName, workers: onTeam }));
   return [...all.filter((t) => t.team === GENERAL_TEAM), ...all.filter((t) => t.team !== GENERAL_TEAM)];
 }
 
