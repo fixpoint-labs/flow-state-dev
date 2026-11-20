@@ -3,7 +3,7 @@
  * (`labs/test-support/inventory.mts`): the content rules (L3, L4 over all of
  * `src/`, own sessions), the read model that goes, and the types its screen
  * computes itself. `inventory.test.ts` runs them against
- * `inventory-allowlist.json`, which only shrinks. Shift Manager is a
+ * `inventory-allowlist.json`, which only shrinks, and is empty. Shift Manager is a
  * published app over another host's Lab, so the path classes and caps (L1,
  * L2, H), which describe a starter, don't apply.
  */
@@ -13,11 +13,10 @@ export const shiftManager: AppInventory = {
   path: "packages/shift-manager",
   entry: "src/lib/connection.ts",
   rules: ["L3", "L4", "own sessions"],
-  gone: ["src/lib/reads.ts"],
+  /** The snapshot's read model, gone: none of it comes back. */
+  gone: ["src/lib/reads.ts", "src/lib/derive.ts", "src/lib/snapshot-subscribe.ts"],
   /** A snapshot is the read model's by definition: never one the screen computes. */
   neverScreen: /Snapshot$/,
-  /** What is left of the read model: it may not grow. */
-  readModel: ["src/lib/reads.ts"],
   /**
    * The types the screen computes itself, by the module that exports them.
    * A type stays on the allowlist when it hand-writes the shape of something

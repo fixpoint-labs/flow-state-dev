@@ -155,9 +155,8 @@ describe("the refusal (V2, BR-3)", () => {
     expect(screen.queryByTestId("sidebar")).toBeNull();
     expect(document.body.textContent).not.toMatch(/ops\./);
     await new Promise((r) => setTimeout(r, 300));
-    // Nothing from the tree is read behind the refusal: the gate's identity read, and the snapshot's own
-    // first read, which nothing draws (FIX-2777 deletes it), each refused once.
-    expect([...seen].sort()).toEqual(["/api/flows/sessions", "/api/flows/workforce-roster/identity"]);
+    // Nothing from the tree is read behind the refusal: the gate's identity read, refused once, and nothing else.
+    expect([...seen].sort()).toEqual(["/api/flows/workforce-roster/identity"]);
   });
 
   it("a Lab that names no organization for the user gets the refusal, never an unknown one", async () => {

@@ -1,28 +1,44 @@
 // @vitest-environment happy-dom
 /**
- * Roster, the sidebar, Jump to and Tasks, drawn over one fixed
- * snapshot (V3 to V5; BR-6 to BR-20). The reader is swapped for one that hands back
- * the fixture, so every screen draws exactly what the snapshot holds.
+ * Roster, the sidebar, Jump to and Tasks, drawn over one fixed Lab (V3 to
+ * V5; BR-6 to BR-20). The directory's reads and the inbox view are swapped
+ * for ones that hand back the fixture, so every screen draws exactly what the
+ * Lab holds.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
-import type { Client } from "@flow-state-dev/client";
+import type { Client, SessionSummary } from "@flow-state-dev/client";
 import { spendAfterWrite } from "@flow-state-dev/orchestration/tasks";
-import type { LoadedSnapshot } from "../src/lib/derive";
-import { inboxSection, toBoardTaskView, type Ask, type ConversationBoards, type LabSnapshot } from "../src/lib/reads";
+import { boardTaskOf } from "@flow-state-dev/workforce/browser";
 import type { BoardTaskView } from "../src/lib/boards";
+import type { InboxViewValue } from "../src/lib/inbox";
 import type { Section } from "../src/lib/failure";
-import { GENERAL_TEAM, toWorker } from "../src/lib/workers";
+import { GENERAL_TEAM, toWorker, type Worker } from "../src/lib/workers";
+import type { DirectoryFixture } from "./helpers/directory";
+import { inboxViewOf, type FixtureAsk } from "./helpers/inbox-view";
 
-let fixture: LabSnapshot;
+/**
+ * A fixed Lab: the directory's reads, the conversation boards' rows by the
+ * conversation that holds them, the pending asks, and, when it fails, why the
+ * inbox view answers nothing.
+ */
+type Lab = DirectoryFixture & { sessions: SessionSummary[]; boards: Record<string, BoardTaskView[]>; asks: FixtureAsk[]; inboxFailure?: string };
 
-// FIX-2774: the Inbox, its count, Tasks and a task's asks read the inbox view: here, the view of the fixture snapshot.
+let fixture: Lab;
+
+/** The inbox view's answer over the fixture: its failure, else its rows and the Inbox items over them and the asks. */
+function inboxOf(lab: Lab): Section<InboxViewValue> {
+  if (lab.inboxFailure !== undefined) return { ok: false, failure: { message: lab.inboxFailure } };
+  return { ok: true, value: inboxViewOf(Object.values(lab.boards).flat(), lab.asks, lab.sessions) };
+}
+let inboxShown: Section<InboxViewValue> | undefined;
+
+// FIX-2774: the Inbox, its count, Tasks and a task's asks read the inbox view: here, the view of the fixture.
 vi.mock("../src/lib/inbox", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/lib/inbox")>();
-  const { viewOfSnapshot } = await import("./helpers/inbox-view");
-  return { ...real, useInbox: () => ({ section: viewOfSnapshot(fixture), stale: false, refresh: () => {} }) };
+  return { ...real, useInbox: () => ({ section: inboxShown, stale: false, refresh: () => {} }) };
 });
 /** What the user's roster read answers: their own workers and the standard ones. */
 let rosterRead: () => Promise<
@@ -52,72 +68,57 @@ vi.mock("../src/lib/directory-reads", async () => {
   return { useDirectoryReads: () => useFixtureReads(() => fixture) };
 });
 
-vi.mock("../src/lib/reads", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../src/lib/reads")>();
-  return {
-    ...real,
-    createLabReader: () => ({
-      read: async () => fixture,
-      readBoard: async () => [],
-      resume: async () => {},
-    }),
-  };
-});
-
-const ORG = "acme";
 const worker = (id: string, kind = "worker") => toWorker({ id, kind })!;
 const row = (holder: string, id: string, status: string, assignee: string): BoardTaskView =>
-  toBoardTaskView(`${holder}.tasks`, holder, id, { id, title: `${id} title`, status, assignee });
+  boardTaskOf(`${holder}.tasks`, holder, id, { id, title: `${id} title`, status, assignee });
 /** A running row held on a question for you (FIX-2131): what a task waiting on you is. */
 const waiting = (holder: string, id: string, assignee: string): BoardTaskView =>
-  toBoardTaskView(`${holder}.tasks`, holder, id, {
+  boardTaskOf(`${holder}.tasks`, holder, id, {
     id,
     title: `${id} title`,
     status: "in_progress",
     assignee,
     holds: [{ id: `q-${id}`, actor: "user", openedAt: 1, source: { kind: "task", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
   });
-const ask = (workerId: string, suspensionId: string, message: string): Ask =>
-  ({
-    sessionId: `s_${suspensionId}`,
-    workerId,
-    flowId: workerId,
-    parentSessionId: null,
-    kind: "approval",
-    item: { suspensionId, requestId: `r_${suspensionId}`, reason: "user_approval", message },
-    since: 0,
-    unanswerable: null,
-  }) as unknown as Ask;
+const ask = (workerId: string, suspensionId: string, message: string): FixtureAsk => ({
+  sessionId: `s_${suspensionId}`,
+  workerId,
+  flowId: workerId,
+  suspensionId,
+  requestId: `r_${suspensionId}`,
+  kind: "approval",
+  message,
+  since: 0,
+});
 
 /**
  * Two teams and one org worker: eng.coder running (and one held on a question
  * for you), eng.reviewer held on one, ops.asker with a pending ask and a queued
  * row, ops.idle nothing, shift-coordinator nothing.
  */
-function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "failed" } = {}): LabSnapshot {
-  const workers = [worker("eng.coder", "coder"), worker("eng.reviewer"), worker("ops.asker", "asker"), worker("ops.idle"), worker("shift-coordinator", "shift-coordinator")];
-  const ok = (rows: BoardTaskView[]): Section<ConversationBoards> => ({ ok: true, value: { refs: [rows[0]!.boardRef], rows } });
-  const read: Omit<LoadedSnapshot, "inbox"> = {
-    readAt: Date.UTC(2026, 9, 1, 9, 30),
+function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "failed" } = {}): Lab {
+  const workers: Worker[] = [worker("eng.coder", "coder"), worker("eng.reviewer"), worker("ops.asker", "asker"), worker("ops.idle"), worker("shift-coordinator", "shift-coordinator")];
+  // The inbox view reads every board and every ask, so either failing fails its one answer.
+  const inboxFailure = options.asks === "failed" ? "asks offline" : options.boards === "ops failed" ? "board offline" : undefined;
+  return {
     sessions: [],
-    orgId: ORG,
     inventory: options.inventory === "failed" ? { ok: false, failure: { message: "inventory offline" } } : { ok: true, value: { workers } },
+    projects: { ok: true, value: { rows: [] } },
     boards:
       options.inventory === "failed"
         ? {}
         : {
-            s_eng: ok([row("s_eng", "E-1", "in_progress", "coder"), waiting("s_eng", "E-2", "coder"), waiting("s_eng", "E-3", "reviewer")]),
-            s_ops: options.boards === "ops failed" ? { ok: false, failure: { message: "board offline" } } : ok([row("s_ops", "O-1", "pending", "asker")]),
+            s_eng: [row("s_eng", "E-1", "in_progress", "coder"), waiting("s_eng", "E-2", "coder"), waiting("s_eng", "E-3", "reviewer")],
+            s_ops: [row("s_ops", "O-1", "pending", "asker")],
           },
-    asks: options.asks === "failed" ? { ok: false, failure: { message: "asks offline" } } : { ok: true, value: [ask("ops.asker", "q1", "Approve: ship it")] },
-    resources: { ok: true, value: [] },
-    projects: { ok: true, value: { rows: [] } },
+    asks: [ask("ops.asker", "q1", "Approve: ship it")],
+    ...(inboxFailure === undefined ? {} : { inboxFailure }),
   };
-  return { ...read, inbox: inboxSection(read.asks, read.boards, read.sessions) };
 }
 
-async function open(path: string, snapshot: LabSnapshot = lab()) {
-  fixture = snapshot;
+async function open(path: string, at: Lab = lab()) {
+  fixture = at;
+  inboxShown = inboxOf(at);
   (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`http://lab.local${path}`);
   // A connection per page, as a fresh load makes: the roster read is shared per connection.
   render(<App connection={{ userId: "u_test" }} />);
@@ -130,6 +131,7 @@ const attrs = (els: HTMLElement[], name: string) => els.map((el) => el.getAttrib
 beforeEach(() => (window as unknown as { happyDOM: { setViewport(viewport: { width: number; height: number }): void } }).happyDOM.setViewport({ width: 1600, height: 900 }));
 beforeEach(() => {
   fixture = lab();
+  inboxShown = inboxOf(fixture);
   rosterRead = async () => [];
   rosterWatches = 0;
 });
@@ -383,10 +385,9 @@ describe("Tasks (BR-14)", () => {
   });
 
   it("with nothing queued the toggle says 0 and hides nothing", async () => {
-    const snapshot = lab();
-    const ops = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_ops"] : undefined;
-    if (ops?.ok === true) ops.value.rows = ops.value.rows.map((r) => ({ ...r, status: "in_progress" }));
-    await open("/tasks", snapshot);
+    const at = lab();
+    at.boards.s_ops = at.boards.s_ops!.map((r) => ({ ...r, status: "in_progress" }));
+    await open("/tasks", at);
     await screen.findByTestId("tasks-table");
     expect(screen.getByTestId("tasks-queued-count").textContent).toBe("0");
     // A task held on a question for you is running (FIX-2131): no column of its own.
@@ -394,10 +395,9 @@ describe("Tasks (BR-14)", () => {
   });
 
   it("draws v2's columns in v2's order, each row's id, and TIME from the row's start for a running row only", async () => {
-    const snapshot = lab();
-    const eng = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_eng"] : undefined;
-    if (eng?.ok === true) eng.value.rows = eng.value.rows.map((r) => ({ ...r, startedAt: Date.now() - 400_000 }));
-    await open("/tasks", snapshot);
+    const at = lab();
+    at.boards.s_eng = at.boards.s_eng!.map((r) => ({ ...r, startedAt: Date.now() - 400_000 }));
+    await open("/tasks", at);
     const table = await screen.findByTestId("tasks-table");
     expect(within(table).getAllByRole("columnheader").slice(0, 8).map((th) => th.textContent)).toEqual(["", "ID", "TASK", "NOW", "STREAM", "WORKER", "TIME", "COST"]);
     const cell = (id: string, testId: string) => within(screen.getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === id)!).getByTestId(testId).textContent;
@@ -413,12 +413,11 @@ describe("Tasks (BR-14)", () => {
     const spent = (id: string, costUsd: number | null, billing: "api-key" | "subscription"): BoardTaskView => {
       const run = { runId: `r-${id}`, harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 12_400, outputTokens: 2_300, costUsd, billing };
       const spend = spendAfterWrite({ spend: null }, { requestId: `q-${id}`, part: "settle", spend: { byModel: {}, harnessRuns: [run] } });
-      return toBoardTaskView("s_eng.tasks", "s_eng", id, { id, title: `${id} title`, status: "in_progress", assignee: "eng.coder", spend });
+      return boardTaskOf("s_eng.tasks", "s_eng", id, { id, title: `${id} title`, status: "in_progress", assignee: "eng.coder", spend });
     };
-    const snapshot = lab();
-    const eng = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_eng"] : undefined;
-    if (eng?.ok === true) eng.value.rows = [...eng.value.rows, spent("E-8", 0.42, "api-key"), spent("E-9", null, "subscription")];
-    await open("/tasks", snapshot);
+    const at = lab();
+    at.boards.s_eng = [...at.boards.s_eng!, spent("E-8", 0.42, "api-key"), spent("E-9", null, "subscription")];
+    await open("/tasks", at);
     await screen.findByTestId("tasks-table");
     const cost = (id: string) => within(screen.getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === id)!).getByTestId("task-row-cost");
     expect(cost("E-8").textContent).toBe("$0.42");
@@ -433,16 +432,15 @@ describe("Tasks (BR-14)", () => {
 
   it("reads no spend off a stored ledger it can't fold, rather than failing the board's read (FIX-2398)", () => {
     // An older or damaged write: the row still reads, its COST as "—".
-    const unreadable = toBoardTaskView("s_eng.tasks", "s_eng", "E-7", { id: "E-7", title: "E-7", status: "completed", assignee: "eng.coder", spend: { requests: "not a list" } });
+    const unreadable = boardTaskOf("s_eng.tasks", "s_eng", "E-7", { id: "E-7", title: "E-7", status: "completed", assignee: "eng.coder", spend: { requests: "not a list" } });
     expect(unreadable.spend).toBeNull();
     expect(unreadable.title).toBe("E-7");
   });
 
   it("names a task the shift-coordinator worker holds as the Shift Coordinator's, in its row and its worker group", async () => {
-    const snapshot = lab();
-    const eng = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_eng"] : undefined;
-    if (eng?.ok === true) eng.value.rows = [...eng.value.rows, row("s_eng", "E-4", "in_progress", "shift-coordinator")];
-    await open("/tasks", snapshot);
+    const at = lab();
+    at.boards.s_eng = [...at.boards.s_eng!, row("s_eng", "E-4", "in_progress", "shift-coordinator")];
+    await open("/tasks", at);
     const table = await screen.findByTestId("tasks-table");
     const e4 = within(table).getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === "E-4")!;
     expect(within(e4).getByTestId("task-row-worker").textContent).toBe("Shift Coordinator");
@@ -453,21 +451,19 @@ describe("Tasks (BR-14)", () => {
   });
 
   it("groups by stream one group per workstream, not per lead, when one worker leads two (BR-40)", async () => {
-    const snapshot = lab();
-    if (snapshot.refused !== undefined || snapshot.unreachable !== undefined) throw new Error("the fixture loads");
-    const session = (id: string, state: Record<string, unknown>) => ({ id, state }) as unknown as (typeof snapshot.sessions)[number];
-    snapshot.sessions = [
+    const at = lab();
+    const session = (id: string, state: Record<string, unknown>) => ({ id, state }) as unknown as SessionSummary;
+    at.sessions = [
       session("s_checkout", { workerId: "eng.em", workstreamId: "shared/apollo/checkout" }),
       session("s_search", { workerId: "eng.em", workstreamId: "shared/apollo/search" }),
       session("s_eng", { workerId: "eng.em" }),
     ];
-    const ok = (rows: BoardTaskView[]): Section<ConversationBoards> => ({ ok: true, value: { refs: [rows[0]!.boardRef], rows } });
-    snapshot.boards = {
-      s_checkout: ok([row("s_checkout", "C-1", "in_progress", "coder")]),
-      s_search: ok([row("s_search", "S-1", "in_progress", "coder")]),
-      s_eng: ok([row("s_eng", "E-1", "in_progress", "coder")]),
+    at.boards = {
+      s_checkout: [row("s_checkout", "C-1", "in_progress", "coder")],
+      s_search: [row("s_search", "S-1", "in_progress", "coder")],
+      s_eng: [row("s_eng", "E-1", "in_progress", "coder")],
     };
-    await open("/tasks?by=stream", snapshot);
+    await open("/tasks?by=stream", at);
     await screen.findByTestId("tasks-table");
     const groups = screen.getAllByTestId("tasks-group");
     expect(groups.map((g) => [g.getAttribute("data-group"), attrs(within(g).getAllByTestId("task-row"), "data-task-id")])).toEqual([
@@ -562,7 +558,7 @@ describe("the sidebar (V4)", () => {
     expect(rosterWatches).toBe(1);
   });
 
-  it("a hire the roster watch reports shows on Roster and TEAMS without a new snapshot read", async () => {
+  it("a hire the roster watch reports shows on Roster and TEAMS with no other read", async () => {
     await open("/roster");
     await screen.findByTestId("roster");
     expect(screen.queryByTestId("roster-worker-own")).toBeNull();

@@ -8,21 +8,26 @@
  * conversation on screen to read itself back (FIX-2775): the conversation's
  * own live feed hears the session's resume.
  *
- * The connection's client records each answer sent; the reader counts its reads.
+ * The connection's client records each answer sent, and counts every read the
+ * page opens through it (a subscription, or a flow call other than the answer).
  */
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { LabProvider } from "../src/lib/lab-data";
 import { useInboxAnswer } from "../src/lib/inbox";
 
+/** Reads opened through the client: subscriptions, and flow calls that are not the answer. */
 let reads = 0;
 const answers: unknown[] = [];
 
 vi.mock("../src/lib/connection", () => ({
   connect: (connection: { userId: string }) => ({
     userId: connection.userId,
-    subscribe: () => ({ close: () => {} }),
+    subscribe: () => {
+      reads += 1;
+      return { close: () => {} };
+    },
     flow: () => ({
       request: () => ({
         answer: async (body: unknown) => void answers.push(body),
@@ -32,19 +37,6 @@ vi.mock("../src/lib/connection", () => ({
   }),
 }));
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => ({ organization: async () => "acme", watchRoster: () => () => {} }) }));
-vi.mock("../src/lib/reads", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../src/lib/reads")>();
-  return {
-    ...real,
-    createLabReader: () => ({
-      read: async () => {
-        reads += 1;
-        return { refused: { message: "a Lab" } };
-      },
-      readBoard: async () => [],
-    }),
-  };
-});
 
 afterEach(cleanup);
 
@@ -71,12 +63,12 @@ describe("an answer given in Shift Manager", () => {
         <Grab />
       </LabProvider>,
     );
-    await waitFor(() => expect(reads).toBe(1));
+    const before = reads;
     await act(async () => {
       await answer!(hold, { approved: true });
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
     expect(answers).toEqual([{ suspensionId: "susp_1", action: "approve" }]);
-    expect(reads).toBe(1);
+    expect(reads).toBe(before);
   });
 });

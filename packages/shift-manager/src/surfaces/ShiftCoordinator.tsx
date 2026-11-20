@@ -38,7 +38,8 @@ import { delegatesViewRef } from "@flow-state-dev/workforce/browser";
 import { useView } from "@flow-state-dev/react";
 import { starterLines, type StarterDelegate } from "../lib/first-run";
 import { shiftCoordinatorOf, workerLabel, workerStates } from "../lib/shift";
-import { everyAsk, itemIdHolding, openBoardTasks, useInbox } from "../lib/inbox";
+import { everyAsk, itemIdHolding, useInbox } from "../lib/inbox";
+import { shiftSummary } from "../lib/tasks";
 import { workerOfHold } from "../lib/inbox-list";
 import { useLab } from "../lib/lab-data";
 import { useSessions, useWorkers } from "../lib/directory";
@@ -156,11 +157,7 @@ function ShiftSummary() {
   }
   const inbox = view.section;
   const asks = inbox.ok ? everyAsk(inbox.value.items) : [];
-  const inFlight = inbox.ok ? openBoardTasks(inbox.value).filter((row) => row.status === "in_progress") : [];
-  const running = { runs: inFlight.length, workstreams: new Set(inFlight.map((row) => row.ownerSessionId)).size };
-  // What needs the user is what Inbox lists: one item per task held on a
-  // question, a review or an approval, and per ask no task holds, each once.
-  const needsYou = inbox.ok ? inbox.value.items.length : 0;
+  const { needsYou, running } = inbox.ok ? shiftSummary(inbox.value) : { needsYou: 0, running: { runs: 0, workstreams: 0 } };
   return (
     <section aria-label="Shift summary" className="flex flex-col gap-2.5" data-testid="shift-coordinator-summary">
       <p className="font-mono text-xs font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">

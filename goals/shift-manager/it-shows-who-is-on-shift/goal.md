@@ -32,7 +32,8 @@
 **Controls:** each rebuilds Shift Manager with `src/lib/shift.ts` swapped for a module under `controls/` (`src/lib/derive.ts` before FIX-2775, when status read the snapshot).
 - `GOAL_CONTROL=ignore-asks`: status reads board rows only. Must fail at **status** on the worker whose only wait is an ask.
 - `GOAL_CONTROL=count-queued`: queued rows count as slots. Must fail at **slots** on the worker holding a queued row.
-- `GOAL_CONTROL=status-from-snapshot`: status counts the snapshot's walked asks, read through the page's provider, while the Inbox lists the view's. Must fail at **one answer**.
+
+**Retired:** `status-from-snapshot` (FIX-2777). It counted a worker's asks from the snapshot the page read beside the Inbox view, so the roster and the Inbox were two reads that could disagree. The snapshot is gone: the page holds no second read of the asks for status to come from, so the defect it planted has nowhere to land. **one answer** stays graded on every run; `ignore-asks` and `count-queued` stay the controls of status.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

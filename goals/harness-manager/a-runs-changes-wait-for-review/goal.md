@@ -19,7 +19,7 @@
 - `h`: `reviewChanges` off. `h:as-before` completes on the verdict, `review: null`.
 - `i`: Jev answers *ask* (0.9, over the floor). `i:question` the task holds a question (FIX-2132), with no review.
 
-**Anti-game:** every answer goes through orchestration's Inbox client, as Shift Manager's Inbox sends it, over the engine's answer route; the Inbox is Shift Manager's own snapshot (`createLabReader().read().inbox`) over HTTP; the task is read through `getTask_tasks`, never a store write. The harness slot is wrapped only to record what each run was handed and which session it confirmed (and, for leg c′, to keep run 1's session from the manager). Run counts are the slot's own record, not items. Leg c restarts the host, so the revision's run is the real resumed chain, not an in-memory continuation. Traces are off.
+**Anti-game:** every answer goes through orchestration's Inbox client, as Shift Manager's Inbox sends it, over the engine's answer route; the Inbox is Shift Manager's own read, workforce's inbox view (`inboxViewRef`), over HTTP; the task is read through `getTask_tasks`, never a store write. The harness slot is wrapped only to record what each run was handed and which session it confirmed (and, for leg c′, to keep run 1's session from the manager). Run counts are the slot's own record, not items. Leg c restarts the host, so the revision's run is the real resumed chain, not an in-memory continuation. Traces are off.
 
 **Model:** n/a (model-free: the DevTeam stub and a scripted Jev).
 

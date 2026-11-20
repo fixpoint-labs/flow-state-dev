@@ -7,37 +7,42 @@
  * read usually fixes. So once in, a read that lapses (R reading the Inbox view
  * again, here) keeps the last good answer on screen, says the server is gone
  * in a bar above the shell, greys the statuses drawn from it and stops their
- * clocks. The snapshot's own read still retries on the client's backoff until
- * one lands. The full-screen page stays for the organization read, before
- * there is anything to keep (`lib/gate.ts`).
+ * clocks. The full-screen page stays for the organization read, before there
+ * is anything to keep (`lib/gate.ts`).
  *
- * The bar reads one state for the page: the worst of the snapshot read's and
- * the reads and session feeds on screen, so a conversation whose stream has
- * lapsed says so even while the rest reads fine.
+ * The bar reads one state for the page: the worst of the reads and session
+ * feeds on screen, so a conversation whose stream has lapsed says so even
+ * while the rest reads fine. The Inbox view is one of them on every page, so
+ * its first read failing, or being refused, shows on the bar too: the frame is
+ * already drawn, and nothing else would say the Lab is gone.
  *
- * The reader is swapped for one the test answers, as the roster tests do.
+ * The views are read through a stand-in `useView` the test answers: the real
+ * `useInbox` reports the Inbox view's state to the bar, as it does over the Lab.
  */
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClientHttpError } from "@flow-state-dev/client";
+import { boardTaskOf } from "@flow-state-dev/workforce/browser";
 import { App } from "../src/App";
 import { useReportFeedState, worstFeedState } from "../src/lib/feed-health";
 import { LabProvider, useLab } from "../src/lib/lab-data";
-import { inboxSection, toBoardTaskView, type LabSnapshot } from "../src/lib/reads";
+import type { InboxViewValue } from "../src/lib/inbox";
 import { toWorker } from "../src/lib/workers";
-import type { LoadedSnapshot } from "../src/lib/derive";
 import type { ConnectionFeedStatus } from "../src/components/flow-state/connection-banner";
+import type { DirectoryFixture } from "./helpers/directory";
+import { inboxViewOf } from "./helpers/inbox-view";
 
-/** What the next read answers. */
-let answer: () => LabSnapshot;
-let reads = 0;
 /** What the organization read answers: the gate's read. */
 let organization: () => Promise<string>;
 let organizationReads = 0;
-/** The Inbox view's read lapses: an earlier answer stays drawn, and says why it may be out of date. */
-let viewDown = false;
-/** The good read the directory draws: one object, as a read lands once. */
-let drawn: LabSnapshot;
+/** The Inbox view's answer: one good read, as one landed. */
+let view: InboxViewValue;
+/** Why the Inbox view's reads fail now, as the server answered; `undefined` while they land. */
+let viewFailure: { message: string; httpStatus?: number } | undefined;
+/** Whether a read of the Inbox view has landed yet: a first read that fails has no answer to keep. */
+let viewLanded = true;
+/** The directory the page draws: one good read, as one landed. */
+let directory: DirectoryFixture;
 
 // One object, as the provider hands one: a new one each render re-reads the roster on every render.
 const workforce = {
@@ -50,71 +55,43 @@ const workforce = {
   watchRoster: (onRoster: (entries: never[]) => void, options?: { onError?: (error: unknown) => void }) => (void Promise.resolve([] as never[]).then(onRoster, options?.onError), () => {}),
 };
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
-// FIX-2774: Tasks' rows are the inbox view's: here, the view of the good read. A read of it that lapses keeps
-// that answer, says it is stale, and tells the page's bar, as `useInbox` does; R reads it again.
-vi.mock("../src/lib/inbox", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../src/lib/inbox")>();
-  const { viewOfSnapshot } = await import("./helpers/inbox-view");
+// The views, as `useView` hands them over: the Inbox view's answer, its staleness and why its latest read
+// failed; R and Retry read it again (a redraw, here). Every other view on these pages has no answer yet.
+vi.mock("@flow-state-dev/react", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@flow-state-dev/react")>();
+  const { inboxViewRef } = await import("@flow-state-dev/workforce/browser");
   const { useReducer } = await import("react");
-  const { useReportFeedState } = await import("../src/lib/feed-health");
   return {
     ...real,
-    useInbox: () => {
+    useView: (ref: unknown, _input: unknown, options: { enabled?: boolean } = {}) => {
       const [, redraw] = useReducer((n: number) => n + 1, 0);
-      useReportFeedState(viewDown ? "lapsed" : "live");
-      return { section: viewOfSnapshot(drawn), stale: viewDown, failure: viewDown ? { httpStatus: 503, message: "store offline" } : undefined, refresh: redraw, readAt: startedAt };
+      if (ref !== inboxViewRef || options.enabled === false) return { value: undefined, stale: false, refresh: redraw };
+      if (viewFailure === undefined) return { value: view, stale: false, refresh: redraw };
+      return viewLanded ? { value: view, stale: true, failure: viewFailure, refresh: redraw } : { value: undefined, stale: false, failure: viewFailure, refresh: redraw };
     },
   };
 });
 vi.mock("../src/lib/directory-reads", async () => {
   const { useFixtureReads } = await import("./helpers/directory");
-  return { useDirectoryReads: () => useFixtureReads(() => drawn) };
-});
-vi.mock("../src/lib/reads", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../src/lib/reads")>();
-  return {
-    ...real,
-    createLabReader: () => ({
-      read: async () => {
-        reads += 1;
-        return answer();
-      },
-      readBoard: async () => [],
-      resume: async () => {},
-    }),
-  };
+  return { useDirectoryReads: () => useFixtureReads(() => directory) };
 });
 
 const STALE = "opacity-60";
 const startedAt = Date.UTC(2026, 10, 4, 9, 0);
 
 /** One running task on eng's board. */
-function lab(): LabSnapshot {
+function lab(): { directory: DirectoryFixture; view: InboxViewValue } {
   const workers = [toWorker({ id: "eng.coder", kind: "coder" })!];
-  const running = toBoardTaskView("s_eng.tasks", "s_eng", "E-1", { id: "E-1", title: "E-1 title", status: "in_progress", assignee: "coder", startedAt });
-  const read: Omit<LoadedSnapshot, "inbox"> = {
-    readAt: startedAt,
-    sessions: [],
-    orgId: "acme",
-    inventory: { ok: true, value: { workers } },
-    boards: {
-      s_eng: { ok: true, value: { refs: [running.boardRef], rows: [running] } },
-    },
-    asks: { ok: true, value: [] },
-    resources: { ok: true, value: [] },
-    projects: { ok: true, value: { rows: [] } },
-  };
-  return { ...read, inbox: inboxSection(read.asks, read.boards, read.sessions) };
+  const running = boardTaskOf("s_eng.tasks", "s_eng", "E-1", { id: "E-1", title: "E-1 title", status: "in_progress", assignee: "coder", startedAt });
+  return { directory: { sessions: [], inventory: { ok: true, value: { workers } } }, view: inboxViewOf([running]) };
 }
-const down = (): LabSnapshot => ({ unreachable: { httpStatus: 503, message: "store offline" } });
 
 beforeEach(() => {
-  answer = lab;
-  reads = 0;
   organization = async () => "acme";
   organizationReads = 0;
-  viewDown = false;
-  drawn = lab();
+  viewFailure = undefined;
+  viewLanded = true;
+  ({ directory, view } = lab());
   (window as unknown as { happyDOM: { setViewport(viewport: { width: number; height: number }): void } }).happyDOM.setViewport({ width: 1600, height: 900 });
 });
 afterEach(() => {
@@ -130,6 +107,8 @@ async function openTasks() {
 /** R, pressed outside any field: the page's reads read again, the Inbox view's among them. */
 const retryBoards = () => act(async () => void fireEvent.keyDown(document.body, { key: "r" }));
 const sleep = (ms: number) => act(() => new Promise((r) => setTimeout(r, ms)));
+/** The Inbox view's reads fail from now on, as the server answers `httpStatus`. */
+const viewDown = (httpStatus = 503) => void (viewFailure = { message: "store offline", httpStatus });
 
 describe("a read that can't reach the Lab after a good one", () => {
   it("keeps the shell, the route and a typed draft, shows the bar, and a good read clears it", async () => {
@@ -140,7 +119,7 @@ describe("a read that can't reach the Lab after a good one", () => {
     const query = (await screen.findByTestId("jump-input")) as HTMLInputElement;
     fireEvent.change(query, { target: { value: "E-1 half typed" } });
 
-    viewDown = true;
+    viewDown();
     await retryBoards();
     expect(screen.getByTestId("connection-banner").textContent).toContain("Lost the server");
     expect(screen.queryByTestId("unreachable")).toBeNull();
@@ -149,7 +128,7 @@ describe("a read that can't reach the Lab after a good one", () => {
     expect((screen.getByTestId("jump-input") as HTMLInputElement).value).toBe("E-1 half typed");
     expect(screen.getByTestId("task-row-title").textContent).toBe("E-1 title");
 
-    viewDown = false;
+    viewFailure = undefined;
     await retryBoards();
     expect(screen.queryByTestId("connection-banner")).toBeNull();
   });
@@ -163,7 +142,7 @@ describe("a read that can't reach the Lab after a good one", () => {
     expect(time().textContent).toBe("1m 00s");
     expect(screen.getByTestId("task-row-status").className).not.toContain(STALE);
 
-    viewDown = true;
+    viewDown();
     await retryBoards();
     expect(time().className).toContain(STALE);
     expect(screen.getByTestId("task-row-status").className).toContain(STALE);
@@ -171,48 +150,12 @@ describe("a read that can't reach the Lab after a good one", () => {
     await sleep(1_200);
     expect(time().textContent).toBe("1m 00s");
 
-    viewDown = false;
+    viewFailure = undefined;
     await retryBoards();
     await sleep(1_200);
     expect(time().className).not.toContain(STALE);
     expect(time().textContent).toBe("10m");
   });
-
-  it("the snapshot read reads again on its own on the client's backoff, 1s after a failure and then 2s after the next", async () => {
-    // The connection bar still counts the snapshot's read (FIX-2777 rewires it); nothing on screen reads
-    // from it, so its refresh is driven here from inside the provider.
-    let refresh: (() => Promise<void>) | undefined;
-    let landed = false;
-    function Probe() {
-      const lab = useLab();
-      refresh = lab.refresh;
-      landed = lab.snapshot !== undefined;
-      return null;
-    }
-    render(
-      <LabProvider connection={{ userId: "u_test" }}>
-        <Probe />
-      </LabProvider>,
-    );
-    // The live read opens once a good read has landed: what a failed refresh hands its retry to.
-    await waitFor(() => expect(landed).toBe(true));
-    answer = down;
-    const before = reads;
-    await act(async () => void (await refresh!()));
-    // The refresh's read fails, and the live read takes the failure over: it reads at once, which fails too.
-    await waitFor(() => expect(reads).toBe(before + 2));
-    const after = reads;
-    await sleep(700);
-    expect(reads).toBe(after);
-    await waitFor(() => expect(reads).toBe(after + 1), { timeout: 800 });
-    answer = lab;
-    await sleep(1_500);
-    expect(reads).toBe(after + 1);
-    await waitFor(() => expect(reads).toBe(after + 2), { timeout: 1_500 });
-    // Back: nothing reads again on its own.
-    await sleep(2_500);
-    expect(reads).toBe(after + 2);
-  }, 15_000);
 
   it("an organization read that can't reach the Lab gets the full-screen page, which reads again on its own", async () => {
     organization = async () => {
@@ -225,6 +168,17 @@ describe("a read that can't reach the Lab after a good one", () => {
     organization = async () => "acme";
     await screen.findByTestId("tasks", undefined, { timeout: 3_000 });
     expect(organizationReads).toBe(2);
+  });
+
+  it("an organization read that never reached the Lab (no answer at all) gets the couldn't-reach page, never the refusal", async () => {
+    organization = async () => {
+      throw new TypeError("fetch failed");
+    };
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL("http://lab.local/tasks");
+    render(<App connection={{ userId: "u_test" }} />);
+    expect((await screen.findByTestId("unreachable-message")).textContent).toContain("fetch failed");
+    expect(screen.queryByTestId("refusal")).toBeNull();
+    expect(screen.queryByTestId("shell")).toBeNull();
   });
 
   it("an organization read the Lab refuses gets the refusal page in today's words, and nothing else is read", async () => {
@@ -258,8 +212,8 @@ describe("the page's connection is the worst of its feeds", () => {
     expect(worstFeedState([])).toBe("live");
   });
 
-  it("a feed on screen that lapses makes the page stale while the snapshot reads fine, and stops counting once it goes", async () => {
-    // One object, as the page holds one: a new connection is a new client and a new read.
+  it("a feed on screen that lapses makes the page stale while the rest reads fine, and stops counting once it goes", async () => {
+    // One object, as the page holds one: a new connection is a new client.
     const CONNECTION = { userId: "u_test" };
     let seen: { health: ConnectionFeedStatus; stale: boolean } | undefined;
     function Feed({ state }: { state: ConnectionFeedStatus }) {
@@ -295,5 +249,42 @@ describe("the page's connection is the worst of its feeds", () => {
       </LabProvider>,
     );
     expect(seen).toEqual({ health: "live", stale: false });
+  });
+});
+
+// The frame is drawn once the gate and the directory have landed, before the Inbox view answers. A first
+// read of it that fails is the only sign on the page that the Lab is gone, so the bar says so.
+describe("an Inbox whose first read fails", () => {
+  it("shows the bar as lost when it couldn't reach the Lab, and clears it when a read lands", async () => {
+    viewLanded = false;
+    viewDown(503);
+    await openTasks();
+    expect((await screen.findByTestId("connection-banner")).getAttribute("data-state")).toBe("lapsed");
+    expect(screen.getByTestId("connection-banner").textContent).toContain("Lost the server");
+    viewFailure = undefined;
+    viewLanded = true;
+    await retryBoards();
+    expect(screen.queryByTestId("connection-banner")).toBeNull();
+  });
+
+  it("shows the bar as stopped when the Lab refused it", async () => {
+    viewLanded = false;
+    viewDown(403);
+    await openTasks();
+    expect((await screen.findByTestId("connection-banner")).getAttribute("data-state")).toBe("stopped");
+    expect(screen.getByTestId("connection-banner").textContent).toContain("The server stopped this feed");
+  });
+
+  it("shows no bar while the first read is still running", async () => {
+    function Probe() {
+      const { health } = useLab();
+      return <p data-testid="health">{health}</p>;
+    }
+    render(
+      <LabProvider connection={{ userId: "u_test" }}>
+        <Probe />
+      </LabProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("health").textContent).toBe("live"));
   });
 });

@@ -17,7 +17,8 @@ import { CHECKOUTS } from "../teams/devteam/fsd-checkouts.mts";
 import { FSD_DOCUMENTS, FSD_SKILLS } from "../teams/devteam/fsd-projects.mts";
 import { LAB_ORG_ID, type Lab, type OpenLabOptions } from "../teams/devteam/host.mts";
 import { connect } from "../src/lib/connection";
-import { createLabReader } from "../src/lib/reads";
+import { privateProjectsResource, projectsResource } from "@flow-state-dev/workforce/browser";
+import { toProject } from "../src/lib/project";
 import { serveLab } from "./helpers/serve-lab";
 
 const REMOTE = "https://github.com/fixpoint-labs/flow-state-dev.git";
@@ -79,10 +80,12 @@ describe("the fsd profile", () => {
         userId: devtool?.userId ?? "devuser",
         ...(devtool?.bearerToken === undefined ? {} : { bearerToken: devtool.bearerToken }),
       });
-      const snapshot = await createLabReader(client).read();
-      if (snapshot.refused !== undefined || snapshot.unreachable !== undefined) throw new Error("the Lab did not load");
-      if (!snapshot.projects.ok) throw new Error(snapshot.projects.failure.message);
-      const rows = snapshot.projects.value.rows;
+      // The projects, as the directory reads them (`directory-reads.ts`): both collections read whole.
+      const [shared, own] = await Promise.all([client.resource(projectsResource).listAll(), client.resource(privateProjectsResource).listAll()]);
+      const rows = [
+        ...shared.flatMap((row) => toProject(row.value, "shared") ?? []),
+        ...own.flatMap((row) => toProject(row.value, "private") ?? []),
+      ];
       expect(rows.map((p) => [p.id, p.title, p.visibility, p.repository]).sort()).toEqual([
         ["fsd", "FSD", "shared", REMOTE],
         ["shift-manager", "Shift Manager", "shared", REMOTE],

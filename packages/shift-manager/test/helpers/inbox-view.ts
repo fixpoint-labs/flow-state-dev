@@ -1,46 +1,81 @@
 /**
- * The inbox view's answer for a fixture snapshot, for screen tests that swap
- * the Lab's reader for a fixed snapshot: the same rows (each with its board
- * owner's label) and the same Inbox items, each ask's detail the projection
- * the server answers. A screen test mocks `useInbox` to answer this, so the
- * screens that read the view draw what the snapshot holds.
+ * The inbox view's answer for a fixed Lab, for screen tests that mock
+ * `useInbox`: the rows (each with its board's owner label, as the server
+ * names it) and the Inbox items orchestration lists over those rows and the
+ * asks, each ask's detail the projection the server answers.
  */
-import { suspendForUserKindOf } from "@flow-state-dev/core/types";
-import { boardOwnerOf, type LoadedSnapshot } from "../../src/lib/derive";
+import type { SessionSummary } from "@flow-state-dev/client";
+import type { SuspendForUserKind } from "@flow-state-dev/core/types";
+import { inboxItems, taskActionName } from "@flow-state-dev/orchestration/inbox";
 import type { InboxAsk, InboxViewValue } from "../../src/lib/inbox";
-import type { Ask, LabSnapshot } from "../../src/lib/reads";
-import type { Section } from "../../src/lib/failure";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, type BoardTaskView } from "../../src/lib/boards";
+import { workerOf, workstreamOf } from "../../src/lib/workers";
 
-/** An ask as the view's detail carries it. */
-function askOf(ask: Ask): InboxAsk {
-  return {
-    suspensionId: ask.item.suspensionId,
-    requestId: ask.item.requestId,
-    flowKind: ask.flowId ?? "worker",
-    ...(ask.flowId !== null ? { flowId: ask.flowId } : {}),
-    sessionId: ask.sessionId,
-    workerId: ask.workerId,
-    kind: suspendForUserKindOf(ask.item) ?? "input",
-    shape: "approval",
-    ...(ask.item.title !== undefined ? { title: ask.item.title } : {}),
-    message: ask.item.message,
-    ...(ask.item.allow !== undefined ? { allow: ask.item.allow } : {}),
-    ...(ask.item.resumeSchema !== undefined ? { resumeSchema: ask.item.resumeSchema } : {}),
-    createdAt: ask.since,
-  } as InboxAsk;
+/** An ask a fixed Lab holds: where it waits, who asked, and what it says. */
+export type FixtureAsk = {
+  /** The session it waits in. */
+  sessionId: string;
+  /** The worker that asked, when its session names one. */
+  workerId: string | null;
+  /** The flow that owns its session, where the answer goes. */
+  flowId: string;
+  suspensionId: string;
+  requestId: string;
+  kind: SuspendForUserKind;
+  message: string;
+  title?: string;
+  /** When it was raised, epoch ms. */
+  since: number;
+};
+
+/** What a row's board is called on a screen: the workstream its conversation leads, else `@<worker>`, else the conversation's id. */
+function ownerOf(sessions: readonly SessionSummary[], row: BoardTaskView): string {
+  const session = sessions.find((s) => s.id === row.ownerSessionId);
+  if (session === undefined) return row.ownerSessionId;
+  const workstream = workstreamOf(session);
+  if (workstream !== null) return workstream;
+  const worker = workerOf(session);
+  return worker === null ? row.ownerSessionId : `@${worker}`;
 }
 
-/** The view's section for `snapshot`: its failure where the snapshot's Inbox failed, else its rows and items. */
-export function viewOfSnapshot(snapshot: LabSnapshot | undefined): Section<InboxViewValue> | undefined {
-  if (snapshot === undefined) return undefined;
-  if (snapshot.refused !== undefined) return { ok: false, failure: snapshot.refused };
-  if (snapshot.unreachable !== undefined) return { ok: false, failure: snapshot.unreachable };
-  const loaded = snapshot as LoadedSnapshot;
-  if (!loaded.inbox.ok) return { ok: false, failure: loaded.inbox.failure };
-  const tasks = Object.values(loaded.boards).flatMap((board) => (board.ok ? board.value.rows.map((task) => ({ ...task, owner: boardOwnerOf(loaded, task) })) : []));
-  const items = loaded.inbox.value.map((item) => ({
-    ...item,
-    holds: item.holds.map(({ detail, ...hold }) => (detail === undefined ? hold : { ...hold, detail: askOf(detail) })),
-  }));
-  return { ok: true, value: { items, tasks } };
+/** The view's answer over `rows` and `asks`, as the server builds it. */
+export function inboxViewOf(rows: readonly BoardTaskView[], asks: readonly FixtureAsk[] = [], sessions: readonly SessionSummary[] = []): InboxViewValue {
+  const flows = new Map(sessions.map((session) => [session.id, session.flowId ?? null]));
+  return {
+    tasks: rows.map((row) => ({ ...row, owner: ownerOf(sessions, row) })),
+    items: inboxItems<InboxAsk>({
+      rows: rows.map((row) => ({
+        ...row,
+        board: row.boardRef,
+        holder:
+          row.boardRef === conversationBoardRef(row.ownerSessionId)
+            ? { sessionId: row.ownerSessionId, action: taskActionName("updateTask", CONVERSATION_BOARD_COLLECTION) }
+            : null,
+      })),
+      suspensions: asks.map((ask) => ({
+        sessionId: ask.sessionId,
+        flowId: ask.flowId,
+        requestId: ask.requestId,
+        suspensionId: ask.suspensionId,
+        kind: ask.kind,
+        prompt: ask.message,
+        ...(ask.title === undefined ? {} : { title: ask.title }),
+        since: ask.since,
+        detail: {
+          suspensionId: ask.suspensionId,
+          requestId: ask.requestId,
+          flowKind: ask.flowId,
+          flowId: ask.flowId,
+          sessionId: ask.sessionId,
+          workerId: ask.workerId,
+          kind: ask.kind,
+          shape: "approval",
+          ...(ask.title === undefined ? {} : { title: ask.title }),
+          message: ask.message,
+          createdAt: ask.since,
+        } as InboxAsk,
+      })),
+      flowOf: (sessionId) => flows.get(sessionId),
+    }),
+  };
 }

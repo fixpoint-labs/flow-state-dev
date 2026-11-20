@@ -12,7 +12,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const lab = { client: { userId: "u_1" }, snapshot: undefined, refresh: vi.fn() };
+const lab = { client: { userId: "u_1" } };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
 // FIX-2774: a task's asks read the inbox view, which this test doesn't serve.

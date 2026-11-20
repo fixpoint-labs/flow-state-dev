@@ -22,7 +22,7 @@
 
 **Controls:** each runs its leg with a scratch patch applied as the process loads (`goals/lib/module-patch.mts`), printed by the run and refused when it never reached the code.
 - `GOAL_CONTROL=no-subscribe` — a view's watch subscribes to none of the topics its answer names (`packages/client/src/view/view.ts`): the Inbox reads only on mount and the person's own reads. Must FAIL `a:ask-within-1s`.
-- `GOAL_CONTROL=hear-run` — the view lists the caller's sessions (`sessions.list`), as `reads.ts` finds an ask's worker in the browser, which hears every turn's `run` on the user topic. Must FAIL `c:quiet`.
+- `GOAL_CONTROL=hear-run` — the view lists the caller's sessions (`sessions.list`), which hears every turn's `run` on the user topic. Must FAIL `c:quiet`.
 - `GOAL_CONTROL=no-poll` — the view keeps no fallback timer. Must FAIL `d:ask-within-poll`.
 
 FIX-2409's `every-kind` control patched the snapshot's notice filter, which no screen this goal grades reads any more; it went with the re-point.

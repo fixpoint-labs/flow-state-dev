@@ -21,6 +21,7 @@ import { createInboxClient, type BoardActions, type InboxAnswer, type InboxHold,
 import { inboxViewRef, type InboxSuspensionDetail as InboxAsk, type InboxBoardTask, type InboxViewValue } from "@flow-state-dev/workforce/browser";
 import { isDone } from "./columns";
 import { CONVERSATION_BOARD_COLLECTION } from "./boards";
+import type { ConnectionFeedStatus } from "../components/flow-state/connection-banner";
 import { useReportFeedState } from "./feed-health";
 import { useLab } from "./lab-data";
 import { describeFailure, type Failure, type Section } from "./failure";
@@ -52,11 +53,27 @@ type InboxRead = {
 };
 
 /**
+ * What the inbox view tells the page's connection bar. With an answer drawn:
+ * `lapsed` while the latest read fails, else `live`. With no answer yet, a
+ * read that failed is the bar's too, since the frame is already on screen:
+ * `stopped` when the server refused it (a 4xx other than a timeout or a rate
+ * limit, which the next read won't change), `lapsed` when it couldn't be
+ * reached, and nothing while the first read is still running.
+ */
+function inboxFeedState(answered: boolean, lapsed: boolean, failure: Failure | undefined): ConnectionFeedStatus | undefined {
+  if (answered) return lapsed ? "lapsed" : "live";
+  if (failure === undefined) return undefined;
+  const status = failure.httpStatus;
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429 ? "stopped" : "lapsed";
+}
+
+/**
  * The user's inbox view. A failed read with an answer already drawn keeps
  * that answer, says it is `stale` and why (`failure`), and tells the page's
  * connection bar it has lapsed, so an old count never reads as current; with
- * no answer yet, the section is the failure. `enabled: false` reads nothing:
- * the shell reads it only once the Lab let Shift Manager in.
+ * no answer yet, the section is the failure, and the bar is told too
+ * ({@link inboxFeedState}). `enabled: false` reads nothing: the shell reads
+ * it only once the Lab let Shift Manager in.
  */
 export function useInbox(enabled = true): InboxRead {
   const { client } = useLab();
@@ -66,7 +83,7 @@ export function useInbox(enabled = true): InboxRead {
     [value, failure],
   );
   const lapsed = value !== undefined && stale && failure !== undefined;
-  useReportFeedState(enabled && value !== undefined ? (lapsed ? "lapsed" : "live") : undefined);
+  useReportFeedState(enabled ? inboxFeedState(value !== undefined, lapsed, failure as Failure | undefined) : undefined);
   const [readAt, setReadAt] = useState<number | undefined>(undefined);
   useEffect(() => {
     if (value !== undefined) setReadAt(Date.now());
