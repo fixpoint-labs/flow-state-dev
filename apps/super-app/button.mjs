@@ -7,6 +7,9 @@
  * the page's `</body>`, and the script makes the link once the page has loaded.
  * It is made in script, appended to `<html>` rather than `<body>`, and only after
  * `load`, so a framework hydrating `<body>` (Next) never meets a node it didn't render.
+ * React still clears `<html>` of nodes it didn't render when it renders the document
+ * root on the client (Next recovering from a hydration error), so the script puts
+ * its nodes back whenever they go.
  *
  * Above it sits the app switcher: a second round button that pops up the hosted
  * apps (from `/devtool/apps.json`, read each time it opens, so a stopped app shows
@@ -50,6 +53,11 @@ export function buttonScript(app, { restartable = false } = {}) {
   const data = JSON.stringify({ id: app.id, href, label, list, restart }).replace(/</g, "\\u003c");
   return `<script>(function(c){
 var ROUND="all:initial;position:fixed;right:16px;z-index:2147483647;box-sizing:border-box;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#1c1b15;color:#e7e5e4;border:1px solid rgba(231,229,228,.3);box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer;opacity:.75;";
+// React drops every child of <html> it didn't render (bar scripts and styles) whenever it renders the document
+// root on the client, as Next does to recover from a hydration error. put remembers each node and keep puts back any that went.
+var mine=[];
+function put(el){mine.push(el);document.documentElement.appendChild(el)}
+function keep(){new MutationObserver(function(){mine.forEach(function(el){if(!el.isConnected)document.documentElement.appendChild(el)})}).observe(document.documentElement,{childList:true})}
 function hover(el){el.onmouseenter=function(){el.style.opacity="1"};el.onmouseleave=function(){el.style.opacity=".75"}}
 function add(){
 if(document.getElementById("fsd-super-devtool"))return;
@@ -57,9 +65,10 @@ var a=document.createElement("a");
 a.id="fsd-super-devtool";a.href=c.href;a.target="_blank";a.rel="noopener";a.title=c.label;a.setAttribute("aria-label",c.label);
 a.style.cssText=ROUND+"bottom:16px";hover(a);
 a.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
-document.documentElement.appendChild(a);
+put(a);
 switcher();
 if(c.restart)watch(c.restart);
+keep();
 }
 function switcher(){
 var b=document.createElement("button");
@@ -96,7 +105,7 @@ fetch(c.list,{cache:"no-store"}).then(function(res){return res.ok?res.json():[]}
 };
 document.addEventListener("click",function(e){if(open&&!m.contains(e.target)&&!b.contains(e.target))show(false)},true);
 document.addEventListener("keydown",function(e){if(open&&e.key==="Escape")show(false)});
-document.documentElement.appendChild(b);document.documentElement.appendChild(m);
+put(b);put(m);
 }
 function watch(r){
 var p=document.createElement("button");
@@ -112,7 +121,7 @@ fetch(r.url,{method:"POST",headers:(function(h){h[r.header]="1";return h})({})})
 if(res.ok){sent=true;return}reset();return res.text().then(function(t){alert(t)});
 },function(){reset();alert("The restart request didn't reach the super app.")});
 };
-document.documentElement.appendChild(p);
+put(p);
 function poll(){
 fetch(r.list,{cache:"no-store"}).then(function(res){return res.ok?res.json():[]}).then(function(list){
 var me=list.filter(function(x){return x.id===r.id})[0];

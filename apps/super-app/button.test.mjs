@@ -22,6 +22,41 @@ async function inject(chunks) {
   return Buffer.concat(out).toString("utf8");
 }
 
+/**
+ * Just enough of a loaded page to run the button script in: elements that know whether they are
+ * attached to `<html>`, and the MutationObservers the script registers, to be fired by hand.
+ */
+function fakePage() {
+  const make = (tag) => {
+    const el = {
+      tagName: tag.toUpperCase(), id: "", style: {}, children: [], parent: null,
+      setAttribute() {},
+      appendChild(child) { child.parent = el; el.children.push(child); return child; },
+      contains(other) { for (let n = other; n; n = n.parent) if (n === el) return true; return false; },
+      get isConnected() { return el === root || (el.parent !== null && el.parent.children.includes(el) && el.parent.isConnected); },
+    };
+    return el;
+  };
+  const root = make("html");
+  const observers = [];
+  const document = {
+    readyState: "complete",
+    documentElement: root,
+    createElement: make,
+    getElementById: (id) => root.children.find((c) => c.id === id && c.isConnected) ?? null,
+    addEventListener() {},
+  };
+  class MutationObserver {
+    constructor(callback) { this.callback = callback; }
+    observe() { observers.push(() => this.callback([])); }
+  }
+  const run = (script) => {
+    const body = script.replace(/^<script>/, "").replace(/<\/script>$/, "");
+    new Function("document", "addEventListener", "setTimeout", "MutationObserver", body)(document, () => {}, (fn) => fn(), MutationObserver);
+  };
+  return { root, observers, run };
+}
+
 describe("insertBeforeBodyClose", () => {
   it("puts the snippet inside the body, not after the document", () => {
     assert.equal(insertBeforeBodyClose("<body>x</body></html>", MARK), `<body>x${MARK}</body></html>`);
@@ -106,6 +141,18 @@ describe("buttonScript", () => {
       const body = buttonScript({ id: "lab", title: "Lab" }, { restartable }).replace(/^<script>/, "").replace(/<\/script>$/, "");
       assert.doesNotThrow(() => new Function(body), `restartable: ${restartable}`);
     }
+  });
+
+  it("puts its buttons back when the page clears them from <html>", () => {
+    // React renders Next's document root on the client to recover from a hydration error, and that
+    // removes every child of <html> it didn't render. The buttons have to survive it.
+    const { root, observers, run } = fakePage();
+    run(buttonScript({ id: "kitchen-sink", title: "Kitchen Sink" }));
+    const ids = () => root.children.map((c) => c.id);
+    assert.deepEqual(ids(), ["fsd-super-devtool", "fsd-super-switch", "fsd-super-apps"]);
+    root.children.length = 0; // what React does to nodes it didn't render
+    for (const o of observers) o();
+    assert.deepEqual(ids(), ["fsd-super-devtool", "fsd-super-switch", "fsd-super-apps"]);
   });
 
   it("can't be broken out of by an app title", () => {
