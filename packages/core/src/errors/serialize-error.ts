@@ -19,14 +19,43 @@ export interface SerializedError {
   name: string;
   message: string;
   code?: string;
+  /** HTTP status a model provider answered with (AI SDK `APICallError`). */
+  statusCode?: number;
   cause?: SerializedError;
+}
+
+/**
+ * Credential shapes a provider may echo back in an error message: OpenAI /
+ * Anthropic `sk-…` keys, bearer tokens, Google `AIza…` keys, GitHub tokens,
+ * xAI and Groq keys. OpenAI masks most of a rejected key itself; this covers
+ * the providers and gateways that don't.
+ */
+const SECRET_PATTERNS: RegExp[] = [
+  /\bsk-[A-Za-z0-9_-]{8,}/g,
+  /\b[Bb]earer\s+[A-Za-z0-9._~+/=-]{8,}/g,
+  /\bAIza[A-Za-z0-9_-]{20,}/g,
+  /\bgh[pousr]_[A-Za-z0-9]{20,}/g,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}/g,
+  /\bxai-[A-Za-z0-9]{16,}/g,
+  /\bgsk_[A-Za-z0-9]{16,}/g,
+];
+
+/**
+ * Replace API keys and bearer tokens in `text` with `[redacted]`. Applied to
+ * every message that leaves the server on an error item, since a provider's
+ * refusal can quote the credential it refused.
+ */
+export function redactSecrets(text: string): string {
+  return SECRET_PATTERNS.reduce((out, pattern) => out.replace(pattern, "[redacted]"), text);
 }
 
 /**
  * Serialize an error (and its `cause` chain) into a plain, JSON-safe object.
  *
  * - Copies the non-enumerable `name`/`message` explicitly.
- * - Includes a string `code` when present (undici / system error codes).
+ * - Includes a string `code` when present (undici / system error codes), and a
+ *   numeric `statusCode` when present (a provider's HTTP refusal).
+ * - Redacts API keys and bearer tokens from every message (`redactSecrets`).
  * - Recurses into `cause`, bounded by `depth` so a deep or circular chain can
  *   never produce unbounded output (default depth 4).
  * - Null-safe: a missing or non-object `cause` (some Node versions strip it
@@ -34,20 +63,24 @@ export interface SerializedError {
  */
 export function serializeError(err: unknown, depth = 4): SerializedError {
   if (depth < 0 || err === null || typeof err !== "object") {
-    return { name: "Error", message: String(err) };
+    return { name: "Error", message: redactSecrets(String(err)) };
   }
   const e = err as {
     name?: unknown;
     message?: unknown;
     code?: unknown;
+    statusCode?: unknown;
     cause?: unknown;
   };
   const out: SerializedError = {
     name: typeof e.name === "string" ? e.name : "Error",
-    message: typeof e.message === "string" ? e.message : String(err),
+    message: redactSecrets(typeof e.message === "string" ? e.message : String(err)),
   };
   if (typeof e.code === "string") {
     out.code = e.code;
+  }
+  if (typeof e.statusCode === "number") {
+    out.statusCode = e.statusCode;
   }
   if (e.cause !== null && e.cause !== undefined) {
     out.cause = serializeError(e.cause, depth - 1);
