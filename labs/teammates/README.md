@@ -206,6 +206,7 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | Variable | What it sets | Default |
 |---|---|---|
 | `TEAMMATES_MODEL` | the model Lead, researcher and writer answer on | `openai/gpt-6-luna` |
+| `TEAMMATES_MODELS` | the models a teammate may reply with, comma-separated, for the composer's *Respond with*; each shows where its calls go (a provider's key, Vercel AI Gateway or OpenRouter) or why it can't run, and a pick is saved to that teammate | `TEAMMATES_MODEL` alone |
 | `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | the root of this repository |
 | `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on: `claude-code`, `codex` or `cursor` | `cursor` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |

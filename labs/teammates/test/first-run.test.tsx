@@ -47,13 +47,14 @@ describe("the first run's lines", () => {
 });
 
 describe("the context strip", () => {
-  it("shows the folder, model and harness the server read, and the harness chips with their remedy", async () => {
+  it("shows the folder and harness the server read, and the harness chips with their remedy; the reply model is the composer's", async () => {
     render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
     const strip = await screen.findByRole("region", { name: "Working context" });
     // The folder reads by its last two segments; the whole path is in its tooltip.
     await waitFor(() => expect(within(strip).getByTestId("context-folder").textContent).toBe("Working folder work / launch-site"));
     expect(within(strip).getByTestId("context-folder").title).toContain("Working folder: /work/launch-site");
-    expect(within(strip).getByTestId("context-model").textContent).toBe("Model gpt-6-luna");
+    // One place changes the reply model: the composer's Respond with, so the strip doesn't repeat it.
+    expect(within(strip).queryByTestId("context-model")).toBeNull();
     expect(within(strip).getByTestId("context-harness").textContent).toBe("Default harness Cursor");
     const chips = within(strip).getByRole("group", { name: "Coding harnesses" });
     await waitFor(() => expect(chips.querySelector('[data-harness="codex"]')?.textContent).toContain("Run `codex login`"));

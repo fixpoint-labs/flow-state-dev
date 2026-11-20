@@ -24,6 +24,7 @@ import { appContextFlow } from "./flows/lab-context.mts";
 export interface TeammatesOptions {
   store: string;
   model: string;
+  models?: readonly string[];
   userId: string;
   workdir: string | undefined;
   runsRoot: string;
@@ -84,7 +85,7 @@ export async function openTeammates(options: TeammatesOptions) {
         directory: tree,
         agent: {
           settings: { icon: z.string().optional(), color: z.string().optional() },
-          showSettings: ["icon", "color"],
+          showSettings: ["icon", "color", "model"],
           model: options.model,
           catalog: { ...projectSourceTools(workspace), search: search(), fetch: fetch() },
           uses: [mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true })],
@@ -98,7 +99,7 @@ export async function openTeammates(options: TeammatesOptions) {
       scripted === undefined ? claudeCode() : claudeCode().without(harnesses.slots.harnesses, "claude-code"),
     ],
     fill: { [harnesses.slots.harnesses]: scripted === undefined ? [codexHarness(), cursorHarness({ model: "composer-2.5" })] : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")] },
-    flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, harness, delegates }))],
+    flows: [appContextFlow(async () => ({ folder: workdir, folderProblem: await folderProblem, setup: options.setup?.command.join(" ") ?? null, checks: [...checks.commands], model: options.model, models: [...new Set([options.model, ...(options.models ?? [])])], harness, delegates }))],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
     dispatchDrainTimeoutMs: codingDrainBudgetMs({ runTimeoutMs, checks }),
