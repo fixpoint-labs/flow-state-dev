@@ -5,7 +5,7 @@
     "attempt": 1,
     "baseCommit": "string",
     "baseRef": "main",
-    "branch": "conductor/fix-1-implement-fba6a9",
+    "branch": "fsd/fix-1-implement-fba6a9",
     "checks": null,
     "childSessionId": "string",
     "costUsd": null,
