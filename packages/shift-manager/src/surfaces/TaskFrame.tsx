@@ -201,7 +201,6 @@ function Activity({ worker, armed }: { worker: string | null; armed: boolean }) 
 /** Interrupt, the task's actions, and the controls with no shipped operation (D2). */
 function Actions({ gaps }: { gaps: Gaps }) {
   const task = useTask();
-  const { refresh } = useLab();
   const running = task.run.kind === "open" && task.status === "in_progress";
   const pending = task.interrupt.kind === "pending";
   const board = task.board;
