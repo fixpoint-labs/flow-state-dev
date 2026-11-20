@@ -76,7 +76,7 @@ export function workstreamOf(session: SessionSummary): string | null {
 export const GENERAL_TEAM = "_general";
 
 /** {@link GENERAL_TEAM}'s display name. */
-export const GENERAL_TEAM_NAME = "General";
+const GENERAL_TEAM_NAME = "General";
 
 /**
  * A worker's team and names, from its id and the display names its row
@@ -86,7 +86,7 @@ export const GENERAL_TEAM_NAME = "General";
  *   is everything before the first one;
  * - an id with no dot is an org worker, and sits in {@link GENERAL_TEAM}.
  */
-export function workerNames(
+function workerNames(
   id: string,
   displayName: string | null,
   teamName: string | null,

@@ -31,7 +31,7 @@ function noOrganization(userId: string, why = "it serves no roster flow to ask i
 }
 
 /** The gate for `userId`, from one organization read's outcome. */
-export function gateOf(userId: string, read: { orgId: unknown } | { error: unknown }): Exclude<Gate, { state: "reading" }> {
+function gateOf(userId: string, read: { orgId: unknown } | { error: unknown }): Exclude<Gate, { state: "reading" }> {
   if ("error" in read) {
     const failure = describeFailure(read.error);
     if (failure.httpStatus === 404 && failure.message === NO_ROSTER_FLOW) return { state: "refused", failure: { message: noOrganization(userId) } };

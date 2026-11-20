@@ -20,7 +20,7 @@ type Fixed = Omit<DirectoryReads, "roster">;
 const held = new WeakMap<object, Fixed>();
 
 /** The reads `snapshot` stands for; `undefined` (not yet read), a refusal or an unreachable Lab read as nothing landed. */
-export function readsOfSnapshot(snapshot: LabSnapshot | undefined, refresh: () => void): Fixed {
+function readsOfSnapshot(snapshot: LabSnapshot | undefined, refresh: () => void): Fixed {
   const key = snapshot ?? held;
   const found = held.get(key);
   if (found !== undefined) return found;
