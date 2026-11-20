@@ -659,6 +659,9 @@ describe("a run whose base branch is gone from the remote", () => {
     await expect(landing).rejects.toThrow(/"feature", is no longer on/);
     expect(() => upstream.rev("refs/heads/fsd/run-1")).toThrow();
     expect(ghCalls()).toEqual([]);
+    // Asked before the review, the same: not "none open" into a branch that is gone.
+    await expect(h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).rejects.toMatchObject({ reason: "base-gone" });
+    expect(ghCalls()).toEqual([]);
   });
 
   /**

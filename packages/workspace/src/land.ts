@@ -204,7 +204,8 @@ export async function existingPullRequest(
     const gh = { gh: options.gh ?? "gh", ghDir, ghEnv: { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) }, where: ["--repo", repo] };
     // Into the base a landing would ask for: the remote's default branch when the run's is gone.
     const judged = checkRemoteShape(remote.url);
-    const base = "reason" in judged ? remote.base : await baseOnRemote(host, remote, judged, left).then((into) => into.base, () => remote.base);
+    // A base gone with no default to fall back on throws `base-gone`: it can't be told where a pull request would be.
+    const base = "reason" in judged ? remote.base : (await baseOnRemote(host, remote, judged, left)).base;
     const url = await openPullRequestOf(gh, branch, base, left());
     const ref = url === undefined ? null : pullRequestRefFromUrl(url);
     return url === undefined || ref === null ? null : { url, number: ref.number, branch };
@@ -618,6 +619,11 @@ async function openPullRequest(
   const judged = checkRemoteShape(remote.url);
   if ("reason" in judged) throw new WorkspaceRefusedError("push-failed", `The run's branch was not pushed: ${judged.message}`);
 
+  // Before anything is pushed, so a base gone with no default to fall back on pushes nothing.
+  const objects = join(await git(host.repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]), "objects");
+  const cutAt = target.baseCommit == null ? undefined : { commit: target.baseCommit, objects };
+  const into = await baseOnRemote(host, remote, judged, left, cutAt);
+
   const gh = request.gh ?? "gh";
   // gh runs in an empty directory of its own, never in a checkout whose config the run can write
   // (`url.*.insteadOf`, `pushurl`, a credential helper), and git above it is never looked for.
@@ -625,10 +631,6 @@ async function openPullRequest(
   const ghDir = scratchDir();
   const ghEnv = { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) };
   const where = ["--repo", repo];
-  // Before anything is pushed, so a base gone with no default to fall back on pushes nothing.
-  const objects = join(await git(host.repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]), "objects");
-  const cutAt = target.baseCommit == null ? undefined : { commit: target.baseCommit, objects };
-  const into = await baseOnRemote(host, remote, judged, left, cutAt);
   try {
     return await pushAndOpen(git, host, target, { ...remote, base: into.base }, into.gone, judged, request, left, { gh, ghDir, ghEnv, where, repo });
   } finally {
