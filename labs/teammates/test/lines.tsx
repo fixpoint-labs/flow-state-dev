@@ -36,7 +36,7 @@ export const parked = (id: string, requestId: string, name: string) => ({ ...cal
 export const failure = (id: string, requestId: string, message: string, code = "PROVIDER_ERROR") => ({ ...base(id, requestId, "failed"), type: "error", message, code });
 
 /** A `data` item of `dataType`. */
-export const data = (id: string, requestId: string, dataType: string, value: unknown) => ({ ...base(id, requestId), type: "data", dataType, value });
+const data = (id: string, requestId: string, dataType: string, value: unknown) => ({ ...base(id, requestId), type: "data", dataType, value });
 
 /** Workforce's lines, as the server writes them. */
 export const sent = (id: string, requestId: string, value: Record<string, unknown>) => data(id, requestId, SENT_MESSAGE_DATA_TYPE, value);
