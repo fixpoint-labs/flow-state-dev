@@ -11,7 +11,10 @@ import { GAPS } from "../src/gaps";
 import type { Client } from "@flow-state-dev/client";
 import { spendAfterWrite } from "@flow-state-dev/orchestration/tasks";
 import type { LoadedSnapshot } from "../src/lib/derive";
-import { GENERAL_TEAM, inboxSection, toBoardTaskView, toWorker, type Ask, type BoardTaskView, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
+import { inboxSection, toBoardTaskView, type Ask, type ConversationBoards, type LabSnapshot } from "../src/lib/reads";
+import type { BoardTaskView } from "../src/lib/boards";
+import type { Section } from "../src/lib/failure";
+import { GENERAL_TEAM, toWorker } from "../src/lib/workers";
 
 let fixture: LabSnapshot;
 
@@ -31,6 +34,7 @@ const rosterViews = new Set<(entries: never[]) => void>();
 
 vi.mock("../src/lib/workforce", () => ({
   useWorkforce: () => ({
+    organization: async () => "acme",
     roster: () => rosterRead(),
     // The roster watch, reporting one read; `rosterWatches` counts the watches started.
     watchRoster: (onRoster: (entries: never[]) => void, options?: { onError?: (error: unknown) => void }) => {
@@ -41,6 +45,12 @@ vi.mock("../src/lib/workforce", () => ({
     },
   }),
 }));
+
+// FIX-2775: the directory's reads are the fixture's, beside the real roster watch.
+vi.mock("../src/lib/directory-reads", async () => {
+  const { useFixtureReads } = await import("./helpers/directory");
+  return { useDirectoryReads: () => useFixtureReads(() => fixture) };
+});
 
 vi.mock("../src/lib/reads", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/lib/reads")>();
@@ -268,10 +278,13 @@ describe("Roster (V3)", () => {
     expect(screen.queryByTestId("roster-summary")).toBeNull();
   });
 
-  it("BR-19: a conversation whose board did not load is named, and none of its tasks counts", async () => {
+  // FIX-2775: the boards and the asks are one answer, the Inbox view's: a board it can't read fails that
+  // answer whole, so Roster names the failure and draws no status it can't back.
+  it("BR-19: a board the Inbox view can't read fails the view, which Roster names, with no count from a guess", async () => {
     await open("/roster", lab({ boards: "ops failed" }));
-    expect((await screen.findByTestId("roster-boards-failure")).textContent).toMatch(/s_ops/);
-    expect(screen.getByTestId("roster-summary").textContent).toMatch(/^3 on shift · 2 off shift/);
+    expect((await screen.findByTestId("roster-asks-failure")).textContent).toMatch(/board offline/);
+    expect(screen.getByTestId("roster-summary").textContent).toMatch(/^0 on shift · 5 off shift/);
+    expect(within(screen.getByTestId("roster")).getByTestId("partial-mark")).toBeTruthy();
   });
 
   it("BR-20: asks that did not load put the partial mark on Roster", async () => {

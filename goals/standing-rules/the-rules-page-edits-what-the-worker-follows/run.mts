@@ -4,8 +4,8 @@ import { join } from "node:path";
 import type { Page } from "playwright";
 import { createClient } from "@flow-state-dev/client";
 import { WORKER_ID_STATE_KEY, createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { shiftCoordinatorOf } from "../../../packages/shift-manager/src/lib/derive.ts";
-import type { Worker } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { shiftCoordinatorOf } from "../../../packages/shift-manager/src/lib/shift.ts";
+import type { Worker } from "../../../packages/shift-manager/src/lib/workers.ts";
 import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import {

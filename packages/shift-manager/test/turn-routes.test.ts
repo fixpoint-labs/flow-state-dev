@@ -3,8 +3,8 @@
  * publishes. A pure read of the snapshot, so each case is staged exactly.
  */
 import { describe, expect, it } from "vitest";
-import { doorOf } from "../src/lib/derive";
-import type { Worker } from "../src/lib/reads";
+import { doorOf } from "../src/lib/shift";
+import type { Worker } from "../src/lib/workers";
 
 const worker = (id: string, door: string | null = "message", flow = "coder"): Worker => ({
   id,

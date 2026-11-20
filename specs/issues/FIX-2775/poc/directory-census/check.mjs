@@ -87,7 +87,11 @@ for (const [file, owner] of Object.entries(byFile)) {
 }
 const wantEntries = BUILT ? { ...EXPECTED.entries, "FIX-2775": 0 } : EXPECTED.entries;
 for (const [owner, want] of Object.entries(wantEntries)) {
-  if ((counts[owner] ?? 0) !== want) failures.push(`${owner} holds ${counts[owner] ?? 0} entries, the spec says ${want}`);
+  const held = counts[owner] ?? 0;
+  // Built, FIX-2777's entries may shrink but never grow: moving a `reads.ts` name
+  // to its screen module leaves one definition, so its type entry goes with it.
+  const ok = BUILT && owner === "FIX-2777" ? held <= want : held === want;
+  if (!ok) failures.push(`${owner} holds ${held} entries, the spec says ${BUILT && owner === "FIX-2777" ? `at most ${want}` : want}`);
 }
 
 // ── 2. The census ────────────────────────────────────────────────────────

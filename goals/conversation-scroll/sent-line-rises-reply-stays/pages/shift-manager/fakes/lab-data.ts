@@ -3,7 +3,6 @@ export * from "../../../lib/lab-data";
 const lab = {
   client: { userId: "alice", subscribe: () => ({ close: () => undefined }), view: () => new Promise(() => undefined) },
   refresh: async () => undefined,
-  answered: undefined,
   snapshot: undefined,
 };
 export const useLab = () => lab as never;

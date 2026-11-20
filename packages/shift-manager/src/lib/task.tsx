@@ -25,15 +25,15 @@
  * workforce's `stopRun` and draws *interrupted* only once the stream reads
  * `aborted` (the run's record decides).
  *
- * A task's asks are not read here: the screens read them from the snapshot
- * until the Inbox's own view answers them.
+ * A task's asks are not read here: the screens read them from the Inbox
+ * view (`inbox.ts`).
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { RequestStatus } from "@flow-state-dev/core/types";
 import { useRequestStream } from "@flow-state-dev/react";
 import { useConversationTasks, type ConversationTask } from "./conversation-tasks";
 import { useLab } from "./lab-data";
-import { describeFailure, type Failure } from "./reads";
+import { describeFailure, type Failure } from "./failure";
 import { useWorkforce } from "./workforce";
 import { resolveRunFlow } from "./task-items";
 

@@ -6,7 +6,7 @@
  * no note.
  */
 import type { DataItem } from "@flow-state-dev/core/items";
-import { workerLabel } from "../lib/derive";
+import { workerLabel } from "../lib/shift";
 
 type RoutedDelegate = { worker: string; target?: string; outcome: "delivered" | "skipped" | "failed"; reason?: string };
 type RouteRecord = { by?: string; delegates?: RoutedDelegate[]; none?: string; answeredItself?: boolean };

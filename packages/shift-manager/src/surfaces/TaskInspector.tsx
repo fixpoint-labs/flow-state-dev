@@ -14,10 +14,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { traceHref } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
 import { Spend } from "../components/flow-state/spend";
-import { rosterOf, workerFor, workerLabel, waited, type LoadedSnapshot } from "../lib/derive";
+import { workerFor, workerLabel, waited } from "../lib/shift";
+import { useWorkers } from "../lib/directory";
 import { askWord, itemIdHolding, taskAsks, useInbox } from "../lib/inbox";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, GENERAL_TEAM, type Failure } from "../lib/reads";
+import { describeFailure, type Failure } from "../lib/failure";
+import { GENERAL_TEAM } from "../lib/workers";
 import type { Route } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import { readRecordedWork, type RecordedWork } from "@flow-state-dev/harness-manager/browser";
@@ -41,10 +43,11 @@ function Gap({ text, testId }: { text: string; testId: string }) {
   );
 }
 
-export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
+export function TaskInspector({ gaps }: { gaps: Gaps }) {
+  const { workers } = useWorkers();
   const task = useTask();
   const { row } = task;
-  const worker = row === undefined ? undefined : workerFor(rosterOf(snapshot), row);
+  const worker = row === undefined ? undefined : workerFor(workers, row);
   const after = row === undefined ? [] : task.boardRows.filter((r) => row.deps.includes(r.id));
   const missingAfter = row === undefined ? [] : row.deps.filter((id) => !task.boardRows.some((r) => r.id === id));
   const blocks = row === undefined ? [] : task.boardRows.filter((r) => r.deps.includes(row.id));

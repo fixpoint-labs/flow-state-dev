@@ -34,12 +34,6 @@ import { FeedHealthContext, worstFeedState, type ReportFeed } from "./feed-healt
 import { createLabReader, type LabReader, type LabSnapshot } from "./reads";
 import { heard, heardSessionIds, SNAPSHOT_POLL_MS, snapshotPaths, snapshotTopics } from "./snapshot-subscribe";
 
-// FIX-2774 interim: the Inbox, its count, Tasks, the shift summary and a task's asks read the inbox view,
-// but the snapshot still carries its own `asks` and `boards`, read by the roster's workers (`derive.ts`,
-// `Roster.tsx`) and the task route (`task.tsx`); `inbox.ts`'s selectors mirror `derive.ts`'s over the view meanwhile.
-// Until FIX-2775 and FIX-2776 move those screens onto the view and drop the sections, two screens can briefly
-// disagree: an ask can show in the Inbox before it shows beside its worker on the roster, and a run with no conversation shows only there.
-
 /** What a surface reads from the provider. */
 export type LabData = {
   /** Who the Lab is read as, and with what credential. */
@@ -66,14 +60,6 @@ export type LabData = {
   stale: boolean;
   /** Read everything again, as the user asked: counts dim until it lands. */
   refresh(): Promise<void>;
-  // FIX-2774.
-  /** An ask in session `sessionId` was answered here: moves {@link answered} once. */
-  noteAnswered(sessionId: string): void;
-  /**
-   * The session of the latest ask answered here, with a count that moves once
-   * the answer lands. `undefined` before any answer.
-   */
-  answered: { sessionId: string; count: number } | undefined;
 };
 
 const LabContext = createContext<LabData | null>(null);
@@ -88,13 +74,11 @@ export function LabProvider({ connection, children }: { connection: Connection; 
   // Refreshes in a row that couldn't reach the Lab after a good read. The snapshot stays; the read is `lapsed`.
   const [lapses, setLapses] = useState(0);
   const [feeds, setFeeds] = useState<ReadonlyMap<string, ConnectionFeedStatus>>(new Map());
-  const [answered, setAnswered] = useState<LabData["answered"]>(undefined);
   // The snapshot on screen is a good read of this client's Lab: a later unreachable one doesn't replace it.
   const loaded = useRef(false);
   useEffect(() => {
     loaded.current = false;
   }, [client]);
-  const bump = useCallback((sessionId: string) => setAnswered((last) => ({ sessionId, count: (last?.count ?? 0) + 1 })), []);
   // Only the latest refresh may land: an older one finishing late would draw
   // a Lab that has moved on.
   const generation = useRef(0);
@@ -181,8 +165,8 @@ export function LabProvider({ connection, children }: { connection: Connection; 
   const stale = isFeedStale(health);
 
   const value = useMemo<LabData>(
-    () => ({ connection, client, reader, snapshot, refreshing, asking, health, stale, refresh, noteAnswered: bump, answered }),
-    [connection, client, reader, snapshot, refreshing, asking, health, stale, refresh, bump, answered],
+    () => ({ connection, client, reader, snapshot, refreshing, asking, health, stale, refresh }),
+    [connection, client, reader, snapshot, refreshing, asking, health, stale, refresh],
   );
   return (
     <LabContext.Provider value={value}>

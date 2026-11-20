@@ -149,11 +149,15 @@ describe("the refusal (V2, BR-3)", () => {
     });
     await openApp("/w/ops.desk/stream", { bearer: "secret" });
     await screen.findByTestId("refusal");
-    expect(screen.getByTestId("refusal-message").textContent).toMatch(/401.*verified organization/);
+    // The gate is the organization read (FIX-2775): the server's answer to it, under today's words for a refusal.
+    expect(screen.getByTestId("refusal-message").textContent).toMatch(/^401 · /);
+    expect(screen.getByTestId("refusal").textContent).toContain("the request carried no verified organization");
     expect(screen.queryByTestId("sidebar")).toBeNull();
     expect(document.body.textContent).not.toMatch(/ops\./);
     await new Promise((r) => setTimeout(r, 300));
-    expect(seen).toEqual(["/api/flows/sessions"]);
+    // Nothing from the tree is read behind the refusal: the gate's identity read, and the snapshot's own
+    // first read, which nothing draws (FIX-2777 deletes it), each refused once.
+    expect([...seen].sort()).toEqual(["/api/flows/sessions", "/api/flows/workforce-roster/identity"]);
   });
 
   it("a Lab that names no organization for the user gets the refusal, never an unknown one", async () => {

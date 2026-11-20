@@ -19,7 +19,7 @@
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { useWorkerConversation as useStoredConversation, type WorkerConversation } from "../../../../packages/shift-manager/src/lib/conversation.ts";
-import type { Worker } from "../../../../packages/shift-manager/src/lib/reads.ts";
+import type { Worker } from "../../../../packages/shift-manager/src/lib/workers.ts";
 
 export * from "../../../../packages/shift-manager/src/lib/conversation.ts";
 export * from "../../../../packages/shift-manager/src/lib/deliver.ts";

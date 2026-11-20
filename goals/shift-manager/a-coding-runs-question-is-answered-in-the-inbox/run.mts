@@ -60,7 +60,7 @@ import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../packages/sh
 import { commitAll, createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
-import { CONVERSATION_BOARD_COLLECTION } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { CONVERSATION_BOARD_COLLECTION } from "../../../packages/shift-manager/src/lib/boards.ts";
 import { inboxViewRef } from "@flow-state-dev/workforce/browser";
 
 stripIntentOverrides();

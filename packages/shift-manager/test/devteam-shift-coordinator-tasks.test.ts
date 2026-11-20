@@ -32,7 +32,7 @@ import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
 import { taskActionName } from "@flow-state-dev/orchestration/inbox";
-import { CONVERSATION_BOARD_COLLECTION } from "../src/lib/reads";
+import { CONVERSATION_BOARD_COLLECTION } from "../src/lib/boards";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { harnessStub, type HarnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";

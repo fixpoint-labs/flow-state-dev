@@ -8,7 +8,7 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Conversation } from "../src/components/Conversation";
-import { toWorker } from "../src/lib/reads";
+import { toWorker } from "../src/lib/workers";
 
 // One object, as the provider hands one. The conversation's turns read (a view) never answers here.
 const lab = { client: { userId: "alice", subscribe: () => ({ close: () => {} }), view: () => new Promise(() => {}) }, refresh: async () => undefined, answered: undefined };

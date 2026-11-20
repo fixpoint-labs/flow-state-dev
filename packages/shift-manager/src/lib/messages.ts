@@ -1,19 +1,18 @@
 // FIX-1989; FIX-2624.
 /**
- * The user's message log: Workforce's `workforce/messages/*`, read by user
- * scope with no session. Another user's messages are not in it.
+ * The user's message log: Workforce's `workforce/messages/*`, read whole by
+ * user scope with no session through `react`'s `useResource`, and kept
+ * current by its notices: a new message is one entry read, never the whole
+ * log again. Another user's messages are not in it.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import { topic, type LiveRead } from "@flow-state-dev/client";
-import { getPatternPrefix } from "@flow-state-dev/core/types";
-import { WORKER_MESSAGES_PATTERN, workerMessageResourceStateSchema, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
+import { useMemo } from "react";
+import { useResource } from "@flow-state-dev/react";
+import { workerMessageResourceStateSchema, workerMessagesResource, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
-import { describeFailure, readEveryScopeEntry, type Failure } from "./reads";
+import { useReadAgainOnR } from "./page-reads";
+import type { Failure } from "./failure";
 
 export type { WorkerMessageResourceState };
-
-/** The pace the view reads the log at while it is open, wherever push can miss a change. */
-const MESSAGES_POLL_MS = 5_000;
 
 /** One exchange: a first message and every answer to it, newest first. */
 export type MessageExchange = {
@@ -23,10 +22,10 @@ export type MessageExchange = {
 };
 
 /** The messages a log read returned, each parsed by Workforce's own schema: one that doesn't parse is left out. */
-export function toMessages(items: readonly { clientData?: unknown }[]): WorkerMessageResourceState[] {
+export function toMessages(values: readonly unknown[]): WorkerMessageResourceState[] {
   const rows: WorkerMessageResourceState[] = [];
-  for (const item of items) {
-    const parsed = workerMessageResourceStateSchema.safeParse(item.clientData);
+  for (const value of values) {
+    const parsed = workerMessageResourceStateSchema.safeParse(value);
     if (parsed.success) rows.push(parsed.data);
   }
   return rows;
@@ -55,56 +54,17 @@ export function firstLine(text: string): string {
 }
 
 /**
- * The log, read when the view opens, again on each Lab read (`readAt`), and on
- * each notice of a message under the user's scope; wherever push can miss a
- * change, every {@link MESSAGES_POLL_MS} instead (`client.live`). A later read
- * keeps the last rows until it lands, and a failed later read keeps them; only
- * a failed first read shows. The live read tries a failed one again on its own.
- * `rows` is `null` when no flow of the Lab declares the log (a 404): it keeps
- * no roster for the user.
+ * The log, read whole when the view opens and kept current by its notices.
+ * A later read that fails keeps the rows already drawn; only a failed first
+ * read shows. `rows` is `null` when no flow of the Lab declares the log (a
+ * 404): it keeps no roster for the user.
  */
-export function useMessages(
-  readAt: number,
-): { rows: WorkerMessageResourceState[] | null | undefined; failure: Failure | undefined; reread: () => void } {
+export function useMessages(): { rows: WorkerMessageResourceState[] | null | undefined; failure: Failure | undefined; reread: () => void } {
   const { client } = useLab();
-  const [rows, setRows] = useState<WorkerMessageResourceState[] | null | undefined>(undefined);
-  const [failure, setFailure] = useState<Failure | undefined>(undefined);
-  const live = useRef<LiveRead | null>(null);
-  useEffect(() => {
-    // The log is the user's: a message sent from any session writes its row under the user's scope.
-    const watching = client.live([topic.user()], {
-      read: () =>
-        readEveryScopeEntry(client, "user", WORKER_MESSAGES_PATTERN)
-          .then(toMessages)
-          .then(
-            (value): WorkerMessageResourceState[] | null => value,
-            (error: unknown) => {
-              if (describeFailure(error).httpStatus === 404) return null;
-              throw error;
-            },
-          ),
-      onValue: (value) => {
-        setRows(value);
-        setFailure(undefined);
-      },
-      onError: (error) => setFailure(describeFailure(error)),
-      hear: (notice) => notice.kind === "resource",
-      paths: [getPatternPrefix(WORKER_MESSAGES_PATTERN)],
-      pollIntervalMs: MESSAGES_POLL_MS,
-    });
-    live.current = watching;
-    return () => {
-      watching.close();
-      if (live.current === watching) live.current = null;
-    };
-  }, [client]);
-  // A Lab read reads it again too; the live read's own first read covers the one it opened on.
-  const readAtSeen = useRef(readAt);
-  useEffect(() => {
-    if (readAtSeen.current === readAt) return;
-    readAtSeen.current = readAt;
-    live.current?.refresh();
-  }, [readAt]);
-  const reread = useCallback(() => live.current?.refresh(), []);
-  return { rows, failure: rows === undefined ? failure : undefined, reread };
+  const { value, failure, refresh } = useResource(workerMessagesResource, { client, all: true });
+  useReadAgainOnR(refresh);
+  const rows = useMemo(() => (value === null ? undefined : toMessages(value.map((entry) => entry.value))), [value]);
+  if (rows !== undefined) return { rows, failure: undefined, reread: refresh };
+  if (failure?.httpStatus === 404) return { rows: null, failure: undefined, reread: refresh };
+  return { rows: undefined, failure, reread: refresh };
 }

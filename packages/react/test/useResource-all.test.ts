@@ -198,6 +198,42 @@ describe("useResource(def, { all: true, topicPrefix })", () => {
     expect(entryReads).toEqual(["projects/p1/c"]);
     expect(lists).toHaveLength(listed);
   });
+
+  // The live read's path filter is the client's (`liveRead`'s `paths`), not the subscription's, so
+  // the narrowed root is pinned by which notice with no ids reads the list again.
+  it("narrows its live paths to the prefix's whole segments: its own project's notice re-reads, the next project's doesn't", async () => {
+    const stored = new Map([
+      ["projects/p1/a", entry("p1a")],
+      ["projects/p2/a", entry("p2a")]
+    ]);
+    const { client, lists, hear } = lab(stored);
+    const { result } = renderHook(() => useResource(projects, { all: true, topicPrefix: "projects/p1/", client }));
+    await waitFor(() => expect(keys(result.current.value)).toEqual(["projects/p1/a"]));
+    const listed = lists.length;
+
+    await hear({ topic: { scope: "org", resource: "projects/p2" }, kind: "resource" });
+    expect(lists).toHaveLength(listed);
+    stored.set("projects/p1/b", entry("p1b"));
+    await hear({ topic: { scope: "org", resource: "projects/p1" }, kind: "resource" });
+    await waitFor(() => expect(keys(result.current.value)).toEqual(["projects/p1/a", "projects/p1/b"]));
+    expect(lists).toHaveLength(listed + 1);
+  });
+
+  it("narrows a prefix that ends mid-segment to the segment above it, so a sibling project's notice is still heard", async () => {
+    // `projects/p1` (no slash) also matches `projects/p10/...`: the path rule matches by segment, so the root is `projects`.
+    const stored = new Map([
+      ["projects/p1/a", entry("p1a")],
+      ["projects/p10/a", entry("p10a")],
+      ["projects/p2/a", entry("p2a")]
+    ]);
+    const { client, lists, hear } = lab(stored);
+    const { result } = renderHook(() => useResource(projects, { all: true, topicPrefix: "projects/p1", client }));
+    await waitFor(() => expect(keys(result.current.value)).toEqual(["projects/p1/a", "projects/p10/a"]));
+    const listed = lists.length;
+
+    await hear({ topic: { scope: "org", resource: "projects/p2" }, kind: "resource" });
+    await waitFor(() => expect(lists).toHaveLength(listed + 1));
+  });
 });
 
 describe("useResource's failure and refresh()", () => {

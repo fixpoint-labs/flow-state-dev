@@ -12,7 +12,7 @@
 import { ClientHttpError } from "@flow-state-dev/client";
 import type { Client, RequestResult, SentRequest } from "@flow-state-dev/client";
 import { newSessionId } from "../../src/lib/ids";
-import { describeFailure } from "../../src/lib/reads";
+import { describeFailure } from "../../src/lib/failure";
 
 /**
  * An action the Lab answered with a refusal and its reason: a request that
