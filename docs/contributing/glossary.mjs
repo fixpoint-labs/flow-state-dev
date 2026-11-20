@@ -174,6 +174,12 @@ export const ENTRIES = [
     decision: "Owner, 2026-11-14 and 2026-11-15 (FIX-2738): the payload is `value` (`record`, `fact` and `payload` were rejected); one kind, the `component` item removed, a component is a dataType with a renderer",
     retires: [],
   },
+  {
+    term: "Line",
+    means: "What a conversation screen draws: one `ItemLine` from React's `conversationLines(items, turns)` (user, assistant, steps, failed, stopped, suspension, data, item). The model decides each kind; a renderer decides only how it looks. Not workforce's coordinator `ConversationLine`, which is a line of a conversation's recent history read for the coordinator.",
+    decision: "Owner, 2026-11-19 (FIX-2848): React's render stream becomes the conversation model, renamed with no alias; its type is `ItemLine` so it doesn't reuse `ConversationLine`",
+    retires: [{ name: "buildItemRenderStream" }, { name: "ItemRenderSegment" }, { name: "BuildItemRenderStreamOptions" }],
+  },
 
   // Dispatch, wait, ask and hand-off ----------------------------------------------------------
   {

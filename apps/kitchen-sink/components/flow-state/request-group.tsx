@@ -16,7 +16,7 @@
 
 import { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { buildItemRenderStream, ItemsRenderer, useFlowContext, type RendererRegistry } from "@flow-state-dev/react";
+import { conversationLines, ItemsRenderer, useFlowContext, type RendererRegistry } from "@flow-state-dev/react";
 import { useConversationFeed } from "./conversation";
 import { SourcesGroup } from "./sources";
 import { StreamingIndicator, WorkedFor } from "./streaming-indicator";
@@ -123,16 +123,15 @@ function settledAt(item: OutputItem): number {
 }
 
 /**
- * Whether the stream ends on a run of tool calls and thoughts with one still
+ * Whether the stream ends on a steps line with a call or thought still
  * running. The group's own line names that step, so the indicator would repeat
- * it. Read from the same render stream the group draws, so an item it drops
+ * it. Read from the same lines the group draws, so an item they drop
  * (a trace, a hidden step, one a container owns) is not counted, and a call
  * running behind one that finished is.
  */
 function endsOnRunningStep(items: OutputItem[], renderers: RendererRegistry | undefined): boolean {
-  const stream = buildItemRenderStream(items, renderers, { groupToolCalls: true });
-  const last = stream[stream.length - 1];
-  return last?.kind === "group" && last.items.some((item) => item.status === "in_progress");
+  const last = conversationLines(items, [], { renderers }).at(-1);
+  return last?.kind === "steps" && last.items.some((item) => item.status === "in_progress");
 }
 
 function RequestGroup({
