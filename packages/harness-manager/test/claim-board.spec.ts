@@ -74,14 +74,39 @@ describe("a manager reading its board from the claim", () => {
     const { result } = await lab.runAttempt(CONVERSATIONS, "task_62b5f71c45ac40a8b049", "conv-a");
     expect(result.error, messageOf(result.error)).toBeUndefined();
     const record = await lab.record(runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "task_62b5f71c45ac40a8b049", PHASE));
-    expect(record!.branch).toMatch(/^conductor\/fix-2657-cap-failed-at-five-and-[0-9a-f]{6}$/);
+    expect(record!.branch).toMatch(/^fsd\/fix-2657-cap-failed-at-five-and-[0-9a-f]{6}$/);
     expect(Buffer.byteLength(`refs/heads/${record!.branch}`)).toBeLessThan(100);
-    expect(basename(lab.seen[0]!.cwd)).toBe(record!.branch!.slice("conductor/".length));
+    expect(basename(lab.seen[0]!.cwd)).toBe(record!.branch!.slice("fsd/".length));
     // Its entry in the worktrees resource reads the same.
     const entries = await lab.worktrees();
     expect(entries.map((entry) => entry.name)).toEqual([basename(lab.seen[0]!.cwd)]);
     expect(entries[0]!.branch).toBe(record!.branch);
   }, 60_000);
+
+  // FIX-2857: a branch says which app cut it, never the retired `conductor/`.
+  it("cuts the run's branch under the app's own prefix, with the same name and folder", async () => {
+    const seed = { ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", title: "Fix the thing", goal: "the change", input: {} };
+    const topic = runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "t1", PHASE);
+    const plain = claimHost({ mode: "claim" });
+    await plain.seed(seed);
+    await plain.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    const derived = (await plain.record(topic))!.branch!;
+
+    const lab = claimHost({ mode: "claim", manager: { branchPrefix: "teammates/" } });
+    await lab.seed(seed);
+    const { result } = await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    const branch = (await lab.record(topic))!.branch!;
+    expect(branch).toBe(`teammates/${derived.slice("fsd/".length)}`);
+    expect(basename(lab.seen[0]!.cwd)).toBe(branch.slice("teammates/".length));
+    expect(execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: lab.seen[0]!.cwd, encoding: "utf8" }).trim()).toBe(branch);
+  }, 60_000);
+
+  it("refuses at construction a prefix that can't lead a branch", () => {
+    for (const bad of ["teammates", "Teammates/", "a b/", "../x/", "a//", `${"x".repeat(40)}/`]) {
+      expect(() => claimHost({ mode: "claim", manager: { branchPrefix: bad } }), bad).toThrow(/branchPrefix/);
+    }
+  });
 
   it("takes the next spelling of its name when a branch here already has it", async () => {
     const seed = {
@@ -108,7 +133,7 @@ describe("a manager reading its board from the claim", () => {
     expect(result.error, messageOf(result.error)).toBeUndefined();
     const record = (await lab.record(topic))!;
     expect(record.branch).toBe(`${derived}-2`);
-    expect(basename(lab.seen[0]!.cwd)).toBe(`${derived.slice("conductor/".length)}-2`);
+    expect(basename(lab.seen[0]!.cwd)).toBe(`${derived.slice("fsd/".length)}-2`);
   }, 60_000);
 
   // A conversation's board mints its task ids (`createTask` takes none), so a

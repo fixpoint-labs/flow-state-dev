@@ -1,6 +1,6 @@
 import { memo, type ReactNode } from "react";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import { attemptStartedAt, harnessOf, modelOf, taskStatus, titleOf, workerOf } from "../lib/task";
+import { attemptStartedAt, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
@@ -77,7 +77,7 @@ export const TaskCard = memo(function TaskCard({
   coding?: boolean;
   onOpen: (taskId: string) => void;
 }) {
-  const line = taskLine({ title: titleOf(task), to: workerOf(task) }, coding, nameOf);
+  const line = taskLine({ title: task.title, to: workerOf(task) }, coding, nameOf);
   const runs = { harness: harnessOf(task), model: modelOf(task) };
   const on = coding ? runsOn(runs) : undefined;
   const state = taskPresentation(task);
@@ -88,7 +88,7 @@ export const TaskCard = memo(function TaskCard({
   // Only an active task counts up; an ended one says how it ended.
   const since = status === "running" && typeof started === "number" ? sinceShort(Date.now() - started) : undefined;
   // A coding task leads with its title (the tile says it is code); a teammate's says what was asked of whom.
-  const title = coding ? titleOf(task) : line;
+  const title = coding ? task.title : line;
   const open = () => onOpen(task.id);
   return (
     <div

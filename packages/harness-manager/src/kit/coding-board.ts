@@ -1,8 +1,9 @@
 // FIX-2725 D2.
 /**
  * A conversation's coding board as a user view on the harness kit's own
- * `harnesses` flow: the board's task-list rows, each with what holds it for
- * the user and where each answer goes, the harness it runs through, how its
+ * `harnesses` flow: the board's task-list rows, each with its title and the
+ * state the user sees it in (orchestration's `taskView`, read with its asks),
+ * what holds it for the user and where each answer goes, the harness it runs through, how its
  * review ended, where its work landed, why it failed, and the numbers of the
  * pull requests it waits on.
  *
@@ -24,7 +25,7 @@
  */
 import { defineView, handler } from "@flow-state-dev/core";
 import { requireRequestHost } from "@flow-state-dev/core/internal";
-import { inboxItems, type InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { inboxItems, taskView, type InboxHold, type TaskViewStatus } from "@flow-state-dev/orchestration/inbox";
 import { listedTaskSchema, readable, taskListEntriesFor } from "@flow-state-dev/orchestration/internal";
 import { isTerminalStatus, type Task } from "@flow-state-dev/orchestration/tasks";
 import { answerTextOf, type WorkerInstallation } from "@flow-state-dev/workforce";
@@ -44,8 +45,19 @@ import { pullRequestWait, type PullRequestWaitInput } from "../pull-request-wait
 const BOARD = "tasks";
 const UPDATE_TASK_ACTION = "updateTask_tasks";
 
+/**
+ * Every `TaskViewStatus`. `satisfies` holds this list to orchestration's; the
+ * handler's return holds orchestration's to this list, since it writes a
+ * `taskView` state into the row.
+ */
+const TASK_VIEW_STATES = ["queued", "held", "running", "waiting", "failed", "done", "cancelled"] as const satisfies readonly TaskViewStatus[];
+
 /** One task as the coding board answers it. */
 const codingTaskSchema = listedTaskSchema.extend({
+  /** What a screen shows for it: orchestration's `taskView` title, its title, else its goal, else its id. */
+  title: z.string(),
+  /** What the user sees it as: orchestration's `taskView` state of the row, read with its `asks`. */
+  state: z.enum(TASK_VIEW_STATES),
   /** What holds it for the user, each with where its answer goes (the Inbox's hold). */
   asks: z.array(z.custom<InboxHold>((value) => typeof value === "object" && value !== null)),
   /** The harness it runs through: its run's, else its worker's `harness:` setting. `null` for a plain worker's task. */
@@ -139,9 +151,14 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
           const output = (task?.output ?? {}) as Record<string, unknown>;
           const review = harness !== null && entry.status === "completed" && (output.review === "accepted" || output.review === "deadline") ? output.review : null;
           const wait = task === undefined ? null : pullRequestWait({ status: task.status, holds: task.holds as unknown as PullRequestWaitInput["holds"], steers: task.steers ?? [] });
+          const held = asks.get(entry.id) ?? [];
+          // One `taskView` of the row with its asks gives both its title and its state: neither rule is copied here.
+          const seen = taskView({ ...entry, board: input.sessionId }, held);
           return {
             ...entry,
-            asks: asks.get(entry.id) ?? [],
+            title: seen.title,
+            state: seen.state,
+            asks: held,
             harness,
             review,
             landed: landedOf(output.landed) ?? null,

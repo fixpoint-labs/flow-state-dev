@@ -171,7 +171,8 @@ function placeholderOf(item: DataItem, value: Partial<FiledTaskValue>, harness: 
   let task = placeholders.get(item);
   if (task === undefined || task.harness !== (harness ?? null)) {
     const title = value.title ?? "";
-    task = { id: value.taskId ?? "", goal: title, title, assignee: value.assignee ?? "", status: "pending", attempts: 0, asks: [], harness: harness ?? null, review: null, landed: null, error: null, pullRequests: [], runFlow: null, detail: null };
+    // Pending with nothing open: the view says `queued` for such a row.
+    task = { id: value.taskId ?? "", goal: title, title, assignee: value.assignee ?? "", status: "pending", state: "queued", attempts: 0, asks: [], harness: harness ?? null, review: null, landed: null, error: null, pullRequests: [], runFlow: null, detail: null };
     placeholders.set(item, task);
   }
   return task;

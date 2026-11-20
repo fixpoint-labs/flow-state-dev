@@ -5,7 +5,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useTasks } from "../app";
 import { displayName } from "../lib/roster";
 import { useNow, useStale } from "../lib/use-watch";
-import { attemptStartedAt, elapsedText, holdOf, harnessOf, isLongRunning, modelOf, runTimesOf, taskStatus, titleOf, viewOf, workerOf } from "../lib/task";
+import { attemptStartedAt, elapsedText, holdOf, harnessOf, isLongRunning, modelOf, timeSignalOf, taskStatus, workerOf } from "../lib/task";
 import { clearMark, useCleared } from "../lib/cleared";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -134,10 +134,11 @@ export function TeammatePanel({
 
   const card = (t: CodingBoardTask) => {
     const coding = isCoding(workerOf(t));
-    const line = taskLine({ title: titleOf(t), to: workerOf(t) }, coding, nameOf);
+    const line = taskLine({ title: t.title, to: workerOf(t) }, coding, nameOf);
     const status = taskStatus(t);
     const runs = { harness: harnessOf(t), model: modelOf(t) };
-    const signal = taskSignal(viewOf(t, sessionId), runTimesOf(t), now, { stale });
+    const { view, run } = timeSignalOf(t);
+    const signal = taskSignal(view, run, now, { stale });
     const long = isLongRunning(t, now);
     const start = attemptStartedAt(t);
     // An active task's clock on this attempt; an ended one's age, as its signal reads it.
@@ -162,7 +163,7 @@ export function TeammatePanel({
         >
           <span className="flex items-start justify-between gap-3">
             <span className="line-clamp-2 text-sm leading-snug font-medium" title={line}>
-              {coding ? titleOf(t) : line}
+              {coding ? t.title : line}
             </span>
             {elapsed === undefined ? null : (
               <span className={cn("shrink-0 pt-px font-mono text-xs tabular-nums", long ? "text-warning-text" : status === "running" ? "text-success-text" : "text-text-3")} data-elapsed>

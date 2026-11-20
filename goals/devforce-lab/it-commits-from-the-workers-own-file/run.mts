@@ -53,6 +53,7 @@ import { runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts
 import { LAB_TREE, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { BASE_REF, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { claudeCodeHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
+import { CODER_BRANCH_PREFIX } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
 import { sleep } from "../../lib/time.mts";
 
 stripIntentOverrides();
@@ -183,12 +184,12 @@ await runGoal(async (failures) => {
     // does not. Read out of the SOURCE repository: a worktree's commits are in
     // the same object store, so the branch is visible from here and the check
     // does not depend on the checkout still existing.
-    const branches = git("branch", "--list", "conductor/*", "--format=%(refname:short)")
+    const branches = git("branch", "--list", `${CODER_BRANCH_PREFIX}*`, "--format=%(refname:short)")
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
     if (branches.length !== 1) {
-      failures.push(`the run left ${branches.length} branches under conductor/, wanted 1`);
+      failures.push(`the run left ${branches.length} branches under ${CODER_BRANCH_PREFIX}, wanted 1`);
     }
     const branch = branches[0];
     if (branch !== undefined) {

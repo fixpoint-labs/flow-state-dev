@@ -20,7 +20,8 @@ import type { DataItem, FileContent, MessageItem, OutputItem } from "@flow-state
 import { conversationLines, FlowProvider, ItemsRenderer, useFlowContext, type ItemLine, type LineTurn, type RendererRegistry, type SentLineMark } from "@flow-state-dev/react";
 import { FILED_TASK_DATA_TYPE, TASK_RESULT_DATA_TYPE, type FiledTaskValue, type TaskResultValue } from "@flow-state-dev/workforce/browser";
 // The read itself and not the app's index: the app's index reads nothing of the lines.
-import { useTasks, type AppTask, type TaskStatus } from "../app/tasks";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { useTasks, type TaskStatus } from "../app/tasks";
 import { TASK_STATUS } from "../lib/task-status";
 import { cn } from "../lib/utils";
 import { Clamp } from "./Clamp";
@@ -97,7 +98,7 @@ function MessageLine({ item, line }: { item: MessageItem; line?: ItemLine }) {
  * tasks: the conversation's board (the session its `FlowProvider` names), the
  * same read as the pane's. Elsewhere none, so the line shows what it reported.
  */
-function useBoardTask(taskId: string | undefined): AppTask | undefined {
+function useBoardTask(taskId: string | undefined): CodingBoardTask | undefined {
   const { openTask } = useLineContext();
   const { sessionId } = useFlowContext();
   const tasks = useTasks(openTask === undefined ? undefined : sessionId).value;
@@ -138,7 +139,7 @@ function StartLine({ item }: { item: DataItem }) {
         words
       ) : (
         <span className="inline-flex max-w-full items-center gap-2 align-bottom" data-task-id={task.id}>
-          <StatusDot status={task.status} />
+          <StatusDot status={task.status as TaskStatus} />
           <span className="min-w-0 truncate">{words}</span>
           <OpenTask taskId={task.id} />
         </span>
@@ -159,7 +160,7 @@ function ResultLine({ item }: { item: DataItem }) {
   const value = item.value as Partial<TaskResultValue>;
   const reported: TaskStatus = value.ending ?? "completed";
   const task = useBoardTask(value.taskId);
-  const now = task !== undefined && task.status !== reported ? task.status : undefined;
+  const now = task !== undefined && task.status !== reported ? (task.status as TaskStatus) : undefined;
   const status = TASK_STATUS[reported];
   // Taken while a turn of yours was running: your line is in the same request.
   const duringTurn = useSessionItems().some((other) => other.requestId === item.requestId && other.type === "message" && (other as MessageItem).role === "user" && !isTaskBrief(other));
@@ -182,7 +183,7 @@ function ResultLine({ item }: { item: DataItem }) {
           <span aria-hidden className="shrink-0 text-muted-foreground">
             {open ? "▾" : "▸"}
           </span>
-          <StatusDot status={task?.status ?? reported} />
+          <StatusDot status={(task?.status as TaskStatus | undefined) ?? reported} />
           <span className="min-w-0 truncate">{value.title}</span>
           <span className={cn("shrink-0", status.tone)}>
             · {status.label}

@@ -15,7 +15,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useAppClient, useConversation, useTasks } from "../app";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
 import { stepOf } from "../components/flow-state/conversation-lines";
-import { attemptStartedAt, holdOf, taskStatus, titleOf, workerOf } from "./task";
+import { attemptStartedAt, holdOf, taskStatus, workerOf } from "./task";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom, useTalk } from "./talk";
 import { age, useNow } from "./use-watch";
@@ -108,12 +108,12 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
   }
   // The newest running task names the line: an old one left running must not hide the one you just started.
   const coding = tasks.filter((t) => taskStatus(t) === "running" && isCoding(workerOf(t))).sort((a, b) => (attemptStartedAt(b) ?? 0) - (attemptStartedAt(a) ?? 0));
-  if (coding.length === 1) return plain(`Running coding task: ${titleOf(coding[0]!)}`);
-  if (coding.length > 1) return plain(`Running ${coding.length} tasks · ${titleOf(coding[0]!)}`);
+  if (coding.length === 1) return plain(`Running coding task: ${coding[0]!.title}`);
+  if (coding.length > 1) return plain(`Running ${coding.length} tasks · ${coding[0]!.title}`);
   const ended = freshEndings(tasks, now, isCoding)[0];
   if (ended) {
     const state = taskPresentation(ended);
-    return { text: `Coding task ${ended.status === "errored" ? state.word : "finished"}: ${titleOf(ended)}`, tone: state.tone, needsYou: false };
+    return { text: `Coding task ${ended.status === "errored" ? state.word : "finished"}: ${ended.title}`, tone: state.tone, needsYou: false };
   }
   const waiting = owedRepliesFrom(worker, [...talk]);
   if (waiting.length > 0) return plain(`Messaging ${waiting.map(nameOf).join(", ")}`);

@@ -158,8 +158,9 @@ export const ENTRIES = [
   },
   {
     term: "State",
-    means: "Scope state or resource state, and nothing else.",
-    decision: "Owner, 2026-11-06",
+    means:
+      "Scope state or resource state, and one other sense: a task's display state, what the user sees it as (orchestration's `TaskView.state`, `TaskViewStatus`, and harness-manager's coding board row's `state`, the same value). Nothing else.",
+    decision: "Owner, 2026-11-06; FIX-2766 D1 (the task's display state, kept under the name `TaskView` already gave it)",
     retires: [],
   },
   {
