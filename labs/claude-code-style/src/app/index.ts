@@ -18,9 +18,8 @@
  * (`main.tsx` builds it; a test builds one over the in-process host).
  */
 export type { ReviewDetail } from "@flow-state-dev/harness-manager/browser";
-export type { TaskStatus, ThreadEntry } from "../lib/thread-entries";
 export { AppProvider, useApp } from "./provider";
 export { useSessions, useThread, type AppSession, type ThreadView } from "./sessions";
-export { appTaskOf, usePullRequestLinks, useTaskWork, useTasks, withPullRequestLinks, type AppTask, type TaskWork } from "./tasks";
+export { appTaskOf, usePullRequestLinks, useTaskWork, useTasks, withPullRequestLinks, type AppTask, type TaskStatus, type TaskWork } from "./tasks";
 export { useDismissed, usePins } from "./marks";
 export { appCalls, type AppCalls, type AppHarness, type AppProject, type RepositoryCheck } from "./calls";

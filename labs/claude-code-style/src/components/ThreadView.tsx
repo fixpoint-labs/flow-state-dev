@@ -1,7 +1,7 @@
 import { isSendKey, useDraftSend, useJumpToLatest, useSubmit } from "@flow-state-dev/react";
 import { useMemo, type FormEvent, type KeyboardEvent } from "react";
 import { useApp, useTaskWork, withPullRequestLinks, type AppTask } from "../app";
-import { Entry } from "./Entry";
+import { useLines, WorkLines } from "./lines";
 import { LoadEarlier } from "./LoadEarlier";
 import { ReviewCard } from "./ReviewCard";
 import { AcceptButtons, useReviewAccept } from "./ReviewAccept";
@@ -47,6 +47,7 @@ export function ThreadView({
 }) {
   const lab = useApp();
   const work = useTaskWork(task);
+  const lines = useLines(work?.items);
   const { text, setText, sending, failure, submit } = useDraftSend("claude-code-style:task-draft", task.id);
   // The board keys this view by task, so a change of task remounts it and the feed starts over.
   const feed = useJumpToLatest();
@@ -208,9 +209,7 @@ export function ThreadView({
       )}
       {task.landed === undefined ? null : <LandedOutcome landed={task.landed} />}
       <LoadEarlier load={work?.loadEarlier} />
-      {work?.entries.map((entry) => (
-        <Entry key={entry.id} entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />
-      ))}
+      <WorkLines lines={lines} mine={feed.mine} />
       {/* Ready for review closes the feed, in the one scroll area, so a long review reads like the rest of it. The accept and the request for changes stay under it. */}
       {column === "review" ? <ReviewCard task={task} review={work?.review} /> : null}
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}

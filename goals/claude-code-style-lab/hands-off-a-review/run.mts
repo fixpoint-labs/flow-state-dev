@@ -201,14 +201,13 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
 
     // ── Signal 4: each result is one collapsed line that opens to the thread's reply.
     const replies: string[] = [];
-    // A thread filed with `resultTo: "conversation"` lands its answer as written, which names no task: its line has no task id.
-    let landed = 0;
+    // A thread filed with `resultTo: "conversation"` lands its answer as written: a message, with no result line.
     for (const task of filed) {
-      const routed = String(task.id).startsWith("routed:");
-      if (routed) notes.push(`"${task.title ?? task.goal}" answered into the conversation`);
-      const line = routed
-        ? main.locator('section[data-entry="result"][data-task-id=""]').nth(landed++)
-        : main.locator(`section[data-entry="result"][data-task-id="${task.id}"]`).last();
+      if (String(task.id).startsWith("routed:")) {
+        notes.push(`"${task.title ?? task.goal}" answered into the conversation`);
+        continue;
+      }
+      const line = main.locator(`section[data-entry="result"][data-task-id="${task.id}"]`).last();
       if ((await line.count()) === 0) {
         failures.push(`4: no result line for "${task.title ?? task.goal}" in the main thread`);
         continue;
@@ -232,7 +231,7 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
       await cardFor(task.id).getByRole("button", { name: "View task" }).click();
       await threadView().waitFor();
       await sleep(2_500);
-      toolLines.push(...(await threadView().locator('[data-entry="tool"]').allTextContents()));
+      toolLines.push(...(await threadView().locator('[data-line="steps"]').allTextContents()));
       await back();
     }
     tell.over("4 · tool lines in the task views", toolLines);

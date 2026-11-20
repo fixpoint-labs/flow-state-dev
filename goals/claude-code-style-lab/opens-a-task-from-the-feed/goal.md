@@ -42,7 +42,7 @@ AI Gateway.
 - `GOAL_CONTROL=no-feed-open`: the open the main thread hands its lines does nothing
   (`src/components/Thread.tsx`). Must FAIL opens-from-result, row-marked and opens-from-start-line.
 - `GOAL_CONTROL=frozen-dot`: a result line's dot reads the line's own status
-  (`src/components/Entry.tsx`). Must FAIL dot-is-live.
+  (`src/components/lines.tsx`). Must FAIL dot-is-live.
 - `GOAL_CONTROL=done-shut`: *Done* is not opened for the open task (`src/components/TasksPane.tsx`).
   Must FAIL row-marked.
 

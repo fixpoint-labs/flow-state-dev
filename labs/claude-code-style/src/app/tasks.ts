@@ -5,15 +5,19 @@
  * recorded work view.
  */
 import { useMemo } from "react";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { useRequestStream, useView } from "@flow-state-dev/react";
 import { taskView, type BoardActions, type InboxHold, type TaskView } from "@flow-state-dev/orchestration/inbox";
 import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { codingBoardViewRef, recordedWorkViewRef, type CodingBoardTask, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
-import { entriesOf, reviewStopIdOf, reviewStopOf, THREAD_ITEMS, type Item, type TaskStatus, type ThreadEntry } from "../lib/thread-entries";
+import { reviewStopIdOf, reviewStopOf } from "../lib/review-stop";
 import { toolInFlight, type PlanRowNow, type ToolCallNow } from "../components/flow-state/working-status";
 import type { LandedWork } from "../components/flow-state/review-hold";
 import { useAppContext } from "./provider";
-import { useFeed } from "./feed";
+import { THREAD_ITEMS, useFeed } from "./feed";
+
+/** A task's status, as the task tools name it. */
+export type TaskStatus = "pending" | "in_progress" | "held" | "completed" | "errored" | "cancelled";
 
 /**
  * One task as the screen draws it: the coding board view's row, in the
@@ -52,7 +56,8 @@ export type TaskBoardCalls = Pick<BoardActions, "cancel" | "steer" | "release" |
 
 /** The read-only work of one task. */
 export interface TaskWork {
-  entries: ThreadEntry[];
+  /** Its run session's items its lines are drawn from; the review stops are its review card's. */
+  items: OutputItem[];
   review?: ReviewDetail;
   /** The id of the latest review stop: one per review round. */
   reviewStop?: string;
@@ -124,7 +129,7 @@ export function usePullRequestLinks(task: AppTask): AppTask {
   const { client, pollIntervalMs } = useAppContext();
   const waits = task.pullRequests !== undefined && task.runLink !== undefined;
   const recorded = useView(recordedWorkViewRef(), { requestId: task.runLink?.requestId ?? "" }, { client, pollIntervalMs, sessionId: task.runLink?.sessionId, enabled: waits }).value;
-  return useMemo(() => withPullRequestLinks(task, recorded === undefined ? undefined : { entries: [], pullRequests: recorded.pullRequests.rows }), [task, recorded]);
+  return useMemo(() => withPullRequestLinks(task, recorded === undefined ? undefined : { items: [], pullRequests: recorded.pullRequests.rows }), [task, recorded]);
 }
 
 /**
@@ -144,10 +149,10 @@ export function useTaskWork(task: AppTask | undefined): TaskWork | undefined {
   // The run request's own stream sends a call as it starts; a dropped one opens again, resuming where it was.
   // Each call shows as it lands, not on the next frame: a call is a line, not a token.
   const streamed = useRequestStream({ client, flowKind: runFlow, source: { requestId: running ?? "" }, filter: TOOL_CALLS, reconnect: true, flush: "immediate", enabled: running !== null && runFlow !== undefined })
-    .items as unknown as readonly Item[];
+    .items as readonly OutputItem[];
   return useMemo(() => {
     if (task === undefined) return undefined;
-    if (runSession === null) return { entries: [] };
+    if (runSession === null) return { items: [] };
     if (feed?.items === undefined) return undefined;
     const fed = feed.items;
     const review = reviewStopOf(fed);
@@ -156,7 +161,7 @@ export function useTaskWork(task: AppTask | undefined): TaskWork | undefined {
     const plan = running === null ? undefined : recorded?.plan?.rows.map(({ title, status }) => ({ title, status }) as PlanRowNow);
     const working: WorkingNow = { ...(inFlight === undefined ? {} : { inFlight }), ...(plan === undefined ? {} : { plan }) };
     return {
-      entries: entriesOf(fed.filter((item) => item.type !== "suspension")),
+      items: fed.filter((item) => item.type !== "suspension"),
       ...(review === undefined ? {} : { review }),
       ...(reviewStop === undefined ? {} : { reviewStop }),
       ...(feed.loadEarlier === undefined ? {} : { loadEarlier: feed.loadEarlier }),
@@ -172,7 +177,7 @@ export function useTaskWork(task: AppTask | undefined): TaskWork | undefined {
  * starts, and the session feed, whose finished copy of a call wins. The feed's
  * own candidates are the run request's only.
  */
-function inFlightOf(streamed: readonly Item[], fed: readonly Item[], requestId: string): ToolCallNow | undefined {
+function inFlightOf(streamed: readonly OutputItem[], fed: readonly OutputItem[], requestId: string): ToolCallNow | undefined {
   const finished = new Set(fed.filter((item) => item.status !== "in_progress").map((item) => item.id));
-  return toolInFlight(streamed.filter((item) => !finished.has(item.id)) as never) ?? toolInFlight(fed.filter((item) => item.requestId === requestId) as never);
+  return toolInFlight(streamed.filter((item) => !finished.has(item.id))) ?? toolInFlight(fed.filter((item) => item.requestId === requestId));
 }

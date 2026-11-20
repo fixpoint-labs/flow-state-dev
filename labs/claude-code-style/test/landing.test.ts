@@ -4,7 +4,7 @@
  * an accepted run's work went is the coding board view's, read by harness-manager's one reader.
  */
 import { describe, expect, it } from "vitest";
-import { acceptOf, reviewStopIdOf } from "../src/lib/thread-entries";
+import { acceptOf, reviewStopIdOf } from "../src/lib/review-stop";
 
 describe("acceptOf", () => {
   it("is a plain accept without a land", () => {
