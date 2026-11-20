@@ -1,10 +1,8 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { harnessOf, modelOf, taskStatus, titleOf, workerOf } from "../lib/task";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
-import type { Look } from "../lib/looks";
-import { Avatar } from "./Avatar";
 import { Spend } from "./flow-state/spend";
 
 /** "Draft the PM role" as it reads after "Asked writer to". */
@@ -43,14 +41,15 @@ export function RunsOn({ on }: { on: string }) {
 export const TaskCard = memo(function TaskCard({
   task,
   nameOf,
-  lookOf,
+  avatar,
   coding = false,
   onOpen,
 }: {
   /** The board's row, or a filed task's stand-in before its row is read. */
   task: CodingBoardTask;
   nameOf: (id: string) => string;
-  lookOf: (id: string) => Look;
+  /** The teammate's avatar, shown on a teammate's task. */
+  avatar?: ReactNode;
   /** It is a coding task: a background task, not a teammate's. */
   coding?: boolean;
   onOpen: (taskId: string) => void;
@@ -73,7 +72,7 @@ export const TaskCard = memo(function TaskCard({
           ⚙
         </span>
       ) : (
-        <Avatar look={lookOf(workerOf(task))} size="sm" />
+        avatar
       )}
       <span className="min-w-0 flex-1 truncate">{line}</span>
       {on === undefined ? null : <RunsOn on={on} />}

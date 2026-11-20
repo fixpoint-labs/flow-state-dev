@@ -43,6 +43,7 @@ const SHARED = [
 
 /** The files whose job is drawing a conversation's lines, or wiring what a line needs. A file deleted later simply counts 0. */
 const LINE_FILES = new Set([
+  "packages/shift-manager/src/components/lines.tsx",
   "packages/shift-manager/src/components/ToolLine.tsx",
   "packages/shift-manager/src/components/TurnLines.tsx",
   "packages/shift-manager/src/components/TaskBrief.tsx",

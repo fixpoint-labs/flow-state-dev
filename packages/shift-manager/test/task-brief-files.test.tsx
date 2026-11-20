@@ -6,13 +6,17 @@
  * Every run of the task gets these files, so a user sees what the worker
  * was handed. Each is read through the Lab's read route, never inlined.
  */
+import type { ComponentType } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { toBlobRef } from "@flow-state-dev/core/attachments";
 import type { FileContent, MessageItem } from "@flow-state-dev/core/items";
 import { taskBriefMetadata } from "@flow-state-dev/workforce/browser";
-import { MessageOrBrief } from "../src/components/TaskBrief";
+import { shiftManagerRenderers } from "../src/components/lines";
 import { toBoardTaskView } from "../src/lib/reads";
+
+/** A message as Shift Manager's conversation draws it. */
+const MessageOrBrief = shiftManagerRenderers.message as ComponentType<{ item: MessageItem }>;
 
 afterEach(() => {
   cleanup();
@@ -40,8 +44,8 @@ describe("a task's brief line", () => {
     });
     render(<MessageOrBrief item={brief([{ type: "output_text", text: "Fix the button in the screenshot" }, shot])} />);
     await act(async () => fireEvent.click(screen.getByText("Task brief")));
-    const files = screen.getByTestId("task-brief-files");
-    expect(within(files).getByRole("list", { name: "Attached files" })).toBeTruthy();
+    const opened = document.querySelector('[data-line="brief"]')!;
+    expect(within(opened as HTMLElement).getByRole("list", { name: "Attached files" })).toBeTruthy();
     expect(reads).toEqual(["/api/flows/blobs/b_briefshot000001"]);
     expect(screen.getByText("Fix the button in the screenshot")).toBeTruthy();
   });
@@ -49,7 +53,7 @@ describe("a task's brief line", () => {
   it("draws no files row for a brief filed with none", async () => {
     render(<MessageOrBrief item={brief([{ type: "output_text", text: "Just words" }])} />);
     await act(async () => fireEvent.click(screen.getByText("Task brief")));
-    expect(screen.queryByTestId("task-brief-files")).toBeNull();
+    expect(screen.queryByRole("list", { name: "Attached files" })).toBeNull();
   });
 });
 

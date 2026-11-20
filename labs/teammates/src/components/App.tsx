@@ -13,7 +13,6 @@ import { WorkersList } from "./WorkersList";
 import { ConnectionScreen, type ConnectionFailure } from "./flow-state/connection-screen";
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { readAddress, writeAddress, type Address, type AddressWrite } from "../lib/address";
-import { harnessName } from "../lib/harness";
 import { focusComposer, focusWhenDrawn, useAppKeys } from "../lib/keys";
 import { lookOf as lookOfRow } from "../lib/looks";
 import { displayName, settingOf, takesTasks, useWorkforce } from "../lib/roster";
@@ -184,12 +183,6 @@ export function App() {
     return found === undefined ? id : displayName(found);
   }, [workers]);
   const isCoding = useCallback((id: string) => workers.some((w) => w.id === id && takesTasks(w)), [workers]);
-  // A coding worker's harness, for a task line drawn before its row arrives.
-  const harnessOf = useCallback((id: string) => {
-    const found = workers.find((w) => w.id === id);
-    const harness = found === undefined ? undefined : settingOf(found, "harness");
-    return harness === undefined ? undefined : harnessName(harness);
-  }, [workers]);
   const lookOf = useCallback((id: string) => {
     const found = workers.find((w) => w.id === id);
     return lookOfRow(found === undefined ? { id, name: id } : { id, name: displayName(found), icon: settingOf(found, "icon"), color: settingOf(found, "color") });
@@ -329,7 +322,6 @@ export function App() {
           nameOf={nameOf}
           lookOf={lookOf}
           isCoding={isCoding}
-          harnessOf={harnessOf}
           onFire={() => fire(worker.id)}
           onOpen={openPopup}
           prefill={prefill?.sessionId === sessionId ? prefill : undefined}

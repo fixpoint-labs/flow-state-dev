@@ -4,9 +4,7 @@
  *
  * `Roster` lists a user's workers, reading the roster flow's `roster` view by
  * default; `BoardColumns` and `BoardList` draw one task board's tasks, and
- * `WorkerDetail` shows one worker. `workforceRenderers` draws the
- * conversation lines workforce writes (a message received or sent, a task
- * filed, a task's ending), for a registry's `data` slot. React is an optional peer: only this entry
+ * `WorkerDetail` shows one worker. React is an optional peer: only this entry
  * imports it, so a server-only app that imports the package root doesn't pull
  * it in.
  */
@@ -32,5 +30,4 @@ export {
   type PanelRowSource,
   type PanelItemSource,
   type PanelLiveSource,
-  workforceRenderers,
 } from "./components";

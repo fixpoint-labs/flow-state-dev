@@ -18,7 +18,7 @@ import { DirectoryProvider } from "../src/lib/directory";
 
 const render = (ui: ReactElement) => draw(ui, { wrapper: DirectoryProvider });
 import { CoordinatorRoute } from "../src/components/CoordinatorRoute";
-import { shiftManagerRenderers } from "../src/components/ToolLine";
+import { shiftManagerRenderers } from "../src/components/lines";
 import { knownWorkers, senderOf } from "../src/lib/conversation";
 import { toWorker } from "../src/lib/workers";
 

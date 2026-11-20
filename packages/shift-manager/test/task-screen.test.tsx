@@ -362,13 +362,10 @@ describe("the Session draws with Shift Manager's registry copies (ER-6)", () => 
     await screen.findByTestId("session", {}, { timeout: 10_000 });
     const drawn = (type: string) =>
       screen.queryAllByTestId("session-item").filter((el) => el.getAttribute("data-item-type") === type);
-    await waitFor(() => expect(drawn("tool_output").length).toBeGreaterThan(0), { timeout: 5_000 });
-    // The registry's message card, and the collapsible reasoning and tool cards.
+    await waitFor(() => expect(drawn("steps").length).toBeGreaterThan(0), { timeout: 5_000 });
+    // The registry's message card, and its tool group: one collapsible line for a run of thinking and calls.
     expect(drawn("message").every((li) => li.querySelector("[data-testid=message]") !== null)).toBe(true);
-    for (const type of ["reasoning", "tool_output"]) {
-      expect(drawn(type).length, type).toBeGreaterThan(0);
-      expect(drawn(type).every((li) => li.querySelector("[data-slot=collapsible]") !== null), type).toBe(true);
-    }
+    expect(drawn("steps").every((li) => li.querySelector("[data-testid=tool-group][data-slot=collapsible]") !== null)).toBe(true);
   }, 30_000);
 });
 

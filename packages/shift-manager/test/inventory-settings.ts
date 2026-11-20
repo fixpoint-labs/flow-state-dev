@@ -32,7 +32,6 @@ export const shiftManager: AppInventory = {
   screenTypes: {
     "src/gaps.ts": ["Gaps"],
     "src/components/TurnComposer.tsx": ["TurnSendState"],
-    "src/components/TurnLines.tsx": ["TurnLineActions"],
     "src/components/flow-state/attachments.tsx": [
       "AttachmentUploader", "AttachmentRefusal", "PendingAttachment", "AttachmentLimitOverrides", "UseAttachmentsOptions",
       "Attachments", "AttachmentPreviewProps", "AttachmentStripProps", "AttachButtonProps",
@@ -42,6 +41,7 @@ export const shiftManager: AppInventory = {
       "CodeBlockLanguageSelectorValueProps", "CodeBlockLanguageSelectorContentProps", "CodeBlockLanguageSelectorItemProps",
     ],
     "src/components/flow-state/connection-screen.tsx": ["ConnectionFailure"],
+    "src/components/flow-state/conversation-lines.tsx": ["LineContextValue", "ToolStep", "StepRun"],
     "src/components/flow-state/conversation.tsx": [
       "ConversationProps", "ConversationContentProps", "ConversationEmptyStateProps", "ConversationScrollButtonProps",
       "ConversationMessage", "ConversationDownloadProps",

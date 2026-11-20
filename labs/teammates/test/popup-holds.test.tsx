@@ -250,7 +250,7 @@ describe("accepting a coding task's review says where its work goes", () => {
 
   it("names where an accepted task's work landed on its line in the thread", () => {
     const landed = codingTask({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo", status: "completed", landed: { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: BRANCH, base: "main" } });
-    const { container } = render(<TaskCard task={landed} coding nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={() => {}} />);
+    const { container } = render(<TaskCard task={landed} coding nameOf={(id) => id} onOpen={() => {}} />);
     expect(container.querySelector("[data-task-landed]")?.textContent).toBe("PR #7");
   });
 });

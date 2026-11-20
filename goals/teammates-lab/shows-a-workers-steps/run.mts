@@ -35,7 +35,7 @@ import {
   type ModulePatch,
 } from "../../lib/index.mts";
 import type { ItemLine } from "@flow-state-dev/react";
-import { stepRun, stepsOf, type StepRun, type ToolStep } from "../../../labs/teammates/src/components/ToolRun.tsx";
+import { stepRun, stepsOf, type StepRun, type ToolStep } from "../../../labs/teammates/src/components/flow-state/conversation-lines.tsx";
 import { textOf } from "../../../labs/teammates/src/components/lines.tsx";
 import type { ConversationView } from "../../../labs/teammates/src/lib/conversation.ts";
 import { sleep, startTeammates } from "../lab.mts";

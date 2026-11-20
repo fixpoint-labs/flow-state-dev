@@ -36,5 +36,3 @@ export {
 } from "./BoardList";
 
 export type { PanelRowSource, PanelItemSource, PanelLiveSource } from "./reads";
-
-export { workforceRenderers } from "./lines";

@@ -53,7 +53,7 @@ describe("a failed turn's line", () => {
 
 describe("the line a failed turn draws", () => {
   const failed = (retryable: boolean) => linesOf([failure("e1", "r1", "The model refused the key.")], [{ id: "r1", status: "failed", retryable }])[0]!;
-  const draw = (line: ItemLine, retry?: (requestId: string) => Promise<void>) => drawLines([line], { workerName: "Lead", ...(retry ? { retry } : {}) });
+  const draw = (line: ItemLine, retry?: (requestId: string) => Promise<void>) => drawLines([line], { who: "Lead", ...(retry ? { retry } : {}) });
 
   it("names the worker and the reason, and Retry runs the line's turn again", async () => {
     const retried: string[] = [];

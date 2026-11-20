@@ -159,10 +159,11 @@ describe("a task's line in the conversation", () => {
     render(
       <TestProvider server={scriptedServer({ speed: 0.05 })} client={server.client}>
         <Follower />
-        <Conversation worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => true} harnessOf={() => "Cursor"} onFire={async () => {}} onOpen={() => {}} />
+        <Conversation worker={worker} sessionId="s1" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => true} onFire={async () => {}} onOpen={() => {}} />
       </TestProvider>,
     );
-    const card = screen.getByRole("button", { name: "Coding task: Fix the typo, on Cursor" }).closest("[data-entry=task]")!;
+    // Which worker codes, and on what, is the roster's: the app's own roster watch shares that read, so the card has it on the page as it is filed.
+    const card = (await screen.findByRole("button", { name: "Coding task: Fix the typo, on Cursor" }, POPUP_READ)).closest("[data-entry=task]")!;
     expect(card.querySelector("[data-task-status]")?.textContent).toBe("running");
     // The row arrives, then ends: the same card reads it.
     server.board.s1!.push(codingTask({ id: "t1", assignee: "teammates.cursor", harness: "cursor", title: "Fix the typo", status: "completed" }));
@@ -172,7 +173,7 @@ describe("a task's line in the conversation", () => {
 
   it("uses its panel row's word and colour", () => {
     for (const t of [TASKS[1]!, TASKS[2]!, TASKS[0]!]) {
-      const { unmount } = render(<TaskCard task={t} nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} onOpen={() => {}} />);
+      const { unmount } = render(<TaskCard task={t} nameOf={(id) => id} onOpen={() => {}} />);
       const word = document.querySelector("[data-task-status]")!;
       const asks = t.asks.length > 0;
       expect(word.textContent).toBe(asks ? "waiting on you" : t.status === "errored" ? "failed" : "running");

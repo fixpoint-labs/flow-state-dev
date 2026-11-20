@@ -7,7 +7,7 @@
  */
 import { CODER_FLOW } from "@flow-state-dev/harness-manager/browser";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
-import { useAppClient } from "../app";
+import { useAppClient } from "../app/provider";
 
 /** The name the user reads: its own, else its id's last part. */
 export const displayName = (w: RosterEntry): string => w.name ?? w.id.slice(w.id.lastIndexOf(".") + 1);
