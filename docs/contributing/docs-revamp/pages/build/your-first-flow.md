@@ -197,7 +197,7 @@ export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate, {
 export const dynamic = "force-dynamic";
 ```
 
-The flow has no sign-in yet, so `allowUnauthenticated` lets the handler serve it outside production, and in production it refuses every request until the flow checks who is calling: [Auth and tenancy](../concepts/auth-and-tenancy.md). In this layout `@/` is the project root. Write the folder name with double brackets; the [HTTP API reference](../reference/http-api.md) says why. [Add to an existing app](../start/add-to-an-existing-app.md) covers the route in full.
+The flow has no sign-in yet, so `allowUnauthenticated` lets the handler serve it outside production, and in production it refuses every request until the flow checks who is calling: [Auth and tenancy](../concepts/auth-and-tenancy.md). A Vercel preview runs with `NODE_ENV` set to `production`, so it refuses too. In this layout `@/` is the project root. Write the folder name with double brackets; the [HTTP API reference](../reference/http-api.md) says why. [Add to an existing app](../start/add-to-an-existing-app.md) covers the route in full.
 
 ```tsx title="app/page.tsx"
 "use client";

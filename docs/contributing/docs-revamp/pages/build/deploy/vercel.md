@@ -105,7 +105,7 @@ const myFlow = defineFlow({
 export default myFlow();
 ```
 
-A request without the secret in an `Authorization: Bearer` header is refused, and the resolver throws on an empty secret when the module loads. For signed-in users, write `resolvePrincipal` around your own session, as [Auth and tenancy](../../concepts/auth-and-tenancy.md) shows.
+A request with a missing or wrong secret in its `Authorization: Bearer` header is refused, and the resolver throws on an empty secret when the module loads. For signed-in users, write `resolvePrincipal` around your own session, as [Auth and tenancy](../../concepts/auth-and-tenancy.md) shows.
 
 ## 5. Set environment variables
 

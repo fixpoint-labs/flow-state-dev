@@ -79,7 +79,7 @@ const helloChat = defineFlow({
 export default helloChat();
 ```
 
-A request without the secret in an `Authorization: Bearer` header is refused, and the resolver throws on an empty secret when the module loads. For signed-in users, write `resolvePrincipal` around your own session, as [Auth and tenancy](../../concepts/auth-and-tenancy.md) shows.
+A request with a missing or wrong secret in its `Authorization: Bearer` header is refused, and the resolver throws on an empty secret when the module loads. For signed-in users, write `resolvePrincipal` around your own session, as [Auth and tenancy](../../concepts/auth-and-tenancy.md) shows.
 
 ---
 
@@ -162,8 +162,7 @@ Past a first deploy, use SAM, CDK, or Terraform with the same pieces: a Node 22 
 # Use your Function URL, then:
 
 # 1. Health check
-curl https://YOUR_URL.lambda-url.REGION.on.aws/healthz \
-  -H "Authorization: Bearer $FLOW_API_SECRET"
+curl https://YOUR_URL.lambda-url.REGION.on.aws/healthz
 
 # 2. List flows
 curl https://YOUR_URL.lambda-url.REGION.on.aws/api/flows \
@@ -187,7 +186,7 @@ Events should arrive one at a time. If they arrive in one burst, see [SSE arrive
 
 ### Cold starts: the first request after idle
 
-The first request after idle is slower, but it does not fail. The API waits for the store to finish starting and then answers. It returns a 500 only if store startup failed for good. `/healthz` behaves differently: it answers 503 `{ "status": "initializing" }` until the store is ready, so don't point a startup probe at it and treat 503 as an outage.
+The first request after idle is slower but does not fail. The API waits for the store to finish starting and then answers. It returns a 500 only if store startup failed for good. `/healthz` behaves differently: it answers 503 `{ "status": "initializing" }` until the store is ready, so don't point a startup probe at it and treat 503 as an outage.
 
 That first request loads the bundle and starts the store, and by default `postgresStores` creates the schema, idempotently, on every cold start. To skip that cost, create the schema once as a deploy step, then pass `skipSchemaInit: true` in the handler:
 
