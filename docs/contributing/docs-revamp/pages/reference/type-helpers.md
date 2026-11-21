@@ -248,7 +248,7 @@ The type-only fields `sessionStateType`, `resourcesType`, `targetStatesType`, `s
 
 Limits:
 
-- A schema supplied only through a preset or a config resolver merges at runtime and adds nothing to the types. Declare it at the capability's top level to type it.
+- A block state schema (`stateSchema`, `sequencerStateSchema`) supplied only through a preset or a config resolver merges at runtime and adds nothing to the types. Declare it at the capability's top level to type it. A scope state schema supplied there has no effect: see [What each part installs](./capabilities.md#what-each-part-installs).
 - Request, user and org state are never reflected.
 - A dependency's schemas install at runtime, including its `fns`, and contribute nothing to the block's types. Redeclare them on the outer capability to type them.
 - A dynamic entry contributes nothing: `InferCapabilities` of a dynamic-only list is `{}`.

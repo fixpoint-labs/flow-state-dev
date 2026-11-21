@@ -81,7 +81,7 @@ What a kit refuses is on [Kits and slots](./kits.md). The kit contract is there 
 
 | Field | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `onError` | `(error: Error, context: { method: string; path: string }) => void` | none | The HTTP-level sink. Called when a route throws an error nothing handled, with the upper-case method and the request path. The response is sent regardless: status from the error, body `{ error: message }`. |
+| `onError` | `(error: Error, context: { method: string; path: string }) => void` | none | The HTTP-level sink. Called when a route throws an error nothing handled, with the upper-case method and the request path. After it returns, the response is sent: status from the error, body `{ error: message }`. Keep it from throwing: a throw from the callback escapes the router's handler, and no error response is sent. |
 | `errorCapture` | `ErrorCaptureHandler` | none | A block-aware sink. See [Errors](./errors.md). |
 | `onBackgroundWork` | `(promise: Promise<unknown>) => void` | none | Keeps work that outlives the response alive. Pass the platform's post-response primitive: on Vercel with Next.js, `(p) => after(() => p)` from `next/server`. |
 | `adapters` | `InboundTransportAdapter[]` | none | Custom inbound transports mounted beside the built-in HTTP adapter and the scheduled endpoint. Their routes match before the canonical ones. Two adapters declaring one method and path throw `TransportRouteCollisionError` at start. |
@@ -218,7 +218,7 @@ After `dispose()`, `getRouter()`, `ready()` and `getRuntime()` throw `FlowStateD
 
 1. Stops the scheduler and lets a running tick settle.
 2. Waits for an in-flight start to settle. A failed start is ignored.
-3. Disposes the router this handle built: stops the stale-request and durability sweepers, waits up to 10 s for requests that are finishing, and aborts the rest and logs how many were cut off. Then it calls each transport adapter's `stop` hook in reverse order. `FlowState.dispose()` takes no argument, so the wait is 10 s. Under `serve()`, the wait is whatever remains of its grace window.
+3. Disposes the router this handle built: stops the stale-request and durability sweepers, and waits up to 10 s for two kinds of request: those a due wake started, and those whose request-end hooks have not run yet. When the time runs out, it aborts the wake-started requests and logs how many, and logs how many requests owed request-end hooks, without aborting them. Other requests in flight are not waited for, so let them finish before you close the stores. Then it calls each transport adapter's `stop` hook in reverse order. `FlowState.dispose()` takes no argument, so the wait is 10 s. Under `serve()`, the wait is whatever remains of its grace window.
 4. Waits for dispatched runs started in this process, up to `dispatchDrainTimeoutMs`. The drain's rules are on [Background work](./background-work.md).
 5. Waits up to 5 s for the startup recovery sweep. This value is fixed.
 6. Closes the job queue's processing handle, which waits for jobs this process already claimed (that wait is not bounded by `dispatchDrainTimeoutMs`), then calls the adapter's `close()`.

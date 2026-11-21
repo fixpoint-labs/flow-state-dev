@@ -46,6 +46,8 @@ Written by `docs-writer` (sonnet), 7608 words. Scenario: The support desk: a `su
 - After the final fact-check fix, page sha256 285f4c35c530: exit 0.
 - After the loop (review): the final fact check ran on the closed page. The open findings were taken in one writer round: each identity refusal is paired with its `reason` code, including `unminted-config` for a flow that takes config passed without its config (packages/engine/src/registry/errors.ts:8-23; flow-registry.ts:795-866); passing `worker` or `dispatcher` is shown as not a field, with the real message pointing to `jobQueue` and `runner` (packages/engine/src/flowstate/createFlowState.ts:373-377; packages/engine/src/transports/runner.ts:190-195); the storage heading is "What the stores persist"; the `maxDebtAgeMs` parenthetical is cut; the opening says there is no second config file, apart from a few environment variables; `dispose()` releases every declared profile's adapters while start opens only the active one's (createFlowState.ts:229-238, :565-571, :1012-1014). The fact sheet's two short paths under packages/vercel/src are written out in full so validate-model-strings passes. The name stays "kit" throughout. check-docs-page, lint-brand (parses as MDX), retired terms and model strings pass. 3601 words. Page sha256 8506346dca41.
 
+- After the loop (review): two fixes from the Greptile review, both checked against the code. `onError` is called before the error response is built, so a throw from it escapes the handler and no response is sent (packages/engine/src/routes/http-handlers.ts:977-986). The router's dispose waits only for requests a due wake started and requests that owe request-end hooks; on timeout it aborts the first and logs the second without aborting them, and other in-flight requests are not waited for (packages/engine/src/routes/createFlowApiRouter.ts:542-570, 736-752; packages/engine/src/execution/request-end-hooks.ts:58-70). 3668 words. Page sha256 92b10b285451.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 c4d4f35afcc0, and the 29 Reference row(s) pass 6 moved.
@@ -65,6 +67,8 @@ Final fact check of the page as it closed, sha256 6726a59441ed: 7 untrue, fixed 
 - The active profile's `primary` is stored in the profile's adapter: "memory, `.fsdev/data` files, a SQLite file or Postgres". Untrue: `filesystemStores` requires a `rootDir` option and keeps data under that folder. There is no default `.fsdev/data`. Only the CLI's no-config local store uses `.fsdev/data`. (docs/contributing/docs-revamp/pages/reference/runtime.md:276 (true per packages/engine/src/stores/index.ts:283-303))
 - `.fsdev/data/fsdev.db` is used when `fsdev run`, `dev` or `chat` finds no `fsdev.config.ts`, as one file. Untrue: Four config filenames are searched, in this order: `fsdev.config.ts`, `.mts`, `.js`, `.mjs`. The no-config store is SQLite at `.fsdev/data/fsdev.db` only by default. With `--store filesystem`, `run` and `dev` keep JSON files under `.fsdev/data` instead. `--store` is refused when a config is loaded. (docs/contributing/docs-revamp/pages/reference/runtime.md:277 (true per packages/fsdev/src/load-config.ts:26-31 and packages/fsdev/src/local-store.ts:1-60))
 - Re-run after the review edit: each changed claim was checked by the writer against the code it cites; the reason union and dispose loop were re-read in review. No untrue claim remains open.
+
+- Re-run after the review edit: both changed claims were read against the cited code; no untrue claim remains open.
 
 ## 6 · Depth pass
 
