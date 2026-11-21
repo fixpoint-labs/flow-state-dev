@@ -423,6 +423,9 @@ function TraceNodeView({
       node.traceItem?.type === "block_trace" && node.traceItem.status === "failed"
         ? node.traceItem.error?.message
         : undefined;
+    // A refusal keeps its reason on the row, in ink rather than red; the
+    // detail panel holds the whole error.
+    const refused = node.blockStatus === "refused";
     const traceErrorSummary =
       node.traceItem?.type === "block_trace" && node.traceItem.status === "failed"
         ? errorSummary(node.traceItem.error?.details)
@@ -485,14 +488,19 @@ function TraceNodeView({
               </span>
             )}
             {node.phase === "sideChain" && <SideChainBadge />}
+            {refused && (
+              <span className={cn(TAG, "border-fs-ink/45 text-fs-ink3")} title="Refused on a precondition; the request went on">
+                refused
+              </span>
+            )}
             {traceErrorSummary && (
-              <span className={cn(TAG, "border-fs-red text-fs-red normal-case tracking-normal")}>
+              <span className={cn(TAG, refused ? "border-fs-ink/45 text-fs-ink3" : "border-fs-red text-fs-red", "normal-case tracking-normal")}>
                 {traceErrorSummary}
               </span>
             )}
             {traceError && (
               <span
-                className="font-fs-mono text-[10.5px] text-fs-red truncate max-w-[20rem]"
+                className={cn("font-fs-mono text-[10.5px] truncate max-w-[20rem]", refused ? "text-fs-ink3" : "text-fs-red")}
                 title={traceError}
               >
                 {traceError}

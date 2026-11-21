@@ -194,8 +194,11 @@ export type BoardHostOptions = {
   judgment?: MockGeneratorInstance;
   /** The agent worker's scripted model. */
   agentAnswer?: MockGeneratorInstance;
-  /** The options the judgment turn is built with: the agent worker flow's catalog and capabilities. */
-  agent?: CoordinatorFlowOptions["agent"];
+  /**
+   * The options the judgment turn is built with: the agent worker flow's catalog and capabilities.
+   * A function is handed the host's installation, for tools built on it.
+   */
+  agent?: CoordinatorFlowOptions["agent"] | ((installation: WorkerInstallation) => CoordinatorFlowOptions["agent"]);
   /** The coordinator flow takes the routine verbs as actions (`routines: true`). */
   coordinatorRoutines?: boolean;
   /** The `agent` flow's `answerAgain` (FIX-2159), which the coordinator flow doesn't take. */
@@ -320,16 +323,17 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   });
   const tasker = taskerFlow(installation, runs, options.holds ?? new Map());
   const helper = helperFlow(installation);
+  const agentOptions = typeof options.agent === "function" ? options.agent(installation) : options.agent;
   const agent = defineAgentWorkerFlow({
     installation,
-    ...(options.agent ?? {}),
+    ...(agentOptions ?? {}),
     ...(options.answerAgain === undefined ? {} : { answerAgain: options.answerAgain }),
     ...(options.agentUses === undefined ? {} : { uses: options.agentUses(installation) })
   });
   const coordinator = defineCoordinatorFlow({
     installation,
     routeModel: "typesafe-ai/jev",
-    ...(options.agent === undefined ? {} : { agent: options.agent }),
+    ...(agentOptions === undefined ? {} : { agent: agentOptions }),
     ...(options.coordinatorRoutines === true ? { routines: true } : {})
   });
   flows = {
