@@ -276,6 +276,36 @@ Retention runs only when a request on the session ends `completed`, so a session
 
 Who owns each stored part, who can see it, where it is stored and how many exist are in [Stores](./stores.md#what-each-stored-part-is). A copy's `config` is never stored: see [Settings a copy carries](#settings-a-copy-carries).
 
+## State a block declares
+
+A block can declare session, user and org state fields (`sessionStateSchema`, `userStateSchema`, `orgStateSchema`). `defineFlow` merges every declaration of each scope, from the flow, each block it reaches and each capability they use, and throws when two disagree on a field. A read of the scope's state fills in the merged schema's defaults. The merged schema does not check writes.
+
+The error is `ScopeStateSchemaConflictError`, exported from `@flow-state-dev/core/helpers`.
+
+| Field | Holds |
+|---|---|
+| `conflict` | `"type"` or `"default"` |
+| `path` | The field, such as `session.state.mode` |
+| `first`, `second` | The two declarers |
+| `detail` | How they disagree, naming both |
+
+```text
+Flow "support": session.state.mode is declared twice with different defaults: block "planner" defaults it to "plan" and block "writer" to "write". Declare one default, or share one schema for the field.
+```
+
+A type conflict reads `... is declared twice with different types: block "a" types it as string and block "b" as number. Declare one type, or share one schema for the field.` It applies at any depth, and to a field typed `.nullable()` on one side only.
+
+Two declarations agree, and do not conflict, when:
+
+- they are the same schema object;
+- only one of them names the field, at any depth, and the fields are merged;
+- one adds outer wrappers (`.default()`, `.optional()`, `.readonly()`) to the other;
+- both give the same static default.
+
+They are refused when they give two different types (`.nullable()` is part of the type), two different static defaults, or wrappers that differ any other way. Two declarations agree on a default factory only when it is the same function.
+
+A block or capability may declare a default factory only when it restates the flow's own session factory. In user and org scope, use a static default.
+
 ## Running several copies of one flow
 
 `cardinality` decides how many copies a definition runs as.

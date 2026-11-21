@@ -142,6 +142,24 @@ export const gatherContext = sequencer({
 
 `retry` on a block is applied only to the block an action runs. A step inside a sequencer runs once whatever its `retry` setting says. On an action's root block, a `.rescue()` handler runs after the last retry attempt. For an error the retry policy treats as non-retryable, it runs at once. Inside a sequencer, a step's `.rescue()` runs on its first failure. See [Errors](./errors.md).
 
+## Reading earlier results
+
+A later step reads an earlier block's result in the current sequencer run.
+
+| Call | Returns |
+|---|---|
+| `ctx.getBlockOutput(block)` | The output when the block completed, else `undefined`. |
+| `ctx.getBlockResult(block)` | `{ status: "not_started" }`, `{ status: "running" }`, `{ status: "completed", output }` or `{ status: "failed", error }`. |
+| `ctx.wasRescued(block)` | Whether a rescue handler recovered it. |
+
+Under `.loopBack` the most recent run of a name wins.
+
+## State inside steps, loops and fan-out
+
+A block with a `stateSchema` starts each run from an initial value: the schema parsed from `undefined`. If that fails, parsed from `{}`. If that also fails, `{}`. A schema with a required field that has no default starts as `{}`, and its defaulted fields are not filled either.
+
+Each pass of a `.loopBack` and each iteration of a `.forEach` is a separate scope, so a step's `ctx.self` starts fresh each time. A tool call is its own scope too. The sequencer that owns the loop keeps one state across every pass. A loop body that must remember across passes writes on the loop owner through `ctx.parent` or `ctx.sequencer`. `forEach` iterations do not see each other's state.
+
 ## Connectors
 
 A connector is a function `(input, ctx) => value | Promise<value>`. It runs before a block and turns the previous step's output into the block's input.

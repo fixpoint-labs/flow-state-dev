@@ -48,6 +48,8 @@ Written by `docs-writer` (sonnet), 6276 words. Scenario: A support desk (flow su
 
 - After the loop (review): the Greptile review on the PR. The example's SQLite filename is `support-desk.sqlite` in the working directory, since `sqliteStores` opens the file directly and creates no parent folder (packages/store-sqlite/src/registry.ts:60,95-107). 5240 words. Page sha256 945e01815266.
 
+- After the loop (Blocks depth pass): the Blocks page moved its mechanism here, the page that owns it: three entries in the what-is-kept table: sequencer checkpoints, a block's recorded output and tool-cache entries. A read-only fact check of the moved lines found two untrue claims across the receiving pages and eight lines that repeated or contradicted text already on a page; all were fixed. check-docs-page and lint-brand (parses as MDX) pass. 5359 words. Page sha256 37c0740eab54.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 7da32861275d, and the 28 Reference row(s) pass 6 moved.
@@ -56,6 +58,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 7da
 - Reference row 10: "A session id is the whole key ... reading it returns the other user's record (or `403` where authentication is on)." Untrue: With sign-in on, a session read by another user answers 404 (`hiddenSessionResponse`), exactly as an unused id does, so that a 403 does not reveal the id is in use. A 403 ("Caller's organization does not own the requested resource") is only for the same user acting under a different organization than the one the session is bound to. Only an app with no sign-in returns the other user's record. (/home/user/flow-state-dev/packages/engine/src/routes/route-auth.ts:612-620 and :675-681) The row is recorded corrected.
 
 - Re-run after the review edit: `createSQLiteStores` passes the filename to `better-sqlite3` and makes no directory. True.
+
+- Re-run after the review edit: the moved content was fact-checked against the code (about 95 claims); the fixes were checked against the code they cite. No untrue claim remains open.
 
 ## 6 · Depth pass
 

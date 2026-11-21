@@ -41,6 +41,8 @@ Written by `docs-writer` (sonnet), 2668 words. Scenario: The support flow's look
 
 - After the loop (review): the pass 9 gap, taken by hand. The retry-route row now says the original record stays `failed`, the new request names it in `retryOf`, an `in_progress` request answers `409`, a caller who does not own it gets the unknown-request `404`, and only `http`, `mcp`, `scheduled` or a named source can be re-run (packages/engine/src/routes/recovery-routes.ts:72-166). The BullMQ row says a plain throw is marked `retryable: false`, so its job fails at once (packages/bullmq/src/job-processor.ts:519-521; default `attempts` 3 at packages/bullmq/src/retry.ts:12). The brand lint on the page: 0 findings. 2231 words. Page sha256 b62e406fe5a1.
 
+- After the loop (Blocks depth pass): the Blocks page moved its mechanism here, the page that owns it: block-hook, rescue and retry tables (`onCompleted`/`onErrored`, rescue, the retry policy), plus a schema-refusal and `sequencer_schema_mismatch` entry. The repeated "What is retried" entry and rescue bullet were cut; the request-level `onErrored` line is scoped (packages/core/src/blocks/internal/build-block.ts:381-385); the stale pointer to Blocks now points to this page's Retry section; the Retry table was split in two to stay within six entries. A read-only fact check of the moved lines found two untrue claims across the receiving pages and eight lines that repeated or contradicted text already on a page; all were fixed. check-docs-page and lint-brand (parses as MDX) pass. 2907 words. Page sha256 a2a13200b554.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 919a90e581bc, and the 18 Reference row(s) pass 6 moved.
@@ -55,6 +57,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 919
 Final fact check of the page as it closed, sha256 eb5c4d55d605: 1 untrue, fixed in a last round.
 
 - In the errorCapture events table: "A hook that throws | An event for the hook block. The request's outcome is unchanged." Untrue: Only the failure-path hooks leave the outcome unchanged: `action.onErrored`, `request.onErrored` and the `request.onFinished` that runs after a failure all run through `runObserverSafely`, which swallows the throw. The success-path hooks (`request.onStarted`, `action.onCompleted`, `request.onCompleted`, and `request.onFinished` after success) run through `runObserver`, which rethrows the hook's error. The request then fails with it, the leaf event names the hook block, and a `final` event follows (a startup failure in `onStarted` sends only the `final` event). This also contradicts the page's own section "A hook that throws after the action returned". (packages/engine/src/execution/runAction.ts:824-875 (runObserver and runObserverSafely), 2400-2403 (onStarted), 2813-2824 (onCompleted), 2964-2969 (onFinished on success), 3298-3316 (onErrored and failure-path onFinished via runObserverSafely))
+
+- Re-run after the review edit: the moved content was fact-checked against the code (about 95 claims); the fixes were checked against the code they cite. No untrue claim remains open.
 
 ## 6 · Depth pass
 

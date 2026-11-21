@@ -579,6 +579,37 @@ A `Place` has `read(path): Promise<string | null>`, `write(path, content): Promi
 
 `recordBranchPullRequests(ctx, options)` records the pull requests a checkout's branch has. Its options and results are on [Harness runs](./harness-runs.md).
 
+## Tool hooks
+
+`defineFlow({ tools: { onToolStarted, onToolCompleted, onToolErrored } })`, or a generator's `flowTools`. Each is a function `(event, ctx) => void` or a block.
+
+| Hook | Fires | Event |
+|---|---|---|
+| `onToolStarted` | Once per tool call, before the tool runs | `{ toolName, input }` |
+| `onToolCompleted` | After a successful call, after any retries | `{ toolName, input, output }` |
+| `onToolErrored` | Once per call that ends in a throw, after every retry attempt is used and before the error propagates | `{ toolName, input, error }` |
+
+The event type is `ToolLifecycleEvent`: `{ toolName, input, output?, error?, cached? }`. A cache hit fires started and completed with `cached: true`. `onToolErrored` never fires on a hit, because errors are not cached. Retry and timeout defaults for tools are on [Flows and actions](./flows.md).
+
+## Caching a tool's result
+
+`cacheable` on a block memoizes its result when the block is installed as a tool of a generator, and only when a cache store is in scope. Without a store, the tool runs on every call. `cacheable: true` is shorthand for `{}`. `BlockCacheableConfig`:
+
+| Field | Type | Default | What it does |
+|---|---|---|---|
+| `ttl` | `number` (ms) | the store's default, 5 minutes | `0` never serves a hit, and logs `[tool-cache] cacheable: { ttl: 0 } disables caching for this tool` on every call unless `NODE_ENV` is `production`. An entry older than `ttl` is not served. |
+| `scope` | `"run" \| "request" \| "session"` | the store's `defaultScope`, `"run"` | Part of the cache key, `<scope>:<id>:<tool>:<args>`. `run` and `request` key on the request id. `session` keys on the session id. |
+| `keyFn` | `(input, ctx) => string` | recursive key-sorted JSON of the arguments | A custom key. Arguments holding a function, symbol, bigint, non-finite number or class instance have no default key: the call is not cached and a warning is logged. |
+| `cacheIf` | `(output, input) => boolean` | cache every success | A `false` skips the write. |
+
+An entry lives as long as its store. A capability's store belongs to one request, so a `session` scope does not carry entries to another request unless the app binds one store across requests with `bindToolCacheStore`.
+
+- **Where a store comes from.** `createToolCacheCapability(options?)` in a block's `uses`, `bindToolCacheStore(ctx, store)` with `createInMemoryToolCacheStore(options?)`, or a task board. The options are `defaultTtl` (5 minutes), `maxEntries` (5000, least recently used evicted first), `defaultScope` (`"run"`) and `name` (`"toolCache"`).
+- **A task board** installs a store for each run unless `toolCache: false`. `toolCache: { defaultTtl, maxEntries, defaultScope, enabled }` tunes it. Only tools that declare `cacheable` use it, and the store is dropped when the board's run ends.
+- **Errors are never cached.**
+- **Identical calls share one run** when the second starts after the first has begun: it waits for the first and gets its result, or its error. Two calls issued in the same tick both run.
+- **A hit** emits the tool's `tool_output` with `cached: true` and `cacheAgeMs` (the entry's age in milliseconds), plus `sourceTask: { collectionId, taskId }` when the entry came from another task on the board, and fires `onToolStarted` and `onToolCompleted` with `cached: true`. The output is served verbatim from the store.
+
 ## What is stored
 
 Search, fetch and crawl store nothing; results are returned to the generator.
@@ -591,4 +622,5 @@ Search, fetch and crawl store nothing; results are returned to the generator.
 | `bashSession` singleton (`sandboxId`, `provider`, `lastSyncedAt`, `workingDirectory`) | The resource you pass to `createBashTool` | Whoever can read that resource | That resource's store, written only with `persist: true` and a provider that returns an id (Vercel: the sandbox id; MOAT: the run name) | One |
 | Projection ownership and claims | The projection and the operation | In-process | Memory. Claims are released at the end of each flush or put | One ownership record per projection |
 | MOAT container and `moat.yaml` | The host operator's machine | The operator (`moat list`) and the framework process | The container runtime; `moat.yaml` in the workspace and under `<os tmpdir>/fsdev-moat/<runName>` | One per session by default; 50 `fsdev-*` runs kept |
+| Tool-cache entry | The store: one request, or one task-board run | Any generator in that request or run that calls the same tool with the same arguments. The `tool_output` carries `cached`. | In memory, a least-recently-used map | At most `maxEntries` (default 5000) per store, one per `(scope, id, tool, arguments)`. Dropped with the store |
 | MCP connections and catalog | The manager | In-process | Memory. `close()` clears it | One connection per server |

@@ -48,6 +48,8 @@ Written by `docs-writer` (sonnet), 1920 words. Scenario: The `support` flow: ses
 
 - After the loop (review): the final fact check found one untrue claim, fixed in the loop's last round: block state is not "never persisted"; a sequencer's state is checkpointed and restored on resume, except `transientSlot()` fields (packages/engine/src/context/createExecutionContext.ts:4114-4127). The six open editor findings were taken in one writer round: the column is now "Retries on conflict", explained once in plain words; "execution" is replaced by "request" or "one run of its block", and `ConcurrentModificationError` on request state is scoped to a second run of the same request (packages/engine/src/stores/state-container.ts:98-108); `deleteStateRecord` never retries, and where the store has no one-key delete it writes the whole record once and can lose a race (packages/engine/src/stores/scope-persist.ts:192-207); `withOutcome`'s signature is given (packages/core/src/helpers/update-state-with.ts:75-78); the repeated sentence is cut and the `defineFlow` note moved. check-docs-page, lint-brand (parses as MDX), retired terms and model strings pass. 1941 words. Page sha256 344d8c5dd5f9.
 
+- After the loop (Blocks depth pass): the Blocks page moved its mechanism here, the page that owns it: a `transientSlot` section. Its sentences repeating the ordering, timeout and checkpoint lines were cut; what is new stays. A read-only fact check of the moved lines found two untrue claims across the receiving pages and eight lines that repeated or contradicted text already on a page; all were fixed. check-docs-page and lint-brand (parses as MDX) pass. 2010 words. Page sha256 d23b9ca90976.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 903b0ecd3e3e, and the 9 Reference row(s) pass 6 moved.
@@ -60,6 +62,8 @@ Final fact check of the page as it closed, sha256 189c396ac63b: 1 untrue, fixed 
 - Block state lives for one execution of its block and is gone when that execution finishes. It is never persisted, and no other request can see it. (Ordering-by-scope section, applied to ctx.sequencer and ctx.self.) Untrue: Sequencer state is written into durable sequencer checkpoints. A resumed continuation restores it from the checkpoint, and only fields marked transientSlot() are left out of the checkpoint and reset to their defaults. So ctx.sequencer state is persisted across a suspension and resume, and it is not gone when the first execution stops. The 'never persisted' claim holds for transientSlot fields and for a handler's own ctx.self, which is not in the checkpoint. It does not hold for all block state. The never-persisted claim is untrue for non-transient sequencer fields. (docs/contributing/docs-revamp/pages/reference/state-operations.md:161 (code: packages/engine/src/context/createExecutionContext.ts:4114-4127; packages/engine/src/execution/runAction.ts:2199,2223; docs/architecture/state-and-scopes.md:129))
 
 - Re-run after the review edit: each changed claim was checked against the code it cites by the writer; the signature and the scope-persist fallback were re-read in review. No untrue claim remains open.
+
+- Re-run after the review edit: the moved content was fact-checked against the code (about 95 claims); the fixes were checked against the code they cite. No untrue claim remains open.
 
 ## 6 · Depth pass
 

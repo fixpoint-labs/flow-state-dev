@@ -51,6 +51,8 @@ Written by `docs-writer` (sonnet), 5418 words. Scenario: The `support` flow: `ha
 - After the loop (review): the Greptile review on the PR. The 30 s silence row covers Postgres with a live-tail pool too (packages/store-postgres/src/request-store.ts:781-787) and names `LIVE_TAIL_LIVENESS_MS` (packages/engine/src/streaming/live-tail-liveness.ts:9-15). The after-a-suspension row resumes with `Last-Event-ID: <requestId>:N`, since a bare number is ignored (packages/engine/src/streaming/resume.ts:100-116). 5215 words. Page sha256 0633edeff1d5.
 - After the loop (review): the two review edits above merged, both kept. check-docs-page and lint-brand pass. 5351 words. Page sha256 be2622d4490e.
 
+- After the loop (Blocks depth pass): the Blocks page moved its mechanism here, the page that owns it: one entry: a `state_change` from block state has `scope: "block_instance"` and `blockInstanceId` (packages/engine/src/context/scope-emit.ts:19-27). The repeated visibility and storage halves were cut; `persistStateChanges` stays off the page, as this record decided earlier. A read-only fact check of the moved lines found two untrue claims across the receiving pages and eight lines that repeated or contradicted text already on a page; all were fixed. check-docs-page and lint-brand (parses as MDX) pass. 5360 words. Page sha256 607b309cfb9f.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 f3553a830ff7, and the 22 Reference row(s) pass 6 moved.
@@ -59,6 +61,8 @@ No untrue claim found.
 
 - Re-run after the review edit: the moved claims checked against packages/client/src/stream-client/streams.ts (`DEFAULT_DEDUP_WINDOW_SIZE = 1000` at :39; `lastEventId` ignored when `startingAfter` is set at :23) and packages/client/src/client.ts:1059 (`starting_after` on later connections). No untrue claim open.
 - Re-run after the review edit: the Postgres live-tail path takes the same liveness timeout, and `LIVE_TAIL_LIVENESS_MS` overrides it; a `Last-Event-ID` must carry the request id. Both true.
+
+- Re-run after the review edit: the moved content was fact-checked against the code (about 95 claims); the fixes were checked against the code they cite. No untrue claim remains open.
 
 ## 6 · Depth pass
 

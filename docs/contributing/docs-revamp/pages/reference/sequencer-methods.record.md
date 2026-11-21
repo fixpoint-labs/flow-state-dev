@@ -48,6 +48,8 @@ Written by `docs-writer` (sonnet), 2683 words. Scenario: A support desk: handleT
 
 - After the loop (review): the final fact check found three untrue claims, fixed in the loop's last round: `onTaskChangeFor` is exported from `@flow-state-dev/orchestration/tasks`, not the package root (packages/orchestration/src/tasks/index.ts); `.doUntil()`/`.doWhile()` throw once the block has run 251 times (packages/core/src/blocks/sequencer.ts:1772-1813); `.map()`'s output type is the mapper's return type, with no tracked output schema. That fix left the banned word "still", which failed pass 4. The five open editor findings and the banned word were taken in one writer round: side-chain failure is qualified where it says it never fails the request (packages/engine/src/execution/request-side-chain-pool.ts:111-114; packages/orchestration/src/task-board/task-request.ts:472-485); `block_trace` is defined at first use as an item; suspension and resume are explained and linked; the task board is linked; the request does not finish until every side chain has settled (packages/engine/src/execution/runAction.ts:2774). check-docs-page, lint-brand (parses as MDX), retired terms and model strings pass. 2798 words. Page sha256 97c16e54cdf5.
 
+- After the loop (Blocks depth pass): the Blocks page moved its mechanism here, the page that owns it: "Reading earlier results" (`ctx.getBlockOutput`, `ctx.getBlockResult`, `ctx.wasRescued`) and "State inside steps, loops and fan-out". A read-only fact check of the moved lines found two untrue claims across the receiving pages and eight lines that repeated or contradicted text already on a page; all were fixed. check-docs-page and lint-brand (parses as MDX) pass. 2974 words. Page sha256 738caf45fd23.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 1ab2dd48551f, and the 15 Reference row(s) pass 6 moved.
@@ -64,6 +66,8 @@ Final fact check of the page as it closed, sha256 71c858a4dcd2: 3 untrue, fixed 
 - `.map(mapper)` ... Not a block: no `block_trace` row and no schema (the output type is `any`). Untrue: `.map()` is typed `map<TNext>(...)` and returns `SequencerDefinition<TInput, TNext, ...>`. The output type is the mapper's inferred return type, not `any`. What `.map()` lacks is a tracked output schema: it passes `undefined` as the new output schema. The "no `block_trace` row" part is correct. (packages/core/src/blocks/sequencer-methods.ts (map<TNext> signature, returns SequencerDefinition<TInput, TNext, ...>); packages/core/src/blocks/sequencer.ts:1459-1471; page line 64)
 
 - Re-run after the review edit: each changed claim was checked by the writer against the code it cites. No untrue claim remains open.
+
+- Re-run after the review edit: the moved content was fact-checked against the code (about 95 claims); the fixes were checked against the code they cite. No untrue claim remains open.
 
 ## 6 · Depth pass
 

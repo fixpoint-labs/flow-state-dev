@@ -46,6 +46,8 @@ Written by `docs-writer` (sonnet), 5910 words. Scenario: A support desk: flow `s
 
 - After the loop (review): the loop escalated before the final fact check ran on escalated pages, so it was run by hand on the page as it closed (about 55 claims). It found one untrue claim: a record with no recorded `flowId` does not always answer `409 migration-required`; one whose kind is a registered singleton is served as that singleton's (packages/engine/src/context/record-owner.ts:79-113). That paragraph is cut, which also takes the editor's diff-narrative finding. The four open editor findings are taken: an input attachment reference is written as given and reading it from a run that does not own the file throws `AttachmentUnavailableError` (packages/engine/src/blobs/attachments.ts:160-209); retention runs only when a request ends `completed` (packages/engine/src/execution/runAction.ts:2935-2956); runs of a coding-agent block do not count toward a token budget (packages/engine/src/execution/request-spend-ledger.ts). check-docs-page, lint-brand (parses as MDX), retired terms and model strings pass. 4825 words. Page sha256 985903929291.
 
+- After the loop (Blocks depth pass): the Blocks page moved its mechanism here, the page that owns it: a "State a block declares" section with the `ScopeStateSchemaConflictError` fields. The default-conflict message now carries its closing remedy sentence (packages/core/src/helpers/scope-state-merge.ts:86, :381-383). A read-only fact check of the moved lines found two untrue claims across the receiving pages and eight lines that repeated or contradicted text already on a page; all were fixed. check-docs-page and lint-brand (parses as MDX) pass. 5076 words. Page sha256 9864543a166d.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 e66f59aaf521, and the 29 Reference row(s) pass 6 moved.
@@ -55,6 +57,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 e66
 - Reference row 11: `unminted-config`: "A definition, not an instance, whose `configSchema` does not parse `{}`." Untrue: The registry refuses a singleton definition with no id when its `requiresConfig` is true. That covers a `configSchema` the empty bag does not satisfy, and also a block the flow reaches that requires settings the defaults do not supply. The error message names both causes. (/home/user/flow-state-dev/packages/engine/src/registry/errors.ts:68-72; /home/user/flow-state-dev/packages/engine/src/registry/flow-registry.ts:810-812) The row is recorded corrected.
 
 - Re-run after the review edit: each changed line was checked against the code it cites by the writer and the hand-run final fact check. No untrue claim remains open.
+
+- Re-run after the review edit: the moved content was fact-checked against the code (about 95 claims); the fixes were checked against the code they cite. No untrue claim remains open.
 
 ## 6 · Depth pass
 

@@ -162,6 +162,10 @@ On the built-in stores (in-memory, filesystem, SQLite and Postgres), the calls m
 
 Block state belongs to one run of its block and is not a scope record, so no other request can see it. A sequencer's state is written into its checkpoints, and a resumed run restores it from the latest one, except fields marked `transientSlot()`, which are left out and reset to their defaults. `ctx.self` state of a handler is not checkpointed and is gone when the handler finishes. A write has a time budget, queue wait plus mutator run time, and fails with an error whose `code` is `"SCOPE_MUTATION_TIMEOUT"` when it runs out. A mutator that timed out keeps running and commits if it finishes, so a caller that retries should make the write safe to repeat. The budget is `request.mutationTimeoutMs` in the flow definition, see [Flows and actions](./flows.md).
 
+## `transientSlot`
+
+`transientSlot(schema)` marks a state field. The field holds its value for the run and later steps read it. It emits no `state_change` and is left out of `state_snapshot`. In a patch that writes both transient and normal fields, the transient keys are stripped from the `state_change` delta and the rest persists. Apply it last in the schema chain. It works on any block's state, not only a sequencer's.
+
 ## The `state_change` item
 
 Each write that returns `true` emits one `state_change` item on the request's stream. The delta is what you passed, not what the store holds afterwards.
