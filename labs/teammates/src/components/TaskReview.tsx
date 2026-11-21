@@ -59,7 +59,7 @@ export function checkLines(review: Pick<ReviewDetail, "checks">, report: RunRepo
 }
 
 /** How sure the judge is, in a word. */
-export const confidenceWord = (confidence: number) => (confidence >= 0.85 ? "high" : confidence >= 0.6 ? "medium" : "low");
+const confidenceWord = (confidence: number) => (confidence >= 0.85 ? "high" : confidence >= 0.6 ? "medium" : "low");
 
 /** The verdict card's words and tone. Exported for its test. */
 export interface Verdict {
