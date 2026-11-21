@@ -1,0 +1,74 @@
+<svg viewBox="0 0 940 432" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. In the box, a feature followed as one workflow on its task: a phase on each step, set at filing and editable until it starts; a task's declared phases in order, written by the run holding it through reportProgress; workflowView, one read giving phases, steps, step N of M, the current phase, what's next and approvals waiting, a filed step's status from its own row; defineWorkflow, with start filing stable ids and fan-in deps, the phase after a judging phase held, addStep in rounds and release; a workforce worker running it with the existing task tools; the workflow view in Shift Manager; a coding run's phases. Composed in by the app: the definition, the loop-back judgment, the approval's words. Replaced in one line: steps filed by hand, and a status note standing in for a phase. Not built, below a fence: roles, a drain or a list by phase, phase helpers to skip or re-run, a dependency on a whole phase, a workflow editor, and the POC's session-state record.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .held  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .repl  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-non { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="432"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="24" width="560" height="276" rx="5"/>
+    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; A FEATURE FOLLOWED AS ONE WORKFLOW</text>
+    <rect class="held" x="32" y="56" width="256" height="104" rx="4"/>
+    <text class="t-b" x="44" y="78">a task's phases</text>
+    <text class="t-s" x="44" y="96">phase on a step &#183; until it starts</text>
+    <text class="t-s" x="44" y="112">set at filing, read with its filer's rows</text>
+    <text class="t-s" x="44" y="128">phases declared on the task, in order</text>
+    <text class="t-s" x="44" y="144">by the run holding it &#183; reportProgress</text>
+    <rect class="held" x="300" y="56" width="260" height="104" rx="4"/>
+    <text class="t-b" x="312" y="78">defineWorkflow</text>
+    <text class="t-s" x="312" y="96">start &#183; stable ids, fan-in deps</text>
+    <text class="t-s" x="312" y="112">after a judging phase &#183; filed held</text>
+    <text class="t-s" x="312" y="128">addStep in rounds &#183; release</text>
+    <text class="t-s" x="312" y="144">approval &#183; waitForUser on the task</text>
+    <rect class="held" x="32" y="172" width="528" height="52" rx="4"/>
+    <text class="t-b" x="44" y="194">workflowView &#183; one read</text>
+    <text class="t-s" x="44" y="212">phases, steps, step N of M, current, next, approvals &#183; status from each row</text>
+    <rect class="held" x="32" y="236" width="528" height="52" rx="4"/>
+    <text class="t-b" x="44" y="258">a worker runs it &#183; Shift Manager shows it &#183; a coding run too</text>
+    <text class="t-s" x="44" y="276">the task tools, askQuestion, waitForUser, reportProgress &#183; no new tool</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="comp" x="592" y="24" width="332" height="116" rx="5"/>
+    <text class="t-lbl" x="608" y="44">COMPOSED IN BY THE APP</text>
+    <text class="t-b" x="608" y="66">the definition</text>
+    <text class="t-s" x="608" y="86">phases, steps, who does each</text>
+    <text class="t-s" x="608" y="102">the loop-back judgment &#183; the worker's</text>
+    <text class="t-s" x="608" y="118">the approval's words</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="repl" x="592" y="152" width="332" height="148" rx="5"/>
+    <text class="t-lbl" x="608" y="172">REPLACED IN ONE LINE</text>
+    <text class="t-s" x="608" y="192">steps filed by hand</text>
+    <text class="t-s" x="608" y="208">&#8594; wf.start(ctx)</text>
+    <text class="t-s" x="608" y="232">a status note as the phase</text>
+    <text class="t-s" x="608" y="248">&#8594; declared phases, one read</text>
+    <text class="t-s" x="608" y="272">a flat list of steps</text>
+    <text class="t-s" x="608" y="288">&#8594; the workflow view</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="fence" x="16" y="320" width="908" height="96" rx="5"/>
+    <text class="t-non" x="32" y="340">NOT BUILT HERE &#8212; NOT DOING</text>
+    <text class="t-s" x="32" y="362">roles, assignee: { role } &#183; drain({ phase }), listTasks({ phase }) &#183; helpers to skip or re-run a phase</text>
+    <text class="t-s" x="32" y="380">a dependency on a whole phase &#183; a workflow editor &#183; cost or time per phase</text>
+    <text class="t-s" x="32" y="398">the POC's session-state record of steps &#183; D1</text>
+  </g>
+</svg>
