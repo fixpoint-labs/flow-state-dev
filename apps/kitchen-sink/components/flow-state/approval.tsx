@@ -24,13 +24,28 @@ import { useSessionItems } from "./session-items-context";
  * A stop that offers more than one yes lists them under `data.approveOptions`
  * (`{ label, data }` each, read by `approveOptionsOf`): each is drawn as its own
  * button beside Approve, and sends its data with the approve.
+ *
+ * A caller that already knows the answer (a conversation line's `resolution`)
+ * passes `isResolved` and `resolution`, and the stream isn't read. Pass
+ * `canAnswer={false}` where the screen can't answer (a popup): the card then
+ * says it waits instead of drawing Approve and Reject.
  */
-export function Approval({ item }: { item: SuspensionItem }) {
-  // Find the matching resume in the stream to know if (and how) this resolved.
+export function Approval({
+  item,
+  isResolved: givenResolved,
+  resolution: givenResolution,
+  canAnswer = true,
+}: {
+  item: SuspensionItem;
+  isResolved?: boolean;
+  resolution?: SuspensionStatus;
+  canAnswer?: boolean;
+}) {
+  // Find the matching resume in the stream to know if (and how) this resolved, unless the caller said.
   const sessionItems = useSessionItems();
-  let isResolved = false;
-  let resolution: SuspensionStatus | undefined;
-  for (const it of sessionItems) {
+  let isResolved = givenResolved ?? false;
+  let resolution: SuspensionStatus | undefined = givenResolution;
+  for (const it of givenResolved === undefined ? sessionItems : []) {
     if (
       it.type === "suspension_resume" &&
       (it as SuspensionResumeItem).suspensionId === item.suspensionId
@@ -82,7 +97,7 @@ export function Approval({ item }: { item: SuspensionItem }) {
       {hasDetails ? (
         <details className="mb-2.5 text-xs">
           <summary className="cursor-pointer text-muted-foreground">Details</summary>
-          <pre className="mt-1.5 overflow-x-auto rounded-md bg-muted p-2 text-[11px] whitespace-pre-wrap">
+          <pre className="mt-1.5 overflow-x-auto rounded-md bg-muted p-2 text-xs whitespace-pre-wrap">
             {JSON.stringify(details, null, 2)}
           </pre>
         </details>
@@ -92,35 +107,39 @@ export function Approval({ item }: { item: SuspensionItem }) {
         <p className="mb-2.5 text-xs text-destructive">{approval.error}</p>
       ) : null}
 
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={!approval.canApprove || approval.isResolving}
-          onClick={approval.approve}
-          className="rounded-lg bg-success px-4 py-1.5 text-sm font-semibold text-success-foreground transition-colors hover:bg-success/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {approval.pendingAction === "approve" ? "Approving…" : "Approve"}
-        </button>
-        {options.map((option) => (
+      {canAnswer ? (
+        <div className="flex gap-2">
           <button
-            key={option.label}
             type="button"
             disabled={!approval.canApprove || approval.isResolving}
-            onClick={() => approval.approveWith(option.data)}
-            className="rounded-lg border border-success/40 px-4 py-1.5 text-sm font-semibold text-success transition-colors hover:bg-success/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={approval.approve}
+            className="rounded-lg bg-success px-4 py-1.5 text-sm font-semibold text-success-foreground transition-colors hover:bg-success/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {option.label}
+            {approval.pendingAction === "approve" ? "Approving…" : "Approve"}
           </button>
-        ))}
-        <button
-          type="button"
-          disabled={!approval.canReject || approval.isResolving}
-          onClick={approval.reject}
-          className="rounded-lg bg-destructive px-4 py-1.5 text-sm font-semibold text-destructive-foreground transition-colors hover:bg-[color-mix(in_srgb,var(--color-destructive),var(--color-foreground)_10%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {approval.pendingAction === "reject" ? "Rejecting…" : "Reject"}
-        </button>
-      </div>
+          {options.map((option) => (
+            <button
+              key={option.label}
+              type="button"
+              disabled={!approval.canApprove || approval.isResolving}
+              onClick={() => approval.approveWith(option.data)}
+              className="rounded-lg border border-success/40 px-4 py-1.5 text-sm font-semibold text-success transition-colors hover:bg-success/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {option.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            disabled={!approval.canReject || approval.isResolving}
+            onClick={approval.reject}
+            className="rounded-lg bg-destructive px-4 py-1.5 text-sm font-semibold text-destructive-foreground transition-colors hover:bg-[color-mix(in_srgb,var(--color-destructive),var(--color-foreground)_10%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {approval.pendingAction === "reject" ? "Rejecting…" : "Reject"}
+          </button>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">Waiting for you</p>
+      )}
     </div>
   );
 }

@@ -37,7 +37,7 @@ import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { runAction } from "../src/lib/action";
+import { runAction } from "./helpers/run-action";
 import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
 import { readProject, type ProjectAddress } from "../src/lib/projects";

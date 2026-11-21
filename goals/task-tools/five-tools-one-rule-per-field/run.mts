@@ -70,6 +70,7 @@ import {
   type ModulePatch,
   workforceTree
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const ALICE = "u_tools_alice";
 const BOB = "u_tools_bob";
@@ -126,7 +127,6 @@ if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefine
   process.exit(child.status ?? 1);
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown) => JSON.stringify(value);
 
 // ---- the scripted model -----------------------------------------------------------

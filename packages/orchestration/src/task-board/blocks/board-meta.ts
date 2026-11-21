@@ -65,7 +65,7 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import type { Task, TaskCollectionRef } from "../../tasks";
+import type { Task, TaskBoardMeta, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
 import { isDispatched, waitsOnHold, type RunsElsewhere } from "../shared";
 import { leaseLapsed } from "../../tasks";
@@ -110,7 +110,7 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
     execute: async (_input, ctx) => {
       ctx.emit.data(
         TASK_BOARD_META_DATA_TYPE,
-        { collectionId, status: "active" },
+        { collectionId, status: "active" } satisfies TaskBoardMeta,
         { key: collectionId, itemVisibility: { client: true, history: false } }
       );
     },
@@ -311,7 +311,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
                   : "blocked-by-failures";
       ctx.emit.data(
         TASK_BOARD_META_DATA_TYPE,
-        { collectionId, status: "completed", terminationReason, counts, maxTotalRetries },
+        { collectionId, status: "completed", terminationReason, counts, maxTotalRetries } satisfies TaskBoardMeta,
         { key: collectionId, itemVisibility: { client: true, history: false } }
       );
     },

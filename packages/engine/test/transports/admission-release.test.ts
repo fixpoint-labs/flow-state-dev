@@ -54,6 +54,7 @@ function routerFor(policy: "reject" | "queue") {
     router.POST(
       new Request("http://localhost/api/flows/leak/sess_leak/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "u_leak", input: { value: "hi" } })
       }),
       { params: { path: ["leak", "sess_leak", "actions", "run"] } }

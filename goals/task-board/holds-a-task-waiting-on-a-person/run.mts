@@ -79,6 +79,7 @@ import {
   type ModulePatch,
   workforceTree
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const USER = "u_holds_waiting";
 const ORG = "org_holds_waiting";
@@ -220,7 +221,6 @@ type Proof = {
   pid: number;
   at: number;
 };
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const prove = (proof: Omit<Proof, "pid" | "at">) => appendFileSync(PROOFS, `${JSON.stringify({ ...proof, pid: process.pid, at: Date.now() })}\n`, "utf8");
 function readProofs(): Proof[] {
   if (!existsSync(PROOFS)) return [];

@@ -47,17 +47,16 @@ theme so it reads as the app it copies.
   a click outside it, and the conversation under it keeps its place. While a task runs, its feed
   ends in a live line: the command or file it is on, else its plan step, else its last progress
   note, else "Working...", with how long it has been running.
-- **Right:** the open teammate's panel. At the top, its name and role, and *Edit instructions*.
-  Under that, the tasks its conversation started, coding tasks and teammates' jobs alike, with
-  their count, newest first in each group. Running tasks come first; one waiting on you leads, in
-  the attention colour, and every running task shows, however many there are. Failed tasks follow,
-  open, each with the first line of its reason: the newest five, with *Show all* and *Show fewer*
-  for the rest. *Clear* hides the failed tasks from the panel in this browser; it deletes nothing,
-  the heading still counts them, a task that fails again shows again, and *Show N cleared* brings
-  them back. *Done* and *Cancelled* each fold into one line with a count, and a click opens
-  the rows; *Done* opens to its newest five and a *Show all* button. A task that ends moves into
-  its group as it ends. Each row opens the task in a popup, and a task's line in the conversation
-  uses the same word and colour as its row. A *Routines* section sits at the foot, empty for now.
+- **Right:** the open teammate's panel. At the top, *Tasks* and their count: the tasks its
+  conversation started, coding tasks and teammates' jobs alike. Under it, three count tiles,
+  *Running*, *Failed* and *Done*, which are the panel's tabs; the selected one lists its tasks
+  as cards, newest first. A running task waiting on you leads, and every running task shows,
+  however many there are. *Failed* gives each task the first line of its reason. *Failed* and
+  *Done* show their newest five, with *Show all* and *Show fewer*. *Clear* moves the failed tasks
+  to *Done* in this browser; it deletes nothing, and a task that fails again shows again. *Done*
+  holds completed and cancelled tasks too, a cancelled one marked so. A task that ends moves to
+  its tile as it ends. Each card opens the task in a popup, and a task's line in the conversation
+  uses the same word and colour as its card. A *Routines* section sits at the foot, empty for now.
 - **Keys:** ⌘K (Ctrl+K) finds a teammate by its name or role, or opens *Hire a teammate*. Alt+↑
   and Alt+↓ move to the previous or next teammate. `/` puts the cursor in the composer, and `?`
   lists every key. Opening a teammate puts the cursor in its composer. Firing a teammate you hired
@@ -172,10 +171,11 @@ name another one.
 ### Your own teammates
 
 You can hire teammates of your own (*Hire a teammate*, under the list): a name, one line on what it
-does, and its instructions. It joins the list at once, you can talk to it, and Lead can
-hand it tasks. Your own teammates' panels have *Edit instructions*, which replaces their instructions
-from the next turn on, and their header has *Fire*, which takes them off the list; their conversation stays readable.
-The three teammates from the files can't be edited or fired.
+does, its instructions, and optionally its model and default coding harness. It joins the list at once, you can talk to it, and Lead can
+hand it tasks. *Edit teammate* in a conversation's header opens a dialog to rename a teammate, replace its
+instructions, or change its model (what its replies run on, from the next reply) and default coding harness
+(where the composer's *Code with* starts). A teammate from the files can be edited too, and *Reset to default*
+puts its file back. Your own teammates' header has *Fire*, which takes them off the list; their conversation stays readable.
 
 ### Routines
 
@@ -206,8 +206,9 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | Variable | What it sets | Default |
 |---|---|---|
 | `TEAMMATES_MODEL` | the model Lead, researcher and writer answer on | `openai/gpt-6-luna` |
+| `TEAMMATES_MODELS` | the models a teammate may reply with, comma-separated, for the *Model* field of *Edit teammate* and *Hire a teammate*; each shows where its calls go (a provider's key, Vercel AI Gateway or OpenRouter) or why it can't run, and a pick is saved to that teammate | `TEAMMATES_MODEL` alone |
 | `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | the root of this repository |
-| `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on: `claude-code`, `codex` or `cursor` | `cursor` |
+| `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on, and where *Code with* starts for a teammate with no default harness of its own: `claude-code`, `codex` or `cursor` | `cursor` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
@@ -215,6 +216,7 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | `TEAMMATES_RUN_TIMEOUT_MS` | the wall-clock budget for one coding run, in milliseconds | `1200000` (20 minutes) |
 | `TEAMMATES_SETUP` | a command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`; no shell | none |
 | `GITHUB_TOKEN` | the token a routine that follows a GitHub pull request reads GitHub with, for the lab's own user alone | what `gh auth token` answers at start; none, and GitHub routines are refused |
+| `TEAMMATES_GITHUB_REVIEWERS` | the GitHub logins, comma-separated, a coding run hears on the pull request it opens: their reviews and comments reach the run's session, which answers them in the pull request. List a bot by its login, such as `greptile-apps[bot]`: the lab trusts it on the GitHub service too, which a bot needs to be heard. The repository is public and a run acts on what it hears, so no one else is heard | none, and a run follows no pull request |
 | `TEAMMATES_CHECKS` | the commands a coding run's worktree must pass before its task is done, `;`-separated, such as `pnpm typecheck; pnpm test`; no shell, so a `;` inside one command, even quoted, isn't supported. A red one sends the run back with the command's output | none |
 
 The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`). Each coding agent needs its
@@ -229,6 +231,54 @@ the setting and the path; it never falls back to the current directory. Each cod
 worktree of the folder, under the lab's `.fsdev/teammates-runs/` (or `TEAMMATES_RUNS`), so the
 checkout's `.gitignore` must ignore `**/.fsdev/`, where a run keeps its own notes; a run refuses a
 checkout that doesn't. The checkout's own branch and working tree are never changed.
+
+### The host
+
+`host.mts` puts the lab's server together from package pieces, and `fsdev.config.mts` calls its
+`openTeammates` with the variables above. What each piece is for:
+
+- **Lead, researcher and writer** run on the workforce kit's built-in `agent` flow, so each has
+  `sendMessage` and one conversation where messages land. Memory is composed in through `uses`
+  (read) and `afterAnswer` (record each turn). What was said before the history window is kept by
+  the built-in flow, which folds older turns into a summary by default, so the lab wires none of
+  its own. The flow's tool catalog holds web search and fetch, and the working folder's source
+  reads; each worker's `tools:` line picks its own from them. Each teammate's `icon:` and `color:`
+  lines ride on its roster row (`settings` and `showSettings`), so the page draws them.
+- **Claude Code, Codex and Cursor** are the coding workers, one per harness, on the harness kit's
+  coding worker flow (`coder`): it takes the tasks a teammate files and runs each through its
+  worker's harness, in a worktree of the working folder. Before a task starts, the harness's
+  readiness is checked; one this machine isn't set up for fails the task with a sentence that names
+  it and says what to run. A run that committed waits for your review, and the working folder's
+  checks pass first. A shutdown waits for a coding run still going, its checks and judge included.
+- **Readiness** is the harness kit's: put in the workers' context so Lead files coding work only on
+  a ready harness, and served as the `harnesses` flow's `readiness` view, read with no session,
+  which `{ refresh: true }` reads again.
+- **The working folder** is one git checkout the operator names. It is the host's constant run
+  source, so every coding run and every read of the workers' source tools works in it. There are no
+  projects: no worker has a project tool, and nothing a model writes can name another folder. So
+  the operator also names its checks, the commands a coding run's worktree must pass before its
+  task is done, and a setup command each fresh worktree runs first so the checks find what they
+  need. Neither runs through a shell.
+- **The lab's context** is the `lab-context` flow's `context` view (`flows/lab-context.mts`, its ref beside it in `lab-context-ref.mts`), read
+  with no session: the working folder, the model, the default harness, which workers each worker
+  hands work to (read off the workers' files), and, when the folder doesn't ignore `.fsdev/`, the
+  problem a coding run's checkout would be refused with (checked at start, never fatal). The page
+  draws its context strip and first-run lines from it.
+- **Teammates** you hire from the page are rows of your own roster, written through the workforce
+  kit's roster flow; nothing restarts.
+- **Routines:** Lead, researcher and writer hold the routine tools, so you can ask one to follow a
+  GitHub pull request or to do something on a clock, and to list, pause or delete what it follows.
+  A pull request's events are polled (no public URL) on the operator's own GitHub token, for the
+  operator alone (workforce's `operatorGitHub`); `fsdev dev` ticks the polls and the clock routines,
+  each from a SQLite file of its own beside the store.
+- Every request is the lab's own user in the lab's own org, never a user the request names: the
+  operator-only GitHub token is gated on it. `openTeammates`'s `user` option, which names the user
+  each request is (the lab's own when it names none), is for a goal's host that needs two users
+  in that org; `fsdev.config.mts` never sets it. A consult of another conversation reads on a smaller
+  model (`intent/utility`).
+
+Durable, on SQLite: a worker message a busy host turned away is sent again on its session's wake,
+and a restart keeps every conversation.
 
 ### Try it
 
@@ -247,40 +297,50 @@ task, the run shows its steps, and the result lands in Lead's conversation.
 The goal check drives all of this in a browser:
 [`goals/teammates-lab/a-worker-talks-to-another-while-you-talk`](../../goals/teammates-lab/a-worker-talks-to-another-while-you-talk/goal.md).
 
-The screen tests run on a test double, `test/fake-app.ts`. The contract tests in `test/contract/`
-run five scenarios (a task's result, a failed turn, a held question and its answer, a cancelled
-task, a lapsed connection) against the double and against the real calls over the lab's own
-server (`host.mts`), in process, with only the model scripted and coding runs on the scripted
-harness. A scenario the real calls can't show yet is marked to fail with the issue that adds it.
+The screen tests run on a scripted server, `test/scripted-server.ts`: a stand-in at the client
+that stores items and answers the package views, so every line the screen draws goes through
+`src/app/`'s hooks and the real client. The contract tests in `test/contract/` run their
+scenarios (a task's result, a line sent mid-turn, a failed turn and its Retry, a held question
+and its answer, a cancelled task, a stopped turn, a line with files, a lapsed connection) through
+those hooks against the scripted server and against the lab's own server (`host.mts`), in
+process, with only the model scripted and coding runs on the scripted harness. A scenario the lab
+can't show yet is marked to fail with the issue that adds it.
 
 ## What the screen reads
 
-Everything the screen reads and writes goes through `src/app/`, one file per job, read with `useApp()`,
-and each function names the package call it makes.
+Every read is a package hook and every write a package client's call, over the one client
+`AppProvider` holds (`useAppClient()`). The roster, the lab's context, harness readiness, busy status
+and worker messages are package views a screen reads with `react`'s `useView`, and the roster's
+changes go through workforce's client. A conversation is read once for every screen on it, by its
+follower (`ConversationFollower`, in `src/app/conversations.ts`): its items on `react`'s
+`useSessionFeed`, its turns on workforce's session turns view, and the history summary through
+`useResource` by session id. Its writes go through workforce's client (`useConversationCalls`).
 
 | On screen | Package piece |
 |---|---|
-| The worker list, sending, the conversation, busy status | the workforce client's `watchRoster()` and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
-| A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery`, installed in `src/components/flow-state/`; Retry is the client's `request(id).retry()`, on the newest turn only |
-| Workers messaging each other | `sendMessage`, the received-message item (`workforce:received`), and the message log |
-| Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit` and `fire`, on the roster flow |
+| The worker list, sending, the conversation | the workforce client's `watchRoster()` (its roster view), `ensureWorkerSession` and `send` (the flow's `respond`), the session's items on `useSessionFeed`, and workforce's session turns view for whether it is answering |
+| Busy status: the dot and the *Idle* age | workforce's worker sessions view (the default conversation, and whether a turn runs in it) and session turns view (when the last turn ended, else started) |
+| The context strip and the harness chips | the lab's `lab-context` view (`flows/lab-context.mts`) and the harness kit's readiness view; *Re-check* reads readiness again with `{ refresh: true }` |
+| A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery`, installed in `src/components/flow-state/`; Retry is the workforce client's `retryTurn`, on the newest turn only, and only for a turn the session turns view names as one the engine retries |
+| Workers messaging each other | `sendMessage`, the received-message item (`workforce:received`), and workforce's worker messages view: a worker's open messages, and the row and answer of each line on screen, found through the message log's indexes |
+| Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit`, `reset` and `fire`, on the roster flow |
 | Task lines | the conversation board's rows |
-| Stop, and the stopped line | the request's `abort` for each answering turn; the line is the UI registry's `request-recovery` stopped look, installed in `src/components/flow-state/`, after each request the session's requests list as `aborted`, with the session stream's unfinished runs as its count |
+| Stop, and the stopped line | the workforce client's `stopTurns`: each turn running when it reads them, and each line you sent before the press; a line you send after it runs on. The line is the UI registry's `request-recovery` stopped look, installed in `src/components/flow-state/`, after each turn the session turns view lists as `aborted`, with the session stream's unfinished runs as its count |
 | A teammate's icon and color | its `WORKER.md`'s `icon:` and `color:` lines, declared on the `agent` flow with `settings` and shown on its `roster()` row with `showSettings` |
-| The status line | the conversation's requests (`listSessionRequests`) and items for what it is answering, the board's rows for a running coding task, the message log for a message waiting on a reply |
-| A message's popup | the recipient's session items: the turn whose received-message item carries the message's id |
+| The status line | the worker sessions view and the conversation's items for what it is answering, the board's rows for a running coding task, the worker messages view for a message waiting on a reply |
+| A message's popup | the session the message's row says it was delivered to, followed with `react`'s `useSessionFeed`: the turn whose received-message item carries the message's id |
 | The working folder | `localWorkspaceHost` with a constant run source, `{ kind: "repo", repo }`, and the folder in `localRepositories`; `projectSourceTools` read it |
 | Coding tasks and their runs | the conversation board's rows assigned to the worker on the coding flow, which the list leaves out; the row's `run` link, read as the run session's items |
 | A task waiting on you, and your answer | the row's holds through the Inbox's `inboxItems` and `taskView`, answered with the Inbox client's `answerOne`; a review drawn by the UI registry's `review-hold`, installed in `src/components/flow-state/`, from the run's stop read by harness-manager's `reviewDetail` |
 | A task's buttons | the Inbox client's `board(at)` on the conversation that filed it (`cancel`, `steer`, `release`, `retry`, and `refile` for a re-run), drawn by the UI registry's `task-actions`, with a failed task's error drawn by its `error` (`ErrorBody`), both installed in `src/components/flow-state/` |
 | A run's steps in plain words, in a popup and inline in the conversation | the UI registry's `tool-naming` and `tool-grouping`, installed in `src/components/flow-state/`, over each tool call's name, arguments, status and result: `toolSubject`, `toolStepState` (with `toolOutcome`), `toolRunState`, `withToolState` and `toolRunOpen` |
-| The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
+| Approving what a worker asks | `react`'s `useApproval` on the `user_approval` stop, through the conversation's flow |
+| The divider and its *summarized* label | the latest turn's `historyStart` on workforce's session turns view, and the history summary resource (workforce's `historySummaryResource`), read with `useResource` by session id |
 
-The conversation follows its session's stream. Busy status, whether a conversation is answering,
-and the divider read the conversation's requests when one of them changes, and the divider reads the
-`historySummary` resource when it changes, through `client.subscribe`. A long reply costs them no
-more reads than a short one. On a host whose push can miss a change, such as the SQLite store the
-lab runs on, they also read every 1.5 seconds, as before.
+The conversation follows its session's stream. Its turns view and the history summary read again
+when the server says they changed, and on a host whose push can miss a change, such as the SQLite
+store the lab runs on, every 1.5 seconds as well. A long reply costs them no more reads than a
+short one.
 
 `color:` names one of the lab's palette, `blue`, `green`, `amber`, `rose`, `violet` or `teal`,
 each a `--teammate-*` token in the theme. A teammate whose file sets neither line, such as one you

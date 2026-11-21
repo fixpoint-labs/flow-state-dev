@@ -1,65 +1,102 @@
-// BR-3.
+// BR-3; FIX-2776.
 /**
- * One open task: its row, the run the row's link names, and that run's state.
- * Held once for the task screen and its inspector, so the centre and the right
- * panel always read the same row and the same run.
+ * One open task: its row, the run the row's link names, that run's state, and
+ * the asks it waits on. Held once for the task screen and its inspector, so
+ * the centre and the right panel always read the same row and the same run.
  *
- * **The row.** From the snapshot, then from one board's re-read. While the row
- * is not on the board yet, or is `in_progress` with no run linked, it is
- * re-read on each board notice of the conversation that holds the board: the
- * run writes its link as it starts, and that row write publishes one, from
- * any process. Wherever push can miss a change it is re-read every
- * {@link REREAD_EVERY_MS} instead (`client.live`). Once the linked run settles
- * on a row still queued or running, it is re-read the same way until the row
- * links the next attempt; the screen then follows that run. A row in any other
- * state is not re-read. A task the board doesn't hold (a stale link, a deleted
- * task, a mistyped address) waits the same way, on the same reads, for
- * {@link MISSING_FOR_MS} at most, then is called missing. A failed
- * re-read stops the wait and shows the failure;
- * Retry reads the board once, now, and waits again if the row still waits. A
- * board whose read failed shows that failure, never "no such task".
+ * **The row.** From orchestration's task-list view on the conversation that
+ * holds the board (`taskListViewRef`, through `useConversationTasks`), kept
+ * live by the server: a row filed, linked, moved or settled in any session,
+ * on any process, reaches the screen with no re-read of its own. While the
+ * row is not on the board yet, or is `in_progress` with no run linked, or its
+ * linked run settled on a row the board may still hand on, the screen says it
+ * waits. A task the board doesn't hold (a stale link, a deleted task, a
+ * mistyped address) waits the same way for {@link MISSING_FOR_MS} at most,
+ * counted from the view's first answer, then is called missing. A view whose
+ * read failed shows that failure, never "no such task".
  *
  * **The run.** Bound to the session and request the row's link names, and the
- * flow that session records as its owner. The flow is read once per open, and
- * again only when the link names a new session. A tab switch never re-reads
- * anything here.
+ * flow that session records as its owner, read once per open, and again only
+ * when the link names a new session.
  *
- * **Its state.** The run's request record, read through the run's flow, is
- * the only thing that moves the run's state on screen. Interrupt aborts that
- * request and draws *interrupted* only once the record reads `aborted`.
+ * **Its state.** The run's own request stream (react's `useRequestStream`,
+ * through the run's flow) is the only thing that moves the run's state on
+ * screen, with when it ended. Interrupt stops that one request through
+ * workforce's `stopRun` and draws *interrupted* only once the stream reads
+ * `aborted` (the run's record decides).
+ *
+ * A task's asks are not read here: the screens read them from the Inbox
+ * view (`inbox.ts`).
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { topic } from "@flow-state-dev/client";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { RequestStatus } from "@flow-state-dev/core/types";
-import { allTasks, type LoadedSnapshot } from "./derive";
+import type { BoardActions } from "@flow-state-dev/orchestration/inbox";
+import { useRequestStream } from "@flow-state-dev/react";
+import { useConversationTasks, type ConversationTask } from "./conversation-tasks";
 import { useLab } from "./lab-data";
-import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, describeFailure, type BoardTaskView, type Failure } from "./reads";
-import { interruptRun, readRunRecord, resolveRunFlow, RunReadError, type OpenRun } from "./run";
-
-/** The pace a task screen re-reads its row at while it waits, wherever push can miss a change. */
-export const REREAD_EVERY_MS = 2_000;
+import { useSessions } from "./directory";
+import { useBoardActions } from "./inbox";
+import { describeFailure, type Failure } from "./failure";
+import { useWorkforce } from "./workforce";
+import { resolveRunFlow } from "./task-items";
 
 /**
  * How long a task the board doesn't hold is waited for before the screen says
- * so, counted from a board read that landed. Filing it is a row write, which
- * publishes a board notice, and where push can miss one the board is re-read at
- * {@link REREAD_EVERY_MS}: so the wait needs no reads of its own, only this deadline. The screen is opened from a
- * row or a `task-change` item, so a real task is on the board once its filing
- * request commits, well inside it; anything still missing then is a stale
- * link, a deleted task or a mistyped address. A row that exists waits for its
- * link with no bound.
+ * so, counted from the view's first answer. Filing it is a row write, which
+ * the view hears, so the wait needs no reads of its own, only this deadline.
  */
 export const MISSING_FOR_MS = 10_000;
 
+/** How long an Interrupt waits for the run's stream to say it ended. */
+const STOP_TIMEOUT_MS = 30_000;
+
+/** The board id every conversation's board goes by: `<sessionId>.tasks` names it. */
+const CONVERSATION_BOARD = "tasks";
+
 /** The session a board ref names as its holder: everything before its last dot. */
-export function holderSessionOf(boardRef: string): string {
+function holderSessionOf(boardRef: string): string {
   const dot = boardRef.lastIndexOf(".");
   return dot > 0 ? boardRef.slice(0, dot) : boardRef;
 }
 
 /** Whether `boardRef` names a conversation's board (`<sessionId>.tasks`), the only boards there are. */
-export function isConversationBoard(boardRef: string): boolean {
-  return boardRef === conversationBoardRef(holderSessionOf(boardRef));
+function isConversationBoard(boardRef: string): boolean {
+  return boardRef === `${holderSessionOf(boardRef)}.${CONVERSATION_BOARD}`;
+}
+
+/** A run the screen can open: the row's link, and the flow its session names. */
+export type OpenRun = { sessionId: string; requestId: string; attempt: number; flowId: string };
+
+/**
+ * One row as the task screen draws it: the task-list view's row, on its
+ * board, with each field it may leave out read as none.
+ */
+export type OpenTask = Omit<ConversationTask, "title" | "assignee" | "run" | "startedAt" | "error" | "deps" | "attachments" | "holds"> & {
+  boardRef: string;
+  title: string;
+  assignee: string | null;
+  run: { sessionId: string; requestId: string; attempt: number } | null;
+  startedAt: number | null;
+  error: string | null;
+  deps: string[];
+  attachments: NonNullable<ConversationTask["attachments"]>;
+  holds: NonNullable<ConversationTask["holds"]>;
+};
+
+/** `task` as the screen draws it, on `boardRef`. */
+function rowOf(boardRef: string, task: ConversationTask): OpenTask {
+  return {
+    ...task,
+    boardRef,
+    title: task.title ?? task.goal,
+    assignee: task.assignee ?? null,
+    run: task.run == null ? null : { sessionId: task.run.sessionId, requestId: task.run.requestId, attempt: task.run.attempt },
+    startedAt: task.startedAt ?? null,
+    error: task.error ?? null,
+    deps: task.deps ?? [],
+    attachments: task.attachments ?? [],
+    holds: task.holds ?? [],
+  };
 }
 
 /** Where the run stands for the screen. */
@@ -76,37 +113,32 @@ export type InterruptState = { kind: "idle" } | { kind: "pending" } | { kind: "r
 export type TaskView = {
   boardRef: string;
   taskId: string;
-  row: BoardTaskView | undefined;
-  /** Every row on this task's board, from the same read as `row`. */
-  boardRows: BoardTaskView[];
+  row: OpenTask | undefined;
+  /** Every row on this task's board, from the same view as `row`. */
+  boardRows: OpenTask[];
   rowFailure: Failure | undefined;
-  /** The row is being re-read while its link is awaited. */
+  /** The screen waits for the row, or its run's link. */
   waiting: boolean;
-  /** The board doesn't hold the task: its wait's deadline passed with no read finding the row. */
+  /** The board doesn't hold the task: its wait's deadline passed with no answer naming the row. */
   gaveUp: boolean;
   retryRow(): void;
   run: RunState;
   retryRun(): void;
-  /** The run's request status, as its record last read. */
+  /** The run's request status, as its stream last said. */
   status: RequestStatus | undefined;
-  /** The request record moved (from the live stream or a read), with when it ended once it has. */
-  reportStatus(status: string, endedAtMs?: number): void;
   interrupt: InterruptState;
   requestInterrupt(): Promise<void>;
-  /** When an aborted run stopped, by its request record; `undefined` when the record has no end time. */
+  /** When an aborted run stopped, by its stream; `undefined` while it hasn't. */
   stoppedAt: number | undefined;
   devtoolUrl: string | undefined;
+  /** The board's task actions, on the conversation that holds the board; `undefined` with no owner to run them. */
+  board: BoardActions | undefined;
+  /** Run the task again through the board's own retry, then read the row and the Lab again; `undefined` with no board actions. */
+  retryTask: (() => Promise<void>) | undefined;
   // FIX-2009.
   /** Request ids this composer started, newest last, for this open task only: the Session follows each. */
   sent: readonly string[];
-  /**
-   * The ones among `sent` whose door keeps no task id, so their items carry no
-   * stamp: the Session shows these by request id. A stamping door's turns are
-   * found by the stamp alone.
-   */
-  unstamped: readonly string[];
-  /** @param stamped Whether the line went with the task's id, to a door that stamps it. */
-  noteSent(requestId: string, stamped: boolean): void;
+  noteSent(requestId: string): void;
 };
 
 const TaskContext = createContext<TaskView | null>(null);
@@ -118,100 +150,81 @@ export function useTask(): TaskView {
   return value;
 }
 
-// BR-3.
-/** Whether the row should be re-read while the screen waits. */
-function awaitingLink(row: BoardTaskView | undefined): boolean {
-  return row === undefined || (row.status === "in_progress" && row.run === null);
-}
-
 /** A row the board may still hand to a run: queued or running, not finished or failed. */
-function isOpen(row: BoardTaskView): boolean {
+function isOpen(row: OpenTask): boolean {
   return row.status === "pending" || row.status === "in_progress";
 }
 
 /** Hold one open task. */
-export function TaskProvider({
-  snapshot,
-  boardRef,
-  taskId,
-  devtoolUrl,
-  children,
-}: {
-  snapshot: LoadedSnapshot;
-  boardRef: string;
-  taskId: string;
-  devtoolUrl?: string;
-  children: ReactNode;
-}) {
-  const { client, reader } = useLab();
-  const fromSnapshot = useMemo(() => allTasks(snapshot).filter((r) => r.boardRef === boardRef), [snapshot, boardRef]);
-  const [boardRows, setBoardRows] = useState<BoardTaskView[]>(fromSnapshot);
-  const [rowFailure, setRowFailure] = useState<Failure | undefined>(undefined);
-  // The missing row's deadline passed with no read finding it.
-  const [missedOut, setMissedOut] = useState(false);
-  // Set by a re-read someone asked for (a board action in the frame, or Retry):
-  // a row that comes back pending with no run is then followed until the board
-  // hands it to one, which a Release or a Retry leaves to its next dispatch pass.
-  const [following, setFollowing] = useState(false);
-
-  useEffect(() => {
-    setBoardRows(fromSnapshot);
-  }, [fromSnapshot, taskId]);
-  useEffect(() => setMissedOut(false), [boardRef, taskId]);
-
-  const row = boardRows.find((r) => r.id === taskId);
-  // A board the Lab doesn't attach is named at once, with no read (BR-2). A
-  // task missing from a board it does attach may have just been filed, so it
-  // gets the same re-read as a row waiting for its link. A board whose
-  // read failed is neither: the screen shows that failure, with Retry, rather
-  // than calling the task missing.
+export function TaskProvider({ boardRef, taskId, devtoolUrl, children }: { boardRef: string; taskId: string; devtoolUrl?: string; children: ReactNode }) {
+  const { client, refresh } = useLab();
+  const sessions = useSessions().list;
+  const workforce = useWorkforce();
   const holder = holderSessionOf(boardRef);
-  const holderBoards = snapshot.boards[holder];
-  const [boardRead, setBoardRead] = useState(false);
-  // A conversation's board is known once its conversation is the user's,
-  // since a task filed a moment ago is on no snapshot yet.
-  const boardKnown =
-    boardRead ||
-    (holderBoards?.ok === true && holderBoards.value.refs.includes(boardRef)) ||
-    (isConversationBoard(boardRef) && snapshot.sessions.some((session) => session.id === holder));
-  const boardFailure = rowFailure ?? (!boardRead && holderBoards?.ok === false ? holderBoards.failure : undefined);
+  const conversationBoard = isConversationBoard(boardRef);
+  // The board's actions run on the conversation that holds it, through the
+  // flow that conversation's session names as its owner. No owner, no actions.
+  const holderFlowId = !conversationBoard ? undefined : (sessions?.find((session) => session.id === holder)?.flowId ?? undefined);
+  const board = useBoardActions(holderFlowId === undefined ? undefined : { id: holder, flowId: holderFlowId });
 
-  /** One read of this task's board. Every read, polled or not, lands its rows or its failure the same way. */
-  const readBoardNow = useCallback(
-    () =>
-      (isConversationBoard(boardRef) ? reader.readBoard(holderSessionOf(boardRef)) : Promise.resolve([]))
-        .then((rows) => {
-          setBoardRows(rows);
-          setBoardRead(true);
-          setRowFailure(undefined);
-        })
-        .catch((error: unknown) => setRowFailure(describeFailure(error))),
-    [reader, boardRef],
-  );
+  // ---- the row: the holding conversation's flow, read once, then its board's view.
+  const [holderFlow, setHolderFlow] = useState<{ flow: string } | { failure: Failure } | undefined>(undefined);
+  const [flowReads, setFlowReads] = useState(0);
+  useEffect(() => {
+    if (!conversationBoard) return;
+    let live = true;
+    setHolderFlow(undefined);
+    client.sessions.get(holder).then(
+      (session) => live && setHolderFlow({ flow: session.flowId ?? session.flowKind }),
+      (error: unknown) => live && setHolderFlow({ failure: describeFailure(error) }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [client, holder, conversationBoard, flowReads]);
+  const flow = holderFlow !== undefined && "flow" in holderFlow ? holderFlow.flow : null;
+  const { tasks, stale } = useConversationTasks(flow, conversationBoard ? holder : null);
+  const boardRows = useMemo(() => (tasks ?? []).map((task) => rowOf(boardRef, task)), [tasks, boardRef]);
+  const row = boardRows.find((r) => r.id === taskId);
+  const boardRead = tasks !== undefined;
+  const rowFailure: Failure | undefined =
+    holderFlow !== undefined && "failure" in holderFlow
+      ? holderFlow.failure
+      : stale && !boardRead
+        ? { message: "This task's board didn't load. Shift Manager reads it again on its own." }
+        : undefined;
+
+  // The missing row's deadline: a timer only, from the view's first answer, and afresh from each Retry.
+  const [missedOut, setMissedOut] = useState(false);
+  const [rowRetries, setRowRetries] = useState(0);
+  const missing = row === undefined;
+  useEffect(() => {
+    if (!missing) setMissedOut(false);
+  }, [missing]);
+  useEffect(() => {
+    if (!missing || !boardRead || !conversationBoard) return;
+    const timer = setTimeout(() => setMissedOut(true), MISSING_FOR_MS);
+    return () => clearTimeout(timer);
+  }, [missing, boardRead, conversationBoard, rowRetries]);
 
   // ---- the run: the link's session and request, and the flow its session names.
   const link = row?.run ?? null;
-  const [flow, setFlow] = useState<{ sessionId: string; flowId: string } | { sessionId: string; failure: Failure } | undefined>();
+  const [runFlow, setRunFlow] = useState<{ sessionId: string; flowId: string } | { sessionId: string; failure: Failure } | undefined>();
   const [retries, setRetries] = useState(0);
   const linkedSession = link?.sessionId;
   useEffect(() => {
     if (linkedSession === undefined) return;
     let live = true;
-    setFlow(undefined);
-    resolveRunFlow(client, linkedSession)
-      .then((flowId) => {
-        if (live) setFlow({ sessionId: linkedSession, flowId });
-      })
-      .catch((error: unknown) => {
-        if (live) setFlow({ sessionId: linkedSession, failure: error instanceof RunReadError ? error.failure : describeFailure(error) });
-      });
+    setRunFlow(undefined);
+    resolveRunFlow(client, linkedSession).then(
+      (flowId) => live && setRunFlow({ sessionId: linkedSession, flowId }),
+      (error: unknown) => live && setRunFlow({ sessionId: linkedSession, failure: describeFailure(error) }),
+    );
     return () => {
       live = false;
     };
   }, [client, linkedSession, retries]);
-
-  const [status, setStatus] = useState<{ requestId: string; status: RequestStatus; endedAtMs?: number } | { requestId: string; failure: Failure } | undefined>();
-  const flowId = flow !== undefined && "flowId" in flow && flow.sessionId === link?.sessionId ? flow.flowId : undefined;
+  const flowId = runFlow !== undefined && "flowId" in runFlow && runFlow.sessionId === link?.sessionId ? runFlow.flowId : undefined;
   const linkedRequest = link?.requestId;
   const linkedAttempt = link?.attempt;
   const openRun = useMemo<OpenRun | undefined>(
@@ -222,150 +235,108 @@ export function TaskProvider({
     [linkedSession, linkedRequest, linkedAttempt, flowId],
   );
 
-  // The request record, once per run opened: it decides whether the run is open at all.
-  useEffect(() => {
-    if (openRun === undefined) return;
-    let live = true;
-    setStatus(undefined);
-    readRunRecord(client, openRun)
-      .then((read) => {
-        if (!live) return;
-        setStatus({ requestId: openRun.requestId, ...read });
-      })
-      .catch((error: unknown) => {
-        if (live) setStatus({ requestId: openRun.requestId, failure: error instanceof RunReadError ? error.failure : describeFailure(error) });
-      });
-    return () => {
-      live = false;
-    };
-  }, [client, openRun, retries]);
+  // The run's own stream: its status, and when it ended. Items come from the session's feed.
+  const stream = useRequestStream({
+    client,
+    flowKind: openRun?.flowId ?? "-",
+    source: { requestId: openRun?.requestId ?? "-" },
+    filter: { itemTypes: [] },
+    flush: "immediate",
+    reconnect: true,
+    reconnectToken: retries,
+    enabled: openRun !== undefined,
+  });
+  // The stream reconnects on its own, and ends only on a 401, 403 or 404: one that ended while the
+  // request still reads in progress is a request that isn't there, or isn't the user's.
+  const unreadable = openRun !== undefined && !stream.isStreaming && stream.status === "in_progress";
+  const status: RequestStatus | undefined = openRun === undefined || unreadable ? undefined : stream.status;
 
   const run: RunState = useMemo(() => {
     if (link === null) return { kind: "none" };
-    if (flow !== undefined && "failure" in flow && flow.sessionId === link.sessionId) return { kind: "failed", failure: flow.failure };
-    if (openRun === undefined || status === undefined || status.requestId !== openRun.requestId) return { kind: "resolving" };
-    if ("failure" in status) return { kind: "failed", failure: status.failure };
+    if (runFlow !== undefined && "failure" in runFlow && runFlow.sessionId === link.sessionId) return { kind: "failed", failure: runFlow.failure };
+    if (openRun === undefined) return { kind: "resolving" };
+    if (unreadable) return { kind: "failed", failure: { message: "The run's request couldn't be read: it isn't there, or it isn't yours." } };
     return { kind: "open", run: openRun };
-  }, [link, flow, openRun, status]);
+  }, [link, runFlow, openRun, unreadable]);
 
-  const currentStatus = status !== undefined && "status" in status && status.requestId === link?.requestId ? status.status : undefined;
-
-  // BR-3's re-read: while the row has no run linked yet, or while the run it
-  // links has settled on a row the board may still hand on, until the row links
-  // the next attempt (a retry or a reclaim writes a new link). Each is a write
-  // to the row, which publishes a board notice on the holding conversation's
-  // topic, narrowed to its board. A failed re-read stops it and shows Retry.
-  const linkSettled = currentStatus !== undefined && currentStatus !== "in_progress";
+  const linkSettled = status !== undefined && status !== "in_progress";
   const awaitingNextRun = row !== undefined && row.run !== null && linkSettled && isOpen(row);
-  const awaitingDispatch = following && row !== undefined && row.status === "pending" && row.run === null;
-  const missing = row === undefined;
-  useEffect(() => {
-    if (!missing) setMissedOut(false);
-  }, [missing]);
-  const gaveUp = boardKnown && missing && boardFailure === undefined && missedOut;
-  const waiting = boardKnown && (awaitingLink(row) || awaitingNextRun || awaitingDispatch) && boardFailure === undefined && !gaveUp;
-  // A missing row's deadline: a timer only, so the board's reads stay the subscription's.
-  // It runs from a board read that landed, so a slow socket connect can't use it up.
-  useEffect(() => {
-    if (!waiting || !missing || !boardRead) return;
-    const timer = setTimeout(() => setMissedOut(true), MISSING_FOR_MS);
-    return () => clearTimeout(timer);
-  }, [waiting, missing, boardRead]);
-  useEffect(() => {
-    if (!waiting) return;
-    const watching = client.live([topic.session(holder, { resource: CONVERSATION_BOARD_COLLECTION })], {
-      read: readBoardNow,
-      hear: (notice) => notice.kind === "board",
-      pollIntervalMs: REREAD_EVERY_MS,
-      // The row was just read: the subscription's connect, or its first tick, is the next read.
-      readNow: false,
-    });
-    return () => watching.close();
-  }, [waiting, client, holder, readBoardNow]);
+  const awaitingLink = row === undefined || (row.status === "in_progress" && row.run === null);
+  const gaveUp = boardRead && missing && rowFailure === undefined && missedOut;
+  // Until the view first answers, the screen waits for it too: nothing is known missing yet.
+  const waiting = conversationBoard && (!boardRead || awaitingLink || awaitingNextRun) && rowFailure === undefined && !gaveUp;
 
-  const settledOnce = useRef<string | null>(null);
-  const reportStatus = useCallback(
-    (next: string, endedAtMs?: number) => {
-      if (openRun === undefined) return;
-      // A run that stops to ask a user needs no read here: the snapshot hears
-      // its request move and reads the ask in (`lab-data.tsx`).
-      setStatus((held) =>
-        held !== undefined && held.requestId === openRun.requestId && "status" in held && held.status === next && (endedAtMs === undefined || held.endedAtMs !== undefined)
-          ? held
-          : { requestId: openRun.requestId, status: next as RequestStatus, ...(endedAtMs === undefined ? {} : { endedAtMs }) },
-      );
-      if (next !== "in_progress" && settledOnce.current !== openRun.requestId) {
-        settledOnce.current = openRun.requestId;
-        // Read the row once now, to show what the board did next.
-        void readBoardNow();
-      }
-    },
-    [openRun, readBoardNow],
-  );
-
-  // ---- Interrupt: the one write this screen makes.
+  // ---- Interrupt: the one write this screen makes, besides the composer's line and the board's actions.
   const [interrupt, setInterrupt] = useState<InterruptState>({ kind: "idle" });
   useEffect(() => setInterrupt({ kind: "idle" }), [openRun?.requestId]);
-  // Aborted when the task screen closes, so an Interrupt's wait for the record stops with it.
-  const mounted = useRef<AbortController | null>(null);
+  // The stream says how it ended: *interrupted* is drawn from there, never from the stop's answer.
   useEffect(() => {
-    const controller = new AbortController();
-    mounted.current = controller;
-    return () => controller.abort();
-  }, []);
+    if (interrupt.kind === "pending" && status !== undefined && status !== "in_progress") setInterrupt({ kind: "idle" });
+  }, [interrupt.kind, status]);
+  useEffect(() => {
+    if (interrupt.kind !== "pending") return;
+    const timer = setTimeout(
+      () => setInterrupt({ kind: "refused", message: "The abort was recorded, but the run has not stopped yet. It may still be running." }),
+      STOP_TIMEOUT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [interrupt.kind]);
   const requestInterrupt = useCallback(async () => {
     if (openRun === undefined || interrupt.kind === "pending") return;
-    const signal = mounted.current?.signal;
     setInterrupt({ kind: "pending" });
     try {
-      const outcome = await interruptRun(client, openRun, signal === undefined ? {} : { signal });
-      if (outcome.kind === "aborted") reportStatus("aborted", outcome.endedAtMs);
-      else reportStatus(outcome.status);
-      setInterrupt({ kind: "idle" });
+      await workforce.stopRun(openRun.sessionId, openRun.requestId);
     } catch (error) {
-      if (signal?.aborted === true) return;
-      setInterrupt({ kind: "refused", message: error instanceof Error ? error.message : String(error) });
+      setInterrupt({ kind: "refused", message: describeFailure(error).message });
     }
-  }, [client, openRun, interrupt.kind, reportStatus]);
+  }, [workforce, openRun, interrupt.kind]);
+
+  // The view is live: Retry reads the holder's flow again when that failed, and waits a fresh deadline.
+  const holderFlowFailed = holderFlow !== undefined && "failure" in holderFlow;
+  const readTaskAgain = useCallback(() => {
+    setMissedOut(false);
+    setRowRetries((n) => n + 1);
+    if (holderFlowFailed) setFlowReads((n) => n + 1);
+  }, [holderFlowFailed]);
+  // The task's Retry is the board's own; the row and the Lab are read again either way.
+  const retryTask = useMemo(
+    () =>
+      board === undefined
+        ? undefined
+        : async () => {
+            try {
+              await board.retry(taskId);
+            } finally {
+              readTaskAgain();
+              void refresh();
+            }
+          },
+    [board, taskId, readTaskAgain, refresh],
+  );
 
   const [sent, setSent] = useState<string[]>([]);
-  const [unstamped, setUnstamped] = useState<string[]>([]);
-  useEffect(() => {
-    setSent([]);
-    setUnstamped([]);
-    setFollowing(false);
-  }, [boardRef, taskId]);
-  const noteSent = useCallback((requestId: string, stamped: boolean) => {
-    const add = (held: string[]) => (held.includes(requestId) ? held : [...held, requestId]);
-    setSent(add);
-    if (!stamped) setUnstamped(add);
-  }, []);
+  useEffect(() => setSent([]), [boardRef, taskId]);
+  const noteSent = useCallback((requestId: string) => setSent((held) => (held.includes(requestId) ? held : [...held, requestId])), []);
 
   const value: TaskView = {
     boardRef,
     taskId,
     row,
     boardRows,
-    rowFailure: boardFailure,
+    rowFailure,
     waiting,
     gaveUp,
-    // A read now; the screen waits again if the row still waits, a missing one for a fresh deadline.
-    retryRow: () => {
-      setFollowing(true);
-      setMissedOut(false);
-      void readBoardNow();
-    },
+    retryRow: readTaskAgain,
     run,
     retryRun: () => setRetries((n) => n + 1),
-    status: currentStatus,
-    reportStatus,
+    status,
     interrupt,
     requestInterrupt,
-    // For "run stopped at": the time the record or the stream gave with the aborted status.
-    stoppedAt: currentStatus === "aborted" && status !== undefined && "status" in status ? status.endedAtMs : undefined,
+    stoppedAt: status === "aborted" ? stream.completedAt : undefined,
     devtoolUrl,
+    board,
+    retryTask,
     sent,
-    unstamped,
     noteSent,
   };
   return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;

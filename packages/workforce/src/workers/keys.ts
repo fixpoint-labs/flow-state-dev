@@ -160,6 +160,10 @@ export const WORKER_SESSIONS_VIEW = "workerSessions";
 /** The session turns view's name on the roster flow (`defineSessionTurnsView`). */
 export const SESSION_TURNS_VIEW = "sessionTurns";
 
+// FIX-2771.
+/** The worker messages view's name on the roster flow (`defineWorkerMessagesView`). */
+export const WORKER_MESSAGES_VIEW = "workerMessages";
+
 // FIX-2624.
 /** The worker usage view's name on the roster flow (`defineWorkerUsageView`). */
 export const WORKER_USAGE_VIEW = "workerUsage";
@@ -167,6 +171,10 @@ export const WORKER_USAGE_VIEW = "workerUsage";
 // FIX-2624.
 /** The workstream report view's name on the roster flow (`defineWorkstreamReportView`). */
 export const WORKSTREAM_REPORT_VIEW = "workstreamReport";
+
+// FIX-2774.
+/** The inbox view's name on the roster flow (`defineInboxView`). */
+export const INBOX_VIEW = "inbox";
 
 // FIX-1802.
 /**

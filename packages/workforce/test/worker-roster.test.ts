@@ -197,6 +197,17 @@ describe("what a worker runs with", () => {
     expect((await second.turn("alice", session.id)).output).toMatchObject({ tone: "warm" });
   });
 
+  it("an edit's settingsPatch changes the settings it names and keeps the rest, which the app may not even see", async () => {
+    // An app shows a worker only its `showSettings`; changing one of those (a reply model, say) by
+    // replacing the settings whole would drop the ones it can't see, like a grant of a document.
+    const h = host();
+    await h.rosterAction("alice", "hire", { id: "scribe", flow: FIXTURE, settings: { tone: "terse", resources: ["handbook"] } });
+    const session = await h.client("alice").ensureWorkerSession({ worker: "scribe" });
+    await h.client("alice").edit({ id: "scribe", settingsPatch: { tone: "warm" } });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ tone: "warm", handbook: true, ledger: false });
+    await expect(h.client("alice").edit({ id: "scribe", settings: {}, settingsPatch: { tone: "x" } })).rejects.toThrow();
+  });
+
   it("BR-22 · a configuration naming a skill this host doesn't register refuses that turn, naming it, and leaves the row", async () => {
     const h = host({ skills: [skill("cite"), skill("summarize")] });
     await h.rosterAction("alice", "hire", { id: "scribe", flow: FIXTURE, skills: ["summarize"] });

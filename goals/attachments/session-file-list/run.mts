@@ -6,7 +6,7 @@
  *
  *   Server A: `host.mts`, a local server on on-disk SQLite hosting the same
  *             chat with the block (`with-block`) and without it
- *             (`without-block`). Alice uploads two fresh PNGs and a small PDF
+ *             (`without-block`). Alice uploads two fresh PNGs and a readable PDF
  *             per flow and sends them over two turns of each. The server is
  *             crashed (SIGKILL to its process group).
  *   Server B: a fresh process on the same store. Through the client only:
@@ -28,6 +28,7 @@ import { join } from "node:path";
 import { createClient, type Client, type ClientFetch } from "@flow-state-dev/client";
 import { ATTACHMENTS, parseBlobRef } from "@flow-state-dev/core/attachments";
 import type { FileContent } from "@flow-state-dev/core/items";
+import { makePdf } from "../../../packages/engine/test/blobs/pdf-fixture.ts";
 import {
   REPO_ROOT,
   assertPatched,
@@ -100,8 +101,8 @@ const as =
 const freshPng = (): Uint8Array =>
   new Uint8Array(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), randomBytes(16 * 1024 + Math.floor(Math.random() * 16 * 1024))]));
 
-/** A small PDF-shaped file with random bytes after the header. */
-const freshPdf = (): Uint8Array => new Uint8Array(Buffer.concat([Buffer.from(`%PDF-1.7\n% goal ${Date.now()}\n`), randomBytes(32 * 1024)]));
+/** A readable PDF of exactly 32 KB, new random bytes on every call. */
+const freshPdf = (): Uint8Array => makePdf(["notes"], { padTo: 32 * 1024 });
 
 type Sent = { file: FileContent; requestId: string };
 

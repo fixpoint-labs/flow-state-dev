@@ -9,8 +9,8 @@
  * observations on a single `__GOAL__<json>` line; run.mts owns the grading.
  * Requires `FSDEV_DEBUG_ENDPOINTS=1` for the suspensions debug route.
  *
- * Not typechecked by `goals/tsconfig.json` — its imports resolve against
- * apps/kitchen-sink. See goals/README.md → "Harnesses".
+ * Excluded from `goals/tsconfig.json`: copied into kitchen-sink, so
+ * `./lib/flowstate` resolves there and not in goals/.
  */
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { flowstate } from "./lib/flowstate";

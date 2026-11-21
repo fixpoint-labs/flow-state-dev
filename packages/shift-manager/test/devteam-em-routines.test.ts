@@ -15,7 +15,7 @@ import { inMemoryStores } from "@flow-state-dev/engine";
 import type { Client } from "@flow-state-dev/client";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LIST_ROUTINES_ACTION, ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
-import { runAction } from "../src/lib/action";
+import { runAction } from "./helpers/run-action";
 import { connect } from "../src/lib/connection";
 import { readProject, type ProjectAddress } from "../src/lib/projects";
 import { createLabReader } from "../src/lib/reads";

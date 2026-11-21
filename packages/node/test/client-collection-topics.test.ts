@@ -47,7 +47,7 @@ async function hostWithItems() {
     modelResolver: createMockModelResolver({}),
     stores: { default: { primary: inMemoryStores() } },
   });
-  const handle = await serve(flowState, { port: 0 });
+  const handle = await serve(flowState, { port: 0, host: "127.0.0.1" });
   handles.push(handle);
   await flowState.ready();
   const client = createClient({ userId: "alice", baseUrl: `http://127.0.0.1:${handle.port}` });

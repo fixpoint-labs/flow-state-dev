@@ -1,7 +1,7 @@
 /**
  * The fixture app's Node server (FIX-2368): its `FlowState` on `serve()`,
  * with the built page from `STATIC_DIR` beside the API, on `PORT`. A
- * worker-only process serves nothing and runs the queue.
+ * process-only process serves nothing and runs the queue.
  *
  * The runner forks this file once per process (`goals/lib/peers.mts`) and
  * asks it only for its port and to stop.

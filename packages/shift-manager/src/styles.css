@@ -7,7 +7,9 @@
  * and the Tailwind names pointed at them. Shift Manager's look is the
  * design-system package's one import, whose unlayered values win over those
  * defaults, light by default and dark under `.dark`. Remove that one line and
- * Shift Manager draws the neutral defaults.
+ * Shift Manager draws the neutral defaults. Its text sizes are the design
+ * system's type scale (`type.css`), imported on its own line: Kitchen Sink and
+ * the docs load the look without it.
  *
  * Two names are Shift Manager's own, not the registry's: `sidebar` and
  * `inspector`, the design's surfaces for the sidebar and for the right rail
@@ -18,6 +20,7 @@
 /* Scan only Shift Manager's own source, whichever directory the build runs from. */
 @import "tailwindcss" source(none);
 @import "@flow-state-dev/design-system/shift-manager.css";
+@import "@flow-state-dev/design-system/type.css";
 @import "./components/flow-state/tokens.css";
 @source "./";
 @source "../node_modules/streamdown/dist/*.js";

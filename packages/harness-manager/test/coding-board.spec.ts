@@ -174,3 +174,89 @@ describe("the coding board view", () => {
     expect((await board("alice", conversation)).output[0]).toMatchObject({ runFlow: null });
   });
 });
+
+describe("the coding board view, for one open task", () => {
+  /** A conversation with `goals` filed on its board, and its entries as stored. */
+  async function filed(goals: string[]) {
+    const { post, stores } = await boot();
+    const created = await post(["agent", "sessions"], { userId: "alice", state: { workerId: "core.lead" } });
+    const conversation = created.body.session.id as string;
+    for (const goal of goals) {
+      const filing = await post(["agent", conversation, "actions", "createTask_tasks"], { userId: "alice", input: { goal, assignee: "core.codex", held: true } });
+      expect(filing.status, JSON.stringify(filing.body)).toBe(202);
+      for (let i = 0; i < 100 && (await stores.request.get(filing.body.request.id))?.status === "in_progress"; i += 1) await new Promise((r) => setTimeout(r, 10));
+    }
+    const userKey = `alice:~org:${DEFAULT_ORG_ID}`;
+    const entries = Object.entries(await stores.resourceState.getByPrefix("user", userKey, "tasks/")).map(([key, record]) => ({ key, entry: record.state as { id: string } }));
+    const write = (key: string, entry: object) => stores.resourceState.set("user", userKey, key, entry as never, "any");
+    const read = async (input: Record<string, unknown> = {}) => {
+      const answer = await post(["harnesses", "views", "codingBoard"], { userId: "alice", input: { sessionId: conversation, ...input } });
+      expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+      return answer.body.output as Array<{ id: string; status: string; error: string | null; detail: unknown }>;
+    };
+    return { entries, write, read };
+  }
+
+  it("carries the answer of the task its input names, cut as getTask cuts it, and on no other entry or read", async () => {
+    const { entries, write, read } = await filed(["Fix the build", "Write the notes"]);
+    const [long, short] = entries;
+    // One answer past getTask's cut, one a coding run's `answer` under it.
+    const text = "a".repeat(20_005);
+    await write(long!.key, { ...long!.entry, status: "completed", output: text });
+    await write(short!.key, { ...short!.entry, status: "completed", output: { answer: "Fixed: the lockfile was stale." } });
+
+    // The board read carries no answer: every entry's detail is null.
+    expect((await read()).map((entry) => entry.detail)).toEqual([null, null]);
+    // Named, every entry still comes back, and only the named one carries its answer.
+    const longRead = await read({ taskId: long!.entry.id });
+    expect(longRead).toHaveLength(2);
+    expect(longRead.find((entry) => entry.id === long!.entry.id)!.detail).toEqual({ answer: text.slice(0, 20_000), answerCut: true });
+    expect(longRead.find((entry) => entry.id === short!.entry.id)!.detail).toBeNull();
+    const shortRead = await read({ taskId: short!.entry.id });
+    expect(shortRead.find((entry) => entry.id === short!.entry.id)!.detail).toEqual({ answer: "Fixed: the lockfile was stale.", answerCut: false });
+    expect(shortRead.find((entry) => entry.id === long!.entry.id)!.detail).toBeNull();
+  });
+
+  it("carries no answer while a retried task runs again: the output it kept is its last attempt's", async () => {
+    const { entries, write, read } = await filed(["Fix the build"]);
+    const [{ key, entry }] = entries as [(typeof entries)[number]];
+    // Answered once, then failed and retried: the board keeps the earlier output on the entry.
+    await write(key, { ...entry, status: "in_progress", attempts: 2, output: { answer: "The first attempt's answer." } });
+    expect((await read({ taskId: entry.id }))[0]!.detail).toEqual({ answer: null, answerCut: false });
+    await write(key, { ...entry, status: "completed", attempts: 2, output: { answer: "The second attempt's answer." } });
+    expect((await read({ taskId: entry.id }))[0]!.detail).toEqual({ answer: "The second attempt's answer.", answerCut: false });
+  });
+
+  it("gives each task its title and the state the user sees it in, from one taskView of the row with its asks", async () => {
+    const { entries, write, read } = await filed(["Fix the build"]);
+    const [{ key, entry }] = entries as [(typeof entries)[number]];
+    type Seen = { title: string; state: string; asks: unknown[] };
+    const seen = async () => (await read())[0] as unknown as Seen;
+    // Filed with no title: the screen's words are its goal. Filed held: it isn't queued.
+    expect(await seen()).toMatchObject({ title: "Fix the build", state: "held" });
+    // Its own title wins over the goal.
+    await write(key, { ...entry, title: "Build fix", status: "pending" });
+    expect(await seen()).toMatchObject({ title: "Build fix", state: "queued" });
+    // A question for you on a running task: it waits on you, and its ask says so.
+    const question = { id: "q1", actor: "user", openedAt: 1, source: { kind: "task", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "EU or US?" } };
+    await write(key, { ...entry, status: "in_progress", holds: [question] });
+    const waiting = await seen();
+    expect(waiting.state).toBe("waiting");
+    expect(waiting.asks).toHaveLength(1);
+    // Nothing waits on you: running. Ended: done, whatever hold it kept.
+    await write(key, { ...entry, status: "in_progress", holds: [] });
+    expect((await seen()).state).toBe("running");
+    await write(key, { ...entry, status: "completed", holds: [question] });
+    expect((await seen()).state).toBe("done");
+  });
+
+  it("names the reason a cancelled task was cancelled with, as it names why a failed one failed", async () => {
+    const { entries, write, read } = await filed(["Fix the build"]);
+    const [{ key, entry }] = entries as [(typeof entries)[number]];
+    await write(key, { ...entry, status: "cancelled", error: "Not needed any more" });
+    expect((await read())[0]).toMatchObject({ status: "cancelled", error: "Not needed any more" });
+    // A completed task's stale error is still none.
+    await write(key, { ...entry, status: "completed", error: "a stale error" });
+    expect((await read())[0]).toMatchObject({ status: "completed", error: null });
+  });
+});

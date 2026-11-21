@@ -399,9 +399,22 @@ export type SessionTurn = {
   readonly source: string;
   readonly startedAtMs: number;
   readonly completedAtMs?: number;
+  // FIX-2771.
+  /** When it ended, completed, failed or aborted: a failed turn has no `completedAtMs`. Absent while it runs or waits. */
+  readonly endedAtMs?: number;
   readonly updatedAt: number;
   /** Why it failed, when it did. */
   readonly error?: { readonly code: string; readonly message: string };
+  /** The first turn its history window held, when earlier turns had left it: the request record's mark. */
+  readonly historyStart?: { readonly requestId: string } | null;
+  // FIX-2848 D3.
+  /**
+   * Whether the engine's retry route runs this turn again for its caller: the
+   * route's own rule on `source`, with the host's `publicReentrySources`. A
+   * screen offers Retry on a failed turn from this, never from a copy of the
+   * source list. Absent from an engine older than this field: read it as `false`.
+   */
+  readonly retryable?: boolean;
 };
 
 /** Which of another session's settled turns {@link RequestSessions.history} reads. */

@@ -12,8 +12,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { connect } from "../src/lib/connection";
-import { readSessionItems } from "../src/lib/run";
-import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, createLabReader, toBoardTaskView, type BoardTaskView } from "../src/lib/reads";
+import { readSessionItems } from "./helpers/session-reads";
+import { createLabReader, toBoardTaskView } from "../src/lib/reads";
+import type { BoardTaskView } from "../src/lib/boards";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "../src/lib/boards";
 import { openRunLab, RUN_LAB_ASK, RUN_LAB_FAILURE, RUN_LAB_SPEND, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -49,6 +51,23 @@ async function openLab(options: Parameters<typeof openRunLab>[0] = {}) {
 
 /** Whether `url` is a read of the user's conversation boards: the snapshot's, or one task screen's. */
 const isBoardRead = (url: string) => new URL(url, "http://lab.local").pathname.endsWith(`/resources/${CONVERSATION_BOARD_COLLECTION}`);
+
+/** Whether `url` is a read of a conversation board's task-list view: what a task screen reads its row from. */
+const isBoardViewRead = (url: string) => new URL(url, "http://lab.local").pathname.endsWith("/views/listTasks_tasks");
+
+/** Rewrite the rows each board view read answers, in the view's own row shape. */
+function rewriteViewTasks(edit: (rows: Array<Record<string, unknown>>) => Array<Record<string, unknown>>) {
+  const real = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input instanceof Request ? input.url : input);
+    const response = await real(input, init);
+    if (!isBoardViewRead(url) || !response.ok) return response;
+    // The view's answer is `output`: its rows, or, on a partial answer, just the rows a change touched.
+    const body = (await response.json()) as { output: Array<Record<string, unknown>> };
+    body.output = edit(body.output);
+    return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  });
+}
 
 async function renderAt(baseUrl: string, path: string, devtoolUrl?: string) {
   (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${baseUrl}${path}`);
@@ -225,15 +244,10 @@ describe("a row with no run (BR-3)", () => {
     // The board answers without this row's link for its first reads, as it
     // does between the claim and the run's start.
     let hidden = 2;
-    const real = globalThis.fetch;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      const url = String(input instanceof Request ? input.url : input);
-      const response = await real(input, init);
-      if (!isBoardRead(url) || hidden <= 0) return response;
+    rewriteViewTasks((rows) => {
+      if (hidden <= 0) return rows;
       hidden -= 1;
-      const body = (await response.json()) as { items: Array<{ clientData: Record<string, unknown> }> };
-      for (const item of body.items) if (item.clientData.id === row.id) delete item.clientData.run;
-      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+      return rows.map((r) => (r.id !== row.id ? r : Object.fromEntries(Object.entries(r).filter(([key]) => key !== "run"))));
     });
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
     expect((await screen.findByTestId("session-no-run")).textContent).toMatch(/shows here as soon as the board links it/);
@@ -273,26 +287,8 @@ async function finishedRow(opened: Awaited<ReturnType<typeof openLab>>): Promise
 }
 
 describe("following the row as the board moves it", () => {
-  it("follows the task onto its next attempt when the board links a new run, with no reload", async () => {
-    const opened = await openLab();
-    const first = await finishedRow(opened);
-    const next = await heldRow(opened, false);
-    // The board hands the task on: queued again with its settled run still
-    // linked, then claimed with a new run. The screen must move to that run.
-    let boardReads = 0;
-    rewriteRows(
-      isBoardRead,
-      (rows) => {
-        boardReads += 1;
-        return rows.map((r) =>
-          r.id !== first.id ? r : boardReads < 3 ? { ...r, status: "pending" } : { ...r, status: "in_progress", run: next.run },
-        );
-      },
-    );
-    await renderAt(opened.served.baseUrl, `/tasks/${first.boardRef}/${first.id}/session`);
-    expect((await screen.findByTestId("session", {}, { timeout: 10_000 })).getAttribute("data-request-id")).toBe(first.run!.requestId);
-    await waitFor(() => expect(screen.getByTestId("session").getAttribute("data-request-id")).toBe(next.run!.requestId), { timeout: 12_000 });
-  }, 40_000);
+  // Following the row onto its next run is the board view's, live: the provider opens whatever run the
+  // view's row links (task-provider.test.tsx), and a stubbed answer here has no board notice to be heard by.
 
   it("shows a failed board read with a Retry that reads the board, never as a missing task", async () => {
     const opened = await openLab();
@@ -301,49 +297,28 @@ describe("following the row as the board moves it", () => {
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input instanceof Request ? input.url : input);
-      if (failing && isBoardRead(url)) {
+      if (failing && isBoardViewRead(url)) {
         return new Response(JSON.stringify({ error: "board store unavailable" }), { status: 503 });
       }
       return real(input, init);
     });
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
-    const failure = await screen.findByTestId("task-board-failure");
-    expect(failure.textContent).toMatch(/board store unavailable/);
+    const failure = await screen.findByTestId("task-board-failure", {}, { timeout: 10_000 });
+    expect(failure.textContent).toMatch(/didn't load/);
     expect(screen.queryByTestId("task-missing")).toBeNull();
     failing = false;
     fireEvent.click(within(failure).getByRole("button"));
-    await waitFor(() => expect(screen.getByTestId("task-title").textContent).toBe(row.title));
+    // The view reads again on its own, where push can miss a change.
+    await waitFor(() => expect(screen.getByTestId("task-title").textContent).toBe(row.title), { timeout: 10_000 });
     expect(screen.queryByTestId("task-board-failure")).toBeNull();
   }, 30_000);
 
-  it("Retry after a failed read on settling reads the board again and clears the failure", async () => {
-    const opened = await openLab();
-    const row = await finishedRow(opened);
-    // The first read (the page's own) lands; the read taken when the run
-    // settles fails; the next one lands with the row as the board holds it now.
-    let boardReads = 0;
-    const real = globalThis.fetch;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      const url = String(input instanceof Request ? input.url : input);
-      if (!isBoardRead(url)) return real(input, init);
-      boardReads += 1;
-      if (boardReads === 2) return new Response(JSON.stringify({ error: "board store unavailable" }), { status: 503 });
-      const response = await real(input, init);
-      if (boardReads < 3) return response;
-      const body = (await response.json()) as { items: Array<{ clientData: Record<string, unknown> }> };
-      for (const item of body.items) if (item.clientData.id === row.id) item.clientData.title = "Renamed after it settled";
-      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
-    });
-    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
-    const failure = await screen.findByTestId("task-board-failure", {}, { timeout: 10_000 });
-    fireEvent.click(within(failure).getByRole("button"));
-    await waitFor(() => expect(screen.getByTestId("task-title").textContent).toBe("Renamed after it settled"));
-    expect(screen.queryByTestId("task-board-failure")).toBeNull();
-  }, 30_000);
+  // A read that fails once the row is shown keeps the row (the view's last answer, marked stale): the
+  // old read-on-settle and its failure are gone with the snapshot board read (FIX-2776).
 });
 
 describe("what the Session draws of the run's items", () => {
-  it("draws what the item renderers draw: a sub-agent's working steps stay out, a keyed snapshot shows once", async () => {
+  it("draws what the item renderers draw: a sub-agent's working steps stay out, and a record no renderer draws is no line", async () => {
     const opened = await openLab();
     const row = await finishedRow(opened);
     // A sub-agent's message is stored in the session and stamped with the task,
@@ -372,10 +347,10 @@ describe("what the Session draws of the run's items", () => {
     });
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
     await screen.findByTestId("session", {}, { timeout: 10_000 });
-    await waitFor(() => expect(itemIds()).toContain("item_data_keyed:progress"));
+    await waitFor(() => expect(itemIds().length).toBeGreaterThan(0));
     expect(itemIds()).not.toContain(working.id);
-    // The run wrote its progress snapshot twice; it shows once, at its latest.
-    expect(itemIds().filter((id) => id === "item_data_keyed:progress")).toHaveLength(1);
+    // The run's progress snapshot is a record Shift Manager's registry draws nothing for: no line, however often it was written.
+    expect(itemIds()).not.toContain("item_data_keyed:progress");
   }, 30_000);
 });
 
@@ -387,13 +362,10 @@ describe("the Session draws with Shift Manager's registry copies (ER-6)", () => 
     await screen.findByTestId("session", {}, { timeout: 10_000 });
     const drawn = (type: string) =>
       screen.queryAllByTestId("session-item").filter((el) => el.getAttribute("data-item-type") === type);
-    await waitFor(() => expect(drawn("tool_output").length).toBeGreaterThan(0), { timeout: 5_000 });
-    // The registry's message card, and the collapsible reasoning and tool cards.
+    await waitFor(() => expect(drawn("steps").length).toBeGreaterThan(0), { timeout: 5_000 });
+    // The registry's message card, and its tool group: one collapsible line for a run of thinking and calls.
     expect(drawn("message").every((li) => li.querySelector("[data-testid=message]") !== null)).toBe(true);
-    for (const type of ["reasoning", "tool_output"]) {
-      expect(drawn(type).length, type).toBeGreaterThan(0);
-      expect(drawn(type).every((li) => li.querySelector("[data-slot=collapsible]") !== null), type).toBe(true);
-    }
+    expect(drawn("steps").every((li) => li.querySelector("[data-testid=tool-group][data-slot=collapsible]") !== null)).toBe(true);
   }, 30_000);
 });
 
@@ -578,7 +550,8 @@ describe("the inspector (BR-18 to BR-23)", () => {
     const row = await eventually(async () => (await opened.rows()).find((r) => r.id === held.id && r.spend !== null), "the held run's spend");
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`, "http://127.0.0.1:4000");
     const inspector = await screen.findByTestId("task-inspector");
-    expect(within(inspector).getByTestId("inspector-worker-id").getAttribute("data-worker-id")).toBe(opened.lab.ownWorker!.id);
+    // The row comes from the board's view, live, a moment after the frame draws.
+    await waitFor(() => expect(within(inspector).getByTestId("inspector-worker-id").getAttribute("data-worker-id")).toBe(opened.lab.ownWorker!.id));
     expect(within(inspector).getByTestId("inspector-started-at").getAttribute("data-started-at")).toBe(String(row.startedAt));
     // The harness, tokens and charge the run reported, from the row the board wrote while it runs (FIX-2398).
     const spend = within(inspector).getByTestId("inspector-spend");
@@ -605,11 +578,11 @@ describe("the inspector (BR-18 to BR-23)", () => {
     expect((await opened.rows()).find((r) => r.id === waiting.taskId)!.deps).toEqual([held.id]);
     await renderAt(opened.served.baseUrl, `/tasks/${held.boardRef}/${waiting.taskId}/brief`);
     const after = await screen.findByTestId("inspector-after");
-    expect(within(after).getAllByRole("listitem").map((li) => li.getAttribute("data-task-id"))).toEqual([held.id]);
+    await waitFor(() => expect(within(after).getAllByRole("listitem").map((li) => li.getAttribute("data-task-id"))).toEqual([held.id]));
     fireEvent.click(within(after).getByRole("link"));
     await waitFor(() => expect(window.location.pathname).toBe(`/tasks/${held.boardRef}/${held.id}/session`));
     const blocks = await screen.findByTestId("inspector-blocks");
-    expect(within(blocks).getAllByRole("listitem").map((li) => li.getAttribute("data-task-id"))).toEqual([waiting.taskId]);
+    await waitFor(() => expect(within(blocks).getAllByRole("listitem").map((li) => li.getAttribute("data-task-id"))).toEqual([waiting.taskId]));
   }, 30_000);
 
   it("says a harness that records nothing records none, and turns the trace link off with no devtool", async () => {
@@ -692,8 +665,8 @@ describe("a task whose run waits on a user (BR-17)", () => {
 async function filedRow(opened: Awaited<ReturnType<typeof openLab>>, kind: "held" | "cancellable" | "failing", ready: (row: BoardTaskView) => boolean): Promise<BoardTaskView> {
   const settling = opened.lab.filed.filter((f) => f.kind === "short" || f.kind === "failing").map((f) => f.taskId);
   await eventually(async () => {
-    const rows = await opened.rows();
-    return settling.every((id) => ["completed", "errored"].includes(rows.find((r) => r.id === id)?.status ?? "")) ? true : undefined;
+    const tasks = await opened.rows();
+    return settling.every((id) => ["completed", "errored"].includes(tasks.find((r) => r.id === id)?.status ?? "")) ? true : undefined;
   }, "the short and failing runs to end");
   const filed = opened.lab.filed.find((f) => f.kind === kind)!;
   return eventually(async () => (await opened.rows()).find((r) => r.id === filed.taskId && ready(r)), `the ${kind} row`);
@@ -729,6 +702,8 @@ describe("the task's actions, in the frame's header beside Interrupt", () => {
     expect(await storedStatus(opened, row.id)).toBe("in_progress");
     fireEvent.click(screen.getByTestId("task-action-confirm-yes"));
     await waitFor(async () => expect(await storedStatus(opened, row.id)).toBe("cancelled"), { timeout: 10_000 });
+    // The board's view brings the cancelled row before Retry acts on it.
+    await waitFor(() => expect(screen.getByTestId("task-status").textContent).toContain("cancelled"), { timeout: 10_000 });
     const retry = await screen.findByTestId("task-action-retry", {}, { timeout: 10_000 });
     fireEvent.click(retry);
     await waitFor(async () => expect(["pending", "in_progress"]).toContain(await storedStatus(opened, row.id)), { timeout: 10_000 });
@@ -747,9 +722,11 @@ describe("the task's actions, in the frame's header beside Interrupt", () => {
   it("shows a refusal in the board's own words, and changes nothing", async () => {
     const opened = await openLab({ taskActions: true });
     const row = await filedRow(opened, "held", (r) => r.status === "held");
+    // The screen's view goes on answering the row as held, so it still offers Release once the row is cancelled.
+    rewriteViewTasks((tasks) => tasks.map((r) => (r.id === row.id ? { ...r, status: "held" } : r)));
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
     await screen.findByTestId("task-action-row");
-    // Cancelled behind the screen's back, so the screen still offers Release.
+    // Cancelled behind the screen's back.
     await createLabReader(opened.client).taskActions({ id: opened.lab.conversation, flowId: opened.lab.leadFlow }).cancel(row.id);
     expect(await storedStatus(opened, row.id)).toBe("cancelled");
     fireEvent.click(screen.getByTestId("task-action-release"));

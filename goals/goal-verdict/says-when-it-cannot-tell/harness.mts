@@ -3,8 +3,8 @@
  * `apps/kitchen-sink` and run there by run.mts (via `runHarness`), so the app's
  * `@/*` aliases and `@flow-state-dev/*` both resolve.
  *
- * Not typechecked by `goals/tsconfig.json` — its imports resolve against
- * apps/kitchen-sink, not against goals/. See goals/README.md → "Harnesses".
+ * Excluded from `goals/tsconfig.json`: copied into kitchen-sink, so
+ * `./lib/flowstate` resolves there and not in goals/.
  */
 import { runAction } from "@flow-state-dev/engine";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";

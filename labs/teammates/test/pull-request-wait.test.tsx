@@ -4,53 +4,45 @@
  * **Open a PR** opened) stays open until the pull request merges or closes
  * (harness-manager's `awaitPullRequests`). The popup must say so, *PR open ·
  * #7* with the link, and say how to wake it, or the task reads as a run still
- * working while it only waits on a merge.
+ * working while it only waits on a merge. The coding board view reads the
+ * wait off the row (`pullRequests`, by number), never as a hold on you.
  */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { toBoardTask, type AppCalls } from "../src/app";
-import { PULL_REQUEST_HINT, PullRequestOpen } from "../src/components/Popups";
+import { PopupView, PULL_REQUEST_HINT } from "../src/components/Popups";
+import { lookOf } from "../src/lib/looks";
+import { codingTask, stubServer, TestProvider } from "./stub-server";
 
 afterEach(cleanup);
 
 const URL_7 = "https://github.com/acme/app/pull/7";
 
-/** A coding row waiting on pull request 7, as the board lists it: running, with the manager's external hold. */
-const waitingRow = {
-  id: "t-7",
-  status: "in_progress",
-  assignee: "coder.cursor",
-  title: "Add a welcome line",
-  goal: "Add it",
-  run: { sessionId: "run-7", requestId: "r-1" },
-  holds: [
-    {
-      id: "wait_1",
-      actor: "system",
-      openedAt: 1,
-      source: { kind: "task", closedBy: [{ by: "event", event: "pull-request", key: "github.com/acme/app/7" }] },
-      ask: { kind: "external", prompt: "Waiting for pull request #7 to merge or close." },
-    },
-  ],
-};
+/** A coding row waiting on pull request 7, as the coding board view answers it: running, nothing asked of you. */
+const waitingRow = codingTask({ id: "t-7", status: "in_progress", assignee: "coder.cursor", harness: "cursor", title: "Add a welcome line", run: { sessionId: "run-7", requestId: "r-1", attempt: 1 }, pullRequests: [7] });
+
+function drawPopup(task = waitingRow) {
+  const { client } = stubServer({ board: { s1: [task] }, recorded: { "run-7": { pullRequests: [{ number: 7, url: URL_7, title: "Add a welcome line" }] } } });
+  render(
+    <TestProvider client={client}>
+      <PopupView popup={{ kind: "task", sessionId: "s1", taskId: task.id }} nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} isCoding={() => true} coders={[]} onClose={() => {}} />
+    </TestProvider>,
+  );
+  return screen.findByRole("dialog");
+}
 
 describe("a coding task waiting on its pull request", () => {
-  it("reads the wait off the row, by number, and never as waiting on you", () => {
-    const task = toBoardTask(waitingRow);
-    expect(task.pullRequests).toEqual([{ number: 7 }]);
-    expect(task.waiting).toBeUndefined();
-    expect(task.status).toBe("running");
+  it("shows PR open · #7, linked from the run session's record, and how to wake it, and never as waiting on you", async () => {
+    const popup = await drawPopup();
+    await waitFor(() => expect(within(popup).getByRole("link", { name: "#7" }).getAttribute("href")).toBe(URL_7));
+    expect(within(popup).getByTestId("pull-request-wait").textContent).toBe("PR open · #7");
+    expect(within(popup).getByTestId("pull-request-hint").textContent).toBe(PULL_REQUEST_HINT);
+    expect(within(popup).queryByRole("region", { name: "Waiting on you" })).toBeNull();
+    expect(popup.textContent).toContain("PR open");
   });
 
-  it("reads none once the row settled", () => {
-    expect(toBoardTask({ ...waitingRow, status: "completed" }).pullRequests).toBeUndefined();
-  });
-
-  it("shows PR open · #7, linked from the run session's record, and how to wake it", async () => {
-    const adapter = { readPullRequests: async () => [{ number: 7, url: URL_7, title: "Add a welcome line" }] } as unknown as AppCalls;
-    render(<PullRequestOpen adapter={adapter} task={toBoardTask(waitingRow)} />);
-    await waitFor(() => expect(screen.getByRole("link", { name: "#7" }).getAttribute("href")).toBe(URL_7));
-    expect(screen.getByTestId("pull-request-wait").textContent).toBe("PR open · #7");
-    expect(screen.getByTestId("pull-request-hint").textContent).toBe(PULL_REQUEST_HINT);
+  it("shows none once the row settled", async () => {
+    const popup = await drawPopup({ ...waitingRow, status: "completed", pullRequests: [] });
+    await waitFor(() => expect(popup.textContent).toContain("finished without writing a result"));
+    expect(within(popup).queryByTestId("pull-request-wait")).toBeNull();
   });
 });

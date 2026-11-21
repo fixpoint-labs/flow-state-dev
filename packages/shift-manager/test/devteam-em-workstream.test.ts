@@ -26,10 +26,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { encodeUserSegment, type GeneratorModel, type ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { runAction } from "../src/lib/action";
+import { runAction } from "./helpers/run-action";
 import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
-import { readEntryReport, readProject, type ProjectAddress } from "../src/lib/projects";
+import { readProject, type ProjectAddress } from "../src/lib/projects";
+import { workstreamReportView } from "@flow-state-dev/workforce/browser";
 import { createLabReader } from "../src/lib/reads";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { harnessStub } from "@flow-state-dev/harness-manager";
@@ -232,7 +233,8 @@ describe("the EM files from the workstream it leads", () => {
 
     // The EM updated her entry, and her project screen reads the report.
     const entry = (await readProject(client, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!;
-    expect(await readEntryReport(client, STOREFRONT, entry)).toBe(REPORT);
+    // The read an entry's view makes (`useEntryReport`): the roster flow's report view, with no session.
+    expect((await client.view(workstreamReportView, { project: STOREFRONT, owner: entry.owner, id: entry.id })).value.report).toBe(REPORT);
 
     // Every session the job made is Alice's: her workstream session, and each task's session under it.
     const sessions = await runtime.stores.session.list({ orgId: LAB_ORG_ID, parentage: "all" });

@@ -5,7 +5,7 @@
  * {@link TurnSendStatus}.
  *
  * It only draws. Where the line goes, and whether it can go at all, is the
- * caller's; the send itself is {@link sendTurn}'s, the one send path. The
+ * caller's; the send itself is `useDeliverLine`'s (`lib/deliver.ts`), the one send path. The
  * composer shows *sending* until the worker's session holds the line. Then the
  * line leaves the draft, since the conversation now holds it, and the composer
  * says the worker is on it until the send resolves. It shows *delivered* only
@@ -35,7 +35,10 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { clearDraft, readDraft, saveDraft, useDraft } from "@flow-state-dev/react";
-import { TurnNotDelivered, type TurnStop } from "../lib/send";
+import { TurnNotDelivered } from "../lib/deliver";
+
+/** What a delivered line's turn stopped on: a user's ask Inbox lists, anything else, or nothing. */
+type TurnStop = "ask" | "wait" | null;
 import { AttachButton, AttachmentStrip, useAttachments, type AttachmentUploader, type Attachments } from "./flow-state/attachments";
 
 /** Where a composer's unsent line is kept (`useDraft`), and beside it an *unconfirmed* send's warning. */
@@ -93,12 +96,12 @@ function adoptLegacyDraft(from: string | undefined, to: string | undefined): voi
 }
 
 /** Where the last send stands. */
-export type TurnSendState =
+type TurnSendState =
   | { kind: "idle" }
   | { kind: "sending" }
   /** The session holds the line; the worker's turn on it hasn't ended. */
   | { kind: "held" }
-  /** `stopped`: what the worker's turn stopped on, as {@link sendTurn} says. */
+  /** `stopped`: what the worker's turn stopped on, as `useDeliverLine` says. */
   | { kind: "delivered"; stopped: TurnStop }
   | { kind: "refused"; reason: string }
   | { kind: "not-sent"; reason: string }
@@ -108,10 +111,10 @@ export type TurnSendState =
  * The send state one composer keeps: run a send, and land on *delivered* or
  * on why not. `initial` is where it starts, such as an *unconfirmed* line kept
  * across a reload. `run` resolves `true` once the line is delivered. A send may
- * resolve `{ stopped }`, as {@link sendTurn} does, to say what the worker stopped on,
+ * resolve `{ stopped }`, as `useDeliverLine` does, to say what the worker stopped on,
  * and may call the `held` it is handed once the session holds the line.
  */
-export function useTurnSend(initial: TurnSendState = { kind: "idle" }) {
+function useTurnSend(initial: TurnSendState = { kind: "idle" }) {
   const [state, setState] = useState<TurnSendState>(initial);
   const mounted = useRef(true);
   // Set on every mount, not just the first: StrictMode unmounts and remounts once in dev.
@@ -156,7 +159,7 @@ export function useTurnSend(initial: TurnSendState = { kind: "idle" }) {
 }
 
 /** What a send's state says, with Retry only for a line that never got there. */
-export function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendState; testId: string; onRetry: () => void }) {
+function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendState; testId: string; onRetry: () => void }) {
   if (state.kind === "sending") return <>Sending…</>;
   if (state.kind === "held") return <>Sent. Waiting on the worker's reply…</>;
   if (state.kind === "delivered") {
@@ -190,7 +193,7 @@ export function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendStat
  * above the text, + sits before ⏎, and a paste into the text or a drop on the
  * composer adds files.
  */
-export function ComposerShell({
+function ComposerShell({
   testId,
   label,
   placeholder,
@@ -236,8 +239,8 @@ export function ComposerShell({
       disabled={disabled}
       placeholder={placeholder}
       aria-label={label}
-      className={`block w-full min-w-0 bg-transparent outline-none placeholder:text-muted-foreground disabled:opacity-60 ${
-        scale === "shift-coordinator" ? "p-4 text-base" : "px-3 py-[11px] text-sm"
+      className={`block w-full min-w-0 bg-transparent text-base outline-none placeholder:text-muted-foreground disabled:opacity-60 ${
+        scale === "shift-coordinator" ? "p-4" : "px-3 py-[11px]"
       }`}
       data-testid={`${testId}-input`}
       data-look="composer-input"
@@ -289,7 +292,7 @@ export function ComposerShell({
               {sendButton}
             </div>
           </div>
-          <div className="font-mono text-[11px] font-medium text-muted-foreground" data-look="composer-footer">
+          <div className="font-mono text-xs font-medium text-muted-foreground" data-look="composer-footer">
             {lead}
             {statusLine}
           </div>
@@ -299,7 +302,7 @@ export function ComposerShell({
           {strip}
           {input}
           <div
-            className="flex flex-wrap items-center justify-between gap-x-3.5 gap-y-1 border-t border-foreground/10 py-1.5 pr-2 pl-3 font-mono text-[11px] font-medium text-muted-foreground"
+            className="flex flex-wrap items-center justify-between gap-x-3.5 gap-y-1 border-t border-foreground/10 py-1.5 pr-2 pl-3 font-mono text-xs font-medium text-muted-foreground"
             data-look="composer-footer"
           >
             <span className="flex min-w-0 flex-wrap items-center gap-3.5">
@@ -359,8 +362,8 @@ export function TurnComposer({
   /** Why nothing can be sent right now, or `null` when it can. */
   blocked: string | null;
   /**
-   * Send the line and its files; resolves once it is delivered, with {@link sendTurn}'s `stopped` when it has it.
-   * Call `held` once the worker's session holds the line ({@link sendTurn}'s `onHeld`).
+   * Send the line and its files; resolves once it is delivered, with the delivery's `stopped` when it has it.
+   * Call `held` once the worker's session holds the line (the delivery's `onHeld`).
    */
   send: (message: string, held: () => void, attachments: FileContent[]) => Promise<void | { stopped: TurnStop }>;
   /** The line has left the draft: the worker's session holds it, or it was delivered. */
@@ -392,8 +395,11 @@ export function TurnComposer({
   // Kept beside the draft, so a reload doesn't offer to send twice a line that may have arrived.
   const [unconfirmed, setUnconfirmed] = useDraft(UNCONFIRMED, draftKey);
   const { state, run, reset } = useTurnSend(unconfirmed === "" ? undefined : { kind: "unconfirmed", reason: unconfirmed });
-  // The draft's files: one draft's, dropped when the composer moves to another (`draftKey`).
-  const attachments = useAttachments({ client: uploader ?? null, sessionId: draftKey ?? null });
+  // FIX-2776.
+  // The draft's files: one draft's, dropped when the composer moves to another draft. A key that
+  // replaced `legacyDraftKey` is the same draft moved (a project's first line opening its session),
+  // so the files move with the text, as the text does.
+  const attachments = useAttachments({ client: uploader ?? null, sessionId: legacyDraftKey ?? draftKey ?? null });
   useEffect(() => {
     if (state.kind === "unconfirmed") setUnconfirmed(state.reason);
     // Cleared only once the next send has ended: a reload mid-send still warns.

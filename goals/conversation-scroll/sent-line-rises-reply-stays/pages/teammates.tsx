@@ -1,56 +1,83 @@
 /**
  * The Teammates lab's goal page: its real `Conversation` and the `SessionOverlay` modal its popups open in,
- * with the lab's stylesheet, on a scripted adapter (`script.ts`) in place of
- * the server. Copied to the lab's scratch copy as `src/goal/teammates.tsx`.
+ * with the lab's stylesheet, on a scripted conversation (`script.ts`) in place of the server. Copied to the
+ * lab's scratch copy as `src/goal/teammates.tsx`.
+ *
+ * The script stands in for the conversation's follower: it publishes the script's lines as the follower
+ * publishes what it read, and a line the composer sends reaches the script through the worker flow's door
+ * on the page's client.
  *
  *   ?surface=conversation   the conversation and its composer
  *   ?surface=popup          a popup over it, showing the open conversation's lines
  */
-import { StrictMode } from "react";
+import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import type { AppCalls, AppWorker, ConversationEntry } from "../app";
+import type { Client } from "@flow-state-dev/client";
+import type { ItemLine } from "@flow-state-dev/react";
+import { RECEIVED_MESSAGE_DATA_TYPE, type RosterEntry } from "@flow-state-dev/workforce/browser";
+import { AppProvider, useAppClient } from "../app";
 import { Conversation } from "../components/Conversation";
 import { SessionOverlay } from "../components/flow-state/session-overlay";
 import "../styles.css";
 import { exposeGoal, script, useConversation, useOpen, type Line } from "./script";
 
-const entryOf = (line: Line): ConversationEntry =>
-  line.who === "person"
-    ? { kind: "user", id: line.id, text: line.text }
-    : line.who === "worker"
-      ? { kind: "assistant", id: line.id, text: line.text, streaming: line.streaming }
-      : { kind: "received", id: line.id, messageId: line.id, from: "researcher", text: line.text };
+/** A script line as the conversation model would read it: what you said, what the worker said, a message from a teammate. */
+const lineOf = (line: Line): ItemLine => {
+  const base = { id: line.id, requestId: line.id, itemIndex: 0, ts: 0, provenance: { blockName: "worker", blockInstanceId: "worker", phase: "main" } };
+  const said = (role: "user" | "assistant") => ({
+    ...base,
+    type: "message",
+    status: line.streaming ? "in_progress" : "completed",
+    role,
+    content: [{ type: role === "user" ? "input_text" : "output_text", text: line.text }],
+  });
+  return (
+    line.who === "person"
+      ? { kind: "user", id: line.id, requestId: line.id, item: said("user") }
+      : line.who === "worker"
+        ? { kind: "assistant", id: line.id, requestId: line.id, item: said("assistant"), ...(line.streaming ? { streaming: true } : {}) }
+        : {
+            kind: "data",
+            id: line.id,
+            requestId: line.id,
+            item: { ...base, type: "data", status: "completed", dataType: RECEIVED_MESSAGE_DATA_TYPE, value: { from: "researcher", messageId: line.id, text: line.text } },
+          }
+  ) as ItemLine;
+};
 
-const watchers = new Map<string, unknown>();
-/** Every read the conversation makes; only the conversation itself and its connection say anything. */
-const adapter = new Proxy({} as AppCalls, {
-  get(_, name: string) {
-    if (!watchers.has(name)) {
-      watchers.set(
-        name,
-        name === "watchConversation"
-          ? (key: string, emit: (v: unknown) => void) => {
-              const read = () => {
-                const c = script.get(key);
-                emit({ entries: c.lines.map(entryOf), running: c.running });
-              };
-              read();
-              return script.subscribe(read);
-            }
-          : name === "watchConnection"
-            ? (_key: string, emit: (v: unknown) => void) => (emit("live"), () => undefined)
-            : name === "send"
-              ? (key: string, text: string) => script.send(key, text)
-              : name.startsWith("watch")
-                ? () => () => undefined
-                : async () => undefined,
-      );
-    }
-    return watchers.get(name);
-  },
-});
+const worker: RosterEntry = { id: "helper", flow: "agent", standard: true, description: "helps out", name: "Helper", teamName: null, forkedFrom: null, edited: false, settings: {} };
 
-const worker: AppWorker = { id: "helper", name: "Helper", role: "helps out" };
+/**
+ * No server here: the package views the conversation reads (status, worker messages) wait for good, and the
+ * worker flow's door hands each line to the script.
+ */
+const client = {
+  userId: "you",
+  view: () => new Promise(() => undefined),
+  subscribe: () => ({ close: () => undefined }),
+  sessions: { get: async (id: string) => ({ id, flowKind: "agent", updatedAt: 1, state: {} }) },
+  flow: () => ({
+    send: async (_action: string, input: { message: string }, options: { sessionId: string }) => {
+      script.send(options.sessionId, input.message);
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    },
+  }),
+} as unknown as Client;
+
+/** The conversation's follower, stood in for by the script: its lines, as the follower publishes what it read. */
+function Follower({ sessionId }: { sessionId: string }) {
+  const { conversations } = useAppClient();
+  const conversation = useConversation(sessionId);
+  useEffect(() => {
+    conversations.publish(sessionId, {
+      view: { lines: conversation.lines.map(lineOf), running: conversation.running, stopping: false, backgroundRunning: 0 },
+      connection: "live",
+      mark: undefined,
+      follow: () => undefined,
+    });
+  }, [conversations, sessionId, conversation]);
+  return null;
+}
 
 function Page() {
   const open = useOpen();
@@ -58,8 +85,8 @@ function Page() {
   const conversation = useConversation(open);
   return (
     <div style={{ height: "100vh" }} className="bg-background text-foreground">
+      <Follower sessionId={open} />
       <Conversation
-        adapter={adapter}
         worker={worker}
         sessionId={open}
         nameOf={(id) => id}
@@ -68,8 +95,6 @@ function Page() {
         harnessOf={() => undefined}
         onFire={async () => undefined}
         onOpen={() => undefined}
-        talkOpen={false}
-        onToggleTalk={() => undefined}
       />
       {surface === "popup" ? (
         <SessionOverlay key={open} variant="modal" label="Exchange" title={`Conversation ${open}`} onClose={() => undefined}>
@@ -87,6 +112,8 @@ function Page() {
 exposeGoal();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Page />
+    <AppProvider client={client}>
+      <Page />
+    </AppProvider>
   </StrictMode>,
 );

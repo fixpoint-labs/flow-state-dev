@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderHook } from "@testing-library/react";
 import type { ContainerItem, DataItem, OutputItem } from "@flow-state-dev/core/items";
-import { buildItemRenderStream, ItemRenderer, useContainerItems, type RendererRegistry } from "../src";
+import { conversationLines, ItemRenderer, useContainerItems, type RendererRegistry } from "../src";
 import { resolveRenderer } from "../src/registry/block-renderers";
 
 const renderers: { current: RendererRegistry } = { current: {} };
@@ -52,15 +52,15 @@ describe("data renderers", () => {
   });
 });
 
-describe("buildItemRenderStream with data items", () => {
+describe("conversationLines with data items", () => {
   it("keeps only the latest keyed data record per request", () => {
     const items = [
       dataItem("item_data_keyed:k", "board", { n: 1 }, { key: "k" }),
       dataItem("x", "turn", { n: 1 }),
       dataItem("item_data_keyed:k", "board", { n: 2 }, { key: "k" })
     ];
-    const stream = buildItemRenderStream(items, undefined);
-    expect(stream.map((s) => (s.kind === "item" ? (s.item as DataItem).value : null))).toEqual([{ n: 1 }, { n: 2 }]);
+    const lines = conversationLines(items);
+    expect(lines.map((line) => (line.kind === "data" ? (line.item as DataItem).value : null))).toEqual([{ n: 1 }, { n: 2 }]);
   });
 
   it("leaves a container's data records to its registered container renderer", () => {
@@ -76,8 +76,8 @@ describe("buildItemRenderStream with data items", () => {
       component: "debate"
     };
     const owned = dataItem("t", "debate-turn", { text: "hi" }, { ownedBy: "debate#1" });
-    const stream = buildItemRenderStream([container, owned], { container: { debate: () => null } });
-    expect(stream.map((s) => (s.kind === "item" ? s.item.id : null))).toEqual(["c"]);
+    const lines = conversationLines([container, owned], [], { renderers: { container: { debate: () => null } } });
+    expect(lines.map((line) => line.id)).toEqual(["c"]);
   });
 });
 

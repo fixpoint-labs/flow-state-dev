@@ -10,7 +10,7 @@
  *   rp  React's `Roster` panel, live, rendered by react-dom over happy-dom, read off the rows it draws
  *   rw  Workforce's `watchRoster`, read off what it reports (it, and tm, read the roster view)
  *   sm  Shift Manager's snapshot, under its real `LabProvider`, counted per snapshot read
- *   tm  the Teammates lab's `watchWorkers`
+ *   tm  the Teammates lab's list's roster watch (`useWorkforce` under its `AppProvider`)
  *   cc  the claude-code-style lab's `watchPins`
  *
  * Alice's other tab writes as an app does, with no roster session: hires
@@ -51,10 +51,12 @@ import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFlows, modulePatchEnv, type ModulePatch } from "../../lib/index.mts";
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
-import { createAppCalls, type AppWorker } from "../../../labs/teammates/src/app/index.ts";
+import { AppProvider as TmAppProvider } from "../../../labs/teammates/src/app/index.ts";
+import { useWorkforce as useTmWorkforce } from "../../../labs/teammates/src/lib/roster.ts";
 import { AppProvider as CcAppProvider, usePins as useCcPins } from "../../../labs/claude-code-style/src/app/index.ts";
 import { defineFlow } from "@flow-state-dev/core";
 import { appPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("live-read-one-loop");
@@ -259,8 +261,16 @@ function mount(on: Host, rosterSession: string): () => void {
   const smRoot: Root = createRoot(smContainer as unknown as Element);
   smRoot.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: tokenOf("sm"), baseUrl: on.base }, children: createElement(Probe) }));
 
-  // Teammates: its roster screen's watch.
-  const stopTm = createAppCalls(clientOf(on, tokenOf("tm"))).watchWorkers((rows: AppWorker[]) => show("tm", rows.filter((row) => row.own === true).map((row) => row.id)));
+  // Teammates: its roster screen's watch, under its provider.
+  function TmRoster() {
+    const workforce = useTmWorkforce();
+    useEffect(() => workforce.watchRoster((rows: RosterEntry[]) => show("tm", rows.filter((row) => !row.standard).map((row) => row.id))), [workforce]);
+    return null;
+  }
+  const tmClient = clientOf(on, tokenOf("tm"));
+  const tmRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
+  tmRoot.render(createElement(TmAppProvider, { client: tmClient, children: createElement(TmRoster) }));
+  const stopTm = () => tmRoot.unmount();
 
   // claude-code-style: your pins, as its screen's `usePins` reads them.
   function CcPins() {
@@ -284,8 +294,6 @@ function mount(on: Host, rosterSession: string): () => void {
   };
 }
 
-const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
 /** Wait until no watcher has read for `quietMs` (15 s at most). */
 async function quiet(quietMs = 400): Promise<void> {
   const giveUpAt = Date.now() + 15_000;
@@ -293,7 +301,7 @@ async function quiet(quietMs = 400): Promise<void> {
     const last = Math.max(0, ...WATCHERS.map((w) => reads.get(w)!.at(-1) ?? 0));
     const wait = Math.min(last + quietMs, giveUpAt) - Date.now();
     if (wait <= 0) return;
-    await delay(wait);
+    await sleep(wait);
   }
 }
 
@@ -303,7 +311,7 @@ async function waitFor(check: () => boolean, withinMs: number): Promise<boolean>
   const deadline = Date.now() + withinMs;
   while (!check()) {
     if (Date.now() > deadline) return false;
-    await delay(10);
+    await sleep(10);
   }
   return true;
 }
@@ -342,11 +350,11 @@ try {
     for (let i = 0; i < BURST; i++) await write(i);
     const written = Date.now();
     // Give the last notice time to reach every socket before the reads land.
-    await delay(200);
+    await sleep(200);
     release();
     held = undefined;
     // The held reads land now, and each queued one starts after: quiet is measured from here.
-    await delay(400);
+    await sleep(400);
     await quiet();
     const done = Date.now();
     return { what, from, written, done };
@@ -398,7 +406,7 @@ try {
       const last = Math.max(writtenAt, ...who.map((w) => notices.get(w)!.at(-1) ?? 0));
       const wait = Math.min(last + QUIET_MS, capAt) - Date.now();
       if (wait <= 0) break;
-      await delay(wait);
+      await sleep(wait);
     }
     for (const w of who) failing.delete(w);
     const closedAt = Date.now();

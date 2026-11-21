@@ -6,20 +6,22 @@
  * opens it, and another worker's message lands there. A session at any other
  * id is not this view's. A project's conversation (`project`) is the one
  * `ensureWorkerSession({ worker, projectId })` opens, on its first line. Items are read when the view opens and then
- * followed on the session stream (`followSessionItems`): a line sent here,
+ * followed on the session stream, through the page's one feed for the session (`useSharedSessionFeed`): a line sent here,
  * a reply, another worker's message, each shows as it is stored, from any
- * process, and nothing is read on a clock or on the snapshot's refresh.
+ * process, and nothing is read on a clock.
  * Nothing is sent until the first read has landed, and a session
  * a line opened here holds nothing the user hasn't seen. A lapse after the
  * first read keeps it on screen; only a failed first read shows.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { SessionConnectionStatus, SessionSummary } from "@flow-state-dev/client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { SessionSummary } from "@flow-state-dev/client";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { COORDINATOR_FLOW, deriveWorkerSessionId, type ProjectAddressRef } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
 import { useReportFeedState } from "./feed-health";
-import { describeFailure, workerOf, type Failure, type Worker } from "./reads";
-import { followSessionItems, type SessionItems } from "./run";
+import { describeFailure, type Failure } from "./failure";
+import { workerOf, type Worker } from "./workers";
+import { useRetrySessionFeed, useSharedSessionFeed } from "./session-feeds";
 import { useWorkforce } from "./workforce";
 
 /** The flow a coordinator worker runs on, whose conversations carry its delegates' answers. */
@@ -71,35 +73,43 @@ interface Derived {
 }
 
 /**
- * The worker's derived conversation id for the signed-in user.
+ * The worker's derived conversation id for the signed-in user, under the
+ * organization workforce's `organization()` reads (once per page: the gate
+ * already read it).
  */
 function useDerivedId(worker: Pick<Worker, "id" | "kind"> | undefined): Derived {
-  const { client, snapshot } = useLab();
-  const orgId = snapshot !== undefined && "orgId" in snapshot ? snapshot.orgId : undefined;
+  const { client } = useLab();
+  // The connection decides the organization; its workforce client is the one built over it.
+  const current = useWorkforce();
+  const workforce = useRef(current);
+  workforce.current = current;
   const flow = worker?.kind ?? null;
   const id = worker?.id;
   const [derived, setDerived] = useState<{ key: string; id: string | null; failure?: Failure } | null>(null);
-  const key = orgId === undefined || flow === null || id === undefined ? null : `${client.userId}\n${orgId}\n${flow}\n${id}`;
+  const key = flow === null || id === undefined ? null : `${client.userId}\n${flow}\n${id}`;
   useEffect(() => {
-    if (key === null || orgId === undefined || flow === null || id === undefined) return;
+    if (key === null || flow === null || id === undefined) return;
     let closed = false;
-    derivedIdOf(key, { userId: client.userId, orgId, flow, criteria: { worker: id } }).then(
-      (sessionId) => {
-        if (!closed) setDerived({ key, id: sessionId });
-      },
-      (error: unknown) => {
-        if (!closed) setDerived({ key, id: null, failure: describeFailure(error) });
-      }
-    );
+    workforce.current
+      .organization()
+      .then((orgId) => derivedIdOf(`${key}\n${orgId}`, { userId: client.userId, orgId, flow, criteria: { worker: id } }))
+      .then(
+        (sessionId) => {
+          if (!closed) setDerived({ key, id: sessionId });
+        },
+        (error: unknown) => {
+          if (!closed) setDerived({ key, id: null, failure: describeFailure(error) });
+        },
+      );
     return () => {
       closed = true;
     };
-  }, [key, client.userId, orgId, flow, id]);
+  }, [key, client.userId, flow, id]);
   if (key === null) return { id: null, failure: undefined };
   return derived !== null && derived.key === key ? { id: derived.id, failure: derived.failure } : { id: undefined, failure: undefined };
 }
 
-/** The derived session once the snapshot lists it, for a view that reads the session without drawing it. */
+/** The derived session once the session list holds it, for a view that reads the session without drawing it. */
 export function useConversationSession(worker: Pick<Worker, "id" | "kind"> | undefined, sessions: readonly SessionSummary[]): string | null {
   return conversationAt(sessions, useDerivedId(worker).id ?? null, null);
 }
@@ -107,13 +117,18 @@ export function useConversationSession(worker: Pick<Worker, "id" | "kind"> | und
 export interface WorkerConversation {
   /** The conversation's session, or `null` before a first line. */
   sessionId: string | null;
-  /** The session a first line opened here, until the snapshot lists it. */
+  /** The session a first line opened here, until the session list holds it. */
   opened: string | null;
-  /** What the session stores, once read, for the session shown. */
-  read: SessionItems | undefined;
+  /**
+   * What the session stores, once read, for the session shown: its newest
+   * items, whether it holds older ones, and the call that adds the page before.
+   */
+  read: { items: OutputItem[]; truncated: boolean; loadEarlier?: () => Promise<void> } | undefined;
   /** Why the first read failed; cleared by the next that succeeds. A failed later read keeps the last one. */
   failure: Failure | undefined;
-  /** Follow the session again after a failed first read (Retry). A live follow already brings every change. */
+  /** The session's background work still running, as its stream names it; `null` until it has. */
+  stillRunning: number | null;
+  /** Read the session again from scratch after a failed first read (Retry): the page's feed for it opens anew. */
   reread(): void;
   /** The conversation's address is still being worked out: nothing is sent until it is. */
   resolving: boolean;
@@ -122,7 +137,7 @@ export interface WorkerConversation {
 }
 
 /**
- * `pinned` is the session the view found: that one, whatever the snapshot lists.
+ * `pinned` is the session the view found: that one, whatever the session list holds.
  * `project`, with nothing pinned, is the project a view's conversation is linked to (a
  * project's Stream): it has no session until the first line opens one linked to it,
  * and the worker's own conversation is never read in its place.
@@ -133,54 +148,28 @@ export function useWorkerConversation(
   pinned?: string,
   project?: ProjectAddressRef
 ): WorkerConversation {
-  const { client } = useLab();
   const workforce = useWorkforce();
   const { id: derived, failure: underived } = useDerivedId(pinned === undefined && project === undefined ? worker : undefined);
   const [opened, setOpened] = useState<string | null>(null);
   const sessionId = pinned ?? conversationAt(sessions, derived ?? null, opened);
   const resolving = pinned === undefined && opened === null && derived === undefined;
-  // The last read that succeeded, and whose session it read. A re-read keeps it
-  // on screen until the new one lands.
-  const [stored, setStored] = useState<{ sessionId: string; read: SessionItems } | undefined>(undefined);
-  const [failure, setFailure] = useState<Failure | undefined>(undefined);
-  // Bumped to follow again: only a follow whose first read failed needs it.
-  const [follows, setFollows] = useState(0);
-  const failed = useRef(false);
-  // The followed feed's connection, for the page's bar; nothing while no session is followed.
-  const [feedState, setFeedState] = useState<SessionConnectionStatus | undefined>(undefined);
-  useReportFeedState(sessionId === null ? undefined : feedState);
-
-  useEffect(() => {
-    if (sessionId === null) return;
-    let closed = false;
-    failed.current = false;
-    setFeedState(undefined);
-    const stop = followSessionItems(client, sessionId, {
-      onRead: (read) => {
-        if (closed) return;
-        failed.current = false;
-        setStored({ sessionId, read });
-        setFailure(undefined);
-      },
-      onFailure: (why) => {
-        if (closed) return;
-        failed.current = true;
-        setFailure(why);
-      },
-      onState: (state) => {
-        if (!closed) setFeedState(state);
-      },
-    });
-    return () => {
-      closed = true;
-      stop();
-    };
-  }, [client, sessionId, follows]);
-
-  // The stream already brings every item stored, a line just sent included; only a failed follow reads again.
+  // The page's one feed for the session: it reconnects on its own, and a lapse keeps what it read.
+  const feed = useSharedSessionFeed(sessionId);
+  useReportFeedState(sessionId === null ? undefined : feed?.state);
+  const items = feed?.items;
+  const hasEarlier = feed?.hasEarlier ?? false;
+  const loadEarlier = feed?.loadEarlier;
+  const read = useMemo(
+    () => (items === undefined ? undefined : { items: [...items], truncated: hasEarlier, ...(hasEarlier && loadEarlier !== undefined ? { loadEarlier } : {}) }),
+    [items, hasEarlier, loadEarlier],
+  );
+  // Only a first read that failed shows: once items landed, a lapse keeps them.
+  const failure = read === undefined && feed?.error != null ? describeFailure(feed.error) : undefined;
+  const retry = useRetrySessionFeed(sessionId);
+  // Only a feed with nothing read is opened again: a live one already brings every change.
   const reread = useCallback(() => {
-    if (failed.current) setFollows((n) => n + 1);
-  }, []);
+    if (failure !== undefined) retry();
+  }, [failure, retry]);
   const ensure = useCallback(async () => {
     if (sessionId !== null) return sessionId;
     const session = await workforce.ensureWorkerSession(project === undefined ? { worker: worker.id } : { worker: worker.id, projectId: project });
@@ -188,12 +177,12 @@ export function useWorkerConversation(
     return session.id;
   }, [sessionId, workforce, worker.id, project]);
 
-  const read = sessionId !== null && stored?.sessionId === sessionId ? stored.read : undefined;
   return {
     sessionId,
     opened,
     read,
     failure: (read === undefined ? failure : undefined) ?? underived,
+    stillRunning: feed?.runs == null ? null : feed.runs.length,
     reread,
     resolving,
     ensure

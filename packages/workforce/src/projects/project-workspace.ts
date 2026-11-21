@@ -76,7 +76,7 @@
  */
 
 import { isAbsolute } from "node:path";
-import { defineCapability, type LooseBlockContext } from "@flow-state-dev/core";
+import { defineCapability, type BlockContext } from "@flow-state-dev/core";
 import {
   collectionIdFor,
   principalFromContext,
@@ -183,7 +183,7 @@ export function projectWorkspace(options: ProjectWorkspaceOptions = {}): RunSour
  * remote.
  */
 function answerFor(
-  ctx: LooseBlockContext,
+  ctx: BlockContext,
   visibility: ProjectVisibility,
   project: ProjectResourceState,
   checkouts: readonly ProjectCheckout[]

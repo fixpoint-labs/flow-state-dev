@@ -9,8 +9,8 @@
 import type { Client } from "@flow-state-dev/client";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
+import { conversationLines } from "@flow-state-dev/react";
 import { appCalls } from "../src/app";
-import { entriesOf, type Item } from "../src/lib/thread-entries";
 
 const SHOT: FileContent = { type: "file", data: "fsd-blob:b_0123456789", mediaType: "image/png", filename: "bug.png" };
 
@@ -37,7 +37,7 @@ describe("the lab's files", () => {
   it("sends a line's files beside its message, through the worker's door", async () => {
     const lab = fakeClient();
     await appCalls(lab.client).send("s1", "What does this show?", [SHOT]);
-    expect(lab.sends).toEqual([{ action: "respond", input: { message: "What does this show?" }, options: { sessionId: "s1", attachments: [SHOT] } }]);
+    expect(lab.sends).toEqual([{ action: "respond", input: { message: "What does this show?" }, options: { sessionId: "s1", requestId: expect.stringMatching(/^req_/), attachments: [SHOT] } }]);
   });
 
   it("uploads through the client, and reads a file's bytes with the page's fetch under its base path", async () => {
@@ -60,14 +60,15 @@ describe("the lab's files", () => {
     await expect(calls.readFile(SHOT)).rejects.toThrow("bug.png couldn't be read (404).");
   });
 
-  it("puts a line's file parts on your line, and none on a line without them", () => {
-    const items: Item[] = [
+  it("keeps a line's file parts on your line, and none on a line without them", () => {
+    const items = [
       { id: "u1", type: "message", role: "user", requestId: "r1", content: [{ type: "text", text: "Look" }, SHOT] },
       { id: "u2", type: "message", role: "user", requestId: "r2", content: [{ type: "text", text: "Thanks" }] },
     ];
-    expect(entriesOf(items)).toEqual([
-      { kind: "user", id: "u1", text: "Look", requestId: "r1", files: [SHOT] },
-      { kind: "user", id: "u2", text: "Thanks", requestId: "r2" },
+    const lines = conversationLines(items as never);
+    expect(lines.map((line) => [line.kind, line.kind === "user" ? line.item.content.filter((part) => part.type === "file") : []])).toEqual([
+      ["user", [SHOT]],
+      ["user", []],
     ]);
   });
 });

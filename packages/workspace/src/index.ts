@@ -30,6 +30,7 @@ export type {
   FlushReport,
   Mount,
   Place,
+  ProjectedEntryExtra,
   ProjectedEntryState,
 } from "./types";
 export { claimKey, createClaimRegistry, sharedClaimRegistry } from "./claims";
@@ -90,7 +91,7 @@ export { checkedOutBranch, occupyWorktree, worktreeLockPath } from "./occupancy"
 export type { AcquireOptions, LockBounds, LockLease } from "./lock";
 export { identityFromCommonDir, repositoryIdentity, resolvesToCommit } from "./repository";
 export { redactRemote } from "./remotes";
-export type { Landed, LandRequest, LandTarget } from "./land";
+export type { ExistingPullRequest, Landed, LandRequest, LandTarget } from "./land";
 export type {
   ListedWorktree,
   LocalWorkspaceHostOptions,

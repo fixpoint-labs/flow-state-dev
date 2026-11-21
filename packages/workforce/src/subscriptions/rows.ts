@@ -26,6 +26,8 @@ import {
   SUBSCRIPTION_CURSORS_RESOURCE,
   SUBSCRIPTION_INDEX_PATTERN,
   SUBSCRIPTION_INDEX_RESOURCE,
+  SUBSCRIPTION_TASK_ENDINGS_PATTERN,
+  SUBSCRIPTION_TASK_ENDINGS_RESOURCE,
   SUBSCRIPTIONS_PATTERN,
   SUBSCRIPTIONS_RESOURCE
 } from "./keys";
@@ -43,7 +45,10 @@ const terms = z.array(z.string().min(1).max(100)).min(1).max(MAX_SCREEN_TERMS);
  *
  * - `labels`: the event carries at least one of these labels.
  * - `words`: the event's title or text contains at least one of these words, ignoring case.
- * - `allow`: the event's sender is one of these ids.
+ * - `allow`: the event's sender is one of these ids. With `bots`, a bot sender
+ *   must be one of `bots` and any other sender one of `ids`: a bot's id and a
+ *   user's login share one form, so a user named like a listed bot isn't that
+ *   bot. Without `bots`, the sender's id alone is checked, as saved rows were.
  * - `custom`: the app's own screen of this name, declared once on the provider (D2).
  * - `interest`: a model judges whether the event matches the subscription's
  *   sentence, after every code screen passed it (D1).
@@ -51,7 +56,7 @@ const terms = z.array(z.string().min(1).max(100)).min(1).max(MAX_SCREEN_TERMS);
 export const listedScreenSchema = z.discriminatedUnion("screen", [
   z.object({ screen: z.literal("labels"), any: terms }).strict(),
   z.object({ screen: z.literal("words"), any: terms }).strict(),
-  z.object({ screen: z.literal("allow"), ids: terms }).strict(),
+  z.object({ screen: z.literal("allow"), ids: z.array(z.string().min(1).max(100)).max(MAX_SCREEN_TERMS), bots: z.array(z.string().min(1).max(100)).max(MAX_SCREEN_TERMS).optional() }).strict(),
   z.object({ screen: z.literal("custom"), name: z.string().min(1).max(100) }).strict(),
   z.object({ screen: z.literal("interest") }).strict()
 ]);
@@ -221,11 +226,31 @@ const subscriptionIndexCollection = defineResourceCollection({
   stateSchema: threadIndexResourceStateSchema
 });
 
+/** A task's ending, as the sweep that ended its subscriptions marked it. */
+const subscriptionTaskEndingSchema = z.object({
+  ending: z.enum(["errored", "cancelled"]),
+  at: z.number(),
+  /** The attempt that ended, when the sweep knew it: a later attempt's subscribe isn't ended by it. */
+  attempt: z.number().int().nonnegative().optional()
+});
+
+type SubscriptionTaskEnding = z.infer<typeof subscriptionTaskEndingSchema>;
+
+/** The task endings, at `workforce/subscription-task-endings/*` in the user's scope. Server-only. */
+const subscriptionTaskEndingsCollection = defineResourceCollection({
+  pattern: SUBSCRIPTION_TASK_ENDINGS_PATTERN,
+  scope: "user",
+  flowIsolation: false,
+  prefetchMode: "lazy",
+  stateSchema: subscriptionTaskEndingSchema
+});
+
 /** The flow resources a flow that subscribes, delivers or ends subscriptions declares. */
 export const subscriptionResources = {
   [SUBSCRIPTIONS_RESOURCE]: subscriptionsCollection,
   [SUBSCRIPTION_CURSORS_RESOURCE]: subscriptionCursorsCollection,
-  [SUBSCRIPTION_INDEX_RESOURCE]: subscriptionIndexCollection
+  [SUBSCRIPTION_INDEX_RESOURCE]: subscriptionIndexCollection,
+  [SUBSCRIPTION_TASK_ENDINGS_RESOURCE]: subscriptionTaskEndingsCollection
 } as const;
 
 function declared<T extends JsonObject>(ctx: BlockContext, name: string): ResourceCollectionRef<T> {
@@ -241,6 +266,12 @@ export const subscriptionsOf = (ctx: BlockContext) => declared<SubscriptionResou
 
 /** The running user's cursors. */
 export const subscriptionCursorsOf = (ctx: BlockContext) => declared<SubscriptionCursor>(ctx, SUBSCRIPTION_CURSORS_RESOURCE);
+
+/** The running user's task endings. */
+export const subscriptionTaskEndingsOf = (ctx: BlockContext) => declared<SubscriptionTaskEnding>(ctx, SUBSCRIPTION_TASK_ENDINGS_RESOURCE);
+
+/** A task id as a task-ending row's key: one path segment. */
+export const taskEndingKeyOf = (taskId: string) => encodeURIComponent(taskId);
 
 /** The running org's thread index. */
 export const subscriptionIndexOf = (ctx: BlockContext) => declared<ThreadIndexResourceState>(ctx, SUBSCRIPTION_INDEX_RESOURCE);

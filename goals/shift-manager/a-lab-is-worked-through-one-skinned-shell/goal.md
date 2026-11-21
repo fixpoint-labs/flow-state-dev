@@ -19,7 +19,7 @@
 - **J3.** In a fresh host, `fsdev ui add tool approval` from the commit's registry gives byte-identical copies; with the docs' token block applied as written, changing `--destructive` repaints both (a failed tool call's line and the approval's Reject button; since FIX-1939 the tool line reads no other status token).
 - **J4.** Every surface in the epic's ownership table opens by its address on a fresh load and shows rows or its named empty state; none blank, none refused. A project's Stream opens on the person's project coordinator conversation, and its Board, Workstreams and Brief open by address too.
 - **Part 3.** Every child's goal check with its controls, the goal labs the set touched, the design-system and registry tests, `pnpm typecheck` and `pnpm test`.
-- **Part 4.** No literal colour in Shift Manager's source; the pinned task and project routes; Shift Manager's only session writes (ER-15's doors, plus the action runner in `lib/action.ts`, the person's reading sessions, a conversation's session on its seat's flow, and the person's project coordinator through Workforce's `ensureWorkerSession` in `surfaces/Project.tsx`); one ask card; the layer fence; the final visuals after the hand-back; the docs smoke.
+- **Part 4.** No literal colour in Shift Manager's source; the pinned task and project routes; Shift Manager's only session writes (ER-15's doors, plus the line, the stop and a delegate change through workforce's client, the person's reading sessions, a conversation's session on its seat's flow, and the person's project coordinator through Workforce's `ensureWorkerSession` in `surfaces/Project.tsx`); one ask card; the layer fence; the final visuals after the hand-back; the docs smoke.
 
 FIX-1793 removed project rooms: the project Stream checks that read, joined or posted to a room now grade the person's project coordinator, and part 4's ER-15 list no longer names the room's read, post and join.
 
@@ -38,7 +38,7 @@ FIX-1792 took the DevTeam off mailboxes: the EM files on its own session's board
 - **today's main** (the commit before Shift Manager's first merge): Shift Manager is absent, so a and b must fail; c's static half over that commit's `packages/` stays green.
 - **hardcoded-accent** (scratch patch on Shift Manager's quiet tool line, `ToolLine.tsx`, which draws every tool call): must fail c at the tool line.
 - **static-names** (FIX-1662's swap): must fail b at TEAMS, naming a pentest seat. Jump to's Workers, drawn from the same seat list, may go red with it.
-- **optimistic-post** (FIX-1662's swap, now of `send.ts` alone): must fail a4.
+- **optimistic-post** (FIX-1662's swap, now of `deliver.ts` alone, the send path since FIX-2776): must fail a4.
 - **worker-session** (FIX-1664's swap): must fail a2. Leg c's sweep of the run-lab's Session may go red with it, since the control points that Session elsewhere.
 - **no-org** (scratch patch, the org switcher given no org): must fail b at the org step.
 

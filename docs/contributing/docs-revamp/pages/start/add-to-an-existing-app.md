@@ -88,7 +88,7 @@ import flowstate from "../fsdev.config";
 await serve(flowstate, { host: "127.0.0.1" });
 ```
 
-`serve` binds every network interface unless you pass `host`, and it does not check who is calling. It does not read `.env.local` either, so start it with the file loaded:
+`serve` binds every network interface unless you pass `host`. On any host but loopback it refuses to start while a flow has no way to check who is calling (`authentication.resolvePrincipal`), so this one binds `127.0.0.1`. It does not read `.env.local`, so start it with the file loaded:
 
 ```bash title="Terminal"
 npx tsx --env-file=.env.local src/server.ts

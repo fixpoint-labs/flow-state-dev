@@ -34,7 +34,7 @@
  * Controls:
  *
  *   optimistic-reply  Shift Manager built with `src/lib/conversation.ts` (the
- *                     conversation hook) and `src/lib/send.ts` (the send path
+ *                     conversation hook) and `src/lib/deliver.ts` (the send path
  *                     its composer calls) swapped for
  *                     `controls/optimistic-reply.ts`: the line and a canned
  *                     reply are drawn without calling the door. Must fail at
@@ -64,7 +64,7 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 /** Each control's source modules, and the module under `controls/` that stands in for all of them. */
 const SWAPS = {
   // The conversation hook, and the send path its composer calls: both, so the reply is drawn and nothing is sent.
-  "optimistic-reply": { modules: [join("src", "lib", "conversation.ts"), join("src", "lib", "send.ts")], with: "optimistic-reply.ts" },
+  "optimistic-reply": { modules: [join("src", "lib", "conversation.ts"), join("src", "lib", "deliver.ts")], with: "optimistic-reply.ts" },
   "static-brief": { modules: [join("src", "lib", "derive.ts")], with: "static-brief.ts" },
 } as const;
 type Control = keyof typeof SWAPS;

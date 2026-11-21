@@ -13,7 +13,7 @@
  *      holds one clone and no place, after two questions.
  *   2. a session with no repository asks the same: no value, and its turn
  *      holds a read refused `no-repository`.
- * And in the lab's own tool lines (its thread's entries (`entriesOf`) over the turn's
+ * And in the lab's own tool lines (its thread's steps lines over the turn's
  * items): each of leg 1's reads names what it read (a read its file, a search
  * its pattern, a listing its pattern); leg 2's refused read reads "(failed)".
  *
@@ -34,7 +34,8 @@ import { dirname, join } from "node:path";
 import { createClient } from "@flow-state-dev/client";
 import { SET_SESSION_FIELDS_ACTION } from "@flow-state-dev/workforce/browser";
 import { goalTmpDir, loadFixture, REPO_ROOT, runGoal, stopProcessGroup } from "../../lib/index.mts";
-import { entriesOf, type Item as LabItem } from "../../../labs/claude-code-style/src/lib/thread-entries.ts";
+import { conversationLines } from "@flow-state-dev/react";
+import { stepRun, stepsOf } from "../../../labs/claude-code-style/src/components/flow-state/conversation-lines.tsx";
 import { git, LAB, labCheckout, startLab } from "../lab.mts";
 
 const fixture = loadFixture<{
@@ -52,11 +53,12 @@ const MAIN = "desk.main";
 const READ_TOOLS = new Set(["globProjectSource", "readProjectSource", "grepProjectSource"]);
 const MAIN_FILE = join(LAB, "workforce", "teams", "desk", "workers", "main", "WORKER.md");
 
-type Item = LabItem;
+/** A stored item, as far as this goal reads it. */
+type Item = { id: string; type: string; role?: string; requestId?: string; status?: string; blockName?: string; content?: { text?: string }[]; output?: unknown; toolCall?: { name?: string; arguments?: string } };
 
 /**
- * The tool lines a turn's items draw in the lab: its thread's entries (`entriesOf`), each
- * run's steps. Under `old-lines`, the lab's lines as they were before it read
+ * The tool lines a turn's items draw in the lab: its thread's steps lines (React's
+ * conversation model), each call as the registry's compact steps line words it. Under `old-lines`, the lab's lines as they were before it read
  * the registry: one fixed phrase per tool, and no step ever failed.
  */
 async function linesOf(items: readonly Item[]): Promise<{ tool: string; args: Record<string, unknown>; line: string; failed: boolean }[]> {
@@ -73,9 +75,9 @@ async function linesOf(items: readonly Item[]): Promise<{ tool: string; args: Re
     return calls.map((item) => ({ tool: item.blockName ?? "tool", args: argsOf(item), line: toolLine(item.blockName ?? "tool"), failed: false }));
   }
   // The thread draws one step per call, in the calls' order.
-  const steps = entriesOf(items).flatMap((entry) => (entry.kind === "tool" ? entry.steps : []));
+  const steps = conversationLines(items as never).flatMap((line) => (line.kind === "steps" ? stepsOf(line.items, line.ended === true) : []));
   if (steps.length !== calls.length) throw new Error(`the lab drew ${steps.length} step(s) for ${calls.length} call(s)`);
-  return calls.map((item, i) => ({ tool: item.blockName ?? "tool", args: argsOf(item), line: steps[i]!.line, failed: steps[i]!.state === "error" }));
+  return calls.map((item, i) => ({ tool: item.blockName ?? "tool", args: argsOf(item), line: stepRun([steps[i]!]).label, failed: steps[i]!.state === "error" }));
 }
 
 /** The lab's `lib/tool-line.ts` from before it read the registry, written to the scratch folder and loaded. */

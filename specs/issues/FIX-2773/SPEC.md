@@ -102,7 +102,9 @@ hooks move into `tasks.ts`, since `src/app/` may not gain a file), `TaskCalls` a
 each listed in the implementation PR's ledger ([B1](#boundaries-with-siblings)).
 
 **Docs:** no user docs; Teammates is private. A changeset for `@flow-state-dev/harness-manager`
-names the coding board view's `taskId` input, the row's `detail` and the wider `error`; one for `@flow-state-dev/orchestration` names `BoardActions.get` (D1). Teammates' README is the last Teammates
+names the coding board view's `taskId` input, the row's `detail` and the wider `error`; one for `@flow-state-dev/orchestration` names `BoardActions.get` (D1); a patch one for `@flow-state-dev/engine` says a peer session's
+read now hears its birth and delete, not each turn (the read-rate fix the settled-task goal
+needed). Teammates' README is the last Teammates
 child's (the epic's docs line).
 
 ```mermaid

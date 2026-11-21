@@ -101,7 +101,7 @@ A session of its own is not a separate process. On a host (the server your app r
 
 ## Work that starts on its own
 
-A flow cannot start itself. Something outside calls the server, and the host turns that call into a run. A webhook is one such call, an event another service posts. A schedule is the other.
+Some runs start with no user behind them. A webhook is one, an event another service posts, which the host turns into a run. A schedule is the other.
 
 A schedule is a named entry on the flow with a cron string, say `daily-digest` at seven each morning. The app fires it itself: once a minute it checks what is due, the schedules on the flow and the ones stored while it runs, and runs each one once per scheduled time. If several servers share one database, one of them does the checking. On a serverless host such as Vercel, where nothing stays running, one cron route does the check instead. Each firing is a fresh run that no user started, not the continuation of the last. The fields and the endpoint are in the [schedules reference](../reference/schedules.md), and the serverless setup is in [Run on a schedule with Vercel Cron](../build/schedules/vercel-cron.md).
 

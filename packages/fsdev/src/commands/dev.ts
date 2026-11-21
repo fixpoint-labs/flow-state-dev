@@ -33,7 +33,6 @@ import {
 import { createModelResolver } from "@flow-state-dev/core";
 import { type DevToolConnectionConfig, type FlowApiRouter } from "@flow-state-dev/engine/host";
 import {
-  assertNetworkBindIsAuthenticated,
   createPageHtmlTransform,
   isLoopbackHost,
   serve,
@@ -236,6 +235,7 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<Dev
 
   const server = await startListeners({
     ...runtime,
+    allowUnauthenticated: options.allowUnauthenticated,
     host,
     port: watchChild?.port ?? port,
     devtoolPort: watchChild?.devtoolPort ?? 0,
@@ -367,15 +367,6 @@ async function resolveDevRuntime(options: DevCommandOptions, host: string, loopb
           EXIT_CONFIG_ERROR,
         );
       }
-      try {
-        await assertNetworkBindIsAuthenticated(resolved.flowState, {
-          host,
-          allowUnauthenticated: options.allowUnauthenticated,
-        });
-      } catch (err) {
-        await resolved.flowState.dispose().catch(() => {});
-        throw new CliError(err instanceof Error ? err.message : String(err), EXIT_CONFIG_ERROR);
-      }
     }
   } else {
     // --- discovery path: scan flows, build a router over local SQLite ---
@@ -461,6 +452,7 @@ async function resolveDevRuntime(options: DevCommandOptions, host: string, loopb
 
 /** What {@link startListeners} serves, and where. */
 interface ListenerOptions extends DevRuntime {
+  allowUnauthenticated?: boolean;
   host: string;
   port: number;
   /** The DevTool's port beside an app: fixed by a `--watch` parent, else `0`. */
@@ -535,6 +527,7 @@ async function startListeners(o: ListenerOptions): Promise<DevServer> {
     devtoolHandle = await serve(o.serveApp, {
       port: o.devtoolPort,
       host,
+      allowUnauthenticated: o.allowUnauthenticated,
       basePath: "/api/flows",
       staticDir: devtoolAssets,
       devtoolConfig: o.devtoolConfig,
@@ -545,7 +538,7 @@ async function startListeners(o: ListenerOptions): Promise<DevServer> {
       disposeOnClose: false,
     }).catch(async (err: unknown) => {
       await o.releaseRuntime();
-      throw err;
+      throw new CliError(err instanceof Error ? err.message : String(err), EXIT_CONFIG_ERROR);
     });
   }
   const devtoolUrl = devtoolHandle === undefined ? undefined : `http://${urlHost(host)}:${devtoolHandle.port}/`;
@@ -581,6 +574,7 @@ async function startListeners(o: ListenerOptions): Promise<DevServer> {
     handle = await serve(o.serveApp, {
       port: o.port,
       host,
+      allowUnauthenticated: o.allowUnauthenticated,
       basePath: "/api/flows",
       staticDir: appPages === undefined ? devtoolAssets : appPages.kind === "built" ? appPages.dir : undefined,
       devtoolConfig: o.devtoolConfig,
@@ -600,7 +594,7 @@ async function startListeners(o: ListenerOptions): Promise<DevServer> {
     await devtoolHandle?.close().catch(() => {});
     await vite?.close().catch(() => {});
     await o.releaseRuntime();
-    throw err;
+    throw new CliError(err instanceof Error ? err.message : String(err), EXIT_CONFIG_ERROR);
   }
 
   const url = `http://${urlHost(host)}:${handle.port}/`;

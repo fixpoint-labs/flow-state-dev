@@ -353,6 +353,7 @@ describe("FIX-1068: sharedToLineage resources across a session lineage", () => {
     const created = await handleCreateCollectionResource(
       new Request("http://x/sessions/s_child/resources/tasks", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ topic: "t1", content: "the body" })
       }),
       { kind: "create_collection_item", sessionId: "s_child", ref: "tasks" },

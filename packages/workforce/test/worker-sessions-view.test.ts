@@ -239,9 +239,74 @@ describe("a session's turns", () => {
         [RESPOND_ACTION, "completed"]
       ]);
       expect(value[0]!.startedAt).toBeLessThanOrEqual(value[1]!.startedAt);
+      // When each ended: a completed turn's end is its completion.
+      expect(value.map((turn) => turn.endedAt)).toEqual(value.map((turn) => turn.completedAt));
       expect(value.every((turn) => TURN_ACTIONS.includes(turn.action))).toBe(true);
       // Another user's session answers nothing.
       expect((await h.fsd("bob").view(sessionTurnsViewRef(), { sessionId: main.id })).value).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  // FIX-2771: an app's idle age is its last turn's, never the session's updatedAt, which a board pass moves.
+  it("dispatch-not-a-turn · a board dispatch moves the session's updatedAt but adds no turn, so the last turn holds", async () => {
+    const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: [fallback] }) });
+    try {
+      const lead = await h.conversation("alice", "lead");
+      await h.post("alice", lead, "respond", { message: "Hi." }, "coordinator");
+      await h.settled();
+      const before = (await h.fsd("alice").view(sessionTurnsViewRef(), { sessionId: lead })).value;
+      const movedFrom = (await h.session(lead)).updatedAt;
+      expect(before.map((turn) => turn.action)).toEqual([RESPOND_ACTION]);
+      await sleep(5);
+      // A slow task: the board's pass runs in the conversation, and the task is still running when the turns are read.
+      const filed = await h.act("alice", lead, "createTask_tasks", { goal: "Check the logs [slow:1000]", assignee: "eng.tasker" });
+      expect(filed.error, messageOf(filed.error)).toBeUndefined();
+      const dispatched = async () => (await h.requestsOf(lead)).some((request) => request.actionName === "dispatch" && request.status === "completed");
+      for (let i = 0; i < 200 && !(await dispatched()); i++) await sleep(10);
+      expect(await dispatched()).toBe(true);
+      expect((await h.session(lead)).updatedAt).toBeGreaterThan(movedFrom);
+      const after = (await h.fsd("alice").view(sessionTurnsViewRef(), { sessionId: lead })).value;
+      expect(after).toEqual(before);
+      await h.settled();
+    } finally {
+      await h.dispose();
+    }
+  }, 20_000);
+
+  it("history-start · names where a turn's history window began once earlier turns left it, and null while none had", async () => {
+    const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: [fallback] }) });
+    try {
+      const main = await h.client("alice").ensureWorkerSession({ worker: "otto" });
+      // The worker reads 50 past turns: the 52nd turn is the first with one out of view, and reads from the second on.
+      for (let n = 0; n < 52; n++) {
+        await h.post("alice", main.id, "respond", { message: `Line ${n}.` }, "agent");
+        await h.settled();
+      }
+      const second = (await h.requestsOf(main.id))[1]!.id;
+      const { value } = await h.fsd("alice").view(sessionTurnsViewRef(), { sessionId: main.id });
+      expect(value.at(-1)!.historyStart).toEqual({ requestId: second });
+      expect(value.slice(0, -1).every((turn) => turn.historyStart === null)).toBe(true);
+    } finally {
+      await h.dispose();
+    }
+  }, 30_000);
+
+  // FIX-2848 D3: a screen offers Retry from this, never from its own copy of the retry route's sources.
+  it("retryable · a turn the user started is one the engine runs again; a turn another worker's message started is not", async () => {
+    const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: tellsOtto() }) });
+    try {
+      const main = await h.client("alice").ensureWorkerSession({ worker: "otto" });
+      await use(h, "alice", main.id);
+      const helper = await open(h, "alice", "helper-a");
+      await h.post("alice", helper, "respond", { message: "Tell otto hello" }, "agent");
+      await h.settled();
+      const { value } = await h.fsd("alice").view(sessionTurnsViewRef(), { sessionId: main.id });
+      expect(value.map((turn) => [turn.action, turn.source, turn.retryable])).toEqual([
+        [RESPOND_ACTION, "http", true],
+        [MESSAGE_RECEIVED_ENTRY, "internal", false]
+      ]);
     } finally {
       await h.dispose();
     }

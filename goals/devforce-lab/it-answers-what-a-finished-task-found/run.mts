@@ -29,6 +29,7 @@ import { DEFAULT_MODEL, gatewayModel, keysServing, loadFixture, runGoal, silentL
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USERS, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { sleep } from "../../lib/time.mts";
 
 interface Fixture {
   scanGoal: string;
@@ -46,7 +47,6 @@ const CODER = "eng.coder";
 const SHIFT_COORDINATOR = "shift-coordinator";
 const COORDINATOR_FLOW = "coordinator";
 const READ_TASK = "getTask";
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown, n = 300): string => (JSON.stringify(value) ?? "undefined").slice(0, n);
 
 /** A real model for every turn, and the gateway's evaluation model for the Shift Coordinator's routing. */

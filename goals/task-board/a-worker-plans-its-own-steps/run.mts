@@ -41,6 +41,7 @@ import {
   silentLogger,
   type ModulePatch
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const USER_ID = "u_plans_its_steps";
@@ -98,7 +99,6 @@ if (control !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
 const legs = new Set((process.env.GOAL_LEGS ?? "a1,a2").split(",").map((s) => s.trim()).filter(Boolean));
 const say = (s: string) => console.error(`[plans-its-steps ${new Date().toISOString().slice(11, 19)}] ${s}`);
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 600);
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const text = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value) ?? "");
 
 const { subjects } = loadFixture<{ subjects: string[] }>(import.meta.url, "briefs.json");

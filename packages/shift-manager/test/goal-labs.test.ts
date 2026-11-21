@@ -15,10 +15,15 @@ import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { readWorkforceFolder, type WorkforceFolder } from "@flow-state-dev/workforce/loader";
 import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
-import { collectionOfBoard, createLabReader, GENERAL_TEAM, type Ask, type BoardTaskView } from "../src/lib/reads";
-import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
+import { createLabReader, type Ask } from "../src/lib/reads";
+import type { BoardTaskView } from "../src/lib/boards";
+import { collectionOfBoard } from "../src/lib/boards";
+import { GENERAL_TEAM } from "../src/lib/workers";
+import { type LoadedSnapshot } from "../src/lib/derive";
+import { teamsOf } from "../src/lib/shift";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { followRequest, readSessionItems, resolveRunFlow, taskItems } from "../src/lib/run";
+import { followRequest, readSessionItems, readRunFlow } from "./helpers/session-reads";
+import { taskItems } from "../src/lib/task-items";
 import { declaredBrowserReadable } from "./helpers/documents";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -188,7 +193,7 @@ describe("devteam: an approved task's run", () => {
       const row = Object.values(next.boards).flatMap((b) => (b.ok ? b.value.rows : []))[0];
       return row?.status === "in_progress" && row.run !== null ? row : undefined;
     }, "the approved row to start", 30_000);
-    const flowId = await resolveRunFlow(client, running.run!.sessionId);
+    const flowId = await readRunFlow(client, running.run!.sessionId);
     const streamed: OutputItem[] = [];
     const follower = followRequest(client, { flowId, requestId: running.run!.requestId }, {
       onItem: (item) => {

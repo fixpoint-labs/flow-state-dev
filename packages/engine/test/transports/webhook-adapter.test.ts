@@ -113,6 +113,7 @@ createInboundTransportConformanceTests({
       const route = adapter.createBindings(host).routes!.find((r) => r.method === "POST")!;
       const request = new Request("http://localhost/api/flows/billing/webhooks/stripe", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ type: "invoice.paid" })
       });
       await route.handler(request, { params: { flowKind: "billing", provider: "stripe" } });

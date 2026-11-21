@@ -134,7 +134,7 @@ async function leg5(origin: string, alice: Person, sent: Map<string, { sessionId
       await opened.waitFor();
       if ((await opened.getAttribute("data-session-id")) !== toSession) r.failures.push(`5:opens-side — the recipient's link opened ${await opened.getAttribute("data-session-id")}, not ${toSession}`);
       await page.waitForFunction(() => document.querySelectorAll("[data-testid=session-item]").length > 0, undefined, { timeout: 20_000 });
-      const shown = await page.locator(`[data-testid=received-message][data-from="${RESEARCHER}"]`).count();
+      const shown = await page.locator(`[data-line=received][data-from="${RESEARCHER}"]`).count();
       if (shown === 0) r.failures.push(`5:opens-side — the coordinator's session the link opened doesn't show Researcher's message as its own item`);
       await page.goBack();
       await page.getByTestId("messages").waitFor();

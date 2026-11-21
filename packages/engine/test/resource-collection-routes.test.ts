@@ -94,6 +94,7 @@ function create(ctx: Ctx, topic: string, content?: string): Promise<Response> {
   return handleCreateCollectionResource(
     new Request("http://x/sessions/sess_1/resources/notes", {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(content === undefined ? { topic } : { topic, content }),
     }),
     { kind: "create_collection_item", sessionId: ctx.sessionId, ref: "notes" },
@@ -113,6 +114,7 @@ function patchContent(ctx: Ctx, topic: string, content: string): Promise<Respons
   return handleUpdateResourceContent(
     new Request(`http://x/sessions/sess_1/resources/notes/${topic}/content`, {
       method: "PATCH",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ content }),
     }),
     { kind: "update_resource_content", sessionId: ctx.sessionId, ref: "notes", topic },

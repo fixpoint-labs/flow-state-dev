@@ -29,6 +29,7 @@ import { workerRoutineVerbs } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
 import { REPO_ROOT, goalTmpDir, runGoal, silentLogger, workforceTree } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
+import { sleep } from "../../lib/time.mts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BASE = join(HERE, "../delivers-each-event-once-to-its-subscribers/fixtures");
@@ -240,7 +241,6 @@ async function world(modelUp: boolean): Promise<Measured> {
     dispatch: (envelope) => runningAs.run(envelope.principal.userId, () => captured!.dispatch(envelope))
   };
 
-  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
   const settled = async () => {
     const running = (r: { status: string; finalizedAtMs?: number | null }) =>
       r.status === "in_progress" || (r.status !== "suspended" && r.status !== "pending" && r.finalizedAtMs == null);

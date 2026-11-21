@@ -13,7 +13,7 @@ import { REPO_ROOT, goalTmpDir, loadFixture, runGoal, silentLogger, sleep } from
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
 import * as contract from "../../../labs/test-support/contract.ts";
 import type { ScriptedCall, ScriptedStep } from "../../../labs/test-support/contract.ts";
-import type { Routine } from "../../../packages/shift-manager/src/lib/routines.ts";
+import type { ListedRoutine as Routine } from "@flow-state-dev/workforce/browser";
 import { build } from "esbuild";
 import { openTeammates } from "../../../labs/teammates/host.mts";
 import { openClaudeCodeStyle } from "../../../labs/claude-code-style/host.mts";
@@ -33,9 +33,9 @@ const PATCHES: Record<string, ModulePatch[]> = {
   "no-poll": HOSTS.map((module) => ({ module, from: String.raw`githubServiceFlow\(\{ provider: github, installation, poll: true \}\)`, to: "githubServiceFlow({ provider: github, installation })" })),
   // The hosts give the roster no clock index: nothing ticks a clock routine.
   "no-clock-index": HOSTS.map((module) => ({ module, from: String.raw`index: scheduleIndexAt\(clockDb\),`, to: "" })),
-  // The operator's token reads GitHub for every user of the host. The Claude Code-style lab reads
-  // GitHub through workforce's `operatorGitHub`, so its patch lands there.
-  "shared-token": HOSTS.map((host) => (host === "labs/claude-code-style/host.mts" ? "packages/workforce/src/service-flows/github/operator.ts" : host)).map((module) => ({
+  // The operator's token reads GitHub for every user of the host. The Claude Code-style and Teammates labs
+  // read GitHub through workforce's `operatorGitHub`, so their patch lands there, once.
+  "shared-token": [...new Set(HOSTS.map((host) => (host === "packages/shift-manager/teams/devteam/host.mts" ? host : "packages/workforce/src/service-flows/github/operator.ts")))].map((module) => ({
     module,
     from: String.raw`const reads = \(ctx[^)]*\) => [^;]+;`,
     to: "const reads = () => true;"

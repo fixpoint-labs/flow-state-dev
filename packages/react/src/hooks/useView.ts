@@ -11,12 +11,14 @@
  * identity across answers while they don't change.
  *
  * `value` is `undefined` until the first answer lands. `stale` is `true`
- * while the last read failed; the live read tries again on its own.
+ * while the last read failed, and `failure` says why; the live read tries
+ * again on its own, and `refresh()` reads again now.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ViewCallOptions, ViewInputOf, ViewRef, ViewValueOf } from "@flow-state-dev/client";
-import { viewWatchIdentity, watchView, type ViewWatchClient } from "@flow-state-dev/client/internal";
+import { viewWatchIdentity, watchView, type ViewWatchClient, type ViewWatchStop } from "@flow-state-dev/client/internal";
 import { useClient } from "../internal/useClient";
+import { failureOf, type ViewReadFailure } from "../internal/readFailure";
 
 /** Options for {@link useView}. */
 export type UseViewOptions = ViewCallOptions & {
@@ -28,12 +30,20 @@ export type UseViewOptions = ViewCallOptions & {
   client?: ViewWatchClient;
 };
 
+// FIX-2774. Defined beside the rule that writes it, which `useResource` shares.
+export type { ViewReadFailure };
+
 /** What {@link useView} returns. */
 export type UseViewResult<TValue> = {
   /** The view's answer, or `undefined` before the first lands. */
   value: TValue | undefined;
   /** `true` while the last read failed. */
   stale: boolean;
+  // FIX-2774.
+  /** Why the last read failed, while `stale`; absent otherwise. */
+  failure?: ViewReadFailure;
+  /** Read the view again now (a Retry, a refresh key), for every screen sharing the read. Nothing while disabled. */
+  refresh(): void;
 };
 
 /**
@@ -43,7 +53,14 @@ export type UseViewResult<TValue> = {
  * and not its `stale`. `client` and `identity` let a render that has already
  * moved on answer nothing before the new watch's effect even runs.
  */
-type Heard<TValue> = { watch: object; client: ViewWatchClient; identity: string; value: TValue | undefined; stale: boolean };
+type Heard<TValue> = {
+  watch: object;
+  client: ViewWatchClient;
+  identity: string;
+  value: TValue | undefined;
+  stale: boolean;
+  failure?: ViewReadFailure;
+};
 
 /** Watch the view `ref` names, with `input`. See the file header. */
 export function useView<TRef extends ViewRef>(
@@ -59,6 +76,8 @@ export function useView<TRef extends ViewRef>(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const stableInput = useMemo(() => input, [identity]);
   const [heard, setHeard] = useState<Heard<ViewValueOf<TRef>> | undefined>(undefined);
+  // The running watch, for `refresh()`: none while disabled.
+  const running = useRef<ViewWatchStop | undefined>(undefined);
 
   useEffect(() => {
     if (!enabled) return;
@@ -74,16 +93,22 @@ export function useView<TRef extends ViewRef>(
         onStale: (stale) =>
           setHeard((prev) => {
             const held = fresh(prev);
-            return held === prev && held.stale === stale ? prev : { ...held, stale };
-          })
+            if (held === prev && held.stale === stale) return prev;
+            // A read that lands takes the last failure's reason with it.
+            const { failure: _gone, ...rest } = held;
+            return stale ? { ...held, stale } : { ...rest, stale };
+          }),
+        onError: (error) => setHeard((prev) => ({ ...fresh(prev), stale: true, failure: failureOf(error) }))
       },
       {
         ...(sessionId !== undefined ? { sessionId } : {}),
         ...(pollIntervalMs !== undefined ? { pollIntervalMs } : {})
       }
     );
+    running.current = stop;
     return () => {
       stop();
+      if (running.current === stop) running.current = undefined;
       // What this watch heard goes with it, so the next one starts from nothing.
       setHeard((prev) => (prev?.watch === watch ? undefined : prev));
     };
@@ -91,11 +116,13 @@ export function useView<TRef extends ViewRef>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, identity, enabled, pollIntervalMs]);
 
+  const refresh = useCallback(() => running.current?.refresh(), []);
+
   return useMemo(
     () =>
       enabled && heard !== undefined && heard.client === client && heard.identity === identity
-        ? { value: heard.value, stale: heard.stale }
-        : { value: undefined, stale: false },
-    [enabled, heard, client, identity]
+        ? { value: heard.value, stale: heard.stale, ...(heard.failure !== undefined ? { failure: heard.failure } : {}), refresh }
+        : { value: undefined, stale: false, refresh },
+    [enabled, heard, client, identity, refresh]
   );
 }

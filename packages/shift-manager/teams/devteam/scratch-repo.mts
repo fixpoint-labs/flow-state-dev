@@ -237,7 +237,7 @@ export function branchesUnder(repo: string, prefix: string): string[] {
 /**
  * How many commits `ref` carries that `base` does not.
  *
- * **The branch is not the work.** Provisioning cuts a `conductor/…` branch
+ * **The branch is not the work.** Provisioning cuts a `shift-manager/…` branch
  * before the harness runs, so a branch exists even for an attempt that produced
  * nothing — asking whether one appeared measures the checkout, not the run.
  * Asking how far ahead it is measures the run.

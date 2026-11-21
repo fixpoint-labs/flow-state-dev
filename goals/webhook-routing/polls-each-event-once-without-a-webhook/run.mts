@@ -34,6 +34,7 @@ import { SUBSCRIPTION_POLLS_PATTERN, workerRoutineVerbs } from "@flow-state-dev/
 import { z } from "zod";
 import { REPO_ROOT, goalTmpDir, runGoal, silentLogger, workforceTree } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
+import { sleep } from "../../lib/time.mts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, "../delivers-each-event-once-to-its-subscribers/fixtures");
@@ -301,7 +302,6 @@ async function boot(options: BootOptions) {
     };
   }
 
-  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
   const settled = async () => {
     const running = (r: { status: string; finalizedAtMs?: number | null }) =>
       r.status === "in_progress" || (r.status !== "suspended" && r.status !== "pending" && r.finalizedAtMs == null);

@@ -20,6 +20,8 @@ changed; this issue carries that to a browser, and the read the browser already 
 
 ## The goal, and how we'll know it's met
 
+> **Amended (Nov 19):** since [FIX-2545](https://linear.app/fixpoint-labs/issue/FIX-2545), the in-memory bus is single-process and the hook keeps no timer on it; leg c's second in-memory process is history ([D3](DECISIONS.md#d3)).
+
 **On the Node host, a screen built on the framework's hook reads a change someone else made
 within a second; a caller who may not read that scope never hears of it, on the first connect
 or any reconnect; and wherever push can miss a change (no push, the socket down, or its bus

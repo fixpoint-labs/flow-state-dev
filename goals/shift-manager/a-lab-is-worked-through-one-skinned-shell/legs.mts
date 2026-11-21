@@ -610,9 +610,10 @@ const THEME = readShiftManagerTheme();
 /** The registry parts and the devtool page, by the selector that finds each on its page. */
 export const SWEPT = {
   message: "[data-testid=session-item][data-item-type=message] [data-testid=message]",
-  reasoning: "[data-testid=session-item][data-item-type=reasoning] [data-slot=collapsible]",
-  tool: "[data-testid=session-item][data-item-type=tool_output] [data-slot=collapsible]",
-  "code block": "[data-testid=session-item][data-item-type=tool_output] [data-language]",
+  // A run of thinking and calls is one tool group, opening to a row per thought or call.
+  "tool group": "[data-testid=session-item][data-item-type=steps] [data-testid=tool-group]",
+  "tool step": "[data-testid=session-item][data-item-type=steps] [data-testid=tool-row]",
+  "code block": "[data-testid=session-item][data-item-type=steps] [data-language]",
   ask: "[data-testid=ask-card]",
 } as const;
 const firstFamily = (value: string) => value.split(",")[0]!.trim().replace(/^["']|["']$/g, "");
@@ -642,10 +643,12 @@ async function sweep(page: Page, parts: Record<string, string>, tally: Map<strin
   }
 }
 
-/** Open every collapsed card in the task's Session, so the code block inside the tool card is drawn. */
+/** Open every collapsed card in the task's Session, the tool group and then its rows, so the code block inside a call is drawn. */
 async function expandSession(page: Page): Promise<void> {
-  for (const trigger of await page.locator("[data-testid=session-item] [data-slot=collapsible-trigger]").all()) {
-    if ((await trigger.getAttribute("data-state")) === "closed") await trigger.click().catch(() => undefined);
+  for (let depth = 0; depth < 2; depth += 1) {
+    for (const trigger of await page.locator("[data-testid=session-item] [data-slot=collapsible-trigger]").all()) {
+      if ((await trigger.getAttribute("data-state")) === "closed") await trigger.click().catch(() => undefined);
+    }
   }
   await page.locator(SWEPT["code block"]).first().waitFor({ timeout: 5_000 }).catch(() => undefined);
 }
@@ -725,7 +728,7 @@ export async function legC(ctx: LegCtx): Promise<void> {
       else {
         await second.page.getByTestId("nav-tasks").click();
         await second.page.locator(`[data-testid=task-row][data-task-id="${row.id}"]`).click();
-        await second.page.locator("[data-testid=session-item][data-item-type=tool_output]").first().waitFor({ timeout: 20_000 }).catch(() => undefined);
+        await second.page.locator("[data-testid=session-item][data-item-type=steps]").first().waitFor({ timeout: 20_000 }).catch(() => undefined);
         await expandSession(second.page);
         await sweep(second.page, SWEPT, tally);
       }

@@ -85,7 +85,7 @@ export function Spend({ spend, className, ...options }: SpendLineOptions & { spe
   const line = spendLine(spend, options);
   if (!line) return null;
   return (
-    <span className={cn("block truncate font-mono text-[10px] text-muted-foreground", className)} data-spend={spend?.live ? "live" : "final"}>
+    <span className={cn("block truncate font-mono text-xs text-muted-foreground", className)} data-spend={spend?.live ? "live" : "final"}>
       {line}
     </span>
   );

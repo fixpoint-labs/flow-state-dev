@@ -1,11 +1,11 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useApp, useTaskWork, withPullRequestLinks, type AppTask, type TaskStatus } from "../app";
+import { pullRequestLinks, useApp, useTaskWork, type CodingBoardTask, type TaskStatus } from "../app";
 import { FINISHED, TASK_STATUS } from "../lib/task-status";
 import { useMissing, useNow } from "../lib/use-watch";
 import { Clamp } from "./Clamp";
 import { PANE_TITLE } from "../modes";
 import { cn } from "../lib/utils";
-import { Entry } from "./Entry";
+import { useLines, WorkLines } from "./lines";
 import { LoadEarlier } from "./LoadEarlier";
 import { PaneHeader } from "./PaneHeader";
 import { SessionOverlay } from "./flow-state/session-overlay";
@@ -42,7 +42,7 @@ export function TasksPane({
 }: {
   sessionId: string;
   /** The session's task rows, as the app reads them; `undefined` until read. */
-  tasks: AppTask[] | undefined;
+  tasks: CodingBoardTask[] | undefined;
   /** The app's last read of the rows failed: they may be old. */
   stale?: boolean;
   /** The task whose sheet is open, kept by the app so the page's address can name it. */
@@ -59,7 +59,7 @@ export function TasksPane({
   const done = tasks.filter((t) => FINISHED.has(t.status));
   const toggle = (id: string) => onOpen(openId === id ? undefined : id);
   const now = useNow(tasks.length > 0);
-  const counts = taskCounts(tasks.flatMap((t) => (t.view === undefined ? [] : [t.view])));
+  const counts = taskCounts(tasks);
   // Done opens when the open task is in it, however it was opened; you can still shut it.
   const [doneOpen, setDoneOpen] = useState(false);
   const openInDone = done.some((t) => t.id === openId) ? openId : undefined;
@@ -121,12 +121,13 @@ export function TasksPane({
  * the link, and that a line in the Steer box wakes it. A failed task's error
  * shows as an error.
  */
-function TaskSheet({ sessionId, task, onClose }: { sessionId: string; task: AppTask; onClose: () => void }) {
+function TaskSheet({ sessionId, task, onClose }: { sessionId: string; task: CodingBoardTask; onClose: () => void }) {
   const labels = useContext(HarnessLabels);
   const lab = useApp();
   const actions = useMemo(() => lab.taskActions(sessionId), [lab, sessionId]);
   const work = useTaskWork(task);
-  const status = TASK_STATUS[task.status];
+  const lines = useLines(work?.items);
+  const status = TASK_STATUS[task.status as TaskStatus];
   return (
     <SessionOverlay
       variant="sheet"
@@ -160,17 +161,17 @@ function TaskSheet({ sessionId, task, onClose }: { sessionId: string; task: AppT
         </>
       }
     >
-      {task.status === "errored" && task.error !== undefined ? (
+      {task.status === "errored" && task.error != null ? (
         <div role="alert" className="mb-3 flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive [overflow-wrap:anywhere]">
           <ErrorBody message={task.error} />
         </div>
       ) : null}
-      {waitsOnPullRequest(task) ? <PullRequestOpen task={withPullRequestLinks(task, work)} className="mb-3 block" /> : null}
-      {work === undefined || work.entries.length === 0 ? <p className="text-sm text-muted-foreground">Nothing yet.</p> : null}
+      {waitsOnPullRequest(task) ? <PullRequestOpen pullRequests={pullRequestLinks(task, work)} className="mb-3 block" /> : null}
+      {lines === undefined || lines.length === 0 ? <p className="text-sm text-muted-foreground">Nothing yet.</p> : null}
       <LoadEarlier load={work?.loadEarlier} />
-      {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
+      <WorkLines lines={lines} />
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
-      {task.status === "in_progress" && task.openHold === undefined && !waitsOnPullRequest(task) ? (
+      {task.status === "in_progress" && task.asks.length === 0 && !waitsOnPullRequest(task) ? (
         <StreamingIndicator message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
     </SessionOverlay>

@@ -1,12 +1,12 @@
 /** What this run proves is `goal.md` beside this file. */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { REPO_ROOT, goalTmpDir, runGoal, stopProcessGroup } from "../../lib/index.mts";
+import { REPO_ROOT, freePort, goalTmpDir, runGoal, stopProcessGroup } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
 import { CRON_SECRET, PLAIN_FLOW, SCHEDULE_KEY, readLedger, type ClaimRow, type FireRow } from "./app.mts";
+import { sleep } from "../../lib/time.mts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOST = join(HERE, "host.mts");
@@ -19,7 +19,6 @@ const MINUTE = 60_000;
 const HANDOVER_MS = 3 * MINUTE;
 const TICK_SLACK_MS = 5_000;
 const CLI_RUN_MS = 90_000;
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The controls: each degrades one behaviour in the code under test, as it loads. */
 const CONTROLS: Record<string, ModulePatch[]> = {
@@ -63,17 +62,6 @@ function baseEnv(extra: Record<string, string>): Record<string, string> {
     if (value !== undefined && !key.startsWith("FSDEV_") && !key.startsWith("GOAL_")) env[key] = value;
   }
   return { ...env, NODE_ENV: "development", CRON_SECRET, ...patchEnv, ...extra };
-}
-
-async function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const port = (server.address() as { port: number }).port;
-      server.close(() => resolve(port));
-    });
-  });
 }
 
 /** Start one host process; resolve once it prints `__READY__`. */

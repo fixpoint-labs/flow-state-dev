@@ -62,9 +62,14 @@ const editInput = z
     instructions: z.string().nullable().optional(),
     skills: z.array(z.string().min(1)).optional(),
     /** Replaces the stored settings whole. */
-    settings: z.record(z.unknown()).optional()
+    settings: z.record(z.unknown()).optional(),
+    /** Sets the settings it names over the stored ones, keeping the rest. Not with `settings`. */
+    settingsPatch: z.record(z.unknown()).optional()
   })
-  .strict();
+  .strict()
+  .refine((input) => input.settings === undefined || input.settingsPatch === undefined, {
+    message: "Give settings (replace them whole) or settingsPatch (change the ones named), not both."
+  });
 
 const fireInput = z.object({ id: z.string().min(1) }).strict();
 
@@ -236,7 +241,8 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.instructions !== undefined ? { instructions: textOrNull(input.instructions) } : {}),
         ...(input.skills !== undefined ? { skills: input.skills } : {}),
-        ...(input.settings !== undefined ? { settings: input.settings } : {})
+        ...(input.settings !== undefined ? { settings: input.settings } : {}),
+        ...(input.settingsPatch !== undefined ? { settings: { ...current.settings, ...input.settingsPatch } } : {})
       };
       check(input.id, next);
       await roster(ctx).create(input.id, next as unknown as JsonObject, {

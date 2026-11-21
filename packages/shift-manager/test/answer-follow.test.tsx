@@ -1,88 +1,82 @@
 // @vitest-environment happy-dom
 /**
- * An answer given on one connection is followed on that connection only
- * (FIX-2455). The answer reads the Lab again and then follows the run it
- * resumed; when the page switches to another Lab meanwhile, nothing the old
- * answer does afterwards reads the old Lab, so the new Lab's snapshot is never
- * drawn over with the old one's.
+ * An answer reads nothing of the Lab after it (FIX-2774). The Inbox, its
+ * count and a task's asks read workforce's inbox view, which the server's
+ * suspension notice re-runs once the answer is recorded: a whole-Lab read
+ * after the answer, and another once the run it resumed stops, would be the
+ * re-read loop this issue removes. Nor does it mark anything for a
+ * conversation on screen to read itself back (FIX-2775): the conversation's
+ * own live feed hears the session's resume.
  *
- * Each connection gets its own client and reader; the test counts the reads
- * each reader makes.
+ * The connection's client records each answer sent; the reader counts its reads.
  */
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LabProvider, useLab, type LabData } from "../src/lib/lab-data";
-import type { Ask } from "../src/lib/reads";
+import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { LabProvider } from "../src/lib/lab-data";
+import { useInboxAnswer } from "../src/lib/inbox";
 
-/** Reads per connection's user, and the one `resume` the test holds open. */
-const reads = new Map<string, number>();
-let releaseResume: (() => void) | undefined;
+let reads = 0;
+const answers: unknown[] = [];
 
 vi.mock("../src/lib/connection", () => ({
   connect: (connection: { userId: string }) => ({
     userId: connection.userId,
     subscribe: () => ({ close: () => {} }),
-    // The resumed run has settled by the time it is followed.
-    flow: () => ({ request: () => ({ wait: async () => ({ status: "completed" }) }) }),
+    flow: () => ({
+      request: () => ({
+        answer: async (body: unknown) => void answers.push(body),
+        wait: async () => ({ status: "completed" }),
+      }),
+    }),
   }),
 }));
-vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => ({ watchRoster: () => () => {} }) }));
+vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => ({ organization: async () => "acme", watchRoster: () => () => {} }) }));
 vi.mock("../src/lib/reads", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/lib/reads")>();
   return {
     ...real,
-    createLabReader: (client: { userId: string }) => ({
+    createLabReader: () => ({
       read: async () => {
-        reads.set(client.userId, (reads.get(client.userId) ?? 0) + 1);
-        return { refused: { message: `the ${client.userId} Lab` } };
+        reads += 1;
+        return { refused: { message: "a Lab" } };
       },
       readBoard: async () => [],
-      resume: () => new Promise<void>((resolve) => (releaseResume = resolve)),
     }),
   };
 });
 
 afterEach(cleanup);
 
-let lab: LabData | undefined;
+let answer: ReturnType<typeof useInboxAnswer> | undefined;
 function Grab() {
-  lab = useLab();
+  answer = useInboxAnswer();
   return null;
 }
 
-describe("an answer given on one connection", () => {
-  it("reads nothing from the old Lab once the page has switched to another", async () => {
-    const A = { userId: "on_a" };
-    const B = { userId: "on_b" };
-    const { rerender } = render(
-      <LabProvider connection={A}>
+/** An approval a worker's run in session `s1` waits on. */
+const hold: InboxHold<unknown> = {
+  id: "susp_1",
+  source: { kind: "suspension", flowId: "desk", sessionId: "s1", requestId: "req_1", suspensionId: "susp_1" },
+  ask: { kind: "approval", prompt: "Ship it?" },
+  openedAt: 0,
+  answerable: true,
+  unanswerable: null,
+};
+
+describe("an answer given in Shift Manager", () => {
+  it("goes through the answer route, and reads nothing of the Lab after it", async () => {
+    render(
+      <LabProvider connection={{ userId: "alice" }}>
         <Grab />
       </LabProvider>,
     );
-    await waitFor(() => expect(reads.get("on_a")).toBe(1));
-
-    const ask = { sessionId: "s1", flowId: "desk", item: { requestId: "req_1" } } as unknown as Ask;
-    let answering!: Promise<void>;
-    act(() => {
-      answering = lab!.answer(ask, { action: "approve" });
-    });
-    await waitFor(() => expect(releaseResume).toBeDefined());
-
-    // The page moves to another Lab while the answer is still on its way.
-    rerender(
-      <LabProvider connection={B}>
-        <Grab />
-      </LabProvider>,
-    );
-    await waitFor(() => expect(reads.get("on_b")).toBe(1));
-    const aReadsAtSwitch = reads.get("on_a");
-
+    await waitFor(() => expect(reads).toBe(1));
     await act(async () => {
-      releaseResume!();
-      await answering;
+      await answer!(hold, { approved: true });
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
-
-    expect(reads.get("on_a")).toBe(aReadsAtSwitch);
+    expect(answers).toEqual([{ suspensionId: "susp_1", action: "approve" }]);
+    expect(reads).toBe(1);
   });
 });

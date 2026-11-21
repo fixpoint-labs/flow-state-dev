@@ -20,13 +20,11 @@ The page is about a tool that keeps several things. Each stored part, answered:
   collection whose pattern is `artifacts/**`. `B/blocks.ts:11-14`; `W/projection.ts:459-474`.
 - **What a row holds.** State plus separate content. State: `path`, `hash` (SHA-256 of the content),
   `updatedAt` (ISO string), plus whatever `createState` adds; content goes through `writeContent`.
-  `W/projection.ts:43,459-473`. The capability's default `createState` adds `title` (the file's
-  basename) and `updatedAt` (a number, `Date.now()`). `createState` is threaded on as the mount's
-  `entryState` and spreads last, so the default's numeric `updatedAt` replaces the ISO string:
-  `B/capability.ts:215-218`, `B/projection-setup.ts:108-110`, `W/projection.ts:463-465`. A collection
-  whose `stateSchema` declares `updatedAt: z.string()` therefore refuses every file saved with the
-  default; the page's example passes its own `createState` returning an ISO string (filed as FIX-2749).
-  Do not document `title`; see Contradictions.
+  `W/projection.ts:43,459-473`. The projection owns `path`, `hash`, and `updatedAt` and spreads a
+  mount's extra fields first, so `createState` cannot replace them (`W/projection.ts:463-466`).
+  The capability's default `createState` adds `title` (the file's basename) only
+  (`B/capability.ts:215-217`). A collection whose schema says `updatedAt: z.string()` accepts
+  every file bash saves. Do not document `title`; see Contradictions.
 - **Who can see it.** Decided by the collection's own `scope` (`"session"`, `"user"`, `"org"`...),
   not by bash. The reader sees the files wherever they read that collection (client, other
   blocks, other flows that declare it). `apps/docs/docs/resources/collections.md:14-21`. The sheet
@@ -371,8 +369,8 @@ The answer is per provider. The page opens on the default and names the others.
    "discarded on save with a warning".
 8. `D:328-330` "Content hashing ... flush is cheap even for large workspaces": a claim about cost, not
    shown. Drop; keep "only changed files are saved".
-9. `createState` JSDoc says default is `() => ({})` (`B/blocks.ts:114`) but the capability's default
-   adds `title` and `updatedAt` (`B/capability.ts:215-218`). Do not document the default.
+9. `createState` JSDoc on the blocks says the default is `() => ({})` (`B/blocks.ts:110-116`). The
+   capability's default adds `title` only (`B/capability.ts:215-217`). Do not document the default.
 10. `R:378` "wait for OS-level sandboxing in a future release": the container provider (`moat`) exists.
 11. `apps/docs/docs/tools/overview.md` "All three tools follow the same provider pattern" is already
     flagged in `tools.facts.md:14`; not repeated here.

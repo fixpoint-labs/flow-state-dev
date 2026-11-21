@@ -2,6 +2,8 @@
 
 Blocks, flows and their type contracts: the builders every Flow State app is written in. Runs anywhere JavaScript runs.
 
+A helper that takes a block's context takes `BlockContext`.
+
 ```bash
 pnpm add @flow-state-dev/core
 ```

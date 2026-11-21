@@ -189,7 +189,7 @@ function withCurrentId(current: Task | undefined): { current?: { id: string } } 
 }
 
 /** A value as `getTask` returns it: whole, or its JSON cut to {@link READ_OUTPUT_LIMIT}. */
-function readable(value: unknown): { value: unknown; cut: boolean } {
+export function readable(value: unknown): { value: unknown; cut: boolean } {
   const text = typeof value === "string" ? value : (JSON.stringify(value) ?? String(value));
   if (text.length <= READ_OUTPUT_LIMIT) return { value, cut: false };
   return { value: text.slice(0, READ_OUTPUT_LIMIT), cut: true };
@@ -1078,6 +1078,10 @@ function listedTaskEntries(tasks: readonly Task[], board: readonly Task[], claim
     ...(claimless && t.completedAt !== undefined ? { completedAt: t.completedAt } : {}),
     ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
     ...(claimless && t.leaseUntil != null ? { leaseUntil: t.leaseUntil } : {}),
+    // FIX-2776: what a task's screen draws from the board's view alone; a model reads them with getTask.
+    ...(claimless && t.error !== undefined ? { error: t.error } : {}),
+    ...(claimless && t.deps !== undefined && t.deps.length > 0 ? { deps: t.deps } : {}),
+    ...(claimless && t.attachments !== undefined && t.attachments.length > 0 ? { attachments: t.attachments } : {}),
     ...waitingOf(t),
     ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),
   }));
@@ -1780,8 +1784,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // conversation-result task's attempts (`conversation_result_one_attempt`).
       const ownRule =
         input.status !== undefined || (input.maxAttempts !== undefined && current.resultTo === "conversation");
-      // A hold or release is decided by the write, which also knows the one
-      // release a started held row may take (a legacy blocked row, BP-030).
+      // A hold or release is decided by the write. A status the board does not
+      // know is declined there (`unknown-status`), not treated as a started row.
       const locked = ownRule ? [] : lockedFields(current, edits);
       if (locked.length > 0) return lockedError(current, locked);
       // A message's own checks run before any write too (FIX-2086), so a call

@@ -61,6 +61,7 @@ Closed after the loop: pass 7 findings 1 to 3, both suspected inaccuracies, and 
 - After the loop (review): job-queue rename: the queued-run sentence and example use `bullmqJobQueue` and the `jobQueue` option of `createFlowState`. The example type-checks in apps/kitchen-sink/zz-jobqueue, deleted afterwards: only the planted error. 1061 words. Page sha256 14a07dfadc35.
 - After the loop (review): owner request: 2 action entries that set only `block` now name the block directly. 1440 words. Page sha256 cb90abf3dc63.
 - Post-merge edit (the app fires its own schedules): the schedule paragraph says the app checks once a minute, one server of several does it, and on a serverless host one cron route does. Page sha256 f9011f5e74d3: check-docs-page.mjs exits 0.
+- After the loop (review): drift fix: "A flow cannot start itself. Something outside calls the server" contradicted the schedule tick the app runs itself each minute in a serving process (packages/engine/src/execution/schedule-tick.ts:1-35, packages/engine/src/flowstate/types.ts:420-423). The paragraph now opens on runs with no user behind them, a webhook and a schedule. 1079 words. Page sha256 fea0e30a5384.
 
 ## 5 · Fact check
 
@@ -73,6 +74,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 8d5
 - Re-run after the review edit: `bullmqJobQueue` export (packages/bullmq/src/index.ts:9) and `jobQueue` option (packages/engine/src/flowstate/types.ts:374-383); default mode `colocated`, so the web process takes and runs the jobs (packages/bullmq/src/flowstate-adapter.ts:95; packages/engine/src/flowstate/createFlowState.ts:1124-1132). All true.
 - Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749).
 - Post-merge edit, checked against the code: once a minute (`SCHEDULE_TICK_INTERVAL_MS = 60_000`, `engine/src/execution/schedule-tick.ts:35`); the flow's schedules and the stored ones (`schedules.static` and `index.claimDue`, `schedule-tick.ts:101`, `:112`); one server of several, through the store lease (`engine/src/execution/local-scheduler.ts:71`); on Vercel one cron route runs the tick (`packages/vercel/src/scheduler.ts:61`).
+- Re-run after the review edit: the tick fires every static and dynamic schedule of every registered flow (packages/engine/src/execution/schedule-tick.ts:3-16) at a one-minute interval (:35).
 
 ## 6 · Depth pass
 

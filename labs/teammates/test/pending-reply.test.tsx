@@ -2,30 +2,21 @@
 /**
  * A reply that has already landed never shows as pending. A waited send takes
  * its answer as the tool's result, so no received line ever lands for it, and
- * a received line older than the loaded page isn't among the entries: neither
+ * a received line older than the loaded page isn't among the lines: neither
  * may leave a "reads it next" line pinned under every newer message. The log
- * row says whether the message landed; the screen trusts it.
+ * row's status says whether the message landed; the screen trusts it.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
+import type { WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import { App } from "../src/components/App";
-import { AppProvider } from "../src/app";
-import { createAppCalls, type ConversationEntry, type AppTalk } from "../src/app";
+import { linesOf, message } from "./lines";
 import { pendingFor } from "../src/lib/talk";
-import { createFixtureApp } from "./fake-app";
-import { liveOver } from "./live-over";
+import { scriptedServer, ScriptedProvider } from "./scripted-server";
 
 const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
-
-vi.mock("@flow-state-dev/workforce/browser", async (original) => ({
-  ...(await original<typeof import("@flow-state-dev/workforce/browser")>()),
-  createWorkforceClient: () => ({
-    roster: async () => [{ id: LEAD, flow: "teammates", standard: true, description: null, name: "Lead" }],
-    ensureWorkerSession: async () => ({ id: "wks_1", flowKind: "teammates" }),
-  }),
-}));
 
 afterEach(() => {
   cleanup();
@@ -33,17 +24,25 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-const ask: AppTalk = { id: "msg_question", from: LEAD, to: RESEARCHER, text: "Launch date?", replyRequested: true, at: 1 };
-const reply: AppTalk = { id: "msg_reply", from: RESEARCHER, to: LEAD, text: "Nov 12.", inReplyTo: "msg_question", at: 2 };
+/** A row of the message log, as workforce's worker messages view answers it. */
+const logEntry = (fields: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResourceState, "id" | "from" | "to" | "text" | "at">): WorkerMessageResourceState => ({
+  exchange: fields.id, fromSession: "wks_from", fromFlow: "teammates", toSession: "wks_to", toFlow: "teammates", hop: 1, status: "unconfirmed", ...fields,
+});
+const ask = logEntry({ id: "msg_question", from: LEAD, to: RESEARCHER, text: "Launch date?", replyRequested: true, at: 1 });
+const reply = logEntry({ id: "msg_reply", from: RESEARCHER, to: LEAD, text: "Nov 12.", inReplyTo: "msg_question", exchange: "msg_question", at: 2 });
 
 describe("which messages to a worker are still pending", () => {
   it("leaves out a waited send's answer: it was the tool's result, and no received line will ever land for it", () => {
-    expect(pendingFor(LEAD, [ask, { ...reply, delivered: true }], [])).toEqual([]);
+    expect(pendingFor(LEAD, [ask, { ...reply, status: "delivered" }], [])).toEqual([]);
   });
 
   it("leaves out a reply whose received line is older than the loaded page", () => {
-    const loaded: ConversationEntry[] = [{ kind: "user", id: "u_9", text: "Make section 2 about pricing." }];
-    expect(pendingFor(LEAD, [ask, { ...reply, delivered: true }], loaded)).toEqual([]);
+    const loaded = linesOf([message("u_9", "q9", "user", "Make section 2 about pricing.")]);
+    expect(pendingFor(LEAD, [ask, { ...reply, status: "delivered" }], loaded)).toEqual([]);
+  });
+
+  it("leaves out a message that will never land", () => {
+    expect(pendingFor(LEAD, [{ ...reply, status: "refused" }, { ...reply, id: "msg_late", status: "undeliverable" }], [])).toEqual([]);
   });
 
   it("still holds a reply that hasn't landed yet", () => {
@@ -51,36 +50,19 @@ describe("which messages to a worker are still pending", () => {
   });
 });
 
-describe("the message log the screen reads", () => {
-  it("marks a message the log says was delivered", async () => {
-    const row = (id: string, status: string) => ({
-      clientData: { ...reply, id, exchange: "msg_question", fromSession: "wks_r", fromFlow: "teammates", toSession: "wks_1", toFlow: "teammates", hop: 1, status },
-    });
-    const client = {
-      resources: { listCollectionResources: async () => ({ items: [row("msg_landed", "delivered"), row("msg_on_its_way", "unconfirmed")] }) },
-      subscribe: () => ({ close: () => {} }),
-      get live() {
-        return liveOver(this as never);
-      },
-    } as unknown as Client;
-    let rows: AppTalk[] | undefined;
-    const stop = createAppCalls(client).watchTalk(LEAD, (next) => (rows = next));
-    await waitFor(() => expect(rows).toBeDefined());
-    stop();
-    expect(rows!.map((m) => [m.id, m.delivered === true])).toEqual([
-      ["msg_landed", true],
-      ["msg_on_its_way", false],
-    ]);
-  });
-});
-
 describe("a waited send's answer, on the screen", () => {
   it("draws no pending line under your newer message, during or after Lead's turn", async () => {
-    const lab = createFixtureApp({ speed: 0.05 });
+    const lab = scriptedServer({ speed: 0.05 });
     // What Jake saw: researcher's answers to Lead's waited sends, delivered as the sends' results.
-    const waited = [1, 2, 3, 4].map((n): AppTalk => ({ ...reply, id: `msg_waited_${n}`, inReplyTo: `msg_ask_${n}`, at: n, delivered: true }));
-    const adapter = { ...lab, watchTalk: (worker: string, onChange: (rows: AppTalk[]) => void) => lab.watchTalk(worker, (rows) => onChange(worker === LEAD ? [...waited, ...rows] : rows)) };
-    render(<AppProvider calls={adapter}><App /></AppProvider>);
+    const waited = [1, 2, 3, 4].map((n) => ({ ...reply, id: `msg_waited_${n}`, inReplyTo: `msg_ask_${n}`, at: n, status: "delivered" as const }));
+    const client = {
+      ...lab.client,
+      view: async (ref: { view: string }, input: { worker?: string }, options?: unknown) => {
+        const read = await lab.client.view(ref as never, input as never, options as never);
+        return ref.view === "workerMessages" && input.worker === LEAD ? { ...read, value: [...waited, ...(read.value as unknown[])] } : read;
+      },
+    } as unknown as Client;
+    render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
     const conversation = () => screen.getByRole("main", { name: "Conversation" });
     const box = await screen.findByLabelText("Message Lead");
     await act(async () => {

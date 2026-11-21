@@ -4,6 +4,8 @@
  * BR-28). What the screen draws is compared with what the Lab's routes hold.
  */
 import type { Client } from "@flow-state-dev/client";
+import { createInProcessFetch } from "@flow-state-dev/engine";
+import net from "node:net";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -84,6 +86,21 @@ async function openApp(path: string, options: Parameters<typeof openAskLab>[0] =
   return { lab, client };
 }
 
+/**
+ * The shell on the ask-lab in this process, at `http://lab.local`. `installFetch`
+ * wires `fetch` before the first read. The page makes no socket.
+ */
+async function openAppInProcess(
+  path: string,
+  installFetch: (inProcess: ReturnType<typeof createInProcessFetch>) => void,
+) {
+  const opened = await openAskLab();
+  onTestFinished(() => opened.flowState.dispose());
+  installFetch(createInProcessFetch(opened.flowState));
+  (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`http://lab.local${path}`);
+  render(<App connection={{ userId: ASK_LAB_USER_ID }} />);
+}
+
 describe("the sidebar's mark", () => {
   it("is the one theme control: it shows the theme the page is in, and each click moves to the next", async () => {
     const lab = await serveLab((await openAskLab()).flowState);
@@ -132,11 +149,15 @@ describe("the refusal (V2, BR-3)", () => {
     });
     await openApp("/w/ops.desk/stream", { bearer: "secret" });
     await screen.findByTestId("refusal");
-    expect(screen.getByTestId("refusal-message").textContent).toMatch(/401.*verified organization/);
+    // The gate is the organization read (FIX-2775): the server's answer to it, under today's words for a refusal.
+    expect(screen.getByTestId("refusal-message").textContent).toMatch(/^401 · /);
+    expect(screen.getByTestId("refusal").textContent).toContain("the request carried no verified organization");
     expect(screen.queryByTestId("sidebar")).toBeNull();
     expect(document.body.textContent).not.toMatch(/ops\./);
     await new Promise((r) => setTimeout(r, 300));
-    expect(seen).toEqual(["/api/flows/sessions"]);
+    // Nothing from the tree is read behind the refusal: the gate's identity read, and the snapshot's own
+    // first read, which nothing draws (FIX-2777 deletes it), each refused once.
+    expect([...seen].sort()).toEqual(["/api/flows/sessions", "/api/flows/workforce-roster/identity"]);
   });
 
   it("a Lab that names no organization for the user gets the refusal, never an unknown one", async () => {
@@ -158,12 +179,15 @@ describe("the refusal (V2, BR-3)", () => {
 
 describe("a Lab Shift Manager can't reach", () => {
   it("shows what the Lab answered with Retry, not the refusal, and Retry opens the Lab once it answers", async () => {
-    const real = globalThis.fetch;
+    // The spy covers this whole test on purpose: any socket here is the failure.
+    // afterEach has drained earlier tests, so it sees only this one.
+    const sockets = vi.spyOn(net.Socket.prototype, "connect");
     let down = true;
-    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
-      down ? Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 })) : real(input, init),
-    );
-    await openApp("/inbox");
+    await openAppInProcess("/inbox", (inProcess) => {
+      vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+        down ? Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 })) : inProcess(input, init),
+      );
+    });
     const screenEl = await screen.findByTestId("unreachable");
     expect(screen.getByTestId("unreachable-message").textContent).toMatch(/503.*store offline/);
     expect(screen.queryByTestId("refusal")).toBeNull();
@@ -174,7 +198,8 @@ describe("a Lab Shift Manager can't reach", () => {
     // Flush them, so the click can't land on the no-op it starts with.
     await act(async () => {});
     act(() => fireEvent.click(screen.getByTestId("unreachable-retry")));
-    await screen.findByTestId("sidebar");
+    await screen.findByTestId("sidebar", undefined, { timeout: 5_000 });
+    expect(sockets).not.toHaveBeenCalled();
   });
 });
 
@@ -282,22 +307,8 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     await waitFor(() => expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
   });
 
-  it("says so when the ask's session holds more than one read returns, rather than dropping later replies unseen", async () => {
-    // Every page of the session read says more remain, so the read stops at its cap.
-    await openOnAsk({}, () => {
-      const real = globalThis.fetch;
-      vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
-        const url = String(i instanceof Request ? i.url : i);
-        const response = await real(i, init);
-        // Only the whole-session read Inbox's detail makes; the asks read filters by item type.
-        if (!url.includes("/sessions/s_ops_asker/state") || url.includes("item_types")) return response;
-        const body = (await response.json()) as { pagination?: Record<string, unknown> };
-        return Response.json({ ...body, pagination: { ...body.pagination, hasMore: true, nextOffset: 200 } });
-      });
-    });
-    expect((await screen.findByTestId("inbox-session-truncated")).textContent).toMatch(/^More than shown/);
-  });
-
+  // Whether the ask's session holds more than is shown is the page's feed's `hasEarlier` (FIX-2776), which the
+  // client's session-window tests cover; the note draws from it as from the old read's `truncated`.
   it("draws no truncation note when the session's read is whole", async () => {
     await openOnAsk();
     await screen.findByTestId("inbox-from-session-none");
@@ -652,63 +663,6 @@ describe("Shift Coordinator (FIX-1722)", () => {
     expect(items.filter((item) => item.type === "suspension")).toHaveLength(1);
   });
 
-  // Which stop it was only picks the words: a stop the send couldn't classify still reads the
-  // Lab again, so a real ask is never kept out of Inbox.
-  it("lists the ask a gated line raised even when the send couldn't read what it stopped on", async () => {
-    await openShiftCoordinator("/", { shiftCoordinator: true });
-    expect((await screen.findByTestId("shift-coordinator-summary-asks")).textContent).toBe("Nothing needs you.");
-    const real = globalThis.fetch;
-    let failing = 0;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
-      const url = String(i instanceof Request ? i.url : i);
-      // The send's own read of the turn's suspended request fails, so it can't tell what the
-      // turn stopped on; the refresh after it reads normally.
-      if (failing > 0 && /\/sessions\/wks_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
-        failing -= 1;
-        return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
-      }
-      return real(i, init);
-    });
-    const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
-    fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
-    failing = 1;
-    fireEvent.click(screen.getByTestId("shift-coordinator-composer-send"));
-    const status = screen.getByTestId("shift-coordinator-composer-status");
-    await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
-    expect(status.textContent).toMatch(/Delivered\..*waiting/);
-    expect(screen.queryByTestId("shift-coordinator-composer-retry")).toBeNull();
-    await waitFor(() => expect(screen.getByTestId("shift-coordinator-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
-  });
-
-  // The send read nothing pending (resumed meanwhile, say) and the turn then stopped on a new
-  // ask: the words say plain delivered, but a turn seen suspended still reads the Lab again.
-  it("lists the ask a gated line raised even when the send read nothing pending", async () => {
-    await openShiftCoordinator("/", { shiftCoordinator: true });
-    expect((await screen.findByTestId("shift-coordinator-summary-asks")).textContent).toBe("Nothing needs you.");
-    const real = globalThis.fetch;
-    let emptying = 0;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
-      const url = String(i instanceof Request ? i.url : i);
-      // The send's read of the turn's suspended request finds it no longer suspended.
-      if (emptying > 0 && /\/sessions\/wks_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
-        emptying -= 1;
-        return new Response(JSON.stringify({ requests: [] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return real(i, init);
-    });
-    const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
-    fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
-    emptying = 1;
-    fireEvent.click(screen.getByTestId("shift-coordinator-composer-send"));
-    const status = screen.getByTestId("shift-coordinator-composer-status");
-    await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
-    expect(status.textContent).toBe("Delivered.");
-    await waitFor(() => expect(screen.getByTestId("shift-coordinator-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
-  });
-
   it("keeps a refused first line's conversation, so the next line goes into the same session (BR-15)", async () => {
     const { client } = await openShiftCoordinator("/", { shiftCoordinator: true });
     const input = (await screen.findByTestId("shift-coordinator-composer-input")) as HTMLTextAreaElement;
@@ -759,7 +713,8 @@ describe("Shift Coordinator (FIX-1722)", () => {
     act(() => fireEvent.click(within(screen.getByTestId("shift-coordinator-conversation-failure")).getByRole("button", { name: "Retry" })));
     expect(input.disabled).toBe(true);
     failing = false;
-    await waitFor(() => expect(input.disabled).toBe(false));
+    // The page's feed reads again on its own, backing off: the composer opens once a read lands.
+    await waitFor(() => expect(input.disabled).toBe(false), { timeout: 15_000 });
     expect(screen.queryByTestId("shift-coordinator-conversation-failure")).toBeNull();
   });
 
@@ -812,9 +767,10 @@ describe("Shift Coordinator (FIX-1722)", () => {
     // A worker session, so there are asks to read.
     await workerAction(connect({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID }), "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
     const real = globalThis.fetch;
+    // FIX-2774: what needs you and the boards are the inbox view's: the Lab answers its read with what went wrong.
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
       const url = String(i instanceof Request ? i.url : i);
-      if (/\/resources\/tasks(\?|$)/.test(url) || url.includes("item_types=suspension")) {
+      if (/\/views\/inbox(\?|$)/.test(url)) {
         return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
       }
       return real(i, init);
@@ -824,12 +780,10 @@ describe("Shift Coordinator (FIX-1722)", () => {
     const asks = await screen.findByTestId("shift-coordinator-summary-asks-failure");
     expect(asks.textContent).toMatch(/store offline/);
     expect(within(asks).getByRole("button", { name: "Retry" })).toBeTruthy();
-    // The user's conversation boards are read once, through one of their
-    // sessions whose flow keeps them (a coordinator's, or a delegate's that
-    // takes posts, as the asker does): Tasks names it, with what the Lab answered.
+    // The boards are the same answer: Tasks says what the Lab answered.
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     const board = await screen.findByTestId("section-failure");
-    expect(board.textContent).toMatch(/The boards of (ops\.(desk|side)|s_ops_asker) did not load/);
+    expect(board.textContent).toMatch(/The boards did not load/);
     expect(board.textContent).toMatch(/store offline.*503/);
     expect(within(board).getByRole("button", { name: "Retry" })).toBeTruthy();
   });

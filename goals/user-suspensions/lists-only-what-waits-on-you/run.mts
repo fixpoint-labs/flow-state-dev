@@ -43,6 +43,7 @@ import { createFlowState } from "@flow-state-dev/engine";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("user-suspensions-scope");
@@ -135,8 +136,6 @@ const headersOf = (who: Who) => ({ "x-user": who.user, "x-org": who.org, "x-tena
 
 type Row = Record<string, unknown> & { suspensionId: string; requestId: string; flowKind: string; sessionId?: string };
 
-const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
 await runGoal(async (failures, tell) => {
   const evidence: string[] = [];
   mkdirSync(SCRATCH, { recursive: true });
@@ -169,7 +168,7 @@ await runGoal(async (failures, tell) => {
       for (let tries = 0; tries < 200; tries += 1) {
         const record = await stores.request.get(requestId);
         if (record !== undefined && ["suspended", "completed", "failed"].includes(record.status)) return requestId;
-        await delay(25);
+        await sleep(25);
       }
       throw new Error(`${flow}.${action} never settled`);
     };
@@ -192,7 +191,7 @@ await runGoal(async (failures, tell) => {
     await stores.request.set(nullOrg, unbound, legacy.version);
     // A suspension whose request is gone.
     await stores.request.delete(missing);
-    await delay(50);
+    await sleep(50);
 
     const viewBody = async (who: Who) => (await post(who, "inbox/views/asks", { input: {} })).body as { output: Row[]; hears: unknown[] };
 
@@ -229,8 +228,8 @@ await runGoal(async (failures, tell) => {
     });
     const values: Array<{ at: number; ids: string[] }> = [];
     stops.push(watchView<Row[]>(client, viewRef("inbox", "asks"), {}, { onValue: (value) => values.push({ at: Date.now(), ids: value.map((row) => row.requestId) }) }, { pollIntervalMs: null }));
-    for (let waited = 0; values.length === 0 && waited < BOUND_MS; waited += 50) await delay(50);
-    await delay(800);
+    for (let waited = 0; values.length === 0 && waited < BOUND_MS; waited += 50) await sleep(50);
+    await sleep(800);
 
     // ---------------------------------------------------------------- c (no wake on a reply)
     // The expired ask's sweep is a suspension write, and rightly wakes the
@@ -238,14 +237,14 @@ await runGoal(async (failures, tell) => {
     for (let waited = 0; waited < 15_000; waited += 100) {
       const swept = (await stores.suspensions.list({ userId: "alice" })).find((record) => record.requestId === expired);
       if (swept !== undefined && swept.status !== "pending") break;
-      await delay(100);
+      await sleep(100);
     }
-    await delay(800);
+    await sleep(800);
     const before = calls.length;
     const notices: string[] = [];
     const unhear = stores.bus!.subscribe({ scope: "user", id: "alice", tenantId: "t1" }, (notice) => notices.push(notice.kind));
     await run(ALICE, "worker", `w-chat-${RUN_STAMP}`, "reply");
-    await delay(1_500);
+    await sleep(1_500);
     unhear();
     const woke = calls.length - before;
     tell.over("c:quiet · notices on alice's user topic during the reply", notices);
@@ -265,7 +264,7 @@ await runGoal(async (failures, tell) => {
       for (let waited = 0; gone === undefined && waited < BOUND_MS; waited += 20) {
         const hit = values.find((value) => value.at >= from && !value.ids.includes(answerable));
         if (hit !== undefined) gone = hit.at - from;
-        else await delay(20);
+        else await sleep(20);
       }
       if (gone === undefined) failures.push(`b:gone: the answered ask stayed on the watching client for ${BOUND_MS} ms`);
       else evidence.push(`b: the answered ask left the watching client's view ${gone} ms after the answer, poll off`);

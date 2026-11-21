@@ -102,6 +102,7 @@ async function act(
   return router.POST(
     new Request(`http://localhost/api/flows/${address}/${sessionId}/actions/run`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId, input: {} })
     }),
     { params: { path: [address, sessionId, "actions", "run"] } }
@@ -311,6 +312,7 @@ describe("a session belongs to one instance", () => {
     const res = await router.POST(
       new Request("http://localhost/api/flows/review-west/s_other/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "u_1", input: {}, requestId: "req_held" })
       }),
       { params: { path: ["review-west", "s_other", "actions", "run"] } }
@@ -370,6 +372,7 @@ describe("a refusal raised by the run itself", () => {
     const res = await raced.POST(
       new Request("http://localhost/api/flows/queued-west/s_raced/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: "u_1", input: {} })
       }),
       { params: { path: ["queued-west", "s_raced", "actions", "run"] } }

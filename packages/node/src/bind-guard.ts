@@ -11,20 +11,18 @@
  * it while a served flow is unauthenticated.
  *
  * The real security boundary is `authentication.resolvePrincipal` itself; this
- * rail only catches the forgot-to-configure case. It is deliberately narrow, with
- * two known limits: an app authenticating via the host-level
- * `createFlowState({ resolvePrincipal })` fallback reads as a false-positive
- * (escape with `allowUnauthenticated`), and a hand-written resolver that itself
- * delegates to the default is a false-negative (out of scope — closing it would
- * need an explicit auth marker, which is new auth machinery this framework
- * intentionally does not add here).
+ * rail only catches the forgot-to-configure case. It reads the resolver the
+ * routes would pick for each flow (the flow's own, else the host-level
+ * `createFlowState({ resolvePrincipal })` fallback). Its known limit: a
+ * hand-written resolver that itself delegates to the default is a
+ * false-negative (out of scope — closing it would need an explicit auth marker,
+ * which is new auth machinery this framework intentionally does not add here).
  *
- * Extracted from the per-app entrypoint in `examples/knowledge-base` so both the
- * `fsdev serve` command and any hand-written entry can share one rail instead of
- * each hard-coding its own secret env var name.
+ * Enforced by `serve()` before it listens, and again on each request so a flow
+ * registered later is refused. CLI commands pass the override through.
  */
 import { isIP } from "node:net";
-import { isDefaultBodyUserIdPrincipalResolver } from "@flow-state-dev/engine/host";
+import { isFlowState, networkAuthenticationError, type FlowApiRouter } from "@flow-state-dev/engine/host";
 import type { FlowState } from "@flow-state-dev/engine";
 
 /**
@@ -37,6 +35,15 @@ export function isLoopbackHost(host: string): boolean {
   if (isIP(host) === 4) return host === "127.0.0.1" || host.startsWith("127.");
   if (isIP(host) === 6) return host === "::1";
   return false;
+}
+
+/** Whether an HTTP Host authority names loopback, with an optional port. */
+export function isLoopbackAuthority(authority: string | null): boolean {
+  if (authority === null) return false;
+  const match = /^(\[[^\]]+\]|[^:]+)(?::[0-9]+)?$/.exec(authority);
+  if (match === null) return false;
+  const host = match[1]!.toLowerCase();
+  return isLoopbackHost(host.startsWith("[") ? host.slice(1, -1) : host);
 }
 
 /** Options for {@link assertNetworkBindIsAuthenticated}. */
@@ -53,9 +60,9 @@ export interface NetworkBindGuardOptions {
  * default `defaultBodyUserIdPrincipalResolver`. Loopback binds and
  * `allowUnauthenticated` short-circuit before any runtime resolution.
  *
- * Resolves the runtime (`getRuntime()` is memoized, so a later `serve()` on the
- * same `app` reuses it rather than re-initializing stores) and inspects each
- * registered flow's `authentication.resolvePrincipal`.
+ * Resolves the router (`getRouter()` is memoized, so the `serve()` that follows
+ * reuses it rather than re-initializing stores) and inspects the resolver each
+ * registered flow would get.
  *
  * Because the caller awaits this before binding, store initialization happens
  * before the port is listening on a non-loopback host — this forgoes `serve()`'s
@@ -71,35 +78,12 @@ export interface NetworkBindGuardOptions {
  *   default resolver.
  */
 export async function assertNetworkBindIsAuthenticated(
-  app: FlowState,
+  app: FlowState | FlowApiRouter,
   opts: NetworkBindGuardOptions,
 ): Promise<void> {
   if (opts.allowUnauthenticated === true || isLoopbackHost(opts.host)) return;
 
-  const runtime = await app.getRuntime();
-  // registry.list() yields one entry per (kind, id); de-dupe kinds for the message.
-  // A flow is unauthenticated when it configures no resolver (falls through to the
-  // framework default) or explicitly sets the default. The brand check tolerates a
-  // resolver that came from a different @flow-state-dev/engine instance.
-  const unauthenticated = [
-    ...new Set(
-      runtime.registry
-        .list()
-        .filter((flow) => {
-          const resolver = flow.authentication?.resolvePrincipal;
-          return resolver === undefined || isDefaultBodyUserIdPrincipalResolver(resolver);
-        })
-        .map((flow) => flow.kind),
-    ),
-  ];
-  if (unauthenticated.length === 0) return;
-
-  const isSingle = unauthenticated.length === 1;
-  const kinds = unauthenticated.map((kind) => `"${kind}"`).join(", ");
-  throw new Error(
-    `Refusing to bind ${opts.host}: ${isSingle ? "flow" : "flows"} ${kinds} ${isSingle ? "has" : "have"} ` +
-      `no authentication configured, so a network-exposed server would accept a caller-supplied userId. ` +
-      `Configure authentication.resolvePrincipal on the flow, bind a loopback host (--host 127.0.0.1) ` +
-      `for local-only use, or pass --allow-unauthenticated to override.`,
-  );
+  const router: FlowApiRouter = isFlowState(app) ? await app.getRouter() : app;
+  const message = await networkAuthenticationError(router, `bind ${opts.host}`);
+  if (message !== undefined) throw new Error(message);
 }

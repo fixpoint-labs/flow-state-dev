@@ -39,7 +39,7 @@
  *
  *   static-names     seats written in from the DevTeam tree. Must fail at
  *                    "TEAMS equals the store's seats" on multi-worker-collab.
- *   optimistic-post  the one send path (`send.ts`) reads delivered and
+ *   optimistic-post  the one send path (`deliver.ts`) reads delivered and
  *                    sends nothing. Must fail at "the post is in the stored
  *                    transcript".
  *   unanswerable-asks  every ask is marked unanswerable. Must fail at "an
@@ -135,10 +135,10 @@ const diff = (want: Iterable<string>, got: Iterable<string>) => {
 function swapFor(control: string): { targets: string[]; with: string } | undefined {
   const lib = (file: string) => join(SHIFT_MANAGER, "src", "lib", file);
   if (control === "static-names") {
-    return { targets: [lib("reads.ts")], with: join(HERE, "controls", "static-names.ts") };
+    return { targets: [lib("directory-reads.ts")], with: join(HERE, "controls", "static-names.ts") };
   }
   if (control === "optimistic-post") {
-    return { targets: [lib("send.ts")], with: join(HERE, "controls", "optimistic-post.ts") };
+    return { targets: [lib("deliver.ts")], with: join(HERE, "controls", "optimistic-post.ts") };
   }
   if (control === "unanswerable-asks") {
     return { targets: [lib("reads.ts")], with: join(HERE, "controls", "unanswerable-asks.ts") };
@@ -437,6 +437,9 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     /** The task frame a click just opened: titled as stored, with a panel slot, and every tab drawing. */
     const reachTaskFrame = async (row: Store["rows"][string][number], titleLeg: string) => {
       await page.getByTestId("task-frame").waitFor();
+      // The frame draws as the click lands and titles the task by its id until its row is read (one
+      // session read and the board's view): grade the title once the row has landed, or after 20 s.
+      await page.waitForFunction((id) => document.querySelector("[data-testid=task-title]")?.textContent !== id, row.id, { timeout: 20_000 }).catch(() => undefined);
       const title = await page.getByTestId("task-title").textContent();
       if (title !== row.title) fail(titleLeg, `the task frame titles ${row.id} "${title}", stored "${row.title}"`);
       if (!(await visible(page, "task-panel-slot"))) fail("reach", `the task frame for ${row.id} has no panel slot`);

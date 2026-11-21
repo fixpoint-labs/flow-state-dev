@@ -50,6 +50,7 @@ import { sessionRequestScope } from "../context/session-request-scope";
 import { toClientSession } from "./client-session";
 import { sessionBlobOwner } from "../blobs/attachments";
 import { latestRequestStatus } from "./session-request-status";
+import { isPublicReentryAllowed } from "./public-reentry";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
   flowAuthenticates,
@@ -87,6 +88,8 @@ type SessionRouteContext = {
    * that acts under its own read of it (`RouteAuthResult.session`).
    */
   checkedSession?: SessionRecord | null;
+  /** The host's `publicReentrySources`: which requests the session's listing marks `retryable`. */
+  publicReentrySources?: readonly string[];
 };
 
 // FIX-1440.
@@ -648,7 +651,11 @@ export async function handleListSessionRequests(
   });
 
   return jsonResponse(200, {
-    requests: requests.map((record) => withListedResult(record, includeResultOutput))
+    requests: requests.map((record) => ({
+      ...withListedResult(record, includeResultOutput),
+      // FIX-2853: the retry route's own rule, as a session's turns carry it.
+      retryable: isPublicReentryAllowed(record.source, ctx.publicReentrySources)
+    }))
   });
 }
 

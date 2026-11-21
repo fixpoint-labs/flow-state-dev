@@ -24,12 +24,12 @@ import { askInStream, delegatesPanel, projectGroups, projectWorkstreams, rosterR
 import { isRoutedTask } from "../../lib/routed-tasks.mts";
 import type { StoredItem } from "../../lib/shift-manager.mts";
 import { anythingRunning, conversationRecord, sessionRows, taskRows, workerRow, type Delivery, type StoredSession, type StoredTask } from "./store.mts";
+import { sleep } from "../../lib/time.mts";
 
 const hex = (n = 2) => randomBytes(n).toString("hex");
 const WORDS = ["amber", "basalt", "cobalt", "delta", "ember", "fjord", "garnet", "harbor", "indigo", "juniper", "kestrel", "lagoon", "marble", "nimbus", "orchid", "pewter", "quill", "russet", "saffron", "tundra"];
 const pick = <T,>(xs: readonly T[]): T => xs[randomInt(xs.length)]!;
 const word = () => pick(WORDS);
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const show = (v: unknown) => JSON.stringify(v)?.slice(0, 400);
 /** Whether a collection row's topic names `id`: the bare id, or a path ending in it. */
 const named = (topic: string, id: string) => topic === id || topic.endsWith(`/${id}`);

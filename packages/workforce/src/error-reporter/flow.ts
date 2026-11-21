@@ -24,16 +24,21 @@ import { defineMcpCredentialsCollection } from "../projects/mcp-credentials";
 import { conversationLedgerAt, conversationLedgerResources } from "../conversation-board/ledger";
 import { reportOwedKey } from "../conversation-board/report-owed";
 import { ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY } from "./keys";
+import { defineErrorHistoryCollection, ERROR_HISTORY_RESOURCE, historyRecords, historyRequestSchema } from "./history-view";
 import { redact, secretsFromEnv } from "./redact";
 import {
   CLAIM_LEASE_MS,
   errorReportsResources,
   intakeOccurrence,
   listReports,
+  markdownLiteral,
   occurrenceSchema,
+  readHistory,
   readReport,
   reportsOf,
-  updateReport,
+  sourceInWords,
+  statusInWords,
+  updateReport as updateStoredReport,
   type IntakeDecision,
   type Occurrence,
   type ReportResourceState
@@ -212,6 +217,58 @@ async function secretsFor(ctx: BlockContext, reporter: ErrorReporter): Promise<s
   return found;
 }
 
+/** Change one report through `updateReport`, a failed history write said in the reporter's log. */
+function reportUpdater(reporter: ErrorReporter) {
+  return (...[reports, id, change]: Parameters<typeof updateStoredReport>) => updateStoredReport(reports, id, change, { log: (m) => reporter.log(m) });
+}
+
+/** A line the reporter writes in its conversation: the words anyone may read, and the operator's own. */
+const lineInputSchema = z.object({ text: z.string(), forOperator: z.string().optional() });
+
+/** `n time(s)`. */
+const timesSeen = (n: number) => `${n} time${n === 1 ? "" : "s"}`;
+
+/**
+ * A report's Inbox link as a Markdown link: the report's key may sit in the
+ * address, never in text a user reads, so the link travels whole into every
+ * answer and line. `undefined` when the Lab names no link.
+ */
+function openInInbox(href: string | undefined): string | undefined {
+  return href === undefined ? undefined : `[Open it in Inbox](${href})`;
+}
+
+/** What `reportProblem` answers: a report by its status in words, and, for the operator, its title, Inbox link and issue. Never its id. */
+const reportAnswerSchema = z.object({
+  status: z.string(),
+  waitsIn: z.string().optional(),
+  note: z.string().optional(),
+  title: z.string().optional(),
+  /** The operator's link to its Inbox item while it waits, as a Markdown link. */
+  inbox: z.string().optional(),
+  issue: z.object({ identifier: z.string().optional(), url: z.string() }).optional()
+});
+type ReportAnswer = z.infer<typeof reportAnswerSchema>;
+
+/**
+ * `reportProblem`'s answer for `report`. `inbox` is the operator's: their Inbox
+ * link, as a Markdown link (`null` when the Lab names none). `undefined` is anyone else, who gets
+ * the status alone: the title and issue come from every user's failures, and
+ * the question waits in the operator's Inbox, which they can't open.
+ */
+function reportAnswerOf(report: ReportResourceState, inbox: string | null | undefined): ReportAnswer {
+  const status = statusInWords(report);
+  const operator = inbox !== undefined;
+  const where = operator ? "Inbox" : "the operator's Inbox";
+  if (status === "drafting") return { status, waitsIn: where, note: `It is being drafted, and will wait in ${where} for the operator to review.` };
+  if (!operator) return { status: status === "waiting in Inbox" ? "waiting in the operator's Inbox" : status };
+  return {
+    status,
+    ...(report.draft === undefined ? {} : { title: report.draft.title }),
+    ...(status === "waiting in Inbox" && inbox !== null ? { inbox } : {}),
+    ...(report.issue === undefined ? {} : { issue: report.issue })
+  };
+}
+
 /** Hard bound on the dossier handed to a run, in characters of JSON. */
 const DOSSIER_LIMIT = 16_000;
 
@@ -224,6 +281,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
   const { reporter, installation } = options;
   const flowKind = reporter.flowKind;
   const secretsOf = (ctx: BlockContext) => secretsFor(ctx, reporter);
+  const updateReport = reportUpdater(reporter);
 
   /**
    * `ctx` as the tracker's project's run: its session reads as one linked to
@@ -286,13 +344,19 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     return [body, rules].filter((part) => part !== undefined && part.trim() !== "").join("\n\n");
   };
 
-  /** Write a line in the reporter's conversation, through its own entry there. Never fails the caller. */
-  const sayInConversation = async (ctx: BlockContext, text: string): Promise<void> => {
+  /** Write a line in the reporter's conversation, through its own entry there; `forOperator` when it is the operator's. Never fails the caller. */
+  const sayInConversation = async (ctx: BlockContext, text: string, forOperator?: string): Promise<void> => {
     try {
-      await reporter.say(text);
+      await reporter.say(text, forOperator);
     } catch {
       ctx.emit.status(`Couldn't write to the reporter's conversation: ${text}`, { transient: false });
     }
+  };
+
+  /** Whether the Lab files this report without a preview (`preview.autoFile`): nothing waits in Inbox for it. */
+  const skipsPreview = (report: ReportResourceState): boolean => {
+    const autoFile = reporter.preview?.autoFile ?? [];
+    return autoFile.includes(report.errorClass) || autoFile.includes(report.source);
   };
 
   // ---- report --------------------------------------------------------------
@@ -397,12 +461,21 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
         secrets
       );
       const body = redact(composeIssueBody(draft, row), secrets);
-      await updateReport(reports, id, (current) => ({
+      const kept = await updateReport(reports, id, (current) => ({
         ...current,
         status: "previewing",
         claim: undefined,
         draft: { title: draft.title, body, questions: draft.questions ?? [] }
       }));
+      // Its preview opens next: the reporter's conversation hears where it waits, and the operator gets its link.
+      if (kept !== undefined && !skipsPreview(kept)) {
+        const link = openInInbox(reporter.inboxLinkOf(id));
+        await sayInConversation(
+          ctx,
+          "An error report is waiting in the operator's Inbox.",
+          `Waiting in your Inbox: **${markdownLiteral(draft.title)}**, from ${sourceInWords(kept)}, seen ${timesSeen(kept.count)}.${link === undefined ? "" : ` ${link}`}`
+        );
+      }
       return { title: draft.title, body, questions: draft.questions ?? [] };
     }
   });
@@ -415,10 +488,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     execute: async (draft, ctx): Promise<PreviewAnswer & { title: string; body: string }> => {
       const id = reportIdOf(ctx);
       const row = await readReport(reportsOf(ctx), id);
-      const autoFile = reporter.preview?.autoFile ?? [];
-      if (row !== undefined && (autoFile.includes(row.errorClass) || autoFile.includes(row.source))) {
-        return { decision: "file", ...draft };
-      }
+      if (row !== undefined && skipsPreview(row)) return { decision: "file", ...draft };
       const seen = row?.count ?? 1;
       const questions = draft.questions.length === 0 ? "" : `\n\n**Questions**\n\n${draft.questions.map((q) => `- ${q}`).join("\n")}`;
       try {
@@ -426,8 +496,17 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
           reason: "user_input",
           // The question's heading in Inbox; `data.title` is the issue title it files under.
           title: `Error report: ${draft.title}`,
-          message: `Seen ${seen} time${seen === 1 ? "" : "s"}. File it?${questions}`,
-          data: { reportId: id, title: draft.title, body: draft.body, questions: draft.questions, count: seen, decision: "file" },
+          // Where it came from and how often, in its own words: Inbox shows them with no error-report knowledge.
+          message: `${row === undefined ? "S" : `From ${sourceInWords(row)} · s`}een ${timesSeen(seen)}. File it?${questions}`,
+          data: {
+            reportId: id,
+            title: draft.title,
+            body: draft.body,
+            questions: draft.questions,
+            count: seen,
+            ...(row === undefined ? {} : { source: row.source }),
+            decision: "file"
+          },
           resumeSchema: previewAnswerSchema,
           allow: ["submit"],
           ...(reporter.preview?.autoFileAfterMs === undefined ? {} : { timeoutMs: reporter.preview.autoFileAfterMs })
@@ -541,7 +620,8 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
         approved: undefined,
         lastRunError: undefined
       }));
-      const line = `Filed ${parsed.data.identifier ?? "an issue"}: ${row?.draft?.title ?? id} ${parsed.data.url}`;
+      const title = row?.draft?.title ?? (row?.parts.message.split("\n")[0] ?? "").slice(0, 120);
+      const line = `Filed ${parsed.data.identifier ?? "an issue"}: ${title === "" ? "the error report" : markdownLiteral(title)} ${parsed.data.url}`;
       ctx.emit.message(line);
       await sayInConversation(ctx, line);
       return { filed: true as const, ...parsed.data };
@@ -669,7 +749,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       taskId: z.string().optional().describe("A task the user named, if any"),
       project: z.string().optional().describe("A project the user named, if any")
     }),
-    outputSchema: z.object({ decision: z.string(), reportId: z.string().optional() }),
+    outputSchema: reportAnswerSchema,
     resources: { ...errorReportsResources },
     execute: async (input, ctx) => {
       const userId = ctx.session.identity.userId;
@@ -685,10 +765,12 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
           sessionId: ctx.session.identity.id,
           ...(Object.values(named).some((v) => v !== undefined) ? { named } : {})
         },
-        { reporterFlow: flowKind, limits: reporter.limits, secrets: await secretsOf(ctx) }
+        { reporterFlow: flowKind, limits: reporter.limits, secrets: await secretsOf(ctx), log: (m) => reporter.log(m) }
       );
+      // Read before the run it owes starts, so a new report answers as it stands now: drafting.
+      const report = "reportId" in decision ? await readReport(reportsOf(ctx), decision.reportId) : undefined;
       reporter.follow(decision);
-      return { decision: decision.decision, ...("reportId" in decision ? { reportId: decision.reportId } : {}) };
+      return report === undefined ? { status: "not reported" } : reportAnswerOf(report, userId === reporter.operator.userId ? (openInInbox(reporter.inboxLinkOf(report.id)) ?? null) : undefined);
     }
   });
 
@@ -699,12 +781,16 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
 
   const door = sequencer({ name: "error-reporter-user-turn", inputSchema: turn.inputSchema }).tap(markUserTurnStep).step(turn.run);
 
-  /** A line in this conversation: what the reporter filed or commented, with the link. */
+  /**
+   * A line in this conversation: what the reporter filed or commented, or a
+   * report waiting in Inbox. `forOperator` is the operator's wording, with
+   * links only they can open: written only when this conversation is theirs.
+   */
   const line = handler({
     name: "error-reporter-line",
-    inputSchema: z.object({ text: z.string() }),
+    inputSchema: lineInputSchema,
     execute: async (input, ctx) => {
-      ctx.emit.message(input.text);
+      ctx.emit.message(input.forOperator !== undefined && ctx.session.identity.userId === reporter.operator.userId ? input.forOperator : input.text);
       return {};
     }
   });
@@ -717,7 +803,13 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     configSchema: turn.settings,
     ...turn.bound,
     session,
-    resources: { ...(turn.bound.resources ?? {}), ...errorReportsResources, ...workerMessagesResources },
+    resources: {
+      ...(turn.bound.resources ?? {}),
+      ...errorReportsResources,
+      ...workerMessagesResources,
+      // What its turn reads, asked what it reported, with the general resource tools its file names.
+      [ERROR_HISTORY_RESOURCE]: defineErrorHistoryCollection({ reporter })
+    },
     actions: {
       [RESPOND_ACTION]: { ...doorTask(turn.inputSchema.strict()), block: door, userMessage: (input: { message: string }) => input.message },
       // Public so its preview is answerable from Inbox (a dispatched run is never reopened from outside).
@@ -735,7 +827,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     internal: {
       actions: {
         [COMMENT_ENTRY]: { inputSchema: z.object({}).passthrough(), block: comment },
-        [LINE_ENTRY]: { inputSchema: z.object({ text: z.string() }), block: line },
+        [LINE_ENTRY]: { inputSchema: lineInputSchema, block: line },
         // The session board's entries, as any agent worker's: a worker's
         // message wakes the reporter's turn (FIX-2238), and the board's pass
         // sends again a message the reporter sent that hasn't landed (FIX-2271).
@@ -794,7 +886,8 @@ export function defineErrorReporterIntakeFlow(options: ErrorReporterIntakeFlowOp
       const decision = await intakeOccurrence(reportsOf(ctx), occurrence, {
         reporterFlow: reporter.flowKind,
         limits: reporter.limits,
-        secrets: await secretsFor(ctx, reporter)
+        secrets: await secretsFor(ctx, reporter),
+        log: (m) => reporter.log(m)
       });
       // Taken: the board's owed mark is cleared here, once the report holds it, never on the send alone.
       if (occurrence.kind === "task" && occurrence.partition !== undefined) {
@@ -808,11 +901,18 @@ export function defineErrorReporterIntakeFlow(options: ErrorReporterIntakeFlowOp
 
   const reportsRead = handler({
     name: "error-reporter-reports",
-    inputSchema: z.discriminatedUnion("op", [z.object({ op: z.literal("get"), id: z.string() }), z.object({ op: z.literal("all") })]),
+    inputSchema: z.discriminatedUnion("op", [
+      z.object({ op: z.literal("get"), id: z.string() }),
+      z.object({ op: z.literal("all") }),
+      // One reader's records out of whole UTC days of history: what the error-history view reads. Projected
+      // here, so the run returns (and records) only what that reader may read, never the days it read.
+      z.object({ op: z.literal("history"), request: historyRequestSchema })
+    ]),
     resources: { ...errorReportsResources },
     execute: async (input, ctx) => {
       const reports = reportsOf(ctx);
       if (input.op === "get") return { rows: [await readReport(reports, input.id)].filter((r) => r !== undefined) };
+      if (input.op === "history") return { records: historyRecords(await readHistory(reports, input.request.days), input.request, (id) => openInInbox(reporter.inboxLinkOf(id))) };
       return { rows: await listReports(reports) };
     }
   });

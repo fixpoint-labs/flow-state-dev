@@ -6,7 +6,7 @@
  * no note.
  */
 import type { DataItem } from "@flow-state-dev/core/items";
-import { workerLabel } from "../lib/derive";
+import { workerLabel } from "../lib/shift";
 
 type RoutedDelegate = { worker: string; target?: string; outcome: "delivered" | "skipped" | "failed"; reason?: string };
 type RouteRecord = { by?: string; delegates?: RoutedDelegate[]; none?: string; answeredItself?: boolean };
@@ -28,7 +28,7 @@ export function CoordinatorRoute({ item }: { item: DataItem }) {
   if (data.answeredItself === true) return null;
   return (
     <div
-      className="font-mono text-[11px] text-muted-foreground"
+      className="font-mono text-xs text-muted-foreground"
       data-look="route-record"
       data-testid="coordinator-route"
       data-by={data.by ?? ""}

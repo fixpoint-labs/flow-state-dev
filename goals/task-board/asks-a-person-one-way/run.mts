@@ -12,7 +12,7 @@
  * block's review is `ctx.suspendForUser({ kind: "review" })`. The Inbox is Shift
  * Manager's own snapshot (`createLabReader().read()`), every Inbox answer goes
  * through orchestration's Inbox client, a line typed in a task's session goes
- * through Shift Manager's composer (`sendTurn`), and a task is read through
+ * to the run session's door, as Shift Manager's composer sends it, and a task is read through
  * the board's `getTask` action. Nothing is read off the suspension store or
  * written by hand. The turn counter is a proof each turn appends from inside
  * its own run.
@@ -76,7 +76,6 @@ import {
 } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { createLabReader } from "../../../packages/shift-manager/src/lib/reads.ts";
-import { sendTurn } from "../../../packages/shift-manager/src/lib/send.ts";
 import {
   REPO_ROOT,
   RUN_STAMP,
@@ -91,6 +90,7 @@ import {
   type ModulePatch,
   workforceTree
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const USER = "u_asks_one_way";
 const ORG = "org_asks_one_way";
@@ -172,7 +172,6 @@ type Proof = {
   outcome?: unknown;
   at: number;
 };
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const prove = (proof: Omit<Proof, "at">) => appendFileSync(PROOFS, `${JSON.stringify({ ...proof, at: Date.now() })}\n`, "utf8");
 function readProofs(): Proof[] {
   if (!existsSync(PROOFS)) return [];
@@ -644,7 +643,10 @@ async function legD(run: Run): Promise<void> {
   const target = { sessionId: row.run!.sessionId, flowId: "doer", door: "respond" };
   const line = async (text: string) => {
     try {
-      await sendTurn(run.h.http.client, target, text, { timeoutMs: 30_000, pollMs: 50 });
+      // The run session's door, as Shift Manager's composer sends it, waited on until the turn ends.
+      const sent = await run.h.http.client.flow(target.flowId).send(target.door, { message: text }, { sessionId: target.sessionId });
+      const settled = await sent.result({ timeoutMs: 30_000, pollMs: 50 });
+      if (settled.status === "failed") throw new Error(settled.error?.message ?? "the door refused the line");
     } catch (error) {
       run.notes.push(`d: the composer's line "${text}" came back ${(error as Error).message.slice(0, 160)}`);
     }

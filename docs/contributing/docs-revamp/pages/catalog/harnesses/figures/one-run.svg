@@ -23,7 +23,7 @@
 <line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="340" y1="130" x2="580" y2="130"/>
 <text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="354" y="154">its own git branch</text>
 <line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="340" y1="168" x2="580" y2="168"/>
-<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="354" y="192">limit: runTimeoutMs</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="354" y="192">limit: idleTimeoutMs</text>
 <line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="340" y1="206" x2="580" y2="206"/>
 <text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="354" y="236">set up apart from your tree</text>
 <rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="652" y="24" width="240" height="230"/>

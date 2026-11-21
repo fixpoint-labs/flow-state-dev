@@ -152,9 +152,12 @@ type Board = { conversation: string };
 
 // ---- building Shift Manager --------------------------------------------------------
 
-/** The module each control swaps out: the run's reads, unless it says otherwise. */
+/** The module each control swaps out: the run's reads (`task-items.ts`), unless it says otherwise. */
 const SWAPPED: Record<string, string[]> = {
   "wrong-board": ["src", "lib", "reads.ts"],
+  // The stop goes through workforce's client (FIX-2776 D3); the Session's items through the page's feed.
+  "optimistic-interrupt": ["src", "lib", "workforce.ts"],
+  "worker-session": ["src", "lib", "session-feeds.tsx"],
   "no-error-body": ["src", "components", "flow-state", "error.tsx"],
 };
 
@@ -163,7 +166,7 @@ async function buildShiftManager(control: string, boardFlow: string): Promise<st
   const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
   const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
   const swap =
-    control === "" ? undefined : { target: join(SHIFT_MANAGER, ...(SWAPPED[control] ?? ["src", "lib", "run.ts"])), with: join(HERE, "controls", `${control}.ts`) };
+    control === "" ? undefined : { target: join(SHIFT_MANAGER, ...(SWAPPED[control] ?? ["src", "lib", "task-items.ts"])), with: join(HERE, "controls", `${control}.ts`) };
   let swapped = 0;
   await vite.build({
     root: SHIFT_MANAGER,

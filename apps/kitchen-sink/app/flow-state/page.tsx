@@ -68,28 +68,33 @@ import { ModeRailHeader, RAIL_THEME } from "@/components/mode-rail-header";
 import { modeById } from "@/lib/modes";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ChatAgentMessage } from "@/components/chat-agent/message";
-import { ChatAgentFailedTurn, FailedTurnRetryProvider, useFailedTurnRetry } from "@/components/chat-agent/failed-turn";
+import { useTurnLines } from "@/components/chat-agent/turn-lines";
 import { useSendingSession, useSendSignal, useSignalledFeed, type SendSignal } from "@/components/chat-feed";
 import { cn } from "@/lib/utils";
 import { railSessions } from "@/lib/rail-sessions";
 import { COORDINATOR_FLOWS, defaultConversation, isCoordinatorFlow, WORKER_FLOWS, SHELL_FLOW } from "@/lib/workforce-shell";
 import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workforce/browser";
+import { FailedLine, LineContext, StoppedLine } from "@/components/flow-state/conversation-lines";
+import { workforceLineRenderers } from "@/components/flow-state/workforce-lines";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
 import { SESSION_DRAFT } from "@/lib/session-draft";
 import { useSessionControls } from "@/lib/use-session-controls";
 import type { modeStatusView, preferencesView } from "@/flows/chat-agent/views";
 
-import type { RendererRegistry } from "@flow-state-dev/react";
+import type { LineTurn, RendererRegistry } from "@flow-state-dev/react";
 import { BASE_PATH } from "@/lib/base-path";
 
 const chatAgentRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
   message: ChatAgentMessage,
   block_trace: AgentResponseCard,
-  // A failed turn's reason with Retry; which request gets Retry is the chat
-  // panel's call, handed down through `FailedTurnRetryProvider`.
-  error: ChatAgentFailedTurn,
+  // A failed turn and a stopped one are the registry's lines, as in the other apps.
+  error: FailedLine,
+  stopped: StoppedLine,
+  // A worker's sends, the tasks it filed and their endings are workforce's lines; the calls that
+  // wrote them draw as those lines, not as steps.
+  data: { ...workforceLineRenderers, ...chatAssistantRenderers.data },
 };
 
 
@@ -327,7 +332,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   // A worker's composer and Retry each land a line of the user's in the picked conversation: they tell
   // `pickedSignal`, which each drawing's feed hears.
   const pickedSignal = useSendSignal();
-  const pickedRetry = useFailedTurnRetry(useSendingSession(pickedSession, pickedSignal));
+  const pickedTurns = useTurnLines(useSendingSession(pickedSession, pickedSignal), "Assistant");
   // A composer settles a send on that request's own status, read from the
   // picked flow, rather than on the session's stream closing.
   const pickedAddress = picked?.address;
@@ -364,12 +369,12 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   // loaded lazily via item.fetchContent() when an artifact is opened.
   const artifacts = useMemo(() => {
     return artifactItems.map((item) => {
-      const data = item.clientData as { title: string; summary: string; updatedAt: number; extension: string | null; content: string } | undefined;
+      const data = item.clientData as { title: string; summary: string; updatedAt: string; extension: string | null; content: string } | undefined;
       return {
         id: item.topic.replace("artifacts/", ""),
         title: data?.title ?? "Untitled",
         summary: data?.summary ?? "",
-        updatedAt: data?.updatedAt ?? 0,
+        updatedAt: data?.updatedAt ?? "",
         extension: data?.extension ?? null,
         content: data?.content ?? "",
         _handle: item,
@@ -593,7 +598,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
         onSent={pickedSignal.notify}
         conversation={
           isCoordinatorFlow(picked.kind) ? null : (
-          <FailedTurnRetryProvider value={pickedRetry.retryFor}>
+          <LineContext.Provider value={pickedTurns.lineContext}>
           {/* Stays mounted across picks: the feed's key opens each picked session at its end. */}
           <SignalledConversation className="min-h-0 flex-1" data-testid="conversation" resetKey={picked.sessionId} signal={pickedSignal}>
             <ConversationBody
@@ -602,13 +607,14 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
               isFinishing={pickedSession.isFinishing}
               statusMessage={pickedSession.statusMessage}
               isLoading={pickedSession.isLoading}
-              error={pickedRetry.shownError}
+              turns={pickedTurns.turns}
+              error={pickedTurns.shownError}
               emptyTitle="Nothing here yet"
               emptyDescription={`This ${picked.kind} session has no turns yet.`}
             />
             <ConversationScrollButton />
           </SignalledConversation>
-          </FailedTurnRetryProvider>
+          </LineContext.Provider>
           )
         }
       />
@@ -893,6 +899,7 @@ const ConversationBody = memo(function ConversationBody({
   isFinishing,
   statusMessage,
   isLoading,
+  turns,
   error,
   emptyTitle = "Kitchen Sink",
   emptyDescription = "A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use.",
@@ -902,6 +909,8 @@ const ConversationBody = memo(function ConversationBody({
   isFinishing: boolean;
   statusMessage: string;
   isLoading: boolean;
+  /** The session's turns, which decide the failed turn's Retry (`useTurnLines`). */
+  turns: readonly LineTurn[];
   error: { message: string } | null;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -922,6 +931,7 @@ const ConversationBody = memo(function ConversationBody({
                 isStreaming={isStreaming}
                 isFinishing={isFinishing}
                 statusMessage={statusMessage}
+                turns={turns}
               />
             </>
           )}
@@ -1029,7 +1039,7 @@ function ChatPanel({
   // feed and the other tree's hear: Retry through the session below, the composer through `send`, voice
   // through the page's `useVoice`.
   const feed = useSignalledFeed(session.snapshot?.sessionId ?? null, sendSignal);
-  const { retryFor, shownError } = useFailedTurnRetry(useSendingSession(session, sendSignal));
+  const { turns, lineContext, shownError } = useTurnLines(useSendingSession(session, sendSignal), "Assistant");
   const { notify } = sendSignal;
   const send = useCallback(
     (msg: PromptInputMessage) => {
@@ -1043,7 +1053,7 @@ function ChatPanel({
     // (the ui Approval renderer) so approving/rejecting a suspension streams the
     // continuation into the chat live, without a page refresh.
     <SuspensionResolverProvider resolve={session.answerSuspension}>
-    <FailedTurnRetryProvider value={retryFor}>
+    <LineContext.Provider value={lineContext}>
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <Conversation className="min-h-0 flex-1" data-testid="conversation" feed={feed}>
         <ConversationBody
@@ -1052,6 +1062,7 @@ function ChatPanel({
           isFinishing={session.isFinishing}
           statusMessage={session.statusMessage}
           isLoading={conversationLoading}
+          turns={turns}
           // A failed turn shows as its own line in the stream; this box is for
           // errors no item carries, such as a refused send.
           error={shownError}
@@ -1115,7 +1126,7 @@ function ChatPanel({
         </div>
       </div>
     </section>
-    </FailedTurnRetryProvider>
+    </LineContext.Provider>
     </SuspensionResolverProvider>
   );
 }

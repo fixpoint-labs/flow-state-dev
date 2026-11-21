@@ -14,7 +14,7 @@ import { parseBlobRef } from "@flow-state-dev/core/attachments";
 import { modeById, MODES, type ModeId } from "../modes";
 import { projectIdOf, refuseExisting } from "../lib/new-project";
 import { dismissalKey, taskOfDismissal } from "../lib/columns";
-import { acceptOf } from "../lib/thread-entries";
+import { acceptOf } from "../lib/review-stop";
 import { NEW_SESSION_TITLE } from "../lib/session-title";
 import type { HarnessReadinessChipRow } from "../components/flow-state/harness-readiness";
 import type { ReviewLand } from "../components/flow-state/review-hold";
@@ -24,7 +24,8 @@ import { REPOSITORY_FIELD } from "../../flows/session-repository.mts";
 import type { ThreadFeeds } from "./feed";
 import type { AppSession } from "./sessions";
 import { Stops } from "./stops";
-import type { AppTask, TaskBoardCalls } from "./tasks";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import type { TaskBoardCalls } from "./tasks";
 
 /** A project a session can work in: the picker's row. */
 export interface AppProject {
@@ -58,15 +59,15 @@ export interface AppCalls {
   interrupt(sessionId: string): Promise<void>;
   retry(sessionId: string, requestId: string): Promise<void>;
   /** A line in a thread: answers its open question, else steers its task. */
-  sayInThread(sessionId: string, task: AppTask, line: string): Promise<void>;
+  sayInThread(sessionId: string, task: CodingBoardTask, line: string): Promise<void>;
   taskActions(sessionId: string): TaskBoardCalls;
   /** Accept the review task `task` holds you on in session `sessionId`'s board, landing it as `land` says. */
-  resolve(sessionId: string, task: AppTask, land?: ReviewLand): Promise<void>;
+  resolve(sessionId: string, task: CodingBoardTask, land?: ReviewLand): Promise<void>;
   /** Ask for changes, in `words`, on the review task `task` holds you on in session `sessionId`'s board. */
-  requestChanges(sessionId: string, task: AppTask, words: string): Promise<void>;
+  requestChanges(sessionId: string, task: CodingBoardTask, words: string): Promise<void>;
   pin(taskId: string): Promise<void>;
   unpin(taskId: string): Promise<void>;
-  dismiss(task: Pick<AppTask, "id" | "attempts">): Promise<void>;
+  dismiss(task: Pick<CodingBoardTask, "id" | "attempts">): Promise<void>;
 }
 
 /** The conversation board's id. */
@@ -115,7 +116,7 @@ export function appCalls(fsd: Client, connection: AppConnection = {}, stops: Sto
    * Answer the review round the screen drew, and only while the board still holds it: a verdict on a
    * round you never saw would land work nobody read, so a newer round is refused for the screen to draw.
    */
-  const answerReview = async (sessionId: string, task: AppTask, answer: InboxAnswer) => {
+  const answerReview = async (sessionId: string, task: CodingBoardTask, answer: InboxAnswer) => {
     const review = await holdOn(sessionId, task.id, "review");
     if (review === undefined) throw new Error(`The thread "${task.id}" isn't waiting on your review.`);
     const drawn = task.asks?.find((hold) => hold.ask.kind === "review");

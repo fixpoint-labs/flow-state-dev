@@ -97,6 +97,8 @@ type Shared = {
   watchers: Set<ViewWatcher<unknown>>;
   current?: { value: unknown };
   stale: boolean;
+  /** Why the last read failed, while `stale`: a watcher that joins then hears it too. */
+  error?: { error: unknown };
   /** The last answer's rows by key, so an unchanged row keeps its identity. */
   byKey: Map<string, { json: string; entry: unknown }>;
   /** A keyed answer as last held, for a partial answer to be placed over: its rows, keys and topics. */
@@ -246,10 +248,18 @@ function changeFor(notice: WireNotice | null, held: Shared["held"]): WireNotice 
   return held !== undefined && notice !== null && notice.ids !== undefined && notice.ids.length > 0 ? notice : undefined;
 }
 
+// FIX-2774.
+/** What {@link watchView} returns: the function that stops this watcher, and a read of the view now. */
+export type ViewWatchStop = (() => void) & {
+  /** Read the shared view again now, for every watcher of it; nothing once this watcher stopped. */
+  refresh(): void;
+};
+
 /**
  * Watch `ref` with `input` on `client`. Every watcher of the same view,
  * session and input in one client shares one live read and its answer.
- * Returns the function that stops this watcher; the read stops with the last.
+ * Returns the function that stops this watcher (the read stops with the
+ * last), with `refresh()` to read again now.
  */
 export function watchView<TValue = unknown>(
   client: ViewWatchClient,
@@ -257,7 +267,7 @@ export function watchView<TValue = unknown>(
   input: unknown,
   watcher: ViewWatcher<TValue>,
   options: WatchViewOptions = {}
-): () => void {
+): ViewWatchStop {
   let byKey = sharedByClient.get(client);
   if (byKey === undefined) sharedByClient.set(client, (byKey = new Map()));
   const key = viewWatchIdentity(ref, input, options.sessionId);
@@ -314,9 +324,11 @@ export function watchView<TValue = unknown>(
         },
         onStale: (stale) => {
           entry.stale = stale;
+          if (!stale) delete entry.error;
           for (const w of [...entry.watchers]) w.onStale?.(stale);
         },
         onError: (error) => {
+          entry.error = { error };
           for (const w of [...entry.watchers]) w.onError?.(error);
         },
         ...(options.pollIntervalMs !== undefined ? { pollIntervalMs: options.pollIntervalMs } : {})
@@ -329,8 +341,9 @@ export function watchView<TValue = unknown>(
   held.watchers.add(mine);
   if (held.current !== undefined) mine.onValue?.(held.current.value);
   if (held.stale) mine.onStale?.(true);
+  if (held.stale && held.error !== undefined) mine.onError?.(held.error.error);
   let stopped = false;
-  return () => {
+  const stop = () => {
     if (stopped) return;
     stopped = true;
     held.watchers.delete(mine);
@@ -339,4 +352,9 @@ export function watchView<TValue = unknown>(
       if (byKey!.get(key) === held) byKey!.delete(key);
     }
   };
+  return Object.assign(stop, {
+    refresh: () => {
+      if (!stopped) held.live.refresh();
+    }
+  });
 }

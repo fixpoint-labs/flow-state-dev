@@ -57,6 +57,15 @@ describe("a worker session an app opens and talks to", () => {
     expect(turn).toMatchObject({ actionName: "respond", status: "completed" });
   });
 
+  it("answers a send with the id of the turn it started, which the client set", async () => {
+    const h = host();
+    const alice = h.client("alice");
+    const { id } = await alice.startSession("researcher");
+    const sent = await alice.send(id, "hello there");
+    const [turn] = await h.settled(id);
+    expect(sent).toEqual({ requestId: turn!.id });
+  });
+
   it("streams a send when asked, handing back the send's own response", async () => {
     const h = host();
     const alice = h.client("alice");
@@ -126,5 +135,67 @@ describe("a worker session owned by a named instance of its flow", () => {
     await client.stopTurns("s1");
     await client.retryTurn("s1", "r1");
     expect(addressed).toEqual(["agent:desk", "agent:desk", "agent:desk"]);
+  });
+});
+
+describe("a stop and a line sent while it reads the running turns", () => {
+  /**
+   * A session whose running-turns read waits until `release`, so a line can be sent after a stop
+   * began and before its read answers: the read then names that line's turn running too.
+   */
+  function heldRead() {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const sent: string[] = [];
+    const aborted: string[] = [];
+    const turn = (id: string, startedAtMs: number) => ({ id, actionName: "respond", status: "in_progress", startedAtMs });
+    let running = [turn("r1", 1)];
+    const fsd = {
+      userId: "alice",
+      sessions: {
+        get: async () => ({ id: "s1", flowKind: "agent", userId: "alice", createdAt: 0, updatedAt: 0 }),
+        requests: async (_sessionId: string, query?: { status?: string }) => {
+          if (query?.status === "in_progress") await held;
+          return running;
+        },
+      },
+      flow: () => ({
+        send: async (_action: string, _input: unknown, options: { requestId?: string }) => {
+          sent.push(options.requestId!);
+          // As the client's `send`: it resolves to the request it started.
+          return { id: options.requestId! };
+        },
+        request: (id: string) => ({ abort: async () => void aborted.push(id), retry: async () => undefined }),
+      }),
+    };
+    return {
+      client: createWorkforceClient(fsd as never),
+      sent,
+      aborted,
+      /** The read answers, naming `ids` running beside r1. */
+      answer: (...ids: string[]) => {
+        running = [turn("r1", 1), ...ids.map((id, i) => turn(id, 2 + i))];
+        release();
+      },
+    };
+  }
+
+  it("leaves the line this client sent after the stop began to run on, and stops the turn running before it", async () => {
+    const h = heldRead();
+    const stopping = h.client.stopTurns("s1");
+    const { requestId } = await h.client.send("s1", "one more thing");
+    expect(h.sent).toEqual([requestId]);
+    h.answer(requestId);
+    expect(await stopping).toEqual(["r1"]);
+    expect(h.aborted).toEqual(["r1"]);
+  });
+
+  it("stops a line this client sent before the stop began, once the read names it running", async () => {
+    const h = heldRead();
+    const { requestId } = await h.client.send("s1", "first");
+    const stopping = h.client.stopTurns("s1");
+    h.answer(requestId);
+    expect(await stopping).toEqual(["r1", requestId]);
+    expect(h.aborted).toEqual(["r1", requestId]);
   });
 });

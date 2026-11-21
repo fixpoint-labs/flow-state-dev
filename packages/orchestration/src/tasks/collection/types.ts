@@ -119,6 +119,11 @@ export type TaskWriteDeclineReason =
    * reopen them. A started task takes a cancel.
    */
   | "started"
+  /**
+   * The stored status is not one the board knows. The row is left as stored.
+   * Nothing is claimed, released, or moved.
+   */
+  | "unknown-status"
   // FIX-2086 D2.
   /**
    * A completion fenced with `refuseUntakenSteers` on a task holding a steer

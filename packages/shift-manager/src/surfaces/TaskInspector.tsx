@@ -14,20 +14,22 @@ import { useEffect, useState, type ReactNode } from "react";
 import { traceHref } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
 import { Spend } from "../components/flow-state/spend";
-import { asksOfTask, inboxItemIdOf, rosterOf, workerFor, workerLabel, waited, type LoadedSnapshot } from "../lib/derive";
+import { workerFor, workerLabel, waited } from "../lib/shift";
+import { useWorkers } from "../lib/directory";
+import { askWord, itemIdHolding, taskAsks, useInbox } from "../lib/inbox";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, GENERAL_TEAM, type Failure } from "../lib/reads";
+import { describeFailure, type Failure } from "../lib/failure";
+import { GENERAL_TEAM } from "../lib/workers";
 import type { Route } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import { readRecordedWork, type RecordedWork } from "@flow-state-dev/harness-manager/browser";
-import type { OpenRun } from "../lib/run";
-import { useTask } from "../lib/task";
+import { useTask, type OpenRun } from "../lib/task";
 import type { Gaps } from "../gaps";
 
 function Section({ title, children, testId }: { title: string; children: ReactNode; testId: string }) {
   return (
     <section className="border-b px-4 py-3" data-testid={testId}>
-      <h3 className="pb-1.5 text-[11px] font-semibold tracking-wider text-muted-foreground">{title}</h3>
+      <h3 className="pb-1.5 text-xs font-semibold tracking-wider text-muted-foreground">{title}</h3>
       {children}
     </section>
   );
@@ -41,16 +43,19 @@ function Gap({ text, testId }: { text: string; testId: string }) {
   );
 }
 
-export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
+export function TaskInspector({ gaps }: { gaps: Gaps }) {
+  const { workers } = useWorkers();
   const task = useTask();
   const { row } = task;
-  const worker = row === undefined ? undefined : workerFor(rosterOf(snapshot), row);
+  const worker = row === undefined ? undefined : workerFor(workers, row);
   const after = row === undefined ? [] : task.boardRows.filter((r) => row.deps.includes(r.id));
   const missingAfter = row === undefined ? [] : row.deps.filter((id) => !task.boardRows.some((r) => r.id === id));
   const blocks = row === undefined ? [] : task.boardRows.filter((r) => r.deps.includes(row.id));
   const taskAt = (id: string): Route => ({ level: "task", boardRef: task.boardRef, taskId: id, tab: "session" });
-  // The oldest ask this task's run waits on: the snapshot holds them oldest first.
-  const ask = asksOfTask(snapshot, row)[0];
+  // D2: the oldest ask this task's run waits on, from its Inbox item, which holds them oldest first.
+  const inbox = useInbox().section;
+  const items = inbox?.ok === true ? inbox.value.items : [];
+  const ask = taskAsks(items, row)[0];
 
   return (
     <div data-testid="task-panel-slot">
@@ -71,13 +76,13 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
         {ask === undefined ? null : (
           <div className="px-4 pt-3.5">
             <RouteLink
-              to={{ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) }}
-              className="flex w-full justify-between border border-foreground bg-attention px-2.5 py-2 text-left font-mono text-[11.5px] font-medium text-attention-foreground"
+              to={{ level: "inbox", item: itemIdHolding(items, ask.id) }}
+              className="flex w-full justify-between border border-foreground bg-attention px-2.5 py-2 text-left font-mono text-xs font-medium text-attention-foreground"
               data-testid="inspector-needs"
-              data-suspension-id={ask.item.suspensionId}
+              data-suspension-id={ask.id}
             >
               <span>
-                {ask.kind} waiting {waited(ask.since, Date.now())}
+                {askWord(ask)} waiting {waited(ask.openedAt, Date.now())}
               </span>
               <span>inbox ↗</span>
             </RouteLink>
@@ -91,7 +96,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
           ) : (
             <div data-testid="inspector-spend" data-harness={row.spend.harness ?? ""}>
               <p className="text-sm">{row.spend.harness ?? "No harness"}</p>
-              <Spend spend={row.spend} split className="text-[11px]" />
+              <Spend spend={row.spend} split className="text-xs" />
             </div>
           )}
         </Section>
@@ -109,7 +114,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
           </Section>
         )}
         <Section title="LINKED" testId="inspector-linked">
-          <p className="text-[11px] text-muted-foreground">After</p>
+          <p className="text-xs text-muted-foreground">After</p>
           <ul className="mb-2 text-sm" data-testid="inspector-after">
             {after.map((r) => (
               <li key={r.id} data-task-id={r.id}>
@@ -125,7 +130,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
             ))}
             {row?.deps.length === 0 ? <li className="text-xs text-muted-foreground">Nothing</li> : null}
           </ul>
-          <p className="text-[11px] text-muted-foreground">Blocks</p>
+          <p className="text-xs text-muted-foreground">Blocks</p>
           <ul className="text-sm" data-testid="inspector-blocks">
             {blocks.map((r) => (
               <li key={r.id} data-task-id={r.id}>

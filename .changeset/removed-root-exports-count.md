@@ -1,4 +1,5 @@
 ---
+"@flow-state-dev/bullmq": minor
 "@flow-state-dev/client": minor
 "@flow-state-dev/codex": minor
 "@flow-state-dev/contracts": minor
@@ -18,4 +19,4 @@
 "@flow-state-dev/workspace": minor
 ---
 
-**Breaking:** 1,084 unused exports are removed from the roots of the published `@flow-state-dev/*` packages, with no deprecated aliases, so importing one from a package root no longer compiles; some of them are still exported from another entry of the same package (FIX-2562).
+**Breaking:** 1,107 exports are removed from the roots of the published `@flow-state-dev/*` packages, with no deprecated aliases, so importing one from a package root no longer compiles; some of them are still exported from another entry of the same package (FIX-2562).

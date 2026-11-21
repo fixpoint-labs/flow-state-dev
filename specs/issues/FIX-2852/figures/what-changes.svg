@@ -1,0 +1,97 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="Before: Shift Manager, Teammates and Kitchen Sink each draw their own failed and stopped lines, workforce lines, brief and tool steps, each with its own context. After: two registry items, conversation-lines and workforce-lines, hold every shared line and one line context; each app configures them and keeps only what is its own"
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .reg   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .own   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .arrow { stroke:var(--code); stroke-width:1.4; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; text-decoration:line-through; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+  <g id="before">
+    <text class="t-lbl" x="16" y="26">BEFORE · EACH APP DRAWS ITS OWN · #5495 COUNT</text>
+    <rect class="n-box" x="16" y="38" width="140" height="300" rx="5"/>
+    <text class="t-lbl" x="26" y="56">SHIFT MANAGER</text>
+    <text class="t-s" x="26" y="72">1,214 → about 770</text>
+    <text class="t-g" x="26" y="96">ToolLine tool steps</text>
+    <text class="t-g" x="26" y="116">failed, stopped lines</text>
+    <text class="t-g" x="26" y="136">TaskBrief fold</text>
+    <text class="t-g" x="26" y="156">received, sent lines</text>
+    <text class="t-g" x="26" y="176">TurnLineContext</text>
+    <text class="t-g" x="26" y="196">TaskSession flattening</text>
+    <rect class="own" x="24" y="236" width="124" height="20" rx="3"/>
+    <text class="t-s" x="30" y="250">coordinator route</text>
+    <rect class="own" x="24" y="262" width="124" height="20" rx="3"/>
+    <text class="t-s" x="30" y="276">board summary</text>
+    <rect class="n-box" x="164" y="38" width="140" height="300" rx="5"/>
+    <text class="t-lbl" x="174" y="56">TEAMMATES</text>
+    <text class="t-s" x="174" y="72">783 → about 440</text>
+    <text class="t-g" x="174" y="96">failed, stopped lines</text>
+    <text class="t-g" x="174" y="116">ApprovalLine</text>
+    <text class="t-g" x="174" y="136">sent, received, result</text>
+    <text class="t-g" x="174" y="156">ToolRun</text>
+    <text class="t-g" x="174" y="176">LineContext</text>
+    <rect class="own" x="172" y="236" width="124" height="20" rx="3"/>
+    <text class="t-s" x="178" y="250">live task card</text>
+    <rect class="own" x="172" y="262" width="124" height="20" rx="3"/>
+    <text class="t-s" x="178" y="276">bubbles · avatars</text>
+    <rect class="n-box" x="312" y="38" width="140" height="300" rx="5"/>
+    <text class="t-lbl" x="322" y="56">KITCHEN SINK</text>
+    <text class="t-s" x="322" y="72">101 → 101</text>
+    <text class="t-g" x="322" y="96">unstyled workforce lines</text>
+    <rect class="own" x="320" y="236" width="124" height="20" rx="3"/>
+    <text class="t-s" x="326" y="250">failed turn · FIX-2853</text>
+  </g>
+  <path class="arrow" d="M 466 190 L 494 190 M 486 183 L 494 190 L 486 197"/>
+  <g id="after">
+    <text class="t-lbl" x="504" y="26">AFTER · TWO REGISTRY ITEMS, CONFIGURED</text>
+    <rect class="reg" x="504" y="38" width="420" height="96" rx="5"/>
+    <text class="t-lbl" x="516" y="56">UI REGISTRY · conversation-lines</text>
+    <text class="t-c" x="516" y="78">LineContext · failed · stopped · approval</text>
+    <text class="t-s" x="516" y="98">steps line, with compact · wraps request-recovery and ToolGroup</text>
+    <text class="t-s" x="516" y="118">who, nameOf, avatarOf, openTask, openMessage, retry, stillRunning</text>
+    <rect class="reg" x="504" y="146" width="420" height="76" rx="5"/>
+    <text class="t-lbl" x="516" y="164">UI REGISTRY · workforce-lines</text>
+    <text class="t-c" x="516" y="186">sent · received · task · result · brief fold</text>
+    <text class="t-s" x="516" y="206">moved from workforce/react, one styled look per line</text>
+    <rect class="n-box" x="504" y="240" width="136" height="98" rx="5"/>
+    <text class="t-lbl" x="514" y="258">SHIFT MANAGER</text>
+    <text class="t-s" x="514" y="274">copies count 0</text>
+    <rect class="own" x="510" y="284" width="124" height="20" rx="3"/>
+    <text class="t-s" x="516" y="298">coordinator route</text>
+    <rect class="own" x="510" y="310" width="124" height="20" rx="3"/>
+    <text class="t-s" x="516" y="324">board summary</text>
+    <rect class="n-box" x="646" y="240" width="136" height="98" rx="5"/>
+    <text class="t-lbl" x="656" y="258">TEAMMATES</text>
+    <text class="t-s" x="656" y="274">copies count 0</text>
+    <rect class="own" x="652" y="284" width="124" height="20" rx="3"/>
+    <text class="t-s" x="658" y="298">live task card</text>
+    <rect class="own" x="652" y="310" width="124" height="20" rx="3"/>
+    <text class="t-s" x="658" y="324">bubbles · avatars</text>
+    <rect class="n-box" x="788" y="240" width="136" height="98" rx="5"/>
+    <text class="t-lbl" x="798" y="258">KITCHEN SINK</text>
+    <text class="t-s" x="798" y="274">copies count 0</text>
+    <rect class="own" x="794" y="284" width="124" height="20" rx="3"/>
+    <text class="t-s" x="800" y="298">failed turn · FIX-2853</text>
+  </g>
+  <g id="legend">
+    <text class="t-g" x="16" y="372">struck</text><text class="t-s" x="62" y="372">the app's own copy, removed</text>
+    <rect class="own" x="230" y="360" width="16" height="14" rx="3"/><text class="t-s" x="252" y="372">what stays the app's own</text>
+    <rect class="reg" x="420" y="360" width="16" height="14" rx="3"/><text class="t-s" x="442" y="372">shared registry item, installed as a byte-identical copy</text>
+    <text class="t-s" x="16" y="402">Claude Code-style (777) moves straight onto both items in FIX-2848's third slice.</text>
+    <text class="t-s" x="16" y="422">Counts: count.mjs, app line source with registry copies left out. Three apps: 2,098 today, at most 1,450 after.</text>
+  </g>
+</svg>

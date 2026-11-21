@@ -32,7 +32,7 @@
  *
  * Controls:
  *
- *   optimistic-turn  Shift Manager built with `src/lib/send.ts` swapped for
+ *   optimistic-turn  Shift Manager built with `src/lib/deliver.ts` swapped for
  *                    `controls/optimistic-turn.ts`: delivered without calling
  *                    the door. Must fail at "delivered".
  *   fresh-session    the harness drops the resume id it is offered. Must fail
@@ -100,7 +100,7 @@ async function buildShiftManager(control: string): Promise<string> {
   const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
   const swap =
     control === "optimistic-turn"
-      ? { target: join(SHIFT_MANAGER, "src", "lib", "send.ts"), with: join(HERE, "controls", "optimistic-turn.ts") }
+      ? { target: join(SHIFT_MANAGER, "src", "lib", "deliver.ts"), with: join(HERE, "controls", "optimistic-turn.ts") }
       : undefined;
   let swapped = 0;
   await vite.build({

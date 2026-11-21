@@ -522,7 +522,7 @@ describe("a browser's write through the resource routes reaches the same view", 
         }
         const topic = ref === "notes" ? "shared/n2" : "n2";
         const created = await handleCreateCollectionResource(
-          new Request(`http://x/sessions/b/resources/${ref}`, { method: "POST", body: JSON.stringify({ topic, content: "hi", state: { v: "web" } }) }),
+          new Request(`http://x/sessions/b/resources/${ref}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ topic, content: "hi", state: { v: "web" } }) }),
           { kind: "create_collection_item", sessionId: "b", ref },
           { registry, stores, ...(checked ? { checkedSession: (await stores.session.get("b"))! } : {}) }
         );

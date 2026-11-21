@@ -180,6 +180,16 @@ export const runRecordStateSchema = z.object({
    * before it was kept, or by a manager that doesn't.
    */
   requestIds: z.array(z.string()).nullable().default(null),
+  // FIX-2781; BP-030.
+  /**
+   * The pull requests a person's accept on this task landed on (their
+   * `pullRequestKey`s), kept across its attempts and turns: the only ones a
+   * later turn pushes to unasked. A pull request seen on the branch, or one the
+   * coding session opened, is not one. Written whether or not the manager waits
+   * on pull requests; a record of another task under the same id starts it
+   * over. `null` on a record written before it was kept, read as none.
+   */
+  landedPullRequests: z.array(z.string()).nullable().default(null),
   // FIX-2578; BP-030.
   /**
    * The output the turn that held the task on its pull requests would have
@@ -657,7 +667,15 @@ export async function writeRunRecord(
 export async function openRunRecord(
   ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
-  opened: { workspacePath: string; branch: string; childSessionId: string; run?: number; runKey?: string; requestIds?: string[] },
+  opened: {
+    workspacePath: string;
+    branch: string;
+    childSessionId: string;
+    run?: number;
+    runKey?: string;
+    requestIds?: string[];
+    landedPullRequests?: string[];
+  },
 ): Promise<RunRecordWrite> {
   return writeRunRecord(ctx, identity, {
     ...ATTEMPT_SCOPED_CLEAR,
@@ -666,6 +684,7 @@ export async function openRunRecord(
     childSessionId: opened.childSessionId,
     ...(opened.run !== undefined ? { runs: opened.run, runKey: opened.runKey ?? null } : {}),
     ...(opened.requestIds !== undefined ? { requestIds: opened.requestIds } : {}),
+    ...(opened.landedPullRequests !== undefined ? { landedPullRequests: opened.landedPullRequests } : {}),
     outcome: "running",
   });
 }

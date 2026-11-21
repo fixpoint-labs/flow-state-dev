@@ -16,6 +16,17 @@ export const SUBSCRIPTION_CURSORS_PATTERN = "workforce/subscription-cursors/*";
 /** The accessor a flow declares the cursors under. */
 export const SUBSCRIPTION_CURSORS_RESOURCE = "workforceSubscriptionCursors";
 
+// FIX-2788.
+/**
+ * One mark per task whose subscriptions ended with it (it failed or was
+ * cancelled), at user scope: a subscribe that commits after the sweep reads
+ * it and ends too. **Pinned**: persisted. Server-only.
+ */
+export const SUBSCRIPTION_TASK_ENDINGS_PATTERN = "workforce/subscription-task-endings/*";
+
+/** The accessor a flow declares the task endings under. */
+export const SUBSCRIPTION_TASK_ENDINGS_RESOURCE = "workforceSubscriptionTaskEndings";
+
 /**
  * The thread index, at org scope: one row per thread key, naming the
  * subscriptions that follow it. It nominates; it grants nothing. **Pinned**:

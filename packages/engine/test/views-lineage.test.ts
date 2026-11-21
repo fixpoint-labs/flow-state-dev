@@ -127,7 +127,7 @@ describe("a session view over a lineage-shared resource", () => {
     const heard: ChangeNotice[] = [];
     bus.subscribe({ scope: "user", id: "u_1", tenantId: "" }, (notice) => heard.push(notice));
     const created = await handleCreateCollectionResource(
-      new Request("http://x/sessions/b/resources/notes", { method: "POST", body: JSON.stringify({ topic: "n1", content: "hi" }) }),
+      new Request("http://x/sessions/b/resources/notes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ topic: "n1", content: "hi" }) }),
       { kind: "create_collection_item", sessionId: "b", ref: "notes" },
       { registry, stores, checkedSession: (await stores.session.get("b"))! }
     );

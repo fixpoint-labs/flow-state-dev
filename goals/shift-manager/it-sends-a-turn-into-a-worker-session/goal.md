@@ -39,7 +39,7 @@ The **@coder** route and its **picker** leg are gone (FIX-1792 P4). Their whole 
 
 **Controls:**
 
-- `GOAL_CONTROL=optimistic-turn`: Shift Manager is rebuilt with `src/lib/send.ts` swapped for `controls/optimistic-turn.ts`. It reports a line delivered without calling the door. Must fail at **delivered**. The build fails if the swap never fired.
+- `GOAL_CONTROL=optimistic-turn`: Shift Manager is rebuilt with `src/lib/deliver.ts` (the send path since FIX-2776) swapped for `controls/optimistic-turn.ts`. It reports a line delivered without calling the door. Must fail at **delivered**. The build fails if the swap never fired.
 - `GOAL_CONTROL=fresh-session`: the harness drops the resume id it is offered, so every attempt starts a new coding session. Must fail at **continued**, naming the resume id.
 
 **Before-state:** `GOAL_PAGES=<dir>` serves pages built elsewhere instead of building them. Pages built before the composers existed fail every route.

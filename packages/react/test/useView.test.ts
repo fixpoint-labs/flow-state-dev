@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import type { SubscribeOptions, ViewResult, WireNotice, WireTopic } from "@flow-state-dev/client";
-import { viewRef } from "@flow-state-dev/client";
+import { ClientHttpError, viewRef } from "@flow-state-dev/client";
 import type { ViewWatchClient } from "@flow-state-dev/client/internal";
 import { FlowProvider, useView } from "../src";
 
@@ -48,6 +48,9 @@ function fakeClient(answer: () => ViewResult | Promise<ViewResult>) {
 
 const BOARD = viewRef("desk", "board");
 
+/** What a screen draws from the result: its value, and whether the last read failed. */
+const shown = (result: { value: unknown; stale: boolean }) => ({ value: result.value, stale: result.stale });
+
 describe("useView", () => {
   it("shares one read between two screens, and follows a change on the topics the answer named", async () => {
     let n = 0;
@@ -56,8 +59,8 @@ describe("useView", () => {
     const a = renderHook(() => useView(BOARD, { open: true }, options));
     const b = renderHook(() => useView(BOARD, { open: true }, options));
     await flush();
-    expect(a.result.current).toEqual({ value: { n: 0 }, stale: false });
-    expect(b.result.current).toEqual({ value: { n: 0 }, stale: false });
+    expect(shown(a.result.current)).toEqual({ value: { n: 0 }, stale: false });
+    expect(shown(b.result.current)).toEqual({ value: { n: 0 }, stale: false });
     const reads = fake.views();
 
     n = 1;
@@ -79,9 +82,9 @@ describe("useView", () => {
       initialProps: { enabled: true }
     });
     await flush();
-    expect(hook.result.current).toEqual({ value: "v1", stale: false });
+    expect(shown(hook.result.current)).toEqual({ value: "v1", stale: false });
     hook.rerender({ enabled: false });
-    expect(hook.result.current).toEqual({ value: undefined, stale: false });
+    expect(shown(hook.result.current)).toEqual({ value: undefined, stale: false });
     expect(fake.open()).toHaveLength(0);
     hook.unmount();
   });
@@ -99,7 +102,7 @@ describe("useView", () => {
     await flush();
     expect(hook.result.current.value).toBe("v");
     hook.rerender({ team: "ops" });
-    expect(hook.result.current).toEqual({ value: undefined, stale: false });
+    expect(shown(hook.result.current)).toEqual({ value: undefined, stale: false });
     hook.unmount();
   });
 
@@ -124,11 +127,11 @@ describe("useView", () => {
     });
     const hook = renderHook(() => useView(BOARD, undefined, { client: fake.client, pollIntervalMs: null }));
     await flush();
-    expect(hook.result.current).toEqual({ value: undefined, stale: true });
+    expect(shown(hook.result.current)).toEqual({ value: undefined, stale: true });
     fail = false;
     await act(async () => fake.notify(null));
     await flush();
-    expect(hook.result.current).toEqual({ value: "ok", stale: false });
+    expect(shown(hook.result.current)).toEqual({ value: "ok", stale: false });
     hook.unmount();
   });
 
@@ -144,12 +147,12 @@ describe("useView", () => {
       initialProps: { enabled: true }
     });
     await flush();
-    expect(hook.result.current).toEqual({ value: undefined, stale: true });
+    expect(shown(hook.result.current)).toEqual({ value: undefined, stale: true });
     hook.rerender({ enabled: false });
     fail = false;
     hook.rerender({ enabled: true });
     await flush();
-    expect(hook.result.current).toEqual({ value: "ok", stale: false });
+    expect(shown(hook.result.current)).toEqual({ value: "ok", stale: false });
     hook.unmount();
   });
 
@@ -162,11 +165,11 @@ describe("useView", () => {
       initialProps: { client: alice.client }
     });
     await flush();
-    expect(hook.result.current).toEqual({ value: "alice's", stale: false });
+    expect(shown(hook.result.current)).toEqual({ value: "alice's", stale: false });
     hook.rerender({ client: bob.client });
-    expect(hook.result.current).toEqual({ value: undefined, stale: false });
+    expect(shown(hook.result.current)).toEqual({ value: undefined, stale: false });
     await flush();
-    expect(hook.result.current).toEqual({ value: undefined, stale: false });
+    expect(shown(hook.result.current)).toEqual({ value: undefined, stale: false });
     hook.unmount();
   });
 
@@ -188,13 +191,73 @@ describe("useView", () => {
       wrapper: ({ children }: { children: ReactNode }) => createElement(FlowProvider, { flowKind: "desk", userId, baseUrl: "http://host.test", children })
     });
     await flush();
-    expect(hook.result.current).toEqual({ value: "alice's", stale: false });
+    expect(shown(hook.result.current)).toEqual({ value: "alice's", stale: false });
     userId = "bob";
     hook.rerender();
-    expect(hook.result.current).toEqual({ value: undefined, stale: false });
+    expect(shown(hook.result.current)).toEqual({ value: undefined, stale: false });
     await act(async () => held.splice(0).forEach((release) => release()));
     await flush();
-    expect(hook.result.current).toEqual({ value: "bob's", stale: false });
+    expect(shown(hook.result.current)).toEqual({ value: "bob's", stale: false });
     hook.unmount();
+  });
+
+  // FIX-2774.
+  it("reads again now on refresh(), and the screens sharing the read get its answer", async () => {
+    let n = 0;
+    const fake = fakeClient(() => ({ value: { n }, topics: [] }));
+    const options = { client: fake.client, pollIntervalMs: null };
+    const a = renderHook(() => useView(BOARD, undefined, options));
+    const b = renderHook(() => useView(BOARD, undefined, options));
+    await flush();
+    const reads = fake.views();
+    n = 1;
+    await act(async () => a.result.current.refresh());
+    await flush();
+    expect(fake.views()).toBe(reads + 1);
+    expect(b.result.current.value).toEqual({ n: 1 });
+    a.unmount();
+    b.unmount();
+  });
+
+  // FIX-2774.
+  it("says why the last read failed, the server's reason and status, until a read lands", async () => {
+    let fail = true;
+    const fake = fakeClient(() => {
+      if (fail) throw new ClientHttpError("HTTP 503", { status: 503, body: { error: "The Inbox reads at most 50 pages." } });
+      return { value: "ok", topics: [] };
+    });
+    const hook = renderHook(() => useView(BOARD, undefined, { client: fake.client, pollIntervalMs: null }));
+    await flush();
+    expect(hook.result.current).toMatchObject({ stale: true, failure: { message: "The Inbox reads at most 50 pages.", httpStatus: 503 } });
+    fail = false;
+    await act(async () => hook.result.current.refresh());
+    await flush();
+    expect(hook.result.current.failure).toBeUndefined();
+    expect(shown(hook.result.current)).toEqual({ value: "ok", stale: false });
+    hook.unmount();
+  });
+
+  it("refresh() on a disabled watch reads nothing", async () => {
+    const fake = fakeClient(() => ({ value: "v", topics: [] }));
+    const hook = renderHook(() => useView(BOARD, undefined, { client: fake.client, pollIntervalMs: null, enabled: false }));
+    await flush();
+    await act(async () => hook.result.current.refresh());
+    await flush();
+    expect(fake.views()).toBe(0);
+    hook.unmount();
+  });
+
+  it("tells a screen that joins a failed read why it failed, as it told the first", async () => {
+    const fake = fakeClient(() => {
+      throw new ClientHttpError("HTTP 500", { status: 500, body: { error: "The ledger didn't load." } });
+    });
+    const options = { client: fake.client, pollIntervalMs: null };
+    const first = renderHook(() => useView(BOARD, undefined, options));
+    await flush();
+    const late = renderHook(() => useView(BOARD, undefined, options));
+    await flush();
+    expect(late.result.current).toMatchObject({ stale: true, failure: { message: "The ledger didn't load.", httpStatus: 500 } });
+    first.unmount();
+    late.unmount();
   });
 });

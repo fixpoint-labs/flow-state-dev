@@ -32,7 +32,7 @@ The seat names are read from the tree at run time. Tokens are fresh per run.
 
 **Controls:** each rebuilds Shift Manager with source modules swapped for one module under `controls/`. The build fails if a swap never fired.
 
-- `GOAL_CONTROL=optimistic-reply`: `src/lib/conversation.ts` (the conversation hook) and `src/lib/send.ts` (the send path its composer calls) are swapped; the composer draws the line and a canned reply without calling the door. Must fail at **talk** ("delivered was drawn while no session … held a user item with the token").
+- `GOAL_CONTROL=optimistic-reply`: `src/lib/conversation.ts` (the conversation hook) and `src/lib/deliver.ts` (the send path its composer calls) are swapped; the composer draws the line and a canned reply without calling the door. Must fail at **talk** ("delivered was drawn while no session … held a user item with the token").
 - `GOAL_CONTROL=static-brief`: `src/lib/derive.ts` is swapped; the summary's asks are written in at the first read. Must fail at **inline**, where the store drops to one and the summary stays at two.
 
 **Before-state:** `GOAL_PAGES=<dir>` serves pages built elsewhere instead of building them. Pages built before the view existed fail **landing** and everything after it.

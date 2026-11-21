@@ -72,6 +72,7 @@ import {
   type ModulePatch,
   workforceTree
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const USER = "u_waits";
 const ORG = "org_waits";
@@ -121,8 +122,6 @@ if (PHASE === "main" && PATCHES[CONTROL] !== undefined && process.env.GOAL_MODUL
   assertPatched(PATCHES[CONTROL]!, REPO_ROOT, mark);
   process.exit(child.status ?? 1);
 }
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ---- the scripted turns ----------------------------------------------------------
 

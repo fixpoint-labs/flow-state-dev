@@ -158,8 +158,9 @@ export const ENTRIES = [
   },
   {
     term: "State",
-    means: "Scope state or resource state, and nothing else.",
-    decision: "Owner, 2026-11-06",
+    means:
+      "Scope state or resource state, and one other sense: a task's display state, what the user sees it as (orchestration's `TaskView.state`, `TaskViewStatus`, and harness-manager's coding board row's `state`, the same value). Nothing else.",
+    decision: "Owner, 2026-11-06; FIX-2766 D1 (the task's display state, kept under the name `TaskView` already gave it)",
     retires: [],
   },
   {
@@ -173,6 +174,12 @@ export const ENTRIES = [
     means: "The one stream item kind for structured content (`ctx.emit.data(dataType, value)`, `DataItem`). Code reads it by `dataType`: a routing decision, a task change, a received message. A client draws it only through a renderer registered for its `dataType`, which is how generative UI works; with none it stays invisible in the UI. It reaches the client and not model history unless `itemVisibility` says otherwise. There is no `component` item kind.",
     decision: "Owner, 2026-11-14 and 2026-11-15 (FIX-2738): the payload is `value` (`record`, `fact` and `payload` were rejected); one kind, the `component` item removed, a component is a dataType with a renderer",
     retires: [],
+  },
+  {
+    term: "Line",
+    means: "What a conversation screen draws: one `ItemLine` from React's `conversationLines(items, turns)` (user, assistant, steps, failed, stopped, suspension, data, item). The model decides each kind; a renderer decides only how it looks. Not workforce's coordinator `ConversationLine`, which is a line of a conversation's recent history read for the coordinator.",
+    decision: "Owner, 2026-11-19 (FIX-2848): React's render stream becomes the conversation model, renamed with no alias; its type is `ItemLine` so it doesn't reuse `ConversationLine`",
+    retires: [{ name: "buildItemRenderStream" }, { name: "ItemRenderSegment" }, { name: "BuildItemRenderStreamOptions" }],
   },
 
   // Dispatch, wait, ask and hand-off ----------------------------------------------------------
@@ -625,6 +632,8 @@ export const ENTRIES = [
   },
   { term: "Project", means: "A body of work, private to you or shared with your org.", decision: "Workforce vocabulary", published: true, retires: [] },
   { term: "Workstream", means: "One area of a shared project, with one owner.", decision: "Workforce vocabulary", published: true, retires: [] },
+  // FIX-2775 D3 coins it for the keys route's public names; FIX-2645 renames the MCP vocabulary to it and decides what it retires.
+  { term: "Connector", means: "An outside tool server a host offers its projects' runs, which each user holds their own key for.", decision: "FIX-2775 D3, a working name until FIX-2645", published: false, retires: [] },
   {
     term: "Project coordinator",
     means: "Your coordinator for one project: one session per user per project. Never a room or a talk session.",
@@ -965,17 +974,17 @@ const EXEMPTIONS = [
     why: "FIX-2696: pages about the Teammates lab, and the Messaging page whose example is that lab, name its Chief of Staff worker and its `teammates.chief-of-staff` id as the lab ships them; FIX-2244 retires the name for Shift Manager's coordinator, not for this lab",
   },
   {
-    path: /^\.changeset\/fix-2614-routines\.md$/,
-    rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "LIST_SCHEDULES_ACTION", "listedScheduleSchema"],
-    why: "FIX-2614: the release note that tells consumers what each retired schedule and subscription name became",
-  },
-  {
     // User docs change only at release (docs/contributing/release-docs.md), so these pages document the
     // released names until then. As FIX-2479 D4's released-quotes: /release-docs rewrites them from the
     // changeset's Docs: line, and deletes this in the same PR.
     path: /^(?:apps\/docs\/docs\/workforce\/delegating-work\.md|apps\/docs\/docs\/shift-manager\/overview\.md|packages\/workforce\/README\.md|packages\/shift-manager\/README\.md)$/,
     rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "recurring-work-prose"],
     why: "FIX-2614: published pages may name the released schedule and subscription surface until /release-docs rewrites them, and deletes this in the same PR",
+  },
+  {
+    path: /^\.changeset\/one-conversation-model\.md$/,
+    rules: ["buildItemRenderStream", "ItemRenderSegment", "BuildItemRenderStreamOptions"],
+    why: "FIX-2848: the release note that tells consumers which renamed React exports to replace",
   },
   {
     path: /^\.changeset\/user-suspension-reasons\.md$/,
@@ -1327,7 +1336,7 @@ const EXEMPTIONS = [
   {
     id: "other-kinds",
     terms: ["kind"],
-    strip: /\b(?:block|item|content|event|channel|part|tool|error|message|node|trace|step|manifest|change|ask|path|entry)[ -]kinds?\b/gi,
+    strip: /\b(?:block|item|content|event|channel|part|tool|error|message|node|trace|step|manifest|change|ask|path|entry|state)[ -]kinds?\b/gi,
     why: "another subsystem's kind",
   },
   {
@@ -1373,6 +1382,12 @@ const EXEMPTIONS = [
     terms: ["thread"],
     strip: /\bchat[ -]threads?\b|\bthread:\s*\{/gi,
     why: "a chat thread in the UI, and a coding harness's own `thread:` option, not a mailbox's",
+  },
+  {
+    id: "registry-thread-width",
+    terms: ["thread"],
+    strip: /--thread-width\b/g,
+    why: "the ui registry's column-width token (`--thread-width`, which its session overlay reads), set by a lab's theme and used by its screens to size their column: the registry's name for a chat column, not a mailbox's",
   },
   {
     id: "codex-thread-option",
@@ -1424,10 +1439,10 @@ const EXEMPTIONS = [
   },
   {
     id: "registry-copies",
-    terms: ["kind", "person"],
-    where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\//.test(path),
-    strip: /\battachmentKind\b|\bkinds?\b|\bpersons?\b|\bperson's\b/gi,
-    why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test: its words are the registry's",
+    terms: ["kind", "person", "thread"],
+    where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\/|^packages\/ui\/registry\.json$/.test(path),
+    strip: /\battachmentKind\b|\bkinds?\b|\bpersons?\b|\bperson's\b|\bthreads?\b/gi,
+    why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test, and the registry's own manifest, which names workforce-lines' workforce dependency: its words are the registry's",
   },
   {
     id: "person-any-human",

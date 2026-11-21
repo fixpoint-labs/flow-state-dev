@@ -392,3 +392,23 @@ describe("the default layer's fixed text", () => {
     expect(fixed.length).toBeLessThanOrEqual(WORKER_DEFAULT_LAYER_CEILING);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The history summary a screen reads
+// ---------------------------------------------------------------------------
+
+describe("the history summary's resource, for a screen", () => {
+  it("is the one the worker's answer declares, exported from the browser entry", async () => {
+    const { workerDefaultLayer } = await import("../src/worker-default-layer");
+    const { historySummaryResource } = await import("../src/browser");
+    const layer = workerDefaultLayer({
+      configOf: () => ({}) as never,
+      loaderOn: () => false,
+      skillsListing: async () => null,
+      modelOf: () => "openai/gpt-6-luna",
+      hasAppHistorySummary: false,
+    });
+    // One definition: a screen reading another would read a name or a face the worker doesn't keep.
+    expect(layer.historySummary!.resources.historySummary).toBe(historySummaryResource);
+  });
+});

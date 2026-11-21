@@ -14,6 +14,7 @@ import {
 import {
   callerReachesRequest,
   jsonResponse,
+  JsonMediaTypeError,
   parseJsonBody,
   SSE_HEADERS,
   unknownRequestResponse
@@ -120,7 +121,11 @@ export async function handleRetryRequest(
   try {
     const body = await parseJsonBody(request);
     inputOverride = body.inputOverride;
-  } catch {
+  } catch (error) {
+    // A body without the JSON media type is refused, never silently dropped.
+    if (error instanceof JsonMediaTypeError) {
+      return jsonResponse(415, { error: error.message });
+    }
     // No body or invalid JSON — proceed without override
   }
 

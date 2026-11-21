@@ -16,13 +16,14 @@
  * message, read before each model call: the roster's workers that have a
  * conversation, by id and description.
  */
-import { defineCapability, handler } from "@flow-state-dev/core";
+import { defineCapability, handler, SuspensionError } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { WorkerInstallation } from "../workers/installation";
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
 import { messageTurnStateSchema } from "./hop";
-import { SEND_MESSAGE_TOOL, SENDS_MESSAGES_MARK } from "./keys";
+import { SEND_MESSAGE_TOOL, SENDS_MESSAGES_MARK, SENT_MESSAGE_DATA_TYPE } from "./keys";
+import { callLineKey, type SentMessageValue, type SentMessageWait } from "./line-values";
 import { MAX_MESSAGE_CHARS, workerMessagesResources } from "./message-log";
 import { conversationLedgerResources } from "../conversation-board/ledger";
 import { sendMessage } from "./send-message";
@@ -117,6 +118,28 @@ async function recipientsLine(ctx: BlockContext, installation: WorkerInstallatio
   return listed.length === 0 ? "\n\nNo other worker on your roster can be messaged now." : `\n\nWorkers you can message:\n${listed.join("\n")}`;
 }
 
+// FIX-2848 D1.
+/**
+ * Write the send's line (`workforce:sent`) for an app to draw, keyed by the
+ * call, so a second write (a waited send's answer) replaces the first.
+ * Client-only: the model reads the call itself.
+ */
+function writeSentLine(ctx: BlockContext, value: SentMessageValue): void {
+  const key = callLineKey(ctx);
+  ctx.emit.data(SENT_MESSAGE_DATA_TYPE, value, { ...(key === undefined ? {} : { key }), itemVisibility: { client: true, history: false } });
+}
+
+/** A waited send's result as its line says it: how it stands, and the answer when one came. */
+function waitOf(outcome: z.infer<typeof waitResultSchema>): SentMessageWait {
+  return {
+    status: outcome.status,
+    ...(outcome.reply === undefined ? {} : { reply: outcome.reply }),
+    ...(outcome.noAnswer === true ? { noAnswer: true as const } : {}),
+    ...(outcome.error === undefined ? {} : { error: outcome.error }),
+    ...(outcome.recipient === undefined ? {} : { recipient: outcome.recipient })
+  };
+}
+
 /**
  * The capability: `sendMessage` on every turn of a session that runs a
  * worker. `controlTools`, so a worker's `tools:` line doesn't fence it out.
@@ -137,19 +160,38 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
       resources: { ...installation.resources, ...workerMessagesResources, ...conversationLedgerResources },
       execute: async (input, ctx) => {
         const { to, text, inReplyTo, replyRequested, wait, deadline } = input;
-        const refused = refuses?.(ctx);
-        if (refused !== undefined) return { ok: false as const, error: refused };
         const message = { to, text, ...(inReplyTo === undefined ? {} : { inReplyTo }) };
+        // The send's line, refused ones included (FIX-2848 D1).
+        const line = { ...message, ...(replyRequested === true && wait !== true ? { replyRequested: true as const } : {}) };
+        const refuse = (error: string) => {
+          writeSentLine(ctx, { ...line, refused: error });
+          return { ok: false as const, error };
+        };
+        const refused = refuses?.(ctx);
+        if (refused !== undefined) return refuse(refused);
         if (wait === true) {
-          const outcome = await sendAndWaitForReply(ctx, installation, flowKind, { ...message, ...(deadline === undefined ? {} : { deadline }) }, SEND_MESSAGE_TOOL);
+          writeSentLine(ctx, { ...line, wait: { status: "waiting" } });
+          let outcome: Awaited<ReturnType<typeof sendAndWaitForReply>>;
+          try {
+            outcome = await sendAndWaitForReply(ctx, installation, flowKind, { ...message, ...(deadline === undefined ? {} : { deadline }) }, SEND_MESSAGE_TOOL);
+          } catch (error) {
+            // A park is the wait holding, not ending: the line stays waiting. Anything else ends it, so the line says so.
+            if (!(error instanceof SuspensionError)) {
+              writeSentLine(ctx, { ...line, wait: { status: "failed", error: error instanceof Error ? error.message : String(error) } });
+            }
+            throw error;
+          }
           // A refusal reads as any send's.
-          return "ok" in outcome ? { ok: false as const, error: outcome.error } : outcome;
+          if ("ok" in outcome) return refuse(outcome.error);
+          writeSentLine(ctx, { ...line, messageId: outcome.sent, wait: waitOf(outcome) });
+          return outcome;
         }
         if (deadline !== undefined) {
-          return { ok: false as const, error: "deadline_without_wait: a deadline goes with wait: true. Nothing was sent." };
+          return refuse("deadline_without_wait: a deadline goes with wait: true. Nothing was sent.");
         }
         const sent = await sendMessage(ctx, installation, flowKind, message, SEND_MESSAGE_TOOL, replyRequested === true ? { replyRequested: {} } : {});
-        if (!sent.ok) return { ok: false as const, error: sent.error };
+        if (!sent.ok) return refuse(sent.error);
+        writeSentLine(ctx, { ...line, messageId: sent.id });
         return { sent: sent.id };
       }
     });

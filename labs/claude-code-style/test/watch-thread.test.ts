@@ -89,7 +89,7 @@ function follow(h: ReturnType<typeof host>) {
   const views: ThreadView[] = [];
   const hook = renderHook(
     () => {
-      const view = useThread("s1", false);
+      const view = useThread("s1");
       if (view !== undefined && views.at(-1) !== view) views.push(view);
       return useApp();
     },
@@ -105,10 +105,10 @@ describe("a thread", () => {
 
     await until(() => views.length > 0 && h.counts.stream === 1);
     expect(views.at(-1)!.running).toBe(false);
-    const before = views.at(-1)!.entries.length;
+    const before = views.at(-1)!.items.length;
 
     h.push(101, message("a1", "assistant", "On it.", 20));
-    await until(() => views.at(-1)!.entries.length > before);
+    await until(() => views.at(-1)!.items.length > before);
     // The reply came from the stream: the history was read once, and nothing re-read it.
     await new Promise((r) => setTimeout(r, 1_700));
     expect(h.counts.state).toBe(1);
@@ -126,7 +126,7 @@ describe("a thread", () => {
     const writing = { id: "a2", requestId: "req_a2", type: "message", role: "assistant", ts: 30, itemIndex: 0, status: "in_progress", content: [{ type: "output_text", text: "" }] };
     h.answer("item.added", { item: writing });
     h.answer("content.delta", { itemId: "a2", contentIndex: 0, delta: "Running the te" });
-    await until(() => JSON.stringify(views.at(-1)!.entries).includes("Running the te"));
+    await until(() => JSON.stringify(views.at(-1)!.items).includes("Running the te"));
   });
 
   it("offers Load earlier on a thread longer than its first read, and reaches its first line with it", async () => {
@@ -136,14 +136,14 @@ describe("a thread", () => {
     const { views } = follow(h);
     await until(() => views.length > 0 && h.counts.stream === 1);
     const opened = views.at(-1)!;
-    expect(opened.entries).toHaveLength(200);
+    expect(opened.items).toHaveLength(200);
     expect(opened.loadEarlier).toBeTypeOf("function");
 
     await opened.loadEarlier!();
-    await until(() => views.at(-1)!.entries.length === 260);
+    await until(() => views.at(-1)!.items.length === 260);
     const last = views.at(-1)!;
-    expect(last.entries[0]).toMatchObject({ kind: "user", text: "line 0" });
-    expect(new Set(last.entries.map((entry) => entry.id)).size).toBe(260);
+    expect(last.items[0]).toMatchObject({ role: "user", content: [{ text: "line 0" }] });
+    expect(new Set(last.items.map((item) => item.id)).size).toBe(260);
     // All of it is there: nothing more to load.
     expect(last.loadEarlier).toBeUndefined();
   });

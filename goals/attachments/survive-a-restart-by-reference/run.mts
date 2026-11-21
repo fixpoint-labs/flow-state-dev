@@ -6,7 +6,7 @@
  *
  *   Server A: `host.mts`, a local server on on-disk SQLite that names no
  *             `blobs` slot, run in a scratch working directory. Alice uploads
- *             ten fresh PNGs and a PDF padded to 20 MB through the upload
+ *             ten fresh PNGs and a readable PDF of exactly 20 MB through the upload
  *             route, then sends one message naming all eleven into a session.
  *             The server is crashed (SIGKILL to its process group).
  *   Server B: a fresh process on the same store and folder. Through the read
@@ -31,6 +31,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import { parseBlobRef } from "@flow-state-dev/core/attachments";
+import { makePdf } from "../../../packages/engine/test/blobs/pdf-fixture.ts";
 import {
   REPO_ROOT,
   assertPatched,
@@ -121,11 +122,8 @@ function freshPng(): Uint8Array {
   return new Uint8Array(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), body]));
 }
 
-/** A PDF padded to exactly 20 MB with random bytes. */
-function freshPdf(): Uint8Array {
-  const head = Buffer.from(`%PDF-1.7\n% goal ${Date.now()}\n`);
-  return new Uint8Array(Buffer.concat([head, randomBytes(PDF_BYTES - head.byteLength)]));
-}
+/** A readable one-page PDF of exactly `PDF_BYTES`, new random bytes on every call. */
+const freshPdf = (): Uint8Array => makePdf(["goal"], { padTo: PDF_BYTES });
 
 /** The repo-side "not done if" lines: no store adapter changed, no dependency added. */
 function repoFailures(): string[] {

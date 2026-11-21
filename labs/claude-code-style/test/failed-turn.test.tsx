@@ -7,13 +7,14 @@
  * engine retries any failed request, so the screen is what keeps Retry off an
  * older line, where it would re-run a turn the person has moved past. It also
  * keeps Retry off a turn the engine refuses to retry (one a task or the flow
- * itself started), where the button could only fail.
+ * itself started), where the button could only fail: the turn's `retryable`,
+ * which the engine sets, says which.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { PUBLIC_REENTRY_SOURCES } from "@flow-state-dev/engine";
-import { entriesOf, RETRYABLE_SOURCES, type ThreadEntry } from "../src/lib/thread-entries";
-import { Entry } from "../src/components/Entry";
+import { conversationLines } from "@flow-state-dev/react";
+import { LineContext } from "../src/components/flow-state/conversation-lines";
+import { claudeCodeRenderers, WorkLines } from "../src/components/lines";
 import { Thread } from "../src/components/Thread";
 import { closeApps, openTestApp, readUntil, type TestApp } from "./app-host";
 
@@ -33,70 +34,34 @@ const message = (id: string, requestId: string, role: string, text: string, stat
   content: [{ type: "output_text", text }],
 });
 
-describe("the thread reads a failed turn", () => {
-  it("as one failed entry with the engine's reason, and marks the reply it cut off incomplete", () => {
-    const entries = entriesOf([
-      message("u1", "r1", "user", "Fix the build"),
-      message("a1", "r1", "assistant", "Looking at the", "in_progress"),
-      errorItem("e1", "r1", "AI_GATEWAY_API_KEY is not set"),
-    ], false, new Set(["r1"]));
-    expect(entries.map((e) => e.kind)).toEqual(["user", "assistant", "failed"]);
-    expect(entries[1]).toMatchObject({ kind: "assistant", incomplete: true });
-    expect(entries[2]).toMatchObject({ kind: "failed", reason: "AI_GATEWAY_API_KEY is not set", code: "PROVIDER_ERROR", requestId: "r1", retryable: true });
-  });
-
-  it("offers Retry on the newest turn only", () => {
-    const entries = entriesOf([
-      message("u1", "r1", "user", "first"),
-      errorItem("e1", "r1", "first failed"),
-      message("u2", "r2", "user", "second"),
-      errorItem("e2", "r2", "second failed"),
-    ], false, new Set(["r1", "r2"]));
-    const failed = entries.filter((e): e is Extract<ThreadEntry, { kind: "failed" }> => e.kind === "failed");
-    expect(failed.map((e) => [e.reason, e.retryable])).toEqual([
-      ["first failed", false],
-      ["second failed", true],
-    ]);
-  });
-
-  it("keeps Retry on a failed turn a later item that drew nothing came after", () => {
-    // An empty assistant message of another turn draws no entry, so it is not the newest turn.
-    const entries = entriesOf([message("u1", "r1", "user", "first"), errorItem("e1", "r1", "failed"), message("a2", "r2", "assistant", "")], false, new Set(["r1"]));
-    expect(entries.find((e) => e.kind === "failed")).toMatchObject({ retryable: true });
-  });
-
-  it("offers no Retry on a newest turn the engine would refuse to retry", () => {
-    // r1 is not among the turns the engine retries: a task or the flow itself started it.
-    const entries = entriesOf([message("u1", "r1", "user", "first"), errorItem("e1", "r1", "failed")], false, new Set());
-    expect(entries.find((e) => e.kind === "failed")).toMatchObject({ retryable: false });
-  });
-
-  it("counts a turn retryable from the same sources the engine retries", () => {
-    expect([...RETRYABLE_SOURCES].sort()).toEqual([...PUBLIC_REENTRY_SOURCES].sort());
-  });
-
-  it("leaves a finished reply of a turn that worked alone", () => {
-    const entries = entriesOf([message("u1", "r1", "user", "hi"), message("a1", "r1", "assistant", "Hello.")]);
-    expect(entries[1]).not.toHaveProperty("incomplete");
-  });
-});
-
 describe("the line a failed turn draws", () => {
-  const failed = (retryable: boolean): ThreadEntry => ({ kind: "failed", id: "e1", reason: "The model refused the key.", retryable, requestId: "r1" });
+  const items = [message("u1", "r1", "user", "Fix the build"), message("a1", "r1", "assistant", "Looking at the", "in_progress"), errorItem("e1", "r1", "The model refused the key.")];
+  const drawn = (retryable: boolean, retry?: (requestId: string) => Promise<unknown>) => {
+    const lines = conversationLines(items as never, [{ id: "r1", status: "failed", retryable }], { renderers: claudeCodeRenderers });
+    return render(
+      <LineContext.Provider value={{ who: "The main session", ...(retry === undefined ? {} : { retry }) }}>
+        <WorkLines lines={lines} />
+      </LineContext.Provider>,
+    );
+  };
 
-  it("names who failed and why, and Retry calls back", async () => {
-    let retried = 0;
-    render(<Entry entry={failed(true)} onRetry={async () => void (retried += 1)} />);
+  it("names who failed and why, marks the reply it cut off incomplete, and Retry runs that turn", async () => {
+    const retried: string[] = [];
+    const { container } = drawn(true, async (requestId) => void retried.push(requestId));
     const line = screen.getByTestId("request-recovery");
     expect(line.textContent).toMatch(/The main session couldn't finish this turn/);
     expect(line.textContent).toMatch(/The model refused the key\./);
+    expect(container.querySelector('[data-entry="assistant"]')!.getAttribute("data-incomplete")).toBe("true");
     await act(async () => fireEvent.click(screen.getByRole("button", { name: /Retry/ })));
-    expect(retried).toBe(1);
+    expect(retried).toEqual(["r1"]);
   });
 
-  it("draws no Retry without a callback", () => {
-    render(<Entry entry={failed(false)} />);
+  it("draws no Retry on a turn the engine won't run again, or where the screen can't", () => {
+    drawn(false, async () => undefined);
     expect(screen.getByTestId("request-recovery").textContent).toMatch(/The model refused the key\./);
+    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+    cleanup();
+    drawn(true);
     expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
   });
 });

@@ -15,9 +15,12 @@
  * - `words`: the title or text holds one of the listed words, ignoring case.
  * - `allow`: the sender is one of the listed ids.
  * - `custom`: the app's function of that name, declared once on
- *   the provider, `(event, entry) => string | undefined`: a string refuses
- *   with it, `undefined` passes, and a throw (or any other answer, a promise
- *   included: nothing here awaits) refuses as `custom:<name>: failed`.
+ *   the provider, `(event, entry, ctx) => string | undefined`, awaited: a
+ *   string refuses with it, `undefined` passes, and a throw, a rejection or
+ *   any other answer refuses as `custom:<name>: failed`. It may read what the
+ *   app keeps (a document row, a permission at the provider) through `ctx` and
+ *   the resources it declares; it never asks a model, which only `interest`
+ *   does.
  *
  * Each screen is one step of the chain (`chain.ts`), taken while a
  * subscription is still undecided, so the first refusal stops that
@@ -30,7 +33,7 @@
  * not a screen marked `failed`, not `no verdict`.
  */
 import { handler } from "@flow-state-dev/core";
-import { subscriptionEventSchema, type EvaluationModel, type SubscriptionEvent } from "@flow-state-dev/core/types";
+import { subscriptionEventSchema, type BlockContext, type DeclaredResourceEntry, type EvaluationModel, type SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { indexEntrySchema, type IndexEntry, type ScreenKind } from "./rows";
 
@@ -69,15 +72,20 @@ export interface ScreenOptions {
   readonly trustedBots: readonly string[];
 }
 
+// FIX-2789 amends FIX-2537 D2: a custom screen may await what the app keeps.
 /**
- * An app's own screen (D2): a sync function over the event and what the
- * screens read of the subscription. `undefined` passes; a string refuses, and
- * is the reason.
+ * An app's own screen (D2): a function over the event, what the screens read
+ * of the subscription, and the running request. `undefined` passes; a string
+ * refuses, and is the reason. It runs in routing, in the service's request,
+ * and again at delivery, as the subscriber: an answer it reads (a document
+ * row, a permission) is read each time, so an edit applies to the next event.
  */
 export interface CustomScreen {
   /** What it passes, in a few words: the subscribe tool lists it, so a model knows when to list it. */
   readonly describe: string;
-  readonly screen: (event: SubscriptionEvent, entry: IndexEntry) => string | undefined;
+  readonly screen: (event: SubscriptionEvent, entry: IndexEntry, ctx: BlockContext) => string | undefined | Promise<string | undefined>;
+  /** The resources it reads, declared on the steps that run it so the request carries them. */
+  readonly resources?: Readonly<Record<string, DeclaredResourceEntry>>;
 }
 
 /** The screens an app adds on one provider, declared once (D2). */
@@ -130,7 +138,10 @@ export function screenRefusal(kind: ScreenKind, event: SubscriptionEvent, entry:
     }
     case "allow":
       for (const listed of entry.screens) {
-        if (listed.screen === "allow" && !listed.ids.includes(event.sender.id)) return `"${event.sender.id}" isn't an allowed sender`;
+        if (listed.screen !== "allow") continue;
+        // With `bots`, a bot is matched against `bots` and anyone else against `ids`, never across.
+        const allowed = listed.bots === undefined ? listed.ids : event.sender.role === "bot" ? listed.bots : listed.ids;
+        if (!allowed.includes(event.sender.id)) return `"${event.sender.id}" isn't an allowed ${event.sender.role === "bot" && listed.bots !== undefined ? "bot" : "sender"}`;
       }
       return undefined;
   }
@@ -139,16 +150,21 @@ export function screenRefusal(kind: ScreenKind, event: SubscriptionEvent, entry:
 /** A step over the undecided: `refusal` answers each, a refusal becomes a verdict, a pass stays undecided for the next. */
 type Refusal = string | { readonly reason: string; readonly failed: true } | undefined;
 
-function refusingStep(name: string, refusal: (event: SubscriptionEvent, entry: IndexEntry) => Refusal) {
+function refusingStep(
+  name: string,
+  refusal: (event: SubscriptionEvent, entry: IndexEntry, ctx: BlockContext) => Refusal | Promise<Refusal>,
+  resources?: Readonly<Record<string, DeclaredResourceEntry>>
+) {
   return handler({
     name,
     inputSchema: screeningSchema,
     outputSchema: screeningSchema,
-    execute: async (screening: Screening): Promise<Screening> => {
+    ...(resources === undefined ? {} : { resources }),
+    execute: async (screening: Screening, ctx): Promise<Screening> => {
       const pending: Candidate[] = [];
       const verdicts = [...screening.verdicts];
       for (const candidate of screening.pending) {
-        const refused = refusal(screening.event, candidate.entry);
+        const refused = await refusal(screening.event, candidate.entry, ctx);
         if (refused === undefined) pending.push(candidate);
         else if (typeof refused === "string") verdicts.push({ subscription: candidate.subscription, pass: false, reason: refused });
         else verdicts.push({ subscription: candidate.subscription, pass: false, reason: refused.reason, failed: true });
@@ -169,7 +185,7 @@ export function screenStep(kind: ScreenKind, options: ScreenOptions) {
 /** Whether `entry` lists the custom screen `name`. */
 const listsCustom = (entry: IndexEntry, name: string) => entry.screens.some((listed) => listed.screen === "custom" && listed.name === name);
 
-/** A custom screen that couldn't run: it threw, or answered with something other than a string or `undefined`. */
+/** A custom screen that couldn't run: it threw or rejected, or answered with something other than a string or `undefined`. */
 const SCREEN_FAILED = { failed: true } as const;
 
 /**
@@ -177,16 +193,20 @@ const SCREEN_FAILED = { failed: true } as const;
  * {@link SCREEN_FAILED} when the screen couldn't run. An app's own reason is never read as a failure,
  * whatever it says.
  */
-function customRefusal(screen: CustomScreen["screen"], event: SubscriptionEvent, entry: IndexEntry): string | typeof SCREEN_FAILED | undefined {
+async function customRefusal(
+  screen: CustomScreen["screen"],
+  event: SubscriptionEvent,
+  entry: IndexEntry,
+  ctx: BlockContext
+): Promise<string | typeof SCREEN_FAILED | undefined> {
   let answer: unknown;
   try {
-    answer = screen(event, entry);
+    answer = await screen(event, entry, ctx);
   } catch {
     return SCREEN_FAILED;
   }
   if (answer === undefined) return undefined;
   if (typeof answer === "string") return answer;
-  if (typeof (answer as { then?: unknown } | null)?.then === "function") (answer as PromiseLike<unknown>).then(undefined, () => {});
   return SCREEN_FAILED;
 }
 
@@ -197,10 +217,14 @@ function customVerdict(name: string, refused: string | typeof SCREEN_FAILED): Re
 
 /** Run the custom screen `name` over the undecided that list it. */
 export function customScreenStep(name: string, custom: CustomScreen) {
-  return refusingStep(`subscription-screen-custom-${name}`, (event, entry) => {
-    const refused = listsCustom(entry, name) ? customRefusal(custom.screen, event, entry) : undefined;
-    return refused === undefined ? undefined : customVerdict(name, refused);
-  });
+  return refusingStep(
+    `subscription-screen-custom-${name}`,
+    async (event, entry, ctx) => {
+      const refused = listsCustom(entry, name) ? await customRefusal(custom.screen, event, entry, ctx) : undefined;
+      return refused === undefined ? undefined : customVerdict(name, refused);
+    },
+    custom.resources
+  );
 }
 
 /** The first custom screen `entry` lists that the provider doesn't declare. */
@@ -224,10 +248,15 @@ export function undeclaredCustomStep(declared: readonly string[]) {
  * provider doesn't declare: the first refusal's reason, or `undefined` when all pass. Delivery reads it
  * on the committed subscription, as routing's custom steps did on the index entry.
  */
-export function customScreensRefusal(custom: Readonly<Record<string, CustomScreen>>, event: SubscriptionEvent, entry: IndexEntry): string | undefined {
+export async function customScreensRefusal(
+  custom: Readonly<Record<string, CustomScreen>>,
+  event: SubscriptionEvent,
+  entry: IndexEntry,
+  ctx: BlockContext
+): Promise<string | undefined> {
   for (const [name, screen] of Object.entries(custom)) {
     if (!listsCustom(entry, name)) continue;
-    const refused = customRefusal(screen.screen, event, entry);
+    const refused = await customRefusal(screen.screen, event, entry, ctx);
     if (refused !== undefined) {
       const verdict = customVerdict(name, refused);
       return typeof verdict === "string" ? verdict : verdict!.reason;

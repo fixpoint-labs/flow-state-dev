@@ -440,3 +440,5 @@ export type {
 } from "../schema/action-schema";
 
 export { applyGetOrPatchState, defineResource, resource } from "./resource";
+// The history summary's resource, from its leaf module: a browser screen reads it with no blocks.
+export { historySummaryResource } from "../utility/history-summary-resource";

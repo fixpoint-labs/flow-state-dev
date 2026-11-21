@@ -36,7 +36,8 @@ describe("createNextHandler — a flow kind that carries percent escapes", () =>
       flows: [runFlow(kind)],
       stores: { default: { primary: inMemoryStores() } }
     });
-    const { POST } = createNextHandler(flowstate);
+    // Routing, not the network guard. The flow has no resolver.
+    const { POST } = createNextHandler(flowstate, { allowUnauthenticated: true });
 
     // The URL the client builds (`encodeURIComponent(kind)`), and the
     // `params.path` Next derives from it: one decodeURIComponent per segment.

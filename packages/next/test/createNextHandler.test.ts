@@ -65,7 +65,8 @@ describe("createNextHandler — integration", () => {
       stores: { default: { primary: inMemoryStores() } }
     });
 
-    const { GET, POST } = createNextHandler(flowstate);
+    // Routing, not the network guard. The flow has no resolver.
+    const { GET, POST } = createNextHandler(flowstate, { allowUnauthenticated: true });
 
     const res = await POST(
       new Request("http://localhost/api/flows/next-test/sess1/actions/run", {

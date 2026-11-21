@@ -171,6 +171,64 @@ describe("the ways a run can land, asked before its review", () => {
   });
 });
 
+// FIX-2781.
+describe("the pull request already open from a run's branch, asked before its review", () => {
+  /** `gh` on PATH, as the host runs it, listing `listed` for any branch. */
+  const ghOnPath = (listed: string) => {
+    writeFileSync(gh, `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$2" = "list" ]; then echo '${listed}'; else echo '${PR_URL}'; fi\n`);
+    vi.stubEnv("PATH", `${join(gh, "..")}:${process.env.PATH ?? ""}`);
+  };
+
+  it("finds the one open from the branch the run's work is on, in the remote's GitHub repository", async () => {
+    const { h, place } = await runWithCommit();
+    git(place.cwd, "branch", "-m", "fsd/run-1", "teammates/tidy-task-list");
+    ghOnPath('[{"number":5027,"url":"https://github.com/acme/widgets/pull/5027"}]');
+
+    expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit })).toEqual({
+      url: "https://github.com/acme/widgets/pull/5027",
+      number: 5027,
+      branch: "teammates/tidy-task-list",
+    });
+    expect(ghCalls()).toEqual([
+      `pr list --repo ${GITHUB_REPO} --head teammates/tidy-task-list --state open --json number,url,baseRefName,isCrossRepository --limit 20`,
+    ]);
+  });
+
+  it("passes over one open from a fork's branch of the same name, or into another base: neither is the run's", async () => {
+    const { h, place } = await runWithCommit();
+    ghOnPath(
+      JSON.stringify([
+        { number: 7001, url: "https://github.com/acme/widgets/pull/7001", baseRefName: "main", isCrossRepository: true },
+        { number: 7002, url: "https://github.com/acme/widgets/pull/7002", baseRefName: "release", isCrossRepository: false },
+        { number: 7003, url: "https://github.com/acme/widgets/pull/7003", baseRefName: "main", isCrossRepository: false },
+      ]),
+    );
+    expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).toMatchObject({ number: 7003 });
+
+    ghOnPath(JSON.stringify([{ number: 7001, url: "https://github.com/acme/widgets/pull/7001", baseRefName: "main", isCrossRepository: true }]));
+    expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).toBeNull();
+  });
+
+  it("finds none when GitHub lists none open, and asks nothing when the remote names no GitHub repository", async () => {
+    const { h, place } = await runWithCommit();
+    ghOnPath("[]");
+    expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).toBeNull();
+
+    const before = ghCalls().length;
+    const bare = host(null);
+    const other = await bare.provision({ kind: "repo", repo }, { place: ["run-2"], branch: "fsd/run-2" });
+    expect(await bare.existingPullRequest!({ cwd: other.cwd, branch: "fsd/run-2" })).toBeNull();
+    expect(ghCalls()).toHaveLength(before);
+  });
+
+  it("rejects when gh can't be asked, rather than say there is none: the review says it couldn't tell", async () => {
+    const { h, place } = await runWithCommit();
+    writeFileSync(gh, "#!/bin/sh\necho 'gh: not logged in' >&2\nexit 1\n");
+    vi.stubEnv("PATH", `${join(gh, "..")}:${process.env.PATH ?? ""}`);
+    await expect(h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).rejects.toThrow(/not logged in/);
+  });
+});
+
 describe("accepting a run by merging it locally", () => {
   it("lands the run's commit on the base branch of the person's checkout", async () => {
     const { h, place, commit } = await runWithCommit();
@@ -451,10 +509,41 @@ describe("landing a run whose work moved off its branch", () => {
       { kind: "pull-request", title: "t", body: "b", gh },
     );
 
-    expect(landed).toMatchObject({ kind: "pull-request", number: 5027, branch: "teammates/tidy-task-list" });
+    expect(landed).toMatchObject({ kind: "pull-request", number: 5027, branch: "teammates/tidy-task-list", existing: true });
     expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
     // The branch is still pushed, so a commit made since reaches the pull request.
     expect(upstream.rev("refs/heads/teammates/tidy-task-list")).toBe(commit);
+  });
+
+  it("lands only on that pull request when asked to (onlyExisting): gone, it pushes nothing and opens none", async () => {
+    const { h, place, commit } = await runWithCommit();
+    // gh lists none open: the pull request found before the review closed since.
+    await expect(
+      h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh, onlyExisting: true }),
+    ).rejects.toMatchObject({ reason: "pull-request-gone" });
+    expect(() => upstream.rev("refs/heads/fsd/run-1")).toThrow();
+    expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
+
+    // gh can't be asked: no answer is not "open", so nothing is pushed either.
+    writeFileSync(gh, `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\necho 'gh: not logged in' >&2\nexit 1\n`);
+    await expect(
+      h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh, onlyExisting: true }),
+    ).rejects.toMatchObject({ reason: "pull-request-failed" });
+    expect(() => upstream.rev("refs/heads/fsd/run-1")).toThrow();
+    expect(git(place.cwd, "rev-parse", "refs/heads/fsd/run-1")).toBe(commit);
+
+    // Open: pushed to it, as without the flag.
+    writeFileSync(
+      gh,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$2" = "list" ]; then echo '[{"number":5027,"url":"https://github.com/acme/widgets/pull/5027"}]'; else echo '${PR_URL}'; fi\n`,
+    );
+    const landed = await h.land!(
+      { cwd: place.cwd, branch: "fsd/run-1" },
+      { kind: "pull-request", title: "t", body: "b", gh, onlyExisting: true },
+    );
+    expect(landed).toMatchObject({ number: 5027, existing: true });
+    expect(upstream.rev("refs/heads/fsd/run-1")).toBe(commit);
+    expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
   });
 
   it("takes that pull request when the push is refused but the remote's branch already holds the run's commit", async () => {
@@ -502,5 +591,133 @@ describe("landing a run whose work moved off its branch", () => {
     ).rejects.toMatchObject({ reason: "push-failed" });
     expect(upstream.rev("refs/heads/teammates/tidy-task-list")).toBe(remoteTip);
     expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
+  });
+});
+
+// FIX-2858.
+describe("a run whose base branch is gone from the remote", () => {
+  /**
+   * The person's checkout on `feature`, pushed and tracking origin/feature, then
+   * deleted on the remote, as GitHub does when its pull request merges: the
+   * normal state of a checkout after its branch's pull request lands.
+   */
+  async function runOnMergedBranch() {
+    git(repo, "checkout", "-q", "-b", "feature");
+    git(repo, "push", "-q", "-u", "origin", "feature");
+    const run = await runWithCommit();
+    git(upstream.bare, "branch", "-D", "feature");
+    return run;
+  }
+
+  it("opens the pull request into the remote's default branch, and says the base was gone", async () => {
+    const { h, place, commit } = await runOnMergedBranch();
+
+    const landed = await h.land!(
+      { cwd: place.cwd, branch: "fsd/run-1", baseRef: place.repo!.baseRef },
+      { kind: "pull-request", title: "t", body: "b", gh },
+    );
+
+    // Not --base feature, which GitHub refuses ("Base ref must be a branch").
+    const creates = ghCalls().filter((call) => call.startsWith("pr create"));
+    expect(creates).toHaveLength(1);
+    expect(creates[0]).toContain("--base main");
+    expect(upstream.rev("refs/heads/fsd/run-1")).toBe(commit);
+    expect(landed).toMatchObject({ kind: "pull-request", base: "main", baseGone: "feature" });
+  });
+
+  it("follows the remote's default branch, whatever its name", async () => {
+    upstream.commit("trunk", "trunk.txt", "trunk\n");
+    upstream.setDefault("trunk");
+    const { h, place } = await runOnMergedBranch();
+
+    const landed = await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    expect(landed).toMatchObject({ base: "trunk", baseGone: "feature" });
+    expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes("--base trunk"))).toBe(true);
+  });
+
+  it("keeps the base while the remote still has it", async () => {
+    git(repo, "checkout", "-q", "-b", "feature");
+    git(repo, "push", "-q", "-u", "origin", "feature");
+    const { h, place } = await runWithCommit();
+
+    const landed = await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    expect(landed).toMatchObject({ base: "feature" });
+    expect(landed).not.toHaveProperty("baseGone");
+    expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes("--base feature"))).toBe(true);
+  });
+
+  it("refuses base-gone, pushing nothing and asking GitHub nothing, when the remote names no default branch", async () => {
+    const { h, place } = await runOnMergedBranch();
+    // HEAD on a branch the remote doesn't have: no default to fall back on.
+    upstream.setDefault("nowhere");
+
+    const landing = h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    await expect(landing).rejects.toMatchObject({ reason: "base-gone" });
+    await expect(landing).rejects.toThrow(/"feature", is no longer on/);
+    expect(() => upstream.rev("refs/heads/fsd/run-1")).toThrow();
+    expect(ghCalls()).toEqual([]);
+    // Asked before the review, the same: not "none open" into a branch that is gone.
+    await expect(h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).rejects.toMatchObject({ reason: "base-gone" });
+    expect(ghCalls()).toEqual([]);
+  });
+
+  /**
+   * `feature` with a commit of its own, cut from by the run, then merged into
+   * main on the remote (`how`) and deleted.
+   */
+  async function runOnLandedFeature(how: "merge" | "squash") {
+    git(repo, "checkout", "-q", "-b", "feature");
+    writeFileSync(join(repo, "feature.txt"), "the feature\n");
+    git(repo, "add", "feature.txt");
+    git(repo, "commit", "-q", "-m", "The feature");
+    git(repo, "push", "-q", "-u", "origin", "feature");
+    const run = await runWithCommit();
+    const work = join(tempDir("land-merger"), "work");
+    git(join(work, ".."), "clone", "-q", upstream.url, work);
+    git(work, "merge", "-q", ...(how === "squash" ? ["--squash"] : ["--no-ff", "--no-edit"]), "origin/feature");
+    if (how === "squash") git(work, "commit", "-q", "-m", "The feature (squashed)");
+    git(work, "push", "-q", "origin", "main");
+    git(upstream.bare, "branch", "-D", "feature");
+    return run;
+  }
+
+  it("opens into the default branch when the gone base was merged into it with its commits", async () => {
+    const { h, place, commit } = await runOnLandedFeature("merge");
+
+    const landed = await h.land!(
+      { cwd: place.cwd, branch: "fsd/run-1", baseRef: place.repo!.baseRef, baseCommit: place.repo!.baseCommit },
+      { kind: "pull-request", title: "t", body: "b", gh },
+    );
+
+    expect(landed).toMatchObject({ base: "main", baseGone: "feature" });
+    expect(upstream.rev("refs/heads/fsd/run-1")).toBe(commit);
+  });
+
+  it("refuses base-gone, pushing nothing, when the gone base was squashed into the default branch", async () => {
+    // A pull request into main from the run's branch would show the feature's changes again beside the run's.
+    const { h, place } = await runOnLandedFeature("squash");
+
+    const landing = h.land!(
+      { cwd: place.cwd, branch: "fsd/run-1", baseRef: place.repo!.baseRef, baseCommit: place.repo!.baseCommit },
+      { kind: "pull-request", title: "t", body: "b", gh },
+    );
+
+    await expect(landing).rejects.toMatchObject({ reason: "base-gone" });
+    await expect(landing).rejects.toThrow(/squashed or rebased/);
+    expect(() => upstream.rev("refs/heads/fsd/run-1")).toThrow();
+    expect(ghCalls()).toEqual([]);
+    // No ref of the person's moved.
+    expect(git(repo, "for-each-ref", "--format=%(refname)").split("\n")).not.toContain("refs/default");
+  });
+
+  it("looks for the open pull request into the default branch, where a landing would open it", async () => {
+    const { h, place } = await runOnMergedBranch();
+    writeFileSync(gh, `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\necho '[{"number":9,"url":"https://github.com/acme/widgets/pull/9","baseRefName":"main"}]'\n`);
+    vi.stubEnv("PATH", `${join(gh, "..")}:${process.env.PATH ?? ""}`);
+
+    expect(await h.existingPullRequest!({ cwd: place.cwd, branch: "fsd/run-1" })).toMatchObject({ number: 9 });
   });
 });

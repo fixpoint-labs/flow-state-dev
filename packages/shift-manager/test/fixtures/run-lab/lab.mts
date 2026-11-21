@@ -312,6 +312,8 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean;
     configSchema: workerConfigSchema(),
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
     resources: { ...installation.resources, ...board.resources },
+    // The board's task list and the delegates, as session views the task screen watches.
+    views: board.views,
     actions: { ...hearingDoor, ...board.actions },
     internal: { actions: board.entries(hearingDoor.respond.block, () => "fixed") },
   } as never);

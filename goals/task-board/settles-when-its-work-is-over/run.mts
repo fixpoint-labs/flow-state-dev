@@ -72,6 +72,7 @@ import {
   type ModulePatch,
   workforceTree
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 const USER = "u_settles_when_over";
 const ORG = "org_settles_when_over";
@@ -134,7 +135,6 @@ type Proof = {
   at: number;
 };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const prove = (proof: Proof) => appendFileSync(PROOFS, `${JSON.stringify(proof)}\n`, "utf8");
 function readProofs(): Proof[] {
   if (!existsSync(PROOFS)) return [];

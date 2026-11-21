@@ -9,7 +9,7 @@
  */
 import { useMemo } from "react";
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
-import { workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { workerLabel } from "../lib/shift";
 import { firstLine, exchangesOf, useMessages, type WorkerMessageResourceState } from "../lib/messages";
 import { RouteLink } from "../components/RouteLink";
 import { clockTime } from "../lib/shell";
@@ -17,7 +17,7 @@ import { clockTime } from "../lib/shell";
 function Side({ worker, sessionId, testId }: { worker: string; sessionId: string; testId: string }) {
   return (
     <RouteLink
-      className="font-mono text-[11.5px] font-medium underline-offset-2 hover:underline"
+      className="font-mono text-xs font-medium underline-offset-2 hover:underline"
       to={{ level: "session", sessionId }}
       data-testid={testId}
       data-session-id={sessionId}
@@ -81,8 +81,8 @@ function MessageLine({ row }: { row: WorkerMessageResourceState }) {
   );
 }
 
-export function Messages({ snapshot }: { snapshot: LoadedSnapshot }) {
-  const { rows, failure, reread } = useMessages(snapshot.readAt);
+export function Messages() {
+  const { rows, failure, reread } = useMessages();
   const exchanges = useMemo(() => (rows == null ? [] : exchangesOf(rows)), [rows]);
 
   return (

@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ClientHttpError, type Client, type SessionRequestSummary } from "@flow-state-dev/client";
 import { createInboxClient, inboxItems, taskActionName, type InboxTaskInput, type InboxSuspension } from "../src/inbox";
 import { reconcileInbox, taskTruthOf, suspensionTruthOf, taskItemId, type InboxTruth } from "../src/inbox/check";
-import { NO_BOARD_UNANSWERABLE, NO_FLOW_UNANSWERABLE } from "../src/inbox/holds";
+import { NO_BOARD_UNANSWERABLE, NO_FLOW_UNANSWERABLE, NO_RUN_FLOW_UNANSWERABLE } from "../src/inbox/holds";
 import type { TaskHold } from "../src/tasks";
 
 const BOARD = "s_desk.tasks";
@@ -146,6 +146,22 @@ describe("inboxItems: one item type", () => {
     expect(items).toHaveLength(1);
     expect(items[0]!.holds.map((h) => [h.id, h.answerable])).toEqual([["sp9", true], ["sp1", false]]);
     expect(items[0]).toMatchObject({ answerable: true, unanswerable: null });
+  });
+
+  // FIX-2774 Open: a worker run started with no conversation can stop to ask.
+  it("lists a stop from a run with no conversation on its own, answerable through its flow, its deadline as the hold's due", () => {
+    const [item] = inboxItems({ rows: [], suspensions: [found("sp1", { sessionId: null, flowId: "worker-flow", due: 9_000 })], flowOf: () => undefined });
+    expect(item).toMatchObject({
+      id: "sp1",
+      task: null,
+      answerable: true,
+      holds: [{ id: "sp1", due: 9_000, source: { kind: "suspension", sessionId: null, flowId: "worker-flow", requestId: "req_sp1" } }],
+    });
+  });
+
+  it("a stop from a run with no conversation and no flow is listed, unanswerable, saying the run names no flow", () => {
+    const [item] = inboxItems({ rows: [], suspensions: [found("sp1", { sessionId: null, flowId: null })], flowOf: () => undefined });
+    expect(item).toMatchObject({ answerable: false, unanswerable: NO_RUN_FLOW_UNANSWERABLE });
   });
 });
 
@@ -304,16 +320,6 @@ describe("a task held on questions (row holds, FIX-2133)", () => {
       ["q1", csv.ask.prompt, { kind: "task", flowId: "desk", sessionId: "s_desk", action: "updateTask_tasks", taskId: "t1" }],
       ["q2", column.ask.prompt, { kind: "task", flowId: "desk", sessionId: "s_desk", action: "updateTask_tasks", taskId: "t1" }],
     ]);
-  });
-
-  // FIX-2479 D1: a caller may hand the read rows it never parsed (a replayed stream item, a raw
-  // store read). A question stored under the retired `"row"` marker lists as the task's own,
-  // answerable, and its answer still closes it.
-  it("lists a question a caller hands it under the retired row marker as the task's own, and its answer closes it", () => {
-    const legacy = { ...csv, source: { kind: "row", closedBy: [{ by: "answer" }] } } as unknown as TaskHold;
-    const [item] = inboxItems({ rows: [held("t1", [legacy])], suspensions: [], flowOf: desk });
-    expect(item!.holds.map((h) => [h.id, h.source.kind, h.answerable])).toEqual([["q1", "task", true]]);
-    expect(inboxItems({ rows: [held("t1", [legacy], { steers: [{ id: "st1", answers: "q1" }] })], suspensions: [], flowOf: desk })).toEqual([]);
   });
 
   it("an answered question leaves the item, by the steer that carries its id; the last one takes the item with it", () => {
@@ -488,6 +494,20 @@ describe("a board's task actions: inbox.board(at)", () => {
       { goal: "Audit the licenses", title: "Audit", context: "Only the npm ones", assignee: "eng.writer", labels: ["legal"], deps: ["t2"] },
       { sessionId: "s_desk" },
     ]);
+  });
+
+  it("get reads one task whole through the board's getTask, its brief uncut", async () => {
+    // A re-run copies the brief from this read: a cut brief would drop a long brief's instructions.
+    const context = "Keep the npm ones. ".repeat(2_000);
+    const task = { id: "t1", goal: "Audit the licenses", status: "errored", context, labels: ["legal"], priority: 2, attempts: 1 };
+    const { send, actions } = boardClient({ ok: true, task });
+    expect(await actions.get("t1")).toEqual(task);
+    expect(send.mock.calls[0]).toEqual(["getTask_eng_work", { id: "t1" }, { sessionId: "s_desk" }]);
+  });
+
+  it("get rejects with the board's words when it can't read the task, and when its answer names no task", async () => {
+    await expect(boardClient({ ok: false, error: 'not_found: no task "t1"' }).actions.get("t1")).rejects.toThrow('not_found: no task "t1"');
+    await expect(boardClient({ ok: true }).actions.get("t1")).rejects.toThrow(/names no task/);
   });
 
   it("reads its answer by the request's id, however long the session is", async () => {

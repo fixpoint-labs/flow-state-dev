@@ -250,6 +250,13 @@ export type RequestHostConstructionInputs = {
    * the row's request (`view-routes.ts`). Set by the view route only.
    */
   suspensionAdmission?: SuspensionAdmission;
+  // FIX-2848 D3.
+  /**
+   * The host's `publicReentrySources`, for a run with no
+   * `effectiveRuntimeConfig` (a view's): what `sessions.turns` reads each
+   * turn's `retryable` with. Absent → the effective config's, else none.
+   */
+  publicReentrySources?: readonly string[];
   // FIX-2623 D1.
   /**
    * Whether any flow the host registers declares a view, read as each request

@@ -300,7 +300,7 @@ const CONTROLS: Control[] = [
   {
     name: "optimistic-post",
     build: async () => {
-      const swap = swapOf("send.ts", "it-opens-a-lab", "optimistic-post.ts");
+      const swap = swapOf("deliver.ts", "it-opens-a-lab", "optimistic-post.ts");
       return { themed: await swapBuild("ctl-optimistic-post", swap, false), noTheme: await swapBuild("ctl-optimistic-post-no-theme", swap, true) };
     },
     must: ["a4"],
@@ -309,7 +309,7 @@ const CONTROLS: Control[] = [
   {
     name: "worker-session",
     build: async () => {
-      const swap = swapOf("run.ts", "it-shows-and-stops-a-task-run", "worker-session.ts");
+      const swap = swapOf("session-feeds.tsx", "it-shows-and-stops-a-task-run", "worker-session.ts");
       return { themed: await swapBuild("ctl-worker-session", swap, false), noTheme: await swapBuild("ctl-worker-session-no-theme", swap, true) };
     },
     must: ["a2"],

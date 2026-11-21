@@ -94,7 +94,7 @@ export function SessionsList({
                 title={available ? undefined : "Coming soon"}
                 onClick={() => onView(mode.id)}
                 className={cn(
-                  "flex-1 rounded-md border border-transparent px-2 py-1.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase transition-colors hover:bg-accent hover:text-foreground",
+                  "flex-1 rounded-md border border-transparent px-2 py-1.5 font-mono text-xs tracking-widest text-muted-foreground uppercase transition-colors hover:bg-accent hover:text-foreground",
                   "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent",
                   mode.id === view && "border-border bg-background text-foreground",
                 )}

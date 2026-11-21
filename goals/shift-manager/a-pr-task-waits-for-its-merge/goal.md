@@ -1,12 +1,12 @@
 # shift-manager › a PR task waits for its merge
 
-**Issue:** FIX-2578 (epic FIX-2369), PR 2 (the apps)
+**Issue:** FIX-2578 (epic FIX-2369), PR 2 (the apps); leg b reshaped by FIX-2781
 
 **Outcome:** In Shift Manager's DevTeam Lab, a coding task you accept with **Open a PR** does not
 complete when the pull request opens. It stays open, waiting on that pull request. A line in the
 task's session (what its composer sends) is one more run on the same attempt and coding session;
-that run's commit comes back for your review, and Open a PR again pushes it to the same pull
-request, so the task waits on it again. Once GitHub says the pull request merged, a line completes
+that run's commit is pushed to the same pull request with no review asked (the pull request is
+where it is reviewed, and a second one is never offered), so the task waits on it again. Once GitHub says the pull request merged, a line completes
 the task with the pull request on its output and runs nothing.
 
 **Input:** `fixtures/input.json`: the task's goal and the two lines. **Held-out**: no worker file,
@@ -25,10 +25,10 @@ listing and `repos/acme/app/pulls/N` from a state file.
   **a:open** after Accept with Open a PR (`{ verdict: "accepted", land: "pull-request" }` on the
   task's Inbox item, as the card answers it) the row is `in_progress` with an open `external` hold
   whose releaser names `…/7`.
-- **b:line** a line through `sendTurn` to the run session's door brings the row back to a review;
+- **b:no-review** a line through `sendTurn` to the run session's door does not bring the row back
+  to a review; **b:waits-again** it is `in_progress` on a new external hold on `…/7`;
   **b:one-run** exactly one harness run (the scripted harness's own log); **b:same-attempt**,
-  **b:same-session**. **b:waits-again** Open a PR again: `in_progress`, a new external hold on
-  `…/7`; **b:one-pr** the stub still holds one pull request.
+  **b:same-session**; **b:on-pr** PR 7's branch on the bare repository is at the run's branch tip; **b:one-pr** the stub still holds one pull request.
 - **c:completed** stub set to merged, a line: `completed`, its output's `pullRequests` names PR 7
   merged at the stub's link; **c:no-run** no harness run after it.
 
@@ -48,3 +48,5 @@ task); b and c are then not reached. The parent exits 0 when the child failed on
 |------|--------|-------|---------|-------|
 | 2026-11-07 | on 870b759f, this change pre-commit | n/a | PASS | a: Open a PR pushed the run's branch and opened #7; in_progress on attempt 1, one external hold. b: 1 run, attempt 1, same run session, back to review; Open a PR again: waiting on #7, still 1 PR. c: completed, output PR 7 merged, no run. 9 gh calls, 5 ssh calls |
 | 2026-11-07 | same | n/a | FAIL (expected, `no-wait`) | a:open: after Open a PR the row reads completed, no external hold; b and c not reached |
+| 2026-11-17 | on c0bf4f40, FIX-2781 pre-commit | n/a | PASS | a: Open a PR opened #7, waiting. b: 1 run, attempt 1, same session, no review; PR 7's branch on the remote at the run's tip, waiting on #7, 1 PR. c: completed, PR 7 merged, no run. 12 gh calls, 5 ssh calls |
+| 2026-11-17 | c0bf4f40 without the manager change | n/a | FAIL (expected, the bug) | b:no-review: after the line the run's commit came back for "Review the run's changes", though it is on open PR 7 |

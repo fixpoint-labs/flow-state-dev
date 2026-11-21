@@ -92,7 +92,7 @@ import {
 import { createHostPlace } from "./host-place";
 import { acquireLock, HOST_LOCK_BOUNDS, releaseLock, tryAcquireLock } from "./lock";
 import { assertScope, createProjection, type Projection } from "./projection";
-import { landRun, landWays, type Landed, type LandRequest, type LandTarget } from "./land";
+import { existingPullRequest, landRun, landWays, type ExistingPullRequest, type Landed, type LandRequest, type LandTarget } from "./land";
 import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, withoutCredential, type AllowedRemote } from "./remotes";
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import {
@@ -598,6 +598,14 @@ export interface WorkspaceHost {
    * a pinned remote that names a GitHub repository. Never rejects.
    */
   landWays?(target: LandTarget): Promise<Array<LandRequest["kind"]>>;
+  /**
+   * The pull request already open from the branch `land` would land, asked
+   * before the review is: a run whose work goes onto it is never offered a
+   * second one, or a local merge. `null` where `landWays` offers no
+   * `pull-request`, and where there is none. Rejects when it can't be told
+   * (git or GitHub can't be read), so the caller can say so.
+   */
+  existingPullRequest?(target: LandTarget): Promise<ExistingPullRequest | null>;
 }
 
 /**
@@ -2275,6 +2283,12 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     return repo === undefined ? [] : await landWays(landHost(repo), target);
   }
 
+  /** `WorkspaceHost.existingPullRequest`: none where `land` would refuse as `land-unsupported`. */
+  async function existing(target: LandTarget): Promise<ExistingPullRequest | null> {
+    const repo = await listedRepositoryOf(target.cwd).catch(() => undefined);
+    return repo === undefined ? null : await existingPullRequest(landHost(repo), target);
+  }
+
   async function recordCheckout(
     target: { place: readonly string[] },
     recordOptions: { worktrees: WorktreeCollection; by?: WorktreeOwner },
@@ -2440,6 +2454,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     recordCheckout,
     land,
     landWays: ways,
+    existingPullRequest: existing,
     async checkpoint(place, recorded) {
       const holding = place.holding;
       if (heldWork === undefined || holding === undefined || place.kind !== "repo") return null;

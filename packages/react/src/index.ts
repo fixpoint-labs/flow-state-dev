@@ -132,12 +132,16 @@ export {
 
 export {
   ItemsRenderer,
-  buildItemRenderStream,
-  type BuildItemRenderStreamOptions,
-  type ActivityItem,
-  type ItemRenderSegment,
   type ItemsRendererProps
 } from "./components/ItemsRenderer";
+
+export {
+  conversationLines,
+  type ActivityItem,
+  type ConversationLinesOptions,
+  type ItemLine,
+  type LineTurn
+} from "./components/conversation-lines";
 
 export {
   FlowNavigator,

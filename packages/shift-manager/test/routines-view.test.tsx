@@ -7,7 +7,6 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LoadedSnapshot } from "../src/lib/derive";
 import { parseRoute, pathFor } from "../src/lib/routes";
 import { ClientHttpError } from "@flow-state-dev/client";
 import { toRoutines } from "../src/lib/routines";
@@ -16,15 +15,12 @@ import { toRoutines } from "../src/lib/routines";
 const view = vi.fn();
 /** A send to a collection: `(pattern, verb, input)`. */
 const send = vi.fn();
-const runAction = vi.fn();
-vi.mock("../src/lib/action", async (original) => ({
-  ...(await original<typeof import("../src/lib/action")>()),
-  runAction: (...a: unknown[]) => runAction(...a),
-}));
 const lab = {
   client: {
     userId: "u_1",
     view: (...a: unknown[]) => view(...a),
+    // FIX-2775: the list is `useView`'s, kept current by the view's own notices; none arrive here.
+    subscribe: () => ({ close: () => {} }),
     resource: (def: { pattern: string }) => ({ send: (verb: string, input: unknown) => send(def.pattern, verb, input) }),
   },
   refresh: vi.fn(),
@@ -53,12 +49,9 @@ const review = {
 };
 const declared = { ...weekly, id: "clock:cfg_abc", name: "cfg_abc", madeBy: { by: "app", entry: "weekly-digest" } };
 
-// No session of the roster flow: the list and its changes need none.
-const snapshot = { sessions: [], readAt: 1 } as unknown as LoadedSnapshot;
 const listed = (routines: unknown[]) => ({ value: { routines }, topics: [] });
 
 beforeEach(() => {
-  runAction.mockReset();
   view.mockReset();
   send.mockReset();
   window.history.replaceState(null, "", "/routines");
@@ -78,17 +71,16 @@ describe("the routine list", () => {
   it("says a paused routine is paused, whatever its cron, and names who made each", () => {
     expect(nextRunLabel("2026-10-26T09:00:00.000Z", true)).toBe("paused");
     expect(nextRunLabel(null, false)).toBe("no next run");
-    expect([madeByLabel({ by: "user" }), madeByLabel({ by: "app", entry: "x" }), madeByLabel(null)]).toEqual(["made by you", "the app's", ""]);
+    expect([madeByLabel({ by: "user" }), madeByLabel({ by: "app", entry: "x" }), madeByLabel(undefined)]).toEqual(["made by you", "the app's", ""]);
   });
 });
 
 describe("the Routines view", () => {
   it("lists clock and event routines read through the roster flow's view, with no session", async () => {
     view.mockResolvedValue(listed([weekly, off, review]));
-    render(<Routines snapshot={snapshot} />);
+    render(<Routines />);
     const lines = await screen.findAllByTestId("routine");
     expect(view.mock.calls[0]![0]).toMatchObject({ flow: "workforce-roster", view: "routines" });
-    expect(runAction).not.toHaveBeenCalled();
     expect(lines.map((l) => [l.getAttribute("data-id"), l.getAttribute("data-trigger"), l.getAttribute("data-paused")])).toEqual([
       ["clock:adoption", "clock", "false"],
       ["clock:paused", "clock", "true"],
@@ -104,7 +96,7 @@ describe("the Routines view", () => {
   it("pauses, resumes and deletes from a line by a send to the routines collection, and reads the list again", async () => {
     view.mockResolvedValue(listed([weekly, off]));
     send.mockResolvedValue({ ok: true, routine: weekly });
-    render(<Routines snapshot={snapshot} />);
+    render(<Routines />);
     const [on, paused] = await screen.findAllByTestId("routine");
     fireEvent.click(within(on!).getByTestId("routine-pause"));
     fireEvent.click(within(paused!).getByTestId("routine-pause"));
@@ -117,13 +109,12 @@ describe("the Routines view", () => {
       ["workforce/schedules/*", "pauseRoutine", { id: "clock:paused", paused: false }],
       ["workforce/schedules/*", "deleteRoutine", { id: "clock:adoption" }],
     ]);
-    expect(runAction).not.toHaveBeenCalled();
   });
 
   it("offers an app's routine a pause and no delete, and says why a change was refused", async () => {
     view.mockResolvedValue(listed([declared]));
     send.mockResolvedValue({ ok: false, error: "declared: it follows the app's config" });
-    render(<Routines snapshot={snapshot} />);
+    render(<Routines />);
     const [line] = await screen.findAllByTestId("routine");
     expect(within(line!).queryByTestId("routine-delete")).toBeNull();
     fireEvent.click(within(line!).getByTestId("routine-pause"));
@@ -132,19 +123,19 @@ describe("the Routines view", () => {
 
   it("says so when there are none", async () => {
     view.mockResolvedValue(listed([]));
-    render(<Routines snapshot={snapshot} />);
+    render(<Routines />);
     expect((await screen.findByTestId("routines-empty")).textContent).toContain("No routines yet");
   });
 
   it("says the Lab keeps no routines when it serves no roster flow", async () => {
     view.mockRejectedValue(new ClientHttpError("Request failed (404)", { status: 404, body: { error: 'Unknown flow "workforce-roster"' } }));
-    render(<Routines snapshot={snapshot} />);
+    render(<Routines />);
     expect((await screen.findByTestId("routines-empty")).textContent).toContain("keeps no roster for you");
   });
 
   it("says what the Lab answered when the list didn't load", async () => {
     view.mockRejectedValue(new Error("store offline"));
-    render(<Routines snapshot={snapshot} />);
+    render(<Routines />);
     await waitFor(() => expect(screen.getByTestId("routines-failure").textContent).toContain("store offline"));
   });
 

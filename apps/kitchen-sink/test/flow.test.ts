@@ -191,7 +191,7 @@ describe("chat-agent flow", () => {
           "artifacts/doc-1": {
             title: "Test Document",
             summary: "Test content summary",
-            updatedAt: 1000
+            updatedAt: "1970-01-01T00:00:00.000Z"
           },
           workingMemory: emptyWorkingMemory,
           memorySystem: emptyMemorySystem,

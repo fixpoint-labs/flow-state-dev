@@ -94,6 +94,8 @@ export interface KitchenSinkHarnessFlowOptions {
    * waits on them (the package's `approveTools`). Off by default.
    */
   readonly approveTools?: boolean;
+  /** What the harness is called, for the error a silent turn ends with. */
+  readonly harnessLabel?: string;
 }
 
 /** A harness mode's session flow. */
@@ -104,6 +106,7 @@ export function kitchenSinkHarnessFlow(options: KitchenSinkHarnessFlowOptions) {
     workspace,
     ...(options.defaultModel === undefined ? {} : { defaultModel: options.defaultModel }),
     ...(options.approveTools === true ? { approveTools: true } : {}),
+    ...(options.harnessLabel === undefined ? {} : { harnessLabel: options.harnessLabel }),
     // The host's checks, after a turn the harness finished; the turn notice shows them, and each turn's prompt names them.
     ...(checks.length === 0 ? {} : { verify: { commands: [...checks], timeoutMs: HARNESS_CHECKS_TIMEOUT_MS, inBrief: true } }),
     agent: (feeds) => options.agent(withGoalControls(feeds, options.defaultModel)),

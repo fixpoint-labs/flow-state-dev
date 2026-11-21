@@ -1,31 +1,32 @@
 /**
- * shift-manager › its summary changes on its own (FIX-2409).
+ * shift-manager › its summary changes on its own (FIX-2409; re-pointed at the inbox view by FIX-2774).
  *
  * One `serve()` host on a bound port, on the default in-memory bus, a
  * conversation flow (`desk`) on the Workforce session board and a worker flow
  * (`doer`) whose task turn asks the user (`ctx.suspendForUser`, a review).
  * Shift Manager's own provider (`LabProvider`) runs headless, in this process
- * (react-dom over a happy-dom document; Node's own `fetch` and `WebSocket`).
- * Every grade is what the provider's snapshot holds, or the snapshot reads its
- * client made (one `sessions` listing with dispatch runs is one read), counted
- * at its fetcher. Nothing grades a publish or a frame. The task screen,
- * TasksPanel and the board card are not mounted.
+ * (react-dom over a happy-dom document; Node's own `fetch` and `WebSocket`),
+ * with its Inbox screen drawn under it. What needs the user is the roster
+ * flow's inbox view (`useInbox`), so every grade is the value that view pushed
+ * to the provider, or the view runs its client made (one `POST …/views/inbox`
+ * is one run), counted at its fetcher. Nothing grades a publish or a frame.
  *
- *   a   another client opens a conversation the snapshot doesn't list and
- *       files a task whose run asks: the provider's Inbox count goes 0 → 1
- *       within 1 s of the run's request reading `suspended`.
- *   a2  the same, the task filed by a run on the server with no client (as a
- *       scheduled fire files one).
- *   b   10 s idle, with the Routines view and Usage's Re-check and view run
- *       after each snapshot read, as those screens do: 0 snapshot reads.
- *   c   a 200-item reply, then a 2-item reply of the same length, in a listed
- *       conversation: the long one makes at most one read more (a read per item is ~200).
- *   d   a second host whose bus doesn't cross: the ask shows within 30 s + 1 s.
+ *   a     another client opens a conversation and files a task whose run asks:
+ *         the Inbox count goes 0 → 1 within 1 s of the run's request reading `suspended`.
+ *   a2    the same, the task filed by a run on the server with no client (as a
+ *         scheduled fire files one).
+ *   b     10 s idle, with the Routines view and Usage's Re-check and view run
+ *         after each value, as those screens do: 0 view runs.
+ *   c     a 200-item reply in a worker conversation with no task and no ask, and a
+ *         turn started and finished in a worker session with no task and no ask: 0 view runs.
+ *   d     a second host whose bus doesn't cross: the ask shows within 30 s + 1 s.
+ *   retry the view's read refused once: the Inbox says the server's reason, and its
+ *         Retry runs the view again, which lists the ask.
  *
  * Controls (each runs this file again with a scratch patch applied as it loads):
- *   GOAL_CONTROL=no-subscribe   the provider subscribes nothing: a must FAIL.
- *   GOAL_CONTROL=every-kind     the provider reads on every notice of a session, items too: c must FAIL.
- *   GOAL_CONTROL=no-poll        the provider keeps no fallback timer: d must FAIL.
+ *   GOAL_CONTROL=no-subscribe   a view's watch hears no topic: a must FAIL.
+ *   GOAL_CONTROL=hear-run       the view lists the caller's sessions, as reads.ts does: c must FAIL.
+ *   GOAL_CONTROL=no-poll        the view keeps no fallback timer: d must FAIL.
  */
 import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
@@ -57,7 +58,10 @@ import {
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, installWorkers, modulePatchEnv, runGoal, silentLogger, sleep, workforceTree, type ModulePatch } from "../../lib/index.mts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
-import { readHarnessUsageView } from "../../../packages/shift-manager/src/lib/usage.ts";
+import { useInbox } from "../../../packages/shift-manager/src/lib/inbox.ts";
+import { recheckHarnessUsage } from "@flow-state-dev/harness-manager/browser";
+import { Inbox } from "../../../packages/shift-manager/src/surfaces/Inbox.tsx";
+import { GAPS } from "../../../packages/shift-manager/src/gaps.ts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("its-summary-changes-on-its-own");
@@ -70,27 +74,29 @@ const IDLE_MS = 10_000;
 const POLL_MS = 30_000;
 const ASK = "[ask]";
 const INVENTORY_WRITER_FLOW = "inventory-writer";
-/** How many more snapshot reads leg c lets the long reply make than the short one: one coalescing more or less. */
-const JITTER_READS = 1;
+/** What the server answers the view's refused read with, in leg retry. */
+const REFUSAL = `The Inbox is down for a moment ${RUN_STAMP}`;
 
-const LAB_DATA = "packages/shift-manager/src/lib/lab-data.tsx";
-const SUBSCRIBE = "packages/shift-manager/src/lib/snapshot-subscribe.ts";
+const INBOX = "packages/shift-manager/src/lib/inbox.ts";
+const VIEW_WATCH = "packages/client/src/view/view.ts";
+const INBOX_VIEW = "packages/workforce/src/workers/inbox-view.ts";
 const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string; mustFail: string }> = {
-  // The provider opens no live read: the snapshot reads only on boot and the person's own reads.
+  // A view's watch subscribes to no topic its answer names: the Inbox reads only on mount and the person's own reads.
   "no-subscribe": {
-    patches: [{ module: LAB_DATA, from: String.raw`if \(topicsKey === null\) return;`, to: "return;" }],
+    patches: [{ module: VIEW_WATCH, from: String.raw`return \{ value: keepUnchangedEntries\(entry, result\), topics: result\.topics,`, to: "return { value: keepUnchangedEntries(entry, result), topics: []," }],
     legs: "a",
     mustFail: "a:ask-within-1s",
   },
-  // Every notice on a session's topic reads, `items` included.
-  "every-kind": {
-    patches: [{ module: SUBSCRIBE, from: String.raw`return notice\.kind === "request" \|\| notice\.kind === "run";`, to: "return true;" }],
+  // The view finds an ask's worker through the session list, as `reads.ts` does in the browser:
+  // that list is heard on every turn's `run` on the user topic.
+  "hear-run": {
+    patches: [{ module: INBOX_VIEW, from: String.raw`const sessions = sessionsOf\(ctx\);`, to: "const sessions = sessionsOf(ctx); await sessions.list({ limit: 100 });" }],
     legs: "c",
-    mustFail: "c:as-short",
+    mustFail: "c:quiet",
   },
-  // The subscription keeps no fallback timer: where push can miss a change, nothing reads.
+  // The view keeps no fallback timer: where push can miss a change, nothing reads.
   "no-poll": {
-    patches: [{ module: LAB_DATA, from: String.raw`pollIntervalMs: SNAPSHOT_POLL_MS,`, to: "pollIntervalMs: null," }],
+    patches: [{ module: INBOX, from: String.raw`pollIntervalMs: INBOX_POLL_MS,`, to: "pollIntervalMs: null," }],
     legs: "d",
     mustFail: "d:ask-within-poll",
   },
@@ -112,7 +118,7 @@ if (CONTROLS[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefin
   assertPatched(control.patches, REPO_ROOT, mark);
   process.exit(child.status ?? 1);
 }
-const legs = new Set((process.env.GOAL_LEGS ?? "a,a2,b,c,d").split(",").map((s) => s.trim()).filter(Boolean));
+const legs = new Set((process.env.GOAL_LEGS ?? "a,a2,b,c,d,retry").split(",").map((s) => s.trim()).filter(Boolean));
 
 
 // ---------------------------------------------------------------------------
@@ -125,12 +131,18 @@ const happy = new Window();
 Object.assign(globalThis, { window: happy, document: happy.document, IS_REACT_ACT_ENVIRONMENT: false, React });
 
 const nativeFetch = globalThis.fetch;
-/** Each snapshot read the provider made, by the host it read. */
-const snapshotReads: Array<{ at: number; origin: string }> = [];
+/** Each run of the inbox view the providers made, by the host it read. */
+const viewRuns: Array<{ at: number; origin: string }> = [];
+/** Leg retry: the next inbox view read is refused with {@link REFUSAL}, once. */
+let refuseNextView = false;
 globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
   const url = new URL(String(input instanceof Request ? input.url : input));
-  if (url.pathname.endsWith("/api/flows/sessions") && url.searchParams.get("include") === "dispatch-runs") {
-    snapshotReads.push({ at: Date.now(), origin: url.origin });
+  if (url.pathname.endsWith("/views/inbox")) {
+    viewRuns.push({ at: Date.now(), origin: url.origin });
+    if (refuseNextView) {
+      refuseNextView = false;
+      return Promise.resolve(new Response(JSON.stringify({ error: REFUSAL }), { status: 503, headers: { "content-type": "application/json" } }));
+    }
   }
   return nativeFetch(input, init);
 }) as typeof fetch;
@@ -290,44 +302,55 @@ const say = (fsd: Client, sessionId: string, script: Script) => fsd.flow("desk")
 // Shift Manager's provider, headless
 // ---------------------------------------------------------------------------
 
-type Shown = { at: number; readAt: number; needsYou: number | undefined; sessions: string[] };
+type Shown = { at: number; needsYou: number | undefined; failure: string | undefined };
 
 /**
- * The provider with a probe under it that records each snapshot it holds and,
- * as Routines and Usage do on each snapshot read, reads the routines view and
- * runs Usage's Re-check and view. None of them names a session (FIX-2624);
- * this host serves no usage, so the Re-check answers that it serves none.
+ * The provider with its Inbox screen drawn under it, and a probe that records
+ * each value the inbox view pushed (what needs the user) and, as Routines and
+ * Usage do, reads the routines view and runs Usage's Re-check and view after
+ * each one. None of them names a session (FIX-2624); this host serves no
+ * usage, so the Re-check answers that it serves none.
  */
 function mountProvider(on: Host) {
   const shown: Shown[] = [];
   function Probe() {
     const { snapshot, client } = useLab();
     const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot : undefined;
+    const inbox = useInbox(loaded !== undefined);
     useEffect(() => {
-      if (loaded === undefined) return;
-      shown.push({ at: Date.now(), readAt: loaded.readAt, needsYou: loaded.inbox.ok ? loaded.inbox.value.length : undefined, sessions: loaded.sessions.map((s) => s.id) });
+      if (inbox.section === undefined) return;
+      shown.push({ at: Date.now(), needsYou: inbox.section.ok ? inbox.section.value.items.length : undefined, failure: inbox.section.ok ? undefined : inbox.section.failure.message });
       void client.view(routinesView, {}).catch(() => {});
-      void readHarnessUsageView(client).catch(() => {});
-    }, [loaded, client]);
-    return null;
+      // Usage's Re-check, as the screen sends it when it opens (FIX-2775: the rows are then the view's).
+      void recheckHarnessUsage(client).catch(() => {});
+    }, [inbox.section, client]);
+    return loaded === undefined ? null : createElement(Inbox, { snapshot: loaded, itemId: null, gaps: GAPS } as never);
   }
   const container = happy.document.createElement("div");
+  happy.document.body.appendChild(container);
   const root: Root = createRoot(container as unknown as Element);
   root.render(createElement(LabProvider, { connection: { userId: USER, bearerToken: TOKEN, baseUrl: on.base }, children: createElement(Probe) }));
   const origin = new URL(on.base).origin;
-  return { shown, reads: () => snapshotReads.filter((r) => r.origin === origin), close: () => root.unmount() };
+  return { shown, container, runs: () => viewRuns.filter((r) => r.origin === origin), close: () => root.unmount() };
 }
 type Provider = ReturnType<typeof mountProvider>;
 
-/** Wait until the provider has made no snapshot read for `quietMs` (at most 20 s). */
+/** Wait until the provider has run the inbox view no more for `quietMs` (at most 20 s). */
 async function quiet(provider: Provider, quietMs = 1_500): Promise<void> {
   const deadline = Date.now() + 20_000;
   for (;;) {
-    const last = provider.reads().at(-1)?.at ?? 0;
+    const last = provider.runs().at(-1)?.at ?? 0;
     const wait = last + quietMs - Date.now();
     if (wait <= 0 || Date.now() > deadline) return;
     await sleep(Math.min(wait, 200));
   }
+}
+
+/** Wait until `read` answers something `done` takes, polling every 50 ms, at most `ms`. */
+async function until<T>(read: () => T, done: (value: T) => boolean, ms: number): Promise<T> {
+  let last = read();
+  for (const deadline = Date.now() + ms; !done(last) && Date.now() < deadline; last = read()) await sleep(50);
+  return last;
 }
 
 /** When a doer request first reads `suspended` in the host's store (polled every 5 ms), within `withinMs`. */
@@ -345,7 +368,7 @@ async function suspendedAt(on: Host, after: Set<string>, withinMs: number): Prom
 const suspendedNow = async (on: Host) =>
   new Set((((await (await on.state.getRuntime()).stores.request.list({ orderBy: "none", limit: 4000 } as never)) as Array<{ id: string; status: string }>).filter((r) => r.status === "suspended").map((r) => r.id)));
 
-/** When the provider first held a snapshot counting at least `count` things that need the user, after `from`. */
+/** When the inbox view first pushed a value counting at least `count` things that need the user, after `from`. */
 async function needsYouAt(provider: Provider, count: number, from: number, withinMs: number): Promise<number | undefined> {
   const deadline = Date.now() + withinMs;
   for (;;) {
@@ -374,9 +397,7 @@ async function askLeg(
   const tag = `${name}:ask-within-${boundMs === BOUND_MS ? "1s" : "poll"}`;
   const before = provider.shown.at(-1)?.needsYou ?? 0;
   const known = await suspendedNow(on);
-  const listedAtStart = new Set(provider.shown.at(-1)?.sessions ?? []);
   const conversation = await file();
-  if (conversation !== null && listedAtStart.has(conversation)) failures.push(`${tag}: setup: the conversation ${conversation} was listed before it filed`);
   const suspended = await suspendedAt(on, known, 15_000);
   if (suspended === undefined) {
     failures.push(`${tag}: setup: the delegate's run never read suspended`);
@@ -387,7 +408,7 @@ async function askLeg(
   tell.over(`${tag} · the provider's Inbox count after the ask`, ms === undefined ? [] : [ms]);
   if (ms === undefined) failures.push(`${tag}: the provider's Inbox count never went ${before} → ${before + 1} within ${boundMs + 2_000} ms of the run reading suspended`);
   else if (ms >= boundMs) failures.push(`${tag}: the Inbox count went ${before} → ${before + 1} ${ms} ms after the run read suspended (bound ${boundMs})`);
-  else return `${name}: Inbox ${before} → ${before + 1} ${Math.max(0, ms)} ms after the run read suspended, ${conversation === null ? "filed by a server run" : "on a conversation not listed at start"}`;
+  else return `${name}: Inbox ${before} → ${before + 1} ${Math.max(0, ms)} ms after the run read suspended, ${conversation === null ? "filed by a server run" : "on a conversation opened after the view first ran"}`;
   return undefined;
 }
 
@@ -396,7 +417,7 @@ await runGoal(async (failures, tell) => {
   const closers: Array<() => void> = [];
   const hosts: Host[] = [];
   try {
-    if (legs.has("a") || legs.has("a2") || legs.has("b") || legs.has("c")) {
+    if (legs.has("a") || legs.has("a2") || legs.has("b") || legs.has("c") || legs.has("retry")) {
       const on = await host(stores("lab"));
       hosts.push(on);
       const writer = writerOn(on);
@@ -407,8 +428,7 @@ await runGoal(async (failures, tell) => {
       closers.push(provider.close);
       await sleep(1_500);
       await quiet(provider);
-      if (provider.shown.length === 0) throw new Error("setup: the provider never held a snapshot");
-      if (!provider.shown.at(-1)!.sessions.includes(chat)) throw new Error("setup: the chat conversation is not listed");
+      if (provider.shown.length === 0) throw new Error("setup: the inbox view never pushed a value");
 
       // a · another client opens a conversation and files a task whose run asks.
       if (legs.has("a")) {
@@ -447,37 +467,64 @@ await runGoal(async (failures, tell) => {
         await quiet(provider);
       }
 
-      // b · idle: the Routines view and Usage's Re-check and view run after each read.
+      // b · idle: the Routines view and Usage's Re-check and view run after each value.
       if (legs.has("b")) {
-        // Let the reads the setup brought settle.
+        // Let the runs the setup brought settle.
         await sleep(3_000);
         await quiet(provider, 2_000);
-        const from = provider.reads().length;
+        const from = provider.runs().length;
         const shownFrom = provider.shown.length;
         await sleep(IDLE_MS);
-        const idle = provider.reads().length - from;
-        tell.over("b:idle-0-reads · snapshots held before the window", provider.shown.slice(0, shownFrom));
-        if (idle > 0) failures.push(`b:idle-0-reads: ${idle} snapshot reads over ${IDLE_MS / 1000} s idle`);
-        else evidence.push(`b: 0 snapshot reads over ${IDLE_MS / 1000} s idle, the Routines view and Usage's Re-check and view run after each of ${shownFrom} reads`);
+        const idle = provider.runs().length - from;
+        tell.over("b:idle-0-reads · values the view pushed before the window", provider.shown.slice(0, shownFrom));
+        if (idle > 0) failures.push(`b:idle-0-reads: ${idle} inbox view runs over ${IDLE_MS / 1000} s idle`);
+        else evidence.push(`b: 0 inbox view runs over ${IDLE_MS / 1000} s idle, the Routines view and Usage's Re-check and view run after each of ${shownFrom} values`);
       }
 
-      // c · a 200-item reply, then a 2-item reply that lasts as long.
+      // c · a 200-item reply in a worker conversation with no task and no ask, and a turn in a
+      // worker session with no task and no ask: neither is anything the view read.
       if (legs.has("c")) {
-        const during = async (count: number): Promise<number> => {
+        const quietChat = (await writer.flow("desk").createSession({ state: { workerId: "lead" } })).id;
+        const doerSession = (await writer.flow("doer").createSession({ state: { workerId: "eng.doer" } })).id;
+        const during = async (go: () => Promise<{ wait: () => Promise<unknown> }>): Promise<number> => {
           await quiet(provider);
-          const from = provider.reads().length;
-          const sent = await say(writer, chat, { op: "chat", count, ms: 3_000 });
-          await sent.wait();
+          const from = provider.runs().length;
+          await (await go()).wait();
           await quiet(provider);
-          return provider.reads().length - from;
+          return provider.runs().length - from;
         };
-        const long = await during(200);
-        const short = await during(2);
-        tell.over("c:as-short · snapshot reads during the long reply", [long]);
-        // A request's own notices (created, started, ended) coalesce into one read or two by how
-        // far apart they land, so the two replies may differ by one read. A read per item is ~200.
-        if (long > short + JITTER_READS) failures.push(`c:as-short: ${long} snapshot reads during a 200-item reply, ${short} during a 2-item reply of the same length (allowed ${JITTER_READS} more)`);
-        else evidence.push(`c: ${long} snapshot reads during a 200-item reply, ${short} during a 2-item one`);
+        const reply = await during(() => say(writer, quietChat, { op: "chat", count: 200, ms: 3_000 }));
+        const turn = await during(() => writer.flow("doer").send("respond", { message: "Say hello." }, { sessionId: doerSession }));
+        tell.over("c:quiet · inbox view runs during the reply and the turn", [reply, turn]);
+        if (reply > 0 || turn > 0) failures.push(`c:quiet: ${reply} inbox view runs during a 200-item reply in a conversation with no task and no ask, ${turn} during a turn in a worker session with neither`);
+        else evidence.push(`c: 0 inbox view runs during a 200-item reply and during a worker session's turn, neither holding a task or an ask`);
+      }
+
+      // retry · the view's read refused once: the Inbox says why, and its Retry runs it again.
+      if (legs.has("retry")) {
+        if ((provider.shown.at(-1)?.needsYou ?? 0) === 0) {
+          // Something to list once the read lands.
+          const known = await suspendedNow(on);
+          const conversation = (await writer.flow("desk").createSession({ state: { workerId: "lead" } })).id;
+          await say(writer, conversation, { op: "file", tasks: [{ goal: `${ASK} review it again ${RUN_STAMP}`, assignee: "eng.doer" }] });
+          if ((await suspendedAt(on, known, 15_000)) === undefined) failures.push("retry:shows-reason: setup: the delegate's run never read suspended");
+        }
+        refuseNextView = true;
+        const second = mountProvider(on);
+        closers.push(second.close);
+        const failure = await until(() => second.container.querySelector('[data-testid="section-failure"]')?.textContent ?? null, (text) => text !== null, 10_000);
+        if (failure === null || !failure.includes(REFUSAL)) failures.push(`retry:shows-reason: the Inbox says ${JSON.stringify(failure)}, not the server's reason`);
+        else evidence.push("retry: the Inbox showed the server's reason for the refused read");
+        const retry = ([...second.container.querySelectorAll("button")] as unknown as HTMLButtonElement[]).find((button) => button.textContent === "Retry");
+        if (retry === undefined) failures.push("retry:lists-ask: the failed Inbox offers no Retry");
+        else {
+          const runsBefore = second.runs().length;
+          retry.click();
+          const listed = await until(() => second.container.querySelectorAll('[data-testid="inbox-item"]').length, (n) => n > 0, 10_000);
+          if (second.runs().length === runsBefore) failures.push("retry:lists-ask: Retry didn't run the inbox view");
+          else if (listed === 0) failures.push("retry:lists-ask: after Retry the Inbox lists nothing");
+          else evidence.push(`retry: Retry ran the view again, and the Inbox lists ${listed} item(s)`);
+        }
       }
     }
 

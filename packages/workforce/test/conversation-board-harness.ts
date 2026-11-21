@@ -28,6 +28,7 @@ import { askMidway } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver, mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "../src/agent-worker-flow";
+import { owesStartAfterRelease } from "../src/conversation-board/board";
 import { conversationLedgerAt, conversationLedgerResources } from "../src/conversation-board/ledger";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
@@ -87,6 +88,23 @@ type TaskRun = {
 const doorInput = z.object({ message: z.string() });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Whether any board among these tasks still owes a start after a release.
+ * Each board is one scope and one partition; the start rule itself is
+ * {@link owesStartAfterRelease}.
+ */
+function owesReleasedStart(tasks: readonly (Task & { partition: string; scope: string })[]): boolean {
+  const boards = new Map<string, Task[]>();
+  for (const stored of tasks) {
+    const key = `${stored.scope}\0${stored.partition}`;
+    const list = boards.get(key);
+    if (list === undefined) boards.set(key, [stored]);
+    else list.push(stored);
+  }
+  for (const board of boards.values()) if (owesStartAfterRelease(board)) return true;
+  return false;
+}
 
 function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], holds: ReadonlyMap<string, Promise<void>>) {
   const turn = handler({
@@ -289,6 +307,11 @@ export const SCHEDULER_SECRET = "board-harness-scheduler";
 
 export function bootBoardHost(options: BoardHostOptions = {}) {
   const stores = options.stores ?? inMemoryStores();
+  /** User scopes this host has written for, so a quiet check does not list every session. */
+  const scopes = new Set<string>();
+  const noteScope = (userId: string, orgId = ORG) => {
+    scopes.add(`${userId}\0${orgId}`);
+  };
   const runs: TaskRun[] = [];
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({
@@ -381,6 +404,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** POST a session create as `userId`. */
   const create = async (userId: string, flow: string, body: Record<string, unknown>) => {
+    noteScope(userId);
     const res = await postJson(userId, [flow, "sessions"], { userId, ...body });
     return { status: res.status, body: (await res.json()) as { session?: { id: string }; error?: string } };
   };
@@ -399,6 +423,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** POST an action through the host's dispatch, so its concurrency policy applies. The accepted request's id. */
   const post = async (userId: string, sessionId: string, actionName: string, input: unknown, flow = "coordinator") => {
+    noteScope(userId);
     const res = await postJson(userId, [flow, sessionId, "actions", actionName], { userId, input });
     const body = (await res.json()) as { request?: { id: string }; error?: unknown };
     if (res.status !== 202) throw new Error(`POST ${actionName} was refused (${res.status}): ${JSON.stringify(body)}`);
@@ -413,6 +438,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** Run an action on `flow` as `userId`, in process. */
   const act = async (userId: string, sessionId: string, actionName: string, input: unknown, flow = "coordinator", orgId = ORG) => {
+    noteScope(userId, orgId);
     const runtime = await state.getRuntime();
     return (await runAction({
       flow: instances[flow]!,
@@ -426,7 +452,33 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     })) as { output?: any; error?: { message?: string } | unknown; status?: string; requestId?: string };
   };
 
-  /** Every request in the store, once none is still running. */
+  /** Tasks stored for one user, by the partition each is filed in. */
+  const tasksUnder = async (userId: string, orgId: string): Promise<Array<Task & { partition: string }>> => {
+    const runtime = await state.getRuntime();
+    const entries = await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${orgId}`, "tasks/");
+    return Object.entries(entries).map(([key, value]) => ({
+      ...(value.state as Task),
+      partition: key.split("/")[1]!
+    }));
+  };
+
+  /** Stored tasks for the scopes this host has written, each tagged with that scope. */
+  const storedTasks = async (): Promise<Array<Task & { partition: string; scope: string }>> => {
+    const out: Array<Task & { partition: string; scope: string }> = [];
+    for (const scope of scopes) {
+      const split = scope.indexOf("\0");
+      const userId = scope.slice(0, split);
+      const orgId = scope.slice(split + 1);
+      for (const task of await tasksUnder(userId, orgId)) out.push({ ...task, scope });
+    }
+    return out;
+  };
+
+  /**
+   * Every request in the store, once none is still running and no pending
+   * task is waiting on a session a finished task released. That task is the
+   * dispatcher's to start, and the request for it may not be written yet.
+   */
   const settled = async (timeoutMs = 10_000) => {
     const deadline = Date.now() + timeoutMs;
     // Still running: in progress, or ended but not finalized. A record reads
@@ -434,30 +486,31 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     // have run, and a task is settled by that check.
     const running = (r: { status: string; finalizedAtMs?: number | null }) =>
       r.status === "in_progress" || (r.status !== "suspended" && r.status !== "pending" && r.finalizedAtMs == null);
-    for (;;) {
+    /** Requests, and whether a released session still owes a start. One read of each. */
+    const quiet = async () => {
       const all = await (await state.getRuntime()).stores.request.list({});
-      if (!all.some(running)) {
+      const busy = all.some(running);
+      return { all, pending: busy ? false : owesReleasedStart(await storedTasks()) };
+    };
+    for (;;) {
+      const first = await quiet();
+      if (!first.all.some(running) && !first.pending) {
         // Read again after a beat: a dispatch accepted just now may not have
         // written its request yet.
         await sleep(20);
-        const again = await (await state.getRuntime()).stores.request.list({});
-        if (!again.some(running) && again.length === all.length) return again;
-        continue;
+        const again = await quiet();
+        if (!again.all.some(running) && !again.pending && again.all.length === first.all.length) return again.all;
+      } else if (Date.now() > deadline) {
+        throw new Error(
+          first.pending ? "a task waiting on a released session was never dispatched" : "a request never finished"
+        );
       }
-      if (Date.now() > deadline) throw new Error("a request never finished");
       await sleep(10);
     }
   };
 
-  /** Every row of `userId`'s conversation ledger, by partition: read from the store, not through the board. */
-  const rows = async (userId: string): Promise<Array<Task & { partition: string }>> => {
-    const runtime = await state.getRuntime();
-    const entries = await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${ORG}`, "tasks/");
-    return Object.entries(entries).map(([key, value]) => ({
-      ...(value.state as Task),
-      partition: key.split("/")[1]!
-    }));
-  };
+  /** Every task of `userId`'s conversation ledger, by partition: read from the store, not through the board. */
+  const rows = async (userId: string) => tasksUnder(userId, ORG);
 
   /** One row, by the partition it was filed in. */
   const row = async (userId: string, partition: string, taskId: string) =>
@@ -528,6 +581,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** Write a stored row as a crash would leave it: a test's stand-in for a write that landed with nothing after it. */
   const writeRow = async (userId: string, partition: string, task: Task) => {
+    noteScope(userId);
     const store = (await state.getRuntime()).stores.resourceState;
     const key = `tasks/${encodeUserSegment(partition)}/${task.id}`;
     await store.set("user", `${userId}:~org:${ORG}`, key, task as never, "any" as never);

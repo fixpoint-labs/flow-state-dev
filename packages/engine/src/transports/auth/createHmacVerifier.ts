@@ -21,6 +21,7 @@
  * extracts the timestamp (optional) and signature(s) from the header.
  */
 import { createHmac } from "node:crypto";
+import { assertSecret } from "./assert-secret";
 import { constantTimeStringEqual } from "./constant-time";
 
 export type HmacAlgorithm = "sha256" | "sha1" | "sha512";
@@ -89,6 +90,8 @@ export type HmacVerifier = (
  * header value.
  */
 export function createHmacVerifier(options: CreateHmacVerifierOptions): HmacVerifier {
+  const secret = options.secret;
+  assertSecret(secret, "createHmacVerifier");
   const algorithm: HmacAlgorithm = options.algorithm ?? "sha256";
   const encoding: HmacEncoding = options.encoding ?? "hex";
   const format = options.format ?? "raw";
@@ -120,7 +123,7 @@ export function createHmacVerifier(options: CreateHmacVerifierOptions): HmacVeri
     }
 
     const signedPayload = buildSignedPayload(rawBody, parsed.timestamp);
-    const expected = createHmac(algorithm, options.secret)
+    const expected = createHmac(algorithm, secret)
       .update(signedPayload)
       .digest(encoding);
 

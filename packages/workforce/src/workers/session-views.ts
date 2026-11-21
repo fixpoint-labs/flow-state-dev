@@ -110,7 +110,15 @@ const sessionTurnSchema = z.object({
   source: z.string(),
   startedAt: z.number(),
   completedAt: z.number().nullable(),
-  error: z.object({ code: z.string(), message: z.string() }).nullable()
+  // FIX-2771.
+  /** When it ended, completed, failed or aborted; `null` while it runs or waits. A failed turn has no `completedAt`. */
+  endedAt: z.number().nullable(),
+  error: z.object({ code: z.string(), message: z.string() }).nullable(),
+  /** The first turn its history window held, once earlier turns had left it; null while none had. */
+  historyStart: z.object({ requestId: z.string() }).nullable(),
+  // FIX-2848 D3.
+  /** Whether the engine's retry route runs it again for the user: what a screen offers Retry on a failed turn from. */
+  retryable: z.boolean()
 });
 
 const sessionTurnsSchema = z.array(sessionTurnSchema);
@@ -218,7 +226,9 @@ export function defineWorkerSessionsView(installation: WorkerInstallation): Work
 
 /**
  * The session turns view: a session's turns, oldest first, each its status,
- * times, source and error, never its words (those stay on the session
+ * times, source, error, where its history window began (`historyStart`,
+ * which a screen draws as the divider) and whether the engine retries it for
+ * the user (`retryable`, the retry route's own answer), never its words (those stay on the session
  * stream). A turn is a request of one of the turn actions (`TURN_ACTIONS`),
  * at most the 50 newest requests of the session. A session the caller may not
  * read answers nothing. Install it in the roster flow's `views`.
@@ -240,7 +250,10 @@ export function defineSessionTurnsView(): SessionTurnsView {
           source: turn.source,
           startedAt: turn.startedAtMs,
           completedAt: turn.completedAtMs ?? null,
-          error: turn.error ?? null
+          endedAt: turn.endedAtMs ?? null,
+          error: turn.error ?? null,
+          historyStart: turn.historyStart ?? null,
+          retryable: turn.retryable === true
         }));
       }
     })

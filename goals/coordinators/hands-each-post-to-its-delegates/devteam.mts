@@ -24,8 +24,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
+import { isProviderError } from "../../lib/provider.mts";
 import { routedDeliveries, type RoutedDelivery } from "../../lib/routed-tasks.mts";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
+import { sleep } from "../../lib/time.mts";
 
 /** One person the run acts as. */
 export interface Person {
@@ -85,7 +87,6 @@ function connect(shipped: Shipped, origin: string, person: Person): Connected {
 }
 
 const RUNNING = new Set(["pending", "queued", "in_progress", "running"]);
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const hex = () => randomBytes(3).toString("hex");
 const WORDS = ["heron", "copper", "lantern", "marble", "saffron", "willow", "ember", "glacier", "orchid", "tinsel"];
@@ -152,9 +153,6 @@ function parsed(value: unknown): any {
   }
 }
 
-/** A provider error: the model never answered, as opposed to a turn that answered wrong. */
-const providerError = (text: string) => /rate.?limit|429|5\d\d |overloaded|timed? ?out|ECONNRESET|fetch failed|provider|gateway|unavailable|stream failed/i.test(text);
-
 /** Say `words` to the Shift Coordinator in `session`, and read the turn back by its request id. A provider error re-runs it once. */
 async function talk(turns: Turn[], leg: string, who: Connected, session: SessionSummary, words: string): Promise<Turn> {
   const once = async (): Promise<Turn> => {
@@ -174,7 +172,7 @@ async function talk(turns: Turn[], leg: string, who: Connected, session: Session
     return turn;
   };
   let turn = await once();
-  if (turn.status !== "completed" && providerError(turn.reply)) {
+  if (turn.status !== "completed" && isProviderError(turn.reply)) {
     const first = turn.reply;
     turn = await once();
     turn.providerRetry = first.slice(0, 200);

@@ -54,6 +54,7 @@ describe("a lifecycle observer beside the action's block", () => {
       await router.POST(
         new Request("http://localhost/api/flows/observed/sess_observed/actions/run", {
           method: "POST",
+          headers: { "content-type": "application/json" },
           body: JSON.stringify({ userId: "user_observed", input: { value: "v1" } })
         }),
         { params: { path: ["observed", "sess_observed", "actions", "run"] } }

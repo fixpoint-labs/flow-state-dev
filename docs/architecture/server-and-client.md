@@ -49,6 +49,13 @@ const router = createFlowApiRouter({ registry });
 
 The registry indexes by exact instance id: a singleton by its kind, a collection member by its own id, and a collection's bare kind by nothing. See [flows-and-actions](./flows-and-actions.md#flowtype-and-flowinstance) for the declaration contract.
 
+The canonical router refuses POST, PUT, PATCH and DELETE requests carrying
+`Sec-Fetch-Site: cross-site` with 403. A JSON route answers 415 to a non-empty
+body whose `Content-Type` isn't `application/json` (parameters such as
+`; charset=utf-8` are fine); an empty body still reads as `{}`. Inbound transport routes remain governed
+by their adapters. The Node host's `serve()` rejects non-loopback Host headers
+with 403 when bound to loopback; network binds retain their configured hosting.
+
 ### Next.js Catch-All Route
 
 ```ts

@@ -53,6 +53,7 @@ import {
   recordPullRequests as startPullRequestRecorder,
   replacePlanList,
   reportHarnessActivity,
+  reportHarnessEvent,
   type PlanListCollection,
   reportHarnessSpend,
 } from "@flow-state-dev/core/harness";
@@ -61,6 +62,7 @@ import { randomUUID } from "node:crypto";
 import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import type {
   HarnessActivityHook,
+  HarnessEventHook,
   HarnessCallbackContext,
   HarnessResolver,
   HarnessRunOutcome,
@@ -187,6 +189,13 @@ export interface CursorAgentOptions {
    * is not a line a person can read.
    */
   onActivity?: HarnessActivityHook;
+  // FIX-2794.
+  /**
+   * Called on every event the run sends, of any kind, so a host can tell a
+   * working run from a silent one. Not awaited, and a throw is logged and
+   * swallowed.
+   */
+  onEvent?: HarnessEventHook;
   /**
    * Which model the run uses: a fixed id, or a resolver called once per
    * invocation, like `cwd` and `resume`, so one block can run a different
@@ -438,6 +447,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     onSession,
     onSteerable,
     onActivity,
+    onEvent,
     model,
     agent: agentOptions,
     send: sendOptions,
@@ -553,7 +563,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         spent = runSpent;
         runSpent.report();
         steering = offerSteer(run, ctx, onSteerable);
-        const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan, spent, onActivity);
+        const mirrored = await mirrorRun(run, ctx, emitState, name, writePlan, spent, onActivity, onEvent);
         const settled = await settleRun(run, mirrored, ctx.signal);
         runSpent.usage = settled.usage;
         // The settled model wins over the configured or streamed one, as on the handle.
@@ -857,6 +867,7 @@ async function mirrorRun(
   writePlan: PlanWriter | null,
   spent: RunSpent,
   onActivity: HarnessActivityHook | undefined,
+  onEvent: HarnessEventHook | undefined,
 ): Promise<MirrorFacts> {
   const stream = run.stream();
   const iterator = stream[Symbol.asyncIterator]();
@@ -875,6 +886,7 @@ async function mirrorRun(
       pending.catch(() => {});
       const next = await Promise.race([pending, deadline.promise]);
       if (next.done === true) break;
+      reportHarnessEvent(onEvent, ctx);
       for (const event of translateCursorMessage(next.value)) {
         if (event.kind === "run_usage") {
           usage = addUsage(usage, event.usage);

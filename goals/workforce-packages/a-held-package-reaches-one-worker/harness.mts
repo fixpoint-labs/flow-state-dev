@@ -180,6 +180,7 @@ async function main(): Promise<void> {
     const res = await router.POST(
       new Request(`http://goal/api/flows/${path.join("/")}`, {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: USER_ID, input: { message: QUESTION } }),
       }),
       { params: { path } } as never,

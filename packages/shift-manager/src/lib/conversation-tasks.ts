@@ -13,7 +13,9 @@ import { useView } from "@flow-state-dev/react";
 import { pullRequestWait, readSessionPullRequests } from "@flow-state-dev/harness-manager/browser";
 import { taskListViewRef, type TaskListView } from "@flow-state-dev/orchestration/inbox";
 import { useLab } from "./lab-data";
-import { CONVERSATION_BOARD_COLLECTION } from "./reads";
+
+/** A conversation's board, by the id every conversation's board goes by (`<sessionId>.tasks`). */
+const CONVERSATION_BOARD_COLLECTION = "tasks";
 
 /**
  * The name of the conversation board's `listTasks` action, by the task tools'

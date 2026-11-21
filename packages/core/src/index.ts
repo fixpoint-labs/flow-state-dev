@@ -9,7 +9,6 @@ export type {
   FlowContextView,
   FlowStateSettings,
   InferFlowConfigFromSchema,
-  LooseBlockContext,
 } from "./types/block";
 export type {
   HistoryTurn,

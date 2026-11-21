@@ -16,14 +16,27 @@ export const teammates: AppInventory = {
   readModel: ["src/app/"],
   /**
    * The types the screen computes itself, by the module that exports them:
-   * where you are (`Address`), a teammate's look, and what the screen works
-   * out from several reads (its status line, what it needs from you, what
-   * it alerts on, a task's word). Every type in `src/app/` stays on the
-   * allowlist: it is the read model's, and goes with it. A type that leaves
-   * the allowlist for this list names its reason ({ name, reason }).
+   * where you are (`Address`), a teammate's look, what the screen works out
+   * from several reads (its status line, what it needs from you, what it
+   * alerts on, a task's word), and a conversation drawn from its stored
+   * items. A type that left the allowlist for this list names its reason
+   * ({ name, reason }).
    */
   screenTypes: {
     "src/lib/address.ts": ["Address"],
+    "src/lib/conversation.ts": [
+      {
+        name: "ConversationView",
+        reason: "What the conversation's follower assembles from three reads: the session feed's items (as React's `conversationLines` reads them, with the turns), the session turns view's turns and the screen's own Stop.",
+      },
+      {
+        name: "WindowMark",
+        reason: "The divider: which line the worker's word-for-word window starts at, computed by `windowMarkOf` from the items, a turn's `historyStart` and the summary's mark.",
+      },
+    ],
+    "src/lib/files.ts": [
+      { name: "AppConnection", reason: "The page's own base path and fetch, which `fsdev dev` serves it with, for reading a line's files outside the client; no server read." },
+    ],
     "src/lib/attention.ts": ["Alert", "TeammateAttention"],
     "src/lib/looks.ts": ["TeammateColor", "Look"],
     "src/lib/status.ts": ["StatusInputs", "Status", "Need"],

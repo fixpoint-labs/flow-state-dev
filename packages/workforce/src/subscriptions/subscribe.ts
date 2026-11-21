@@ -26,6 +26,7 @@
  */
 import type { BlockContext, SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 import { ROUTINE_CADENCES } from "../routines/keys";
 import { ensurePollSchedule, type SubscriptionPolling } from "./poll";
 import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
@@ -38,6 +39,8 @@ import {
   indexSlotOf,
   listedScreenSchema,
   subscriptionCursorsOf,
+  subscriptionTaskEndingsOf,
+  taskEndingKeyOf,
   subscriptionIndexOf,
   subscriptionsOf,
   type IndexEntry,
@@ -111,7 +114,7 @@ export const subscribeInputSchema = z
       .optional()
       .describe(
         'Narrow what passes: { screen: "labels", any: [...] }, { screen: "words", any: [...] } (title or text, any case), ' +
-          '{ screen: "allow", ids: [...] } (only these senders), { screen: "custom", name } (one of the app\'s own screens, listed in the tool\'s description), ' +
+          '{ screen: "allow", ids: [...], bots?: [...] } (only these senders; with bots, a bot must be in bots and anyone else in ids), { screen: "custom", name } (one of the app\'s own screens, listed in the tool\'s description), ' +
           '{ screen: "interest" } (a model reads what the other screens passed against your interest sentence). Every listed screen must pass.'
       ),
     outsiders: z.literal(true).optional().describe("Also hear people outside the project (not members, collaborators or listed bots). Off by default."),
@@ -170,6 +173,11 @@ export interface SubscribeWrite {
   // FIX-2784; FIX-2535 D3.
   /** Its thread's close reaches it whatever its kinds, screens and cap, then it ends: `followPullRequest`'s. */
   readonly hearsClose?: true;
+  /**
+   * The task it is made for, when the session's own state names none (a coding run in a session
+   * that works many tasks): that task's failure or cancel ends it. Wins over the session's.
+   */
+  readonly taskId?: string;
   // FIX-2536.
   /** The app's polling, when it polls: an enabled subscription under no tenant makes, or speeds up, the user's poll for its thread. */
   readonly polling?: SubscriptionPolling;
@@ -204,7 +212,14 @@ type Life = "fresh" | "keep" | "resume";
  *
  * `undefined` leaves the subscription as it is.
  */
-function nextEntry(current: SubscriptionResourceState | undefined, wanted: SubscriptionResourceState, life: Life): SubscriptionResourceState | undefined {
+function nextEntry(current: SubscriptionResourceState | undefined, asked: SubscriptionResourceState, life: Life): SubscriptionResourceState | undefined {
+  // A follow stays a follow when its own session writes again on the same thread (a routine on the pull
+  // request it follows lands on the same subscription): its close stays heard and, when the write names no
+  // task, its run's task stays, so that task's failure or cancel still ends it. Only the server sets either.
+  const keepsFollow = current?.hearsClose === true && current.thread === asked.thread && asked.hearsClose !== true;
+  const wanted = keepsFollow
+    ? { ...asked, hearsClose: true as const, ...(asked.taskId === undefined && current.taskId !== undefined ? { taskId: current.taskId } : {}) }
+    : asked;
   if (life === "fresh") return wanted;
   if (life === "resume") {
     if (current === undefined || !isPaused(current) || current.provider !== wanted.provider || current.thread !== wanted.thread) return undefined;
@@ -419,7 +434,7 @@ async function writeSubscription(
     sessionId: hears.sessionId,
     flow: flowKind ?? "",
     worker: hears.worker,
-    ...(hears.taskId === undefined ? {} : { taskId: hears.taskId }),
+    ...((write.taskId ?? hears.taskId) === undefined ? {} : { taskId: write.taskId ?? hears.taskId }),
     ...(write.hearsClose === true ? { hearsClose: true as const } : {}),
     userId: identity.userId,
     orgId: identity.orgId,
@@ -445,6 +460,21 @@ async function writeSubscription(
     return isPaused(moved.now)
       ? { refused: "changed: its settings changed while it was resuming, so it stays paused. Resume it again." }
       : { refused: "ended: it ended while it was resuming, so it stays ended." };
+  }
+  // FIX-2788: a task that ended (failed or cancelled) while this write was in flight swept before
+  // the subscription existed. Its mark is written before its sweep, and read here after the commit,
+  // so one of the two always sees the other: this one ends it as the sweep would have.
+  if (moved.now.enabled && moved.now.taskId !== undefined) {
+    const ended = (await subscriptionTaskEndingsOf(ctx).getOptional(taskEndingKeyOf(moved.now.taskId)))?.state;
+    // A retry runs the same task again: an ending marked by an earlier attempt than the one
+    // subscribing is not this attempt's. Without a claim (a subscribe made for the task from
+    // outside its run) any mark counts.
+    const running = currentWorkerClaim(ctx);
+    const current = running?.taskId === moved.now.taskId ? running.attempt : undefined;
+    if (ended !== undefined && (ended.attempt == null || current === undefined || ended.attempt >= current)) {
+      await endSubscription(ctx, id, ended.ending === "errored" ? "task_errored" : "task_cancelled");
+      return { refused: `ended: its task was already ${ended.ending === "errored" ? "failed" : "cancelled"}, so it ended with it.` };
+    }
   }
   await subscriptionCursorsOf(ctx).getOrCreate(id, { seen: [], window: { start: 0, sent: 0 }, held: 0 });
   // The same id on a new thread (a declared routine's entry changed): the thread the write replaced
@@ -539,10 +569,21 @@ async function endSubscription(ctx: BlockContext, id: string, reason: Subscripti
  * End the live and paused subscriptions a task's session made, when the task
  * failed or was cancelled (ER-7 as amended): a paused one ends too, so no
  * resume brings back a failed task's. A completed task's stay: its session
- * keeps hearing its thread until the thread closes.
+ * keeps hearing its thread until the thread closes. It marks the task's
+ * ending before it sweeps, so a subscribe for the task that commits after the
+ * sweep ends too.
  */
-export async function endTaskSubscriptions(ctx: BlockContext, taskId: string, ending: "errored" | "cancelled"): Promise<number> {
+export async function endTaskSubscriptions(
+  ctx: BlockContext,
+  taskId: string,
+  ending: "errored" | "cancelled",
+  attempt?: number
+): Promise<number> {
   const reason: SubscriptionEnd = ending === "errored" ? "task_errored" : "task_cancelled";
+  // The mark first, then the sweep: a subscribe still in flight reads the mark once it commits (FIX-2788).
+  // The latest ending wins: a retried task that ends again marks how it ended this time.
+  // The latest ending wins, with its attempt: a retry's own subscribe isn't ended by an earlier attempt's.
+  await subscriptionTaskEndingsOf(ctx).upsert(taskEndingKeyOf(taskId), { ending, at: Date.now(), ...(attempt === undefined ? {} : { attempt }) });
   let ended = 0;
   // Every subscription in the cell: the collection filters by key prefix only,
   // and a subscription's key names its session and thread, not its task.

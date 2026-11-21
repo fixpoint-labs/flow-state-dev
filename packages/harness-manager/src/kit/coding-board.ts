@@ -1,8 +1,9 @@
 // FIX-2725 D2.
 /**
  * A conversation's coding board as a user view on the harness kit's own
- * `harnesses` flow: the board's task-list rows, each with what holds it for
- * the user and where each answer goes, the harness it runs through, how its
+ * `harnesses` flow: the board's task-list rows, each with its title and the
+ * state the user sees it in (orchestration's `taskView`, read with its asks),
+ * what holds it for the user and where each answer goes, the harness it runs through, how its
  * review ended, where its work landed, why it failed, and the numbers of the
  * pull requests it waits on.
  *
@@ -17,14 +18,17 @@
  *
  * No action runs here. A task's harness is what its run reported, else its
  * worker's `harness:` setting from the roster. Review, landing and error come
- * from the row, read on the server and cut to those fields.
+ * from the row, read on the server and cut to those fields. With a `taskId`
+ * in the input, the row it names also carries its answer (`detail`), cut as
+ * `getTask` cuts output: the read an open task's popup makes. No other row,
+ * and no read without one, carries an answer, so the board stays bounded.
  */
 import { defineView, handler } from "@flow-state-dev/core";
 import { requireRequestHost } from "@flow-state-dev/core/internal";
-import { inboxItems, type InboxHold } from "@flow-state-dev/orchestration/inbox";
-import { listedTaskSchema, taskListEntriesFor } from "@flow-state-dev/orchestration/internal";
-import type { Task } from "@flow-state-dev/orchestration/tasks";
-import type { WorkerInstallation } from "@flow-state-dev/workforce";
+import { inboxItems, taskView, type InboxHold, type TaskViewStatus } from "@flow-state-dev/orchestration/inbox";
+import { listedTaskSchema, readable, taskListEntriesFor } from "@flow-state-dev/orchestration/internal";
+import { isTerminalStatus, type Task } from "@flow-state-dev/orchestration/tasks";
+import { answerTextOf, type WorkerInstallation } from "@flow-state-dev/workforce";
 import {
   conversationLedgerAt,
   conversationLedgerResources,
@@ -41,8 +45,19 @@ import { pullRequestWait, type PullRequestWaitInput } from "../pull-request-wait
 const BOARD = "tasks";
 const UPDATE_TASK_ACTION = "updateTask_tasks";
 
+/**
+ * Every `TaskViewStatus`. `satisfies` holds this list to orchestration's; the
+ * handler's return holds orchestration's to this list, since it writes a
+ * `taskView` state into the row.
+ */
+const TASK_VIEW_STATES = ["queued", "held", "running", "waiting", "failed", "done", "cancelled"] as const satisfies readonly TaskViewStatus[];
+
 /** One task as the coding board answers it. */
 const codingTaskSchema = listedTaskSchema.extend({
+  /** What a screen shows for it: orchestration's `taskView` title, its title, else its goal, else its id. */
+  title: z.string(),
+  /** What the user sees it as: orchestration's `taskView` state of the row, read with its `asks`. */
+  state: z.enum(TASK_VIEW_STATES),
   /** What holds it for the user, each with where its answer goes (the Inbox's hold). */
   asks: z.array(z.custom<InboxHold>((value) => typeof value === "object" && value !== null)),
   /** The harness it runs through: its run's, else its worker's `harness:` setting. `null` for a plain worker's task. */
@@ -51,16 +66,23 @@ const codingTaskSchema = listedTaskSchema.extend({
   review: z.enum(["accepted", "deadline"]).nullable(),
   /** Where an accepted run's work went, once it landed. */
   landed: landedWorkSchema.nullable(),
-  /** Why its last attempt failed; only on a failed task. */
+  /** Why its last attempt failed, or the reason it was cancelled with; `null` otherwise. */
   error: z.string().nullable(),
   /** The numbers of the pull requests it waits on to merge or close; their links are the recorded work view's. */
   pullRequests: z.array(z.number().nullable()),
   /** The flow its run's session runs on, where that run's own stream is read; `null` with no run, or once its session is gone. */
   runFlow: z.string().nullable(),
+  /**
+   * Only on the row the input's `taskId` names, `null` on every other: what it
+   * came back with (a teammate's text, a coding run's `answer`), cut as
+   * `getTask` cuts output, with `answerCut` set when it was.
+   */
+  detail: z.object({ answer: z.string().nullable(), answerCut: z.boolean() }).nullable(),
 });
 
 const codingBoardSchema = z.array(codingTaskSchema);
-const codingBoardInputSchema = z.object({ sessionId: z.string().min(1) });
+/** With `taskId`, every row still comes back, with `detail` filled only on the one it names: an open task's read. */
+const codingBoardInputSchema = z.object({ sessionId: z.string().min(1), taskId: z.string().min(1).optional() });
 
 /** One task of the coding board. */
 export type CodingBoardTask = z.infer<typeof codingTaskSchema>;
@@ -129,20 +151,35 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
           const output = (task?.output ?? {}) as Record<string, unknown>;
           const review = harness !== null && entry.status === "completed" && (output.review === "accepted" || output.review === "deadline") ? output.review : null;
           const wait = task === undefined ? null : pullRequestWait({ status: task.status, holds: task.holds as unknown as PullRequestWaitInput["holds"], steers: task.steers ?? [] });
+          const held = asks.get(entry.id) ?? [];
+          // One `taskView` of the row with its asks gives both its title and its state: neither rule is copied here.
+          const seen = taskView({ ...entry, board: input.sessionId }, held);
           return {
             ...entry,
-            asks: asks.get(entry.id) ?? [],
+            title: seen.title,
+            state: seen.state,
+            asks: held,
             harness,
             review,
             landed: landedOf(output.landed) ?? null,
-            error: entry.status === "errored" && typeof task?.error === "string" ? task.error : null,
+            error: (entry.status === "errored" || entry.status === "cancelled") && typeof task?.error === "string" ? task.error : null,
             pullRequests: wait === null ? [] : wait.pullRequests.map((pullRequest) => pullRequest.number),
             runFlow: task?.run?.sessionId === undefined ? null : (flows.get(task.run.sessionId) ?? null),
+            detail: entry.id === input.taskId ? detailOf(task) : null,
           };
         });
       },
     }),
   });
+}
+
+/** An open task's answer once it ended, cut by `getTask`'s own cut so the two never differ. */
+function detailOf(task: Task | undefined): { answer: string | null; answerCut: boolean } {
+  // Only an ended task's output is its answer: a retried one keeps its last attempt's output while it runs again.
+  const answer = task !== undefined && isTerminalStatus(task.status) ? answerTextOf(task.output) : undefined;
+  if (answer === undefined) return { answer: null, answerCut: false };
+  const { value, cut } = readable(answer);
+  return { answer: value as string, answerCut: cut };
 }
 
 /** The coding board view, as {@link codingBoardView} builds it. Import as a type in client code. */

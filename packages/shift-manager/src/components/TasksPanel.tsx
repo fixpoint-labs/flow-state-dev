@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { columnFor, isDone } from "../lib/columns";
-import { workerLabel } from "../lib/derive";
+import { workerLabel } from "../lib/shift";
 import {
   pullRequestsWaitedOn,
   readPullRequestLinks,
@@ -23,7 +23,8 @@ import {
   type ConversationTask,
 } from "../lib/conversation-tasks";
 import { useLab } from "../lib/lab-data";
-import { conversationBoardRef, type Worker } from "../lib/reads";
+import { conversationBoardRef } from "../lib/boards";
+import type { Worker } from "../lib/workers";
 import { RouteLink } from "./RouteLink";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
 

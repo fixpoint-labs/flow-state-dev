@@ -38,6 +38,7 @@ import { TURN_ACTIONS } from "../../../packages/workforce/src/workers/turn-actio
 import { createWorkforceClient } from "../../../packages/workforce/src/workers/client.ts";
 import { filingSessionIdOf } from "../../../packages/workforce/src/conversation-board/filing-session.ts";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
+import { sleep } from "../../lib/time.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("views-screens-read-sessions");
@@ -97,14 +98,12 @@ function clientOf(base: string, userId: string): { client: Client; views: Call[]
   return { client, views };
 }
 
-const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
 /** Wait, up to `withinMs`, for `check` to hold; the ms it took, or `undefined`. */
 async function within(check: () => Promise<boolean>, from: number, withinMs = 3_000): Promise<number | undefined> {
   for (;;) {
     if (await check()) return Date.now() - from;
     if (Date.now() - from > withinMs) return undefined;
-    await delay(10);
+    await sleep(10);
   }
 }
 
@@ -113,7 +112,7 @@ async function quiet(lists: Array<{ at: number }[]>, quietMs = 800): Promise<voi
     const last = Math.max(0, ...lists.map((list) => list[list.length - 1]?.at ?? 0));
     const wait = last + quietMs - Date.now();
     if (wait <= 0) return;
-    await delay(wait);
+    await sleep(wait);
   }
 }
 
@@ -166,7 +165,7 @@ await runGoal(async (failures, tell) => {
     watch(WORKER_SESSIONS, { worker: "lead" }, sessions);
     watch(SESSION_TURNS, { sessionId: conversation }, turns);
     watch(CODING_BOARD, { sessionId: conversation }, board);
-    await delay(1_500);
+    await sleep(1_500);
     await quiet([alice.views]);
     if (sessions.length === 0 || turns.length === 0 || board.length === 0) failures.push("a:equals-store: a watch never answered at start");
 
@@ -240,7 +239,7 @@ await runGoal(async (failures, tell) => {
           await (stores.request as unknown as { persistItems(id: string, items: unknown[]): Promise<unknown> }).persistItems(requestId, [
             { id: `${requestId}_${chunk}`, type: "message", role: "assistant", status: "in_progress", requestId, itemIndex: chunk, ts: Date.now(), content: [{ type: "output_text", text: `chunk ${chunk} ` }] }
           ]);
-          await delay(25);
+          await sleep(25);
         }
         const ran = (await stores.request.get(requestId))!;
         await stores.request.set(requestId, { ...ran, status: "completed", completedAtMs: Date.now() } as never, ran.version as never);

@@ -24,13 +24,13 @@ import { buildShiftManagerPages, startShiftManager } from "../../lib/shift-manag
 import { loadScriptedClients } from "../../coordinators/files-tasks-down-the-owners-chain/scripted.mts";
 import { requests, sessions, taskRows, type StoredTask } from "../../coordinators/files-tasks-down-the-owners-chain/store.mts";
 import { ALICE, ORG } from "./lab/people.mts";
+import { sleep } from "../../lib/time.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("a-recorded-task-waits-for-dispatch");
 const MODEL = "openai/gpt-5.4-mini";
 const say = (s: string) => console.error(`[recorded-waits ${new Date().toISOString().slice(11, 19)}] ${s}`);
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 600);
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const pick = <T,>(list: readonly T[]): T => list[randomBytes(1)[0]! % list.length]!;
 
 // ---- held out, picked at run time ---------------------------------------------------

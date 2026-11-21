@@ -17,7 +17,6 @@
  */
 import { useState } from "react";
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
-import type { LoadedSnapshot } from "../lib/derive";
 import { cn } from "../lib/utils";
 import {
   ageLabel,
@@ -184,16 +183,16 @@ function WorkerCard({ row }: { row: WorkerUsage }) {
   );
 }
 
-function WorkerUsageSection({ readAt }: { readAt: number }) {
+function WorkerUsageSection() {
   const [days, setDays] = useState<number>(7);
-  const { rows, failure, reread } = useWorkerUsage(readAt, days);
+  const { rows, failure, reread } = useWorkerUsage(days);
   // A Lab that answers no per-worker query shows nothing here.
   if (rows === null) return null;
   return (
     <section className="mt-5" data-testid="worker-usage" data-days={days}>
       <header className="flex flex-wrap items-center gap-3 border-b border-foreground/20 pb-2">
         <h2 className="text-sm font-semibold">Usage by worker</h2>
-        <div role="tablist" aria-label="Period" className="ml-auto flex border border-foreground font-mono text-[11.5px] font-medium" data-testid="worker-usage-period">
+        <div role="tablist" aria-label="Period" className="ml-auto flex border border-foreground font-mono text-xs font-medium" data-testid="worker-usage-period">
           {USAGE_PERIODS.map((period, i) => (
             <button
               key={period.days}
@@ -232,8 +231,8 @@ function WorkerUsageSection({ readAt }: { readAt: number }) {
   );
 }
 
-export function Usage({ snapshot }: { snapshot: LoadedSnapshot }) {
-  const { rows, failure, reread } = useHarnessUsage(snapshot.readAt);
+export function Usage() {
+  const { rows, failure, reread } = useHarnessUsage();
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="usage">
       <header className="border-b border-foreground/20 px-[22px] py-3.5">
@@ -259,7 +258,7 @@ export function Usage({ snapshot }: { snapshot: LoadedSnapshot }) {
         ) : (
           rows.map((row) => <HarnessCard key={row.harness} row={row} />)
         )}
-        <WorkerUsageSection readAt={snapshot.readAt} />
+        <WorkerUsageSection />
       </div>
     </div>
   );

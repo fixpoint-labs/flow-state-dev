@@ -39,7 +39,7 @@ async function startServer(basePath?: string): Promise<string> {
     modelResolver: createMockModelResolver({}),
     stores: { default: { primary: inMemoryStores() } },
   });
-  const handle = await serve(flowState, { port: 0, basePath });
+  const handle = await serve(flowState, { port: 0, host: "127.0.0.1", basePath });
   handles.push(handle);
   await flowState.ready();
   return `http://127.0.0.1:${handle.port}`;

@@ -6,9 +6,8 @@
  * - The feed opens on the session's newest items. A task claimed before that
  *   window still shows its newest steps: attribution learns the board's tasks
  *   from its `task-change` claims, read on their own.
- * - Items come from the feed, so the run's request stream carries only its
- *   status. That stream doesn't reconnect; when it drops while the run is still
- *   going, the Session follows the run again, so its status can still settle.
+ * - Items come from the page's one feed for the run session; the run's status
+ *   is the task's (`TaskProvider`, on the run's own stream), not the Session's.
  */
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,7 +15,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const lab = { client: { userId: "u_1" }, snapshot: undefined, refresh: vi.fn() };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
-const reportStatus = vi.fn();
+// FIX-2774: a task's asks read the inbox view, which this test doesn't serve.
+vi.mock("../src/lib/inbox", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/inbox")>()),
+  useInbox: () => ({ section: undefined, stale: false, refresh: () => {} }),
+}));
+
 const run = { flowId: "agent", sessionId: "s_run", requestId: "req_run" };
 const task = {
   row: undefined,
@@ -25,36 +29,23 @@ const task = {
   gaveUp: false,
   retryRow: vi.fn(),
   retryRun: vi.fn(),
-  reportStatus,
   sent: [] as string[],
-  unstamped: [] as string[],
   boardRef: "conv_1",
   taskId: "t1",
 };
 vi.mock("../src/lib/task", () => ({ useTask: () => task }));
 
-type Follower = { onRead(read: unknown): void; onFailure(failure: unknown): void };
-type RequestFollower = { onItem(item: unknown): void; onStatus(status: string): void; onError(failure: unknown): void };
-const feeds: Follower[] = [];
-const requests: RequestFollower[] = [];
+type Follower = import("./helpers/fake-feed").FakeFeed;
+const { feeds } = vi.hoisted(() => ({ feeds: [] as Follower[] }));
 const readTaskClaims = vi.fn();
-const readRunRecord = vi.fn();
-vi.mock("../src/lib/run", async (original) => ({
-  ...(await original<typeof import("../src/lib/run")>()),
-  followSessionItems: (_client: unknown, _sessionId: string, to: Follower) => {
-    feeds.push(to);
-    return () => {};
-  },
-  followRequest: (_client: unknown, _run: unknown, to: RequestFollower) => {
-    requests.push(to);
-    return { close: () => {} };
-  },
+vi.mock("../src/lib/session-feeds", async () => (await import("./helpers/fake-feed")).fakeFeeds(feeds));
+vi.mock("../src/lib/task-items", async (original) => ({
+  ...(await original<typeof import("../src/lib/task-items")>()),
   readTaskClaims: (...args: unknown[]) => readTaskClaims(...args),
-  readRunRecord: (...args: unknown[]) => readRunRecord(...args),
 }));
 
-import { taskBriefMetadata } from "@flow-state-dev/workforce/browser";
-import { collectionOfBoard } from "../src/lib/reads";
+import { RECEIVED_MESSAGE_DATA_TYPE, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
+import { collectionOfBoard } from "../src/lib/boards";
 import { TaskSession } from "../src/surfaces/TaskSession";
 
 const step = (n: number) => ({
@@ -81,10 +72,7 @@ const claim = {
 
 beforeEach(() => {
   feeds.length = 0;
-  requests.length = 0;
   readTaskClaims.mockReset();
-  readRunRecord.mockReset();
-  reportStatus.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -126,37 +114,6 @@ describe("a task Session that opens on the newest items", () => {
   });
 });
 
-describe("the run's status after its stream drops", () => {
-  it("follows a run still going again, so its end still reaches the screen", async () => {
-    vi.useFakeTimers();
-    readRunRecord.mockResolvedValue({ status: "in_progress" });
-    render(<TaskSession />);
-    await act(async () => feeds.at(-1)!.onRead({ items: [claim, step(1)], truncated: false }));
-    expect(requests).toHaveLength(1);
-
-    await act(async () => requests[0]!.onError({ message: "the stream dropped" }));
-    expect(reportStatus).toHaveBeenCalledWith("in_progress", undefined);
-    await act(async () => vi.advanceTimersByTimeAsync(3_000));
-    expect(requests).toHaveLength(2);
-
-    await act(async () => requests[1]!.onStatus("completed"));
-    expect(reportStatus).toHaveBeenLastCalledWith("completed");
-    // The items stayed through the drop.
-    expect(screen.getAllByTestId("session-item")).toHaveLength(1);
-  });
-
-  it("doesn't follow a run that the record says has ended", async () => {
-    vi.useFakeTimers();
-    readRunRecord.mockResolvedValue({ status: "completed", endedAtMs: 500 });
-    render(<TaskSession />);
-    await act(async () => feeds.at(-1)!.onRead({ items: [claim, step(1)], truncated: false }));
-    await act(async () => requests[0]!.onError({ message: "the stream dropped" }));
-    await act(async () => vi.advanceTimersByTimeAsync(10_000));
-    expect(reportStatus).toHaveBeenCalledWith("completed", 500);
-    expect(requests).toHaveLength(1);
-  });
-});
-
 describe("the task's brief", () => {
   const brief = {
     id: "b1",
@@ -180,7 +137,7 @@ describe("the task's brief", () => {
     // The brief is what the session was handed: no user bubble, and not marked as the user's line.
     expect(within(briefRow!).queryByTestId("message")).toBeNull();
     expect(briefRow!.hasAttribute("data-sent-line")).toBe(false);
-    const line = within(briefRow!).getByTestId("task-brief");
+    const line = briefRow!.querySelector<HTMLElement>("[data-line=brief]")!;
     expect(line.textContent).toContain("Task brief");
     expect(line.textContent).not.toContain("fix the flaky test");
     fireEvent.click(within(line).getByRole("button"));
@@ -189,5 +146,81 @@ describe("the task's brief", () => {
     // Words the user typed still read as theirs, and are still the user's line for jump-to-latest.
     expect(within(typedRow!).getByTestId("message").getAttribute("data-message-role")).toBe("user");
     expect(typedRow!.getAttribute("data-sent-line")).toBe("u1");
+  });
+});
+
+describe("another worker's lines in a task's run", () => {
+  it("names the sender as the conversation does: the Shift Coordinator by its label, not its id", async () => {
+    const received = {
+      id: "r1",
+      type: "data",
+      dataType: RECEIVED_MESSAGE_DATA_TYPE,
+      status: "completed",
+      requestId: "req_run",
+      itemIndex: 1,
+      ts: 101,
+      taskId: "t1",
+      value: { id: "msg_1", from: "ops.shift-coordinator", text: "which branch?" },
+    };
+    render(<TaskSession />);
+    await act(async () => feeds.at(-1)!.onRead({ items: [claim, received], truncated: false }));
+
+    const line = document.querySelector<HTMLElement>("[data-line=received]")!;
+    expect(line.textContent).toContain("Shift Coordinator");
+    expect(line.textContent).not.toContain("ops.shift-coordinator");
+  });
+});
+
+// A run someone stopped says so after its last line, as a conversation does; the board runs it again, so no Retry.
+describe("a stopped run", () => {
+  it("draws its stopped line after its last step, with no Retry", async () => {
+    const stopped = Object.assign(task, { status: "aborted" });
+    try {
+      render(<TaskSession />);
+      await act(async () => feeds.at(-1)!.onRead({ items: [claim, step(1)], truncated: false }));
+      const items = screen.getAllByTestId("session-item");
+      expect(items.at(-1)!.querySelector("[data-line=stopped]")).not.toBeNull();
+      expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+    } finally {
+      delete (stopped as { status?: string }).status;
+    }
+  });
+});
+
+// A failed run's turn is the board's to run again: its failed line offers Retry while the task
+// stands failed on the board, and Retry sends the task back to run, as the task's own Retry does.
+describe("a failed run", () => {
+  const failed = { id: "e1", type: "error", status: "completed", requestId: "req_run", itemIndex: 2, ts: 102, taskId: "t1", message: "the harness crashed", code: "HARNESS" };
+
+  it("draws the shared failed line with Retry while its task stands failed, and Retry runs the task again on its board", async () => {
+    const retryTask = vi.fn(async () => undefined);
+    const held = Object.assign(task, { status: "failed", row: { id: "t1", status: "errored" }, retryTask });
+    try {
+      render(<TaskSession />);
+      await act(async () => feeds.at(-1)!.onRead({ items: [claim, step(1), failed], truncated: false }));
+      const line = document.querySelector<HTMLElement>("[data-line=failed]")!;
+      expect(line.textContent).toContain("the harness crashed");
+      await act(async () => fireEvent.click(within(line).getByRole("button", { name: /Retry/ })));
+      // The task's own Retry, the board's, which reads the row again (task-provider.test).
+      expect(retryTask).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (held as { status?: string }).status;
+      delete (held as { retryTask?: unknown }).retryTask;
+      Object.assign(held, { row: undefined });
+    }
+  });
+
+  it("offers no Retry while the board still runs the task again on its own", async () => {
+    const held = Object.assign(task, { status: "failed", row: { id: "t1", status: "pending" }, retryTask: vi.fn() });
+    try {
+      render(<TaskSession />);
+      await act(async () => feeds.at(-1)!.onRead({ items: [claim, step(1), failed], truncated: false }));
+      expect(document.querySelector("[data-line=failed]")).not.toBeNull();
+      expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+    } finally {
+      delete (held as { status?: string }).status;
+      delete (held as { retryTask?: unknown }).retryTask;
+      Object.assign(held, { row: undefined });
+    }
   });
 });

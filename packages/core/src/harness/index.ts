@@ -28,6 +28,7 @@ export type {
   HarnessActivity,
   HarnessActivityHook,
   HarnessBilling,
+  HarnessEventHook,
   HarnessBlock,
   HarnessCallbackContext,
   HarnessCostBasis,
@@ -117,6 +118,7 @@ export type {
   ObservedPullRequestState,
   PullRequestCollection,
   PullRequestLink,
+  FollowingRun,
   PullRequestFollower,
   PullRequestRecordedCallback,
   RecordedPullRequest,
@@ -143,6 +145,6 @@ export type { HarnessEnvOptions } from "../helpers/harness-env";
 export { harnessSteering } from "../helpers/harness-steering";
 export type { HarnessSteerActionOptions, HarnessSteerAnswer, HarnessSteering } from "../helpers/harness-steering";
 /** A harness's activity events, read off its stream and reported to the host's hook. */
-export { harnessActivityOf, reportHarnessActivity } from "../helpers/harness-activity";
+export { harnessActivityOf, reportHarnessActivity, reportHarnessEvent } from "../helpers/harness-activity";
 /** A run's duration, formatted the way every harness reports it. */
 export { formatRunDuration } from "../helpers/run-duration";

@@ -91,20 +91,27 @@ const packageRules = {
   // worker's sessions over the session client (FIX-1788). The client is
   // isomorphic and imports only core and contracts, so this adds no cycle.
   //
-  // The one engine import is its Node-only `folder` subpath: the walk
-  // primitives every reader of a kit's folder shares, which moved there from
-  // workforce's loader so the kit system does not depend on one kit
-  // (FIX-2626). It imports only core types and node:fs, never the runtime,
-  // so the rest of the engine stays denied.
+  // Two engine imports. Its Node-only `folder` subpath: the walk primitives
+  // every reader of a kit's folder shares, which moved there from workforce's
+  // loader so the kit system does not depend on one kit (FIX-2626); it imports
+  // only core types and node:fs, so it adds no edge. And `engine/host`, the
+  // inbound transport contract, for the connector keys route the project
+  // blocks serve (`projects/mcp-credentials.ts`, FIX-2775 D3): a route reads
+  // and writes a user's key through the host's stores, never an action. That
+  // one is the engine's runtime, so `engine` is allowed and counted as an
+  // edge; the engine never imports workforce, so it closes no cycle.
+  // `onlySpecifiers` holds it to `engine/host`: any other engine specifier
+  // from workforce (the root, `engine/internal`, ...) is an error.
   //
   // React is reached only from its `/react` entry (`src/react/`), the
   // components bound to its views (FIX-2627): React is an optional peer, so
   // the package root and every other entry stay free of it.
   workforce: {
-    allow: new Set(["contracts", "core", "orchestration", "client"]),
+    allow: new Set(["contracts", "core", "orchestration", "client", "engine"]),
     typeOnly: new Set([]),
-    deny: new Set(["engine", "react", "patterns"]),
+    deny: new Set(["react", "patterns"]),
     allowSubpaths: new Set(["@flow-state-dev/engine/folder"]),
+    onlySpecifiers: { engine: new Set(["@flow-state-dev/engine/host"]) },
     allowUnder: { dir: "src/react", specifiers: new Set(["@flow-state-dev/react/internal"]) }
   }
 };
@@ -222,6 +229,12 @@ for (const pkg of packages) {
       }
 
       graph.get(pkg).add(targetPkg);
+
+      // An allowed package reached only through the specifiers a rule names.
+      const only = rules.onlySpecifiers?.[targetPkg];
+      if (only !== undefined && !only.has(specifier)) {
+        errors.push(`${filePath}: package ${pkg} may import ${specifierFor(targetPkg)} only as ${[...only].join(", ")}, not ${specifier}`);
+      }
 
       if (rules.deny?.has(targetPkg)) {
         errors.push(`${filePath}: forbidden import from ${specifierFor(targetPkg)}`);

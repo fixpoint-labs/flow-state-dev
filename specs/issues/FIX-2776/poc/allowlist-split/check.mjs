@@ -51,8 +51,12 @@ const byFile = {
   "src/lib/usage.ts": "FIX-2775",
   "src/lib/mcp-credentials.ts": "FIX-2775",
 };
-/** Owner by `file#symbol`, for a file whose entries split between children. None today: each file has one owner. */
-const bySymbol = {};
+/**
+ * Owner by `file#symbol`, for a file whose entries split between children.
+ * `lab-data.tsx`'s one entry, `settled`, is the answer's follow, which goes
+ * with the answer call: FIX-2774's (its spec, siblings table).
+ */
+const bySymbol = { "src/lib/lab-data.tsx#settled": "FIX-2774" };
 
 const keyOf = (entry) => `${entry.file}#${entry.symbol}#${entry.kind}`;
 const failures = [];

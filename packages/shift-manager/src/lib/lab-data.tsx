@@ -2,13 +2,13 @@
 /**
  * The one snapshot every surface draws from, and when it is read again.
  *
- * S3's contract: a refresh on boot, on an organization switch, after a
- * successful answer to an ask and again once the run it resumed stops, after
+ * S3's contract: a refresh on boot, on an organization switch, after
  * each line the Shift Coordinator takes (its turn may have created a project or
  * hired a worker), on Retry, and when the user asks (R, or *refresh* on the
  * summary's *as of* line). Never on a route or tab change, so moving around the
- * app costs no reads. Inbox, the Stream's asks, the sidebar counts and the
- * Tasks list all come from the same snapshot.
+ * app costs no reads. The Inbox, its count, Tasks and a task's asks read
+ * workforce's inbox view instead (`inbox.ts`): an answer is no reason to read
+ * the snapshot again.
  *
  * It also reads again on its own when another session changes what it shows:
  * one live read through the provider's client (`client.live`), on the topics
@@ -27,13 +27,11 @@
  * `useReportFeedState` (`feed-health.ts`).
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { ResumeAction } from "@flow-state-dev/core/types";
 import type { Client, LiveRead } from "@flow-state-dev/client";
-import type { InboxAnswer, InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { isFeedStale, type ConnectionFeedStatus } from "../components/flow-state/connection-banner";
 import { connect, type Connection } from "./connection";
 import { FeedHealthContext, worstFeedState, type ReportFeed } from "./feed-health";
-import { createLabReader, type Ask, type LabReader, type LabSnapshot } from "./reads";
+import { createLabReader, type LabReader, type LabSnapshot } from "./reads";
 import { heard, heardSessionIds, SNAPSHOT_POLL_MS, snapshotPaths, snapshotTopics } from "./snapshot-subscribe";
 
 /** What a surface reads from the provider. */
@@ -62,37 +60,7 @@ export type LabData = {
   stale: boolean;
   /** Read everything again, as the user asked: counts dim until it lands. */
   refresh(): Promise<void>;
-  /** Answer an ask; on success, refresh so it leaves every surface together. */
-  answer(ask: Ask, answer: { action: ResumeAction; data?: unknown }): Promise<void>;
-  /** Answer one of an Inbox item's holds (a task's question or confirm); on success, refresh. */
-  answerOne(hold: InboxHold<unknown>, answer: InboxAnswer): Promise<void>;
-  /**
-   * The session of the latest ask answered here, with a count that moves once
-   * the answer lands and again once the run it resumed stops running.
-   * `undefined` before any answer.
-   */
-  answered: { sessionId: string; count: number } | undefined;
 };
-
-/** How often an answered request's status is read while it runs on, and for how long. */
-const SETTLE_POLL_MS = 1_000;
-const SETTLE_TIMEOUT_MS = 130_000;
-
-/**
- * Wait until the request an answer resumed stops running (`wait()`: a resumed
- * run counts as running while the server holds it, even before its record
- * leaves `suspended`), or `stop` aborts (the provider is gone, or reads
- * another Lab), whichever is first. A read that fails, or a run still going
- * after {@link SETTLE_TIMEOUT_MS}, ends the wait too, and the snapshot read
- * after it says what it can.
- */
-async function settled(client: Client, flowId: string, requestId: string, stop: AbortSignal): Promise<void> {
-  await client
-    .flow(flowId)
-    .request(requestId)
-    .wait({ pollMs: SETTLE_POLL_MS, timeoutMs: SETTLE_TIMEOUT_MS, signal: stop })
-    .catch(() => undefined);
-}
 
 const LabContext = createContext<LabData | null>(null);
 
@@ -106,20 +74,11 @@ export function LabProvider({ connection, children }: { connection: Connection; 
   // Refreshes in a row that couldn't reach the Lab after a good read. The snapshot stays; the read is `lapsed`.
   const [lapses, setLapses] = useState(0);
   const [feeds, setFeeds] = useState<ReadonlyMap<string, ConnectionFeedStatus>>(new Map());
-  const [answered, setAnswered] = useState<LabData["answered"]>(undefined);
   // The snapshot on screen is a good read of this client's Lab: a later unreachable one doesn't replace it.
   const loaded = useRef(false);
-  // This client's answers: once the client changes or the provider unmounts, this aborts, and an
-  // answer given on it reads and follows nothing more. The controller an answer took is the one
-  // aborted; only the next client's effect, finding it aborted, makes a new one.
-  const following = useRef<AbortController | null>(null);
   useEffect(() => {
     loaded.current = false;
-    if (following.current?.signal.aborted === true) following.current = null;
-    const controller = (following.current ??= new AbortController());
-    return () => controller.abort();
   }, [client]);
-  const bump = useCallback((sessionId: string) => setAnswered((last) => ({ sessionId, count: (last?.count ?? 0) + 1 })), []);
   // Only the latest refresh may land: an older one finishing late would draw
   // a Lab that has moved on.
   const generation = useRef(0);
@@ -205,37 +164,9 @@ export function LabProvider({ connection, children }: { connection: Connection; 
   const health = worstFeedState([read, ...feeds.values()]);
   const stale = isFeedStale(health);
 
-  const answer = useCallback<LabData["answer"]>(
-    async (ask, value) => {
-      // Taken before any wait: a switch to another Lab meanwhile aborts it, and this answer stops there.
-      const stop = (following.current ??= new AbortController()).signal;
-      await reader.resume(ask, value);
-      if (stop.aborted) return;
-      bump(ask.sessionId);
-      await refresh();
-      // The run goes on without this page: follow it, so what it did with the answer is drawn too.
-      if (ask.flowId !== null && !stop.aborted) {
-        void settled(client, ask.flowId, ask.item.requestId, stop).then(() => {
-          if (stop.aborted) return;
-          bump(ask.sessionId);
-          void readLab(false);
-        });
-      }
-    },
-    [client, reader, refresh, readLab, bump],
-  );
-
-  const answerOne = useCallback<LabData["answerOne"]>(
-    async (hold, value) => {
-      await reader.answerOne(hold, value);
-      await refresh();
-    },
-    [reader, refresh],
-  );
-
   const value = useMemo<LabData>(
-    () => ({ connection, client, reader, snapshot, refreshing, asking, health, stale, refresh, answer, answerOne, answered }),
-    [connection, client, reader, snapshot, refreshing, asking, health, stale, refresh, answer, answerOne, answered],
+    () => ({ connection, client, reader, snapshot, refreshing, asking, health, stale, refresh }),
+    [connection, client, reader, snapshot, refreshing, asking, health, stale, refresh],
   );
   return (
     <LabContext.Provider value={value}>

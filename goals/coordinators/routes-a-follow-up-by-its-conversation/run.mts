@@ -34,6 +34,7 @@ import {
   silentLogger,
   stripIntentOverrides
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 // A container's FSDEV_DEFAULT_MODEL / FSDEV_INTENT_* would swap the answers' model under the resolver.
 stripIntentOverrides();
@@ -56,8 +57,6 @@ const ROUTE_MODEL = "vercel:typesafe-ai/jev";
 type Thread = { on: string; opener: string; followUp: string };
 
 type Message = { role: string; text: string };
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** The app's model resolver, on the Vercel AI Gateway. */
 async function gatewayResolver(apiKey: string): Promise<ModelResolver> {

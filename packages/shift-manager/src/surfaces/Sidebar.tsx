@@ -5,9 +5,10 @@
  * with the ⌘K tip and the on-shift count. A header above them all carries
  * the mark, which changes the theme with a click, and names the theme.
  *
- * Every entry is drawn from the one snapshot, so a count and the screen it
- * opens always agree; every status and status count from its one
- * `workerStates` result, so they agree with Roster. PROJECTS lists each project,
+ * Every count is drawn from the read its screen draws, so a count and the
+ * screen it opens always agree; every status and status count from its one
+ * `workerStates` result over the directory and the Inbox view, so they agree
+ * with Roster. PROJECTS lists each project,
  * its workstreams beneath it while it is open, read as its view reads them;
  * TEAMS is one row per
  * team with a status square per worker, the user's own workers included,
@@ -31,13 +32,14 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { themeLabel, type ThemeLook } from "../lib/theme";
 import type { Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
-import { useRoster, withRoster } from "../lib/roster";
-import { openTasks, projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
-import { useProjectRead, type WorkstreamEntry } from "../lib/projects";
-import type { Project } from "../lib/reads";
+import { useProjects, useWorkers } from "../lib/directory";
+import { workerLabel, workerStates, shiftCounts, teamsOf } from "../lib/shift";
+import { openBoardTasks, useInbox } from "../lib/inbox";
+import { useProjectWorkstreams, type WorkstreamEntry } from "../lib/projects";
+import type { Project } from "../lib/project";
 import { initialsOf } from "../lib/shell";
 import { useShiftCoordinatorWorking } from "../lib/working";
-import { ASKING_CLASS, Meta, PartialMark, SectionFailure, ShiftMark } from "../components/ui";
+import { Meta, PartialMark, SectionFailure, ShiftMark } from "../components/ui";
 import { ShiftManagerMark } from "../components/ShiftManagerMark";
 import { RouteLink } from "../components/RouteLink";
 import type { Gaps } from "../gaps";
@@ -66,7 +68,7 @@ function NavItem({
       to={to}
       aria-current={active ? "page" : undefined}
       data-testid={testId}
-      className={`flex w-full items-center gap-[9px] px-[7px] py-1.5 text-left text-[13.5px] ${
+      className={`flex w-full items-center gap-[9px] px-[7px] py-1.5 text-left text-sm ${
         active ? "bg-accent font-bold text-accent-foreground" : "font-medium hover:bg-foreground/6"
       }`}
     >
@@ -121,11 +123,12 @@ function ShiftCoordinatorEntry({ active }: { active: boolean }) {
       to={{ level: "shift-coordinator" }}
       aria-current={active ? "page" : undefined}
       data-testid="nav-shift-coordinator"
-      className={`mb-[5px] flex w-full items-center gap-[9px] border p-[7px] text-left text-[13.5px] font-semibold ${
+      className={`mb-[5px] flex w-full items-center gap-[9px] border p-[7px] text-left text-sm font-semibold ${
         active ? "border-primary bg-primary text-primary-foreground" : "border-foreground/30 bg-card text-foreground hover:border-foreground"
       }`}
     >
       <span
+        // eslint-disable-next-line fsd/no-hardcoded-text-size -- a two-letter glyph drawn to fit its 18px box, not text a user reads.
         className={`flex size-[18px] shrink-0 items-center justify-center border font-mono text-[7.5px] font-semibold ${
           active ? "border-primary-foreground bg-primary-foreground text-primary" : "border-primary bg-primary text-primary-foreground"
         }`}
@@ -229,6 +232,7 @@ function SidebarRail({
       <SidebarToggle collapsed onToggle={onToggle} />
       <div className="mt-2 flex flex-col items-center gap-1">
         <RailItem label="Shift Coordinator" active={route.level === "shift-coordinator"} to={{ level: "shift-coordinator" }} testId="rail-shift-coordinator">
+          {/* eslint-disable-next-line fsd/no-hardcoded-text-size -- a two-letter glyph drawn to fit its 18px box, not text a user reads. */}
           <span className="flex size-[18px] items-center justify-center border border-primary bg-primary font-mono text-[7.5px] font-semibold text-primary-foreground" aria-hidden>
             SC
           </span>
@@ -236,7 +240,7 @@ function SidebarRail({
         <RailItem label="Inbox" active={route.level === "inbox"} to={{ level: "inbox", item: null }} testId="rail-inbox">
           <NavIcon name="inbox" />
           {waiting ? (
-            <span className="absolute -top-0.5 -right-0.5 bg-attention px-[3px] font-mono text-[9px] font-semibold leading-tight text-attention-foreground tabular-nums" data-testid="rail-inbox-count">
+            <span className="absolute -top-0.5 -right-0.5 bg-attention px-[3px] font-mono text-xs font-semibold leading-tight text-attention-foreground tabular-nums" data-testid="rail-inbox-count">
               {inboxCount}
             </span>
           ) : null}
@@ -276,24 +280,14 @@ function SidebarRail({
  * Only an open project's entries are read, by its one prefix, as its view
  * reads them; a closed one costs nothing.
  */
-function ProjectGroup({
-  project,
-  route,
-  readAt,
-}: {
-  project: Project;
-  route: Route;
-  readAt: number;
-}) {
+function ProjectGroup({ project, route }: { project: Project; route: Route }) {
   // `null` follows the route; a toggle overrides it.
   const [toggled, setToggled] = useState<boolean | null>(null);
   const { id, title, visibility } = project;
   // A project's address is its visibility and its id: a private project and a shared one can share an id.
   const here = route.level === "project" && route.projectId === id && (route.visibility ?? "shared") === visibility;
   const open = toggled ?? here;
-  const { read, reread } = useProjectRead({ visibility, id }, open, readAt);
   const testId = visibility === "private" ? `nav-project-private-${id}` : `nav-project-${id}`;
-  const entries = read !== undefined && "value" in read && read.value !== null ? read.value.entries : undefined;
   const to = (entry?: { owner: string; id: string }): Route => ({
     level: "project",
     projectId: id,
@@ -312,7 +306,7 @@ function ProjectGroup({
           data-testid={`${testId}-toggle`}
           className="flex size-6 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
         >
-          <Meta className={`inline-flex size-3 items-center justify-center text-[11px] transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}>▸</Meta>
+          <Meta className={`inline-flex size-3 items-center justify-center text-xs transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}>▸</Meta>
         </button>
         <div className="min-w-0 flex-1">
           <NavItem
@@ -323,30 +317,38 @@ function ProjectGroup({
           />
         </div>
       </div>
-      {!open ? null : (
-        <div className="pl-6" data-testid="nav-project-workstreams">
-          {read !== undefined && "failure" in read ? (
-            <p className="px-1.5 py-[5px] text-xs text-muted-foreground" data-testid="nav-workstreams-failure">
-              Workstreams didn't load.{" "}
-              <button type="button" className="underline" onClick={reread}>
-                Retry
-              </button>
-            </p>
-          ) : entries === undefined ? null : entries.length === 0 ? (
-            <p className="px-1.5 py-[5px] text-xs text-muted-foreground" data-testid="nav-workstreams-none">
-              No workstreams
-            </p>
-          ) : (
-            entries.map((entry) => (
-              <StreamItem
-                key={`${entry.owner}/${entry.id}`}
-                entry={entry}
-                active={here && route.entry?.owner === entry.owner && route.entry.id === entry.id}
-                to={to({ owner: entry.owner, id: entry.id })}
-              />
-            ))
-          )}
-        </div>
+      {!open ? null : <ProjectWorkstreams project={project} route={route} to={to} />}
+    </div>
+  );
+}
+
+/** An open project's workstreams in the sidebar: read only while it is open, so a closed one costs nothing. */
+function ProjectWorkstreams({ project, route, to }: { project: Project; route: Route; to: (entry?: { owner: string; id: string }) => Route }) {
+  const { value, failure, refresh: reread } = useProjectWorkstreams({ visibility: project.visibility, id: project.id });
+  const entries = value?.entries;
+  const here = route.level === "project" && route.projectId === project.id && (route.visibility ?? "shared") === project.visibility;
+  return (
+    <div className="pl-6" data-testid="nav-project-workstreams">
+      {entries === undefined && failure !== undefined ? (
+        <p className="px-1.5 py-[5px] text-xs text-muted-foreground" data-testid="nav-workstreams-failure">
+          Workstreams didn't load.{" "}
+          <button type="button" className="underline" onClick={reread}>
+            Retry
+          </button>
+        </p>
+      ) : entries === undefined ? null : entries.length === 0 ? (
+        <p className="px-1.5 py-[5px] text-xs text-muted-foreground" data-testid="nav-workstreams-none">
+          No workstreams
+        </p>
+      ) : (
+        entries.map((entry) => (
+          <StreamItem
+            key={`${entry.owner}/${entry.id}`}
+            entry={entry}
+            active={here && route.entry?.owner === entry.owner && route.entry.id === entry.id}
+            to={to({ owner: entry.owner, id: entry.id })}
+          />
+        ))
       )}
     </div>
   );
@@ -362,11 +364,11 @@ function StreamItem({ entry, active, to }: { entry: WorkstreamEntry; active: boo
       data-testid="nav-workstream"
       data-owner={entry.owner}
       data-workstream-id={entry.id}
-      className={`flex w-full items-center gap-[7px] px-1.5 py-[5px] text-left text-[13px] ${
+      className={`flex w-full items-center gap-[7px] px-1.5 py-[5px] text-left text-sm ${
         active ? "bg-accent font-semibold text-accent-foreground" : "hover:bg-foreground/6"
       }`}
     >
-      <Meta className="text-[11.5px] text-muted-foreground">#</Meta>
+      <Meta className="text-xs text-muted-foreground">#</Meta>
       <span className="min-w-0 flex-1 truncate" data-look="nav-label">
         {entry.title}
       </span>
@@ -376,15 +378,16 @@ function StreamItem({ entry, active, to }: { entry: WorkstreamEntry; active: boo
 
 // BR-22.
 /** PROJECTS: each project by title, with its workstreams beneath it while it is open. */
-function ProjectsSection({ snapshot, route, onRetry }: { snapshot: LoadedSnapshot; route: Route; onRetry: () => void }) {
-  const view = projectsOf(snapshot);
-  if (!view.ok) {
-    return <SectionFailure what="Projects" failure={view.failure} onRetry={onRetry} testId="projects-failure" />;
+function ProjectsSection({ route }: { route: Route }) {
+  const { section, refresh } = useProjects();
+  if (section === undefined) return null;
+  if (!section.ok) {
+    return <SectionFailure what="Projects" failure={section.failure} onRetry={refresh} testId="projects-failure" />;
   }
   return (
     <>
-      {view.value.projects.map((project) => (
-        <ProjectGroup key={`${project.visibility}/${project.id}`} project={project} route={route} readAt={snapshot.readAt} />
+      {section.value.map((project) => (
+        <ProjectGroup key={`${project.visibility}/${project.id}`} project={project} route={route} />
       ))}
     </>
   );
@@ -409,21 +412,18 @@ export function Sidebar({
   collapsed: boolean;
   onToggle: () => void;
 }) {
-  const { snapshot, refresh, client, asking } = useLab();
-  const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
-  const retry = () => void refresh();
-  // The counts dim only while a read the user asked for runs.
-  const dim = asking ? ` ${ASKING_CLASS}` : "";
+  const { client } = useLab();
+  const directory = useWorkers();
+  const { inventory, roster } = directory;
 
-  const inboxCount = loaded === undefined ? "…" : loaded.inbox.ok ? loaded.inbox.value.length : "!";
-  const tasksCount = loaded === undefined ? "…" : openTasks(loaded).length;
-  const waiting = loaded !== undefined && loaded.inbox.ok && loaded.inbox.value.length > 0;
-  // The user's own workers are on their roster, not in the inventory: joined as Roster joins them.
-  const roster = useRoster();
-  const joined = loaded === undefined ? undefined : withRoster(loaded, roster);
+  // FIX-2774: the Inbox count and the Tasks count are the inbox view's, the same answer those screens list.
+  const inbox = useInbox().section;
+  const inboxCount = inbox === undefined ? "…" : inbox.ok ? inbox.value.items.length : "!";
+  const tasksCount = inbox === undefined ? "…" : inbox.ok ? openBoardTasks(inbox.value).length : "!";
+  const waiting = inbox?.ok === true && inbox.value.items.length > 0;
   // With the inventory unread and nobody on the roster, TEAMS has only its failure to show.
-  const drawn = joined !== undefined && (loaded?.inventory.ok === true || joined.workers.length > 0) ? joined : undefined;
-  const states = drawn === undefined ? undefined : workerStates(drawn.snapshot);
+  const drawn = inventory !== undefined && (inventory.ok || directory.workers.length > 0) ? directory : undefined;
+  const states = drawn === undefined ? undefined : workerStates(drawn.workers, inbox?.ok === true ? inbox.value : undefined);
   const counts = states === undefined ? undefined : shiftCounts(states);
   const partial = states?.partial === true ? <PartialMark title={gaps.roster.partial} /> : null;
 
@@ -455,11 +455,10 @@ export function Sidebar({
                 mark={
                   // v2's badge (v2:60): the highlighter only while an ask waits on the user.
                   <span
-                    className={`px-[5px] font-mono text-[10.5px] font-semibold tabular-nums ${waiting ? "bg-attention text-attention-foreground" : "text-muted-foreground"}${dim}`}
+                    className={`px-[5px] font-mono text-xs font-semibold tabular-nums ${waiting ? "bg-attention text-attention-foreground" : "text-muted-foreground"}`}
                     data-look="meta-count"
                     data-testid="nav-inbox-count"
                     data-waiting={waiting}
-                    data-asking={asking ? "true" : undefined}
                   >
                     {inboxCount}
                   </span>
@@ -472,7 +471,7 @@ export function Sidebar({
                 label="Tasks"
                 icon={<NavIcon name="tasks" />}
                 mark={
-                  <Meta role="count" className={`ml-2 tabular-nums text-info${dim}`} testId="nav-tasks-count">
+                  <Meta role="count" className="ml-2 tabular-nums text-info" testId="nav-tasks-count">
                     {tasksCount}
                   </Meta>
                 }
@@ -514,7 +513,7 @@ export function Sidebar({
 
             <Heading testId="projects-heading">PROJECTS</Heading>
             <div data-testid="projects">
-              {loaded === undefined ? null : <ProjectsSection snapshot={loaded} route={route} onRetry={retry} />}
+              <ProjectsSection route={route} />
             </div>
 
             <Heading testId="teams-heading" aside="on shift">
@@ -529,7 +528,7 @@ export function Sidebar({
                     aria-current={route.level === "roster" && route.team === team ? "page" : undefined}
                     data-testid="team"
                     data-team={team}
-                    className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[13px] ${
+                    className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm ${
                       route.level === "roster" && route.team === team ? "bg-accent text-accent-foreground" : "hover:bg-foreground/6"
                     }`}
                   >
@@ -550,8 +549,8 @@ export function Sidebar({
                   </RouteLink>
                 ))
               )}
-              {loaded === undefined || loaded.inventory.ok ? null : (
-                <SectionFailure what="Teams" failure={loaded.inventory.failure} onRetry={retry} testId="teams-failure" />
+              {inventory === undefined || inventory.ok ? null : (
+                <SectionFailure what="Teams" failure={inventory.failure} onRetry={directory.refresh} testId="teams-failure" />
               )}
               {roster !== undefined && "failure" in roster ? (
                 <p className="px-2 py-1.5 text-xs text-muted-foreground" data-testid="teams-own-failure">
@@ -570,11 +569,11 @@ export function Sidebar({
             />
           </div>
           <footer
-            className="flex flex-col gap-[9px] border-t border-foreground/20 px-3 pt-2.5 pb-3 font-mono text-[11px] font-medium text-muted-foreground"
+            className="flex flex-col gap-[9px] border-t border-foreground/20 px-3 pt-2.5 pb-3 font-mono text-xs font-medium text-muted-foreground"
             data-testid="sidebar-footer"
             data-look="meta-meta"
           >
-            <p className="text-[10.5px]" data-testid="jump-tip">
+            <p className="text-xs" data-testid="jump-tip">
               <kbd>⌘K</kbd> to go to anything
             </p>
             <p className="flex items-center gap-3">
@@ -588,7 +587,7 @@ export function Sidebar({
                 </>
               )}
               <span
-                className="ml-auto flex size-[22px] shrink-0 items-center justify-center border border-foreground text-[10px] text-foreground"
+                className="ml-auto flex size-[22px] shrink-0 items-center justify-center border border-foreground text-xs text-foreground"
                 title={client.userId}
                 aria-label={`Signed in as ${client.userId}`}
                 data-testid="footer-user"

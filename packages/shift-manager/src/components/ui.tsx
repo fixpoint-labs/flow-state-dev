@@ -2,16 +2,16 @@
  * Shift Manager's small shared pieces: the named empty state, a failed section with
  * Retry, tabs whose selection lives in the URL, a worker's status mark, a feed's
  * Load earlier, and the parts of design v2's look every screen draws with: a screen's title,
- * mono meta text, a task's state square, and the snapshot's *as of* line with
- * the dimming its counts take while a read the user asked for runs.
+ * mono meta text, a task's state square, and the *as of* line that says when
+ * a screen's reads last landed.
  *
  * Every piece is square (v2 draws no rounded corner) and paints only tokens.
  */
 import { useState, type ReactNode } from "react";
 import type { Column } from "../lib/columns";
-import type { ShiftStatus } from "../lib/derive";
+import type { ShiftStatus } from "../lib/shift";
 import { clockTime } from "../lib/shell";
-import type { Failure } from "../lib/reads";
+import type { Failure } from "../lib/failure";
 import { cn } from "../lib/utils";
 
 /**
@@ -144,14 +144,14 @@ export function Tabs<T extends string>({
 export function ScreenTitle({ children, scale = "screen", testId }: { children: ReactNode; scale?: "screen" | "shift-coordinator" | "detail"; testId?: string }) {
   if (scale === "detail") {
     return (
-      <h2 className="text-[26px] leading-[1.15] font-bold tracking-[-0.03em]" data-look="detail-title" data-testid={testId}>
+      <h2 className="text-2xl leading-[1.15] font-bold tracking-[-0.03em]" data-look="detail-title" data-testid={testId}>
         {children}
       </h2>
     );
   }
   return (
     <h1
-      className={`font-bold ${scale === "shift-coordinator" ? "text-[22px] tracking-[-0.03em]" : "text-lg tracking-[-0.02em]"}`}
+      className={`font-bold ${scale === "shift-coordinator" ? "text-xl tracking-[-0.03em]" : "text-lg tracking-[-0.02em]"}`}
       data-look="screen-title"
       data-testid={testId}
     >
@@ -163,11 +163,11 @@ export function ScreenTitle({ children, scale = "screen", testId }: { children: 
 /** v2's mono sizes, by what the text is (v2:30, 42, 60, 74, 107, 220). */
 const META_SIZE = {
   /** A section label: PROJECTS, TEAMS (10px, spaced caps). */
-  label: "text-[10px] tracking-[0.14em]",
+  label: "text-xs tracking-[0.14em]",
   /** A count beside a name (10.5px). */
-  count: "text-[10.5px]",
+  count: "text-xs",
   /** A meta line, a footer, an id (11px). */
-  meta: "text-[11px]",
+  meta: "text-xs",
   /** A control's text: a tab, a field, a button (12px). */
   control: "text-xs",
 } as const;
@@ -195,18 +195,12 @@ export function Meta({
 }
 
 /**
- * Classes for counts while a read the user asked for runs (`useLab().asking`):
- * dimmed until it lands. A read nobody asked for gives no sign.
- */
-export const ASKING_CLASS = "opacity-60 transition-opacity";
-
-/**
- * When the snapshot was last read, *as of 14:02 · refresh*, never that it is
- * live. *refresh* reads the Lab now, as R does.
+ * When a screen's reads last landed, *as of 14:02 · refresh*, never that they
+ * are live. *refresh* reads them again now, as R does.
  */
 export function AsOf({ readAt, onRefresh, testId }: { readAt: number; onRefresh: () => void; testId?: string }) {
   return (
-    <p className="font-mono text-[11px] font-medium text-muted-foreground" data-testid={testId}>
+    <p className="font-mono text-xs font-medium text-muted-foreground" data-testid={testId}>
       as of <time dateTime={new Date(readAt).toISOString()}>{clockTime(readAt)}</time>
       {" · "}
       <button type="button" className="underline hover:text-foreground" onClick={onRefresh} title="Read the Lab again (R)" data-testid={testId === undefined ? undefined : `${testId}-refresh`}>
@@ -250,23 +244,13 @@ export function ShiftMark({ status, className = "size-2" }: { status: ShiftStatu
   return <span className={`inline-block shrink-0 border ${fill} ${className}`} data-mark={status} aria-hidden />;
 }
 
-/** A worker's status, as its mark and its word. */
-export function StatusWord({ status }: { status: ShiftStatus }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="status-word" data-status={status}>
-      <ShiftMark status={status} />
-      {status}
-    </span>
-  );
-}
-
 /**
  * The mark every screen that draws a status or a count shows when the status
  * result is partial (asks did not load). The words are the caller's.
  */
 export function PartialMark({ title }: { title: string }) {
   return (
-    <span className="ml-1 border border-dashed border-muted-foreground px-1 text-[10px] text-muted-foreground" title={title} data-testid="partial-mark">
+    <span className="ml-1 border border-dashed border-muted-foreground px-1 text-xs text-muted-foreground" title={title} data-testid="partial-mark">
       partial
     </span>
   );

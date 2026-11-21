@@ -274,6 +274,7 @@ describe("the /state projection reads defaults too", () => {
     const run = await router.POST(
       new Request("http://localhost/api/flows/scope-defaults-projected/sess_proj/actions/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: USER, orgId: ORG, input: {} })
       }),
       { params: { path: ["scope-defaults-projected", "sess_proj", "actions", "run"] } }
@@ -375,6 +376,7 @@ describe("defaults a block or a capability declares", () => {
     const run = await router.POST(
       new Request("http://localhost/api/flows/block-defaults/sess_block_route/actions/read", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: USER, orgId: ORG, input: {} })
       }),
       { params: { path: ["block-defaults", "sess_block_route", "actions", "read"] } }

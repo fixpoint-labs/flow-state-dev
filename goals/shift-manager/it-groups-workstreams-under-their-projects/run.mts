@@ -57,7 +57,7 @@
  *
  * Controls (each must fail; the run fails if a swap never fired):
  *
- *   unread    the page's grouping ignores the rows (Vite swap of derive.ts).
+ *   unread    useProjects answers no projects (Vite swap of directory.tsx).
  *             Must fail at "PROJECTS equals the store's rows".
  *   gap-tabs  the project level as it was before projects (Vite swap of
  *             Project.tsx). Must fail at "a project's four tabs".
@@ -158,7 +158,7 @@ const diff = (want: Iterable<string>, got: Iterable<string>) => {
 
 /** The page control's module swap: which Shift Manager source, for which module under `controls/`. */
 function pageSwapFor(control: string): { target: string; with: string } | undefined {
-  if (control === "unread") return { target: join(SHIFT_MANAGER, "src", "lib", "derive.ts"), with: join(HERE, "controls", "unread.ts") };
+  if (control === "unread") return { target: join(SHIFT_MANAGER, "src", "lib", "directory.tsx"), with: join(HERE, "controls", "unread.ts") };
   if (control === "gap-tabs") {
     return { target: join(SHIFT_MANAGER, "src", "surfaces", "Project.tsx"), with: join(HERE, "controls", "gap-tabs.tsx") };
   }

@@ -1,6 +1,8 @@
 /**
  * The goal's host: the Teammates lab's own host (`labs/teammates/host.mts`) on
- * its own workers, served on `GOAL_PORT`, with only the model scripted. Each
+ * its own workers, served on `GOAL_PORT`, with only the model scripted, and
+ * each request taken as the user it is signed in as (`signedInUser`), so Alice
+ * and Bob are two users of one organization. Each
  * worker step's prompt is appended to `GOAL_PROMPTS` as one JSON line, so the
  * goal reads what the model was handed, never what the adapter called.
  *
@@ -9,9 +11,13 @@
 import { appendFileSync } from "node:fs";
 import { serve } from "@flow-state-dev/node";
 import type { ModelResolver } from "@flow-state-dev/core/types";
-// The labs' test support is a CommonJS module to this process (no `"type": "module"` above it).
-import support from "../../../labs/test-support/contract.ts";
+import * as contractModule from "../../../labs/test-support/contract.ts";
 import { openTeammates } from "../../../labs/teammates/host.mts";
+import { signedInUser } from "../lab.mts";
+
+// `contract.ts` sits under no `type: module` package, so tsx loads it as CommonJS: its functions
+// are then on the default export, not named ones.
+const { scriptedModels } = ((contractModule as { default?: typeof contractModule }).default ?? contractModule) as typeof contractModule;
 
 const need = (key: string) => {
   const value = process.env[key];
@@ -20,7 +26,7 @@ const need = (key: string) => {
 };
 const prompts = need("GOAL_PROMPTS");
 
-const model = (support as typeof import("../../../labs/test-support/contract.ts")).scriptedModels(
+const model = scriptedModels(
   {
     "agent-answer": ({ said, step }) => {
       if (step === 0) appendFileSync(prompts, `${JSON.stringify({ said })}\n`);
@@ -35,6 +41,8 @@ const state = await openTeammates({
   store: need("GOAL_STORE"),
   model: "test/scripted",
   userId: "alice",
+  // The `one-user` control: every request is Alice, as the lab's own host takes it.
+  ...(process.env.GOAL_ONE_USER === "1" ? {} : { user: signedInUser }),
   workdir: need("GOAL_WORKDIR"),
   runsRoot: need("GOAL_RUNS"),
   scriptedHarnessStepMs: 50,

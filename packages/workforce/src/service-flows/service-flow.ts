@@ -564,7 +564,12 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     name: "subscription-deliver",
     inputSchema: deliverInputSchema,
     outputSchema: deliveredSchema,
-    resources: { ...subscriptionResources, ...workerMessagesResources },
+    // The custom screens run again here, so the resources they read are declared here too.
+    resources: {
+      ...Object.assign({}, ...Object.values(provider.screens?.custom ?? {}).map((custom) => custom.resources ?? {})),
+      ...subscriptionResources,
+      ...workerMessagesResources
+    } as typeof subscriptionResources & typeof workerMessagesResources,
     execute: async ({ subscription, event, endOnly, forward }, ctx): Promise<Delivered> => {
       const identity = ctx.session.identity as { userId?: string; orgId?: string };
       // The row decides: this user's, this org's, on, and on this event's thread.
@@ -604,7 +609,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
             const refused = screenRefusal(kind, event, row, { trustedBots: options.trustedBots ?? [] });
             return refused === undefined ? undefined : `${kind}: ${refused}`;
           }),
-          customScreensRefusal(provider.screens?.custom ?? {}, event, row)
+          await customScreensRefusal(provider.screens?.custom ?? {}, event, row, ctx)
         ];
         const refused = refusals.find((r) => r !== undefined);
         if (refused !== undefined) {

@@ -16,7 +16,7 @@ import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import type { Harness } from "../src/harness";
 import { scriptedHarness } from "../src/scripted-harness";
-import { harnesses } from "../src/kit";
+import { codingDrainBudgetMs, harnesses } from "../src/kit";
 
 const states: FlowState[] = [];
 const dirs: string[] = [];
@@ -133,5 +133,43 @@ describe("the harness kit", () => {
     const table = logged.find((line) => line.includes("CURSOR"))!;
     expect(table).toContain("CODEX");
     expect(table).toContain("sign cursor in");
+  });
+});
+
+// FIX-2794.
+describe("the harness kit's cap on run time", () => {
+  it("takes runTimeoutMs: 0, which turns the cap off", async () => {
+    const directory = tree(TEAM);
+    const state = start([harnesses({ workspace, runTimeoutMs: 0 }), workforce({ directory })], {
+      [harnesses.slots.harnesses]: [harness("codex", true)],
+    });
+    await state.ready();
+    expect([...state.meta.flowKeys]).toContain("coder");
+  });
+
+  // The default cap stops a looping run; it is not a wait to hold a host's
+  // shutdown for. A shutdown gives a run with the default cap, or none, the
+  // same 20 minutes, and waits out a cap the host named.
+  it("sizes a shutdown from a cap the host named, not from the 4-hour default", () => {
+    const byDefault = codingDrainBudgetMs({});
+    expect(codingDrainBudgetMs({ runTimeoutMs: 0 })).toBe(byDefault);
+    expect(codingDrainBudgetMs({ runTimeoutMs: 20 * 60_000 })).toBe(byDefault);
+    expect(byDefault).toBeLessThan(4 * 60 * 60_000);
+    expect(codingDrainBudgetMs({ runTimeoutMs: 6 * 60 * 60_000 })).toBeGreaterThan(6 * 60 * 60_000);
+  });
+});
+
+// FIX-2857.
+describe("the harness kit's branch prefix", () => {
+  it("takes an app's own prefix", async () => {
+    const state = start([harnesses({ workspace, branchPrefix: "teammates/" }), workforce({ directory: tree(TEAM) })], {
+      [harnesses.slots.harnesses]: [harness("codex", true)],
+    });
+    await state.ready();
+    expect([...state.meta.flowKeys]).toContain("coder");
+  });
+
+  it("refuses one that can't lead a branch, at the kit's config", () => {
+    expect(() => harnesses({ workspace, branchPrefix: "Teammates" })).toThrow(/branchPrefix/);
   });
 });

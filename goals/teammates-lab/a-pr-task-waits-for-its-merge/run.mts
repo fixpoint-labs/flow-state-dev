@@ -3,8 +3,8 @@
  * stays open until that pull request merges (FIX-2578). The accept pushes the
  * run's branch and opens the pull request; the task then waits on it. A steer
  * from its popup's box is one more run on the same attempt and session, whose
- * commit comes back for your review; Open a PR again pushes it to the same pull
- * request and the task waits again. Once GitHub says merged, a steer completes
+ * commit is pushed to that same pull request with no review asked (FIX-2781),
+ * and the task waits again. Once GitHub says merged, a steer completes
  * it with no run.
  * What this run proves is `goal.md` beside it.
  *
@@ -147,29 +147,33 @@ await runGoal(async (failures, tell) => {
     if (waiting && landed !== undefined && landed !== null) notes.push(`a: output.landed ${JSON.stringify(landed)}`);
 
     // ── b: a steer, as the popup's Steer box sends it: one run on the same attempt and session, whose
-    //    commit goes back to your review; Open a PR again pushes it to PR 7, and the task waits on it again.
+    //    commit is pushed to PR 7 with no review asked (FIX-2781), and the task waits on it again.
     if (waiting) {
       const runsBefore = await runsIn(runSession);
+      const branch = github.pullRequest(7)?.branch ?? "";
+      const tipBefore = github.remoteTip(branch);
       await board.steer(id, fixture.steer);
-      const reviewed = await until(id, (r) => r.status !== "in_progress" || reviewOf(r) !== undefined || (externalOf(r) !== undefined && externalOf(r).id !== wait.id));
+      const again = await until(id, (r) => r.status !== "in_progress" || reviewOf(r) !== undefined || (externalOf(r) !== undefined && externalOf(r).id !== wait.id));
       const runs = (await runsIn(runSession)) - runsBefore;
-      if (reviewed?.status !== "in_progress" || reviewOf(reviewed) === undefined) {
-        failures.push(`b:steer: after the steer the row reads ${reviewed?.status}${externalOf(reviewed) === undefined ? " with no open hold" : ""}, not back on your review of the steered run`);
+      const hold = externalOf(again);
+      const opened = Object.keys(github.pullRequests());
+      if (reviewOf(again) !== undefined) {
+        failures.push(`b:no-review: after the steer the run's commit came back for a review, though it is on open PR 7`);
+        waiting = false;
+      } else if (again?.status !== "in_progress" || hold === undefined || !(hold.source?.closedBy ?? []).some((r: any) => String(r.key).endsWith("/7"))) {
+        failures.push(`b:waits-again: after the steer the row reads ${again?.status}${hold === undefined ? " with no external hold" : ""}, not waiting on PR 7`);
         waiting = false;
       } else {
         if (runs !== 1) failures.push(`b:one-run: ${runs} harness runs in the run session, not 1`);
-        if (reviewed.attempts !== accepted?.attempts) failures.push(`b:same-attempt: attempt ${reviewed.attempts}, was ${accepted?.attempts}`);
-        if (reviewed.run?.sessionId !== runSession) failures.push(`b:same-session: the run moved to session ${reviewed.run?.sessionId}`);
-        const again = await openAPr(reviewed);
-        const hold = externalOf(again);
-        const opened = Object.keys(github.pullRequests());
-        if (again?.status !== "in_progress" || hold === undefined || !(hold.source?.closedBy ?? []).some((r: any) => String(r.key).endsWith("/7"))) {
-          failures.push(`b:waits-again: after Open a PR again the row reads ${again?.status}${hold === undefined ? " with no external hold" : ""}, not waiting on PR 7`);
-          waiting = false;
-        } else {
-          if (opened.length !== 1) failures.push(`b:one-pr: the stub holds pull requests ${opened.join(", ")}, not PR 7 alone`);
-          notes.push(`b: ${runs} run, attempt ${again.attempts}, session kept, back to review; Open a PR again: waiting on #7 (${hold.id}), ${opened.length} PR`);
+        if (again.attempts !== accepted?.attempts) failures.push(`b:same-attempt: attempt ${again.attempts}, was ${accepted?.attempts}`);
+        if (again.run?.sessionId !== runSession) failures.push(`b:same-session: the run moved to session ${again.run?.sessionId}`);
+        const tipAfter = github.remoteTip(branch);
+        const runTip = execFileSync("git", ["rev-parse", `refs/heads/${branch}`], { cwd: workdir, encoding: "utf8" }).trim();
+        if (tipAfter !== runTip) {
+          failures.push(`b:on-pr: PR 7's branch ${branch} on the remote is at ${tipAfter}, not the run's tip ${runTip} (was ${tipBefore})`);
         }
+        if (opened.length !== 1) failures.push(`b:one-pr: the stub holds pull requests ${opened.join(", ")}, not PR 7 alone`);
+        notes.push(`b: ${runs} run, attempt ${again.attempts}, session kept, no review; pushed ${branch} ${tipBefore.slice(0, 8)} → ${tipAfter.slice(0, 8)}, waiting on #7 (${hold.id}), ${opened.length} PR`);
       }
     } else failures.push("b: not reached, the task never waited");
 

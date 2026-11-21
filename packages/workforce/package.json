@@ -130,6 +130,7 @@
     }
   },
   "devDependencies": {
+    "@flow-state-dev/contracts": "workspace:*",
     "@flow-state-dev/memory": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",

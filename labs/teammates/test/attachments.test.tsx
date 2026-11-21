@@ -7,13 +7,11 @@
  * nothing attached is lost. This proves the UI only; the goal check
  * (`goals/attachments/lab-composers/`) proves a teammate saw them.
  */
-import type { FileContent } from "@flow-state-dev/core/items";
+import type { Client } from "@flow-state-dev/client";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AppCalls } from "../src/app";
 import { App } from "../src/components/App";
-import { AppProvider } from "../src/app";
-import { createFixtureApp } from "./fake-app";
+import { scriptedServer, ScriptedProvider, type ScriptedServer } from "./scripted-server";
 
 afterEach(() => {
   cleanup();
@@ -23,19 +21,13 @@ afterEach(() => {
 
 const png = (name: string) => new File([new Uint8Array([137, 80, 78, 71, 1, 2, 3])], name, { type: "image/png" });
 
-/** The fake lab, with every send it took. */
-function recording(overrides: Partial<AppCalls> = {}) {
-  const lab = createFixtureApp({ speed: 0.05 });
-  const sends: Array<{ text: string; attachments: readonly FileContent[] }> = [];
-  const adapter: AppCalls = {
-    ...lab,
-    send: async (sessionId, text, attachments = []) => {
-      sends.push({ text, attachments });
-      await lab.send(sessionId, text, attachments);
-    },
-    ...overrides,
-  };
-  return { adapter, sends };
+/**
+ * The scripted lab, with every line its door took (`sends`), and the client the screen reads through:
+ * the lab's own, with what `client` stands in for in it, a send that fails or an upload held, say.
+ */
+function recording(client: (lab: ScriptedServer) => Record<string, unknown> = () => ({})) {
+  const lab = scriptedServer({ speed: 0.05 });
+  return { lab, client: { ...lab.client, ...client(lab) } as Client, sends: lab.sends };
 }
 
 /** The app opens on Lead's conversation. */
@@ -61,8 +53,8 @@ async function attached(...names: string[]) {
 
 describe("files in a teammate's composer", () => {
   it("shows a pasted and a picked image before Send, sends their references, and draws them on your line", async () => {
-    const { adapter, sends } = recording();
-    render(<AppProvider calls={adapter}><App /></AppProvider>);
+    const { lab, client, sends } = recording();
+    render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
     const box = await open();
     paste(box, png("bug.png"));
     pick(png("trace.png"));
@@ -88,8 +80,8 @@ describe("files in a teammate's composer", () => {
   });
 
   it("sends files with no words, and refuses a type it can't take by name without sending it", async () => {
-    const { adapter, sends } = recording();
-    render(<AppProvider calls={adapter}><App /></AppProvider>);
+    const { lab, client, sends } = recording();
+    render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
     const box = await open();
     paste(box, new File([new Uint8Array([1])], "photo.heic", { type: "image/heic" }));
     expect((await within(composer()).findByRole("status", { name: "Attachment notices" })).textContent).toBe("photo.heic isn't supported");
@@ -108,15 +100,20 @@ describe("files in a teammate's composer", () => {
 
   it("keeps the files with the line when a send fails, and Retry sends them", async () => {
     let refuse = true;
-    const { adapter, sends } = recording();
-    const failing: AppCalls = {
-      ...adapter,
-      send: async (...args) => {
-        if (refuse) throw new Error("network down");
-        await adapter.send(...args);
+    // The worker flow's door refuses while `refuse` holds, as a network that is down does.
+    const { lab, client, sends } = recording((lab) => ({
+      flow: (address: string) => {
+        const flow = lab.client.flow(address);
+        return {
+          ...flow,
+          send: async (...args: Parameters<typeof flow.send>) => {
+            if (refuse) throw new Error("network down");
+            return flow.send(...args);
+          },
+        } as typeof flow;
       },
-    };
-    render(<AppProvider calls={failing}><App /></AppProvider>);
+    }));
+    render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
     const box = await open();
     paste(box, png("bug.png"));
     await attached("bug.png");
@@ -139,17 +136,16 @@ describe("files in a teammate's composer", () => {
 
   it("still sends a line pressed while its upload ran after you open another teammate, with no error in the new box", async () => {
     let finish: () => void = () => {};
-    const { adapter, sends } = recording();
-    const held: AppCalls = {
-      ...adapter,
-      upload: async (request) => {
+    // The upload is held until the test lets it finish.
+    const { lab, client, sends } = recording((lab) => ({
+      upload: async (request: Parameters<Client["upload"]>[0]) => {
         await new Promise<void>((resolve) => {
           finish = resolve;
         });
-        return adapter.upload(request);
+        return lab.client.upload(request);
       },
-    };
-    render(<AppProvider calls={held}><App /></AppProvider>);
+    }));
+    render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
     const box = await open();
     paste(box, png("bug.png"));
     fireEvent.change(box, { target: { value: "Look at this" } });
@@ -168,8 +164,8 @@ describe("files in a teammate's composer", () => {
   });
 
   it("takes a PDF beside the text, and sends it by reference as a document", async () => {
-    const { adapter, sends } = recording();
-    render(<AppProvider calls={adapter}><App /></AppProvider>);
+    const { lab, client, sends } = recording();
+    render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
     const box = await open();
     pick(new File([new TextEncoder().encode("%PDF-1.4\n")], "spec.pdf", { type: "application/pdf" }));
     await within(composer()).findByText("spec.pdf");
@@ -186,7 +182,8 @@ describe("files in a teammate's composer", () => {
   });
 
   it("puts + in the Tab order, and Backspace in an empty box takes the last file off", async () => {
-    render(<AppProvider calls={recording().adapter}><App /></AppProvider>);
+    const { lab, client } = recording();
+    render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
     const box = await open();
     const plus = within(composer()).getByRole("button", { name: "Attach files" });
     expect(plus.tabIndex).toBe(0);

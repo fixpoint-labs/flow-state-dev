@@ -9,7 +9,8 @@
  *     document, read off the rows it draws;
  *   - Shift Manager's `useRoster`, under its real `LabProvider`, read off what
  *     the hook hands back;
- *   - the Teammates lab's adapter, `watchWorkers`, read off the rows it reports.
+ *   - the Teammates lab's roster watch (workforce's `watchRoster`, through
+ *     `useWorkforce` under its `AppProvider`), read off the rows it reports.
  *
  * Each view has its own credential, so its reads are counted at its own
  * fetcher (Shift Manager's `connect` uses the global `fetch`, so its reads are
@@ -62,7 +63,8 @@ import { ROUTE_MODEL } from "../../../apps/kitchen-sink/lib/models.ts";
 import * as generated from "../../../apps/kitchen-sink/workforce/workforce.gen.ts";
 import { LabProvider } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { useRoster } from "../../../packages/shift-manager/src/lib/roster.ts";
-import { createAppCalls, type AppWorker } from "../../../labs/teammates/src/app/index.ts";
+import { AppProvider as TeammatesProvider } from "../../../labs/teammates/src/app/index.ts";
+import { roleOf, useWorkforce } from "../../../labs/teammates/src/lib/roster.ts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("realtime-roster-follows");
@@ -236,10 +238,16 @@ function mountViews(on: Host, user: "alice" | "bob"): Views {
   const smRoot: Root = createRoot(smContainer as unknown as Element);
   smRoot.render(createElement(LabProvider, { connection: { userId: user, bearerToken: tokens.sm, baseUrl: on.base }, children: createElement(Probe) }));
 
-  // Teammates: the adapter's watch, read off the rows it reports.
-  const stopTm = createAppCalls(clientOf(on, tokens.tm)).watchWorkers((rows: AppWorker[]) =>
-    record(tm, new Map(rows.map((row) => [row.id, row.role === "" ? null : row.role]))),
-  );
+  // Teammates: the list's roster watch (workforce's, over the client under its provider), read off the rows it reports.
+  function TmProbe() {
+    const workforce = useWorkforce();
+    useEffect(() => workforce.watchRoster((rows: RosterEntry[]) => record(tm, new Map(rows.map((row) => [row.id, roleOf(row) === "" ? null : roleOf(row)])))), [workforce]);
+    return null;
+  }
+  const tmClient = clientOf(on, tokens.tm);
+  const tmContainer = happy.document.createElement("div");
+  const tmRoot: Root = createRoot(tmContainer as unknown as Element);
+  tmRoot.render(createElement(TeammatesProvider, { client: tmClient, children: createElement(TmProbe) }));
 
   let closed = false;
   return {
@@ -253,7 +261,7 @@ function mountViews(on: Host, user: "alice" | "bob"): Views {
       clearInterval(ksTimer);
       ksRoot.unmount();
       smRoot.unmount();
-      stopTm();
+      tmRoot.unmount();
     },
   };
 }

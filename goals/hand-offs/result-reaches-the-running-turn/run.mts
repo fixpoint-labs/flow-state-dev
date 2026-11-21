@@ -56,6 +56,7 @@ import {
   untilIdle,
   workforceTree
 } from "../../lib/index.mts";
+import { sleep } from "../../lib/time.mts";
 
 // A container's FSDEV_DEFAULT_MODEL / FSDEV_INTENT_* would swap the model under the resolver.
 stripIntentOverrides();
@@ -73,8 +74,6 @@ const MAIN = "lead";
 const DELEGATE = "scout";
 /** What the answer again is told, by the package's pre-built source: how the run knows the worker is answering again. */
 const ANSWERING_AGAIN = "finished while you answered";
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** The app's model resolver, on the Vercel AI Gateway. */
 async function gatewayResolver(apiKey: string): Promise<ModelResolver> {

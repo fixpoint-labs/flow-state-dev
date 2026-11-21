@@ -3,8 +3,8 @@
  * typed here stays in it. A worker the inventory doesn't register is drawn
  * read-only: its door isn't known. So is a task's session or a delegate's session for another conversation,
  * whatever the worker: a line typed there would be task input.
- * A session the snapshot doesn't list yet (one a message opened after the
- * last Lab read) is looked up in a fresh listing first.
+ * A session the page's session list doesn't hold yet (one a message opened
+ * a moment ago) is looked up in a fresh listing first.
  */
 import { useEffect, useState } from "react";
 import type { SessionSummary } from "@flow-state-dev/client";
@@ -12,9 +12,10 @@ import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "@flow-state-dev/wor
 import { Conversation } from "../components/Conversation";
 import { EmptyState } from "../components/ui";
 import type { Gaps } from "../gaps";
-import { workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { workerLabel } from "../lib/shift";
 import { useLab } from "../lib/lab-data";
-import { workerOf, type Worker } from "../lib/reads";
+import { useSessions, useWorkers } from "../lib/directory";
+import { workerOf, type Worker } from "../lib/workers";
 
 /** Why a line can't go to `session`, or `undefined` when it can: a task's session and a delegate's session for another conversation take task input only. */
 function readOnlyReason(session: SessionSummary): string | undefined {
@@ -24,13 +25,15 @@ function readOnlyReason(session: SessionSummary): string | undefined {
   return undefined;
 }
 
-export function SessionView({ snapshot, sessionId, gaps }: { snapshot: LoadedSnapshot; sessionId: string; gaps: Gaps }) {
+export function SessionView({ sessionId, gaps }: { sessionId: string; gaps: Gaps }) {
   const { client } = useLab();
-  const listed = snapshot.sessions.find((s) => s.id === sessionId);
+  const { workers } = useWorkers();
+  const sessions = useSessions().list;
+  const listed = sessions?.find((s) => s.id === sessionId);
   // `undefined` while the fresh listing is read; `null` when it doesn't hold the session either.
   const [fresh, setFresh] = useState<{ sessionId: string; session: SessionSummary | null } | undefined>(undefined);
   useEffect(() => {
-    if (listed !== undefined) return;
+    if (sessions === undefined || listed !== undefined) return;
     let closed = false;
     client.sessions
       .list({ userId: client.userId, include: "dispatch-runs" })
@@ -41,10 +44,10 @@ export function SessionView({ snapshot, sessionId, gaps }: { snapshot: LoadedSna
     return () => {
       closed = true;
     };
-  }, [client, sessionId, listed]);
+  }, [client, sessionId, sessions, listed]);
   const looked = fresh?.sessionId === sessionId ? fresh.session : undefined;
   const session = listed ?? looked ?? undefined;
-  if (session === undefined && looked === undefined) {
+  if (sessions === undefined || (session === undefined && looked === undefined)) {
     return (
       <EmptyState title="Reading the session" testId="session-reading">
         Looking for this session…
@@ -59,7 +62,7 @@ export function SessionView({ snapshot, sessionId, gaps }: { snapshot: LoadedSna
       </EmptyState>
     );
   }
-  const registered = snapshot.inventory.ok ? snapshot.inventory.value.workers.find((w) => w.id === workerId) : undefined;
+  const registered = workers.find((w) => w.id === workerId);
   const worker: Worker =
     registered !== undefined && registered.kind === session.flowKind
       ? registered
@@ -70,7 +73,7 @@ export function SessionView({ snapshot, sessionId, gaps }: { snapshot: LoadedSna
       testId="session"
       worker={worker}
       session={sessionId}
-      sessions={listed === undefined ? [...snapshot.sessions, session] : snapshot.sessions}
+      sessions={listed === undefined ? [...sessions, session] : sessions}
       gaps={gaps}
       name={workerLabel(workerId)}
       readOnly={readOnlyReason(session)}

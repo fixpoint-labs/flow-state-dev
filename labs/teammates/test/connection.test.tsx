@@ -11,12 +11,12 @@
  * it draws the connection screen and reads again until the roster lands.
  */
 import { ClientHttpError } from "@flow-state-dev/client";
-import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/components/App";
-import { AppProvider } from "../src/app";
+import { codingTask, POPUP_READ, stubServer, TestProvider } from "./stub-server";
 import { useNow } from "../src/lib/use-watch";
-import { createFixtureApp } from "./fake-app";
+import { scriptedServer, ScriptedProvider, rosterReadsBy } from "./scripted-server";
 
 afterEach(() => {
   cleanup();
@@ -33,8 +33,8 @@ const rowStatus = (name: string) => document.querySelector<HTMLElement>(`[data-w
 
 describe("the server going away", () => {
   it("shows the bar and greys status only once a retry has failed, and clears both when the feed is live again", async () => {
-    const lab = createFixtureApp({ speed: 0.05 });
-    render(<AppProvider calls={lab}><App /></AppProvider>);
+    const lab = scriptedServer({ speed: 0.05 });
+    render(<ScriptedProvider server={lab}><App /></ScriptedProvider>);
     await screen.findByLabelText("Message Lead", undefined, FIRST_DRAW);
 
     act(() => lab.setConnection("reconnecting"));
@@ -52,35 +52,49 @@ describe("the server going away", () => {
     expect(rowStatus("Lead").className).not.toContain(STALE);
   });
 
-  it("greys a running task's dot and stops its pulse in the panel while the feed is stale", async () => {
-    const tasks = [{ filer: "teammates.chief-of-staff", id: "t-1", to: "teammates.researcher", title: "Check the beta numbers", goal: "Check the beta numbers", status: "running" as const, boardStatus: "in_progress" }];
-    const lab = createFixtureApp({ speed: 0.05, tasks });
-    render(<AppProvider calls={lab}><App /></AppProvider>);
+  it("greys a running task's card and stops its pulse in the panel while the feed is stale", async () => {
+    const server = stubServer({ board: { "conversation:teammates.chief-of-staff": [codingTask({ id: "t-1", assignee: "teammates.researcher", title: "Check the beta numbers", status: "in_progress" })] } });
+    const lab = scriptedServer({ speed: 0.05 });
+    render(<TestProvider server={lab} client={server.client}><App /></TestProvider>);
     const panel = await screen.findByRole("complementary", { name: "Lead's panel" }, FIRST_DRAW);
     const row = () => panel.querySelector<HTMLElement>("[data-task=running]")!;
+    await waitFor(() => expect(row()).not.toBeNull(), POPUP_READ);
     expect(row().className).not.toContain(STALE);
 
     act(() => lab.setConnection("lapsed"));
-    // The dot sits inside the greyed row, where STALE_CLASS's pulse suppression reaches it.
+    // The whole card greys, so STALE_CLASS's pulse suppression reaches everything inside it (a running card's bar).
     expect(row().className).toContain(STALE);
     expect(row().className).toContain("[&_.animate-pulse]:animate-none");
-    expect(row().querySelector("[data-task-dot]")).not.toBeNull();
 
     act(() => lab.setConnection("live"));
     expect(row().className).not.toContain(STALE);
   });
 
   it("says a stopped feed has ended and offers Retry", async () => {
-    const lab = createFixtureApp({ speed: 0.05 });
-    render(<AppProvider calls={lab}><App /></AppProvider>);
+    const lab = scriptedServer({ speed: 0.05 });
+    render(<ScriptedProvider server={lab}><App /></ScriptedProvider>);
     await screen.findByLabelText("Message Lead", undefined, FIRST_DRAW);
     act(() => lab.setConnection("stopped"));
     expect(screen.getByTestId("connection-banner").textContent).toContain("The server stopped this feed");
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
+  it("says a feed whose history never read has ended and offers Retry, rather than connecting for good", async () => {
+    // Only the session's own history read fails, past the feed's four retries (2, 4, 8 and 16 s); the views still answer.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<ScriptedProvider server={scriptedServer({ speed: 0.05, historyUnreadable: true })}><App /></ScriptedProvider>);
+      await screen.findByLabelText("Message Lead", undefined, FIRST_DRAW);
+      await act(async () => void (await vi.advanceTimersByTimeAsync(31_000)));
+      await waitFor(() => expect(screen.getByTestId("connection-banner").textContent).toContain("The server stopped this feed"));
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("opened with the server down, draws the connection screen, then the lab once a read lands", async () => {
-    render(<AppProvider calls={createFixtureApp({ speed: 0.05, unreachableReads: 1 })}><App /></AppProvider>);
+    render(<ScriptedProvider server={scriptedServer({ speed: 0.05, unreachableReads: 1 })}><App /></ScriptedProvider>);
     expect((await screen.findByTestId("unreachable-message")).textContent).toBe("fetch failed");
     expect(screen.queryByRole("navigation", { name: "Workers" })).toBeNull();
     await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));
@@ -89,39 +103,22 @@ describe("the server going away", () => {
   });
 
   it("a roster read the server answered with an error shows its status, so a 502 reads apart from a dead socket", async () => {
-    const lab = createFixtureApp({ speed: 0.05 });
-    const failing = {
-      ...lab,
-      watchWorkers: (_onChange: unknown, onError?: (error: unknown) => void) => {
-        queueMicrotask(() => onError?.(new ClientHttpError("Bad Gateway", { status: 502, body: undefined })));
-        return () => {};
-      },
-    };
-    render(<AppProvider calls={failing}><App /></AppProvider>);
+    const lab = scriptedServer({ speed: 0.05 });
+    const failing = rosterReadsBy(lab, () => Promise.reject(new ClientHttpError("Bad Gateway", { status: 502, body: undefined })));
+    render(<ScriptedProvider server={lab} client={failing}><App /></ScriptedProvider>);
     expect((await screen.findByTestId("unreachable-message")).textContent).toBe("502 · Bad Gateway");
   });
 
   it("a slow read a Retry overtook doesn't put the failure back over a lab that came back", async () => {
-    const lab = createFixtureApp({ speed: 0.05 });
+    const lab = scriptedServer({ speed: 0.05 });
     let rejectSlow: (error: Error) => void = () => {};
-    let call = 0;
-    const flaky: typeof lab = {
-      ...lab,
-      watchWorkers: (onChange, onError) => {
-        call += 1;
-        if (call === 1) {
-          queueMicrotask(() => onError?.(new Error("fetch failed")));
-          return () => {};
-        }
-        // A watch whose read is still out: its failure arrives after the next Retry.
-        if (call === 2) {
-          rejectSlow = (error) => onError?.(error);
-          return () => {};
-        }
-        return lab.watchWorkers(onChange, onError);
-      }
-    };
-    render(<AppProvider calls={flaky}><App /></AppProvider>);
+    const flaky = rosterReadsBy(lab, (call, read) => {
+      if (call === 1) return Promise.reject(new Error("fetch failed"));
+      // A read still out: its failure arrives after the next Retry.
+      if (call === 2) return new Promise((_, reject) => (rejectSlow = reject));
+      return read();
+    });
+    render(<ScriptedProvider server={lab} client={flaky}><App /></ScriptedProvider>);
     await screen.findByTestId("unreachable-message");
     await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));
     await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));

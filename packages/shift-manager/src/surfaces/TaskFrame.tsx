@@ -10,22 +10,25 @@
  *
  * What the screen reads is held by {@link TaskProvider}; this file only draws
  * it. The screen writes three ways: the abort behind Interrupt, the
- * composer's message, which goes through the one send path (`lib/send.ts`),
- * and the task actions, the board's own through the reader's `taskActions`.
+ * composer's message, which goes through the one send path (`lib/deliver.ts`),
+ * and the task actions, the board's own through the task's `board`.
  *
  * The keyboard stop is deliberate: Esc twice within the window, or Cmd/Ctrl+.
  * One Esc only dismisses, and an Esc in the composer is the composer's.
  */
 import { interruptChordLabel, useInterruptKeys } from "@flow-state-dev/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor } from "../lib/columns";
-import { asksOfTask, doorOf, doorTakesTaskOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
+import { doorOf, workerFor, workerLabel, waited } from "../lib/shift";
+import { taskAsks, useInbox } from "../lib/inbox";
+import { useWorkers } from "../lib/directory";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
-import { sendTurn } from "../lib/send";
-import { holderSessionOf, isConversationBoard, useTask } from "../lib/task";
+import { useDeliverLine } from "../lib/deliver";
+import { useWorkforce } from "../lib/workforce";
+import { useTask } from "../lib/task";
 import { distinctTitle, legacyTaskDraftKey, taskDraftKey } from "../lib/tasks";
 import { TurnComposer } from "../components/TurnComposer";
 import type { Gaps } from "../gaps";
@@ -34,12 +37,13 @@ import { cn } from "../lib/utils";
 import { STALE_CLASS } from "../components/flow-state/connection-banner";
 import { ErrorBody } from "../components/flow-state/error";
 import { MessageFiles } from "../components/flow-state/message";
-import { fileReadBase, flowUploader, readStoredFile } from "../lib/files";
+import { fileReadBase, readStoredFile } from "../lib/files";
 import { TaskActions } from "../components/flow-state/task-actions";
 
 export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   const task = useTask();
-  const { snapshot, stale } = useLab();
+  const { stale } = useLab();
+  const { workers } = useWorkers();
   const { row, boardRef, taskId } = task;
   const stoppable = task.run.kind === "open" && task.status === "in_progress" && task.interrupt.kind !== "pending";
   const keys = useInterruptKeys({ enabled: stoppable, onInterrupt: () => void task.requestInterrupt() });
@@ -59,7 +63,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
 
   // The same resolver the inspector and Tasks use, so a name two teams share
   // resolves to no worker at all.
-  const found = row === undefined || snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined ? undefined : workerFor(rosterOf(snapshot), row);
+  const found = row === undefined ? undefined : workerFor(workers, row);
   const worker = row?.assignee == null ? null : workerLabel(found?.id ?? row.assignee);
 
   return (
@@ -74,7 +78,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
       onKeyDown={keys.onKeyDown}
     >
       <header className="px-4 pt-3">
-        <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">
+        <p className="text-xs font-semibold tracking-wider text-muted-foreground">
           TASK ·{" "}
           <RouteLink className="hover:underline" to={{ level: "tasks", by: "state" }}>
             {boardRef}
@@ -116,7 +120,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
         )}
       </div>
       <Activity worker={worker} armed={keys.armed} />
-      <Composer gaps={gaps} worker={worker} />
+      <Composer gaps={gaps} worker={worker} workerId={found?.id ?? row?.assignee ?? null} />
     </div>
   );
 }
@@ -160,12 +164,13 @@ function runWord(status: string | undefined): string {
  */
 function Activity({ worker, armed }: { worker: string | null; armed: boolean }) {
   const task = useTask();
-  const { snapshot } = useLab();
+  const inbox = useInbox().section;
   const pending = task.interrupt.kind === "pending";
   const live = task.run.kind === "open" && task.status === "in_progress";
-  const waiting = asksOfTask(snapshot, task.row).length > 0;
+  // D2: the task's asks are its Inbox item's.
+  const waiting = taskAsks(inbox?.ok === true ? inbox.value.items : [], task.row).length > 0;
   return (
-    <div className="flex items-center gap-2 px-[22px] pt-3 font-mono text-[11px] font-medium text-muted-foreground" data-testid="task-activity">
+    <div className="flex items-center gap-2 px-[22px] pt-3 font-mono text-xs font-medium text-muted-foreground" data-testid="task-activity">
       {waiting ? (
         <StateSquare state="needs" className="size-[7px]" />
       ) : live ? (
@@ -196,17 +201,9 @@ function Activity({ worker, armed }: { worker: string | null; armed: boolean }) 
 /** Interrupt, the task's actions, and the controls with no shipped operation (D2). */
 function Actions({ gaps }: { gaps: Gaps }) {
   const task = useTask();
-  const { reader, snapshot, refresh } = useLab();
   const running = task.run.kind === "open" && task.status === "in_progress";
   const pending = task.interrupt.kind === "pending";
-  // The board's actions run on the conversation that holds it, through the
-  // flow that conversation's session names as its owner. No owner, no actions.
-  const holder = holderSessionOf(task.boardRef);
-  const flowId =
-    snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || !isConversationBoard(task.boardRef)
-      ? undefined
-      : (snapshot.sessions.find((session) => session.id === holder)?.flowId ?? undefined);
-  const board = useMemo(() => (flowId === undefined ? undefined : reader.taskActions({ id: holder, flowId })), [reader, holder, flowId]);
+  const board = task.board;
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 pb-2" data-testid="task-actions">
       <button
@@ -227,16 +224,15 @@ function Actions({ gaps }: { gaps: Gaps }) {
       {board === undefined || task.row === undefined ? null : (
         // No Steer box: the composer below reaches the run. After each press the
         // row is read again, so the buttons follow the board's new status (and a
-        // released or retried row is followed until a run claims it); the Lab is
-        // read too, for the Tasks list and the sidebar's counts, which a cancel's
-        // dependents also change.
+        // released or retried row is followed until a run claims it); the Tasks
+        // list and the sidebar's counts follow the Inbox view, which hears the
+        // board's writes, a cancel's dependents' included.
         <TaskActions
           id={task.taskId}
           status={task.row.status}
           actions={board}
           onSettled={() => {
             task.retryRow();
-            void refresh();
           }}
         />
       )}
@@ -255,7 +251,7 @@ function Actions({ gaps }: { gaps: Gaps }) {
           </button>
         ))}
       </span>
-      <p className="w-full text-[11px] text-muted-foreground" data-testid="task-actions-gap">
+      <p className="w-full text-xs text-muted-foreground" data-testid="task-actions-gap">
         {gaps.task.handOff}
       </p>
     </div>
@@ -271,12 +267,12 @@ function Brief({ gaps }: { gaps: Gaps }) {
     <dl className="mx-auto w-full max-w-3xl space-y-3 px-4 py-4 text-sm" data-testid="task-brief">
       {title === null ? null : (
         <div>
-          <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">TITLE</dt>
+          <dt className="text-xs font-semibold tracking-wider text-muted-foreground">TITLE</dt>
           <dd data-testid="brief-title">{title}</dd>
         </div>
       )}
       <div>
-        <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">GOAL</dt>
+        <dt className="text-xs font-semibold tracking-wider text-muted-foreground">GOAL</dt>
         <dd className="whitespace-pre-wrap" data-testid="brief-goal">
           {row?.goal ?? "—"}
         </dd>
@@ -284,20 +280,20 @@ function Brief({ gaps }: { gaps: Gaps }) {
       {row === undefined || row.attachments.length === 0 ? null : (
         // FIX-2522: the brief's files, which every run of the task gets.
         <div>
-          <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">FILES</dt>
+          <dt className="text-xs font-semibold tracking-wider text-muted-foreground">FILES</dt>
           <dd className="flex pt-1" data-testid="brief-files">
             <MessageFiles files={row.attachments} readBase={fileReadBase()} readFile={readStoredFile} />
           </dd>
         </div>
       )}
       <div>
-        <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">CONTEXT AND INPUT</dt>
+        <dt className="text-xs font-semibold tracking-wider text-muted-foreground">CONTEXT AND INPUT</dt>
         <dd className="text-muted-foreground" data-testid="brief-fields-gap" data-gap={gaps.task.briefFields}>
           {gaps.task.briefFields}
         </dd>
       </div>
       <div>
-        <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">ACCEPTANCE CRITERIA</dt>
+        <dt className="text-xs font-semibold tracking-wider text-muted-foreground">ACCEPTANCE CRITERIA</dt>
         <dd className="text-muted-foreground" data-testid="brief-acceptance-gap" data-gap={gaps.task.acceptance}>
           {gaps.task.acceptance}
         </dd>
@@ -313,18 +309,14 @@ function Brief({ gaps }: { gaps: Gaps }) {
  * board's. Says why when it can't. A finished task takes a message too; what
  * it does is the door's call.
  */
-function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
+function Composer({ gaps, worker, workerId }: { gaps: Gaps; worker: string | null; workerId: string | null }) {
   const task = useTask();
-  const { client, snapshot, refresh } = useLab();
+  const { workers } = useWorkers();
+  const workforce = useWorkforce();
+  const deliver = useDeliverLine();
   const { row } = task;
-  const workers =
-    snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined
-      ? []
-      : rosterOf(snapshot).workers;
   const flowId = task.run.kind === "open" ? task.run.run.flowId : undefined;
   const door = flowId === undefined ? null : doorOf(workers, flowId);
-  // A door that takes the task's id stamps the line and its reply with it, so the Session finds them after a reload.
-  const stamps = flowId !== undefined && doorTakesTaskOf(workers, flowId);
   const blocked =
     row === undefined
       ? "This task isn't on its board yet."
@@ -345,18 +337,17 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
       label={`Message ${worker ?? "this worker"}`}
       placeholder={`Message ${worker ?? "this worker"}…`}
       blocked={blocked}
-      // Through the run's own flow, whose sign-in its send runs.
-      uploader={flowUploader(client, flowId)}
+      // Through the worker's own flow, whose sign-in its send runs.
+      uploader={workerId === null || flowId === undefined ? null : { upload: (file) => workforce.upload(workerId, file) }}
       // No `held`: the draft stays until the door turn ends. The Session follows the request from `onStarted`.
       // A file found after the task started goes here, as a line to its run, not into its brief (FIX-2522 D1).
+      // The task's id goes only to a door that stamps it on the line and its reply: workforce's `send` decides.
       send={async (message, _held, attachments) => {
-        const target = { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! };
-        const sent = await sendTurn(client, stamps ? { ...target, taskId: task.taskId } : target, message, {
-          onStarted: (requestId) => task.noteSent(requestId, stamps),
-        }, attachments);
-        // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
-        if (sent.suspended) void refresh();
-        return sent;
+        // Stopped short on a new ask, the Inbox view hears the suspension and lists it.
+        return await deliver({ sessionId: row!.run!.sessionId, taskId: task.taskId }, message, {
+          attachments,
+          onStarted: (requestId) => task.noteSent(requestId),
+        });
       }}
       extra={
         <label className="flex items-center gap-1.5" title={gaps.task.alsoPost}>

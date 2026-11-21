@@ -683,7 +683,7 @@ function TurnItem({ turn }: { turn: DebateTurn }) {
         <span className="shrink-0 font-medium text-foreground/80">
           {turn.agentName}
         </span>
-        <span className="shrink-0 rounded-sm bg-muted/60 px-1 py-px text-[10px] leading-3 text-muted-foreground">
+        <span className="shrink-0 rounded-sm bg-muted/60 px-1 py-px text-xs leading-3 text-muted-foreground">
           {turn.stance}
         </span>
         <span className="flex-1 truncate text-muted-foreground group-open/turn:hidden">
@@ -721,7 +721,7 @@ function PendingTurnItem({
         <span className="font-medium text-foreground/80">
           {pending.agentName}
         </span>
-        <span className="shrink-0 rounded-sm bg-muted/60 px-1 py-px text-[10px] leading-3 text-muted-foreground">
+        <span className="shrink-0 rounded-sm bg-muted/60 px-1 py-px text-xs leading-3 text-muted-foreground">
           {pending.stance}
         </span>
         {draft.length === 0 && (
@@ -753,12 +753,12 @@ function DecisionItem({ decision }: { decision: DebateDecision }) {
           {closer}
         </span>
       </div>
-      <div className="text-[11px] leading-snug text-muted-foreground">
+      <div className="text-xs leading-snug text-muted-foreground">
         {speakers}
       </div>
       {decision.newAngle && (
         <div className="space-y-0.5">
-          <div className="text-[11px] font-medium leading-4 text-foreground/70">
+          <div className="text-xs font-medium leading-4 text-foreground/70">
             Focus
           </div>
           <EntryMarkdown text={decision.newAngle} />
@@ -789,7 +789,7 @@ function CollapsibleMarkdown({ label, text }: { label: string; text: string }) {
     .slice(0, 140);
   return (
     <details className="group/briefing">
-      <summary className="flex cursor-pointer list-none items-start gap-1 text-[11px] leading-snug">
+      <summary className="flex cursor-pointer list-none items-start gap-1 text-xs leading-snug">
         <span className="shrink-0 font-medium text-foreground/70">
           {label}:
         </span>
@@ -843,7 +843,7 @@ function ResearchTimeline({ calls }: { calls: ToolCall[] }) {
           const Icon = g.name === "search" ? SearchIcon : WrenchIcon;
           return (
             <details key={g.name} className="group/tool">
-              <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] leading-4">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs leading-4">
                 <Icon
                   className="h-3 w-3 shrink-0 text-muted-foreground/70"
                   aria-hidden="true"
@@ -877,14 +877,14 @@ function ResearchCallItem({ call }: { call: ToolCall }) {
   const hasResults = call.resultSummary && call.resultSummary.length > 0;
   if (!hasResults) {
     return (
-      <div className="text-[11px] leading-snug text-muted-foreground">
+      <div className="text-xs leading-snug text-muted-foreground">
         {label}
       </div>
     );
   }
   return (
     <details className="group/call">
-      <summary className="flex cursor-pointer list-none items-start gap-1 text-[11px] leading-snug">
+      <summary className="flex cursor-pointer list-none items-start gap-1 text-xs leading-snug">
         <span className="shrink-0 font-medium text-foreground/70">{label}</span>
         <span className="flex-1 truncate text-muted-foreground">
           — {call.resultSummary!.length}{" "}
@@ -899,7 +899,7 @@ function ResearchCallItem({ call }: { call: ToolCall }) {
         {call.resultSummary!.map((r, j) => (
           <div
             key={j}
-            className="truncate text-[10px] text-muted-foreground/70"
+            className="truncate text-xs text-muted-foreground/70"
           >
             {r}
           </div>
@@ -925,7 +925,7 @@ function VerdictItem({ verdict }: { verdict: DebateVerdict }) {
         {verdict.verdict}
       </div>
       <details className="group/why">
-        <summary className="flex cursor-pointer list-none items-center gap-1 text-[11px] leading-4 text-muted-foreground">
+        <summary className="flex cursor-pointer list-none items-center gap-1 text-xs leading-4 text-muted-foreground">
           <span>Reasoning</span>
           <ChevronDownIcon
             className="h-3 w-3 shrink-0 transition-transform group-open/why:-rotate-180"
@@ -954,7 +954,7 @@ function EntryMarkdown({ text }: { text: string }) {
       className={cn(
         "prose-none text-xs leading-snug text-muted-foreground",
         "[&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:my-0.5",
-        "[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px]",
+        "[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs",
         "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded-sm [&_pre]:bg-muted [&_pre]:p-2",
         "[&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-2 [&_blockquote]:italic",
       )}

@@ -46,7 +46,7 @@ afterEach(async () => {
 });
 
 async function host(flowState: FlowState, port = 0): Promise<ServeHandle> {
-  const handle = await serve(flowState, { port, handleSignals: false, disposeOnClose: false, shutdownGraceMs: 0 });
+  const handle = await serve(flowState, { port, host: "127.0.0.1", handleSignals: false, disposeOnClose: false, shutdownGraceMs: 0 });
   handles.push(handle);
   return handle;
 }

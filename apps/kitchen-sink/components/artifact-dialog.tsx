@@ -183,7 +183,7 @@ export type ArtifactDetail = {
   title: string;
   content: string;
   extension: string | null;
-  updatedAt: number;
+  updatedAt: string;
 };
 
 /**

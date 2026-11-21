@@ -9,20 +9,35 @@
  * changes nothing), BR-29 (a `coordinator-route` record is never drawn as a
  * line), and BR-20's "under the delegate's name".
  */
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as draw, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DataItem } from "@flow-state-dev/core/items";
 import { DelegatesPanel } from "../src/components/DelegatesPanel";
+import { DirectoryProvider } from "../src/lib/directory";
+
+const render = (ui: ReactElement) => draw(ui, { wrapper: DirectoryProvider });
 import { CoordinatorRoute } from "../src/components/CoordinatorRoute";
-import { shiftManagerRenderers } from "../src/components/ToolLine";
+import { shiftManagerRenderers } from "../src/components/lines";
 import { knownWorkers, senderOf } from "../src/lib/conversation";
-import { toWorker } from "../src/lib/reads";
+import { toWorker } from "../src/lib/workers";
 
 let listed: Array<{ worker: string; note?: string }> = [];
 const calls: string[] = [];
 let refuseAdd: string | null = null;
 const rosterViews = new Set<(entries: unknown[]) => void>();
+/** The session's delegate list changed: every watch of the delegates view hears it, as the server pushes it. */
+const changed = new Set<() => void>();
+const changeList = (next: Array<{ worker: string; note?: string }>) => {
+  listed = next;
+  for (const heard of [...changed]) heard();
+};
 
+// FIX-2775: the directory, holding the page's one roster watch: nothing else read.
+vi.mock("../src/lib/directory-reads", async () => {
+  const { useFixtureReads } = await import("./helpers/directory");
+  return { useDirectoryReads: () => useFixtureReads(() => undefined) };
+});
 // One connection and one workforce client, as the app memoizes them per Lab.
 vi.mock("../src/lib/lab-data", () => {
   const lab = { client: { userId: "alice" } };
@@ -30,11 +45,21 @@ vi.mock("../src/lib/lab-data", () => {
 });
 vi.mock("../src/lib/workforce", () => {
   const workforce = {
+    organization: async () => "acme",
     // The roster watch: reports one read, and each roster a test tells it of.
     watchRoster(onRoster: (entries: unknown[]) => void) {
       rosterViews.add(onRoster);
       void this.roster().then(onRoster);
       return () => rosterViews.delete(onRoster);
+    },
+    addDelegate: async (sessionId: string, worker: string) => {
+      calls.push(`add ${sessionId} ${worker}`);
+      if (refuseAdd !== null) throw new Error(refuseAdd);
+      changeList([...listed, { worker }]);
+    },
+    removeDelegate: async (sessionId: string, worker: string) => {
+      calls.push(`remove ${sessionId} ${worker}`);
+      changeList(listed.filter((d) => d.worker !== worker));
     },
     roster: async () => [
       { id: "shift-coordinator", flow: "coordinator", standard: true, description: null },
@@ -46,23 +71,25 @@ vi.mock("../src/lib/workforce", () => {
   };
   return { useWorkforce: () => workforce };
 });
-vi.mock("../src/lib/delegates", () => ({
-  readDelegates: async (_c: unknown, flow: string, sessionId: string) => {
-    calls.push(`list ${flow} ${sessionId}`);
-    return { delegates: [...listed], max: 25 };
-  },
-  addDelegate: async (_c: unknown, flow: string, sessionId: string, worker: string) => {
-    calls.push(`add ${flow} ${sessionId} ${worker}`);
-    if (refuseAdd !== null) throw new Error(refuseAdd);
-    listed = [...listed, { worker }];
-    return { delegates: [...listed], max: 25 };
-  },
-  removeDelegate: async (_c: unknown, flow: string, sessionId: string, worker: string) => {
-    calls.push(`remove ${flow} ${sessionId} ${worker}`);
-    listed = listed.filter((d) => d.worker !== worker);
-    return { delegates: [...listed], max: 25 };
-  },
-}));
+// The delegates view (`delegatesViewRef`, through `useView`): one read per watch, then each change pushed.
+vi.mock("@flow-state-dev/react", async (original) => {
+  const { useEffect, useState } = await import("react");
+  return {
+    ...(await original<typeof import("@flow-state-dev/react")>()),
+    useView: (ref: { flow: string; view: string }, _input: unknown, options: { enabled?: boolean; sessionId?: string }) => {
+      const [, bump] = useState(0);
+      const on = options.enabled !== false && ref.view === "delegates";
+      useEffect(() => {
+        if (!on) return;
+        calls.push(`view ${ref.flow} ${options.sessionId}`);
+        const heard = () => bump((n) => n + 1);
+        changed.add(heard);
+        return () => void changed.delete(heard);
+      }, [on, ref.flow, options.sessionId]);
+      return { value: on ? { delegates: [...listed], max: 25, fallback: null, filingSessionId: "f" } : undefined, stale: false };
+    },
+  };
+});
 
 const shiftCoordinator = toWorker({ id: "shift-coordinator", kind: "coordinator", door: "run" })!;
 
@@ -90,7 +117,7 @@ describe("the delegates panel (BR-33)", () => {
   it("lists the conversation's delegates, and offers the user's roster minus the coordinator and those listed", async () => {
     render(<DelegatesPanel worker={shiftCoordinator} sessionId="s1" />);
     await settle();
-    expect(calls).toEqual(["list coordinator s1"]);
+    expect(calls).toEqual(["view coordinator s1"]);
     expect(screen.getAllByTestId("shift-coordinator-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["eng.em"]);
     const options = [...(screen.getByTestId("shift-coordinator-delegate-pick") as HTMLSelectElement).options].map((o) => o.value);
     expect(options).toEqual(["", "licenses", "eng.reviewer", "ops.reviewer"]);
@@ -104,7 +131,7 @@ describe("the delegates panel (BR-33)", () => {
     expect(labels).toEqual(["Add from your roster…", "licenses", "Reviewer (eng.reviewer)", "Reviewer (ops.reviewer)"]);
   });
 
-  it("adds one from the roster and removes one, each through the coordinator's action on this conversation", async () => {
+  it("adds one from the roster and removes one, each through workforce's call on this conversation", async () => {
     render(<DelegatesPanel worker={shiftCoordinator} sessionId="s1" />);
     await settle();
     fireEvent.change(screen.getByTestId("shift-coordinator-delegate-pick"), { target: { value: "licenses" } });
@@ -114,7 +141,7 @@ describe("the delegates panel (BR-33)", () => {
     fireEvent.click(screen.getAllByTestId("shift-coordinator-delegate-remove")[0]!);
     await settle();
     expect(screen.getAllByTestId("shift-coordinator-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["licenses"]);
-    expect(calls).toEqual(["list coordinator s1", "add coordinator s1 licenses", "remove coordinator s1 eng.em"]);
+    expect(calls).toEqual(["view coordinator s1", "add s1 licenses", "remove s1 eng.em"]);
   });
 
   it("offers a worker the roster watch reports, with no remount and no new read of the delegates", async () => {
@@ -131,7 +158,16 @@ describe("the delegates panel (BR-33)", () => {
     });
     const options = [...(screen.getByTestId("shift-coordinator-delegate-pick") as HTMLSelectElement).options].map((o) => o.value);
     expect(options).toEqual(["", "scribe"]);
-    expect(calls).toEqual(["list coordinator s1"]);
+    expect(calls).toEqual(["view coordinator s1"]);
+  });
+
+  // FIX-2776 D1: the panel watched an action's answer before, and missed what the coordinator's own tool changed.
+  it("shows an add the coordinator's own tool made, as it lands, with no remount and no new read", async () => {
+    render(<DelegatesPanel worker={shiftCoordinator} sessionId="s1" />);
+    await settle();
+    await act(async () => changeList([...listed, { worker: "eng.reviewer" }]));
+    expect(screen.getAllByTestId("shift-coordinator-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["eng.em", "eng.reviewer"]);
+    expect(calls).toEqual(["view coordinator s1"]);
   });
 
   it("shows a refused add's reason and keeps the list as it was", async () => {

@@ -39,9 +39,9 @@ export function readinessChipText(row: HarnessReadinessChipRow): string {
   return why === null ? row.label : `${row.label}: ${why}`;
 }
 
-const CHIP = "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[11px]";
+const CHIP = "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-xs";
 const BUTTON =
-  "rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+  "rounded-md border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 /** The chips and Re-check. */
 export function HarnessReadiness({ rows, recheck, className }: HarnessReadinessProps) {
@@ -62,7 +62,7 @@ export function HarnessReadiness({ rows, recheck, className }: HarnessReadinessP
   return (
     <div role="group" aria-label="Coding harnesses" className={["flex flex-wrap items-center gap-1.5", className].filter(Boolean).join(" ")}>
       {rows === undefined ? (
-        <span className="text-[11px] text-muted-foreground">Checking the coding harnesses…</span>
+        <span className="text-xs text-muted-foreground">Checking the coding harnesses…</span>
       ) : (
         rows.map((row) => (
           <span
@@ -83,7 +83,7 @@ export function HarnessReadiness({ rows, recheck, className }: HarnessReadinessP
         </button>
       )}
       {error === undefined ? null : (
-        <span role="alert" className="text-[11px] text-destructive">
+        <span role="alert" className="text-xs text-destructive">
           {error}
         </span>
       )}

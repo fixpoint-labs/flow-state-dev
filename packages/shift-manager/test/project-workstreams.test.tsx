@@ -33,12 +33,21 @@ import { builtinEnvironments } from "vitest/environments";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { WORKER_ID_STATE_KEY, type RosterEntry } from "@flow-state-dev/workforce/browser";
-import { runAction } from "../src/lib/action";
+import { runAction } from "./helpers/run-action";
 import type { Client } from "@flow-state-dev/client";
 import { connect, type Connection } from "../src/lib/connection";
-import { readProject, readProjectSetup, type ProjectAddress, type ProjectSetup } from "../src/lib/projects";
+import { readProject, type ProjectAddress } from "../src/lib/projects";
+import { PROJECTS_FLOW, projectSetupView } from "@flow-state-dev/workforce/browser";
+
+/** The project setup as these tests drive it: the flow that opens workstreams, and the coordinator the view names. */
+type ProjectSetup = { flow: string; projectCoordinator: string | null };
+
+/** The setup, from workforce's view, as Project's Stream reads it (`useProjectSetup`). */
+async function readProjectSetup(client: Client): Promise<ProjectSetup> {
+  return { flow: PROJECTS_FLOW, projectCoordinator: (await client.view(projectSetupView, {})).value.projectCoordinator };
+}
 import { createLabReader } from "../src/lib/reads";
-import { readSessionItems } from "../src/lib/run";
+import { readSessionItems } from "./helpers/session-reads";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
@@ -442,14 +451,14 @@ describe("a project view (V8: BR-12, BR-18)", () => {
         [BOB.userId, "search"],
       ].sort(),
     );
-    // The view's reads: the row by its key, and the entries by the project's one prefix. No other entry read.
-    // Each read is one of each, so they come in pairs: the view's, and the sidebar's for the project on screen.
-    // The Lab's own read never lists entries.
+    // The view's reads: the entries by the project's one prefix, the view's and the sidebar's for the project
+    // on screen, so they come in pairs. No other entry read. The row is the projects read the page holds
+    // (FIX-2775), so nothing reads it by its key; the Lab's own read never lists entries.
     const workstreamReads = seen.filter((r) => /\/resources\/(org|user)\/workstreams\//.test(r.path));
     const rowReads = seen.filter((r) => /\/resources\/(org|user)\/projects\/\*\/entries\/projects\/apollo\b/.test(r.path));
-    expect(workstreamReads.length).toBeGreaterThan(0);
+    expect(workstreamReads).toHaveLength(2);
     expect(workstreamReads.map((r) => r.path.replace(/^.*\?(userId=[^&]*&)?/, "?"))).toEqual(workstreamReads.map(() => "?limit=200&topicPrefix=workstreams/apollo/"));
-    expect(rowReads).toHaveLength(workstreamReads.length);
+    expect(rowReads).toEqual([]);
 
     // The Board: one lane per workstream of hers, each read from its own session; Bob's is never read.
     const boardFrom = seen.length;
@@ -613,10 +622,10 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     openApp(alice.connection, baseUrl, "/p/apollo/stream");
     const conversation = await screen.findByTestId("project-stream-conversation", undefined, { timeout: 10_000 });
     // The run of calls is one line, and the open that went through on its retry doesn't turn it red.
-    const line = await within(conversation).findByRole("button", { name: /^Used 3 tools$/ }, { timeout: 10_000 });
+    const line = await within(conversation).findByRole("button", { name: "Ran `listLeads` and ran `openWorkstream` 2 times" }, { timeout: 10_000 });
     act(() => fireEvent.click(line));
     expect(within(conversation).getByText("Tried openWorkstream")).toBeTruthy();
-    expect(within(conversation).queryByText("openWorkstream failed")).toBeNull();
+    expect(within(conversation).getByTestId("tool-group").getAttribute("data-state-kind")).toBe("completed");
   });
 
   it("lists a workstream opened while its Workstreams tab is open, with no reload or navigation", async () => {

@@ -52,10 +52,7 @@ export const artifacts = defineResourceCollection({
 ```ts title="src/lib/bash.ts"
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 
-export const bashCap = createBashCapability({
-  // Each saved file's state, merged over its path and hash. Match the schema.
-  createState: () => ({ updatedAt: new Date().toISOString() }),
-});
+export const bashCap = createBashCapability();
 ```
 
 ```ts title="src/flows/reports/blocks/report-writer.ts"

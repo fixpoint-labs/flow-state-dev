@@ -18,6 +18,7 @@ import { REPO_ROOT } from "../../lib/index.mts";
 import { openShiftManager, personPage, startShiftManager, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { connect, type Connected, type Person, type Shipped } from "./people.mts";
 import { messageOf, type RunRecord } from "./record.mts";
+import { sleep } from "../../lib/time.mts";
 
 const git = (...args: string[]) => execFileSync("git", ["-C", REPO_ROOT, ...args], { encoding: "utf8" }).trim();
 
@@ -83,7 +84,6 @@ export interface Drawn {
 
 /** The read the Roster makes for the person's own workers: the workforce client listing `workforceWorkers`. */
 const OWN_WORKERS_READ = /\/sessions\/[^/]+\/resources\/workforceWorkers$/;
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** One store, the install serving it, and the people using it. */
 export class Install {

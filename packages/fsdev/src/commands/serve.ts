@@ -12,7 +12,7 @@
  * principal resolver.
  */
 import type { Command } from "commander";
-import { serve, assertNetworkBindIsAuthenticated } from "@flow-state-dev/node";
+import { serve } from "@flow-state-dev/node";
 import { resolveRuntimeSource } from "../resolve-runtime";
 import { CliError } from "../resolve-block";
 import { collectValues } from "../cli-options";
@@ -101,31 +101,17 @@ export async function executeServeCommand(options: ServeCommandOptions): Promise
   const host =
     options.host ?? (envHost !== undefined && envHost.length > 0 ? envHost : undefined) ?? "0.0.0.0";
 
-  // Loopback-bind safety rail. Refuses a network host when a served flow would
-  // run on the framework's default (unauthenticated) principal resolver.
-  // getRuntime() is memoized inside the guard, so serve() reuses that resolution
-  // rather than initializing stores twice.
-  try {
-    await assertNetworkBindIsAuthenticated(resolved.flowState, {
-      host,
-      allowUnauthenticated: options.allowUnauthenticated,
-    });
-  } catch (err) {
-    // Ownership of the FlowState never transferred to a handle; dispose it here.
-    await resolved.flowState.dispose().catch(() => {});
-    throw new CliError(err instanceof Error ? err.message : String(err), EXIT_CONFIG_ERROR);
-  }
-
   // Serve over HTTP with no staticDir (no DevTool UI, ever). serve owns the
   // node:http bridge and unbuffered SSE; the config's adapters (e.g. MCP) mount
   // as they do under `dev`. handleSignals: false so shutdown lives in one path.
   const handle = await serve(resolved.flowState, {
     host,
+    allowUnauthenticated: options.allowUnauthenticated,
     port,
     basePath: "/api/flows",
     handleSignals: false,
   }).catch(async (err: unknown) => {
-    // A listen failure (EADDRINUSE, EACCES) — ownership never transferred, so
+    // A guard or listen failure — ownership never transferred, so
     // dispose the FlowState. Surface as a config error (exit 3): an operational
     // misconfiguration a deployment script can act on, not an internal bug.
     await resolved.flowState.dispose().catch(() => {});

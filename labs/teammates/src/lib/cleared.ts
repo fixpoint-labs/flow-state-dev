@@ -4,7 +4,7 @@
  * are, and the popup, the conversation and the heading's counts still show it.
  */
 import { useCallback, useState } from "react";
-import type { BoardTask } from "../app";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 
 const KEY = "teammates.cleared";
 
@@ -12,8 +12,8 @@ const KEY = "teammates.cleared";
  * What a cleared row is remembered by: the task and when it ended. A retried
  * task that fails again ends at a new time, so its new failure shows again.
  */
-export function clearMark(t: BoardTask): string {
-  return `${t.id}@${t.view?.times.completedAt ?? ""}`;
+export function clearMark(t: Pick<CodingBoardTask, "id" | "completedAt">): string {
+  return `${t.id}@${t.completedAt ?? ""}`;
 }
 
 /** Per viewer, so it lives in browser storage, and a blocked store only forgets. */

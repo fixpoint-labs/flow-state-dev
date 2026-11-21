@@ -1003,8 +1003,8 @@ function controlPatches(control: string): Patch[] {
       return [
         {
           file: "src/surfaces/Sidebar.tsx",
-          from: "className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[13px] ${",
-          to: "className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[13px] ${",
+          from: "className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm ${",
+          to: "className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm ${",
           why: "the team row rounded",
         },
         {

@@ -323,8 +323,10 @@ describe("the session-mode screen", () => {
   });
 
   it("never moves while the turn writes, even at the end: your own line takes you down, then Jump to latest offers the rest", async () => {
-    // The list grows with its text, so what the turn writes lands below the view.
-    const feeds = layOutFeeds((feed) => 500 + (feed.textContent?.length ?? 0) * 4);
+    // The list grows with its text, so what the turn writes lands below the view. Like a browser's,
+    // its scroll height also counts the space the feed keeps under your line, which is padding.
+    const content = (feed: HTMLElement) => 500 + (feed.textContent?.length ?? 0) * 4;
+    const feeds = layOutFeeds((feed) => content(feed) + (Number.parseFloat(feed.style.paddingBottom) || 0));
     onTestFinished(feeds.restore);
     await renderApp({ vendor: { mainTurn: "takes-acme" } });
     await pick();
@@ -352,7 +354,8 @@ describe("the session-mode screen", () => {
     const jump = await within(thread()).findByRole("button", { name: "Jump to latest" }, SLOW);
     fireEvent.click(jump);
     expect(feeds.scrolls.at(-1)).toEqual({ feed, behavior: "smooth" });
-    expect(feed.scrollHeight - feed.scrollTop - feed.clientHeight).toBe(0);
+    // At the end of what was written, whatever space is still kept below it.
+    expect(content(feed) - feed.scrollTop - feed.clientHeight).toBe(0);
     expect(within(thread()).queryByRole("button", { name: "Jump to latest" })).toBeNull();
   });
 
@@ -519,9 +522,7 @@ describe("the session-mode screen", () => {
     await pick();
     await ask("Compare Acme and Globex for us.");
     await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("in_progress"), SLOW);
-    // The two calls that filed the tasks are one run of the turn's: open it to its line per call.
-    const run = await within(thread()).findByRole("button", { name: /Start/, expanded: false }, SLOW);
-    fireEvent.click(run);
+    // Each call that filed a task is that task's line, not a step of the turn's run.
     await waitFor(() => expect(within(thread()).getAllByText(/Start a task: Research Globex/).length).toBeGreaterThan(0), SLOW);
     const start = within(thread())
       .getAllByText(/Start a task: Research Globex/)
@@ -580,8 +581,10 @@ describe("the session-mode screen", () => {
     await within(thread()).findByRole("status", OUTSIDE_COMPOSER, SLOW);
     fireEvent.click(within(thread()).getByRole("button", { name: "Stop" }));
     await within(thread()).findByText(/Interrupted by you/, undefined, SLOW);
-    // The working line is gone; the one status left is the stopped line.
-    expect(within(thread()).queryByText(/working ·/)).toBeNull();
+    // The working line goes; the one status left is the stopped line. Waited on, not read once: the
+    // research result the worker takes once its stopped turn ends is a turn of its own, which Stop
+    // never reached and which can show working for a moment. The stopped turn would work for a minute.
+    await waitFor(() => expect(within(thread()).queryByText(/working ·/)).toBeNull(), { timeout: 8_000 });
   });
 
   it("never stops the turn on one Esc, in the composer or when it closes a sheet", async () => {

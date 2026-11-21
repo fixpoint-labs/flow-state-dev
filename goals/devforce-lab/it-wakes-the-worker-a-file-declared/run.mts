@@ -56,6 +56,7 @@ import {
 import { harnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
+import { sleep } from "../../lib/time.mts";
 
 stripIntentOverrides();
 
@@ -119,8 +120,6 @@ const HARNESS_PACKAGES = [
   "@flow-state-dev/codex",
   "@flow-state-dev/cursor",
 ] as const;
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const sameSet = (seen: readonly string[], wanted: readonly string[]): boolean =>
   seen.length === wanted.length && [...seen].sort().join(",") === [...wanted].sort().join(",");

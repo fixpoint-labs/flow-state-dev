@@ -125,6 +125,8 @@ import { carriedHopState, freshHopMark, heldFromFiling, hopMarkOf, INFERRED_FORW
 import type { BlockContext, BlockDefinition, DispatchAddress } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
+import { FILED_TASK_DATA_TYPE } from "../messages/keys";
+import { callLineKey, type FiledTaskValue } from "../messages/line-values";
 import { soleTaskDelegate, type TaskDelegates } from "../delegates/worker-delegates";
 import { delegateKey } from "../delegates/delegate-list";
 import { carriedSessionFields, type SessionFields } from "../workers/session-fields";
@@ -298,6 +300,18 @@ function saidYes(task: Task): boolean {
   if (typeof prompt !== "string") return false;
   const confirm = (task.holds ?? []).find((hold) => hold.source.kind === "task" && hold.ask.kind === "confirm" && hold.ask.prompt === prompt);
   return confirm !== undefined && (task.steers ?? []).some((steer) => steer.answers === confirm.id && steer.from === "user");
+}
+
+// FIX-2848 D1.
+/**
+ * Write a filed task's line (`workforce:task`) in the conversation that filed
+ * it, for an app to draw; client-only. Keyed by the tool call that filed it,
+ * which the call then reads as, else by the task. Returns the task.
+ */
+function writeTaskLine(ctx: BlockContext, task: Task): Task {
+  const value: FiledTaskValue = { taskId: task.id, title: task.title ?? task.goal, ...(task.assignee === undefined ? {} : { assignee: task.assignee }) };
+  ctx.emit?.data(FILED_TASK_DATA_TYPE, value, { key: callLineKey(ctx) ?? `task:${task.id}`, itemVisibility: { client: true, history: false } });
+  return task;
 }
 
 /** A new task's id, minted before its add so its place in the chain is reserved first. */
@@ -576,6 +590,24 @@ function isStartable(task: Task, rows: readonly Task[]): boolean {
   const key = sessionKeyOf(task);
   if (key === undefined) return true;
   return !rows.some((other) => other.id !== task.id && holdsSession(other) && sessionKeyOf(other) === key);
+}
+
+/**
+ * Whether a pending task on this one board will start because a finished
+ * task released its session. A startable task with no finished sibling was
+ * never handed to the dispatcher. The test host's quiet check reads this,
+ * so it does not keep a second copy of the start rule.
+ *
+ * @param tasks One board's tasks: one partition of one scope.
+ */
+export function owesStartAfterRelease(tasks: readonly Task[], now = Date.now()): boolean {
+  const lookup = (id: string): Task | undefined => tasks.find((task) => task.id === id);
+  return tasks.some((task) => {
+    if (task.status !== "pending" || !isClaimable(task, lookup, now) || !isStartable(task, tasks)) return false;
+    const key = sessionKeyOf(task);
+    if (key === undefined) return false;
+    return tasks.some((other) => other.id !== task.id && isTerminalStatus(other.status) && sessionKeyOf(other) === key);
+  });
 }
 
 
@@ -1354,11 +1386,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // On a turn routing a message, a filing whose result goes to the
       // conversation is a routed task: its layer attaches the message.
       // One at a time: a batch on such a turn files plain tasks.
-      if (init.resultTo === "conversation" && options.routes?.routing(ctx) === true) return options.routes.file(ctx, init);
+      if (init.resultTo === "conversation" && options.routes?.routing(ctx) === true) return writeTaskLine(ctx, await options.routes.file(ctx, init));
       const targeted = await withTarget(init);
       await assertProjectFor(targeted);
       await refuseUnderCancelledTask();
-      return fileReserved(targeted, await reserveFiling(ctx, ref, partition, targeted, true));
+      return writeTaskLine(ctx, await fileReserved(targeted, await reserveFiling(ctx, ref, partition, targeted, true)));
     };
     /**
      * The options a write on this board presents: a claim the running

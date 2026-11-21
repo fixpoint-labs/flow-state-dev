@@ -25,6 +25,7 @@ import type { ResolvedPrincipal } from "../transports/types";
 import { ownerKeyAdmits } from "../resources/owner-private";
 import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
+import { isJsonMediaType } from "@flow-state-dev/contracts/helpers";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { normalizeResourceState } from "../resources/normalize-resource-state";
@@ -652,6 +653,10 @@ export function buildReplayEvents(record: RequestRecord, session?: SessionRecord
 }
 
 export function errorStatus(error: Error): number {
+  if (error instanceof JsonMediaTypeError) {
+    return 415;
+  }
+
   if (error instanceof ValidationError) {
     return 400;
   }
@@ -663,10 +668,33 @@ export function errorStatus(error: Error): number {
   return 500;
 }
 
+/**
+ * A JSON route got a non-empty body without an `application/json` media type.
+ * The router answers 415. Requiring the type is what forces a browser to send
+ * a CORS preflight before a cross-site write, so a `text/plain` form post or
+ * `fetch` can't start runs on a local server.
+ */
+export class JsonMediaTypeError extends Error {
+  constructor() {
+    super("Request body must be sent with content-type: application/json");
+    this.name = "JsonMediaTypeError";
+  }
+}
+
+
+/**
+ * The one JSON body reader for mutating routes. An empty body is `{}`; a
+ * non-empty body must carry `content-type: application/json` (parameters such
+ * as `; charset=utf-8` are fine) or it throws {@link JsonMediaTypeError}.
+ */
 export async function parseJsonBody(request: Request): Promise<Record<string, unknown>> {
   const text = await request.text();
   if (text.trim().length === 0) {
     return {};
+  }
+
+  if (!isJsonMediaType(request.headers.get("content-type"))) {
+    throw new JsonMediaTypeError();
   }
 
   const parsed = JSON.parse(text);

@@ -37,5 +37,6 @@ export {
   type ReportLimits,
   type ReportResourceState
 } from "./reports";
+export { defineErrorHistoryCollection, ERROR_HISTORY_RESOURCE, type ErrorHistoryCollectionOptions } from "./history-view";
 export { fingerprintOf, normalizeErrorMessage, type FingerprintParts } from "./fingerprint";
 export { redact, secretsFromEnv, REDACTED } from "./redact";

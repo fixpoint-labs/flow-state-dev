@@ -1435,6 +1435,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         contentTemplate: extConfig.contentTemplate,
         contentTemplateRef: extConfig.contentTemplateRef,
         resolveTemplateRef: (ref) => options.templateResolverRef?.current?.(ref) ?? null,
+        llmReadable: extConfig.llmReadable,
       });
 
     return {

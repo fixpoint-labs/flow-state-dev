@@ -21,7 +21,7 @@ code, before the run starts.
 1. The prompt the manager handed the agent carries all four held-out tokens — the coder seat's
    `WORKER.md` marker, its brief's marker, its team skill's marker and its own-folder skill's
    marker.
-2. Exactly one branch under `conductor/` exists in the scratch repository, and it is at least one
+2. Exactly one branch under `shift-manager/` exists in the scratch repository, and it is at least one
    commit ahead of `main`.
 3. The board row settles `completed`.
 

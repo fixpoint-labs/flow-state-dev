@@ -70,6 +70,7 @@ import {
   workforceTree
 } from "../../lib/index.mts";
 import { PATCHES } from "./controls.mts";
+import { sleep } from "../../lib/time.mts";
 
 const USER = "u_filing_settings";
 const ORG = "org_filing_settings";
@@ -117,8 +118,6 @@ type Proof = {
   at: number;
   refused?: string[];
 };
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function readProofs(): Proof[] {
   if (!existsSync(PROOFS)) return [];

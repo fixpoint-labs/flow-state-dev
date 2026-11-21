@@ -328,7 +328,8 @@ describe("starting work on a conversation's board (BR-8 to BR-11, BR-24)", () =>
   });
 });
 
-describe("retryTask on a conversation's board (FIX-2383)", () => {
+// Real engine: `settled()` waits up to 10s, so the test budget must not be the shorter 5s default.
+describe("retryTask on a conversation's board (FIX-2383)", { timeout: 30_000 }, () => {
   it("starts a cancelled task again as the same row, with no other touch of the board", async () => {
     const host = bootBoardHost();
     try {
@@ -401,6 +402,33 @@ describe("retryTask on a conversation's board (FIX-2383)", () => {
       expect([...order.slice(1)].sort()).toEqual(["task_first", "task_second"]);
       expect(await host.row("alice", filing, "task_first")).toMatchObject({ status: "completed", attempts: 2 });
       expect(await host.row("alice", filing, "task_second")).toMatchObject({ status: "completed", attempts: 2 });
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("stays open while a pending task shares its session with a finished one", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "pm");
+      const filing = await host.filingOf("alice", conv);
+      const at = (id: string, status: "completed" | "pending", createdAt: number): Task =>
+        ({
+          ...recorded(id, "eng.tasker", id),
+          session: "ongoing",
+          status,
+          attempts: 1,
+          startedAt: createdAt,
+          ...(status === "completed" ? { completedAt: createdAt } : {}),
+          createdAt,
+          updatedAt: createdAt
+        }) as Task;
+      // Written straight in: no wake is sent. The pending one is the dispatcher's to start
+      // once the finished one has released their session, so settled must not return yet.
+      await host.writeRow("alice", filing, at("task_done", "completed", 1000));
+      await host.writeRow("alice", filing, at("task_wait", "pending", 2000));
+      await expect(host.settled(400)).rejects.toThrow(/never dispatched/);
+      expect(await host.row("alice", filing, "task_wait")).toMatchObject({ status: "pending" });
     } finally {
       await host.dispose();
     }

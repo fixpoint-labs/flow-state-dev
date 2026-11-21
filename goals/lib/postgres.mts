@@ -14,10 +14,10 @@
  */
 import { spawnSync } from "node:child_process";
 import { chownSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
+import { freePort } from "./server.mts";
 
 export type RunningPostgres = {
   /** A connection string for the database the goal uses. */
@@ -103,18 +103,6 @@ function binDir(): string {
   const which = spawnSync("sh", ["-c", "command -v initdb"], { encoding: "utf8" });
   if (which.status === 0) return join(which.stdout.trim(), "..");
   throw new Error("no Postgres to start: set FSD_DB_URL, or install Postgres so `initdb` and `pg_ctl` are found");
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      server.close(() => (typeof address === "object" && address !== null ? resolve(address.port) : reject(new Error("no port"))));
-    });
-  });
 }
 
 /**

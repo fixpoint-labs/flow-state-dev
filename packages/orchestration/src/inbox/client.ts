@@ -13,6 +13,7 @@
  */
 import { ClientHttpError, viewRef, type Client, type RequestResult, type ViewRef } from "@flow-state-dev/client";
 import type { ResumeAction } from "@flow-state-dev/core/types";
+import type { readTaskView } from "../skills/task-tools-capability";
 import type { TaskListView } from "../skills/views/task-list-view";
 import { taskToolSuffix } from "../skills/task-tool-suffix";
 import type { InboxAnswer, InboxAskKind, InboxHold, InboxItem, OwnHoldSource } from "./types";
@@ -153,6 +154,13 @@ export type RefileOverrides = Partial<RefiledTask> & {
  * read, so check the board before trying again.
  */
 export type BoardActions = {
+  /**
+   * Read one task as the board's `getTask` reads it: its brief (context,
+   * labels, priority) whole, its input and output cut as that read cuts them.
+   * A re-run reads its brief here before {@link refile}, so a long brief
+   * keeps every instruction.
+   */
+  get(id: string): Promise<BoardTaskRead>;
   /** Cancel a task. Resolves to the ids of the dependents the board cancelled with it. */
   cancel(id: string): Promise<string[]>;
   /** Send words to an open task: they join its brief. Uses no try, never cancels. */
@@ -168,6 +176,9 @@ export type BoardActions = {
    */
   refile(row: RefiledTask, overrides?: RefileOverrides): Promise<string>;
 };
+
+/** One task as the board's `getTask` returns it ({@link BoardActions.get}). */
+export type BoardTaskRead = ReturnType<typeof readTaskView>;
 
 /** `row`'s copied fields with `overrides` over them, as `createTask` takes them: unset and `null` fields left out. */
 function refileInput(row: RefiledTask, overrides: RefileOverrides): Record<string, unknown> {
@@ -216,6 +227,11 @@ export function createInboxClient(client: Client): InboxClient {
       const send = (tool: TaskActionTool, input: Record<string, unknown>, what: string) =>
         sendBoardAction(client, { flowId, sessionId, action: taskActionName(tool, board) }, input, what);
       return {
+        async get(id) {
+          const output = await send("getTask", { id }, "read");
+          if (typeof output.task !== "object" || output.task === null) throw new Error("The board read the task, and its answer names no task.");
+          return output.task as BoardTaskRead;
+        },
         async cancel(id) {
           const output = await send("updateTask", { id, status: "cancelled" }, "cancel");
           // The board leaves `cancelled` out when no dependent went with it; anything else there is a protocol bug, not a "none".

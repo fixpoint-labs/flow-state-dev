@@ -43,6 +43,7 @@ async function act(router: Router, address: string, sessionId: string): Promise<
   return router.POST(
     new Request(`http://goal/api/flows/${address}/${sessionId}/actions/run`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: USER, input: {} }),
     }),
     { params: { path: [address, sessionId, "actions", "run"] } },
