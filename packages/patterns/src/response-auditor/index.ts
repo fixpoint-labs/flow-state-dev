@@ -10,7 +10,8 @@
  * Because it runs via `.sideChain()`, the primary response streams unblocked. Audit
  * results appear after the response completes as a "second pass" annotation.
  */
-import { sequencer, handler } from "@flow-state-dev/core";
+import type { ItemVisibility } from "@flow-state-dev/core";
+import { sequencer, handler, transientSlot } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   AnalyzerResultSchema,
@@ -131,16 +132,20 @@ function createApplyThreshold(threshold: number) {
  * Append-only (no `key`): a fixed key would collapse distinct auditor
  * invocations in one request to a single card.
  */
-const emitAuditAnnotation = handler({
-  name: "emit-audit-annotation",
-  // `.tapIf`'s value is already the apply-threshold step's validated output —
-  // re-declaring that shape here would just be a second copy to keep in sync
-  // (debate's equivalent emit tap uses the same z.any() convention).
-  inputSchema: z.any(),
-  execute: (input, ctx) => {
-    ctx.emit.data("audit-annotation", input as Record<string, unknown>, { itemVisibility: { client: true, history: false } });
-  },
-});
+function createEmitAuditAnnotation(
+  itemVisibility: ItemVisibility = { client: true, history: false },
+) {
+  return handler({
+    name: "emit-audit-annotation",
+    // `.tapIf`'s value is already the apply-threshold step's validated output —
+    // re-declaring that shape here would just be a second copy to keep in sync
+    // (debate's equivalent emit tap uses the same z.any() convention).
+    inputSchema: z.any(),
+    execute: (input, ctx) => {
+      ctx.emit.data("audit-annotation", input as Record<string, unknown>, { itemVisibility });
+    },
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Rescue fallback for analyzer errors
@@ -189,6 +194,7 @@ export function responseAuditor(config: ResponseAuditorConfig) {
   const threshold = config.threshold ?? 0.3;
   const analyzers = config.analyzers;
   const thresholdBlock = createApplyThreshold(threshold);
+  const emitAuditAnnotation = createEmitAuditAnnotation(config.annotationVisibility);
 
   // Each analyzer carries its own block-level `.rescue()` so an individual
   // failure is caught at the framework level (not via manual try/catch) and the
@@ -211,7 +217,12 @@ export function responseAuditor(config: ResponseAuditorConfig) {
   return sequencer({
     name: "response-auditor",
     inputSchema: auditorInputSchema,
-    stateSchema: responseAuditorStateSchema,
+    // Hidden audits must not leak their input or findings through state-change
+    // events. Clone each field before marking it so public auditors stay durable.
+    stateSchema: config.annotationVisibility?.client === false
+      ? z.object(Object.fromEntries(Object.entries(responseAuditorStateSchema.shape)
+        .map(([key, field]) => [key, transientSlot(field.describe(field.description ?? ""))])))
+      : responseAuditorStateSchema,
   })
     .tap(captureContext)
     .map((input: { userInput: string; response: string }) =>

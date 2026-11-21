@@ -1191,6 +1191,12 @@ const EXEMPTIONS = [
     why: "WR-5: a test flow's action named ask, a chat or approval turn a person starts; not a wait",
   },
   {
+    path: /^packages\/patterns\/src\/second-opinion\/index\.ts$/,
+    line: /^\s*ask: \{/,
+    rules: ["ask-mark"],
+    why: "WR-5: the second-opinion chat action asks for a reviewed answer; not a wait",
+  },
+  {
     path: /^packages\/engine\/test\/context\/request-host-e2e\.test\.ts$/,
     line: /\bask\??:\s*z\./,
     rules: ["ask-mark"],

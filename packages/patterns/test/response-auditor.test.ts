@@ -360,6 +360,7 @@ describe("response auditor pattern", () => {
         item.type === "data" && item.dataType === "audit-annotation",
     );
     expect(cards).toHaveLength(1);
+    expect(cards[0]!.itemVisibility).toEqual({ client: true, history: false });
 
     const data = cards[0]!.value as { surfacedResults: unknown[] };
     expect(data.surfacedResults).toHaveLength(1);

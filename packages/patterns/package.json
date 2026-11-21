@@ -63,6 +63,10 @@
     "./benchmark": {
       "types": "./dist/benchmark/index.d.ts",
       "default": "./src/benchmark/index.ts"
+    },
+    "./second-opinion": {
+      "types": "./dist/second-opinion/index.d.ts",
+      "default": "./src/second-opinion/index.ts"
     }
   },
   "license": "MIT",
@@ -110,6 +114,10 @@
       "./benchmark": {
         "types": "./dist/benchmark/index.d.ts",
         "default": "./dist/benchmark/index.js"
+      },
+      "./second-opinion": {
+        "types": "./dist/second-opinion/index.d.ts",
+        "default": "./dist/second-opinion/index.js"
       }
     }
   },
