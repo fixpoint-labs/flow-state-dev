@@ -1,6 +1,6 @@
 import { memo, type ReactNode } from "react";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
-import { attemptStartedAt, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
+import { attemptStartedAt, harnessOf, isActive, modelOf, taskStatus, workerOf } from "../lib/task";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
@@ -82,11 +82,13 @@ export const TaskCard = memo(function TaskCard({
   const on = coding ? runsOn(runs) : undefined;
   const state = taskPresentation(task);
   const status = taskStatus(task);
-  const waiting = status === "running" && task.asks.length > 0;
-  const dot = DOT[waiting ? "waiting" : status];
+  const active = isActive(task);
+  const waiting = active && task.asks.length > 0;
+  // An idle task (a pull request open) gets no dot: it says what it waits on.
+  const dot = active ? DOT[waiting ? "waiting" : "running"] : DOT[status];
   const started = attemptStartedAt(task);
-  // Only an active task counts up; an ended one says how it ended.
-  const since = status === "running" && typeof started === "number" ? sinceShort(Date.now() - started) : undefined;
+  // Only an active task counts up; an idle one says what it waits on, an ended one how it ended.
+  const since = active && typeof started === "number" ? sinceShort(Date.now() - started) : undefined;
   // A coding task leads with its title (the tile says it is code); a teammate's says what was asked of whom.
   const title = coding ? task.title : line;
   return (

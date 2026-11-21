@@ -20,7 +20,7 @@ import { approval as approvalItem, answered, linesOf } from "./lines";
 import { App } from "../src/components/App";
 import { codingTask, hold as openHold } from "./stub-server";
 import { createNotifier, teammateAttention, titleFor, useNotifyToggle } from "../src/lib/attention";
-import { ENDING_SHOWN_MS, needsOf, statusOf, type StatusInputs } from "../src/lib/status";
+import { ENDING_SHOWN_MS, freshEndings, needsOf, statusOf, type StatusInputs } from "../src/lib/status";
 import { scriptedServer, ScriptedProvider } from "./scripted-server";
 
 const NOW = 1_000_000_000;
@@ -54,6 +54,20 @@ describe("the status line puts what needs you first", () => {
     // A task with no start yet (queued, never run) ranks oldest: one that has started is what is happening now.
     const unstarted = task("queued", { title: "Queued work", startedAt: undefined, run: undefined });
     expect(status({ tasks: [unstarted, fresh] }).text).toBe("Running 2 tasks · Add day dividers");
+  });
+
+  it("doesn't count a task waiting on its pull request as running: three PRs open is idle, not 'Running 3 tasks'", () => {
+    const open = (id: string) => task(id, { pullRequests: [Number(id.slice(2))], startedAt: NOW - 3_600_000 });
+    expect(status({ tasks: [open("pr5451"), open("pr5452"), open("pr5512")] }).text).not.toMatch(/^Running/);
+    expect(status({ tasks: [open("pr5451"), task("new", { title: "Add day dividers", startedAt: NOW - 60_000 })] }).text).toBe("Running coding task: Add day dividers");
+  });
+
+  it("still reports a task that was idle on its pull request when the merge completes it", () => {
+    const idle = task("pr", { title: "Add day dividers", pullRequests: [5512], startedAt: NOW - 3_600_000 });
+    expect(freshEndings([idle], NOW, coder)).toEqual([]);
+    const merged = { ...idle, status: "completed" as const, pullRequests: [], completedAt: NOW - 30_000 };
+    expect(freshEndings([merged], NOW, coder)).toEqual([merged]);
+    expect(status({ tasks: [merged] }).text).toBe("Coding task finished: Add day dividers");
   });
 
   it("a coding task that just ended, for two minutes, a failure in red", () => {

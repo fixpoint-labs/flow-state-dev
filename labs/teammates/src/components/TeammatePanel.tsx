@@ -5,7 +5,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useTasks } from "../app";
 import { displayName } from "../lib/roster";
 import { useNow, useStale } from "../lib/use-watch";
-import { attemptStartedAt, elapsedText, holdOf, harnessOf, isLongRunning, modelOf, timeSignalOf, taskStatus, workerOf } from "../lib/task";
+import { attemptStartedAt, elapsedText, holdOf, harnessOf, isActive, isIdle, isLongRunning, modelOf, timeSignalOf, taskStatus, workerOf } from "../lib/task";
 import { clearMark, useCleared } from "../lib/cleared";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -25,20 +25,22 @@ const NEWEST_SHOWN = 5;
 /** The panel's status filters, in tile order. Each tile is a tab: the only way to pick which tasks show. */
 const FILTERS = [
   { status: "running", label: "Running" },
+  { status: "idle", label: "Idle" },
   { status: "failed", label: "Failed" },
   { status: "done", label: "Done" },
 ] as const;
 type Filter = (typeof FILTERS)[number]["status"];
 
-/** Each filter's marker, labelled by its tile's word: a green dot, a red square, a check. */
+/** Each filter's marker, labelled by its tile's word: a green dot, a grey ring, a red square, a check. */
 const MARKER: Record<Filter, string> = {
   running: "size-1.5 rounded-full bg-success",
+  idle: "size-2 rounded-full border border-text-3",
   failed: "size-1.5 rounded-[1px] bg-danger",
   done: "size-3 text-text-3",
 };
 
 /** What an empty tab says. */
-const EMPTY: Record<Filter, string> = { running: "No running tasks.", failed: "No failed tasks.", done: "Nothing done yet." };
+const EMPTY: Record<Filter, string> = { running: "No running tasks.", idle: "No idle tasks.", failed: "No failed tasks.", done: "Nothing done yet." };
 
 /** The tabs whose lists show their newest {@link NEWEST_SHOWN} until *Show all*. */
 const CAPPED: ReadonlySet<Filter> = new Set(["failed", "done"]);
@@ -64,7 +66,8 @@ function newestFirst(tasks: readonly CodingBoardTask[]): CodingBoardTask[] {
 
 /**
  * A teammate's tasks, split by the panel's filters, each newest first: the
- * running ones (those waiting on you first), the failed ones less those the
+ * running ones (those waiting on you first), the idle ones (open, but nothing
+ * moves until something outside does: a pull request open), the failed ones less those the
  * viewer cleared, and the done ones: completed, cancelled, and failed ones
  * the viewer cleared. Every ended task lands in one tile, so finished work
  * stays findable and *Clear* moves a failure out of the way, never out of
@@ -72,10 +75,12 @@ function newestFirst(tasks: readonly CodingBoardTask[]): CodingBoardTask[] {
  */
 function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<string>): Record<Filter, CodingBoardTask[]> {
   const of = (status: ReturnType<typeof taskStatus>) => newestFirst(tasks.filter((t) => taskStatus(t) === status));
-  const running = of("running");
+  const open = of("running");
+  const running = open.filter(isActive);
   const isCleared = (t: CodingBoardTask) => taskStatus(t) === "failed" && cleared.has(clearMark(t));
   return {
     running: [...running.filter((t) => holdOf(t) !== undefined), ...running.filter((t) => holdOf(t) === undefined)],
+    idle: open.filter(isIdle),
     failed: of("failed").filter((t) => !isCleared(t)),
     done: newestFirst(tasks.filter((t) => taskStatus(t) === "done" || taskStatus(t) === "cancelled" || isCleared(t))),
   };
@@ -83,15 +88,16 @@ function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<stri
 
 /**
  * The right pane: the selected teammate's tasks. Its heading gives the total.
- * Under it, three count tiles, *Running*, *Failed* and *Done*, which are the
- * panel's tabs: the selected one lists its tasks as cards, newest first
+ * Under it, four count tiles, *Running*, *Idle*, *Failed* and *Done*, which
+ * are the panel's tabs: the selected one lists its tasks as cards, newest first
  * (running ones waiting on you first). *Failed* and *Done* show their newest
  * five, with *Show all* / *Show fewer*. *Failed* has *Clear*, which moves its
  * tasks to *Done* in this browser; the tasks themselves are unchanged. *Done*
  * holds completed and cancelled tasks too, a cancelled one marked so on its
  * card. A card opens its task in a popup and carries its time: an
  * active one's clock on this attempt, with a thin bar while its run answers,
- * and *Long-running* once it has been open a day; an ended one's age. Then
+ * and *Long-running* once it has been open a day; an idle one's time since it
+ * last moved; an ended one's age. Then
  * what this conversation's coding tasks spent, and at the foot its routines.
  * The teammate's own description and *Edit* live in the conversation's header.
  */
@@ -128,7 +134,7 @@ export function TeammatePanel({
   // *Failed* and *Done* show their newest few until *Show all*, and fold back with *Show fewer*.
   const [expanded, setExpanded] = useState<Filter>();
   const showAll = expanded === filter;
-  const tabs = useRef<Record<Filter, HTMLButtonElement | null>>({ running: null, failed: null, done: null });
+  const tabs = useRef<Record<Filter, HTMLButtonElement | null>>({ running: null, idle: null, failed: null, done: null });
   const name = displayName(worker);
 
   const shown = CAPPED.has(filter) && !showAll ? groups[filter].slice(0, NEWEST_SHOWN) : groups[filter];
@@ -148,13 +154,13 @@ export function TeammatePanel({
     const coding = isCoding(workerOf(t));
     const line = taskLine({ title: t.title, to: workerOf(t) }, coding, nameOf);
     const status = taskStatus(t);
+    const active = isActive(t);
     const runs = { harness: harnessOf(t), model: modelOf(t) };
     const { view, run } = timeSignalOf(t);
     const signal = taskSignal(view, run, now, { stale });
     const long = isLongRunning(t, now);
     const start = attemptStartedAt(t);
-    // An active task's clock on this attempt; an ended one's age, as its signal reads it.
-    const elapsed = status === "running" ? (start === undefined ? undefined : elapsedText(now - start)) : signal?.kind === "ended" ? signal.text : undefined;
+    const elapsed = elapsedOf(t, start, now, signal);
     const tokens = t.spend == null || (t.spend.inputTokens === null && t.spend.outputTokens === null) ? undefined : tokenCount((t.spend.inputTokens ?? 0) + (t.spend.outputTokens ?? 0));
     const meta = [runs.harness, runs.model, tokens].filter((x): x is string => x !== undefined);
     const words = cardWords(t, signal?.kind === "quiet" ? signal.text : undefined);
@@ -178,12 +184,12 @@ export function TeammatePanel({
               {coding ? t.title : line}
             </span>
             {elapsed === undefined ? null : (
-              <span className={cn("shrink-0 pt-px font-mono text-xs tabular-nums", long ? "text-warning-text" : status === "running" ? "text-success-text" : "text-text-3")} data-elapsed>
+              <span className={cn("shrink-0 pt-px font-mono text-xs tabular-nums", long ? "text-warning-text" : active ? "text-success-text" : "text-text-3")} data-elapsed>
                 {elapsed}
               </span>
             )}
           </span>
-          {status === "running" && signal?.kind === "working" && !long ? (
+          {active && signal?.kind === "working" && !long ? (
             <span aria-hidden className="block h-0.5 overflow-hidden rounded-full bg-border" data-progress>
               <span className="block h-full w-1/3 animate-pulse rounded-full bg-success" />
             </span>
@@ -216,7 +222,7 @@ export function TeammatePanel({
           <h2 id="tasks-heading" className="text-sm font-semibold">
             Tasks <span className="font-normal text-text-3 tabular-nums">{tasks.length}</span>
           </h2>
-          <div role="tablist" aria-label="Task status" className="grid grid-cols-3 gap-1.5" onKeyDown={onTabKey}>
+          <div role="tablist" aria-label="Task status" className="grid grid-cols-4 gap-1.5" onKeyDown={onTabKey}>
             {FILTERS.map(({ status, label }) => {
               const selected = filter === status;
               return (
@@ -233,12 +239,12 @@ export function TeammatePanel({
                   tabIndex={selected ? 0 : -1}
                   onClick={() => setFilter(status)}
                   className={cn(
-                    "flex min-w-0 flex-col items-start gap-1 rounded-md border px-2.5 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
+                    "flex min-w-0 flex-col items-start gap-1 rounded-md border px-2 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
                     selected ? "border-border-strong bg-surface-raised" : "border-border bg-transparent hover:bg-surface",
                   )}
                 >
                   <span className="text-xl leading-none font-semibold tabular-nums">{groups[status].length}</span>
-                  <span className="flex min-w-0 max-w-full items-center gap-1.5 text-xs whitespace-nowrap text-text-2">
+                  <span className="flex min-w-0 max-w-full items-center gap-1 text-xs whitespace-nowrap text-text-2">
                     {status === "done" ? <CheckIcon aria-hidden strokeWidth={2.5} className={cn("shrink-0", MARKER.done)} /> : <span aria-hidden className={cn("shrink-0", MARKER[status])} />}
                     {label}
                   </span>
@@ -336,15 +342,22 @@ export function ResetButton({ name, onReset }: { name: string; onReset: () => Pr
   );
 }
 
+/** A card's time: an active task's clock on this attempt; an idle one's time since it last moved; an ended one's age, as its signal reads it. */
+function elapsedOf(task: CodingBoardTask, start: number | undefined, now: number, signal: ReturnType<typeof taskSignal>): string | undefined {
+  if (isIdle(task)) return task.updatedAt == null ? undefined : elapsedText(now - task.updatedAt);
+  if (isActive(task)) return start === undefined ? undefined : elapsedText(now - start);
+  return signal?.kind === "ended" ? signal.text : undefined;
+}
+
 /**
  * What a card says of how its task stands, beside its meta, when that adds to
- * its time: *waiting on you* (the user must act), how long a run has been
- * quiet, a failed or cancelled task's reason. A running task whose run
+ * its time: *waiting on you* (the user must act), what an idle one waits
+ * on (*PR open*), how long a run has been quiet, a failed or cancelled task's reason. A running task whose run
  * answers says nothing more: its clock and bar say it.
  */
 function cardWords(task: CodingBoardTask, quiet: string | undefined): { text: string; tone: string } | undefined {
   const status = taskStatus(task);
-  if (holdOf(task)) {
+  if (holdOf(task) || isIdle(task)) {
     const { word, tone } = taskPresentation(task);
     return { text: word, tone };
   }
