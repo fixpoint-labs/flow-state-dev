@@ -77,7 +77,7 @@ import { isUserSuspension, type PendingUserSuspensionCursor, type SuspensionReco
 import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry, SuspensionStore } from "../stores/types";
 import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
 import { legacyComponentItemReads } from "../stores/legacy-component-items";
-import { isWriteSessionId } from "../resources/default-write-flow";
+import { isWriteSessionId } from "../resources/write-session-id";
 
 type Wrapping = {
   /** Raw store → its one wrapper. */
