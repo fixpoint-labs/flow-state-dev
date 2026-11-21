@@ -93,7 +93,6 @@ describe("hiring a worker", () => {
     expect(messageOf(unknownFlow.error)).toContain('names flow "nope", which isn\'t a worker flow here');
     const badSetting = await h.rosterAction("alice", "hire", { id: "b", flow: FIXTURE, settings: { colour: "red" } });
     expect(messageOf(badSetting.error)).toContain("colour");
-    // The flow's own refusal ends its sentence; the roster's "Nothing was written." follows it once, not after a second stop.
     expect(messageOf(badSetting.error)).toMatch(/"colour" is not a declared setting\. Nothing was written\.$/);
     expect((await h.client("alice").roster()).filter((entry) => !entry.standard)).toEqual([]);
   });
