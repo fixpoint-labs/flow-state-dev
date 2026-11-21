@@ -1,0 +1,71 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="What changes. A new package, @flow-state-dev/ably, fills both of the epic's seams. On the server, createAbly backs the bus slot, publishing each notice to Ably over REST, and is passed to createFlowState as push, so the existing mint signs an Ably token for exactly the granted topics instead of a WebSocket ticket. In the browser, ablyPush from the package's client entry is handed to createClient, connects to Ably with that token, and calls the app's read on a notice. The mint's per-topic check, client.subscribe and useSubscription stay as FIX-2428 builds them."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .keep  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .ext   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .svc   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; marker-end:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-e   { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; font-style:italic; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+  <g id="server">
+    <rect class="lane" x="16" y="16" width="370" height="268" rx="6"/>
+    <text class="t-lbl" x="32" y="36">SERVER · ANY HOST · NODE, NEXT, VERCEL, LAMBDA</text>
+    <rect class="new" x="32" y="50" width="338" height="56" rx="5"/>
+    <text class="t-b" x="46" y="72">createAbly({ key }) · new package</text>
+    <text class="t-s" x="46" y="92">one object for both seams; the key stays here</text>
+    <rect class="ext" x="32" y="120" width="160" height="70" rx="5"/>
+    <text class="t-b" x="44" y="142">stores · bus slot</text>
+    <text class="t-s" x="44" y="160">publish over REST,</text>
+    <text class="t-s" x="44" y="176">folded per topic (D3)</text>
+    <rect class="ext" x="210" y="120" width="160" height="70" rx="5"/>
+    <text class="t-b" x="222" y="142">createFlowState push</text>
+    <text class="t-s" x="222" y="160">the mint signs an Ably</text>
+    <text class="t-s" x="222" y="176">token, an hour (D1)</text>
+    <rect class="keep" x="32" y="204" width="338" height="64" rx="5"/>
+    <text class="t-b" x="46" y="226">Kept: the mint's per-topic check (FIX-2428)</text>
+    <text class="t-s" x="46" y="246">and the bus contract and publish points (FIX-2426)</text>
+  </g>
+  <g id="ably">
+    <rect class="svc" x="412" y="128" width="150" height="120" rx="6"/>
+    <text class="t-lbl" x="426" y="150">ABLY</text>
+    <text class="t-b" x="426" y="174">one channel per</text>
+    <text class="t-b" x="426" y="192">topic, opaque name</text>
+    <text class="t-s" x="426" y="214">subscribe-only token</text>
+    <text class="t-s" x="426" y="230">no history, no rewind</text>
+  </g>
+  <g id="browser">
+    <rect class="lane" x="588" y="16" width="336" height="268" rx="6"/>
+    <text class="t-lbl" x="604" y="36">BROWSER</text>
+    <rect class="new" x="604" y="50" width="304" height="56" rx="5"/>
+    <text class="t-b" x="618" y="72">createClient({ push: ablyPush() })</text>
+    <text class="t-s" x="618" y="92">from @flow-state-dev/ably/client (D2)</text>
+    <rect class="keep" x="604" y="120" width="304" height="70" rx="5"/>
+    <text class="t-b" x="618" y="142">client.subscribe · useSubscription</text>
+    <text class="t-s" x="618" y="160">unchanged; the timer while down</text>
+    <text class="t-s" x="618" y="176">or with no ablyPush() (FIX-2428 D3)</text>
+    <rect class="keep" x="604" y="204" width="304" height="64" rx="5"/>
+    <text class="t-b" x="618" y="226">The app's read</text>
+    <text class="t-s" x="618" y="246">checked by its route, as always</text>
+  </g>
+  <g id="arrows">
+    <path class="arrow" d="M 112 190 V 197 H 412"/>
+    <path class="arrow" d="M 370 150 H 412"/>
+    <path class="arrow" d="M 562 160 H 604"/>
+    <path class="arrow" stroke-dasharray="4 3" d="M 604 100 H 584 V 113 H 290 V 120"/>
+  </g>
+  <text class="t-e" x="16" y="306">Green is new, blue extends a seam the epic's earlier children build, grey stays as built. Dashed: the browser's token, from the mint through the client's own fetcher.</text>
+</svg>
