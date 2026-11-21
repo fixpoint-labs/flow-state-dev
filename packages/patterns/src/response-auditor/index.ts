@@ -10,7 +10,8 @@
  * Because it runs via `.sideChain()`, the primary response streams unblocked. Audit
  * results appear after the response completes as a "second pass" annotation.
  */
-import { sequencer, handler } from "@flow-state-dev/core";
+import type { ItemVisibility } from "@flow-state-dev/core";
+import { sequencer, handler, transientSlot } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   AnalyzerResultSchema,
@@ -132,7 +133,7 @@ function createApplyThreshold(threshold: number) {
  * invocations in one request to a single card.
  */
 function createEmitAuditAnnotation(
-  itemVisibility = { client: true, history: false } as const,
+  itemVisibility: ItemVisibility = { client: true, history: false },
 ) {
   return handler({
     name: "emit-audit-annotation",
@@ -216,7 +217,12 @@ export function responseAuditor(config: ResponseAuditorConfig) {
   return sequencer({
     name: "response-auditor",
     inputSchema: auditorInputSchema,
-    stateSchema: responseAuditorStateSchema,
+    // Hidden audits must not leak their input or findings through state-change
+    // events. Clone each field before marking it so public auditors stay durable.
+    stateSchema: config.annotationVisibility?.client === false
+      ? z.object(Object.fromEntries(Object.entries(responseAuditorStateSchema.shape)
+        .map(([key, field]) => [key, transientSlot(field.describe(field.description ?? ""))])))
+      : responseAuditorStateSchema,
   })
     .tap(captureContext)
     .map((input: { userInput: string; response: string }) =>

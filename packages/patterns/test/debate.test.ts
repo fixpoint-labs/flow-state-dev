@@ -287,7 +287,7 @@ describe("debate", () => {
     expect(result.error).not.toBeNull();
   });
 
-  it("emits debate-turn, debate-decision, and debate-verdict data items for the UI renderer", async () => {
+  it.each([true, false])("respects turn annotation visibility (client=%s)", async (client) => {
     const moderator = handler({
       name: "moderator-emits",
       inputSchema: z.any(),
@@ -318,6 +318,7 @@ describe("debate", () => {
     });
     const pattern = debate({
       name: "deb-emits",
+      turnVisibility: { client, history: false },
       debaters: [
         { name: "a", stance: "for", block: makeDebater("a", "for") },
         { name: "b", stance: "against", block: makeDebater("b", "against") },
@@ -346,6 +347,11 @@ describe("debate", () => {
         i.type === "data" && (i as any).dataType === "debate-verdict",
     );
     expect(turns).toHaveLength(2);
+    const pending = result.items.filter(i => i.type === "data" && i.dataType === "debate-turn-pending");
+    expect(pending).toHaveLength(2);
+    for (const item of [...turns, ...decisions, ...pending]) {
+      expect(item.itemVisibility).toEqual({ client, history: false });
+    }
     expect(decisions).toHaveLength(1);
     expect(verdicts).toHaveLength(1);
     // Spot-check shape of one turn and the verdict — the UI renderer

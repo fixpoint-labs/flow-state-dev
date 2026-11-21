@@ -1,4 +1,5 @@
 /** Goal: a kit-installed answer is held until its independent review completes. */
+import { resolveItemVisibility, type RuntimeItem } from "@flow-state-dev/core/items";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -44,7 +45,7 @@ await runGoal((failures, tell) => {
   if (ran.status === 0) {
     const capture = readCapture(CAPTURE);
     clientItems = capture.items.filter(
-      (item) => (item.itemVisibility as { client?: boolean } | undefined)?.client !== false,
+      (item) => resolveItemVisibility(item as RuntimeItem).client,
     ) as Array<Record<string, unknown>>;
   }
   tell.over("client:items", clientItems);

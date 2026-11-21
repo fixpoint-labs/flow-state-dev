@@ -185,6 +185,8 @@ export interface DebateConfig<TOutputSchema extends ZodTypeAny = ZodTypeAny> {
   verdictVisibility?: ItemVisibility;
   synthesizerVisibility?: ItemVisibility;
   debaterVisibility?: ItemVisibility;
+  /** Visibility of turn, pending-turn, and moderator annotations. Defaults to client-visible. */
+  turnVisibility?: ItemVisibility;
   /**
    * Strip debater names from the judge's view of the transcript.
    * Stances are retained. Default `true`. Mitigates identity-driven
@@ -221,6 +223,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     verdictVisibility = { client: true, history: false },
     synthesizerVisibility,
     debaterVisibility,
+    turnVisibility = { client: true, history: false },
     anonymizeTranscript = true,
     shuffleForJudge = true,
     outputSchema,
@@ -347,7 +350,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         ctx.emit.data(
           "debate-turn-pending",
           { round: state.round, agentName, stance },
-          { itemVisibility: { client: true, history: false } },
+          { itemVisibility: turnVisibility },
         );
       },
     });
@@ -453,6 +456,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         transcript,
         collectionId,
         warnedAgents,
+        itemVisibility: turnVisibility,
       });
       pipeline = pipeline
         .tap(makePendingTurnTap(entry.name, entry.stance))
@@ -521,6 +525,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       transcript,
       collectionId,
       warnedAgents,
+      itemVisibility: turnVisibility,
     });
     const speakerStep = sequencer({
       name: `${name}-speaker-${entry.name}`,
@@ -554,7 +559,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       // shows this as the opener of the round.
       ctx.emit.data("debate-decision", decision, {
         key: `decision-${state.round}`,
-        itemVisibility: { client: true, history: false },
+        itemVisibility: turnVisibility,
       });
     },
   });
