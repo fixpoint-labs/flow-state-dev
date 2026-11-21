@@ -52,6 +52,26 @@ export function githubLoginsListed(document: string | null | undefined): string[
   return logins;
 }
 
+/** A reviewer list from {@link githubReviewers}: every id, and the ids that are bots'. */
+export interface GitHubReviewers {
+  /** Each login as GitHub sends a sender's id: lower-cased, a bot's without its `[bot]`. */
+  readonly ids: readonly string[];
+  /** The ids listed as bots (`name[bot]`), which the service flow must trust (`trustedBots`) for a bot to be heard at all. */
+  readonly bots: readonly string[];
+}
+
+/**
+ * A reviewer list as one setting writes it: comma-separated GitHub logins, a
+ * bot by its login (`greptile-apps[bot]`). `undefined` when it lists nobody.
+ */
+export function githubReviewers(value: string | undefined): GitHubReviewers | undefined {
+  const logins = (value ?? "").split(",").map((login) => login.trim()).filter((login) => login !== "");
+  if (logins.length === 0) return undefined;
+  const ids = [...new Set(logins.map(githubLoginId))];
+  const bots = [...new Set(logins.filter((login) => /\[bot\]$/i.test(login)).map(githubLoginId))];
+  return { ids, bots };
+}
+
 /** Build the screen. */
 export function githubTrustedReviewersScreen(options: GitHubTrustedReviewersOptions): CustomScreen {
   const api = (options.apiUrl ?? "https://api.github.com").replace(/\/+$/, "");
