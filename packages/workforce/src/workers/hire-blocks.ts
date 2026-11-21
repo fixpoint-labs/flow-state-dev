@@ -18,7 +18,7 @@ import type { BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow
 import { z } from "zod";
 import { AGENT_FLOW } from "../agent-worker-flow";
 import type { WorkerManifest } from "../manifest";
-import type { WorkerInstallation } from "./installation";
+import { problemsClause, type WorkerInstallation } from "./installation";
 import { WORKERS_RESOURCE } from "./keys";
 import { standardWorkerFlow, workerDisplayName } from "./standard-workers";
 import { parseWorkerResourceState, workerResourceStateSchema, type WorkerResourceState } from "./worker-row";
@@ -151,8 +151,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
   const check = (id: string, row: WorkerResourceState): void => {
     const problems = installation.configurationProblems(id, row);
     if (problems.length > 0) {
-      // A problem may be a flow's own refusal, which ends its sentence: drop that stop so one follows.
-      throw new Error(`Worker "${id}" ${problems.map((p) => p.replace(/\.+$/, "")).join("; ")}. Nothing was written.`);
+      throw new Error(`Worker "${id}" ${problemsClause(problems)}. Nothing was written.`);
     }
   };
 
