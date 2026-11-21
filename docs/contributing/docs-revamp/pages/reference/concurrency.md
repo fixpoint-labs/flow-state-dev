@@ -147,7 +147,19 @@ A `reject` request, and a `defer` request past the cap, is refused. What the cal
 
 ## Requests that pause and resume
 
-A request that [suspends](./durable-execution.md) to wait for a user gives up its place on the key, and takes a new place like a fresh request when it resumes. How each policy treats a resumed request, what the resume call returns, and what `session.abortRequest()` does while it waits are in [Pause, resume and replay](./durable-execution.md).
+A request that [suspends](./durable-execution.md) to wait for a user gives up its place on the key, and takes a new place like a fresh request when it resumes. Other requests on the session run while it waits.
+
+| Policy of the action | A resumed request |
+|---|---|
+| `allow`, `hold` | Runs at once. `hold` marks the key busy. |
+| `queue`, `reject`, `defer` | Waits as `queue` does, with its 30-second limit. Never refused or dropped. |
+| The key resolves to none | Runs at once. |
+
+| Case | Behavior |
+|---|---|
+| The resume call | Does not wait for the turn. The answer is recorded and the call replies at once, `202 { requestId }` or the event stream. |
+| The wait for a turn fails | The limit passes, or the backend fails. The answer stays recorded and the request stays `suspended`. The lease is released and the stream closes with no events. The host logs `a continued request did not get its turn in its session; it stays parked with its resolution recorded, and the durability sweep continues it`. The sweeper continues it later. |
+| `RequestHandle.abort()` (`useSession().abortRequest()` in React) while it waits for its turn | `409`. The status reads `suspended` until it starts, then `in_progress`. |
 
 ## Where a policy holds
 
