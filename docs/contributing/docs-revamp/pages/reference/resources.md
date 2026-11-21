@@ -753,7 +753,7 @@ A request loads the resources its flow declares, directly or through its blocks.
 | A block, or a sequencer or router that collects it | When an action containing that block runs. A sibling action's resources do not load. |
 | A block, with `prefetchMode: "lazy"` | A single resource loads when its declaring block runs. A lazy collection reads one entry from the store per key you touch. |
 
-A sequencer collects its steps' declarations, a router its routes', and `defineFlow` merges the result into the flow's `resources`. A block carries its declaration into every flow it joins. A capability a block uses can carry resources as well.
+A sequencer collects its steps' declarations, a router its routes', and `defineFlow` merges the result into the flow's `resources`. A block carries its declaration into every flow it joins. A capability a block uses can carry resources as well. One `defineResource` reference installs once, however many blocks and capabilities list it. A different reference under one accessor throws at build: `Resource conflict in capability "<cap>" (<source>): accessor "<key>" is declared with different defineResource() references` when two capabilities clash, and `Resource conflict: accessor "<key>" is declared with different defineResource() references. Use the same reference across blocks.` when a capability clashes with the block's own `resources`.
 
 | `prefetchMode` | Collection reads |
 |---|---|

@@ -278,7 +278,7 @@ Who owns each stored part, who can see it, where it is stored and how many exist
 
 ## State a block declares
 
-A block can declare session, user and org state fields (`sessionStateSchema`, `userStateSchema`, `orgStateSchema`). `defineFlow` merges every declaration of each scope, from the flow, each block it reaches and each capability they use, and throws when two disagree on a field. A read of the scope's state fills in the merged schema's defaults. The merged schema does not check writes.
+A block can declare session, user and org state fields (`sessionStateSchema`, `userStateSchema`, `orgStateSchema`). `defineFlow` merges every declaration of each scope, from the flow, each block it reaches and each capability they use, and throws when two disagree on a field. A capability counts by its top-level schemas when the block lists it statically, and so do the capabilities it depends on; a preset, a config resolver, a dynamic entry and `requestStateSchema` contribute none ([Capabilities](./capabilities.md#what-a-preset-can-declare)). A read of the scope's state fills in the merged schema's defaults. The merged schema does not check writes.
 
 The error is `ScopeStateSchemaConflictError`, exported from `@flow-state-dev/core/helpers`.
 
