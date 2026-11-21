@@ -125,6 +125,17 @@ describe("client.resource on a collection", () => {
     expect(calls[0]).toEqual({ call: `POST ${BASE}/actions/plan`, body: { userId: "alice", input: { entry: "p", version: 0 } } });
   });
 
+  it("asks the entries route for a manifest, or the newest page, through the same list", async () => {
+    const { fetcher, calls } = server({ p: { value: { name: "P" }, version: 2 } });
+    const handle = client(fetcher).resource(projects);
+    await handle.list({ manifest: true, limit: 10_000, topicPrefix: "projects/p" });
+    await handle.list({ order: "newest", limit: 50, cursor: '[3000,"projects/b"]' });
+    expect(calls.map(({ call }) => call)).toEqual([
+      `GET ${BASE}/entries?userId=alice&limit=10000&topicPrefix=projects%2Fp&manifest=1`,
+      `GET ${BASE}/entries?userId=alice&limit=50&cursor=%5B3000%2C%22projects%2Fb%22%5D&order=newest`
+    ]);
+  });
+
   it("lists every entry page after page, and stops on a cursor the server already sent", async () => {
     const pages: Record<string, { items: unknown[]; nextCursor?: string }> = {
       "": { items: [{ topic: "a", storageKey: "projects/a", value: { name: "A" }, version: 1 }], nextCursor: "c1" },

@@ -13,6 +13,14 @@ export { isWindowsReservedName } from "./windows-reserved-name";
 export { extractBareTopic, getPatternPrefix } from "./pattern-prefix";
 export { isJsonMediaType } from "./json-media-type";
 export {
+  COLLECTION_MANIFEST_PAGE,
+  COLLECTION_RESYNC_READS,
+  compareNewest,
+  isAfterNewest,
+  sentAtOf,
+  type NewestPlace
+} from "./collection-list";
+export {
   assertSetExpectedVersion,
   assertDeleteExpectedVersion,
   resourceStateConflict,
