@@ -51,6 +51,7 @@ Written by `docs-writer` (sonnet), 3755 words. Scenario: A support desk: a `supp
 
 - After the loop (review): the 11 open findings, taken in one writer round. The banned word went; the two imported files (src/flows/support/flow.ts, src/components/desk-inbox.tsx) are now shown as titled examples, and all seven examples type-check at their titled paths (strict, moduleResolution bundler; a bad import fails with TS2305). "A host with push" is defined once, by the `push` field of `GET /api/flows/capabilities`, and `serve()` from @flow-state-dev/node serves it by default (packages/node/src/serve.ts:107-113). The timer rule follows the change bus, with the Postgres cases and a link to stores.md#the-change-bus (packages/engine/src/bus/in-memory-bus.ts:1-11). The nesting bullet names what an inner `FlowProvider` inherits (packages/react/src/context/FlowContext.ts `??` checks) and how renderers merge. check-docs-page, lint-brand (parses as MDX), retired terms and model strings pass. 3536 words. Page sha256 97161b59cc78.
 - After the loop (PR review): a review on the PR noted the page had no link to its concept page. One sentence in the second paragraph now links [What the browser sees](../concepts/what-the-browser-sees.md). check-docs-page and lint-brand pass. 3554 words. Page sha256 06641c325290.
+- After the loop (PR review, Greptile): the snapshot entry no longer names `client.derived`, which `defineFlow` refuses (packages/core/src/flow/defineFlow.ts:79-107); a computed value is a view, declared with `defineView` and read with `useView`. check-docs-page and lint-brand pass. 3565 words. Page sha256 b8c02e454656.
 
 ## 5 · Fact check
 
@@ -67,6 +68,7 @@ Final fact check of the page as it closed, sha256 6b8415b73cc1: 2 untrue, fixed 
 
 - Re-run after the review edit: each changed claim was checked against the code it cites (serve.ts push default and `pushSecret`, the in-memory bus saying it crosses processes, the Postgres bus states, `useSubscription` reading on each notice, the `Roster` / `BoardColumns` / `BoardList` exports from @flow-state-dev/workforce/react, the FlowContext inheritance). No untrue claim remains open.
 - Re-run after the review edit: the added sentence makes no claim beyond naming the concept page, which was read before it was written.
+- Re-run after the review edit: each finding was checked against the code by a read-only reviewer before the fix, and the fix re-read the cited lines. No untrue claim remains open.
 
 ## 6 · Depth pass
 
