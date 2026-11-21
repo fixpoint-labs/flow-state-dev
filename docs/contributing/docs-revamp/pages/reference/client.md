@@ -93,11 +93,12 @@ The flow it serves:
 ```ts title="src/flows/support/flow.ts"
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { draftReplyFor } from "../../lib/replies";
 
 const reply = handler({
   name: "reply",
   inputSchema: z.object({ text: z.string() }),
-  execute: async (input) => ({ reply: `Thanks. We received: ${input.text}` }),
+  execute: async (input) => ({ reply: await draftReplyFor(input.text) }),
 });
 
 export const support = defineFlow({ kind: "support", actions: { reply: { block: reply } } })();
