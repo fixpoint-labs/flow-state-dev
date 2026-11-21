@@ -618,7 +618,7 @@ The snapshot groups resources by scope. A single resource's entry has `clientDat
 
 ### HTTP routes
 
-All paths are under `/api/flows`.
+All paths are under `/api/flows`. The read routes:
 
 | Method | Path | Purpose | Notes |
 |---|---|---|---|
@@ -626,12 +626,19 @@ All paths are under `/api/flows`.
 | `GET` | `/sessions/:id/resources/:ref/:topic/content` | An entry's body | `404` for a missing entry; `400` when the topic does not match the pattern |
 | `GET` | `/sessions/:id/resources/:ref` | One page of entries | `limit` 1 to 200 (default 50, anything else `400`), `cursor`, `topicPrefix`. Returns `{ items: [{ topic, storageKey, clientData }], nextCursor? }`. `403` without `state.read`. |
 | `GET` | `/sessions/:id/resources/:ref/:topic` | One entry's state | `200` with `null` when absent. `403` without `state.read`. |
+| `GET` | `/sessions/:id/manifest` | The [manifest](#the-manifest) | `404` for an unknown session |
+
+Both content routes answer `content: null` when a resource's `contentTemplateRef` template is stored under an owner segment for a user other than the caller, unless an `ownerWrites` collection in the template's scope covers that key. See [Owner-keyed rows](#owner-keyed-rows).
+
+The write routes:
+
+| Method | Path | Purpose | Notes |
+|---|---|---|---|
 | `POST` | `/sessions/:id/resources/:ref` | Create an entry | Body `{ topic, content? }`. `201`. Needs `content.create`. |
 | `PATCH` | `/sessions/:id/resources/:ref/:topic/content` | Replace an entry's body | Body `{ content }`. Needs `content.update`. |
 | `DELETE` | `/sessions/:id/resources/:ref/:topic` | Delete an entry | Needs `content.delete`. Deleting a missing entry is `200`. |
-| `GET` | `/sessions/:id/manifest` | The [manifest](#the-manifest) | `404` for an unknown session |
 
-`:topic` takes slashes, which clients encode as `%2F`. A topic named `content` is not reachable through the item-state route. The three write routes work for session-scoped collections only and answer `501` otherwise.
+The write routes work for session-scoped collections only and answer `501` otherwise. `:topic` takes slashes, which clients encode as `%2F`. A topic named `content` is not reachable through the item-state route.
 
 Create, update and delete refuse as follows.
 
