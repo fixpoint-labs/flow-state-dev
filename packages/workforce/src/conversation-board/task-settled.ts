@@ -44,7 +44,8 @@
  *
  * Refused when the conversation's worker was fired: the flow loads the
  * session's worker before any entry runs. The task's ending stands, and the
- * notice stays owed on its row.
+ * refused turn settles the notice undeliverable ("its worker was fired") and
+ * lets the conversation's wake go (`./refused-session`).
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import { endTaskSubscriptions } from "../subscriptions/subscribe";
@@ -200,8 +201,11 @@ const passLine: ConcurrencyKey = (ctx) =>
  */
 export const PASS_CONCURRENCY = { policy: "defer", key: passLine } as const satisfies ConcurrencyConfig;
 
-/** Write a notice's dedupe key: `true` the first time. */
-function noteSeen(ctx: BlockContext, key: string) {
+/**
+ * Write a notice's dedupe key: `true` the first time. Atomic, so of two
+ * requests handling one notice at once only the first says it.
+ */
+export function noteSeen(ctx: BlockContext, key: string) {
   return withOutcome(
     (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
       ctx.session.atomicState(mutator as never),

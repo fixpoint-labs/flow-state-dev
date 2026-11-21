@@ -21,6 +21,7 @@
  */
 import { SESSION_REQUEST_END_HOOK } from "@flow-state-dev/core/internal";
 import type {
+  BlockContext,
   FlowInstance,
   ResourceCollectionRef,
   SessionCreateCheck,
@@ -47,6 +48,10 @@ import {
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
 import { taskChainSchema } from "../conversation-board/chain";
+import { settleRefusedSession } from "../conversation-board/refused-session";
+import { payMessageDebts } from "../messages/delivery";
+import { payReplyDebts } from "../messages/owed-replies";
+import { recheckRecipient } from "../messages/send-message";
 import { SESSION_BOARD_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
@@ -142,6 +147,12 @@ export type WorkerTurnContext = {
   readonly resources: unknown;
 };
 
+/** Whether `ctx` is a running block's whole context, not only the slice a worker is loaded from. */
+function isBlockContext(ctx: WorkerTurnContext): ctx is WorkerTurnContext & BlockContext {
+  const session = ctx.session as { readonly identity?: { readonly id?: unknown } };
+  return typeof session.identity?.id === "string" && typeof (ctx as { readonly emit?: unknown }).emit === "object";
+}
+
 /** The worker a turn runs as, with what it runs with. */
 export interface ResolvedWorker {
   /** The worker's id: a row on the user's roster, or a standard worker's id. */
@@ -219,18 +230,25 @@ export interface RosterWorker {
 /**
  * Thrown when a turn can't run as the session's worker: it was fired, now
  * names another flow, names something the installation no longer registers,
- * or runs on a flow kept for standard workers. Nothing is written; the row and
- * the session stay for a fix.
+ * or runs on a flow kept for standard workers. The row and the session stay
+ * for a fix. Its `code` tells the engine the refusal is for good, so the wake
+ * that started the turn is cleared rather than fired again. The session
+ * settles what its board owes it, and lets its wake go, before this is thrown
+ * (`../conversation-board/refused-session`).
  */
 export class WorkerTurnRefusedError extends Error {
   readonly code = "worker-turn-refused";
+  /** Whether the session's worker was fired: its row is gone from the roster. */
+  readonly fired: boolean;
 
   constructor(
     readonly workerId: string | undefined,
-    message: string
+    message: string,
+    options: { readonly fired?: boolean } = {}
   ) {
     super(message);
     this.name = "WorkerTurnRefusedError";
+    this.fired = options.fired === true;
   }
 }
 
@@ -836,6 +854,38 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     return collection;
   };
 
+  // FIX-2849.
+  /**
+   * {@link resolveWorker}, and a refused session is terminal: before the
+   * refusal is thrown, what the session's board owes it is settled and its
+   * wake let go, since its pass never runs again (`../conversation-board/refused-session`).
+   * When that can't be done in full, the turn fails with an error that is not
+   * the refusal, so the engine keeps the wake and the next turn tries again.
+   */
+  const resolveWorkerSettlingRefusals = async (ctx: WorkerTurnContext, flowKind: string): Promise<ResolvedWorker> => {
+    try {
+      return await resolveWorker(ctx, flowKind);
+    } catch (error) {
+      if (!(error instanceof WorkerTurnRefusedError) || !isBlockContext(ctx)) throw error;
+      const detail = error.fired ? "its worker was fired" : `its worker can't run there: ${error.message}`;
+      // The session's message debts, as its pass pays them (`../conversation-board/session-board`).
+      // This request is refused for good, so a debt it owes counts as ended,
+      // whatever its record says (a replay put it back `in_progress`).
+      const payMessages = async (inner: BlockContext) => {
+        const refusedHere = inner.request.identity.id;
+        const sends = await payMessageDebts(inner, (at, message) => recheckRecipient(at, installation, message), refusedHere);
+        const replies = await payReplyDebts(inner, installation, flowKind, refusedHere);
+        const due = [sends, replies].filter((at): at is number => at !== undefined);
+        return due.length === 0 ? undefined : Math.min(...due);
+      };
+      const unsettled = await settleRefusedSession(ctx, detail, payMessages);
+      if (unsettled !== undefined) {
+        throw new Error(`${error.message} What this session is owed couldn't all be settled yet, so the next turn tries again: ${unsettled}`);
+      }
+      throw error;
+    }
+  };
+
   const resolveWorker = async (ctx: WorkerTurnContext, flowKind: string): Promise<ResolvedWorker> => {
     const workerId = (ctx.session.state as Record<string, unknown>)[WORKER_ID_STATE_KEY];
     if (typeof workerId !== "string" || workerId.length === 0) {
@@ -856,7 +906,9 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     const collection = workerCollection(ctx, "resolveWorker");
     const found = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
     if (found.found === "none") {
-      refuse(`Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`);
+      throw new WorkerTurnRefusedError(workerId, `Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`, {
+        fired: true
+      });
     }
     if (found.found === "unreadable") refuse(`Worker "${workerId}" can't run: ${found.problem}.`);
     const worker = found as Exclude<typeof found, { found: "none" } | { found: "unreadable" }>;
@@ -1003,7 +1055,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       );
       return { ...session, [SESSION_REQUEST_END_HOOK]: workerRequestEnd } as never;
     },
-    resolveWorker,
+    resolveWorker: resolveWorkerSettlingRefusals,
     standardWorker: (id) => standard.get(id),
     standardWorkers: () => [...standard.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     workerFlows,

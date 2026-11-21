@@ -14,6 +14,7 @@ import { isValidOrgId } from "@flow-state-dev/core";
 import { OrgRequiredError } from "../transports/errors";
 import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
+import { isTerminalStartRefusal } from "./terminal-refusal";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS, addressEntries } from "@flow-state-dev/core/types";
 import { SuspensionError, resolveEntry as resolveTypedEntry, taskBindingOf } from "@flow-state-dev/core";
@@ -2047,6 +2048,47 @@ async function runActionAttempt<
   let resumeContext: ResumeContext | undefined;
   let replayLog: ReplayLog | undefined;
   let ctx: ExecutionContext;
+  // FIX-1983; FIX-2849.
+  /**
+   * Settle this request `failed` for an error that ended it before its action
+   * ran, and send its one final-failure event once that write lands. The
+   * failed record is this run's terminal write; the run's exit stamps it (see
+   * `runActionInternal`).
+   */
+  const settleFailedBeforeRun = async (error: unknown): Promise<void> => {
+    terminalRecordIncarnation = await settleFreshRequestSetupFailure({
+      stores: options.stores,
+      requestId,
+      flow: options.flow,
+      actionName: options.actionName as string,
+      userId: options.userId,
+      sessionId: options.sessionId,
+      orgId: options.orgId,
+      tenantId: options.tenantId,
+      source,
+      metadata: options.metadata,
+      input: options.input,
+      emittedItems: itemsToPersist(),
+      response,
+      error,
+      logger
+    });
+    const errorCapture = options.runtimeConfig.errorCapture;
+    if (terminalRecordIncarnation !== undefined && errorCapture !== undefined) {
+      void safeCaptureError(
+        errorCapture,
+        toFinalErrorCaptureEvent(normalizeError(error, { scope: "request" }), {
+          requestId,
+          flowKind: options.flow.kind,
+          actionName: options.actionName as string,
+          userId: options.userId,
+          sessionId: options.sessionId,
+          orgId: options.orgId
+        }),
+        logger
+      );
+    }
+  };
   try {
     if (isReplayMode && priorRecord !== undefined) {
       const priorItems = priorRecord.items ?? [];
@@ -2239,43 +2281,7 @@ async function runActionAttempt<
     await recoverFromPreTransitionFailure();
     deregisterAbortController(requestId, registered);
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
-    if (!isReplayMode) {
-      // The failed record is this run's terminal write; the run's exit
-      // stamps it (see `runActionInternal`).
-      terminalRecordIncarnation = await settleFreshRequestSetupFailure({
-        stores: options.stores,
-        requestId,
-        flow: options.flow,
-        actionName: options.actionName as string,
-        userId: options.userId,
-        sessionId: options.sessionId,
-        orgId: options.orgId,
-        tenantId: options.tenantId,
-        source,
-        metadata: options.metadata,
-        input: options.input,
-        emittedItems: itemsToPersist(),
-        response,
-        error: setupError,
-        logger
-      });
-      // FIX-1983: the final-failure event, only when the failed write landed.
-      const errorCapture = options.runtimeConfig.errorCapture;
-      if (terminalRecordIncarnation !== undefined && errorCapture !== undefined) {
-        void safeCaptureError(
-          errorCapture,
-          toFinalErrorCaptureEvent(normalizeError(setupError, { scope: "request" }), {
-            requestId,
-            flowKind: options.flow.kind,
-            actionName: options.actionName as string,
-            userId: options.userId,
-            sessionId: options.sessionId,
-            orgId: options.orgId
-          }),
-          logger
-        );
-      }
-    }
+    if (!isReplayMode) await settleFailedBeforeRun(setupError);
     throw setupError;
   }
 
@@ -2373,22 +2379,29 @@ async function runActionAttempt<
     input: summarizeForLog(options.input)
   });
 
-  // The last awaits before the main try, and covered by neither cleanup path on
-  // their own: the pre-transition catch above has already closed, and every
-  // terminal path lives inside the try below. A rejection here — an `onStarted`
-  // observer that throws, an instrumentation seam that rejects — would leave
-  // the heartbeat/abort-poll timer running for the life of the process, reading
-  // the request store once per interval for a request that is already gone.
-  // Same leak the pre-controller guards close, one window further down; the
-  // difference is that the abort controller is registered by now, so this guard
-  // has to release that too. Rethrows, so the caller still sees the failure.
+  // FIX-2849: the startup observers run inside the main try, so a failure
+  // there ends through the one failure path every other ending takes: the
+  // heartbeat through the drain, the abort classification and its re-read,
+  // the end hooks after the final drain, `onErrored`, `onFinished`, the
+  // flushes and the terminal record. `failedAtStart` tells that path the
+  // action never ran (see its replay branch and its rethrow).
+  let failedAtStart = false;
+
+  // What the action block returned, once it has. Set before the completion
+  // hooks run, so a hook that fails the request leaves it on the record.
+  // `recorded` is the record's snapshot, taken then too, so a hook that
+  // mutates the returned object cannot change the recorded answer.
+  let actionAnswer: { output: unknown; recorded: RecordedOutput } | undefined;
+  // A failure a request-end hook handed back, once the record was patched to it (FIX-2077).
+  let endError: ReturnType<typeof applyNormalizedErrorSeam> | undefined;
+
   try {
+    failedAtStart = true;
     // The session config's request-end hook (FIX-2145), added to this
     // request's registry as a block's `onRequestEnded` would add it. Before
-    // the startup observers, so what they spend is handed on too, and a
-    // failed startup ends through it below. Its writes record what the
-    // request spent, so an explicit abort doesn't stop them; every other
-    // hook's writes still stop on one.
+    // the startup observers, so what they spend is handed on too. Its writes
+    // record what the request spent, so an explicit abort doesn't stop them;
+    // every other hook's writes still stop on one.
     const sessionEndHook = options.flow.session?.[SESSION_REQUEST_END_HOOK]?.(ctx);
     if (sessionEndHook !== undefined) {
       const outliveAbort = (ctx as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT];
@@ -2401,33 +2414,8 @@ async function runActionAttempt<
       requestId,
       actionName: options.actionName
     }, ctx, { hook: "request.onStarted", internalSeams, logger });
-  } catch (startupError) {
-    stopHeartbeatTimer();
-    deregisterAbortController(requestId, registered);
-    // The request ends here, never reaching the paths below: hand on what the
-    // startup observers spent, once the `.sideChain()` work they queued has
-    // settled, as the other endings do. A hook's failure is logged, never in
-    // place of the startup error.
-    await drainRequestSideChainPool(ctx);
-    const endFailure = await requestEndRegistryOf(ctx)?.run(
-      { status: "failed", error: { message: startupError instanceof Error ? startupError.message : String(startupError) } },
-      { requestId, logger }
-    );
-    if (endFailure !== undefined) {
-      logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", { requestId, status: "failed", error: endFailure.message });
-    }
-    throw startupError;
-  }
+    failedAtStart = false;
 
-  // What the action block returned, once it has. Set before the completion
-  // hooks run, so a hook that fails the request leaves it on the record.
-  // `recorded` is the record's snapshot, taken then too, so a hook that
-  // mutates the returned object cannot change the recorded answer.
-  let actionAnswer: { output: unknown; recorded: RecordedOutput } | undefined;
-  // A failure a request-end hook handed back, once the record was patched to it (FIX-2077).
-  let endError: ReturnType<typeof applyNormalizedErrorSeam> | undefined;
-
-  try {
     // Re-throw deferred parse error now that we have ctx for error handling.
     if (parseError !== undefined) {
       throw parseError;
@@ -3057,6 +3045,25 @@ async function runActionAttempt<
       ...(endError !== undefined ? { error: endError } : {})
     };
   } catch (error) {
+    // A replay continuation whose start failed in a way that may pass is left
+    // for the stale sweep to re-drive, as before: nothing is recorded. One its
+    // session refuses for good, or one stopped meanwhile, ends below, as a
+    // fresh request does: re-driven, a refused one would be refused forever.
+    if (failedAtStart && isReplayMode && !isTerminalStartRefusal(error) && !composedSignal.aborted) {
+      stopHeartbeatTimer();
+      deregisterAbortController(requestId, registered);
+      // Hand on what the startup observers spent, once their `.sideChain()`
+      // work has settled. A hook's failure is logged, never in place of the error.
+      await drainRequestSideChainPool(ctx);
+      const endFailure = await requestEndRegistryOf(ctx)?.run(
+        { status: "failed", error: { message: error instanceof Error ? error.message : String(error) } },
+        { requestId, logger }
+      );
+      if (endFailure !== undefined) {
+        logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", { requestId, status: "failed", error: endFailure.message });
+      }
+      throw error;
+    }
     // The heartbeat is deliberately NOT cleared here. It has to outlive the
     // drain below: while the pool settles, this request is still alive, and a
     // request with no heartbeat goes stale. `detectInterruptedRequests` sweeps
@@ -3382,6 +3389,10 @@ async function runActionAttempt<
       });
     }
     if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
+
+    // A failed start rejects the run, as it always has: its callers (a wake's
+    // fire among them) read the failure off the rejection.
+    if (failedAtStart) throw error;
 
     return {
       // The action's answer when it gave one before the request failed, as the

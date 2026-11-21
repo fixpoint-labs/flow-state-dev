@@ -497,7 +497,10 @@ describe("a notice that can't land (BR-28)", () => {
     }
   });
 
-  it("is refused when the conversation's worker was fired; the ending stands, still owed", async () => {
+  it("is settled undeliverable when the conversation's worker was fired: the ending stands, and nothing stays owed (FIX-2849)", async () => {
+    // A fired worker's conversation refuses every turn, so nothing it is owed
+    // can ever be paid there. The refused turn settles it, once, rather than
+    // leaving it owed for a pass that never runs.
     const host = bootBoardHost();
     try {
       const hired = await host.hire("alice", {
@@ -511,20 +514,18 @@ describe("a notice that can't land (BR-28)", () => {
       const filed = await file(host, "alice", conv, { goal: "orphaned [slow:150]", assignee: "eng.tasker" });
       for (let i = 0; i < 100 && host.runs.length === 0; i += 1) await new Promise((r) => setTimeout(r, 10));
       expect((await host.fire("alice", "my.desk")).error).toBeUndefined();
-      // The conversation takes the notice and refuses to run it, before any
-      // entry: a request whose start fails stays open on its record until the
-      // stale sweep, so wait for the notice's request rather than for quiet.
-      for (let i = 0; i < 300 && (await settledRequests(host, conv)).length === 0; i += 1) {
-        await new Promise((r) => setTimeout(r, 10));
-      }
-      await new Promise((r) => setTimeout(r, 100));
+      // The conversation takes the notice and refuses to run it, before any entry.
+      expect(await until(async () => (await settledRequests(host, conv)).length > 0)).toBe(true);
+      await host.settled();
       const refused = await settledRequests(host, conv);
-      expect(refused.length).toBeGreaterThan(0);
-      expect(refused.every((request) => request.status !== "completed")).toBe(true);
+      expect(refused.map((request) => request.status)).toEqual(["failed"]);
       const row = await host.row("alice", filing, filed.taskId!);
       expect(row?.status).toBe("completed");
-      expect(row?.metadata?.["noticeOwed:1:completed"]).toMatchObject({ attempt: 1, ending: "completed" });
-      expect(await linesAbout(host, conv, "orphaned [slow:150]")).toEqual([]);
+      expect(row?.metadata?.["noticeOwed:1:completed"]).toBeNull();
+      expect(row?.metadata?.["noticeUndeliverable:1:completed"]).toMatchObject({ detail: "its worker was fired" });
+      expect(await linesAbout(host, conv, "orphaned [slow:150]")).toEqual([
+        expect.stringMatching(/^The conversation that filed task "orphaned \[slow:150\]" couldn't be told it completed: its worker was fired$/)
+      ]);
     } finally {
       await host.dispose();
     }

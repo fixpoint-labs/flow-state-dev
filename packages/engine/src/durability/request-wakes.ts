@@ -21,6 +21,7 @@
  */
 import type { RequestWakes, WakeSettleResult, WakeView } from "@flow-state-dev/core/internal";
 import { logRuntimeEvent, type RuntimeLogger } from "../execution/logging";
+import { isTerminalStartRefusal } from "../execution/terminal-refusal";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { SessionStore, WakeRecord, WakeStore } from "../stores/types";
 import { dispatchInternalAs } from "./dispatch-internal";
@@ -53,15 +54,28 @@ export function noteWakeOwed(store: WakeStore, dueAt: number): void {
  * the internal entry it names, in its session, as its owner, the way the
  * dispatch seam starts a dispatched request. Resolves once the host accepted
  * it; rejects when the host refused or failed to. `onStarted` receives the
- * run's completion and a way to abort it, so a host that closes its stores can
- * wait for it, for a while.
+ * run's completion, the wake's clear on a refusal included, and a way to abort
+ * it, so a host that closes its stores can wait for both, for a while.
+ *
+ * A run refused at its start for good ({@link isTerminalStartRefusal}) clears
+ * the wake it fired, at the version the fire read, and says so once: its
+ * session will refuse every run, so its pass, the only thing that clears the
+ * wake, never runs. A debt owed since the fire keeps its wake. So does one
+ * fired inside its fence (`landBy`), however late its run ends: it fires once
+ * more, past the fence, and is cleared then, so a writer landing its debt
+ * late can't lose its wake.
  */
+// FIX-2849: the terminal-refusal clear.
 export async function fireWakeThrough(
-  host: Pick<InboundTransportHost, "dispatch">,
+  host: Pick<InboundTransportHost, "dispatch" | "stores" | "logger">,
   wake: WakeRecord,
   onStarted?: (run: { finished: Promise<unknown>; abort(): void }) => void
 ): Promise<void> {
   const controller = new AbortController();
+  // Decided as the fire starts, the moment the refused run reads its board:
+  // a run that read it inside the fence may have missed a debt landing late,
+  // however long it takes to end.
+  const firedInsideFence = Date.now() < wake.landBy;
   const handle = dispatchInternalAs(host, {
     flowKind: wake.flowKind,
     entry: wake.entry,
@@ -71,7 +85,38 @@ export async function fireWakeThrough(
     metadata: { wake: { entry: wake.entry, dueAt: wake.dueAt } },
     signal: controller.signal
   });
-  onStarted?.({ finished: handle.finished, abort: () => controller.abort() });
+  // Never rejects: a refusal's clear (or its failure) is logged here.
+  const cleanup = handle.finished.then(undefined, async (error: unknown) => {
+    const store = host.stores.wakes;
+    if (!isTerminalStartRefusal(error) || store === undefined) return;
+    try {
+      // Inside its fence, a writer that owed this wake may still be landing
+      // its debt: the wake is kept until the fence, as a pass's settle keeps
+      // it, and the fire past it, refused again, clears it.
+      if (firedInsideFence) {
+        const kept = await store.get(wake);
+        // `move` keeps the version, so this is the wake as the fire left it.
+        if (kept !== null && kept.version === wake.version && kept.dueAt < wake.landBy) await store.move(wake, wake.version, wake.landBy);
+        return;
+      }
+      if (!(await store.clear(wake, wake.version))) return;
+      logRuntimeEvent(host.logger, "warn", "[flow-state] a wake's run was refused for good, so the wake was cleared", {
+        sessionId: wake.sessionId,
+        entry: wake.entry,
+        error: (error as Error).message
+      });
+    } catch (clearError) {
+      logRuntimeEvent(host.logger, "warn", "[flow-state] a wake whose run was refused for good couldn't be cleared: it fires again", {
+        sessionId: wake.sessionId,
+        entry: wake.entry,
+        error: clearError instanceof Error ? clearError.message : String(clearError)
+      });
+    }
+  });
+  // The run's completion as a host waits for it: the run, then the clear its
+  // refusal starts, so a host closing its stores doesn't cut the clear off and
+  // leave the wake to fire on the next host.
+  onStarted?.({ finished: cleanup.then(() => handle.finished), abort: () => controller.abort() });
   if (handle.accepted !== undefined) await handle.accepted;
 }
 
