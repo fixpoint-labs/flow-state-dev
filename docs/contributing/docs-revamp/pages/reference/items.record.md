@@ -47,11 +47,15 @@ Written by `docs-writer` (sonnet), 5418 words. Scenario: The `support` flow: `ha
 
 - After the loop (R-15 depth pass): the `FSDEV_TRACE_OBSERVABILITY` row points to this page's `lean` row for what a completed block leaves, since Environment variables no longer says it. 5220 words. Page sha256 b411e61e5522.
 
+- After the loop (review): the Client configuration depth pass moved two details here, the page that owns them, since the client page no longer carries them: an item's `id` is unique within one request, with how a client overwrites by id, and the `stream` options table (`startingAfter`, `lastEventId`, `dedupWindowSize` 1000, `includeTrace`, `reconnect`). check-docs-page and lint-brand pass. 5356 words. Page sha256 5f415a6c9db0.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 f3553a830ff7, and the 22 Reference row(s) pass 6 moved.
 
 No untrue claim found.
+
+- Re-run after the review edit: the moved claims checked against packages/client/src/stream-client/streams.ts (`DEFAULT_DEDUP_WINDOW_SIZE = 1000` at :39; `lastEventId` ignored when `startingAfter` is set at :23) and packages/client/src/client.ts:1059 (`starting_after` on later connections). No untrue claim open.
 
 ## 6 · Depth pass
 

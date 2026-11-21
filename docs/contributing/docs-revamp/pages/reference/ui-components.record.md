@@ -37,6 +37,8 @@ Written by `docs-writer` (sonnet), 4235 words. Scenario: The `support` flow's ch
 
 - After the loop (review): section 1's "0 facts" is a miscount by the loop; ui-components.facts.md holds the facts. Read the record and the final fact check. Spot-checked the task-plan title fix against packages/ui/registry/components/task-plan.tsx:314 (`title ?? "Tasks"`). No change. 4232 words. Page sha256 b3f4a79051e3.
 
+- After the loop (review): the Client configuration depth pass moved what a renderer receives here, replacing the link to the client page, which no longer carries it: `{ item }`, `{ item, line }` for a conversation line, `{ line }` for `stopped`, and `{ item, isResolved, resolution }` for a suspension card. check-docs-page passes. 4300 words. Page sha256 bd6b4d9c5c21.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 e20c615ccc4c, and the 28 Reference row(s) pass 6 moved.
@@ -52,6 +54,8 @@ Final fact check of the page as it closed, sha256 35d776500723: 4 untrue, fixed 
 - Line 290: "`attention` is used as a fill (`bg-attention` with its foreground on top), the others as text colours." Untrue: The others are used as fills too. `Approval` uses `bg-success text-success-foreground` for Approve and `bg-destructive text-destructive-foreground` for Reject. `AuditAnnotation` uses `bg-info`, `bg-warning` and `bg-destructive`. `attention` is not the only fill token. (packages/ui/registry/components/approval.tsx:117,135; packages/ui/registry/components/audit-annotation.tsx:256-258)
 - Token table, `attention` row: "A user must act: a tool call awaiting approval, a task waiting on review". Untrue: No registry component uses `attention` for a task waiting on review. `attention` appears only on the tool-call `awaiting` icon and on the interrupted `RequestRecovery` line. TaskPlan says no board phase takes `attention` and draws a held task with `warning`. (packages/ui/registry/components/tool.tsx:82; packages/ui/registry/components/request-recovery.tsx:170; packages/ui/registry/components/task-plan.tsx:92-94,434-437)
 - Line 264: "`title` defaults to \"Tasks\" plus the collection id". Untrue: The visible title defaults to "Tasks" alone (`title ?? "Tasks"`). The collection id is rendered only in an `sr-only` span for screen readers. (packages/ui/registry/components/task-plan.tsx:314,348,413,424)
+
+- Re-run after the review edit: the moved claim checked against packages/react/src/components/ApprovalRenderer.ts:37-53 (`isResolved`, `resolution`). No untrue claim open.
 
 ## 6 · Depth pass
 
