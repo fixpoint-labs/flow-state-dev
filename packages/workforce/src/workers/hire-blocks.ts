@@ -151,7 +151,8 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
   const check = (id: string, row: WorkerResourceState): void => {
     const problems = installation.configurationProblems(id, row);
     if (problems.length > 0) {
-      throw new Error(`Worker "${id}" ${problems.join("; ")}. Nothing was written.`);
+      // A problem may be a flow's own refusal, which ends its sentence: drop that stop so one follows.
+      throw new Error(`Worker "${id}" ${problems.map((p) => p.replace(/\.+$/, "")).join("; ")}. Nothing was written.`);
     }
   };
 
