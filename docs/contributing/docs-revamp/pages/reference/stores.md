@@ -209,15 +209,22 @@ The list route's parameters, ordering, editing and status codes are in [HTTP API
 The lookup the server does filter is readonly state. Declare the key as a `.readonly()` field of the session's `stateSchema`, set it at create, and list on it.
 
 ```ts title="src/flows/support-desk/flow.ts"
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { findTicket } from "../../lib/tickets";
+
+const ticketState = z.object({ ticketId: z.string().readonly() });
 
 export const supportDesk = defineFlow({
   kind: "support-desk",
-  session: {
-    stateSchema: z.object({ ticketId: z.string().readonly() }),
+  session: { stateSchema: ticketState },
+  actions: {
+    loadTicket: handler({
+      name: "load-ticket",
+      sessionStateSchema: ticketState,
+      execute: (_input, ctx) => findTicket(ctx.session.state.ticketId),
+    }),
   },
-  actions: {},
 })();
 ```
 

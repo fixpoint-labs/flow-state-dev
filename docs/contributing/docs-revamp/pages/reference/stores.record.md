@@ -48,6 +48,8 @@ Written by `docs-writer` (sonnet), 6276 words. Scenario: A support desk (flow su
 
 - After the loop (review): the Greptile review on the PR. The example's SQLite filename is `support-desk.sqlite` in the working directory, since `sqliteStores` opens the file directly and creates no parent folder (packages/store-sqlite/src/registry.ts:60,95-107). 5240 words. Page sha256 945e01815266.
 
+- After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: the support-desk flow's `loadTicket` action now reads the session's readonly `ticketId` and loads the ticket with a `findTicket` stand-in, so the key has a use in the flow. Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 5240 words. Page sha256 bd1c3221ccd7.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 7da32861275d, and the 28 Reference row(s) pass 6 moved.
@@ -56,6 +58,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 7da
 - Reference row 10: "A session id is the whole key ... reading it returns the other user's record (or `403` where authentication is on)." Untrue: With sign-in on, a session read by another user answers 404 (`hiddenSessionResponse`), exactly as an unused id does, so that a 403 does not reveal the id is in use. A 403 ("Caller's organization does not own the requested resource") is only for the same user acting under a different organization than the one the session is bound to. Only an app with no sign-in returns the other user's record. (/home/user/flow-state-dev/packages/engine/src/routes/route-auth.ts:612-620 and :675-681) The row is recorded corrected.
 
 - Re-run after the review edit: `createSQLiteStores` passes the filename to `better-sqlite3` and makes no directory. True.
+
+- Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 ## 6 · Depth pass
 

@@ -32,12 +32,13 @@ The block that does a task takes the task's `TaskWorkerInput` (its `goal`, `inpu
 import { handler } from "@flow-state-dev/core";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { z } from "zod";
+import { researchCompetitor } from "../../../lib/research";
 
 export const analyst = handler({
   name: "analyst",
   inputSchema: taskWorkerInputSchema,
   outputSchema: z.object({ summary: z.string() }),
-  execute: (task) => ({ summary: `Notes on ${task.goal}` }),
+  execute: async (task) => ({ summary: await researchCompetitor(task.goal) }),
 });
 ```
 

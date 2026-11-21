@@ -39,6 +39,8 @@ Written by `docs-writer` (sonnet), 4235 words. Scenario: The `support` flow's ch
 
 - After the loop (review): the docs site build could not parse the page as MDX: four quoted UI strings held `<Retry|Continue|Discard>`, `<label>`, `<ids>` and `<age>` outside code, which MDX reads as tags. Each is now in a code span; the retry text reads `Retry failed: <message>` (or `Continue` or `Discard`). `node apps/docs/scripts/lint-brand.mjs` on the page: 0 findings. 4236 words. Page sha256 33fc63a15b58.
 
+- After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: the support chat's renderer override now draws the flow's own `order-card` items with an `OrderCard` component instead of hiding a task board the support flow never runs; the paragraph on `chatAssistantRenderers` points at it. Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 4256 words. Page sha256 a2eb06df2028.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 e20c615ccc4c, and the 28 Reference row(s) pass 6 moved.
@@ -56,6 +58,8 @@ Final fact check of the page as it closed, sha256 35d776500723: 4 untrue, fixed 
 - Line 264: "`title` defaults to \"Tasks\" plus the collection id". Untrue: The visible title defaults to "Tasks" alone (`title ?? "Tasks"`). The collection id is rendered only in an `sr-only` span for screen readers. (packages/ui/registry/components/task-plan.tsx:314,348,413,424)
 
 - Re-run after the review edit: the four strings are quoted as the registry renders them; only their markup changed. True.
+
+- Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 ## 6 · Depth pass
 
