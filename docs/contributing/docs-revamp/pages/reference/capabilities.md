@@ -61,7 +61,7 @@ export const draftReply = generator({
 });
 ```
 
-Everything on this page imports from `@flow-state-dev/core`. A capability is app code shared by every block that lists it. A capability is not a kit: a kit is installed by the app, and a capability is listed by a block.
+Everything on this page imports from `@flow-state-dev/core`. A capability is code shared by every block that lists it. A capability is not a kit: a kit is installed by the app, and a capability is listed by a block.
 
 ## Lookups
 
@@ -96,7 +96,7 @@ Helpers, composition and filtering:
 | --- | --- | --- |
 | `fns` | `(ctx: BlockContext) => Record<string, function>` | Helper functions at `ctx.cap.<name>`. Presets do not control it. |
 | `uses` | `readonly UsesEntry[]` | Capabilities this one depends on. Static entries install with it; function entries are dynamic. |
-| `itemVisibility` | `ItemVisibility` or an array | Attaches the capability only to blocks whose `itemVisibility` is one of these. Default: every block. What a block's is when it sets none: [Visibility](./items.md#visibility) |
+| `itemVisibility` | `ItemVisibility` or an array | Attaches the capability only to blocks whose `itemVisibility` is one of these. Default: every block. A block that sets no `itemVisibility` gets the default on [Visibility](./items.md#visibility). |
 
 Presets and config:
 

@@ -35,6 +35,8 @@ Written by `docs-writer` (sonnet), 3634 words. Scenario: The support desk's `ord
 - After revise round 3, page sha256 c2cbe6957490: exit 0.
 - After the final fact-check fix, page sha256 d482d51ae656: exit 0.
 
+- After the loop (review): two wording fixes from the Cursor review. The opening line calls a capability "code shared by every block that lists it", dropping "app", which contradicted Memory being a capability that ships with the framework. The `itemVisibility` row now reads "A block that sets no `itemVisibility` gets the default on Visibility". 2795 words. Page sha256 47fc6df24649.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 3336463b4c02, and the 15 Reference row(s) pass 6 moved.
@@ -49,6 +51,8 @@ Final fact check of the page as it closed, sha256 c2cbe6957490: 3 untrue, fixed 
 - Line 310: "A resource accessor, a target and an own-state field declared by both a capability and the block must share one reference, or the build throws." Untrue: Only resources and own-state are checked against the block's own declarations (mergeWithBlockResources throws on a different defineResource reference; mergeCapabilityOwnStateWithBlock throws on a different field schema). Targets are not. Capability targetStateSchemas are merged only among capabilities (mergeTargetsInto), and the merged map is never combined with a block's own targetStateSchemas. At runtime ctx.targets is an untyped Proxy (engine createExecutionContext.ts:4199), so a capability/block target collision never throws; types.ts:729-731 says the block's own schema wins at the type level and conflicting types collapse to never. The throw applies to a target declared twice across capabilities. (packages/core/src/capability/merge.ts:375-395 and 552-556; packages/core/src/blocks/internal/resolve-capabilities.ts:131-140; packages/core/src/capability/types.ts:729-731)
 - Line 79: "Reuse one object across blocks: two different `defineCapability` calls with one `name` are an error" Untrue: defineCapability itself never checks name uniqueness (define-capability.ts:98-120 checks only an empty name and the preset/config overlap). The collision is thrown only when both capabilities end up in one block's flattened `uses` graph (flattenCapabilities). Two blocks that each list a different capability with the same name build without error. The sentence reads as a global rule. (packages/core/src/capability/merge.ts:154-166; packages/core/src/capability/define-capability.ts:98-120)
 - Line 171: "All three return a new reference and leave the original unchanged." (`.presets()`, `.config()`, `.with()`) Untrue: .presets() and .config() always return a new clone. .with() returns the receiver itself (`let ref = this`) when the bag has no preset keys and writes no config. That is `.with({})` on a capability that declares no `config`. Only the cases that create a clone return a new reference. (packages/core/src/capability/define-capability.ts:214-226)
+
+- Re-run after the review edit: neither change adds a claim about behaviour; the `itemVisibility` default still links to the Visibility section of Items, which states it. No untrue claim remains open.
 
 ## 6 · Depth pass
 
