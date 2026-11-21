@@ -368,10 +368,10 @@ Last-Event-ID: req_8:5
 | An in-progress message | No tokens replay. Its saved text is the text as of the last save while it streamed, and `item.done` carries the whole text. |
 | A completed message | Replays exactly. |
 | Events of a transient item | Replayed from the event log. |
-| After a suspension | The request resumes under the same id, and numbering continues from the last saved event. A stream attached while the continuation runs follows through `request.suspended` and ends at the continuation's own end. A client that was at sequence N when the request paused reconnects with `Last-Event-ID: N` or `?starting_after=N` once the request is `in_progress` again, and receives N+1 onward. |
+| After a suspension | The request resumes under the same id, and numbering continues from the last saved event. A stream attached while the continuation runs follows through `request.suspended` and ends at the continuation's own end. A client that was at sequence N when the request paused reconnects with `Last-Event-ID: <requestId>:N` or `?starting_after=N` once the request is `in_progress` again, and receives N+1 onward. |
 | After a crash and `/continue` | The same id and continued numbering. A `continuation` item marks the seam. |
 | After a queued retry (BullMQ) | The retry keeps the request id and numbers after the last saved event. |
-| A polling store with 30 s of silence | For SQLite, filesystem, and Postgres created with `liveTailPool: null` (or on a connection that cannot carry one, such as PGlite; see [Persistence](../concepts/persistence.md)), a tail with no new event for 30 s ends with `request.interrupted` at last plus 1. The in-memory store ignores the timeout. |
+| A persistent store with 30 s of silence | For SQLite, filesystem and Postgres, with or without a live-tail pool, a tail with no new event for 30 s ends with `request.interrupted` at last plus 1. `LIVE_TAIL_LIVENESS_MS` changes the limit ([Environment variables](./environment.md)). The in-memory store ignores the timeout. |
 
 ### What the JS client does
 

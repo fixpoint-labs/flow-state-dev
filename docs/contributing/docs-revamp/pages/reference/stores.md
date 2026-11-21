@@ -35,7 +35,7 @@ import { supportDesk } from "./flows/support-desk/flow";
 export const flowState = createFlowState({
   flows: [supportDesk],
   stores: {
-    development: { primary: sqliteStores({ filename: ".fsdev/support-desk.sqlite" }) },
+    development: { primary: sqliteStores({ filename: "support-desk.sqlite" }) },
     production: { primary: postgresStores({ connectionString: process.env.DATABASE_URL }) },
   },
   defaultProfile: "development",

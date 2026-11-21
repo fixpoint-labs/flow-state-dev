@@ -46,12 +46,16 @@ Written by `docs-writer` (sonnet), 6276 words. Scenario: A support desk (flow su
 - After the loop (review): the open findings were taken in one more round by docs-writer. `incarnation` is defined at first use. The trace row names a block's `block_trace` item. Row 4 of the bus findings was a real contradiction: a SQLite profile gets the in-memory bus, which says it crosses processes (packages/engine/src/bus/in-memory-bus.ts:42), so an open view picks up another process's write only after a change in its own process or a reconnect. A second create of a taken session id answers `409`, and another user reading it gets `404`, not `403` (packages/integration-tests/src/two-users-one-tenant/session-id.test.ts:154). The key table's cells end in full stops for the isolation-coordinate guard.
 - After the loop (review): the loop escalated, so it ran no final fact check. One was run by hand on the page as it closed (read-only, about 230 claims). It found 2 untrue claims and 5 imprecise ones, and all are fixed. Only SQLite and Postgres leave `items` off `list()` without `withItems: true` (packages/store-sqlite/src/request-store.ts:644). `{ executor }` with no tail pool sends no notices (packages/store-postgres/src/registry.ts:222). The others: the payload cutoff, the import paths, readonly-field wrappers, polling subscriptions, and that only landed writes publish. 5240 words. Page sha256 e7cfaed33e13: the page check exits 0.
 
+- After the loop (review): the Greptile review on the PR. The example's SQLite filename is `support-desk.sqlite` in the working directory, since `sqliteStores` opens the file directly and creates no parent folder (packages/store-sqlite/src/registry.ts:60,95-107). 5240 words. Page sha256 945e01815266.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 7da32861275d, and the 28 Reference row(s) pass 6 moved.
 
 - Filesystem store, Production row: "Warns once per process unless `developmentOnly: true`", under a Production heading, which reads as a production-only warning. Untrue: The warning is not tied to production. `createFilesystemStores` never reads `NODE_ENV`. It warns once per process on any environment, including development, unless `developmentOnly` is `true`. It is a plain `console.warn`, unlike the in-memory warning, which does check `NODE_ENV === "production"`. (/home/user/flow-state-dev/packages/engine/src/stores/index.ts:222)
 - Reference row 10: "A session id is the whole key ... reading it returns the other user's record (or `403` where authentication is on)." Untrue: With sign-in on, a session read by another user answers 404 (`hiddenSessionResponse`), exactly as an unused id does, so that a 403 does not reveal the id is in use. A 403 ("Caller's organization does not own the requested resource") is only for the same user acting under a different organization than the one the session is bound to. Only an app with no sign-in returns the other user's record. (/home/user/flow-state-dev/packages/engine/src/routes/route-auth.ts:612-620 and :675-681) The row is recorded corrected.
+
+- Re-run after the review edit: `createSQLiteStores` passes the filename to `better-sqlite3` and makes no directory. True.
 
 ## 6 · Depth pass
 

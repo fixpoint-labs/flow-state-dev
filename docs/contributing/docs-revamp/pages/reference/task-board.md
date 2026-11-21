@@ -360,7 +360,7 @@ The flow declares an `onTaskSettled` internal action, which runs once per ending
 
 ## Task tools
 
-The tools a filer's model calls to file and manage work (`createTask`, `getTask`, `listTasks`, `updateTask`), the worker's `reportProgress`, the questions a task asks a user, and the `retryTask` action are in [Tools](./tools.md), with their fields, results and refusal codes.
+The tools a filer's model calls to file and manage work (`createTask`, `getTask`, `listTasks`, `updateTask`), the worker's `reportProgress`, the questions a task asks a user, and the `retryTask` action work on the collection operations in [Task collections](./task-collections.md).
 
 ## Next
 

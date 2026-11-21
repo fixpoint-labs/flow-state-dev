@@ -38,6 +38,8 @@ Written by `docs-writer` (sonnet), 4235 words. Scenario: The `support` flow's ch
 - After the loop (review): section 1's "0 facts" is a miscount by the loop; ui-components.facts.md holds the facts. Read the record and the final fact check. Spot-checked the task-plan title fix against packages/ui/registry/components/task-plan.tsx:314 (`title ?? "Tasks"`). No change. 4232 words. Page sha256 b3f4a79051e3.
 
 - After the loop (review): the Client configuration depth pass moved what a renderer receives here, replacing the link to the client page, which no longer carries it: `{ item }`, `{ item, line }` for a conversation line, `{ line }` for `stopped`, and `{ item, isResolved, resolution }` for a suspension card. check-docs-page passes. 4300 words. Page sha256 bd6b4d9c5c21.
+- After the loop (review): the docs site build could not parse the page as MDX: four quoted UI strings held `<Retry|Continue|Discard>`, `<label>`, `<ids>` and `<age>` outside code, which MDX reads as tags. Each is now in a code span; the retry text reads `Retry failed: <message>` (or `Continue` or `Discard`). `node apps/docs/scripts/lint-brand.mjs` on the page: 0 findings. 4236 words. Page sha256 33fc63a15b58.
+- After the loop (review): the two review edits above merged, both kept. check-docs-page and lint-brand pass. 4304 words. Page sha256 ac279a0dceb3.
 
 ## 5 · Fact check
 
@@ -56,6 +58,7 @@ Final fact check of the page as it closed, sha256 35d776500723: 4 untrue, fixed 
 - Line 264: "`title` defaults to \"Tasks\" plus the collection id". Untrue: The visible title defaults to "Tasks" alone (`title ?? "Tasks"`). The collection id is rendered only in an `sr-only` span for screen readers. (packages/ui/registry/components/task-plan.tsx:314,348,413,424)
 
 - Re-run after the review edit: the moved claim checked against packages/react/src/components/ApprovalRenderer.ts:37-53 (`isResolved`, `resolution`). No untrue claim open.
+- Re-run after the review edit: the four strings are quoted as the registry renders them; only their markup changed. True.
 
 ## 6 · Depth pass
 

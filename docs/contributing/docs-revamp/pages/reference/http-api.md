@@ -243,7 +243,7 @@ A session id nobody used is `404 { "error": "Unknown session \"<id>\"" }`. On th
 
 Where the answer is `404`, nothing is written, and the body names neither the owner nor the organization. An action posted into another user's session is `404` before the request is acknowledged and before the session changes.
 
-A session of another organization that the same user holds is `404 Unknown session` on the action route. On the other session routes it is `403 { "error": "Caller's organization does not own the requested resource" }`. In an app where nothing authenticates, that `403` comes only for a session stored under an organization other than the default one.
+A session of another organization that the same user holds is `404 Unknown session` on the action route. On the other session routes it is `403 { "error": "Caller's organization does not own the requested resource" }`. An open flow in an app where another flow signs callers in also answers that `403` for a session stored under an organization other than the default one. When nothing in the app authenticates, these routes skip the owner and organization checks.
 
 | Probe | Answer |
 | --- | --- |
