@@ -2,6 +2,10 @@
 
 **Spec** · [Decisions](DECISIONS.md)
 
+A kit that builds something other kits need, such as memory, has no named way to share it. The
+draft memory kit works around that with a builder slot, so every flow that wants memory has to be
+built inside the memory kit, and workforce's workers can't get memory without that.
+
 **Recommendation: don't build `provides`.** The case that motivated it, memory reaching
 workforce's workers, works today with no new API ([the POC](poc/memory-without-provides/README.md)).
 None of the other named cases builds its value in `install`. This spec records that finding,
