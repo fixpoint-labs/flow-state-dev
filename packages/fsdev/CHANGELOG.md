@@ -1,5 +1,126 @@
 # @flow-state-dev/fsdev
 
+## 1.0.0
+
+### Patch Changes
+
+- 819c2a5: **Breaking:** `getAssetPath()` is renamed `getDevToolAssetPath()`, so the name no longer means two things across published packages (FIX-2449). `getAssetPath()` stays the name an app package exports for `fsdev dev --app`. No deprecated alias. `fsdev`'s optional peer on `@flow-state-dev/devtool` is now a caret range on this release, so an older DevTool no longer satisfies it.
+
+  Docs: packages/devtool/README.md (the `getAssetPath(): string` section and its example become `getDevToolAssetPath()`)
+
+- 44b199d: FIX-2805: Every host now refuses to serve an app that still trusts `body.userId`, on any `NODE_ENV`, including when it is unset. `serve()` throws before listening on a non-loopback host, and a flow registered after that still gets a 500. Lambda, Next, and Vercel do the same on each request. The 500 body is `Internal server error`; the flow kinds are logged once. A loopback bind (`127.0.0.1`, `localhost`) is unchanged. `allowUnauthenticated: true`, and `fsdev serve` / `fsdev dev --allow-unauthenticated`, is the override.
+
+  A network `serve()` initializes stores before the port opens, so `/healthz` is not up during that cold start.
+
+  Docs: packages/node/README.md (the quick start `await serve(flowState)` and `await serve(flowState, { pushSecret })` throw on the default host `0.0.0.0` unless every flow has a resolver or the call passes `host: "127.0.0.1"` or `allowUnauthenticated: true`; the network-bind section should say `serve()` runs the check itself, keeps checking after `register()`, and that Lambda, Next, and Vercel return a generic 500 with the kinds only in the log), apps/docs/docs/server/host-adapters.md (`await serve(flowstate, { basePath: "/flows" })` needs a resolver or a loopback host), apps/docs/docs/configuration/client.md (the `serve(flowstate, { basePath: "/flows" })` comment, same), apps/docs/guides/deployment.md (a hand-written `serve()` runs the same guard as `fsdev serve`), apps/docs/guides/realtime.md (`serve(flowstate, { pushSecret })` needs a resolver or `host: "127.0.0.1"`). `apps/docs/docs/workforce/overview.md` already sets `resolvePrincipal`, so that `serve(flowState, { port: 3000 })` sample keeps working.
+
+- 3973e1f: An idle view stops re-reading on changes that can't touch what it shows (FIX-2695).
+
+  - **client:** `client.live` with `topicsFromResult` now applies a result's `hears` (a view's answer, from `client.view`): a notice under the answer's topics that its hearings don't admit reads nothing. `LiveResult` gains an optional `hears`. Before, only `useView` applied it; a screen that passed `client.view`'s answer to `client.live` re-read on every notice under the topics, including each chunk of a reply streaming in the session.
+  - **client:** when a live read's answer names new topics, it subscribes them before it lets go of the old ones, so a client whose only subscription is that live read keeps its socket instead of closing it and opening another.
+  - **engine:** a view that reads a session's state hears only that session's `state` notices. A reply streaming in the session (`items`, `request`) and a request stamping the session record (`run`) no longer wake it. A view that reads the session itself (its items, metadata, window or journal, or another session through the request host) still hears every kind but `resource` and `board`.
+  - **engine:** `publishScopeChange` is exported from `@flow-state-dev/engine/host`, for a host that writes a scope's state outside a run.
+  - **fsdev:** `fsdev run --seed-session` on an existing session publishes a `state` notice on that session, so a live view that read its state reads again.
+
+  Docs: none for users beyond the client reference's `client.live` entry (`hears` on a `topicsFromResult` result), if it lists `LiveResult`'s fields.
+
+- Updated dependencies [04812f3]
+- Updated dependencies [801aa5e]
+- Updated dependencies [61efa05]
+- Updated dependencies [ffbe992]
+- Updated dependencies [ec99b11]
+- Updated dependencies [4b4a7d4]
+- Updated dependencies [8e111c9]
+- Updated dependencies [d30f516]
+- Updated dependencies [f888e69]
+- Updated dependencies [2cb6326]
+- Updated dependencies [2876f11]
+- Updated dependencies [a27cf26]
+- Updated dependencies [77a6c9b]
+- Updated dependencies [5e55476]
+- Updated dependencies [81b1693]
+- Updated dependencies [abed271]
+- Updated dependencies [aa28006]
+- Updated dependencies [e3ca793]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [e505adf]
+- Updated dependencies [819c2a5]
+- Updated dependencies [8523060]
+- Updated dependencies [5b2bd16]
+- Updated dependencies [819c2a5]
+- Updated dependencies [fe85f56]
+- Updated dependencies [f89e8a5]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [78daf33]
+- Updated dependencies [4394069]
+- Updated dependencies [5f1c26a]
+- Updated dependencies [7ddae5c]
+- Updated dependencies [44b199d]
+- Updated dependencies [5549fd1]
+- Updated dependencies [cf185b3]
+- Updated dependencies [58db1c3]
+- Updated dependencies [c7ce9ff]
+- Updated dependencies [c487501]
+- Updated dependencies [95d9686]
+- Updated dependencies [1600ca1]
+- Updated dependencies [6b360fa]
+- Updated dependencies [3973e1f]
+- Updated dependencies [41dcd7e]
+- Updated dependencies [ae56d59]
+- Updated dependencies [e238e18]
+- Updated dependencies [cc91d7a]
+- Updated dependencies [3f23173]
+- Updated dependencies [a63b662]
+- Updated dependencies [e9722ee]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [74a7b9d]
+- Updated dependencies [b43424c]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [42980e4]
+- Updated dependencies [de09b77]
+- Updated dependencies [2e7c92f]
+- Updated dependencies [c82adfa]
+- Updated dependencies [aa45e92]
+- Updated dependencies [6b68a97]
+- Updated dependencies [546603f]
+- Updated dependencies [4a6643c]
+- Updated dependencies [246f0ba]
+- Updated dependencies [4698256]
+- Updated dependencies [9f8b8d3]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [714e98f]
+- Updated dependencies [95f3cce]
+- Updated dependencies [0454257]
+- Updated dependencies [1e58902]
+- Updated dependencies [81c145c]
+- Updated dependencies [5ce9228]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [298aae0]
+- Updated dependencies [13e3970]
+- Updated dependencies [ec1fdf9]
+- Updated dependencies [1970b12]
+- Updated dependencies [c36ffa0]
+- Updated dependencies [23bac7e]
+- Updated dependencies [1f46aaf]
+- Updated dependencies [89b40bc]
+- Updated dependencies [b5b52b9]
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/engine@0.6.0
+  - @flow-state-dev/store-sqlite@0.5.0
+  - @flow-state-dev/devtool@0.4.0
+  - @flow-state-dev/node@0.4.0
+  - @flow-state-dev/workspace@0.5.0
+  - @flow-state-dev/testing@0.4.0
+
 ## 0.5.0
 
 ### Minor Changes

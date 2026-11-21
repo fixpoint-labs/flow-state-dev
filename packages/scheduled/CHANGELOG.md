@@ -1,5 +1,209 @@
 # @flow-state-dev/scheduled
 
+## 0.4.0
+
+### Minor Changes
+
+- 61efa05: The app fires its own schedules (FIX-2752). One tick in the engine fires every schedule of every flow, static and dynamic, once per scheduled time. A long-lived server or `fsdev dev` needs no outside cron, several servers on one store tick from one process, and a serverless host adds one route. The five old ways to fire a schedule are removed, with no aliases.
+
+  - **engine:** `createFlowState` takes `scheduler`. Omitted, a built-in local cron ticks each minute in a process that serves the app (`ready()`, `getRouter()`, `serve()`, `fsdev dev`) or works a job queue, never in `fsdev run`, `fsdev chat` or `fsdev block`, and only when a flow declares a static schedule or a schedule index. It ticks only while it holds a lease in `stores.leases`, so one process ticks across servers that share a SQLite or Postgres store; if that process dies, another takes over within three minutes. In production on in-memory or filesystem stores it warns at start: run one server, or use SQLite or Postgres. `scheduler: false` fires nothing; a `SchedulerAdapter` (from `@flow-state-dev/engine/host`, with `ScheduleTicker` and `ScheduleTickReport`) decides when the tick runs. After downtime each schedule fires once, late, for the latest time it missed; earlier missed times are dropped. On Vercel with the local default, startup warns to pass `vercelScheduler()`.
+  - **vercel:** `vercelScheduler({ secret? })` is the scheduler for Vercel: pass it as `scheduler` and export its `route` as the `GET` of one route that one Vercel Cron entry calls (`CRON_SECRET` by default; an empty secret refuses every call). Each call fires every due schedule of every flow, each as its own request to the deployment the call reached, and answers 500 when a schedule index fails so the next beat retries. `createGetToPostCronShim` and `createScheduleTickHandler` are removed, with the `@flow-state-dev/vercel/schedules` entry: replace each per-schedule cron entry and route, and each per-flow tick route, with the one route. A once-a-minute beat needs Vercel Pro; a daily beat (Hobby) fires each schedule once a day, late.
+  - **bullmq:** `registerStaticSchedules`, `createScheduleDispatchProcessor` and `createBullmqScheduleIndex` are removed, with the `@flow-state-dev/bullmq/schedules` entry. A BullMQ deployment wires nothing for schedules: the local cron runs in its job-queue processes too, elected by the shared store's lease. A static schedule's fire is enqueued like any action, with the queue's retries; a dynamic schedule's fire runs in the process that ticked, since its block can't ride a job, so it has no queue retries and a crash mid-run loses it. Dynamic schedules use the SQLite or Postgres schedule index. The pending rename of `createScheduleDispatchWorker` to `createScheduleDispatchProcessor` in this release ends in this removal.
+  - **node:** `serveScheduleTicks` is removed. `serve()` no longer ticks schedule indexes itself; the app's local cron fires static and dynamic schedules alike.
+  - **scheduled:** `runScheduleTick`, `startScheduleTick` and `scheduleDispatchRequest` are removed from `@flow-state-dev/scheduled/collection` (the tick is the engine's), and `formatScheduleId` from the package root (it is core's). The pending note that added the first three in this release is superseded by this removal.
+  - **core:** `formatScheduleId(orgId, userId, key)` is exported from `@flow-state-dev/core`. `ScheduleDueEntry` names `cron` and `timezone`, so a custom schedule index returns the cron and zone each row already carries.
+
+  Docs: apps/docs/docs/server/scheduled.md (rewritten: the app fires its own schedules; the local cron, the lease, and what one server on in-memory or filesystem stores means; after downtime, once late for the latest missed time; the Vercel route; `scheduler: false`), apps/docs/docs/server/schedule-index.md (drop the "bring a cron" section; the tick claims the index), apps/docs/guides/scheduled-vercel-cron.md (the one-route walkthrough with `vercelScheduler()`, one cron entry, the Pro and Hobby beats), apps/docs/guides/scheduled-dynamic.md (no tick handler; the app's tick claims the index), apps/docs/guides/background-jobs-bullmq.md (drop the schedule wiring), apps/docs/guides/keeping-a-flow-running.md (drop the outside-cron mention), packages/vercel/README.md (`vercelScheduler` replaces the `./schedules` helpers), packages/bullmq/README.md (drop the `./schedules` section and `createBullmqScheduleIndex`), packages/scheduled/README.md (the tick is the engine's; no `runScheduleTick` or `startScheduleTick`), packages/node/README.md (`serve()` no longer ticks indexes itself), packages/engine/README.md (the `scheduler` option, `SchedulerAdapter`, `ScheduleTicker`), packages/core/README.md (`formatScheduleId`; `ScheduleDueEntry`'s `cron` and `timezone`).
+
+- de09b77: **Breaking:** 1,107 exports are removed from the roots of the published `@flow-state-dev/*` packages, with no deprecated aliases, so importing one from a package root no longer compiles; some of them are still exported from another entry of the same package (FIX-2562).
+- c82adfa: **Breaking:** one word for a stored thing, _resource_, and _Status_ for a lifecycle (FIX-2479). Exported names that said _row_ or _collection item_ for a resource, or _row_ for a task, are renamed, with no aliases. Stored field names, storage keys and HTTP paths do not change: a worktree record keeps its `state` field, now typed `WorktreeStatus`.
+
+  ### Renamed exports
+
+  | Package                            | Old                                                      | New                                                                                        |
+  | ---------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+  | `core` (`/internal`)               | `WaitRow`                                                | `TaskAddress`                                                                              |
+  | `core` (`/harness`)                | `planRowsPrefix`                                         | `planResourcesPrefix`                                                                      |
+  | `core` (`/harness`)                | `readPlanTarget(...)` result field `rowsPrefix`          | `resourcesPrefix`                                                                          |
+  | `core`                             | `SessionCreateCheckInput.readCollectionItem(ref, topic)` | `readCollectionResource(ref, topic)`                                                       |
+  | `engine`                           | `DebugCollectionItem`                                    | `DebugCollectionResource`                                                                  |
+  | `engine`                           | `DebugCollectionItemsResponse`                           | `DebugCollectionResourcesResponse` (its `items` wire field is unchanged)                   |
+  | `engine`                           | `ResourceIndexBuildState`                                | `ResourceIndexBuildStatus`                                                                 |
+  | `workspace`                        | `WorktreeRow`                                            | `WorktreeResourceState`                                                                    |
+  | `workspace`                        | `worktreeRowSchema`                                      | `worktreeResourceStateSchema`                                                              |
+  | `workspace`                        | `WorktreeState`                                          | `WorktreeStatus`                                                                           |
+  | `workspace`                        | `worktreeStateSchema`                                    | `worktreeStatusSchema`                                                                     |
+  | `scheduled`                        | `ScheduleIndexRow`                                       | `ScheduleIndexEntry` (one schedule's entry in the schedule index)                          |
+  | `client`                           | `CollectionItemHandle`                                   | `CollectionResourceHandle`                                                                 |
+  | `client`                           | `CollectionItemState`                                    | `CollectionResourceState`                                                                  |
+  | `client`                           | `CreateCollectionItemOptions`                            | `CreateCollectionResourceOptions`                                                          |
+  | `client`                           | `ListCollectionItemsOptions`                             | `ListCollectionResourcesOptions`                                                           |
+  | `client`                           | `DebugCollectionItem`                                    | `DebugCollectionResource`                                                                  |
+  | `client`                           | `DebugCollectionItemsResponse`                           | `DebugCollectionResourcesResponse` (its `items` wire field is unchanged)                   |
+  | `client`                           | `ListDebugCollectionItemsOptions`                        | `ListDebugCollectionResourcesOptions`                                                      |
+  | `client`                           | `client.resources.listCollectionItems`                   | `listCollectionResources`                                                                  |
+  | `client`                           | `client.resources.createCollectionItem`                  | `createCollectionResource`                                                                 |
+  | `client`                           | `client.resources.getCollectionItemState`                | `getCollectionResourceState`                                                               |
+  | `client`                           | `client.resources.getCollectionItemContent`              | `getCollectionResourceContent`                                                             |
+  | `client`                           | `client.resources.deleteCollectionItem`                  | `deleteCollectionResource`                                                                 |
+  | `client`                           | `client.sessions.debug.listCollectionItems`              | `listCollectionResources` (the debug route's URL is unchanged)                             |
+  | `client`                           | `client.sessions.debug.fetchCollectionItemContent`       | `fetchCollectionResourceContent`                                                           |
+  | `client`                           | `SessionConnectionState`                                 | `SessionConnectionStatus`                                                                  |
+  | `react`                            | `useResourceCollectionItem`                              | `useCollectionResource` (its result's `item` field is unchanged)                           |
+  | `react`                            | `UseResourceCollectionItemResult`                        | `UseCollectionResourceResult`                                                              |
+  | `react` (`/workforce`)             | `PanelRowSource`, `PanelItemSource`                      | unchanged names; they now pick `listCollectionResources` and `getCollectionResourceState`  |
+  | `orchestration` (`/tasks`)         | `rowHoldSchema`                                          | `ownHoldSchema` (a task's own hold: a question, a confirm or an external wait)             |
+  | `orchestration` (`/tasks`)         | `RowHold`                                                | `OwnHold`                                                                                  |
+  | `orchestration` (`/inbox`)         | `RowHoldSource`                                          | `OwnHoldSource` (its `kind` is `"task"`, was `"row"`)                                      |
+  | `orchestration` (`/inbox`)         | `InboxRow`                                               | `InboxTaskInput`                                                                           |
+  | `orchestration` (`/inbox`)         | `RefileRow`                                              | `RefiledTask`                                                                              |
+  | `orchestration` (`/inbox`)         | `taskRowView(row, holds?)`                               | `taskView(task, holds?)`                                                                   |
+  | `orchestration` (`/inbox`)         | `TaskRowView`                                            | `TaskView`                                                                                 |
+  | `orchestration` (`/inbox`)         | `TaskViewRow`                                            | `TaskViewInput`                                                                            |
+  | `orchestration` (`/inbox`)         | `TaskRowState`                                           | `TaskViewStatus`                                                                           |
+  | `orchestration` (`/inbox/check`)   | `RowTruth`                                               | `TaskTruth` (its `rowHolds` field is `ownHolds`)                                           |
+  | `orchestration` (`/inbox/check`)   | `rowTruthOf`                                             | `taskTruthOf`                                                                              |
+  | `orchestration` (`/internal`)      | `isRowHold`, `openRowHolds`                              | `isOwnHold`, `openOwnHolds`                                                                |
+  | `orchestration` (`/internal`)      | `rowsInSession`                                          | `tasksInSession`                                                                           |
+  | `engine` (`/internal`)             | `OwnerRunRefusal` value `"no_row"`                       | `"no_resource"`                                                                            |
+  | `harness-manager`                  | `HarnessReadinessRow`                                    | `HarnessReadinessView`                                                                     |
+  | `harness-manager`                  | `harnessReadinessRowSchema`                              | `harnessReadinessViewSchema`                                                               |
+  | `harness-manager`                  | `HarnessUsageRow`                                        | `HarnessUsageView`                                                                         |
+  | `harness-manager`                  | `HarnessUsageWindowRow`                                  | `HarnessUsageWindowView`                                                                   |
+  | `harness-manager` (and `/browser`) | `PullRequestRecordRow`                                   | `PullRequestRecordResourceState`                                                           |
+  | `harness-manager` (and `/browser`) | `PullRequestWaitRow`                                     | `PullRequestWaitInput`                                                                     |
+  | `harness-manager`                  | `PlaceState`                                             | `PlaceStatus` (a run record's place keeps its `state` field, now typed `PlaceStatus`)      |
+  | `harness-manager`                  | `placeStateSchema`                                       | `placeStatusSchema`                                                                        |
+  | `harness-manager`                  | `readRunRow`                                             | `readRunRecord`                                                                            |
+  | `workforce`                        | `WorkerRow`                                              | `WorkerResourceState` (the worker's configuration, as stored)                              |
+  | `workforce`                        | `workerRowSchema`                                        | `workerResourceStateSchema`                                                                |
+  | `workforce`                        | `parseWorkerRow(value)`                                  | `parseWorkerResourceState(value)`, answering `{ worker }` (was `{ row }`) or `{ problem }` |
+  | `workforce`                        | `StandardWorkerRow`                                      | `StandardWorkerResourceState`                                                              |
+  | `workforce`                        | `standardWorkerRowSchema`                                | `standardWorkerResourceStateSchema`                                                        |
+  | `workforce`                        | `ProjectRow`                                             | `ProjectResourceState`                                                                     |
+  | `workforce`                        | `projectRowSchema`                                       | `projectResourceStateSchema`                                                               |
+  | `workforce`                        | `WorkerInventoryRow`                                     | `WorkerInventoryResourceState`                                                             |
+  | `workforce`                        | `workerInventoryRowSchema`                               | `workerInventoryResourceStateSchema`                                                       |
+  | `workforce`                        | `SubscriptionRow`                                        | `SubscriptionResourceState`                                                                |
+  | `workforce`                        | `subscriptionRowSchema`                                  | `subscriptionResourceStateSchema`                                                          |
+  | `workforce` (and `/browser`)       | `WorkerMessageRow`                                       | `WorkerMessageResourceState`                                                               |
+  | `workforce` (and `/browser`)       | `workerMessageRowSchema`                                 | `workerMessageResourceStateSchema`                                                         |
+  | `workforce`                        | `WorkerUsageRow`                                         | `WorkerUsageView` (one worker's line in the `workerUsage` query's answer)                  |
+  | `workforce`                        | `ReportRow`                                              | `ReportResourceState`                                                                      |
+
+  ### For client developers: values and messages an app branches on or matches
+
+  Code that branches on one of these values, or matches one of these messages, changes when it upgrades. In each message only the noun changes; the rest of the sentence is the same.
+
+  | What                                                                                            | Old                                                                             | New                                                                                                                  |
+  | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+  | A task's own hold (`Task.holds[].source.kind`, and the Inbox's `InboxHold.source.kind`)         | `"row"`                                                                         | `"task"`. A hold stored as `"row"` still reads as `"task"` and can still be answered; `"row"` is never written again |
+  | Dispatch refusal (`DispatchOutcome.refused`)                                                    | `"external-dispatcher"`                                                         | `"external-flow-runner"`                                                                                             |
+  | Owner-private refusal                                                                           | starts "A row of an owner-private …"                                            | "A resource in an owner-private collection is readable only by the user it belongs to."                              |
+  | Owner-writes refusal                                                                            | starts "A row of an owner-writes …"                                             | "A resource in an owner-writes collection is written only by the user it belongs to."                                |
+  | Startup overlap error                                                                           | `Collection pattern "<P>" can reach the rows of owner-<mode> collection "<Q>".` | `Collection pattern "<P>" can reach the resources of owner-<mode> collection "<Q>".`                                 |
+  | Owner-segment refusal ("That segment is reserved for the user an owner-private collection's …") | "… row belongs to, …"                                                           | "… resource belongs to, …"                                                                                           |
+
+  Every other error and refusal message that said _row_ follows one rule: _task_ where the row was a task (dispatch, the task board, the ledger), _resource_ elsewhere, and _collection resources_ for _collection items_. In this release that covers the task board's, the task entry's, the ledger's and the task collection's errors in `orchestration` (and the `listTasks` tool's description a model reads), the Inbox check's drift lines, the dispatcher's and `defineFlow`'s task-entry errors, the faceted and owner-writes collection errors in `core`, the parent-task, owner-run and cross-board errors in `engine`, the schedule-index warning in `scheduled`, the harness manager's superseded-attempt, run-record, worktree-resource, phase-mismatch and foreign-run errors and the scripted coder's steps and commit message in `harness-manager`, the worker inventory's, the shadowed-reference, the hire and roster-loader document, the project-read tool's description and the project-link errors in `workforce`, and the DevTool's "Failed to fetch collection resources" (was "…collection items").
+
+  Docs: every published page and package README that still names a renamed export or value, by page, with the names it uses. Pages: `docs/glossary.md` ("A task is a row", "A project is one row", "One row, in user or org scope", "A resource row") and `docs/resources/collections.md` (the collections pages say _resource_; collections.md also quotes the owner-private and owner-writes refusals and the overlap error, and names `CollectionItemHandle`); `docs/workforce/projects.md` (quotes the owner-writes refusal; `getCollectionItemContent`); `docs/orchestration/task-substrate.md` (the hold marker `"row"` is `"task"`, and its refusal tables' `external-dispatcher` is `external-flow-runner`); `docs/advanced/concurrency-policies.md`, `docs/server/background-work.md` and `guides/keeping-a-flow-running.md` (`external-dispatcher`); `docs/tools/coding-agents.md` (`planRowsPrefix`, `readPlanTarget`'s `rowsPrefix`); `docs/fundamentals/state-and-scopes.md` (`readCollectionItem`); `docs/api/client.md` (`CollectionItemState` and the client methods `listCollectionItems`, `createCollectionItem`, `getCollectionItemState`, `getCollectionItemContent`, `deleteCollectionItem`); `docs/client/overview.md` (`listCollectionItems`, `getCollectionItemState`); `docs/client/react.md` (`CollectionItemHandle`, `useResourceCollectionItem`); `docs/resources/client-access.md` (`createCollectionItem`, `getCollectionItemContent`, `deleteCollectionItem`, `useResourceCollectionItem`); `docs/workforce/delegating-work.md`, `docs/workforce/inventory.md` and `docs/workforce/ui.md` (`listCollectionItems`); `guides/writing-ui-stories.md` (`resources.listCollectionItems`, `getCollectionItemState`, and the story fixtures `loadingRowsSource` and `failingRowsSource`, now `loadingResourcesSource` and `failingResourcesSource`); `docs/workforce/messaging-workers.md` (`workerMessageRowSchema`); `docs/orchestration/harness-manager.md` (its readiness section: `HarnessReadinessRow`, `harnessReadinessRowSchema`); `docs/orchestration/task-board.md` (`taskRowView`); `docs/server/schedule-index.md` and `guides/scheduled-dynamic.md` (`ScheduleIndexRow`). READMEs, each with the old names it still uses (the tables above give the new ones): packages/core/README.md (`planRowsPrefix`, `readPlanTarget`'s `rowsPrefix`, `useResourceCollectionItem`, `external-dispatcher`, and a quote of the owner-writes refusal); packages/claude-code/README.md and packages/cursor/README.md (`readPlanTarget`'s `rowsPrefix`); packages/client/README.md (`CollectionItemState`, `listCollectionItems`, `createCollectionItem`, `getCollectionItemState`, `getCollectionItemContent`, `deleteCollectionItem`, `SessionConnectionState`); packages/react/README.md (`CollectionItemHandle`, `resources.listCollectionItems`, `resources.getCollectionItemState`, `useResourceCollectionItem`); packages/orchestration/README.md (`taskRowView`, `rowsInSession`); packages/harness-manager/README.md (`openRowHolds`, `HarnessReadinessRow`, `harnessReadinessRowSchema`, `HarnessUsageRow`, `readRunRow`); packages/workforce/README.md (`listCollectionItems`, `taskRowView`, `workerRowSchema`, `parseWorkerRow`, `WorkerInventoryRow`, `workerInventoryRowSchema`, `subscriptionRowSchema`, `WorkerMessageRow`, `workerMessageRowSchema`, `WorkerUsageRow`, and a quote of the owner-writes refusal); packages/engine/README.md (`no_row`). packages/workspace/README.md (a worktree record is `WorktreeResourceState`, its `state` field typed `WorktreeStatus`, parsed with `worktreeStatusSchema`).
+
+- 8ccec52: Routines are read as a view, with no session, and paused or deleted through the roster flow; an app's declared routines are seeded on a user's first request to any worker (FIX-2624).
+
+  - The roster flow serves a `routines` view: the user's routines, answered as `{ routines }` in `listRoutines`'s shape, at user scope with no session. It also lists the app's declared routines (`routines.declared`) that aren't stored for the user yet, so they show before they are seeded. `routinesView` from `@flow-state-dev/workforce/browser` is its handle. `listRoutines` stays as an action and as a worker's tool.
+  - The schedules (`workforce/schedules/*`) and subscriptions (`workforce/subscriptions/*`) collections now take `runBy: { flow: "workforce-roster" }` and a client read of the user's own entries. A client pauses or deletes a routine by sending `pauseRoutine` or `deleteRoutine` to the collection (`client.resource({ scope: "user", pattern: SCHEDULES_PATTERN }).send(...)`), which runs in the user's own write session.
+  - An app's declared routines are seeded on the user's first request to any flow of the installation: a worker's turn, as well as a roster request. Each is written once per user; a later request writes nothing. Every worker flow now declares the routine collections through `installation.resources`, which carries them beside the worker collections.
+  - `defineScheduleCollection` takes `client` and `runBy`, passed to the collection as `defineResourceCollection` takes them.
+  - Shift Manager's Routines reads the view and sends its changes, with no roster session.
+
+  Docs: the Workforce docs have no routines page yet; the release adds one under apps/docs/docs/workforce/ (the `routines` view and its handle, pause and delete as a send to the collection, and the declared routines seeded on a user's first request to any worker), apps/docs/docs/shift-manager/overview.md (Routines needs no roster session), packages/workforce/README.md (`routinesView` in the browser API list), packages/scheduled/README.md (`defineScheduleCollection`'s `client` and `runBy`).
+
+- 546603f: A flow with `schedules` fires them and answers on its dispatch endpoint with nothing in the app beyond `schedules` on the flow (FIX-2753).
+
+  - **engine:** the router mounts the scheduled endpoint itself, on every app, beside the HTTP routes: `POST /api/flows/:flowKind/schedules/*scheduleId/dispatch` and `GET /api/flows/:flowKind/schedules`. A flow registered after the router is built is routed too. A registered flow with no `schedules` answers both routes `404 { "error": "flow_not_found" }`, the same as an unknown flow, before any principal resolver runs; before, the listing route ran the resolver and answered an empty list. `createFlowState` no longer refuses to start a flow with schedules and no adapter. An app adapter that registers one of the two paths is refused at startup by the router's route-collision check. `SCHEDULED_TRANSPORT_SOURCE` is exported from `@flow-state-dev/engine`.
+  - **scheduled (breaking):** `createScheduledTransportAdapter`, its `basePath` option, `CreateScheduledTransportAdapterOptions`, `SCHEDULED_TRANSPORT_SOURCE` and `findScheduledRequest` are removed. Delete the `adapters: [createScheduledTransportAdapter()]` line and its import; import `SCHEDULED_TRANSPORT_SOURCE` from `@flow-state-dev/engine`. The schedule routes live under `/api/flows` only: an app that serves the flow API under another prefix (`serve({ basePath })`, a Next.js route elsewhere) still fires its schedules from the local cron, but an outside cron or `vercelScheduler()` sending to that prefix gets a 404, as webhooks do. `FIRED_RECORDS_PATTERN` and `firedRecordCollectionKey` move from `@flow-state-dev/scheduled/collection` to `@flow-state-dev/core/types`. The package keeps schedule collections, the resolver, the `ScheduleIndex` contract, `createBadCronWarner`, `parseNextFireAt` and `./testing`, and no longer depends on the engine.
+  - **core:** `FIRED_RECORDS_PATTERN` and `firedRecordCollectionKey` are exported from `@flow-state-dev/core/types`.
+  - **workforce:** reads the fired-record helpers from core; no behaviour change.
+
+  The pending note that said `createScheduledTransportAdapter` stops refusing `idempotencyWindowMs` and `idempotencyOptions` is superseded: the factory is gone.
+
+  Docs: apps/docs/docs/server/scheduled.md (drop the mount step; the endpoint is always there, under `/api/flows`; a flow with no schedules answers 404; drop the lines that say the adapter throws on `idempotencyWindowMs` or `idempotencyOptions`), apps/docs/guides/keeping-a-flow-running.md, apps/docs/guides/scheduled-dynamic.md, apps/docs/guides/scheduled-vercel-cron.md and apps/docs/docs/workforce/delegating-work.md (drop the adapter line), apps/docs/docs/advanced/inbound-transports.md (the scheduled endpoint is built in), packages/scheduled/README.md (the collections-and-index package; no endpoint, no `basePath`), packages/engine/README.md (drop the commented adapter line; `SCHEDULED_TRANSPORT_SOURCE`).
+
+- 1e58902: A session subscribed to a GitHub pull request or repository hears it with no webhook: the app polls, once per user and pull request (or repository), at most every five minutes, through the same screens and delivery as push (FIX-2536).
+
+  - **workforce:** polling is configured once, on the installation: `hireWorkforce(installation, { routines: { poll: { index, everyMinutes? } } })`, with a schedule index of its own (not `routines.index`, which is refused: one index ticks one flow), and `poll: true` on `defineSubscriptionServiceFlow` or `githubServiceFlow`. Every event routine write (the routine verbs, the roster's routine actions, the declared routines' seed, and `followPullRequest({ providers, installation })`) then schedules the user's poll. An event routine takes `everyMinutes` (5, 10, 15, 20, 30 or 60; anything else is refused), the seed included. `SubscriptionProvider` gains an optional `poll`; `githubSubscriptionProvider` implements it on the user's own token, with conditional requests, reading a long list back from its last page to the mark; a poll that couldn't read everything says so in each session. A delivery the host lost lands on a later poll, once; one that can't land is given up after three polls. A declared event routine whose entry left `routines.declared` ends at its next poll. A poll forwards what no ordinary subscription of that user heard to that user's coordinator that follows the same pull request or repository `unmatched`. A declared event routine whose `unmatched` setting changed is rewritten at the next seed.
+  - **scheduled:** `runScheduleTick` and `startScheduleTick` (from `/collection`) claim a schedule index's due entries and dispatch each; `scheduleDispatchRequest` builds the dispatch call.
+  - **core:** `SchedulesConfig` takes `index`, the schedule index a host ticks for the flow.
+  - **node:** `serve()` ticks each minute for every flow whose `schedules.index` is set, dispatching through its own app (`CRON_SECRET` is sent as the bearer when set).
+  - **vercel:** `createScheduleTickHandler` runs the shared tick; its behaviour is unchanged.
+
+  Docs: packages/workforce/README.md (polling: `routines.poll`, the service flow's `poll`, `everyMinutes`, the provider's `poll`), packages/scheduled/README.md (`runScheduleTick`, `startScheduleTick`), packages/node/README.md (`serve()` ticks schedule indexes), apps/docs/docs/server/scheduled.md (the tick a long-lived host runs), apps/docs/guides/webhooks-github.md (polling when the app has no public URL)
+
+### Patch Changes
+
+- 21d31bc: Routines: one name, list and tool set for everything that fires on its own as a user (FIX-2614). A routine has one trigger: a clock (a schedule that files a task) or an event (a subscription to one thread). Stored schedules and subscriptions don't change.
+
+  - **workforce:** four verbs over both triggers, as roster-flow actions for the user and as a worker's tools through the routines capability: `listRoutines`, `saveRoutine({ name?, trigger: { clock } | { event }, task?, worker?, description? })`, `pauseRoutine({ id, paused })` and `deleteRoutine({ id })`, named by `ROUTINE_VERBS` and `LIST_ROUTINES_ACTION`. A routine's id is `clock:<key>` or `event:<subscription id>`. Each listed routine (`listedRoutineSchema`, `ListedRoutine`, also from `./browser`) says who made it (`madeBy`, `routineMakerSchema` / `RoutineMaker`: the user, a worker, or the app). A paused event routine leaves the thread index; a resume turns it back on from its saved subscription, checking read access, and keeps its task and tenant. The user reaches all their routines; a worker reaches only the ones that act through it (`not_yours`).
+  - **workforce:** `createRoutinesCapability(installation)` replaces the factory that returned the subscribe and unsubscribe tools: a worker flow adds routine management with `uses: [routines]`, opt-in (`hireWorkforce` adds it to no worker). Its tools are the four verbs; its providers and schedule index are the ones `hireWorkforce` was given, so they're set once. There is no tools-map form: `routineTools`, from this change's drafts, is not shipped. `hireWorkforce`'s `routines: { index?, providers?, declared? }` (`RoutinesOptions`) replaces the option that took a schedule index. `listedRoutineSchema` and `LIST_ROUTINES_ACTION` replace the schema and the action constant that listed clock routines. The roster actions that saved, listed and deleted a clock routine are gone, with no aliases.
+  - **workforce:** `routines.declared` (`DeclaredRoutine[]`): the app's own routines, seeded into each user's collections when their roster flow runs a request (or only an entry's `owner`'s), under `declaredRoutineKey(entryId)` and written only when missing or changed. The user may pause one; save and delete refuse with `declared`. A config change keeps the pause. `hireWorkforce` throws on an entry that would never fire. `everyMinutes` must be one of `ROUTINE_CADENCES` (5, 10, 15, 20, 30, 60); a pushed provider ignores it.
+  - **workforce:** `subscribe(ctx, providers, input, target?, write?)` takes an optional server-side `SubscribeTarget` `{ sessionId, flow, worker, taskId?, tenantId? }` and `SubscribeWrite` `{ id?, madeBy? }`. Every subscription write and end (`subscribe`, `unsubscribe`, a task's ending) is now decided on the saved subscription: an end other than a pause is final until a fresh `subscribe`, and the thread index holds a subscription only while it is on, under a slot that names its owner. A task's failure or cancel also ends its paused subscriptions. Delivery re-runs the screens on the saved subscription and takes out an index entry it no longer backs. A delivery to a user's not-yet-open conversation with a worker opens it.
+  - **scheduled:** a schedule takes an optional `metadata` record, kept and never read by the resolver, the index or dispatch.
+  - **shift-manager:** _Scheduled work_ is now **Routines** (`/routines`; `/schedules` still opens it): clock and event routines in one list, each with its maker, paused, resumed or deleted from its line. An app's routine can only be paused.
+
+  Docs: packages/workforce/README.md (a Routines section before Subscriptions: the four verbs and their inputs and answers, who reaches what, `createRoutinesCapability` and `uses: [routines]`, `routines.declared`; the roster paragraph's schedule actions become the routine verbs and `routines: { index }`; Subscriptions' tools become the routines capability and its "ends" list names `deleteRoutine` and pause; the API table rows for `createRoutinesCapability`, `subscribe(…, target?, write?)` with `SubscribeTarget` / `SubscribeWrite`, and `hireWorkforce`'s `routines`), apps/docs/docs/workforce/delegating-work.md ("Recurring work" becomes "Tasks on a clock" on `saveRoutine` / `listRoutines` / `deleteRoutine` / `pauseRoutine` and `routines: { index }`), apps/docs/docs/shift-manager/overview.md (the _Scheduled work_ row becomes _Routines_, with its new link anchor), packages/shift-manager/README.md (the sidebar list names Routines), a new `workforce/routines.md` page after `messaging-workers` with the subscribe section shrunk to a link, and the published glossary's _Routine_ row. The same PR deletes the FIX-2614 published-pages exemption in docs/contributing/glossary.mjs.
+
+- Updated dependencies [04812f3]
+- Updated dependencies [61efa05]
+- Updated dependencies [ec99b11]
+- Updated dependencies [4b4a7d4]
+- Updated dependencies [8e111c9]
+- Updated dependencies [d30f516]
+- Updated dependencies [f888e69]
+- Updated dependencies [2cb6326]
+- Updated dependencies [2876f11]
+- Updated dependencies [a27cf26]
+- Updated dependencies [aa28006]
+- Updated dependencies [e3ca793]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [e505adf]
+- Updated dependencies [5b2bd16]
+- Updated dependencies [fe85f56]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [c7ce9ff]
+- Updated dependencies [95d9686]
+- Updated dependencies [1600ca1]
+- Updated dependencies [6b360fa]
+- Updated dependencies [41dcd7e]
+- Updated dependencies [e238e18]
+- Updated dependencies [e9722ee]
+- Updated dependencies [c049036]
+- Updated dependencies [b43424c]
+- Updated dependencies [3ef3979]
+- Updated dependencies [de09b77]
+- Updated dependencies [c82adfa]
+- Updated dependencies [aa45e92]
+- Updated dependencies [546603f]
+- Updated dependencies [4a6643c]
+- Updated dependencies [246f0ba]
+- Updated dependencies [4698256]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [714e98f]
+- Updated dependencies [1e58902]
+- Updated dependencies [81c145c]
+- Updated dependencies [13e3970]
+- Updated dependencies [1970b12]
+- Updated dependencies [c36ffa0]
+- Updated dependencies [23bac7e]
+- Updated dependencies [1f46aaf]
+- Updated dependencies [b5b52b9]
+  - @flow-state-dev/core@0.6.0
+
 ## 0.3.2
 
 ### Patch Changes
