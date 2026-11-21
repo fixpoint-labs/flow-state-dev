@@ -55,7 +55,9 @@
  *
  * The user topic is what a list of the user's sessions watches: it hears a
  * session made, titled or deleted and a request's status written, not the
- * state writes a busy turn makes many of.
+ * state writes a busy turn makes many of. Nor a write session's writes (a
+ * client's resource write runs in one): no listing shows a write session, so
+ * hearing them would read every open list again on every write.
  *
  * A task board's change (`board`, narrowed to the board) is not a store write
  * here: orchestration names it through the board-notice seam (`board-notice.ts`).
@@ -75,6 +77,7 @@ import { isUserSuspension, type PendingUserSuspensionCursor, type SuspensionReco
 import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry, SuspensionStore } from "../stores/types";
 import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
 import { legacyComponentItemReads } from "../stores/legacy-component-items";
+import { isWriteSessionId } from "../resources/default-write-flow";
 
 type Wrapping = {
   /** Raw store → its one wrapper. */
@@ -259,6 +262,16 @@ function ownerRunNotice(owner: { userId: string; tenantId: string | undefined })
   return notice(userTopic(owner.userId, owner.tenantId), "run");
 }
 
+// FIX-2864.
+/**
+ * Whether a write to session `sessionId` publishes `run` on its owner's user
+ * topic: an owner, and a session a list of theirs can show. A write session is
+ * never listed (FIX-2624).
+ */
+function ownerHears(sessionId: string, userId: string | undefined): userId is string {
+  return userId !== undefined && !isWriteSessionId(sessionId);
+}
+
 // FIX-2754.
 /**
  * Publishes on a session's owner's user topic the `run` a whole-record write
@@ -401,7 +414,7 @@ class Identities {
     if (identity.parentSessionId !== undefined) {
       notices.push(notice(sessionTopic(identity.parentSessionId, identity.tenantId), "run", identity.id));
     }
-    if (toOwner && identity.userId !== undefined) notices.push(ownerRunNotice({ userId: identity.userId, tenantId: identity.tenantId }));
+    if (toOwner && ownerHears(identity.id, identity.userId)) notices.push(ownerRunNotice({ userId: identity.userId, tenantId: identity.tenantId }));
     return notices;
   }
 
@@ -424,7 +437,7 @@ class Identities {
     // The request on its session's notice, the session on its parent's
     // (FIX-2625); nothing on its owner's user topic, which spans their orgs.
     const notices = [notice(sessionTopic(identity.sessionId, identity.tenantId), kind, identity.requestId)];
-    if (toOwner && identity.userId !== undefined) notices.push(ownerRunNotice({ userId: identity.userId, tenantId: identity.tenantId }));
+    if (toOwner && ownerHears(identity.sessionId, identity.userId)) notices.push(ownerRunNotice({ userId: identity.userId, tenantId: identity.tenantId }));
     const session = await this.session(resolveSessionStorageKey(identity.sessionId, identity.tenantId));
     if (session?.parentSessionId !== undefined) {
       notices.push(notice(sessionTopic(session.parentSessionId, identity.tenantId), "run", identity.sessionId));

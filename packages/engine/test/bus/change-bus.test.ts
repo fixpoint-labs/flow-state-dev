@@ -18,6 +18,7 @@ import { type StoreRegistry } from "../../src";
 import { createInMemoryStores } from "../../src/host";
 import { resolveStores } from "../../src/routes/http-handlers";
 import { storeIdentity } from "../../src/bus/publish-writes";
+import { writeSessionId } from "../../src/resources/default-write-flow";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -328,6 +329,40 @@ describe("withChangeBus · every request and session write publishes its session
     // FIX-2770: a delete also takes its pending suspensions out of the owner's pending read.
     expect(alice.map((n) => n.kind)).toEqual(["run", "suspension"]);
     expect(bob).toEqual([]);
+  });
+
+  // FIX-2864: a client's write runs in a write session, which no listing
+  // shows (FIX-2624). A `run` on the owner's topic for it made every open
+  // session list read again for a change it could never show.
+  it("names no owner's user topic for a write session's writes, which no list of their sessions shows", async () => {
+    const { stores, bus } = wired();
+    const alice = hear(bus, { scope: "user", id: "alice", tenantId: "" });
+    const write = writeSessionId({ scope: "user", key: "schedules", writer: "fsd-default-write" }, { userId: "alice", orgId: DEFAULT_ORG_ID });
+    const own = hear(bus, sessionTopic(write));
+
+    await stores.session.set(write, session(write), "absent");
+    await stores.request.set("w1", request("w1", write), "any");
+    await tick();
+    await tick();
+    await stores.request.set("w1", request("w1", write, { status: "completed" } as never), "any");
+    await tick();
+    await tick();
+    expect(alice).toEqual([]);
+    // The write session's own topic still hears its writes.
+    expect([...new Set(own.map((n) => n.kind))].sort()).toEqual(["request", "run", "state"]);
+
+    // Under a tenant, by the namespaced storage key.
+    const t1 = hear(bus, { scope: "user", id: "alice", tenantId: "t1" });
+    await stores.session.set(`t1:${write}`, session(`t1:${write}`, { tenantId: "t1" }), "absent");
+    await stores.request.set("w2", request("w2", write, { tenantId: "t1" } as never), "any");
+    await tick();
+    await tick();
+    expect(t1).toEqual([]);
+
+    // A session a list shows still names its owner's topic.
+    await stores.session.set("s_listed", session("s_listed"), "absent");
+    await tick();
+    expect(alice.map((n) => n.kind)).toEqual(["run"]);
   });
 
   // FIX-2625: a notice names what changed, from the ids the wrapper already
