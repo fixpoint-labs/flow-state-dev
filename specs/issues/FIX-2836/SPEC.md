@@ -12,7 +12,7 @@ says how a kit shares what it builds, and reshapes FIX-2816 to use it.
 | Someone who… | Today | After |
 |---|---|---|
 | **writes a kit that others use** (memory) | Copies the draft memory kit's builder slot: apps hand memory flow builders, and memory calls them with its system | Exports the value from its package, built from config. Apps place it with `uses` or a slot fill. The kit keeps `install` for the flows it serves |
-| **runs workforce workers with memory** | Workers can't get memory unless they are built inside memory's slot | Fills `workforce.slots.uses` with `mem.capability`, one line. Workforce's agent flow carries memory's resources and `ctx.cap.memory` |
+| **runs workforce workers with memory** | Workers can't get memory unless they are built inside memory's slot | Fills `workforce.slots.uses` with `mem.capability`, one line. Workforce's agent flow carries memory's resources; a block in a kit that never imports memory reads it through `ctx.cap` (the POC checks the second on a stand-in kit, not a model-backed worker run) |
 | **maintains workforce** | Would have to `require` memory, second opinion and research, one at a time, to read what each provides | Requires nothing new. A feature reaches workers through workforce's own `uses` slot |
 | **adds a block that needs memory** | Not affected | Not affected: `uses: [mem.capability]`, as kitchen-sink does today |
 | **reads `kits.md`** | Finds no word on how a kit shares a value it builds | Finds a short rule, with the case for each |
