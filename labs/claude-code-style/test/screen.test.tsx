@@ -563,7 +563,9 @@ describe("the session-mode screen", () => {
   });
 
   it("answers a line sent while a turn runs at once, beside the turn, and never says it waits", async () => {
-    await renderApp({ vendor: { mainTurn: "until-stopped" } });
+    // Acme's research is held: a result that settles while your line is answered is taken into that
+    // turn, which then answers a second time. Here the one answer is to your line.
+    await renderApp({ vendor: { mainTurn: "until-stopped", holdAcme: true } });
     await pick();
     await ask("Compare Acme and Globex for us.");
     await within(thread()).findByRole("status", OUTSIDE_COMPOSER, SLOW);
