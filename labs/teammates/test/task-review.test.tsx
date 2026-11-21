@@ -159,6 +159,11 @@ describe("an answer drawn as report sections", () => {
     expect(wholeReport("Opened the PR.\n\n## Checks\n- passed: tests")).toBeNull();
     expect(wholeReport("Fixed the typo in README.md, line 1.")).toBeNull();
     expect(wholeReport(null)).toBeNull();
+    expect(wholeReport("## Checks ##\n- passed: tests")?.checks).toHaveLength(1);
+    // A long line that is nearly a heading reads in linear time.
+    const started = performance.now();
+    expect(wholeReport(`## ${" ".repeat(50_000)}x${" ".repeat(50_000)}#`)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(200);
   });
 });
 

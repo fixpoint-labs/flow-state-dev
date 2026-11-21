@@ -58,8 +58,8 @@ export function checkLines(review: Pick<ReviewDetail, "checks">, report: RunRepo
   return [...project, ...reported];
 }
 
-/** A Markdown heading line, as the report reader finds one. */
-const HEADING_LINE = /^#{1,4}\s+(.+?)\s*#*\s*$/;
+/** A Markdown heading line, trimmed first: no optional run before `$` to backtrack over on a long line. */
+const HEADING_LINE = /^#{1,4}\s+(.+)$/;
 const REPORT_HEADINGS = new Set(Object.values(RUN_REPORT_HEADINGS).map((heading) => heading.toLowerCase()));
 
 /**
@@ -70,10 +70,14 @@ const REPORT_HEADINGS = new Set(Object.values(RUN_REPORT_HEADINGS).map((heading)
  */
 export function wholeReport(answer: string | null | undefined): RunReport | null {
   if (answer == null) return null;
-  const lines = answer.split("\n").filter((line) => line.trim() !== "");
+  const lines = answer
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
   const headings = lines.flatMap((line) => {
     const match = HEADING_LINE.exec(line);
-    return match === null ? [] : [match[1]!.replace(/[:*_`]/g, "").trim().toLowerCase()];
+    // A closing run of #s ("## Checks ##") is dropped with a plain replace, after the match.
+    return match === null ? [] : [match[1]!.replace(/#+$/, "").replace(/[:*_`]/g, "").trim().toLowerCase()];
   });
   if (lines.length === 0 || !HEADING_LINE.test(lines[0]!) || headings.some((heading) => !REPORT_HEADINGS.has(heading))) return null;
   return runReport(answer);
