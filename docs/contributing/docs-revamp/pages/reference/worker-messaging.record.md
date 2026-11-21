@@ -45,6 +45,7 @@ Written by `docs-writer` (sonnet), 3430 words. Scenario: A researcher worker ask
 - After the final fact-check fix, page sha256 6025b62f15f6: exit 0.
 
 - After the loop (review): the final fact check ran on the closed page. The six open findings were taken in one writer round. The declaration is named: an `onMessageReceived` built by `messageReceivedEntry` with no `turn` option, which a waited or reply-requested send refuses `no_reply` (packages/workforce/src/messages/message-received-entry.ts:345; packages/workforce/src/messages/send-message.ts:346). The three cases are now distinct: no `onMessageReceived` at all is refused for good at delivery (packages/workforce/src/messages/delivery.ts:176); one with no `turn` is refused `no_reply` at the send; one whose copy of the package records nothing gets the "doesn't answer messages" answer. A turn that throws sends the one answer as the recipient with `noAnswer: true` and the "turn failed" text, and the turn fails all the same (packages/workforce/src/messages/message-received-entry.ts:329-341). The blank line is added. check-docs-page, lint-brand (parses as MDX, figure included), retired terms and the vocabulary sweep pass (three "Ask for a reply" lines reworded to "Request a reply" for the ask rule). 3704 words. Page sha256 4ff6de9f87b9.
+- After the loop (PR review, Greptile): the refusal order covers both branches: with `wait: true`, the wait checks (`wait_unavailable`, `wait_deadline_out_of_range`, `wait_too_deep`, `wait_already_pending`) come before the sender and recipient checks; without it, `deadline_without_wait` (packages/workforce/src/messages/message-tool.ts:170-189; wait-for-reply.ts:34-79; packages/orchestration/src/tasks/helpers/wait-on-task.ts:349-377). check-docs-page and lint-brand pass. 3752 words. Page sha256 e8eed47cd383.
 
 ## 5 · Fact check
 
@@ -64,6 +65,7 @@ Final fact check of the page as it closed, sha256 5d3901044a54: 5 untrue, fixed 
 - The first check that fails answers: the flow's own `refuses` hook, the input schema, the session runs a worker, ... (line 174) Untrue: The input schema is validated by the tool before `execute` runs, so a schema failure comes before the `refuses` hook, not after it. A schema failure also answers an input error, not `{ ok: false, error }`. In `execute`, `refuses` runs first, then `deadline_without_wait`, then the `sendMessage` checks. (/home/user/flow-state-dev/packages/workforce/src/messages/message-tool.ts:161-192 (hook at 170, deadline check at 189))
 
 - Re-run after the review edit: each changed claim was checked by the writer against the code it cites; the three lines behind the cases were re-read in review. No untrue claim remains open.
+- Re-run after the review edit: each finding was checked against the code by a read-only reviewer before the fix, and the fix re-read the cited lines. No untrue claim remains open.
 
 ## 6 · Depth pass
 

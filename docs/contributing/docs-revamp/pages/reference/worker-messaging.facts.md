@@ -212,8 +212,10 @@ A refused send answers `{ ok: false, error }` and writes nothing. The error star
 back (`sm:236-241`, `sm:512`). [table: refusals]
 
 Order of checks (the first that fails answers): the input schema, validated by the tool before `execute` runs, so a failure
-is an input error and not `{ ok: false, error }`; then in `execute`: `refuses?.(ctx)` (a flow hook, `mt:170`), then
-`deadline_without_wait` (`mt:189`), then in `sendMessage` (`sm:287-351`): the session runs a worker, the text checks, the
+is an input error and not `{ ok: false, error }`; then in `execute`: `refuses?.(ctx)` (a flow hook, `mt:170`), then,
+with `wait: true`, `checkWait` (`wait-for-reply.ts:34-70`) via `checkWaitable` (`wait-on-task.ts:349-377`): `wait_unavailable`,
+`wait_deadline_out_of_range`, `wait_too_deep`, `wait_already_pending`, before `sendMessage` is called (`mt:172-185`); without
+`wait`, `deadline_without_wait` (`mt:187-189`); then in `sendMessage` (`sm:287-351`): the session runs a worker, the text checks, the
 target, the recipient, `inReplyTo`, reply-request possibility, then the budget (`sm:476`). `mt:161-192`.
 
 | Code | Raised when | Cite | Pinned |

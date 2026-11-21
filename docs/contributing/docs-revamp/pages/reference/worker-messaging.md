@@ -172,7 +172,7 @@ A landed message adds two items to the recipient's session.
 
 ## When a message is refused
 
-A refused send answers `{ ok: false, error }`, where `error` is `<code>: <text for the model>`. It spends no budget. It writes no row, except `not_delivered`, which records a `refused` row. Input that fails the tool's schema is answered first, as an input error with no code. After that the first check that fails answers: the flow's own `refuses` hook, `deadline_without_wait`, the session runs a worker, the text ([Text](#text)), the target, the recipient, `inReplyTo`, whether a reply can be requested, then the budget.
+A refused send answers `{ ok: false, error }`, where `error` is `<code>: <text for the model>`. It spends no budget. It writes no row, except `not_delivered`, which records a `refused` row. Input that fails the tool's schema is answered first, as an input error with no code. After that the first check that fails answers, starting with the flow's own `refuses` hook. With `wait: true`, the wait checks come next: the host can hold a wait (`wait_unavailable`), the deadline is in bounds (`wait_deadline_out_of_range`), the chain is not too deep (`wait_too_deep`), and the model step holds no other wait (`wait_already_pending`). Without `wait`, `deadline_without_wait` comes next instead. Then, on both paths: the session runs a worker, the text ([Text](#text)), the target, the recipient, `inReplyTo`, whether a reply can be requested, then the budget.
 
 ### Text
 

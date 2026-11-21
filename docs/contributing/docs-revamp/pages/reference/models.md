@@ -293,7 +293,7 @@ FSDEV_INTENT_CHAT="openai/gpt-6-luna"
 | Reach | A literal string on a block, such as `model: "openai/gpt-6.1-sol"`, is not changed. Only intents and the default are. |
 | Read once | Setting a variable after the resolver exists has no effect. |
 
-An `intent/<name>` string resolves from `FSDEV_INTENT_<NAME>` first, then the intent's list in code, then `FSDEV_DEFAULT_MODEL`, then `defaultModel` in code. A literal model string on a block skips all of these.
+Each variable replaces its value in code rather than going ahead of it. With `FSDEV_INTENT_<NAME>` set, the intent's list is that one model, and the list in code is never tried. With `FSDEV_DEFAULT_MODEL` set, it is the default, and `defaultModel` in code is never tried. An `intent/<name>` string resolves from the intent's list, then the default. A literal model string on a block skips all of these.
 
 Each applied override logs once per process in development: `[flow-state-dev] Intent "<name>" overridden by FSDEV_INTENT_<NAME>; resolves to "<model>".` The same is logged for the default. `NODE_ENV=production` or `FSD_QUIET_WARNINGS=1` silences the log, and the override applies either way.
 

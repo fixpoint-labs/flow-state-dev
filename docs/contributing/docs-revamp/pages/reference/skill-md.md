@@ -264,7 +264,7 @@ export const activator = createSkillActivator({
 - The pick is final: no confidence threshold applies, so it works on models that report none. The activation has `source: "classifier"`, and the model's `confidence` when it gave one.
 - The no-skill answer activates nothing. At most one skill activates, with empty input.
 - A skill removed or disabled while the call ran does not activate.
-- Any evaluator failure fails the activator. There is no fallback to the classifier. Wrap the activator in `.rescue` to carry on with no skill.
+- Any evaluator failure fails the activator. There is no fallback to the classifier. Writing the activations is the activator's last step, so a failure writes nothing and the earlier activations stay in the `activeState` field (session `activeSkills` by default). Wrapping the activator in `.rescue` carries on without a new pick. To carry on with no skill, the rescue block clears that field.
 
 ## Worker skills
 
@@ -272,4 +272,4 @@ A worker's skills come from `SKILL.md` folders at three levels (the org, the tea
 
 - Folder levels, and the refusal of the same name at two levels: [The workforce folder](./workforce-folder.md).
 - Skill-set assembly, the `defineAgentWorkerFlow({ skills })` collision and per-user copies: [Workforce](./workforce.md).
-- The `skills:` keys and the worker's tiers: [`WORKER.md`](./worker-md.md#the-skills-block).
+- The `skills:` keys and the worker's tiers: [`WORKER.md`](./worker-md.md#settings-of-the-agent-flow).

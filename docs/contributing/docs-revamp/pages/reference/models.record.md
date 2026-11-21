@@ -36,6 +36,7 @@ Written by `docs-writer` (sonnet), 4316 words. Scenario: The support desk: reply
 - After the final fact-check fix, page sha256 b05a021ae52c: exit 0.
 
 - After the loop (review): the example of a removed three-part model string (vercel/anthropic/claude-sonnet-5.5) is now written bare rather than in a code span, on the page and in the fact sheet, so it no longer reads as a string to call; scripts/validate-model-strings.mjs flags only the quoted form, and its header says docs name the removed form bare. check-docs-page, lint-brand (parses as MDX) and validate-model-strings pass. 4390 words. Page sha256 6582704eacba.
+- After the loop (PR review, Greptile): `FSDEV_INTENT_<NAME>` and `FSDEV_DEFAULT_MODEL` replace the intent's list and `defaultModel`; the replaced values are never tried (packages/core/src/models/createModelResolver.ts:647-667). The fall-through chain is gone. check-docs-page and lint-brand pass. 4427 words. Page sha256 ad85484e8d94.
 
 ## 5 · Fact check
 
@@ -55,6 +56,7 @@ Final fact check of the page as it closed, sha256 e09d9851559d: 4 untrue, fixed 
 - 'On a plain string or an array a preference has no effect.' Untrue: For an array, the call's `preferProvider` is passed to `ctx.resolveModel` for each entry. An array entry that is an `intent/<name>` string therefore has its candidate list reordered by the preference. The preference has no effect only on plain `provider/model` and `name:model` entries. (docs/contributing/docs-revamp/pages/reference/models.md:165 (code: packages/core/src/blocks/generator.ts:716-751, `callOptions` passed to `ctx.resolveModel(modelStr, blockName, callOptions)` in the array branch))
 
 - Re-run after the review edit: the only change is markup on one example; the claim it makes (any other shape throws `Invalid model format`) is unchanged and was checked by the final fact check.
+- Re-run after the review edit: each finding was checked against the code by a read-only reviewer before the fix, and the fix re-read the cited lines. No untrue claim remains open.
 
 ## 6 · Depth pass
 
