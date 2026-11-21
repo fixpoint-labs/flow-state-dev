@@ -216,6 +216,7 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | `TEAMMATES_RUN_TIMEOUT_MS` | the wall-clock budget for one coding run, in milliseconds | `1200000` (20 minutes) |
 | `TEAMMATES_SETUP` | a command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`; no shell | none |
 | `GITHUB_TOKEN` | the token a routine that follows a GitHub pull request reads GitHub with, for the lab's own user alone | what `gh auth token` answers at start; none, and GitHub routines are refused |
+| `TEAMMATES_GITHUB_REVIEWERS` | the GitHub logins, comma-separated, a coding run hears on the pull request it opens: their reviews and comments reach the run's session, which answers them in the pull request. List a bot by its login, such as `greptile-apps[bot]`: the lab trusts it on the GitHub service too, which a bot needs to be heard. The repository is public and a run acts on what it hears, so no one else is heard | none, and a run follows no pull request |
 | `TEAMMATES_CHECKS` | the commands a coding run's worktree must pass before its task is done, `;`-separated, such as `pnpm typecheck; pnpm test`; no shell, so a `;` inside one command, even quoted, isn't supported. A red one sends the run back with the command's output | none |
 
 The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`). Each coding agent needs its
