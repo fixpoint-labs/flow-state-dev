@@ -50,6 +50,7 @@ Written by `docs-writer` (sonnet), 3755 words. Scenario: A support desk: a `supp
 - After the final fact-check fix, page sha256 351b605b1ea6: exit 1. Failed: node scripts/check-docs-page.mjs docs/contributing/docs-revamp/pages/reference/client.md, Type-check of every TypeScript example (scratch folder apps/kitchen-sink/.docs-tc-R-14, strict, moduleResolution bundler, workspace packages, deleted afterwards).
 
 - After the loop (review): the 11 open findings, taken in one writer round. The banned word went; the two imported files (src/flows/support/flow.ts, src/components/desk-inbox.tsx) are now shown as titled examples, and all seven examples type-check at their titled paths (strict, moduleResolution bundler; a bad import fails with TS2305). "A host with push" is defined once, by the `push` field of `GET /api/flows/capabilities`, and `serve()` from @flow-state-dev/node serves it by default (packages/node/src/serve.ts:107-113). The timer rule follows the change bus, with the Postgres cases and a link to stores.md#the-change-bus (packages/engine/src/bus/in-memory-bus.ts:1-11). The nesting bullet names what an inner `FlowProvider` inherits (packages/react/src/context/FlowContext.ts `??` checks) and how renderers merge. check-docs-page, lint-brand (parses as MDX), retired terms and model strings pass. 3536 words. Page sha256 97161b59cc78.
+- After the loop (PR review): a review on the PR noted the page had no link to its concept page. One sentence in the second paragraph now links [What the browser sees](../concepts/what-the-browser-sees.md). check-docs-page and lint-brand pass. 3554 words. Page sha256 06641c325290.
 
 ## 5 · Fact check
 
@@ -65,6 +66,7 @@ Final fact check of the page as it closed, sha256 6b8415b73cc1: 2 untrue, fixed 
 - Under 'Notices': 'Request and block-instance state publish nothing.' (after saying a session state delta and streamed items send no `run` to the user topic). Untrue: A write to a request's state fields (`patchField`, `incField`, `pushToArray`, `deleteField`) does publish: a `request` notice on the request's session and a `run` notice on that session's parent. The comment 'Request and block-instance state publish nothing' covers only the scope-state `state` and `resource` notices raised in scope-changes.ts. As a statement about notices in general it is wrong. A session state field delta also publishes `run` on the session and its parent, though not on the user topic. (docs/contributing/docs-revamp/pages/reference/client.md:254 (code: packages/engine/src/bus/publish-writes.ts:25-30; packages/engine/src/bus/scope-changes.ts:19-20))
 
 - Re-run after the review edit: each changed claim was checked against the code it cites (serve.ts push default and `pushSecret`, the in-memory bus saying it crosses processes, the Postgres bus states, `useSubscription` reading on each notice, the `Roster` / `BoardColumns` / `BoardList` exports from @flow-state-dev/workforce/react, the FlowContext inheritance). No untrue claim remains open.
+- Re-run after the review edit: the added sentence makes no claim beyond naming the concept page, which was read before it was written.
 
 ## 6 · Depth pass
 

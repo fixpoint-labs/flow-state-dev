@@ -94,13 +94,13 @@ Not sampled. The owner replaces this with `Read`, the date and what they found, 
 - `task-plan` component: which items it draws and that it reads the latest item per key → R-36
 - `defineFlow` development warning for a generator action with no `itemVisibility`: when it fires and when it does not → R-05
 - Block option `transient`: affects only the framework's own trace items for that block → R-01
-- Client rule for a re-sent item id: overwrite in place → R-14
+- Client rule for a re-sent item id: overwrite in place → R-06 (kept on this page: the Client configuration depth pass moved it back here)
 - `runAction` option `onItem`: fires for every item including transient; a throwing listener never fails the run → reference/api/engine (generated), not a hand-written R page
 - Definition of a pending suspension, beside the suspension rows → R-17
 - Resumed-request rule: `generator_step` kept, unsuspended requests untouched; belongs with the table of what a resumed request shows → R-17
 - Frame format: `id` composition, `data` holds the whole event, dotted names on the wire against underscored names in NDJSON → R-13
 - Terminal events and the re-open after `request.suspended`, as a row of the request's states → R-17
-- `request(id).stream` options and which cursor header or query it sends → R-14
+- `request(id).stream` options and which cursor header or query it sends → R-06 (kept on this page: the Client configuration depth pass moved it back here)
 - Connection states table (`connecting`, `live`, `reconnecting`, `lapsed`, `stopped`) plus `ConnectionBanner` and `ConnectionScreen` behaviour → R-36
 - `isStuck` and `dismissRequest()` behaviour: when it sets, when it clears, what a `sendAction` while stuck does → reference/api/react (generated), not a hand-written R page
 - `check-interrupted` and `interrupted-requests` routes and their answer shape → R-13

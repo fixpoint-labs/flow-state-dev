@@ -8,7 +8,7 @@ description: "Every option of createClient and FlowProvider, what each hook take
 
 A client is the code that calls a Flow State server from a page, a script or a test. Its job is to make every call on behalf of one user over one transport, so the server's flows look like typed function calls and the caller never builds a URL or reads a stream by hand. `createClient` makes one. In React, `FlowProvider` holds the same settings once for a component tree, and the hooks under it build their clients from them.
 
-This page lists the options, defaults, refusals and limits. The calls a client makes are in the [HTTP API reference](./http-api.md).
+[What the browser sees](../concepts/what-the-browser-sees.md) explains what a page can reach through the client and what it never gets. This page lists the options, defaults, refusals and limits. The calls a client makes are in the [HTTP API reference](./http-api.md).
 
 The examples use a support desk: a `support` flow with a `reply` action, called by the desk's agents.
 
