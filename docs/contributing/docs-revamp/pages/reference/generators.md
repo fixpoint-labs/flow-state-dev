@@ -13,29 +13,34 @@ The examples use the `support` flow. `supportAgent` answers questions about an o
 ```ts title="src/flows/support/tools/look-up-order.ts"
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
+import { findOrder } from "../../../lib/orders";
 
 export const lookUpOrder = handler({
   name: "look-up-order",
   description: "Look up where an order is. Use it when the customer gives an order id.",
   inputSchema: z.object({ orderId: z.string() }),
   outputSchema: z.string(),
-  execute: async (input) => `Order ${input.orderId} shipped Tuesday.`,
+  execute: async (input) => {
+    const order = await findOrder(input.orderId);
+    return order ? `Order ${input.orderId}: ${order.status}` : `No order ${input.orderId}.`;
+  },
 });
 ```
 
 ```ts title="src/flows/support/tools/issue-refund.ts"
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
+import { refundOrder } from "../../../lib/orders";
 
 export const issueRefund = handler({
   name: "issue-refund",
   description: "Refund an order. Use it when the customer asks for money back.",
   inputSchema: z.object({ orderId: z.string() }),
   outputSchema: z.object({ reply: z.string(), refundCents: z.number() }),
-  execute: async (input) => ({
-    reply: `Refund issued for order ${input.orderId}.`,
-    refundCents: 1200,
-  }),
+  execute: async (input) => {
+    const { refundCents } = await refundOrder(input.orderId);
+    return { reply: `Refund issued for order ${input.orderId}.`, refundCents };
+  },
 });
 ```
 
@@ -50,7 +55,8 @@ export const supportAgent = generator({
   model: "openai/gpt-6-luna",
   inputSchema: z.object({ message: z.string() }),
   prompt: "You answer order questions for Acme Support.",
-  context: { customerPlan: "pro" },
+  userStateSchema: z.object({ plan: z.string().default("free") }),
+  context: { customerPlan: (_input, ctx) => ctx.user.state.plan },
   history: true,
   user: (input) => input.message,
   tools: [lookUpOrder, issueRefund],

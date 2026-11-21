@@ -13,6 +13,8 @@ The examples belong to one app, a support desk. Its `support` flow handles a tic
 ```ts title="src/flows/support/blocks/handle-ticket.ts"
 import { handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
+import { queueForHuman } from "../../../lib/queue";
+import { saveSummary } from "../../../lib/tickets";
 
 const ticket = z.object({ message: z.string(), urgent: z.boolean() });
 
@@ -26,14 +28,17 @@ const classify = handler({
 const escalate = handler({
   name: "escalate",
   inputSchema: ticket,
-  outputSchema: ticket,
-  execute: async (input) => ({ ...input, urgent: true }),
+  execute: async (input) => {
+    await queueForHuman(input);
+  },
 });
 
 const summarizeTicket = handler({
   name: "summarize-ticket",
   inputSchema: z.object({ message: z.string() }),
-  execute: async () => {},
+  execute: async (input) => {
+    await saveSummary(input.message);
+  },
 });
 
 const apologize = handler({
@@ -48,7 +53,7 @@ export const handleTicket = sequencer({
   inputSchema: z.object({ message: z.string() }),
 })
   .step(classify)
-  .stepIf((t) => t.urgent, escalate)
+  .tapIf((t) => t.urgent, escalate)
   .sideChain((t) => ({ message: t.message }), summarizeTicket)
   .rescue([{ block: apologize }]);
 ```
@@ -105,24 +110,25 @@ Chain names, for `.loopBack()`: a `.step(block)` is named after the block, and `
 ```ts title="src/flows/support/blocks/gather-context.ts"
 import { handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
+import { findOrder } from "../../../lib/orders";
 
 const lookUpOrder = handler({
   name: "look-up-order",
-  inputSchema: z.object({ message: z.string() }),
+  inputSchema: z.object({ orderId: z.string() }),
   outputSchema: z.object({ status: z.string() }),
-  execute: async () => ({ status: "shipped" }),
+  execute: async (input) => ({ status: (await findOrder(input.orderId))?.status ?? "not found" }),
 });
 
 const lookUpPlan = handler({
   name: "look-up-plan",
-  inputSchema: z.object({ message: z.string() }),
+  userStateSchema: z.object({ plan: z.string().default("free") }),
   outputSchema: z.object({ tier: z.string() }),
-  execute: async () => ({ tier: "pro" }),
+  execute: async (_input, ctx) => ({ tier: ctx.user.state.plan }),
 });
 
 export const gatherContext = sequencer({
   name: "gather-context",
-  inputSchema: z.object({ message: z.string() }),
+  inputSchema: z.object({ message: z.string(), orderId: z.string() }),
 }).parallel({ order: lookUpOrder, plan: lookUpPlan });
 // next step receives { order: { status }, plan: { tier } }
 ```
