@@ -52,6 +52,7 @@ Written by `docs-writer` (sonnet), 5418 words. Scenario: The `support` flow: `ha
 - After the loop (review): the two review edits above merged, both kept. check-docs-page and lint-brand pass. 5351 words. Page sha256 be2622d4490e.
 
 - After the loop (Blocks depth pass): the Blocks page moved its mechanism here, the page that owns it: one entry: a `state_change` from block state has `scope: "block_instance"` and `blockInstanceId` (packages/engine/src/context/scope-emit.ts:19-27). The repeated visibility and storage halves were cut; `persistStateChanges` stays off the page, as this record decided earlier. A read-only fact check of the moved lines found two untrue claims across the receiving pages and eight lines that repeated or contradicted text already on a page; all were fixed. check-docs-page and lint-brand (parses as MDX) pass. 5360 words. Page sha256 607b309cfb9f.
+- After the loop (batch 6 depth passes): one sentence: a capability that sets `itemVisibility` is dropped for a block whose visibility is not among its values, and a block that sets none counts as `{ client: true, history: true }` (packages/core/src/blocks/internal/resolve-capabilities.ts:45-54). check-docs-page and lint-brand pass. 5390 words. Page sha256 1b77fa67af8e.
 
 - After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: `showOrder` and `lookUpOrder` both read the order with one `findOrder` stand-in; `showOrder` emits the real status instead of a hard-coded `shipped`, and the inline order map is gone. Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 5360 words. Page sha256 4f134990b90d.
 
@@ -65,6 +66,7 @@ No untrue claim found.
 - Re-run after the review edit: the Postgres live-tail path takes the same liveness timeout, and `LIVE_TAIL_LIVENESS_MS` overrides it; a `Last-Event-ID` must carry the request id. Both true.
 
 - Re-run after the review edit: the moved content was fact-checked against the code (about 95 claims); the fixes were checked against the code they cite. No untrue claim remains open.
+- Re-run after the review edit: the moved lines were fact-checked against the code (about 45 claims across six pages), and the fixes re-read the cited lines. No untrue claim remains open.
 
 - Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 

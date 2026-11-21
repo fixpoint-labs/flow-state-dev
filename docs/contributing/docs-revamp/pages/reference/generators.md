@@ -188,6 +188,7 @@ An `ItemQuery` has these fields:
 | `afterRequestId` | History only. Starts after that turn, applied before `limit`. |
 | `earlierDocuments` | History only. How a file attached to an earlier turn reaches the model. `"window"` (default) re-sends the newest documents, up to one message's limits, and names the older ones. `"named"` sends none: each becomes one line with its name and id, which a model with the attachments capability's `readAttachment` tool can read on request. The request's own files and every image are unaffected. |
 
+- A capability's `history` preset adds a query to every `ctx.session.items.history()` read this generator makes. Among capabilities later keys win, and the read's own keys win over all. A function preset runs on every run. See [Capabilities](./capabilities.md).
 - How many prior turns a request loads is set by the flow's `session.historyWindow`, on [Flows and actions](./flows.md).
 - Which item types enter history is on [Items and the stream](./items.md#which-items-does-the-model-see-on-the-next-turn).
 - A summary of turns past the window comes from `utility.historySummary`, on [Utility blocks](./utility-blocks.md#historysummary).
@@ -227,10 +228,18 @@ What comes back depends on whether the run streams. A run streams when the outpu
 |---|---|
 | Forms | `tools: [a, b]` or `(input, ctx) => [a, b]`, resolved each run and again before each later step when a function. Any block is a tool: handler, sequencer, router, generator or evaluator. The model sees the block's `name`, `description` and `inputSchema`. |
 | Resources | Resources a tool declares are installed in the flow only for tools in a static `tools` array. |
+| Capability tools | A generator that declares `tools:` at all, including `tools: []` or a function, drops every tool a capability in `uses` contributes through `tools`, unless the block names that tool itself. A dynamic capability entry's tool functions are not called behind a declared `tools:`. One that does not mention `tools` keeps them. |
+| Tool order | The block's own tools, static control tools, dynamic control tools, static capability tools, dynamic capability tools. |
+| A tool needing flow config | A tool whose `flowConfigSchema` the flow's config does not satisfy throws before the model is offered the list. |
+
+A capability can also contribute `controlTools`, tools it needs for its own job, such as a skills loader. They reach every generator that uses the capability whatever `tools:` says, and are valid only on generators. Use them for a tool the block's own configuration already implies and that the capability never exports; a tool the block did not ask for, such as memory recall, belongs in `tools`. [Capabilities](./capabilities.md#what-a-preset-can-declare) lists the keys a capability's presets take.
+
+### Tool names and results
+
+| Topic | Behaviour |
+|---|---|
 | Unique names | Two different blocks with one `name` in a resolved list throw when the generator runs: `Generator "<name>" has two tools named "<tool>"`. The same block twice is one tool. `.as({ name })` renames a copy. |
 | The name the model sees | Characters outside `[a-zA-Z0-9_-]` become `_`, so `tf.memory/recall` is `tf_memory_recall`. Names that sanitize alike get the smallest free numeric suffix (`foo_bar`, `foo_bar_2`). `tool_output` items record both names. |
-| Capability tools | A generator that declares `tools:` at all, including `tools: []`, drops every tool a capability in `uses` contributes through `tools`, unless the block names that tool itself. One that does not mention `tools` keeps them. A capability can also contribute `controlTools`, tools it needs for its own job, such as a skills loader. Those reach every generator that uses the capability whatever `tools:` says, and are valid only on generators. |
-| A tool needing flow config | A tool whose `flowConfigSchema` the flow's config does not satisfy throws before the model is offered the list. |
 | Caching results | `cacheable` on the tool block. Inert without a tool-cache store in scope. |
 | `mapModelOutput(mapper)` | On a tool block, sets the string the model reads as the result. The structured output goes to items and the trace. A mapper that throws fails the run. |
 
