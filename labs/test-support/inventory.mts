@@ -492,6 +492,8 @@ export function checkInventory(app: AppInventory, options: { base?: string } = {
  */
 export function copyOf(app: AppInventory): AppInventory {
   const root = mkdtempSync(join(tmpdir(), "inventory-"));
-  cpSync(rootOf(app), root, { recursive: true, filter: (from) => !BUILT.has(from.split(/[\\/]/).pop()!) });
+  const source = rootOf(app);
+  // Skips what `filesUnder` skips: a dot-folder such as `.fsdev` (a lab's store and run worktrees, gigabytes) is never graded, so copying it only costs time.
+  cpSync(source, root, { recursive: true, filter: (from) => { const name = from.split(/[\\/]/).pop()!; return from === source || (!BUILT.has(name) && !name.startsWith(".")); } });
   return { ...app, root };
 }

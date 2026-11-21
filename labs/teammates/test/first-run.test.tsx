@@ -6,7 +6,7 @@
  * declared delegates as read, and offers lines that fill the composer without
  * sending them.
  */
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import { CODER_FLOW } from "@flow-state-dev/harness-manager/browser";
@@ -47,14 +47,84 @@ describe("the first run's lines", () => {
 });
 
 describe("the context strip", () => {
-  it("shows the folder, model and harness the server read, and the harness chips with their remedy", async () => {
+  it("shows the folder the server read and the harness chips with their remedy; the model and default harness are the teammate's", async () => {
     render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
     const strip = await screen.findByRole("region", { name: "Working context" });
-    await waitFor(() => expect(within(strip).getByTestId("context-folder").textContent).toBe("folder /work/launch-site"));
-    expect(within(strip).getByTestId("context-model").textContent).toBe("model openai/gpt-6-luna");
-    expect(within(strip).getByTestId("context-harness").textContent).toBe("default harness Cursor");
+    // The folder reads by its last two segments; the whole path is in its tooltip.
+    await waitFor(() => expect(within(strip).getByTestId("context-folder").textContent).toBe("Working folder work / launch-site"));
+    expect(within(strip).getByTestId("context-folder").title).toContain("Working folder: /work/launch-site");
+    // A teammate's model and default harness are its own settings (Edit teammate), so the lab-wide strip shows neither.
+    expect(within(strip).queryByTestId("context-model")).toBeNull();
+    expect(within(strip).queryByTestId("context-harness")).toBeNull();
     const chips = within(strip).getByRole("group", { name: "Coding harnesses" });
     await waitFor(() => expect(chips.querySelector('[data-harness="codex"]')?.textContent).toContain("Run `codex login`"));
+    // A harness that can't run shows How to fix, not its error, until asked: then what to do. Not "Sign in": the control only shows the remedy.
+    const codex = chips.querySelector<HTMLElement>('[data-harness="codex"]')!;
+    const howToFix = within(codex).getByRole("button", { name: "How to fix" });
+    const remedy = () => screen.queryByRole("dialog", { name: "How to fix Codex" });
+    expect(remedy()).toBeNull();
+    fireEvent.click(howToFix);
+    expect(remedy()?.textContent).toContain("Run `codex login`");
+    expect(howToFix.getAttribute("aria-expanded")).toBe("true");
+    expect(within(chips).getByRole("button", { name: "Re-check harnesses" })).toBeTruthy();
+  });
+
+  // The remedy must never be stuck open: whichever way the user dismisses it, it closes and focus goes back to How to fix.
+  it("closes the How to fix remedy with How to fix again, Escape, or a click outside, and gives focus back to How to fix", async () => {
+    render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
+    const chips = await screen.findByRole("group", { name: "Coding harnesses" });
+    await waitFor(() => expect(chips.querySelector('[data-harness="codex"] button')).not.toBeNull());
+    const howToFix = within(chips.querySelector<HTMLElement>('[data-harness="codex"]')!).getByRole("button", { name: "How to fix" });
+    const remedy = () => screen.queryByRole("dialog", { name: "How to fix Codex" });
+    // How to fix again toggles it shut.
+    fireEvent.click(howToFix);
+    expect(remedy()).not.toBeNull();
+    fireEvent.click(howToFix);
+    await waitFor(() => expect(remedy()).toBeNull());
+    expect(howToFix.getAttribute("aria-expanded")).toBe("false");
+    // Escape closes it and puts focus back on How to fix.
+    fireEvent.click(howToFix);
+    fireEvent.keyDown(remedy()!, { key: "Escape" });
+    await waitFor(() => expect(remedy()).toBeNull());
+    expect(document.activeElement).toBe(howToFix);
+    // A click anywhere else closes it.
+    fireEvent.click(howToFix);
+    expect(remedy()).not.toBeNull();
+    // The outside-click listener is armed a tick after the popover opens, as a real click would find it.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(remedy()).toBeNull());
+  });
+
+  /** A client whose lab-context and readiness reads are changed by `edit`. */
+  const editedReads = (lab: ReturnType<typeof scriptedServer>, edit: (view: string, value: unknown) => unknown) =>
+    ({
+      ...lab.client,
+      view: async (ref: { view: string }, input: unknown, options?: unknown) => {
+        const read = await lab.client.view(ref as never, input as never, options as never);
+        return { ...read, value: edit(ref.view, read.value) };
+      },
+    }) as unknown as Client;
+
+  it("warns in the composer when the teammate's default harness can't run here, so a coding task isn't sent to one that will fail", async () => {
+    const lab = scriptedServer({ speed: 0.05 });
+    const client = editedReads(lab, (view, value) =>
+      view === "readiness"
+        ? (value as { harness: string }[]).map((chip) => (chip.harness === "cursor" ? { ...chip, ready: false, reason: "Cursor has no key", remedy: "Set CURSOR_API_KEY" } : chip))
+        : value,
+    );
+    render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
+    const warning = await screen.findByTestId("harness-warning");
+    expect(warning.textContent).toContain("Set CURSOR_API_KEY");
+  });
+
+  it("says in the folder's tooltip what each coding worktree runs before and after its run", async () => {
+    const lab = scriptedServer({ speed: 0.05 });
+    const client = editedReads(lab, (view, value) => (view === "context" ? { ...(value as object), setup: "pnpm install --frozen-lockfile", checks: ["pnpm typecheck", "pnpm test"] } : value));
+    render(<ScriptedProvider server={lab} client={client}><App /></ScriptedProvider>);
+    const folder = await screen.findByTestId("context-folder");
+    await waitFor(() => expect(folder.title).toContain("Worktree setup: pnpm install --frozen-lockfile"));
+    expect(folder.title).toContain("Run checks: pnpm typecheck; pnpm test");
   });
 
   it("warns when a coding run's checkout of the folder would be refused", async () => {

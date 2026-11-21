@@ -12,7 +12,7 @@ export { createFallbackModel, isRetryableError } from "./fallbackModel";
 export type { FallbackModelEntry } from "./fallbackModel";
 
 // Provider detection and model string parsing
-export { detectAvailableProviders, parseModelString, extractProviderName } from "./providerDetection";
+export { describeModelRoute, detectAvailableProviders, parseModelString, extractProviderName } from "./providerDetection";
 export type { ProviderAvailability, ParsedModelString } from "./providerDetection";
 
 // Types

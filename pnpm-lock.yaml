@@ -1327,6 +1327,9 @@ importers:
       '@flow-state-dev/workspace':
         specifier: workspace:*
         version: link:../../packages/workspace
+      '@openrouter/ai-sdk-provider':
+        specifier: ^3.1.0
+        version: 3.1.0(ai@7.0.138(zod@3.25.76))(zod@3.25.76)
       '@streamdown/cjk':
         specifier: ^1.0.2
         version: 1.0.2(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(react@19.2.4)(unified@11.0.5)

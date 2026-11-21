@@ -1,11 +1,9 @@
 /**
- * The Teammates lab's server, as `fsdev dev --app @flow-state-dev/teammates`
- * loads it from this folder. Everything is read from the environment: the
- * README's "Run it" says what each variable sets, and "The host" what it builds.
- * `GOAL_HARNESS=stub` is for goal checks only: every coding worker runs on a
- * scripted harness whose steps are `GOAL_HARNESS_STEP_MS` apart (default 2000),
- * and `GOAL_STALE_THRESHOLD_MS` sets how long a silent request waits before the
- * server takes it as interrupted.
+ * The Teammates lab's server, as `fsdev dev --app @flow-state-dev/teammates` loads it from this folder.
+ * Everything is read from the environment: the README's "Run it" says what each variable sets, and "The
+ * host" what it builds. `GOAL_HARNESS=stub` is for goal checks only: every coding worker runs on a scripted
+ * harness whose steps are `GOAL_HARNESS_STEP_MS` apart (default 2000), and `GOAL_STALE_THRESHOLD_MS` sets
+ * how long a silent request waits before the server takes it as interrupted.
  */
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -22,6 +20,7 @@ mkdirSync(dirname(store), { recursive: true });
 export default await openTeammates({
   store,
   model: process.env.TEAMMATES_MODEL ?? "openai/gpt-6-luna",
+  models: process.env.TEAMMATES_MODELS?.split(",").map((m) => m.trim()).filter((m) => m !== ""),
   userId: process.env.TEAMMATES_USER ?? "you",
   workdir: process.env.TEAMMATES_WORKDIR ?? PROJECT_ROOT,
   runsRoot: process.env.TEAMMATES_RUNS ?? join(dirname(store), "teammates-runs"),

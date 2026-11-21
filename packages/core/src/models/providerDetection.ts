@@ -235,3 +235,36 @@ export function extractProviderName(modelString: string): string {
     return "unknown";
   }
 }
+
+/** The words a gateway goes by, for a person choosing a model. */
+const GATEWAY_LABELS: Record<string, string> = { vercel: "Vercel AI Gateway", openrouter: "OpenRouter" };
+
+/**
+ * Where a model string would go with no resolver configuration, from the keys
+ * in `env`: through a provider's own key, a gateway, or nowhere (and why). For
+ * a picker that shows the route beside each model. It reads env names only
+ * and returns no key. An intent, or a named route that isn't a known gateway,
+ * depends on the app's resolver config, so it reports that rather than a guess.
+ */
+export function describeModelRoute(
+  modelString: string,
+  env: Record<string, string | undefined> = process.env
+): { available: true; via: string } | { available: false; reason: string } {
+  let parsed: ParsedModelString;
+  try {
+    parsed = parseModelString(modelString);
+  } catch (error) {
+    return { available: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+  if (parsed.type === "intent") return { available: true, via: `intent ${parsed.intentName}` };
+  if (parsed.type === "alias") {
+    const envVar = GATEWAY_ENV_VARS[parsed.alias];
+    if (envVar === undefined) return { available: true, via: parsed.alias };
+    return env[envVar] ? { available: true, via: GATEWAY_LABELS[parsed.alias]! } : { available: false, reason: `${envVar} is not set` };
+  }
+  const found = detectAvailableProviders({ env }).get(parsed.provider);
+  if (found === undefined) return { available: false, reason: `no key or gateway for ${parsed.provider}` };
+  return found.source === "key"
+    ? { available: true, via: `${parsed.provider} key` }
+    : { available: true, via: GATEWAY_LABELS[found.gatewayType ?? ""] ?? found.gatewayType ?? "a gateway" };
+}
