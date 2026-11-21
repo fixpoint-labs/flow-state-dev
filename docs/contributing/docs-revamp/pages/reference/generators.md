@@ -308,4 +308,5 @@ Each run leaves items on the request that ran it. Which items exist depends on `
 - A streamed text reply's `block_trace.output` is a reference to the `message` item, not a copy of the text.
 - A recorded value over 256 KiB serialized is stored as a placeholder. The limit and the placeholder shape are on [Items and the stream](./items.md).
 - Everything sent to the model, `context` included, is in the trace's `generator` capture, and on a run with tool calls in the step-0 `generator_step`. What you put in `context` is recorded, so keep secrets out of it.
+- A generator built from a prompt file records the file's raw source and frontmatter on its DevTool trace. An inline prompt records none.
 - The model's identity (`{ actual, requested?, gateway? }`) is stamped on the generator's `message`, `reasoning`, `source`, `tool_output` and `tool_call_progress` items and on the generator's `block_trace`.

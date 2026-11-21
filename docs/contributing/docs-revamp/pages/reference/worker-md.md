@@ -71,11 +71,13 @@ A file with no `flow:` line runs on this flow.
 | --- | --- | --- | --- |
 | `model` | string | the flow's `model` option, else `intent/chat` | The model a turn runs on. `intent/chat` is a placeholder your app's resolver maps to a model. |
 | `tools` | list of strings | absent | Absent: the worker gets the tools of the presets it names under `capabilities` and the blocks of packages it holds. A written list is the whole grant, and `[]` is no tools. Each name is looked up in the worker's own `blocks/` folder, then its team's, then the app's catalog; the first match wins. A name nothing registers is refused at hire. |
-| `skills` | object: `active` (names), `activateTool` (boolean), `enableLlmClassifier` (boolean) | `{ active: [], enableLlmClassifier: false }` | `active` skills are always in context. A name the worker does not hold is refused on its first turn. `activateTool` lets the model load a held skill mid-turn; unset, it is on for a worker that holds a skill. `enableLlmClassifier` runs a model call per turn to match the message to skills. |
+| `skills` | object: `active` (names), `activateTool` (boolean), `enableLlmClassifier` (boolean) | `{ active: [], enableLlmClassifier: false }` | `active` skills are always in context. A name the worker does not hold is refused on its first turn. `activateTool` gives the model the `loadSkill` tool to load a held skill mid-turn; unset, it is on for a worker that holds a skill, unless `defaults` turns `skillsIndex` off. `true` installs the tool even then, without the list of skills. `enableLlmClassifier` runs a model call per turn to match the message to skills. |
 | `capabilities` | map from capability name to list of preset names | `{}` | Presets the worker adds. A worker that names none gets each installed capability's own default presets and none of their tools. An unknown capability or preset is refused at hire. |
 | `discover` | list of `workers`, `skills`, `resources` | absent: every domain the scope carries | Narrows what the worker can look up. `[]` shows nothing. It cannot widen: a domain the app did not install shows nothing. A misspelt domain is refused at hire. |
 
 If a `tools:` name is a block in a worker's `blocks/` folder, run `fsdev gen` to register it.
+
+A worker matches skills by slash command on every turn, then by the classifier when `enableLlmClassifier` is on. It has no keyword matching. The classifier's model and confidence threshold are the `classifierModel` and `confidenceThreshold` options of `defineAgentWorkerFlow`, one value for every worker on the flow. A file cannot set them: as top-level keys they refuse the hire, and under `skills:` they are ignored. The tiers are in [`SKILL.md` and skills options](./skill-md.md#what-decides-that-a-skill-matches).
 
 ### Settings the hire reads
 

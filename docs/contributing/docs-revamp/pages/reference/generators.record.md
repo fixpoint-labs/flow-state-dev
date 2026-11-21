@@ -36,6 +36,8 @@ Written by `docs-writer` (sonnet), 3926 words. Scenario: The support flow's `sup
 - After the final fact-check fix, page sha256 110a27c1f667: exit 0.
 - After the loop (PR review, Greptile): four claims corrected. `retry` is read only when the generator is the action's block, and a tool call is retried only by `tools.defaults.retry` (packages/engine/src/execution/executeBlock.ts:423-425; packages/core/src/blocks/internal/tool-executor.ts:81). Two attempts per model apply to a non-streamed call; a streamed call tries each model once, moving on after a retryable error (packages/core/src/models/fallbackModel.ts:179-278; the function's JSDoc says an error after the first chunk surfaces, which the code does not do). Unset `itemVisibility` still emits `tool_output`. A completed `tool_call_progress` item is sent only for a call that succeeded (packages/core/src/blocks/generator.ts:2758-2761). check-docs-page and lint-brand pass. 4121 words. Page sha256 cb8f5fa9da3b.
 
+- After the loop (batch 5 depth passes): the Prompt and resource templates depth pass moved one line here: a prompt file's `rawText` and frontmatter are recorded as `templateSource` and `templateFrontmatter` in the generator's capture (packages/core/src/blocks/generator.ts:3319-3324). A read-only fact check found it true. check-docs-page and lint-brand (parses as MDX) pass. 4016 words. Page sha256 3973c3fe264e.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 bc8a84b3210f, and the 33 Reference row(s) pass 6 moved.
@@ -51,6 +53,8 @@ Final fact check of the page as it closed, sha256 d088167d0c22: 2 untrue, fixed 
 - A history line with files and a `user` slot with the same words are different, and both stay. Untrue: They count as equivalent. isEquivalentUserMessage also matches when the history line is text parts plus file or image parts and its text equals the `user` string. The `user` value is then dropped and the history line with the files is kept, so the model sees the turn once. Only the leading `user` value is dropped. A `user` slot that is a multi-part message with different content is not matched. (/home/user/flow-state-dev/packages/core/src/blocks/internal/message-assembly.ts:80-96 (dedup call), 214-221 (the files case in isEquivalentUserMessage); page line 159)
 - `source` items (row "source") and `tool_call_progress` items are seen "As the generator's visibility"; also the `itemVisibility` option row says visibility is stamped on `source` and `tool_call_progress` items, implying it governs them. Untrue: The generator does stamp `itemVisibility` on these items, but resolveItemVisibility ignores it for them. Only `message`, `reasoning` and `tool_output` use the stamped value. `source` and `tool_call_progress` get the structural default, `{ client: true, history: false }`, whatever the generator sets. Only `data` also reads the stamp. (/home/user/flow-state-dev/packages/contracts/src/items/resolve-visibility.ts:16-20, 38-52; stamping at /home/user/flow-state-dev/packages/core/src/blocks/generator.ts:1250-1252 and 2364-2376; page lines 78, 301, 303)
 - Re-run after the review edit: each finding was checked against the code by a read-only reviewer before the fix, and the fix re-read the cited lines. No untrue claim remains open.
+
+- Re-run after the review edit: the moved lines were fact-checked against the code (about 22 claims across the three receiving pages); the fixes were checked against the code they cite. No untrue claim remains open.
 
 ## 6 · Depth pass
 
