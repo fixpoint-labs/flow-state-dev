@@ -37,6 +37,8 @@ Written by `docs-writer` (sonnet), 3634 words. Scenario: The support desk's `ord
 
 - After the loop (review): two wording fixes from the Cursor review. The opening line calls a capability "code shared by every block that lists it", dropping "app", which contradicted Memory being a capability that ships with the framework. The `itemVisibility` row now reads "A block that sets no `itemVisibility` gets the default on Visibility". 2795 words. Page sha256 47fc6df24649.
 
+- After the loop (review): the owner's review found the opening examples contrived. docs-writer rewrote them: a user-scoped `customerOrders` collection of the customer's orders (new `resources/orders.ts`) replaces the session `orderLog` resource that nothing used; `lookUpOrder` declares it and reads the order with `ctx.resources.orders.getOptional(input.orderId)` instead of returning a made-up status; the `orders` capability declares the same reference. The intro sentence names the new parts. All seven TypeScript examples type-check together under `tsc --strict` against packages/core (exit 0; a renamed accessor fails with TS2339). 2807 words. Page sha256 ea28db9af50d.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 3336463b4c02, and the 15 Reference row(s) pass 6 moved.
@@ -53,6 +55,8 @@ Final fact check of the page as it closed, sha256 c2cbe6957490: 3 untrue, fixed 
 - Line 171: "All three return a new reference and leave the original unchanged." (`.presets()`, `.config()`, `.with()`) Untrue: .presets() and .config() always return a new clone. .with() returns the receiver itself (`let ref = this`) when the bag has no preset keys and writes no config. That is `.with({})` on a capability that declares no `config`. Only the cases that create a clone return a new reference. (packages/core/src/capability/define-capability.ts:214-226)
 
 - Re-run after the review edit: neither change adds a claim about behaviour; the `itemVisibility` default still links to the Visibility section of Items, which states it. No untrue claim remains open.
+
+- Re-run after the owner's example review: no claim about behaviour changed. The example relies on `getOptional` returning `undefined` for a missing key and a handle's `state` being a synchronous getter, both on the Resources page, and on a capability and a block sharing one resource reference, which this page states.
 
 ## 6 · Depth pass
 

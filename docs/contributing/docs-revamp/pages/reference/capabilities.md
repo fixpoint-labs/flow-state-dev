@@ -10,33 +10,45 @@ A capability is a named bundle of resources, state, helper functions, prompt con
 
 This page lists everything a capability can declare, what a block that lists it gets, and what the build refuses. [Capabilities](../concepts/capabilities.md) explains what a capability is for.
 
-The examples use the `orders` capability of a support desk: a session-scoped `orderLog` resource, a `refundsEnabled` session state field, a `context` preset and a `tools` preset holding `lookUpOrder`, a handler block the model calls as a tool.
+The examples use the `orders` capability of a support desk: a user-scoped `customerOrders` collection of the customer's orders, a `refundsEnabled` session state field, a `context` preset and a `tools` preset holding `lookUpOrder`, a handler block the model calls as a tool to read an order's status from that collection.
+
+```ts title="src/flows/support/resources/orders.ts"
+import { defineResourceCollection } from "@flow-state-dev/core";
+import { z } from "zod";
+
+export const customerOrders = defineResourceCollection({
+  pattern: "orders/*",
+  scope: "user",
+  stateSchema: z.object({ status: z.string() }),
+});
+```
 
 ```ts title="src/flows/support/tools/look-up-order.ts"
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { customerOrders } from "../resources/orders";
 
 export const lookUpOrder = handler({
   name: "lookUpOrder",
   inputSchema: z.object({ orderId: z.string() }),
   outputSchema: z.object({ status: z.string() }),
-  execute: async (input) => ({ status: `Order ${input.orderId} has shipped.` }),
+  resources: { orders: customerOrders },
+  execute: async (input, ctx) => {
+    const order = await ctx.resources.orders.getOptional(input.orderId);
+    return { status: order?.state.status ?? "No order with that number." };
+  },
 });
 ```
 
 ```ts title="src/flows/support/capabilities/orders.ts"
-import { defineCapability, defineResource } from "@flow-state-dev/core";
+import { defineCapability } from "@flow-state-dev/core";
 import { z } from "zod";
+import { customerOrders } from "../resources/orders";
 import { lookUpOrder } from "../tools/look-up-order";
-
-const orderLog = defineResource({
-  scope: "session",
-  stateSchema: z.object({ lastOrderId: z.string().nullable().default(null) }),
-});
 
 export const orders = defineCapability({
   name: "orders",
-  resources: { orderLog },
+  resources: { orders: customerOrders },
   sessionStateSchema: z.object({ refundsEnabled: z.boolean().default(false) }),
   presets: {
     context: { context: "Quote the order number whenever you mention an order." },
