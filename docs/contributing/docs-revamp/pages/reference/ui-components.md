@@ -24,10 +24,11 @@ import { FlowProvider, ItemsRenderer } from "@flow-state-dev/react";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import { Conversation, ConversationContent } from "@/components/flow-state/conversation";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
+import { OrderCard } from "@/components/order-card";
 
 const renderers = {
   ...chatAssistantRenderers,
-  data: { ...chatAssistantRenderers.data, "task-board-meta": false as const },
+  data: { ...chatAssistantRenderers.data, "order-card": OrderCard },
 };
 
 export function Chat({ userId, items }: { userId: string; items: OutputItem[] }) {
@@ -210,7 +211,7 @@ By default an image is downscaled to 1568 pixels on its longest side before uplo
 | `error` | `ErrorDisplay` |
 | `suspension` | `SuspensionCard` |
 
-`block_trace` and `source` are `false`; draw sources with `<SourcesGroup items={...} />`. Its `container` slot maps `evented-actors`, `debate` and `routedSpecialists` to `EventedActors`, `Debate` and `RoutedSpecialists`. Its `data` slot maps `audit-annotation` to `AuditAnnotation` and `task-board-meta` to a `TaskPlan` for that item's `collectionId`, which draws nothing without one. A `task-change` item needs no entry, since `TaskPlan` reads it. To hide the task board in the chat, set the `task-board-meta` entry of the `data` slot to `false`, as the example at the top does. `false` draws nothing. To drop any other entry, set it to `false` under its slot the same way.
+`block_trace` and `source` are `false`; draw sources with `<SourcesGroup items={...} />`. Its `container` slot maps `evented-actors`, `debate` and `routedSpecialists` to `EventedActors`, `Debate` and `RoutedSpecialists`. Its `data` slot maps `audit-annotation` to `AuditAnnotation` and `task-board-meta` to a `TaskPlan` for that item's `collectionId`, which draws nothing without one. A `task-change` item needs no entry, since `TaskPlan` reads it. To hide the task board in the chat, set the `task-board-meta` entry of the `data` slot to `false`. `false` draws nothing. To drop any other entry, set it to `false` under its slot the same way. To draw a data type of your own, add an entry under its `dataType`, as the example at the top does for the support flow's `order-card` items.
 
 A nested `FlowProvider` merges onto its parent. For each slot the child wins, `false` included, and `component`, `container` and `data` merge key by key. A child that sets only `data: { "task-board-meta": false }` keeps the parent's other `data` entries and every other slot.
 

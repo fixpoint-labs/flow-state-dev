@@ -31,12 +31,14 @@ A side chain runs a block beside a sequencer's steps. The step's value passes th
 ```ts title="src/flows/support/blocks/handle-ticket.ts"
 import { handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
+import { draftReplyFor } from "../../../lib/replies";
+import { summarize } from "../../../lib/summaries";
 
 const draftReply = handler({
   name: "draft-reply",
   inputSchema: z.object({ message: z.string() }),
   outputSchema: z.object({ reply: z.string() }),
-  execute: async (input) => ({ reply: `Thanks. We received: ${input.message}` }),
+  execute: async (input) => ({ reply: await draftReplyFor(input.message) }),
 });
 
 const summarizeTicket = handler({
@@ -45,7 +47,7 @@ const summarizeTicket = handler({
   execute: async (input) => {
     await fetch("https://tickets.example.com/summaries", {
       method: "POST",
-      body: JSON.stringify({ text: input.reply }),
+      body: JSON.stringify({ summary: await summarize(input.reply) }),
     });
   },
 });
@@ -106,12 +108,13 @@ A queued run is the same request, worked by another process. Give the host a job
 ```ts title="src/flows/support/flow.ts"
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { findAccountIssues } from "../../lib/accounts";
 import { handleTicket } from "./blocks/handle-ticket";
 
 const auditAccount = handler({
   name: "audit-account",
   inputSchema: z.object({ accountId: z.string() }),
-  execute: async (input) => ({ accountId: input.accountId, findings: [] as string[] }),
+  execute: async (input) => ({ accountId: input.accountId, findings: await findAccountIssues(input.accountId) }),
 });
 
 export const supportFlow = defineFlow({

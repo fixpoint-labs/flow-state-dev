@@ -48,6 +48,8 @@ Written by `docs-writer` (sonnet), 7443 words. Scenario: A support desk: its sup
 
 - After the loop (review): the loop escalated before the final fact check ran on escalated pages, so it was run by hand on the page as it closed (about 75 claims). It found two untrue claims. A stopped run's row goes on reading `active` after the stale sweep marks its request `interrupted`, until a retry or continue supersedes it (packages/engine/src/routes/child-session-routes.ts:76-94, :293). `bullmqJobQueue` always supplies a lease backend, so the queued-runs section no longer says an `id` delivery can be refused `external-flow-runner` (packages/bullmq/src/flowstate-adapter.ts:87-98; packages/engine/src/context/create-request-host.ts:775-787). The six open editor findings are taken: the Modes table puts when consuming starts in the "This process" column (packages/engine/src/flowstate/createFlowState.ts:1163-1175); the repeated `process-only` bullet is cut; the vague limit names its end; the comma splice is split; a task board's dispatcher leaves `type` unset (packages/core/src/blocks/dispatcher.ts:184-189). check-docs-page, lint-brand (parses as MDX), retired terms and model strings pass. 4836 words. Page sha256 e2b6232e3e65.
 
+- After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: `draftReply` drafts with a `draftReplyFor` stand-in and `summarizeTicket` posts a summary from a `summarize` stand-in, instead of echoing the message; `auditAccount` returns findings from a `findAccountIssues` stand-in instead of an empty list. Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 4836 words. Page sha256 7df2fb00891b.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 02f5709fe655, and the 26 Reference row(s) pass 6 moved.
@@ -60,6 +62,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 02f
 - A `wait: true` dispatcher that cannot hold a wait throws "a plain `Error` whose message starts `wait_unavailable`". Untrue: The message does not start with `wait_unavailable`. It starts with the block label, as `[dispatcher] "<name>": wait_unavailable: ...`. The same applies to `wait_too_deep`: `[dispatcher] "<name>": wait_too_deep: ...`. Only the `getTask` tool's message starts with `wait_unavailable:`. (packages/core/src/blocks/dispatcher.ts:477-483, 497-501 (dispatcher messages); packages/orchestration/src/skills/task-tools-capability.ts:2124 (getTask))
 
 - Re-run after the review edit: each changed line was checked against the code it cites by the writer and the hand-run final fact check. No untrue claim remains open.
+
+- Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 ## 6 · Depth pass
 

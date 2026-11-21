@@ -18,13 +18,16 @@ The examples use the `support` flow. Its `handleTicket` action runs `showOrder`,
 ```ts title="src/flows/support/blocks/show-order.ts"
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
+import { findOrder } from "../../../lib/orders";
 
 export const showOrder = handler({
   name: "show-order",
   inputSchema: z.object({ orderId: z.string() }),
-  execute: (input, ctx) => {
+  execute: async (input, ctx) => {
     ctx.emit.status("Looking up the order");
-    ctx.emit.data("order-card", { orderId: input.orderId, state: "shipped" }, { key: input.orderId });
+    const order = await findOrder(input.orderId);
+    if (!order) return { shown: false };
+    ctx.emit.data("order-card", { orderId: input.orderId, status: order.status }, { key: input.orderId });
     return { shown: true };
   },
 });
@@ -49,16 +52,14 @@ export const draftReply = generator({
 ```ts title="src/flows/support/tools/look-up-order.ts"
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-
-// A stand-in for your order system.
-const orders: Record<string, string> = { "A-1001": "shipped Tuesday" };
+import { findOrder } from "../../../lib/orders";
 
 export const lookUpOrder = handler({
   name: "look-up-order",
   description: "Look up where an order is. Use it when the customer gives an order id.",
   inputSchema: z.object({ orderId: z.string() }),
   outputSchema: z.string(),
-  execute: async (input) => orders[input.orderId] ?? "No order with that id.",
+  execute: async (input) => (await findOrder(input.orderId))?.status ?? "No order with that id.",
 });
 ```
 

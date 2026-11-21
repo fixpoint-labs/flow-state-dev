@@ -57,12 +57,21 @@ export default createFlowState({
 ```ts title="src/flows/support/blocks/reply.ts"
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { draftReplyFor } from "../../../lib/replies";
 
 export const reply = handler({
   name: "reply",
   inputSchema: z.object({ message: z.string().min(1) }),
-  outputSchema: z.object({ text: z.string() }),
-  execute: async (input) => ({ text: `Thanks for writing: ${input.message}` }),
+  outputSchema: z.object({ text: z.string(), priority: z.boolean() }),
+  flowConfigSchema: z.object({ region: z.string() }),
+  execute: async (input, ctx) => {
+    await ctx.session.incState({ replyCount: 1 });
+    const text = await draftReplyFor(input.message);
+    return {
+      text: `${text}\n\nSupport desk, ${ctx.flow.config.region}`,
+      priority: ctx.user.state.plan !== "free",
+    };
+  },
 });
 ```
 
@@ -81,7 +90,7 @@ export const auditReply = handler({
 });
 ```
 
-`reply` answers a message. `auditReply` runs when each request ends. Calling the definition, `supportFlow({ ... })`, makes an instance, the copy the server registers.
+`reply` drafts an answer signed with its copy's `region`, adds one to the session's `replyCount`, and marks a paying customer's reply as priority. `auditReply` runs when each request ends. Calling the definition, `supportFlow({ ... })`, makes an instance, the copy the server registers.
 
 ## `defineFlow` fields
 

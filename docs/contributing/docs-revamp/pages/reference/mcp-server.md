@@ -60,24 +60,29 @@ export const supportFlow = defineFlow({
 ```ts title="src/flows/support/blocks/look-up-order.ts"
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { findOrder } from "../../../lib/orders";
 
 export const lookUpOrder = handler({
   name: "look-up-order",
   inputSchema: z.object({ orderId: z.string() }),
   outputSchema: z.object({ status: z.string(), totalCents: z.number() }),
-  execute: async ({ orderId }) => ({ status: `shipped (${orderId})`, totalCents: 4200 }), // your code queries your orders
+  execute: async ({ orderId }) => {
+    const order = await findOrder(orderId);
+    return { status: order.status, totalCents: order.totalCents };
+  },
 });
 ```
 
 ```ts title="src/flows/support/blocks/export-tickets.ts"
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { writeOpenTicketsCsv } from "../../../lib/tickets";
 
 export const exportTickets = handler({
   name: "export-tickets",
   inputSchema: z.object({}),
   outputSchema: z.object({ path: z.string() }),
-  execute: async () => ({ path: "/tmp/open-tickets.csv" }), // your code writes the CSV
+  execute: async () => ({ path: await writeOpenTicketsCsv() }),
 });
 ```
 
