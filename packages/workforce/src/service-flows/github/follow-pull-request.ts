@@ -23,7 +23,7 @@ import type { WorkerInstallation } from "../../workers/installation";
 import { installationPolling, pollingOn } from "../../subscriptions/poll";
 import { subscriptionResources } from "../../subscriptions/rows";
 import { subscribe, type SubscribeInput, type SubscribeOutcome, type SubscriptionProvider } from "../../subscriptions/subscribe";
-import { GITHUB_PROVIDER, githubThreadKey } from "./normalize";
+import { GITHUB_PROVIDER, githubLoginId, githubThreadKey } from "./normalize";
 
 /** The kinds a followed pull request is heard for. **Pinned.** */
 export const FOLLOWED_PULL_REQUEST_KINDS = ["review", "comment", "check"] as const;
@@ -87,4 +87,29 @@ export function followPullRequest(options: FollowPullRequestOptions): PullReques
   return Object.assign(follower, {
     resources: options.installation === undefined ? subscriptionResources : { ...subscriptionResources, ...installationPolling(options.installation).resources }
   });
+}
+
+/**
+ * A reviewer list as one setting writes it: comma-separated GitHub logins, read
+ * as GitHub sends a sender's id (lower-cased, a bot's without its `[bot]`), once
+ * each. `undefined` when it lists nobody.
+ */
+export function githubReviewerLogins(value: string | undefined): readonly string[] | undefined {
+  const logins = [...new Set((value ?? "").split(",").map((login) => login.trim()).filter((login) => login !== "").map(githubLoginId))];
+  return logins.length === 0 ? undefined : logins;
+}
+
+/**
+ * A pull-request follower for the harness kit (`harnesses({ onPullRequestRecorded })`)
+ * that hears only `reviewers`. On a public repository anyone can comment, and a
+ * run acts on what it hears with a push, so with nobody listed this is
+ * `undefined` and nothing is followed, never every sender.
+ */
+export function reviewedPullRequestFollow(
+  github: SubscriptionProvider,
+  reviewers: readonly string[] | undefined
+): ((installation: WorkerInstallation) => PullRequestFollower) | undefined {
+  if (reviewers === undefined || reviewers.length === 0) return undefined;
+  const ids = reviewers.map(githubLoginId);
+  return (installation) => followPullRequest({ providers: [github], installation, screens: [{ screen: "allow", ids }] });
 }

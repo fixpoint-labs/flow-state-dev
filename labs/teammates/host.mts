@@ -13,7 +13,7 @@ import { codingDrainBudgetMs, harnesses } from "@flow-state-dev/harness-manager/
 import { system } from "@flow-state-dev/memory";
 import { sqliteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { fetch, search } from "@flow-state-dev/tools";
-import { operatorGitHub, projectSourceTools } from "@flow-state-dev/workforce";
+import { operatorGitHub, projectSourceTools, reviewedPullRequestFollow } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { checkCommandsFrom, localWorkspaceHost, setupCommandFrom, type WorkspaceSetup } from "@flow-state-dev/workspace";
@@ -38,6 +38,7 @@ export interface TeammatesOptions {
   modelResolver?: ModelResolver;
   githubToken?: string;
   githubApiUrl?: string;
+  /** The GitHub logins a coding run's pull request is heard from; absent, no pull request is followed. */ githubReviewers?: readonly string[];
 }
 
 /** The working folder: an existing git checkout, as an absolute path, never a fallback. @throws When unset, missing or not a checkout. */
@@ -95,7 +96,7 @@ export async function openTeammates(options: TeammatesOptions) {
         routines: { index: sqliteScheduleIndex({ filename: beside("clock") }), providers: [github], poll: { index: sqliteScheduleIndex({ filename: beside("poll") }) } },
         github: { provider: github, poll: true },
       }),
-      harnesses({ workspace, defaultHarness: harness, review: true, checks, runTimeoutMs, branchPrefix: "teammates/", logReadiness: true }),
+      harnesses({ workspace, defaultHarness: harness, review: true, checks, runTimeoutMs, branchPrefix: "teammates/", logReadiness: true, onPullRequestRecorded: reviewedPullRequestFollow(github, options.githubReviewers) }),
       scripted === undefined ? claudeCode() : claudeCode().without(harnesses.slots.harnesses, "claude-code"),
     ],
     fill: { [harnesses.slots.harnesses]: scripted === undefined ? [codexHarness(), cursorHarness({ model: "composer-2.5" })] : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")] },
