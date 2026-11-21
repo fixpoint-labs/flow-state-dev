@@ -292,7 +292,7 @@ Not a block. `utility.historySummary({ summarize, name? })` returns `{ capabilit
 - Options: `summarize` (required: a block taking `{ summary: string | null, turns: LLMMessage[] }`, returning `{ summary: string, keyPoints?: string[] }`; core's `summarizer` fits), `name?` (the resource's accessor name and storage key; default `historySummary`). `hs:40-46,123-132`; `hsr:46`.
 - `capability`: goes in the answering generator's `uses`. Presets: `default` is `["context", "history"]`; `context` adds an `<earlier-conversation>` section holding the summary; `history` starts the generator's history reads after the last summarized turn. `capability.presets({ history: false })` keeps the summary and reads the whole window. `hs:159-185`; `p-ctx:327-332,382`.
 - `fold`: a step you run before the answering generator (`.tap(earlier.fold)`). A turn that has reached the oldest quarter of the history window is folded, up to a quarter of the window's turns at a time (a 50-turn window folds 12). A turn that has not settled is skipped and folded once it does. `hs:12-18,195,247-256`; `p-ctx:362-364`.
-- Failure: a failed `summarize` call does not fail the turn; the turn answers with the summary it had and the next turn retries. A warning is logged: `[historySummary] "<name>" fold failed; the next turn retries:`. `hs:309-337`; `p-ctx:366-368`.
+- Failure: a failed `summarize` call does not fail the turn; the turn answers with the summary it had and the next turn retries. A warning is logged: `[historySummary] "<name>" fold failed; the next turn retries:`. Turns that leave the window meanwhile set `complete: false`. `hs:309-337`; `p-ctx:366-368`. Neither Errors nor Resources carries this or the resource's client fields, so the page states both inline.
 - Fold step missing: once a turn has left the window and no fold has run, the answering generator throws, naming the missing step: `historySummary "<name>": turns have left the history window and no fold has run. Run its fold step before this generator (\`.tap(<name>.fold)\`, or workforce's \`beforeAnswer\`).` `hs:165-173`; `p-ctx:370`.
 - The stored summary is capped at 8,000 characters; key points are kept under it, under a `Key points:` header. `hs:49-90`. Wrapper tags inside the summary are escaped before the model reads it. `hs:92-105`.
 - Full prose and the UI divider recipe belong to `p-ctx`, not to R-04.
@@ -360,8 +360,8 @@ Each paragraph below left the page and is a row for the target page, which the p
 | Provider error, refused model, cancellation inside a router | R-22 | 3.12 |
 | Cascading router trace rows, gate `verdict` records, suspended leaf resumes without re-asking evaluators | R-06 | 3.12 |
 | `sessionTitleGenerator` `.sideChain()` vs `.step()` output. Its metadata write and `session.metadata.changed` moved back onto this page (revise round 3) | R-06 | 3.13 |
-| `historySummary` fold failure and missing-fold error | R-22 | 3.15 |
-| `historySummary` session resource: owner, client-visible fields, key, count | R-08 | section 4 |
+| `historySummary` fold failure and missing-fold error | R-22 (not on that page; kept inline on this one) | 3.15 |
+| `historySummary` session resource: owner, client-visible fields, key, count | R-08 (not on that page; client fields kept inline on this one) | section 4 |
 | `upsertResource` write semantics | R-08 | 3.9 |
 
 Left out as mechanism: the `consultSessionHistoryTool` quoted-history prompt wording and the `sessionTitleGenerator` "told the current title" prompt input.

@@ -89,7 +89,7 @@ The third argument of `.step()` and `.stepIf()`. Both members are optional.
 
 `.doUntil()` and `.doWhile()` throw `doUntil exceeded max loop guard (250)` or `doWhile exceeded max loop guard (250)` when the condition has not ended the loop by the time the block has run 251 times (the first pass plus 250 repeats). The guard is not configurable.
 
-Chain names, for `.loopBack()`: a `.step(block)` is named after the block, and `.stepIf()` adds `if:<name>`, `.doUntil()` and `.doWhile()` add `doUntil:<name>` and `doWhile:<name>`, and `.sideChain()` adds `sideChain:<name>` (or its `name` option). `.tap`, `.tapIf`, `.map`, `.parallel`, `.stepAll`, `.forEach`, `.branch`, `.stepAny`, `.race`, `.exitIf`, `.throwIf` and `.waitForCondition` use their own method name. Each loop pass writes its own `block_trace` items.
+Chain names, for `.loopBack()`: a `.step(block)` is named after the block, and `.stepIf()` adds `if:<name>`, `.doUntil()` and `.doWhile()` add `doUntil:<name>` and `doWhile:<name>`, and `.sideChain()` adds `sideChain:<name>` (or its `name` option). `.tap(block)` and `.tap(fn)` are named `tap`, and `.tap(factory, inlineConfig)` is named `tap:<name>` after the inline block. `.tapIf`, `.map`, `.parallel`, `.stepAll`, `.forEach`, `.branch`, `.stepAny`, `.race`, `.exitIf`, `.throwIf` and `.waitForCondition` use their own method name. Each loop pass writes its own `block_trace` items.
 
 ## Running several blocks at once
 
@@ -140,7 +140,7 @@ export const gatherContext = sequencer({
 
 ### Retry and rescue
 
-`retry` on a block is applied only to the block an action runs. A step inside a sequencer runs once whatever its `retry` setting says. On an action's root block, a `.rescue()` handler runs after the last retry attempt. For an error the retry policy treats as non-retryable, it runs at once. Inside a sequencer, a step's `.rescue()` runs on its first failure. See [Errors](./errors.md).
+`retry` on a block is applied only to the block an action runs. A step inside a sequencer runs once whatever its `retry` setting says. A sequencer's own `.rescue()` runs on the first failure of a step whose error it matches, and its output becomes the run's result, so the run's retry policy sees no error and does not retry. Only an error no handler matches, or one a handler throws, reaches the retry policy. On an action's root block that is not a sequencer, `.rescue()` runs after the last retry attempt, or at once for a non-retryable error. A step's own `.rescue()` runs on its first failure. See [Errors](./errors.md).
 
 ## Reading earlier results
 

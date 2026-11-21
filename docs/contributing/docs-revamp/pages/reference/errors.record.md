@@ -43,6 +43,7 @@ Written by `docs-writer` (sonnet), 2668 words. Scenario: The support flow's look
 - After the loop (PR review): a review on the PR noted the page had no link to its concept page. One sentence in the opening paragraph and one Next entry now link [When something fails](../concepts/when-something-fails.md). check-docs-page and lint-brand pass. 2263 words. Page sha256 86b65b7218b0.
 
 - After the loop (Blocks depth pass): the Blocks page moved its mechanism here, the page that owns it: block-hook, rescue and retry tables (`onCompleted`/`onErrored`, rescue, the retry policy), plus a schema-refusal and `sequencer_schema_mismatch` entry. The repeated "What is retried" entry and rescue bullet were cut; the request-level `onErrored` line is scoped (packages/core/src/blocks/internal/build-block.ts:381-385); the stale pointer to Blocks now points to this page's Retry section; the Retry table was split in two to stay within six entries. A read-only fact check of the moved lines found two untrue claims across the receiving pages and eight lines that repeated or contradicted text already on a page; all were fixed. check-docs-page and lint-brand (parses as MDX) pass. 2907 words. Page sha256 a2a13200b554.
+- After the loop (PR review, Greptile): the rescue bullet and the "With rescue" entry now split the cases: on a root block that is not a sequencer, rescue runs after the last attempt; a sequencer's own `.rescue()` runs on the first failure and the retry policy never sees it (packages/core/src/blocks/sequencer.ts:1078-1089). check-docs-page and lint-brand pass. 3008 words. Page sha256 623b9951ae15.
 
 ## 5 · Fact check
 
@@ -61,6 +62,7 @@ Final fact check of the page as it closed, sha256 eb5c4d55d605: 1 untrue, fixed 
 - Re-run after the review edit: the added sentence makes no claim beyond naming the concept page, which was read before it was written.
 
 - Re-run after the review edit: the moved content was fact-checked against the code (about 95 claims); the fixes were checked against the code they cite. No untrue claim remains open.
+- Re-run after the review edit: each finding was checked against the code by a read-only reviewer before the fix, and the fix re-read the cited lines. No untrue claim remains open.
 
 ## 6 · Depth pass
 

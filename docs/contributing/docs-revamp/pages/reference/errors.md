@@ -199,7 +199,8 @@ These are set on a block's config, or with `.rescue()`. The action and request h
 - A handler with no `when`, or an empty one, matches any error.
 - A suspension signal is never rescued.
 - `ctx.wasRescued(block)` reports afterwards whether a handler recovered the block.
-- On the action's block, retries run first. Rescue fires after the last attempt, or at once for a non-retryable error.
+- On an action's block that is not a sequencer, retries run first. Rescue fires after the last attempt, or at once for a non-retryable error.
+- A sequencer's own `.rescue()` runs on the first failure of a matching step, and its output is the result, so the run's retry policy sees no error and does not retry. Only an error no handler matches, or one the handler throws, is retried.
 
 ### Retry
 
@@ -212,7 +213,7 @@ Where a policy comes from, and how it combines with rescue:
 | Where it is read | Only on the action's block. A block used as a step, a route or a tool runs once whatever its `retry`. A generator used as a tool is retried only by `tools.defaults.retry`. If the action's block is a sequencer, a `retry` on a step inside it is not read, and the run's policy retries the whole sequencer. |
 | The run's policy | The `retry` option of `runAction`. No HTTP or host option sets it. |
 | Merge | The block's fields override the run's, per field. `{ maxAttempts: 4 }` over `{ baseDelayMs: 100, maxAttempts: 2 }` gives `{ maxAttempts: 4, baseDelayMs: 100, maxDelayMs: 5000 }`. |
-| With rescue | Retries are used up first. Then a `rescue` on the action's block fires. |
+| With rescue | On an action's block that is not a sequencer, retries are used up first, then its `rescue` fires. A sequencer's `.rescue()` fires on the first failure, and a recovered run is not retried. |
 
 How the attempts run:
 
