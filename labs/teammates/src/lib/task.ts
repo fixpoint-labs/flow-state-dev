@@ -8,6 +8,7 @@
 import type { InboxAnswer, RefileOverrides } from "@flow-state-dev/orchestration/inbox";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import type { ReviewAnswer } from "../components/flow-state/review-hold";
+import { durationText } from "../components/flow-state/spend";
 import type { TaskSignalRun, TaskSignalView } from "../components/flow-state/task-signals";
 import { harnessName } from "./harness";
 
@@ -36,6 +37,31 @@ export const modelOf = (task: Pick<CodingBoardTask, "spend">): string | undefine
 
 /** When this attempt's run started: its run link's start, else the task's own (a retry keeps its first start). */
 export const attemptStartedAt = (task: Pick<CodingBoardTask, "run" | "startedAt">): number | undefined => task.run?.startedAt ?? task.startedAt;
+
+/**
+ * How long a still-active task may run before its card calls it
+ * *Long-running*: a day. Elapsed time only, from this attempt's start: a task
+ * open that long has almost always stalled or been forgotten, and the tag is
+ * there to make someone look.
+ */
+export const LONG_RUNNING_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * A task card's elapsed time: the registry's `durationText` ("42s", "2m 23s",
+ * "1h 3m") under a day, and days and hours past it ("2d 23h"), so a stalled
+ * task never reads as a plausible "71h 24m". The conversation's task card uses
+ * the coarser `sinceShort` (TaskCard.tsx) on purpose: a glance, not a clock.
+ */
+export function elapsedText(ms: number): string {
+  const hours = Math.floor(Math.max(0, ms) / 3_600_000);
+  return hours < 24 ? durationText(ms) : `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
+/** It is still active and this attempt started more than {@link LONG_RUNNING_MS} before `now`. Active is `taskStatus`'s "running", which folds in queued and waiting-on-you, so a review left waiting a day is tagged too. */
+export function isLongRunning(task: Pick<CodingBoardTask, "status" | "run" | "startedAt">, now: number): boolean {
+  const start = attemptStartedAt(task);
+  return taskStatus(task) === "running" && start !== undefined && now - start > LONG_RUNNING_MS;
+}
 
 /**
  * A coding board row as the registry's `TaskTime` reads it: the view's

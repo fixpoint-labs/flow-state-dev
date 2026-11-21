@@ -5,13 +5,16 @@ import type { AppContext } from "../../flows/lab-context.mts";
 import { useAppClient, useConversation, useConversationCalls } from "../app";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { Look } from "../lib/looks";
-import { displayName, roleOf } from "../lib/roster";
-import { answeringStep, useStatusLine } from "../lib/status";
+import { displayName, roleOf, useWorkforce } from "../lib/roster";
+import { answeringStep, PLAIN, useStatus, type Status } from "../lib/status";
 import { ANSWERED_LINES_MAX, pendingFor, useTalk } from "../lib/talk";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
 import { ContextStrip } from "./ContextStrip";
+import { Divider } from "./Divider";
+import { EditForm, TeammateDialog } from "./TeammateForms";
+import { ResetButton } from "./TeammatePanel";
 import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { ConversationScrollButton } from "./flow-state/conversation";
@@ -20,20 +23,40 @@ import { LineContext, stillRunningLine, type LineContextValue } from "./flow-sta
 import { drawsLine, Line, teammatesRenderers, useLinesNames } from "./lines";
 import { answerIn, type Popup } from "./Popups";
 
-/** A small button in the conversation's header. */
-const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-xs tracking-widest uppercase hover:bg-accent";
+/** A button in the conversation's header. */
+const HEADER_BUTTON =
+  "h-8 shrink-0 rounded-sm border border-border-strong px-3 text-sm font-medium hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+
+/** The header pill's colours: amber when it asks you to act, green while it works, quiet when idle, a task's own tone otherwise. */
+const pillTone = (status: Status) =>
+  status.needsYou
+    ? "border border-warning-line bg-warning-soft text-warning-text"
+    : status.tone !== PLAIN
+      ? cn("border border-border bg-surface", status.tone)
+      : status.text.startsWith("Idle")
+        ? "border border-border bg-surface text-text-2"
+        : "bg-success-soft text-success-text";
+const pillDot = (status: Status) => (status.needsYou ? "bg-warning" : status.tone === PLAIN && status.text.startsWith("Idle") ? "bg-presence-idle" : status.tone !== PLAIN ? "bg-current" : "bg-success");
 
 /** The ids of the messages the worker's sent lines sent. */
+/** A teammate's own string setting (`model`, `harness`), or `undefined` when it follows the lab's. */
+const settingOf = (worker: RosterEntry, key: string): string | undefined => {
+  const value = worker.settings[key];
+  return typeof value === "string" ? value : undefined;
+};
+
 const sentIds = (lines: readonly ItemLine[]) =>
   lines.flatMap((line) => (line.kind === "data" && line.item.dataType === SENT_MESSAGE_DATA_TYPE && typeof (line.item.value as Partial<SentMessageValue>)?.messageId === "string" ? [(line.item.value as SentMessageValue).messageId!] : []));
 
 /**
  * The center: the worker's one conversation. A divider marks where the turns
  * the worker reads word for word begin. A message another worker sent that
- * waits for the current answer shows as a pending line until it lands. A
- * teammate the user hired also gets a fire control in the header; its
- * instructions are edited from its panel. Fire asks first in a row under the header, with Keep focused,
- * so a stray Enter keeps the teammate.
+ * waits for the current answer shows as a pending line until it lands. The
+ * header carries the teammate's status pill and description, and *Edit
+ * teammate*, which opens the rename-and-instructions form in a row under it
+ * (with *Reset to default* on a file's teammate you edited). A teammate the user
+ * hired also gets *Fire*, which asks first in a row under the header, with Keep
+ * focused, so a stray Enter keeps the teammate.
  *
  * New content settles in place: the list follows it only while you are at
  * the end, and offers *Jump to latest* when you have scrolled up. A task card
@@ -98,8 +121,9 @@ export function Conversation({
   const talk = useTalk(worker.id, answered) ?? [];
   const running = view?.running ?? false;
   const pending = pendingFor(worker.id, talk, lines, view?.since);
-  const status = useStatusLine(worker.id, sessionId, nameOf, isCoding, stale);
-  const [panel, setPanel] = useState<"fire">();
+  const status = useStatus(worker.id, sessionId, nameOf, isCoding, stale);
+  const workforce = useWorkforce();
+  const [panel, setPanel] = useState<"fire" | "edit">();
   const delegates = delegatesOf(worker, workers, context);
   // A starter line picked from the empty conversation: the composer takes it as its text, and nothing is sent.
   const [seed, setSeed] = useState<{ text: string; at: number }>();
@@ -160,26 +184,67 @@ export function Conversation({
   const markAt = mark ? lines.findIndex((line) => line.id === mark.firstVerbatimLineId) : -1;
   return (
     <main aria-label="Conversation" className="flex h-full min-h-0 min-w-0 flex-col">
-      <header className="flex items-center gap-3 border-b border-border px-6 py-3">
-        <Avatar look={lookOf(worker.id)} />
-        <div className="min-w-0">
-          <h1 className="text-sm font-semibold">{displayName(worker)}</h1>
-          <p className={cn("truncate text-xs text-muted-foreground", stale && STALE_CLASS)} data-header-status>
-            {status}
-          </p>
+      <header className="flex items-center gap-3 border-b border-border px-6 py-3.5">
+        <Avatar look={lookOf(worker.id)} size="lg" />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <h1 className="truncate text-base font-semibold">{displayName(worker)}</h1>
+            {/* Drawn while empty too (before the first read), hidden: what reads the line finds it from the start. */}
+            {(
+              <span
+                hidden={status.text === ""}
+                className={cn("inline-flex min-w-0 shrink items-center gap-1.5 rounded-full px-2 py-0.5 text-xs", pillTone(status), stale && STALE_CLASS)}
+                data-header-status
+                title={status.text}
+              >
+                <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", pillDot(status))} />
+                <span className="truncate">{status.text}</span>
+              </span>
+            )}
+          </div>
+          {roleOf(worker) === "" ? null : (
+            <p className="truncate text-sm text-text-2" title={roleOf(worker)}>
+              {roleOf(worker)}
+            </p>
+          )}
         </div>
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{roleOf(worker)}</span>
+        <button type="button" onClick={() => setPanel("edit")} aria-haspopup="dialog" className={HEADER_BUTTON}>
+          Edit teammate
+        </button>
         {worker.standard ? null : (
-          <button ref={fireButton} type="button" onClick={() => setPanel("fire")} aria-expanded={panel === "fire"} className={HEADER_BUTTON}>
+          <button ref={fireButton} type="button" onClick={() => setPanel("fire")} aria-expanded={panel === "fire"} className={cn(HEADER_BUTTON, "text-danger")}>
             Fire
           </button>
         )}
-        {running ? (
-          <span className={cn("flex items-center gap-1.5 font-mono text-xs tracking-widest text-info uppercase", stale && STALE_CLASS)}>
-            <span className="size-2 animate-pulse rounded-full bg-info" /> working
-          </span>
-        ) : null}
       </header>
+      <TeammateDialog
+        open={panel === "edit"}
+        onOpenChange={(open) => setPanel(open ? "edit" : undefined)}
+        title={`Edit ${displayName(worker)}`}
+        description={`${displayName(worker)}'s name, instructions, model and default coding harness. Changes apply from its next turn.`}
+      >
+        <EditForm
+          name={displayName(worker)}
+          choices={{ models: context?.models, harnesses }}
+          current={{ model: settingOf(worker, "model") ?? context?.model, harness: settingOf(worker, "harness") ?? context?.harness }}
+          onSave={async (edit) => {
+            await workforce.edit({ id: worker.id, ...edit });
+            setPanel(undefined);
+          }}
+          onCancel={() => setPanel(undefined)}
+        >
+          {/* A reset closes the form: left open, it would hold the old name and instructions, and Save would put them back. */}
+          {worker.edited ? (
+            <ResetButton
+              name={displayName(worker)}
+              onReset={async () => {
+                await workforce.reset(worker.id);
+                setPanel(undefined);
+              }}
+            />
+          ) : null}
+        </EditForm>
+      </TeammateDialog>
       {onRecheck === undefined ? null : <ContextStrip context={context} harnesses={harnesses} onRecheck={onRecheck} />}
       {/* A stopped feed comes back with the page: every conversation's feed reopens on load. */}
       <ConnectionBanner feed={{ state: connection }} onRetry={() => window.location.reload()} />
@@ -231,13 +296,7 @@ export function Conversation({
             {lines.map((line, i) => (
               <Fragment key={line.id}>
                 {i === markAt && mark ? (
-                  <div role="separator" aria-label={mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"} className="my-2 flex items-center gap-3">
-                    <span className="h-px flex-1 bg-border" />
-                    <span className="font-mono text-xs tracking-widest text-muted-foreground uppercase">
-                      {mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"}
-                    </span>
-                    <span className="h-px flex-1 bg-border" />
-                  </div>
+                  <Divider label={mark.summarized ? "Earlier turns summarized" : "Earlier turns out of view"} />
                 ) : null}
                 {/* A line its renderer draws nothing for takes no room. */}
                 <div
@@ -280,6 +339,10 @@ export function Conversation({
         prefill={prefill}
         onPrefilled={onPrefilled}
         uploader={calls}
+        harnesses={harnesses}
+        // The teammate's own default coding harness and model when it has them set (in Edit teammate), else the lab's.
+        defaultHarness={settingOf(worker, "harness") ?? context?.harness}
+        replyModel={settingOf(worker, "model") ?? context?.model}
         onSend={(text, attachments) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();

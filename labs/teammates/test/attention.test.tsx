@@ -45,6 +45,17 @@ describe("the status line puts what needs you first", () => {
     expect(status({ tasks: [task("t1", {})] }).text).toBe("Running coding task: Task t1");
   });
 
+  it("several running tasks: the newest names the line, so a task left running for days can't hide the one you just started", () => {
+    const stale = task("old", { title: "Clarify search guidance", startedAt: NOW - 72 * 3_600_000 });
+    const fresh = task("new", { title: "Add day dividers", startedAt: NOW - 60_000 });
+    // Either order on the board: the line still names the newest.
+    expect(status({ tasks: [stale, fresh] }).text).toBe("Running 2 tasks · Add day dividers");
+    expect(status({ tasks: [fresh, stale] }).text).toBe("Running 2 tasks · Add day dividers");
+    // A task with no start yet (queued, never run) ranks oldest: one that has started is what is happening now.
+    const unstarted = task("queued", { title: "Queued work", startedAt: undefined, run: undefined });
+    expect(status({ tasks: [unstarted, fresh] }).text).toBe("Running 2 tasks · Add day dividers");
+  });
+
   it("a coding task that just ended, for two minutes, a failure in red", () => {
     const failed = task("t2", { status: "errored", completedAt: NOW - 30_000 });
     expect(status({ tasks: [failed] })).toEqual({ text: "Coding task failed: Task t2", tone: "text-destructive", needsYou: false });
@@ -160,8 +171,8 @@ describe("a teammate waiting on your yes, on screen", () => {
     vi.stubGlobal("Notification", Fake);
     render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
     await waitFor(() => expect(row("writer")).toBeTruthy());
-    await act(async () => fireEvent.click(within(workers()).getByRole("checkbox", { name: "Notify me" })));
-    expect((within(workers()).getByRole("checkbox", { name: "Notify me" }) as HTMLInputElement).checked).toBe(true);
+    await act(async () => fireEvent.click(within(workers()).getByRole("switch", { name: "Notify me when tasks finish" })));
+    expect(within(workers()).getByRole("switch", { name: "Notify me when tasks finish" }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(row("writer"));
     // The tab goes to the background before the question arrives.
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
@@ -179,5 +190,24 @@ describe("a teammate waiting on your yes, on screen", () => {
     await act(async () => fireEvent.click(within(card).getByRole("button", { name: "Approve" })));
     await waitFor(() => expect(row("writer").querySelector("[data-needs-you]")).toBeNull());
     await waitFor(() => expect(document.title).toBe("Teammates"));
+  });
+
+  it("with Notify me off, points at the switch while something waits on you, and stops once it is answered", async () => {
+    // A wait nobody hears about sits for minutes: the switch must be findable exactly then.
+    vi.stubGlobal("Notification", Object.assign(function () {}, { permission: "default", requestPermission: async () => "granted" }));
+    render(<ScriptedProvider server={scriptedServer({ speed: 0.05 })}><App /></ScriptedProvider>);
+    await waitFor(() => expect(row("writer")).toBeTruthy());
+    expect(workers().querySelector("[data-notify-nudge]")).toBeNull();
+    fireEvent.click(row("writer"));
+    const box = await screen.findByLabelText("Message writer");
+    await act(async () => {
+      fireEvent.change(box, { target: { value: "Publish the draft." } });
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    await waitFor(() => expect(row("writer").querySelector("[data-needs-you]")).toBeTruthy());
+    await waitFor(() => expect(workers().querySelector("[data-notify-nudge]")).toBeTruthy());
+    const card = await screen.findByRole("region", { name: "writer asks" });
+    await act(async () => fireEvent.click(within(card).getByRole("button", { name: "Approve" })));
+    await waitFor(() => expect(workers().querySelector("[data-notify-nudge]")).toBeNull());
   });
 });

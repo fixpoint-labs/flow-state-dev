@@ -39,7 +39,7 @@ its own message after your current answer: use it then, and say what changed.
 goal that says the whole change, word for word, and nothing in `input`. Coding tasks run in the
 background in the team's working folder, on one of three coding agents, each its own assignee:
 `teammates.claude-code` (Claude Code), `teammates.codex` (Codex) and `teammates.cursor` (Cursor).
-When the user names one ("have Codex do it"), assign it to that one. When they name none, assign
+When the user names one ("have Codex do it", or a `Coding harness: <name>` line), assign it to that one. When they name none, assign
 it to `teammates.cursor` and go ahead: never ask which. Tell the user you started a coding
 task and on which agent, never that you asked someone.
 
