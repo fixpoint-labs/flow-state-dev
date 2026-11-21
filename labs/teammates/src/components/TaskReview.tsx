@@ -15,7 +15,7 @@
  * worker that filed the task to follow up. Nothing is sent from the body.
  */
 import { Fragment, useMemo, useState, type ReactNode } from "react";
-import { runReport, type ReviewDetail, type RunReport, type RunReportCheckStatus } from "@flow-state-dev/harness-manager/browser";
+import { RUN_REPORT_HEADINGS, runReport, type ReviewDetail, type RunReport, type RunReportCheckStatus } from "@flow-state-dev/harness-manager/browser";
 import { ArrowUpIcon, ArrowUpRightIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, InfoIcon, MinusIcon, XIcon } from "lucide-react";
 import { cn } from "../lib/utils";
 import { MarkdownText } from "./flow-state/message-response";
@@ -56,6 +56,27 @@ export function checkLines(review: Pick<ReviewDetail, "checks">, report: RunRepo
   });
   const reported = (report?.checks ?? []).map((check): CheckLine => ({ state: check.status ?? "reported", ...split(check.text), project: false }));
   return [...project, ...reported];
+}
+
+/** A Markdown heading line, as the report reader finds one. */
+const HEADING_LINE = /^#{1,4}\s+(.+?)\s*#*\s*$/;
+const REPORT_HEADINGS = new Set(Object.values(RUN_REPORT_HEADINGS).map((heading) => heading.toLowerCase()));
+
+/**
+ * The answer's report, only when the report is all of it: it opens on one of the report's headings and
+ * has no other heading. Drawn as sections, any other text would be lost, so an answer with more (a
+ * "Next steps", a researcher's own outline, prose before the first heading) is `null` and shows whole.
+ * Exported for its test.
+ */
+export function wholeReport(answer: string | null | undefined): RunReport | null {
+  if (answer == null) return null;
+  const lines = answer.split("\n").filter((line) => line.trim() !== "");
+  const headings = lines.flatMap((line) => {
+    const match = HEADING_LINE.exec(line);
+    return match === null ? [] : [match[1]!.replace(/[:*_`]/g, "").trim().toLowerCase()];
+  });
+  if (lines.length === 0 || !HEADING_LINE.test(lines[0]!) || headings.some((heading) => !REPORT_HEADINGS.has(heading))) return null;
+  return runReport(answer);
 }
 
 /** How sure the judge is, in a word. */
@@ -153,9 +174,10 @@ export function Fold({ label, children, ...data }: { label: ReactNode; children:
 
 /**
  * A check's detail as two parts: a lead of "·"-joined facts ("vitest · labs/x · 310 / 310"), set in
- * mono, and the prose after it. A detail whose first sentence has no "·" is all prose.
+ * mono, and the prose after it. A detail whose first sentence has no "·" is all prose. A sentence ends
+ * at a full stop before a space or the end, so "4.2s" or "v1.2.3" stay inside the facts. Exported for its test.
  */
-function detailParts(detail: string): { facts: string | null; prose: string | null } {
+export function detailParts(detail: string): { facts: string | null; prose: string | null } {
   const end = detail.search(/\.(\s|$)/);
   const head = end < 0 ? detail : detail.slice(0, end);
   if (!head.includes(" · ")) return { facts: null, prose: detail };
@@ -231,7 +253,7 @@ function CheckLineView({ line, onDraft }: { line: CheckLine; onDraft?: (text: st
 }
 
 /** A run's Markdown prose: the lead paragraphs in the body colour, bullets a step quieter, bold words bright. */
-export const PROSE =
+const PROSE =
   "text-sm leading-relaxed text-text-2 [&_li]:pl-1 [&_ul]:list-outside [&_ul]:pl-5 [&_p]:text-base [&_p]:leading-relaxed [&_p]:text-foreground [&_[data-streamdown=strong]]:text-foreground";
 
 /**
@@ -279,11 +301,12 @@ function ReportSections({ changed, lines, notes, onDraft, onFollowUp }: { change
 }
 
 /**
- * A run's final answer, outside a review: its report's sections when it wrote one (its checks as it
- * reported them), else the answer whole, as prose.
+ * A task's final answer, outside a review: a coding run's report as its sections when the report is all
+ * of it (its checks as it reported them); anything else, and every answer of a task that isn't a coding
+ * run (`report` false), whole, as prose.
  */
-export function RunAnswer({ answer }: { answer: string }) {
-  const report = useMemo(() => runReport(answer), [answer]);
+export function RunAnswer({ answer, report: asReport }: { answer: string; report: boolean }) {
+  const report = useMemo(() => (asReport ? wholeReport(answer) : null), [answer, asReport]);
   if (report === null) {
     return (
       <div className={PROSE}>
@@ -305,7 +328,7 @@ export function RunAnswer({ answer }: { answer: string }) {
  */
 export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDetail; onDraft?: (text: string) => void; onFollowUp?: (note: string) => void }) {
   // Parsed once per answer, not on each keystroke in the compose box.
-  const report = useMemo(() => runReport(review.answer), [review.answer]);
+  const report = useMemo(() => wholeReport(review.answer), [review.answer]);
   const lines = checkLines(review, report);
   const verdict = verdictOf(review, lines);
   const changed = report === null ? (review.answer ?? null) : report.changed;
@@ -321,40 +344,39 @@ export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDeta
         </div>
       </section>
       <ReportSections changed={changed} lines={lines} notes={report?.notes ?? []} {...(onDraft ? { onDraft } : {})} {...(onFollowUp ? { onFollowUp } : {})} />
-      {review.files != null || review.fileCount != null ? (
-        <Section label="Files">
-          <RunChanges
-            files={review.files ?? null}
-            {...(review.fileCount != null ? { fileCount: review.fileCount } : {})}
-            {...(review.added != null ? { added: review.added } : {})}
-            {...(review.removed != null ? { removed: review.removed } : {})}
-            className="rounded-xl border-border bg-surface-raised/40 [&>button]:px-3.5 [&>button]:py-2.5"
-          />
-        </Section>
-      ) : null}
-      {subjects.length > 0 || review.goal ? (
-        <div className="-mt-3 flex flex-col gap-2">
-          {subjects.length > 0 ? (
-            <Fold
-              data-review-commits
-              label={round === null ? `${review.commits ?? subjects.length} commit${(review.commits ?? subjects.length) === 1 ? "" : "s"}` : `${round.commits} commit${round.commits === 1 ? "" : "s"} this round`}
-            >
-              <ul className="flex flex-col gap-1 font-mono text-xs text-text-2">
-                {subjects.map((subject, i) => (
-                  <li key={i}>
-                    <MarkdownText inline text={subject} className={WRAP} />
-                  </li>
-                ))}
-              </ul>
-            </Fold>
-          ) : null}
-          {review.goal ? (
-            <Fold data-review-goal label="Original request">
-              <MarkdownText text={review.goal} className="text-sm text-text-2" />
-            </Fold>
-          ) : null}
-        </div>
-      ) : null}
+      {/* Files, then the commits and the original request, folded: one group, closer together than the sections above. */}
+      <div className="flex flex-col gap-2 empty:hidden">
+        {review.files != null || review.fileCount != null ? (
+          <Section label="Files">
+            <RunChanges
+              files={review.files ?? null}
+              {...(review.fileCount != null ? { fileCount: review.fileCount } : {})}
+              {...(review.added != null ? { added: review.added } : {})}
+              {...(review.removed != null ? { removed: review.removed } : {})}
+              className="rounded-xl border-border bg-surface-raised/40 [&>button]:px-3.5 [&>button]:py-2.5"
+            />
+          </Section>
+        ) : null}
+        {subjects.length > 0 ? (
+          <Fold
+            data-review-commits
+            label={round === null ? `${review.commits ?? subjects.length} commit${(review.commits ?? subjects.length) === 1 ? "" : "s"}` : `${round.commits} commit${round.commits === 1 ? "" : "s"} this round`}
+          >
+            <ul className="flex flex-col gap-1 font-mono text-xs text-text-2">
+              {subjects.map((subject, i) => (
+                <li key={i}>
+                  <MarkdownText inline text={subject} className={WRAP} />
+                </li>
+              ))}
+            </ul>
+          </Fold>
+        ) : null}
+        {review.goal ? (
+          <Fold data-review-goal label="Original request">
+            <MarkdownText text={review.goal} className="text-sm text-text-2" />
+          </Fold>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -399,7 +421,7 @@ export function RunMeta({ review, on, tokens, pullRequests }: { review?: ReviewD
   ].filter((part) => part !== null);
   if (parts.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-mono text-xs text-text-3" data-review-meta>
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-mono text-xs text-text-3" data-run-meta>
       {parts.map((part, i) => (
         <Fragment key={i}>
           {i === 0 ? null : <span aria-hidden>·</span>}
@@ -458,7 +480,7 @@ export function ReviewFooter({
   const [menu, setMenu] = useState(false);
   const [sent, setSent] = useState<string | null | undefined>(undefined);
   const answerText = review?.answer;
-  const report = useMemo(() => runReport(answerText), [answerText]);
+  const report = useMemo(() => wholeReport(answerText), [answerText]);
   const failed = review?.landFailed ?? null;
   // A review asked again after a landing failed is a new ask: its buttons come back.
   const ask = holdId ?? failed?.message ?? null;

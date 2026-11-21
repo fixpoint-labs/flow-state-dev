@@ -33,7 +33,7 @@ import { Fold, ReviewBody, ReviewFooter, RunAnswer, RunMeta, SteerCompose } from
 import { runsOn, taskLine } from "./TaskCard";
 import { teammatesRenderers } from "./lines";
 import { stepOf } from "./flow-state/conversation-lines";
-import { durationText, tokenCount } from "./flow-state/spend";
+import { durationText, tokenTotal } from "./flow-state/spend";
 import { knownToolVerbs } from "./flow-state/tool-grouping";
 
 /** What a popup shows: a task one conversation filed, or one message a worker sent. */
@@ -195,7 +195,6 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   // A teammate's task carries its look; a coding task is nobody's.
   const harness = task === undefined ? undefined : harnessOf(task);
   const on = task === undefined ? undefined : runsOn({ harness, model: modelOf(task) });
-  // A coding task's meta line says what it runs on, so its title is the line alone.
   // A coding task's tile already says it is one, so its title is the task's own; the dialog's name keeps the whole line.
   const title = task && !coding ? <Titled look={lookOf(to)} line={line} /> : (task?.title ?? line);
   // A coding task says what it starts on from the moment it is filed, before its run reports anything.
@@ -217,7 +216,8 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   // The task's pull requests, each with its address once its run session's record is read: the meta line links them.
   // While its run waits on one (PR open, in the status), the compose at the foot wakes it to check for a merge.
   const prNumbers = (task?.pullRequests ?? []).flatMap((n) => (n === null ? [] : [n]));
-  const prLinks = usePullRequestLinks(task?.run?.sessionId, prNumbers.join(","));
+  // No pull request, no read of the run session's record.
+  const prLinks = usePullRequestLinks(prNumbers.length === 0 ? undefined : task?.run?.sessionId, prNumbers.join(","));
   const pullRequests = prNumbers.map((n) => ({ number: n, ...(prLinks.has(n) ? { url: prLinks.get(n)! } : {}) }));
   const answer = task?.detail?.answer ?? undefined;
   // The compose box's words, kept per task: Back can move the popup to another, and a send that ends after
@@ -227,7 +227,17 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const setWords = (text: string) => setDrafts((all) => ({ ...all, [popup.taskId]: text }));
   // A coding run's review leads the body; one it can't read leaves the foot with the hold's prompt.
   const review = task && waiting === "review" ? work.review : undefined;
-  const spent = task?.spend == null || (task.spend.inputTokens === null && task.spend.outputTokens === null) ? undefined : `${tokenCount((task.spend.inputTokens ?? 0) + (task.spend.outputTokens ?? 0))} tokens`;
+  const total = tokenTotal(task?.spend);
+  const spent = total === undefined ? undefined : `${total} tokens`;
+  // The header's status, read once: its words, and the pill's tone and mark.
+  const badge: { label: ReactNode; tone: "neutral" | "info" | "success"; icon?: ReactNode } =
+    waiting === "review"
+      ? { label: "Needs review", tone: "info" }
+      : waiting === "question"
+        ? { label: "Waiting on you", tone: "info" }
+        : pullRequestOpen
+          ? { label: "PR open", tone: "success", icon: <GitPullRequestArrowIcon aria-hidden /> }
+          : { label: status, tone: "neutral" };
   const hold = task === undefined ? undefined : holdOf(task);
   const footer =
     task && waiting === "review" ? (
@@ -289,19 +299,18 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
       {/* The run's result is its last entry. */}
       {task && (answer || task.landed) ? (
         // The left edge takes the task's colour from the lab's one reader of it; the words keep the body colour.
-        // The "Result" label is drawn by CSS, so the section's text is the answer alone.
+        // The region is already named Result, so its visible heading is hidden from the accessibility tree.
         <section
           aria-label="Result"
           data-step="result"
           data-tone={taskPresentation(task).word}
-          className={cn(
-            "flex flex-col gap-3 rounded-xl border border-l-2 border-border border-l-current bg-surface-raised/40 px-4 py-4",
-            "before:text-xs before:font-semibold before:tracking-[0.08em] before:text-text-3 before:uppercase before:content-['Result']",
-            taskPresentation(task).tone,
-          )}
+          className={cn("flex flex-col gap-3 rounded-xl border border-l-2 border-border border-l-current bg-surface-raised/40 px-4 py-4", taskPresentation(task).tone)}
         >
-          <div className="flex flex-col gap-3 text-foreground">
-            {answer ? <RunAnswer answer={answer} /> : null}
+          <h3 aria-hidden className="text-xs font-semibold tracking-[0.08em] text-text-3 uppercase">
+            Result
+          </h3>
+          <div data-result-answer className="flex flex-col gap-3 text-foreground">
+            {answer ? <RunAnswer answer={answer} report={coding} /> : null}
             {task.detail?.answerCut ? <p className="text-xs text-text-3">The answer is longer than this; only its first 20,000 characters show.</p> : null}
             {task.landed == null ? null : <LandedOutcome landed={task.landed} />}
           </div>
@@ -334,8 +343,9 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
           />
         ) : undefined
       }
-      status={waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : pullRequestOpen ? "PR open" : status}
-      {...(waiting === "review" || waiting === "question" ? { statusTone: "info" as const } : pullRequestOpen ? { statusTone: "success" as const, statusIcon: <GitPullRequestArrowIcon aria-hidden /> } : {})}
+      status={badge.label}
+      statusTone={badge.tone}
+      {...(badge.icon ? { statusIcon: badge.icon } : {})}
       onClose={onClose}
       footer={footer}
     >
@@ -533,7 +543,7 @@ function MessagePopup({ popup, nameOf, lookOf, onClose }: {
   const to = nameOf(popup.to);
   const line = `Messaged ${to}`;
   return (
-    <SessionOverlay variant="modal" label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={answerIn(talk, popup.messageId)} onClose={onClose}>
+    <SessionOverlay variant="modal" label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={answerIn(talk, popup.messageId)} statusTone="neutral" onClose={onClose}>
       <p className="font-mono text-xs text-muted-foreground">
         {nameOf(popup.from)} → {to}
       </p>

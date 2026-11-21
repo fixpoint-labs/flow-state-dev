@@ -55,13 +55,16 @@ export interface SessionOverlayProps {
   /** The overlay's accessible name. */
   label: string;
   title: ReactNode;
-  /** How the work stands, at the header's end: working, replied, done, failed. */
+  /**
+   * How the work stands: working, replied, done, failed. With a `statusTone`, a pill beside the title;
+   * without one, quiet upper-case words at the header's end.
+   */
   status?: ReactNode;
   /** A small tile before the title, such as what kind of session it is. */
   icon?: ReactNode;
-  /** `info` tints the status, such as when it waits on you; `success`, such as when its work is out; absent, it is neutral. */
-  statusTone?: "info" | "success";
-  /** A small mark before the status words, in place of the tinted status's dot. */
+  /** Draws the status as a pill: `neutral`; `info`, such as when it waits on you; `success`, such as when its work is out. */
+  statusTone?: "neutral" | "info" | "success";
+  /** A small mark before a pill's words, in place of a tinted pill's dot. */
   statusIcon?: ReactNode;
   /** What goes under the title, such as what it ran on and what it spent. */
   meta?: ReactNode;
@@ -80,7 +83,7 @@ export interface SessionOverlayProps {
 }
 
 /** The status pill's colours, by its tone. */
-const STATUS_TONE = { neutral: "bg-accent text-muted-foreground", info: "bg-info/15 text-info", success: "bg-success/15 text-success" } as const;
+const STATUS_TONE = { neutral: "border border-border text-muted-foreground", info: "bg-info/15 text-info", success: "bg-success/15 text-success" } as const;
 
 /** One session over the thread, as a sheet or a modal. */
 export function SessionOverlay({ variant, label, title, status, statusTone, statusIcon, icon, meta, toolbar, onClose, feed: shared, children, footer }: SessionOverlayProps) {
@@ -158,10 +161,10 @@ export function SessionOverlay({ variant, label, title, status, statusTone, stat
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
               <div className="min-w-0 text-base leading-6 font-semibold">{title}</div>
-              {status ? (
+              {status && statusTone !== undefined ? (
                 <span
                   data-overlay-status
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium [&_svg]:size-3.5 ${STATUS_TONE[statusTone ?? "neutral"]} ${statusTone !== undefined && statusIcon === undefined ? "before:size-1.5 before:rounded-full before:bg-current before:content-['']" : ""}`}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium [&_svg]:size-3.5 ${STATUS_TONE[statusTone]} ${statusTone !== "neutral" && statusIcon === undefined ? "before:size-1.5 before:rounded-full before:bg-current before:content-['']" : ""}`}
                 >
                   {statusIcon}
                   {status}
@@ -170,6 +173,11 @@ export function SessionOverlay({ variant, label, title, status, statusTone, stat
             </div>
             {meta ? <div className="mt-1 min-w-0">{meta}</div> : null}
           </div>
+          {status && statusTone === undefined ? (
+            <span data-overlay-status className="shrink-0 pt-1 font-mono text-xs tracking-widest text-muted-foreground uppercase">
+              {status}
+            </span>
+          ) : null}
           <button
             ref={closeButton}
             type="button"

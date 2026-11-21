@@ -24,15 +24,6 @@ export const taskLabel = (line: string, task: { harness?: string; model?: string
   const on = runsOn(task);
   return on === undefined ? line : `${line}, on ${on}`;
 };
-/** What a coding task runs on, as a small tag after its line. */
-export function RunsOn({ on }: { on: string }) {
-  return (
-    <span className="shrink-0 rounded-sm border border-border px-1.5 py-0.5 font-mono text-xs font-normal text-muted-foreground" data-harness>
-      {on}
-    </span>
-  );
-}
-
 /** How long an active task has run, coarse for its card: "42s", "2m", "3h", "2d". */
 function sinceShort(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));

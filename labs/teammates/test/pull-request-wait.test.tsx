@@ -36,7 +36,7 @@ describe("a coding task waiting on its pull request", () => {
     // The header says it: PR open in the status, and #7 in the line under the title, linked once the run session's record is read.
     await waitFor(() => expect(within(popup).getByRole("link", { name: "#7" }).getAttribute("href")).toBe(URL_7));
     expect(popup.querySelector("[data-overlay-status]")?.textContent).toBe("PR open");
-    expect(popup.querySelector("[data-review-meta] [data-meta-pull-request]")?.textContent).toBe("#7");
+    expect(popup.querySelector("[data-run-meta] [data-meta-pull-request]")?.textContent).toBe("#7");
     // How to wake it: the compose at the foot asks.
     expect(within(popup).getByLabelText("Steer this task").getAttribute("placeholder")).toBe(PULL_REQUEST_HINT);
     expect(within(popup).queryByRole("region", { name: "Waiting on you" })).toBeNull();
