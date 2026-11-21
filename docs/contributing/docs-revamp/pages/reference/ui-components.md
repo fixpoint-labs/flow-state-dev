@@ -224,7 +224,7 @@ A nested `FlowProvider` merges onto its parent. For each slot the child wins, `f
 | `data` | `Record<string, component \| false>` | A `data` item, by its `dataType`. With no entry it draws nothing |
 | `component` | `Record<string, component \| false>` | The renderer a `suspension` names in `render.component` |
 
-What a renderer receives: [Client configuration](./client.md).
+A renderer registered in a slot receives `{ item }`, and `{ item, line }` when it draws a conversation line. A `stopped` renderer receives `{ line }`. When no `suspension` renderer is set, the card is chosen by the item: a `renderers.component` entry named by `render.component`, or the built-in approval, question, selection or form card. That card receives `{ item, isResolved, resolution }`, where `isResolved` and `resolution` come from the item's `suspension_resume`. `ItemRenderer` and `ItemsRenderer` read `renderers` from the nearest `FlowProvider`.
 
 `ItemsRenderer` comes from `@flow-state-dev/react`, not the registry.
 

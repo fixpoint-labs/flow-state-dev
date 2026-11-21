@@ -47,7 +47,9 @@ Written by `docs-writer` (sonnet), 5418 words. Scenario: The `support` flow: `ha
 
 - After the loop (R-15 depth pass): the `FSDEV_TRACE_OBSERVABILITY` row points to this page's `lean` row for what a completed block leaves, since Environment variables no longer says it. 5220 words. Page sha256 b411e61e5522.
 
+- After the loop (review): the Client configuration depth pass moved two details here, the page that owns them, since the client page no longer carries them: an item's `id` is unique within one request, with how a client overwrites by id, and the `stream` options table (`startingAfter`, `lastEventId`, `dedupWindowSize` 1000, `includeTrace`, `reconnect`). check-docs-page and lint-brand pass. 5356 words. Page sha256 5f415a6c9db0.
 - After the loop (review): the Greptile review on the PR. The 30 s silence row covers Postgres with a live-tail pool too (packages/store-postgres/src/request-store.ts:781-787) and names `LIVE_TAIL_LIVENESS_MS` (packages/engine/src/streaming/live-tail-liveness.ts:9-15). The after-a-suspension row resumes with `Last-Event-ID: <requestId>:N`, since a bare number is ignored (packages/engine/src/streaming/resume.ts:100-116). 5215 words. Page sha256 0633edeff1d5.
+- After the loop (review): the two review edits above merged, both kept. check-docs-page and lint-brand pass. 5351 words. Page sha256 be2622d4490e.
 
 ## 5 · Fact check
 
@@ -55,6 +57,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 f35
 
 No untrue claim found.
 
+- Re-run after the review edit: the moved claims checked against packages/client/src/stream-client/streams.ts (`DEFAULT_DEDUP_WINDOW_SIZE = 1000` at :39; `lastEventId` ignored when `startingAfter` is set at :23) and packages/client/src/client.ts:1059 (`starting_after` on later connections). No untrue claim open.
 - Re-run after the review edit: the Postgres live-tail path takes the same liveness timeout, and `LIVE_TAIL_LIVENESS_MS` overrides it; a `Last-Event-ID` must carry the request id. Both true.
 
 ## 6 · Depth pass
@@ -91,13 +94,13 @@ Not sampled. The owner replaces this with `Read`, the date and what they found, 
 - `task-plan` component: which items it draws and that it reads the latest item per key → R-36
 - `defineFlow` development warning for a generator action with no `itemVisibility`: when it fires and when it does not → R-05
 - Block option `transient`: affects only the framework's own trace items for that block → R-01
-- Client rule for a re-sent item id: overwrite in place → R-14
+- Client rule for a re-sent item id: overwrite in place → R-06 (kept on this page: the Client configuration depth pass moved it back here)
 - `runAction` option `onItem`: fires for every item including transient; a throwing listener never fails the run → reference/api/engine (generated), not a hand-written R page
 - Definition of a pending suspension, beside the suspension rows → R-17
 - Resumed-request rule: `generator_step` kept, unsuspended requests untouched; belongs with the table of what a resumed request shows → R-17
 - Frame format: `id` composition, `data` holds the whole event, dotted names on the wire against underscored names in NDJSON → R-13
 - Terminal events and the re-open after `request.suspended`, as a row of the request's states → R-17
-- `request(id).stream` options and which cursor header or query it sends → R-14
+- `request(id).stream` options and which cursor header or query it sends → R-06 (kept on this page: the Client configuration depth pass moved it back here)
 - Connection states table (`connecting`, `live`, `reconnecting`, `lapsed`, `stopped`) plus `ConnectionBanner` and `ConnectionScreen` behaviour → R-36
 - `isStuck` and `dismissRequest()` behaviour: when it sets, when it clears, what a `sendAction` while stuck does → reference/api/react (generated), not a hand-written R page
 - `check-interrupted` and `interrupted-requests` routes and their answer shape → R-13
