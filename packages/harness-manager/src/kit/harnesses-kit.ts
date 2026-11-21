@@ -73,6 +73,11 @@ const configSchema: z.ZodType<HarnessesConfig, z.ZodTypeDef, HarnessesConfig> = 
         }
       })
       .optional(),
+    onPullRequestRecorded: z
+      .custom<HarnessesConfig["onPullRequestRecorded"]>((value) => typeof value === "function", {
+        message: "`onPullRequestRecorded` builds a follower on the installation: `(installation) => followPullRequest({ providers, installation })`",
+      })
+      .optional(),
     logReadiness: z.boolean().optional(),
   })
   .strict();
