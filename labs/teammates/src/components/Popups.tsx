@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import { conversationLines, useSessionFeed, type ItemLine } from "@flow-state-dev/react";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import type { RosterEntry, WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
-import type { CodingBoardTask, ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import {
   useAppClient,
   usePullRequestLinks,
@@ -21,7 +21,7 @@ import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import { ErrorBody } from "./flow-state/error";
 import { MarkdownText } from "./flow-state/message-response";
-import { LandedOutcome, ReviewHold, type ReviewAnswer } from "./flow-state/review-hold";
+import { LandedOutcome, type ReviewAnswer } from "./flow-state/review-hold";
 import { Spend } from "./flow-state/spend";
 import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
@@ -248,12 +248,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const waiting = task === undefined ? undefined : waitsFor(task);
   const status = task === undefined ? undefined : taskStatus(task);
   // What waits on you is held below the feed, which opens on the latest step, so it can't scroll out of view.
-  const pinned =
-    task && waiting === "review" && work.review === undefined ? (
-      <TaskReview task={task} review={undefined} answer={actions.answer} onAnswered={decided} />
-    ) : task && waiting === "question" ? (
-      <QuestionPopup task={task} answer={actions.answer} />
-    ) : null;
+  const pinned = task && waiting === "question" ? <QuestionPopup task={task} answer={actions.answer} /> : null;
   const pullRequestOpen = task !== undefined && waitsOnPullRequest(task);
   const answer = task?.detail?.answer ?? undefined;
   // The compose box's words, kept per task: Back can move the popup to another, and a send that ends after
@@ -261,14 +256,15 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const [drafts, setDrafts] = useState<Readonly<Record<string, string>>>({});
   const words = drafts[popup.taskId] ?? "";
   const setWords = (text: string) => setDrafts((all) => ({ ...all, [popup.taskId]: text }));
-  // A coding run's review leads the body; until it is read, the card shows the hold's prompt.
+  // A coding run's review leads the body; one it can't read leaves the foot with the hold's prompt.
   const review = task && waiting === "review" ? work.review : undefined;
   const hold = task === undefined ? undefined : holdOf(task);
   const footer =
-    task && review ? (
+    task && waiting === "review" ? (
       <ReviewFooter
         key={`${task.id}:${hold?.id}`}
         review={review}
+        {...(review === undefined && hold?.ask.prompt ? { prompt: hold.ask.prompt } : {})}
         words={words}
         setWords={setWords}
         answer={async (verdict) => {
@@ -469,31 +465,6 @@ export const placeDecisions = (decisions: readonly Decision[], count: number): D
 
 /** "Accepted", or "Asked for changes: …" with the words sent. */
 const decisionLine = (answer: ReviewAnswer) => (answer.verdict === "accepted" ? "Accepted" : `Asked for changes: ${answer.words}`);
-
-/** A coding run's review, with the registry's card: its commits and the judge's verdict, and Accept or Ask for changes. */
-function TaskReview({ task, review, answer, onAnswered }: {
-  task: CodingBoardTask;
-  /** The run's latest review stop, read from its session; `undefined` until it is read. */
-  review: ReviewDetail | undefined;
-  /** Answers the hold the board's row holds now. */
-  answer: (task: CodingBoardTask, answer: ReviewAnswer) => Promise<void>;
-  /** The answer went through. */
-  onAnswered: (answer: ReviewAnswer) => void;
-}) {
-  const hold = holdOf(task);
-  return (
-    <ReviewHold
-      review={review}
-      prompt={review === undefined ? hold?.ask.prompt : undefined}
-      answer={async (verdict) => {
-        await answer(task, verdict);
-        onAnswered(verdict);
-      }}
-      unanswerable={hold?.unanswerable ?? null}
-      holdId={hold?.id ?? null}
-    />
-  );
-}
 
 /** A question the task's run asked you, with a box for your answer; the run goes on with it. */
 function QuestionPopup({ task, answer }: { task: CodingBoardTask; answer: (task: CodingBoardTask, answer: { text: string }) => Promise<void> }) {

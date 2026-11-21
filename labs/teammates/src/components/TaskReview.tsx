@@ -14,7 +14,7 @@
  * puts a request in the compose box, for Request changes; a note's asks the
  * worker that filed the task to follow up. Nothing is sent from the body.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { runReport, type ReviewDetail, type RunReport, type RunReportCheckStatus } from "@flow-state-dev/harness-manager/browser";
 import { CheckIcon, ChevronDownIcon, InfoIcon, MinusIcon, XIcon } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -202,7 +202,8 @@ function CheckLineView({ line, onDraft }: { line: CheckLine; onDraft?: (text: st
  * asks the task's filer to follow up on a note. Either absent: no button.
  */
 export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDetail; onDraft?: (text: string) => void; onFollowUp?: (note: string) => void }) {
-  const report = runReport(review.answer);
+  // Parsed once per answer, not on each keystroke in the compose box.
+  const report = useMemo(() => runReport(review.answer), [review.answer]);
   const lines = checkLines(review, report);
   const verdict = verdictOf(review, lines);
   const changed = report === null ? (review.answer ?? null) : report.changed;
@@ -325,34 +326,36 @@ export function landHint(land: ReviewLand | null, review: Pick<ReviewDetail, "br
  * sends the box's words back to the run; each way to land is an accept naming
  * it, carrying the words as its note (the coding session reads it if landing
  * fails); the primary button's menu accepts without landing. A failed landing
- * shows why, and its way comes first, as **Retry**.
+ * shows why, and its way comes first, as **Retry**. A hold whose review
+ * can't be read (not a coding run's, or not read yet) gets the same foot with
+ * its prompt above the box: Accept and Request changes, no ways to land.
  */
 export function ReviewFooter({
   review,
+  prompt,
   words,
   setWords,
   answer,
   unanswerable,
   holdId,
-  autoFocus,
 }: {
-  review: ReviewDetail;
+  /** The run's review; `undefined` when the hold has none to read. */
+  review: ReviewDetail | undefined;
+  /** The hold's own prompt, shown when there is no review. */
+  prompt?: string;
   words: string;
   setWords: (words: string) => void;
   answer: (answer: ReviewAnswer) => Promise<void>;
   unanswerable: string | null;
   holdId: string | null;
-  autoFocus?: boolean;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [sent, setSent] = useState<string | null | undefined>(undefined);
-  const box = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    if (autoFocus) box.current?.focus();
-  }, [autoFocus]);
-  const failed = review.landFailed ?? null;
+  const answerText = review?.answer;
+  const report = useMemo(() => runReport(answerText), [answerText]);
+  const failed = review?.landFailed ?? null;
   // A review asked again after a landing failed is a new ask: its buttons come back.
   const ask = holdId ?? failed?.message ?? null;
   if (unanswerable !== null) {
@@ -389,18 +392,23 @@ export function ReviewFooter({
     if (note !== "") void send({ verdict: "revise", words: note });
   };
   const accept = (land?: ReviewLand) => void send({ verdict: "accepted", ...(land ? { land } : {}), ...(land && note !== "" ? { words: note } : {}) });
-  const ordered = orderedLands(review.lands ?? [], failed);
+  const ordered = orderedLands(review?.lands ?? [], failed);
   const primary = ordered[0] ?? null;
   const others = ordered.slice(1);
-  const open = checkLines(review, runReport(review.answer)).filter((line) => line.state === "failed" || line.state === "not done").length;
+  const open = (review === undefined ? [] : checkLines(review, report)).filter((line) => line.state === "failed" || line.state === "not done").length;
   const label = (land: ReviewLand) => (failed?.land === land ? `Retry: ${LAND_BUTTON[land]}` : LAND_BUTTON[land]);
   const secondary = "h-9 rounded-lg border border-border px-3.5 text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50";
   return (
     <section aria-label="Your review" data-review-footer className="flex flex-col gap-3">
+      {review === undefined && prompt ? (
+        <div className="text-sm" data-review-prompt>
+          <MarkdownText text={prompt} />
+        </div>
+      ) : null}
       <LandFailure failed={failed} />
-      {(review.landAttempts?.length ?? 0) > 1 ? (
+      {(review?.landAttempts?.length ?? 0) > 1 ? (
         <ol data-land-attempts className="list-decimal pl-4 text-xs text-muted-foreground">
-          {review.landAttempts!.map((attempt, i) => (
+          {review!.landAttempts!.map((attempt, i) => (
             <li key={i} title={attempt.message} className="line-clamp-2">
               Try {i + 1}: {attempt.message}
             </li>
@@ -408,7 +416,6 @@ export function ReviewFooter({
         </ol>
       ) : null}
       <textarea
-        ref={box}
         aria-label="Note for the run"
         value={words}
         rows={2}
@@ -469,7 +476,7 @@ export function ReviewFooter({
         </div>
       </div>
       <p className="text-xs text-muted-foreground" data-land-hint>
-        {landHint(primary, review, open)}
+        {landHint(primary, review ?? { branch: null }, open)}
       </p>
       {error === null ? null : (
         <p role="alert" className="text-xs text-destructive">
