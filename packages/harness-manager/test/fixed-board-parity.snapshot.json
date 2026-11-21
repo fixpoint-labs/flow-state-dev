@@ -9,6 +9,7 @@
     "checks": null,
     "childSessionId": "string",
     "costUsd": null,
+    "effectiveCut": "string",
     "filesOnly": null,
     "finalMessage": "the answer",
     "held": null,

@@ -159,7 +159,7 @@ import {
 } from "./await-pull-requests";
 import { PULL_REQUEST_EVENT } from "./pull-request-wait";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
-import { headCommit, readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
+import { effectiveCut, headCommit, readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
 import { commandCheckResultSchema, commandChecksSummary, readVerdict, type CommandCheckResult } from "./command-check";
 import type { ReviewDetail, ReviewPullRequest } from "./review-detail";
 import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
@@ -3225,6 +3225,27 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
       /**
+       * The cut every read below starts from, resolved once per settle
+       * ({@link effectiveCut}): the base branch's tip now, as the host fetches
+       * it (`WorkspaceHost.baseTip`), when it has the recorded cut in its
+       * history, so a run that merged the moved-on base in is read as its pull
+       * request would be; else the recorded cut. A host that can't say, or
+       * fails, keeps the cut. The record's `baseCommit` stays the cut itself:
+       * landing and the completion check read it as that.
+       */
+      let resolvedCut: Promise<string | null> | undefined;
+      const settleCut = (): Promise<string | null> =>
+        (resolvedCut ??=
+          state.filesOnly === true || host.baseTip === undefined || state.workspacePath == null
+            ? Promise.resolve(state.baseCommit ?? null)
+            : Promise.resolve()
+                .then(() => host.baseTip!({ cwd: state.workspacePath!, baseRef: state.baseRef }))
+                .then(
+                  (tip) => effectiveCut(state.workspacePath!, state.baseCommit ?? null, tip ?? null),
+                  () => state.baseCommit ?? null,
+                ));
+
+      /**
        * What this attempt hands back, kept on state for `settle`: the run's
        * answer (cut), its branch (none for a run with only kept files) and
        * the commits it made. `judged` is the settle step's to set.
@@ -3254,13 +3275,15 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // Read once here, so the review's prompt and data come from state alone.
         const diff: RunDiff | null =
           reviewChanges && settle === "complete" && state.filesOnly !== true && commits.verified && commits.count > 0
-            ? (read ?? (await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)))
+            ? (read ?? (await readRunDiff(state.workspacePath!, state.baseRef, await settleCut())))
             : null;
         // This round's commits, apart from the branch's earlier ones (FIX-2782): only when the round began past the base.
         const round: RunCommits | null =
           diff !== null && state.roundStart != null && state.roundStart !== state.baseCommit
-            ? await readRunCommits(state.workspacePath!, state.baseRef, state.roundStart)
+            ? await readRunCommits(state.workspacePath!, state.baseRef, await settleCut(), { since: state.roundStart })
             : null;
+        // The cut this settle read against, on every settle, so a file's patch read later reads as the review's files and the judge's did.
+        await fenced(writeRunRecord(ctx, identity, { effectiveCut: await settleCut() }), "the cut the run was read against was recorded");
         await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, diff, round, reviewed: null, landed: null, checks } });
         return judgeInput;
       };
@@ -3268,7 +3291,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const commitsOf = (): Promise<RunCommits> =>
         state.filesOnly === true
           ? Promise.resolve({ count: 0, subjects: [], verified: true })
-          : readRunCommits(state.workspacePath!, state.baseRef, state.baseCommit);
+          : settleCut().then((cut) => readRunCommits(state.workspacePath!, state.baseRef, cut));
 
       // Everything the run reported goes on the row before anything is decided,
       // so a failed attempt's row is as complete as a successful one's.
@@ -3441,7 +3464,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           // The judge reads what the commits changed, read once and kept for the review too.
           const diff =
             judged && state.filesOnly !== true && commits.verified
-              ? await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)
+              ? await readRunDiff(state.workspacePath!, state.baseRef, await settleCut())
               : null;
           const judgeInput = judged
             ? {

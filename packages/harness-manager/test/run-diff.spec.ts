@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { MAX_DIFF_FILES, MAX_PATCH_CHARS, readRunDiff, readRunFilePatch } from "../src/commits";
+import { MAX_DIFF_FILES, MAX_PATCH_CHARS, effectiveCut, readRunDiff, readRunFilePatch } from "../src/commits";
 
 const dirs: string[] = [];
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -75,6 +75,40 @@ describe("readRunDiff", () => {
     }
   });
 
+  it("leaves out what the base changed after the run merged it in, read against the effective cut", async () => {
+    // The pull request's diff starts where the run's branch and the base's
+    // tip meet: a run that merged the moved-on base in owns none of its files.
+    const { dir, cut } = repo();
+    commitFiles(dir, "the run's change", { "b.txt": "run\n" });
+    git(dir, "checkout", "-q", "main");
+    commitFiles(dir, "someone else's", { "z.txt": "theirs\n" });
+    const tip = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "run");
+    git(dir, "merge", "-q", "--no-edit", "main");
+    expect((await readRunDiff(dir, "main", cut)).files.map((file) => file.path)).toEqual(["b.txt", "z.txt"]);
+    const base = await effectiveCut(dir, cut, tip);
+    const diff = await readRunDiff(dir, "main", base);
+    expect(diff.files.map((file) => file.path)).toEqual(["b.txt"]);
+    expect(diff.verified).toBe(true);
+    expect((await readRunFilePatch(dir, "main", base, "z.txt")).patch).toBe("");
+  });
+
+  it("ignores a tip that doesn't descend from the cut, and reads against the cut as before", async () => {
+    // A tip from a rewritten base (or anything else not past the cut) is no
+    // evidence of what the run didn't make: the read over-reports, never hides.
+    const { dir, cut } = repo();
+    commitFiles(dir, "the run's change", { "b.txt": "run\n" });
+    git(dir, "checkout", "-q", "--orphan", "rewritten");
+    commitFiles(dir, "unrelated", { "b.txt": "other\n" });
+    const unrelated = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "-f", "run");
+    for (const tip of [unrelated, "0".repeat(40)]) {
+      const diff = await readRunDiff(dir, "main", await effectiveCut(dir, cut, tip));
+      expect(diff.files.map((file) => file.path)).toEqual(["b.txt"]);
+      expect(diff.verified).toBe(true);
+    }
+  });
+
   it("reads up to an end commit, so a later turn's work isn't counted in an earlier one", async () => {
     const { dir, cut } = repo();
     commitFiles(dir, "turn one", { "b.txt": "one\n" });
@@ -115,6 +149,26 @@ describe("readRunFilePatch", () => {
     const { dir, cut } = repo();
     commitFiles(dir, "change", { "a.txt": "changed\n", "b.txt": "new\n" });
     expect((await readRunFilePatch(dir, "main", cut, "*.txt")).patch).toBe("");
+  });
+
+  it("answers the run's own patch after it planted a replace ref that swaps its HEAD for a harmless one", async () => {
+    const { dir, cut } = repo();
+    commitFiles(dir, "change", { "a.txt": "one\n2\nthree\n" });
+    const head = git(dir, "rev-parse", "HEAD").trim();
+    const harmless = git(dir, "commit-tree", `${cut}^{tree}`, "-p", cut, "-m", "harmless").trim();
+    git(dir, "replace", head, harmless);
+    const read = await readRunFilePatch(dir, "main", cut, "a.txt");
+    expect(read.verified).toBe(true);
+    expect(read.patch).toContain("+2");
+  });
+
+  it("answers the run's whole diff after it planted a shallow file that cuts its history at its HEAD", async () => {
+    const { dir, cut } = repo();
+    commitFiles(dir, "first change", { "b.txt": "b\n" });
+    commitFiles(dir, "second change", { "c.txt": "c\n" });
+    writeFileSync(join(dir, ".git", "shallow"), `${git(dir, "rev-parse", "HEAD").trim()}\n`);
+    expect(await readRunDiff(dir, "main", cut)).toMatchObject({ fileCount: 2, added: 2, removed: 0, verified: true });
+    expect((await readRunFilePatch(dir, "main", cut, "b.txt")).patch).toContain("+b");
   });
 
   it(`cuts a patch at ${MAX_PATCH_CHARS} characters and says so`, async () => {

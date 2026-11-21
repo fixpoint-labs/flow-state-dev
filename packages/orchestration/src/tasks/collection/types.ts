@@ -202,7 +202,15 @@ export type TaskWriteDeclineReason =
  * one are deliberately separate.
  */
 export type TaskWriteOutcome =
-  | { outcome: "recorded" }
+  | {
+      outcome: "recorded";
+      /**
+       * What a wrapping ref adds for the caller about what followed the
+       * write, when the write held but its follow-on didn't (a steer kept, but
+       * no turn could start for it). A tool that reports the write says it.
+       */
+      note?: string;
+    }
   | { outcome: "unchanged" }
   | {
       outcome: "declined";

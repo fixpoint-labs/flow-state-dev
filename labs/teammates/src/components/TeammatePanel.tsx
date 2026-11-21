@@ -184,7 +184,7 @@ export function TeammatePanel({
               {coding ? t.title : line}
             </span>
             {elapsed === undefined ? null : (
-              <span className={cn("shrink-0 pt-px font-mono text-xs tabular-nums", long ? "text-warning-text" : active ? "text-success-text" : "text-text-3")} data-elapsed>
+              <span className={cn("shrink-0 pt-px font-mono text-xs tabular-nums", long ? "text-warning-text" : active && signal?.kind !== "idle" ? "text-success-text" : "text-text-3")} data-elapsed>
                 {elapsed}
               </span>
             )}
@@ -345,6 +345,8 @@ export function ResetButton({ name, onReset }: { name: string; onReset: () => Pr
 /** A card's time: an active task's clock on this attempt; an idle one's time since it last moved; an ended one's age, as its signal reads it. */
 function elapsedOf(task: CodingBoardTask, start: number | undefined, now: number, signal: ReturnType<typeof taskSignal>): string | undefined {
   if (isIdle(task)) return task.updatedAt == null ? undefined : elapsedText(now - task.updatedAt);
+  // A running task no run holds (parked, owing a turn) shows how long it has been idle, never a running clock.
+  if (isActive(task) && signal?.kind === "idle") return signal.text;
   if (isActive(task)) return start === undefined ? undefined : elapsedText(now - start);
   return signal?.kind === "ended" ? signal.text : undefined;
 }

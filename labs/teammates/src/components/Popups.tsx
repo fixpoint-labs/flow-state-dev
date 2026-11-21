@@ -206,7 +206,8 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
 }) {
   const actions = useTaskActions(popup.sessionId);
   // The popup's own read of the board: every row, and this task's with its answer.
-  const tasks = useTaskDetail(popup.sessionId, popup.taskId).value;
+  const detail = useTaskDetail(popup.sessionId, popup.taskId);
+  const tasks = detail.value;
   const task = tasks?.find((t) => t.id === popup.taskId);
   const missing = tasks !== undefined && task === undefined;
   useEffect(() => {
@@ -230,7 +231,17 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
       </span>
     );
   // A coding task says what it starts on from the moment it is filed, before its run reports anything.
-  const starting = harness !== undefined && coding ? `Starting on ${harness}…` : task?.run?.sessionId ? "Starting…" : "Not started yet.";
+  // Until its own read answers, nothing is known of it: loading, or a read that failed, never "Not started yet."
+  const starting =
+    tasks === undefined
+      ? detail.stale
+        ? "This task couldn't be loaded."
+        : "Loading…"
+      : harness !== undefined && coding
+        ? `Starting on ${harness}…`
+        : task?.run?.sessionId
+          ? "Starting…"
+          : "Not started yet.";
   // A coding task's re-runs, one per other harness on the roster.
   const rerun: TaskRerunOption[] =
     task === undefined || !coding ? [] : rerunTargets(task, coders).map((worker) => ({ label: harnessName(worker.harness), run: () => actions.rerun(task, worker.id) }));
