@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { conversationLines, useSessionFeed, type ItemLine } from "@flow-state-dev/react";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import type { RosterEntry, WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
@@ -28,6 +28,7 @@ import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
 import { SessionOverlay } from "./flow-state/session-overlay";
 import { Steps } from "./Steps";
+import { ReviewBody, ReviewFooter, ReviewMeta, SteerCompose } from "./TaskReview";
 import { RunsOn, runsOn, taskLine } from "./TaskCard";
 import { teammatesRenderers } from "./lines";
 import { stepOf } from "./flow-state/conversation-lines";
@@ -189,10 +190,14 @@ export function PopupView({ popup, nameOf, lookOf, isCoding, coders, followUp, o
 
 /**
  * A task's run session and its result (or, done with none written, a line
- * saying so), with its action row: Cancel and Steer
- * while it is open (the popup has no composer, so Steer is its own box),
- * Release while held, Retry and a Re-run per other harness once it failed or
- * was cancelled. The board decides each; the row shows its words.
+ * saying so), with its action row: Cancel while it is open, Release while
+ * held, Retry and a Re-run per other harness once it failed or was
+ * cancelled. The board decides each; the row shows its words.
+ *
+ * Its foot holds one compose box: while the task is open it steers it; while
+ * a coding run waits for your review it is the review's note, beside Request
+ * changes and the ways to land the work (`ReviewFooter`), and the review
+ * itself leads the body (`ReviewBody`), the run's steps folded under it.
  */
 function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
   popup: Extract<Popup, { kind: "task" }>;
@@ -244,18 +249,41 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const status = task === undefined ? undefined : taskStatus(task);
   // What waits on you is held below the feed, which opens on the latest step, so it can't scroll out of view.
   const pinned =
-    task && waiting === "review" ? (
-      <TaskReview task={task} review={work.review} answer={actions.answer} onAnswered={decided} />
+    task && waiting === "review" && work.review === undefined ? (
+      <TaskReview task={task} review={undefined} answer={actions.answer} onAnswered={decided} />
     ) : task && waiting === "question" ? (
       <QuestionPopup task={task} answer={actions.answer} />
     ) : null;
   const pullRequestOpen = task !== undefined && waitsOnPullRequest(task);
   const answer = task?.detail?.answer ?? undefined;
-  return (
-    <SessionOverlay variant="modal" label={line} title={title} status={waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : pullRequestOpen ? "PR open" : status} onClose={onClose} footer={pinned}>
-      {/* Its run is done and its work is a pull request: open until it merges or closes. The Steer box wakes it to check. */}
-      {task !== undefined && pullRequestOpen ? <PullRequestOpen task={task} /> : null}
-      {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} steer rerun={rerun} />}
+  // The compose box's words, kept with the task they were written for: Back can move the popup to another.
+  const [draft, setDraft] = useState({ id: popup.taskId, text: "" });
+  const words = draft.id === popup.taskId ? draft.text : "";
+  const setWords = (text: string) => setDraft({ id: popup.taskId, text });
+  // A coding run's review leads the body; until it is read, the card shows the hold's prompt.
+  const review = task && waiting === "review" ? work.review : undefined;
+  const hold = task === undefined ? undefined : holdOf(task);
+  const footer =
+    task && review ? (
+      <ReviewFooter
+        key={`${task.id}:${hold?.id}`}
+        review={review}
+        words={words}
+        setWords={setWords}
+        answer={async (verdict) => {
+          await actions.answer(task, verdict);
+          decided(verdict);
+        }}
+        unanswerable={hold?.unanswerable ?? null}
+        holdId={hold?.id ?? null}
+      />
+    ) : pinned !== null ? (
+      pinned
+    ) : task && OPEN.has(task.status) ? (
+      <SteerCompose key={task.id} words={words} setWords={setWords} steer={(message) => actions.steer(task.id, message)} placeholder={pullRequestOpen ? PULL_REQUEST_HINT : undefined} />
+    ) : null;
+  const feed = (
+    <>
       {/* What a coding task's run changed, what it ran and how long it took, without opening a step. */}
       {task && coding ? <TaskSummary task={task} steps={steps} /> : null}
       {task && status !== "running" ? <TaskOutcomeActions task={task} followUp={followUp} /> : null}
@@ -311,8 +339,49 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
       {task && status === "running" && holdOf(task) === undefined && !pullRequestOpen && task.run?.sessionId !== undefined && steps.length > 0 ? (
         <StreamingIndicator message={workingStatus({ ...work.working, note: task.statusNote })} since={attemptStartedAt(task)} />
       ) : null}
+    </>
+  );
+  return (
+    <SessionOverlay
+      variant="modal"
+      label={line}
+      title={title}
+      meta={review ? <ReviewMeta review={review} /> : undefined}
+      status={waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : pullRequestOpen ? "PR open" : status}
+      onClose={onClose}
+      footer={footer}
+    >
+      {/* Its run is done and its work is a pull request: open until it merges or closes. The compose at the foot wakes it to check. */}
+      {task !== undefined && pullRequestOpen ? <PullRequestOpen task={task} /> : null}
+      {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} rerun={rerun} />}
+      {task && review ? (
+        <>
+          <ReviewLead key={hold?.id}>
+            <ReviewBody review={review} onDraft={setWords} {...(followUp ? { onFollowUp: (note: string) => followUp.start(`${followUpText(task)}${note}`) } : {})} />
+          </ReviewLead>
+          <details data-run-steps className="rounded-lg border border-border">
+            <summary className="cursor-pointer px-3.5 py-2.5 text-sm text-muted-foreground">How it got there</summary>
+            <div className="flex flex-col gap-3 px-3.5 pb-3">{feed}</div>
+          </details>
+        </>
+      ) : (
+        feed
+      )}
     </SessionOverlay>
   );
+}
+
+/** The board statuses a task can still be steered in. */
+const OPEN = new Set(["pending", "held", "in_progress"]);
+
+/** The review, brought into view once as it arrives: the feed under it opens on its latest step. */
+function ReviewLead({ children }: { children: ReactNode }) {
+  const lead = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => lead.current?.scrollIntoView?.({ block: "start" }));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  return <div ref={lead}>{children}</div>;
 }
 
 /** How many file chips show before the rest fold into "+N more". */

@@ -162,14 +162,14 @@ async function stepsOf(fsd: Fsd, runSession: string): Promise<number> {
 const inProgress = async (fsd: Fsd, sessionId: string) =>
   ((await fsd.sessions.requests(sessionId, { limit: 50 })) as Array<{ id: string; status: string }>).filter((r) => r.status === "in_progress");
 
-/** The row action's last outcome or refusal, once the press has ended. */
-async function pressed(page: Page): Promise<{ outcome?: string; refusal?: string }> {
+/** A press's last outcome or refusal, once it has ended: in the action row, or in the popup part `where` names. */
+async function pressed(page: Page, where = '[data-testid="task-action-row"]'): Promise<{ outcome?: string; refusal?: string }> {
   await page.waitForFunction(
-    () => {
-      const row = document.querySelector('[role="dialog"] [data-testid="task-action-row"]');
-      return row !== null && row.getAttribute("aria-busy") === "false" && row.querySelector('[data-testid="task-action-outcome"], [data-testid="task-action-refusal"]') !== null;
+    (at) => {
+      const row = document.querySelector(`[role="dialog"] ${at}`);
+      return row !== null && row.getAttribute("aria-busy") !== "true" && row.querySelector('[data-testid="task-action-outcome"], [data-testid="task-action-refusal"]') !== null;
     },
-    undefined,
+    where,
     { timeout: 90_000 },
   );
   const text = (id: string) => page.locator(`[role="dialog"] [data-testid="${id}"]`).textContent({ timeout: 1_000 }).catch(() => undefined);
@@ -264,7 +264,7 @@ await runGoal(async (failures, tell) => {
     const words = `Say it opens at nine sharp (${Date.now() % 100_000}).`;
     await page.locator('[role="dialog"] [data-testid="task-action-steer-input"]').fill(words);
     await page.locator('[role="dialog"] [data-testid="task-action-steer"]').click();
-    const steered = await pressed(page);
+    const steered = await pressed(page, '[aria-label="Steer"]');
     const steers = await until(
       async () => (await wholeRow(fsd, cos, taskId))?.steers ?? [],
       (list) => list.some((s) => s.message === words),
