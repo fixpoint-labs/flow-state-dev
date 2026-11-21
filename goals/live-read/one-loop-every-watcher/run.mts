@@ -9,7 +9,7 @@
  *
  *   rp  React's `Roster` panel, live, rendered by react-dom over happy-dom, read off the rows it draws
  *   rw  Workforce's `watchRoster`, read off what it reports (it, and tm, read the roster view)
- *   sm  Shift Manager's snapshot, under its real `LabProvider`, counted per snapshot read
+ *   sm  Shift Manager's roster watch (`useRoster`), under its real `LabProvider`, read off what it reports
  *   tm  the Teammates lab's list's roster watch (`useWorkforce` under its `AppProvider`)
  *   cc  the claude-code-style lab's `watchPins`
  *
@@ -50,7 +50,8 @@ import { createWorkforceClient, PROJECTS_FLOW, ROSTER_FLOW, rosterView, type Ros
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFlows, modulePatchEnv, type ModulePatch } from "../../lib/index.mts";
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
-import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
+import { LabProvider } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
+import { useRoster } from "../../../packages/shift-manager/src/lib/roster.ts";
 import { AppProvider as TmAppProvider } from "../../../labs/teammates/src/app/index.ts";
 import { useWorkforce as useTmWorkforce } from "../../../labs/teammates/src/lib/roster.ts";
 import { AppProvider as CcAppProvider, usePins as useCcPins } from "../../../labs/claude-code-style/src/app/index.ts";
@@ -117,11 +118,10 @@ const tokenOf = (w: Watcher) => `tok-${w}`;
 
 /**
  * Whether `url` is one read of what watcher `w` shows: the panel's read of the roster's own
- * collection, a roster view call (each roster watch follows the view, FIX-2623), a snapshot's
- * first request, the pins read.
+ * collection, a roster view call (each roster watch follows the view, FIX-2623, Shift Manager's
+ * among them), the pins read.
  */
 function isReadOf(w: Watcher, url: string): boolean {
-  if (w === "sm") return url.includes("/sessions") && url.includes("dispatch-runs");
   if (w === "cc") return url.includes("/resources/user/lab-pins");
   if (w === "rp") return url.includes("workforceWorkers") && !url.includes("workforceStandardWorkers");
   return url.includes(`/api/flows/${rosterView.flow}/views/${rosterView.view}`);
@@ -226,8 +226,6 @@ const show = (w: Watcher, ids: readonly string[]) => {
 };
 /** How many rows the React panel's last read drew. */
 let rpCount = 0;
-/** When the snapshot last landed a read (it shows no roster rows, so a landed read is what it shows). */
-let snapshotReadAt = 0;
 
 function mount(on: Host, rosterSession: string): () => void {
   // React: the live Roster panel, read off the rows it draws.
@@ -248,13 +246,13 @@ function mount(on: Host, rosterSession: string): () => void {
     show("rw", entries.filter((e) => !e.standard).map((e) => e.id)),
   );
 
-  // Shift Manager: the snapshot under its real provider.
+  // Shift Manager: its roster watch under its real provider, read off what it reports.
   function Probe() {
-    const { snapshot } = useLab();
-    const readAt = snapshot !== undefined && "readAt" in snapshot ? snapshot.readAt : undefined;
+    const roster = useRoster();
+    const entries = roster !== undefined && "entries" in roster ? roster.entries : undefined;
     useEffect(() => {
-      if (readAt !== undefined) snapshotReadAt = Date.now();
-    }, [readAt]);
+      if (entries !== undefined) show("sm", entries.filter((e) => !e.standard).map((e) => e.id));
+    }, [entries]);
     return null;
   }
   const smContainer = happy.document.createElement("div");
@@ -339,7 +337,7 @@ const pin = (id: string) => tab.resource(appPins).update((s) => ({ pinned: [...s
 
 const unmount = mount(on, rosterSession.id);
 try {
-  const mounted = await waitFor(() => ROSTER_WATCHERS.every((w) => w === "sm" ? snapshotReadAt > 0 : reads.get(w)!.length > 0) && reads.get("cc")!.length > 0, 15_000);
+  const mounted = await waitFor(() => ROSTER_WATCHERS.every((w) => reads.get(w)!.length > 0) && reads.get("cc")!.length > 0, 15_000);
   if (!mounted) throw new Error(`setup: not every watcher read on open (${WATCHERS.map((w) => `${w}:${reads.get(w)!.length}`).join(" ")})`);
   await quiet();
 
@@ -360,15 +358,13 @@ try {
     return { what, from, written, done };
   };
   const roster = await burst("roster", (i) => hire(`w${String(i).padStart(2, "0")}`));
-  const smAfterRoster = snapshotReadAt;
   const pins = await burst("pins", (i) => pin(`t${String(i).padStart(2, "0")}`));
 
   for (const w of ROSTER_WATCHERS) {
     const n = reads.get(w)!.filter((at) => at >= roster.from && at < pins.from).length;
     check(`a:burst ${w}`, n >= 1 && n <= MAX_READS_PER_BURST, `${n} reads for ${BURST} hires`);
     const m = reads.get(w)!.filter((at) => at >= pins.from).length;
-    // A pin runs in its writer's write session, which no listing shows (FIX-2624), so the
-    // snapshot has nothing of it to read: the pins burst is unrelated to it too.
+    // A pin is no roster write: the pins burst is unrelated to every roster watcher.
     check(`a:unrelated ${w}`, m === 0, `${m} reads for ${BURST} pins${m > 0 ? ` (at +${reads.get(w)!.filter((at) => at >= pins.from).map((at) => at - pins.from).join(", +")} ms; burst took ${pins.done - pins.from} ms)` : ""}`);
   }
   {
@@ -381,11 +377,10 @@ try {
   const storeRoster = (await tabWorkforce.roster()).filter((e) => !e.standard).map((e) => e.id).sort();
   const storePins = [...(await tab.resource(appPins).state()).pinned].sort();
   check("a:equals-store rp", rpCount === storeRoster.length, `drew ${rpCount} rows for ${storeRoster.length} workers`);
-  for (const w of ["rw", "tm"] as const) {
+  for (const w of ["rw", "sm", "tm"] as const) {
     const ids = shown.get(w)!.ids;
     check(`a:equals-store ${w}`, JSON.stringify(ids) === JSON.stringify(storeRoster), `shows ${ids.length} of ${storeRoster.length} workers`);
   }
-  check("a:equals-store sm", smAfterRoster > roster.written, `its last read before the pins landed ${smAfterRoster - roster.written} ms after the last hire`);
   check("a:equals-store cc", JSON.stringify(shown.get("cc")!.ids) === JSON.stringify(storePins), `shows ${shown.get("cc")!.ids.length} of ${storePins.length} pins`);
 
   // b — one failed read each, woken by one write, and then no notice: the roster's watchers by a
@@ -440,9 +435,8 @@ try {
   };
 
 
-  const smBefore = snapshotReadAt;
   await recover(ROSTER_WATCHERS, () => hire("after-failure"), (w) =>
-    w === "sm" ? snapshotReadAt > smBefore : w === "rp" ? rpCount === storeRoster.length + 1 : shown.get(w)!.ids.includes("after-failure"),
+    w === "rp" ? rpCount === storeRoster.length + 1 : shown.get(w)!.ids.includes("after-failure"),
   );
   await recover(["cc"], () => pin("after-failure"), () => shown.get("cc")!.ids.includes("after-failure"));
 } finally {

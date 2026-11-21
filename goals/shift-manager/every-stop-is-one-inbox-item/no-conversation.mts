@@ -112,7 +112,8 @@ export async function legNoConversation(scratch: string, fail: Fail, note: (line
     }
 
     // Shift Manager's Inbox, drawn on the item's route: the item's id is the stop's own (it has no task).
-    const { LabProvider, useLab } = await import("../../../packages/shift-manager/src/lib/lab-data.tsx");
+    const { LabProvider } = await import("../../../packages/shift-manager/src/lib/lab-data.tsx");
+    const { useGate } = await import("../../../packages/shift-manager/src/lib/gate.ts");
     const { Inbox } = await import("../../../packages/shift-manager/src/surfaces/Inbox.tsx");
     const { GAPS } = await import("../../../packages/shift-manager/src/gaps.ts");
     const container = happy.document.createElement("div");
@@ -120,11 +121,12 @@ export async function legNoConversation(scratch: string, fail: Fail, note: (line
     const { useInbox } = await import("../../../packages/shift-manager/src/lib/inbox.ts");
     // The Inbox on its first item's route, as a click on the item opens it.
     function Page() {
-      const { snapshot } = useLab();
-      const inbox = useInbox();
-      if (snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined) return null;
+      // The shell draws the Inbox once the gate lets Shift Manager in, as the page does (`App.tsx`).
+      const inside = useGate().gate.state === "in";
+      const inbox = useInbox(inside);
+      if (!inside) return null;
       const itemId = inbox.section?.ok === true ? (inbox.section.value.items[0]?.id ?? null) : null;
-      return createElement(Inbox, { snapshot, itemId, gaps: GAPS } as never);
+      return createElement(Inbox, { itemId, gaps: GAPS });
     }
     root = createRoot(container as unknown as Element);
     root.render(createElement(LabProvider, { connection: { userId: USER, bearerToken: TOKEN, baseUrl: on.base }, children: createElement(Page) }));

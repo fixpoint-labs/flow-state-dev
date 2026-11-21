@@ -15,7 +15,8 @@ import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { connect } from "../src/lib/connection";
-import { createLabReader } from "../src/lib/reads";
+import { privateProjectsResource, projectsResource, workerInventoryResource } from "@flow-state-dev/workforce/browser";
+import { toWorker } from "../src/lib/workers";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -47,14 +48,17 @@ it("the project member and the outsider read the organization's workers and proj
 
   const seen: Record<string, string[]> = {};
   for (const who of [LAB_USERS.owner, LAB_USERS.member, LAB_USERS.outsider]) {
-    const snapshot = await createLabReader(
-      connect({ userId: who.userId, baseUrl: served.baseUrl, bearerToken: who.bearer }),
-    ).read();
-    if (!("inventory" in snapshot)) throw new Error(`${who.userId}'s read was refused or unreachable: ${JSON.stringify(snapshot)}`);
-    expect(snapshot.inventory, `${who.userId}'s inventory`).toMatchObject({ ok: true });
-    expect(snapshot.projects, `${who.userId}'s projects`).toMatchObject({ ok: true });
-    if (!snapshot.inventory.ok) continue;
-    seen[who.userId] = snapshot.inventory.value.workers.map((s) => s.id).sort();
+    // The directory's reads (`directory-reads.ts`): the inventory and both projects collections, read whole.
+    const client = connect({ userId: who.userId, baseUrl: served.baseUrl, bearerToken: who.bearer });
+    const [inventory, shared, own] = await Promise.allSettled([
+      client.resource(workerInventoryResource).listAll(),
+      client.resource(projectsResource).listAll(),
+      client.resource(privateProjectsResource).listAll(),
+    ]);
+    expect(inventory.status, `${who.userId}'s inventory`).toBe("fulfilled");
+    expect([shared.status, own.status], `${who.userId}'s projects`).toEqual(["fulfilled", "fulfilled"]);
+    if (inventory.status !== "fulfilled") continue;
+    seen[who.userId] = inventory.value.flatMap((entry) => toWorker(entry.value)?.id ?? []).sort();
   }
   // One organization, one inventory: each user reads the same workers, the EM and the coder among them.
   const owner = seen[LAB_USERS.owner.userId]!;

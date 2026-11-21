@@ -32,7 +32,8 @@
 **Controls:** each rebuilds Shift Manager with `src/lib/shift.ts` swapped for a module under `controls/` (`src/lib/derive.ts` before FIX-2775, when status read the snapshot).
 - `GOAL_CONTROL=ignore-asks`: status reads board rows only. Must fail at **status** on the worker whose only wait is an ask.
 - `GOAL_CONTROL=count-queued`: queued rows count as slots. Must fail at **slots** on the worker holding a queued row.
-- `GOAL_CONTROL=status-from-snapshot`: status counts the snapshot's walked asks, read through the page's provider, while the Inbox lists the view's. Must fail at **one answer**.
+
+**Retired:** `status-from-snapshot` (FIX-2777). It counted a worker's asks from the snapshot the page read beside the Inbox view, so the roster and the Inbox were two reads that could disagree. The snapshot is gone: the page holds no second read of the asks for status to come from, so the defect it planted has nowhere to land. **one answer** stays graded on every run; `ignore-asks` and `count-queued` stay the controls of status.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -59,3 +60,4 @@
 | 2026-11-20 | same | n/a | FAIL (expected) | `status-from-snapshot`: *"[spread 1] one answer: eng.spare's approval: 1 of 3 drawn states disagree, the first {"count":"3","status":"off shift","listed":true}"* and *"after Approve: 1 of 8 drawn states disagree, the first {"count":"2","status":"on shift","listed":false}"*, with the sidebar's on-shift count that follows |
 | 2026-11-20 | same | n/a | FAIL (expected) | `ignore-asks`: **status** on eng.spare (spread 2) and ops.asker (spread 1), drawn off shift where the store says on shift, with the summary and TEAMS counts that follow |
 | 2026-11-20 | same | n/a | FAIL (expected) | `count-queued` (its build fixed by the retarget onto `shift.ts`): **slots** and **holding** on eng.coder and ops.asker (spread 2), *"shows \"1 in use\" … it holds 0 row(s) (and 1 queued)"* |
+| 2026-11-20 | fix/FIX-2777-snapshot-goes (pre-push) | n/a | PASS | Both spreads as before; **one answer** graded. `status-from-snapshot` retired (see above) |

@@ -50,7 +50,7 @@ import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../packages/sh
 import { createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
-import { createLabReader } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { inboxViewRef } from "@flow-state-dev/workforce/browser";
 
 stripIntentOverrides();
 
@@ -289,10 +289,8 @@ async function open(label: string, slot: (feeds: any) => HarnessBlock, reopen?: 
   const id = taskId;
 
   const inbox = async (): Promise<InboxItem<unknown>[]> => {
-    const snapshot = await createLabReader(client).read();
-    if (!("inbox" in snapshot) || snapshot.inbox === undefined) throw new Error(`Shift Manager's read came back ${show(snapshot)}`);
-    if (!snapshot.inbox.ok) throw new Error(`Shift Manager's Inbox didn't load: ${snapshot.inbox.failure.message}`);
-    return snapshot.inbox.value as InboxItem<unknown>[];
+    // Shift Manager's Inbox: the inbox view's items, as `useInbox` reads them.
+    return (await client.view(inboxViewRef, {})).value.items as InboxItem<unknown>[];
   };
   const itemOf = async () => (await inbox()).find((item) => item.task?.taskId === id);
   const task = async () => {

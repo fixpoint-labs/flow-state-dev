@@ -13,7 +13,8 @@ import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { connect } from "../src/lib/connection";
 import { readSessionItems } from "./helpers/session-reads";
-import { createLabReader, toBoardTaskView } from "../src/lib/reads";
+import { createInboxClient } from "@flow-state-dev/orchestration/inbox";
+import { boardTaskOf } from "@flow-state-dev/workforce/browser";
 import type { BoardTaskView } from "../src/lib/boards";
 import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "../src/lib/boards";
 import { openRunLab, RUN_LAB_ASK, RUN_LAB_FAILURE, RUN_LAB_SPEND, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
@@ -44,7 +45,7 @@ async function openLab(options: Parameters<typeof openRunLab>[0] = {}) {
   // is not this test's to share.
   const rows = async (): Promise<BoardTaskView[]> => {
     const stored = new Map((await lab.storedRows()).map((row) => [row.id, row]));
-    return lab.filed.map((f) => toBoardTaskView(boardRef, lab.conversation, f.taskId, stored.get(f.taskId)));
+    return lab.filed.map((f) => boardTaskOf(boardRef, lab.conversation, f.taskId, stored.get(f.taskId)));
   };
   return { lab, served: s, client, rows, boardRef };
 }
@@ -727,7 +728,7 @@ describe("the task's actions, in the frame's header beside Interrupt", () => {
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
     await screen.findByTestId("task-action-row");
     // Cancelled behind the screen's back.
-    await createLabReader(opened.client).taskActions({ id: opened.lab.conversation, flowId: opened.lab.leadFlow }).cancel(row.id);
+    await createInboxClient(opened.client).board({ flowId: opened.lab.leadFlow, sessionId: opened.lab.conversation, board: CONVERSATION_BOARD_COLLECTION }).cancel(row.id);
     expect(await storedStatus(opened, row.id)).toBe("cancelled");
     fireEvent.click(screen.getByTestId("task-action-release"));
     const refusal = await screen.findByTestId("task-action-refusal", {}, { timeout: 10_000 });

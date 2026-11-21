@@ -15,8 +15,6 @@ import { inboxItems, taskActionName } from "@flow-state-dev/orchestration/inbox"
 import { elapsed, isQueued, nothingWaitingSentence, summaryLine } from "../src/lib/tasks";
 import type { InboxAsk, InboxViewValue } from "../src/lib/inbox";
 import { itemAtRoute } from "../src/lib/inbox-list";
-import type { LoadedSnapshot } from "../src/lib/derive";
-import { inboxSection, type Ask } from "../src/lib/reads";
 import type { BoardTaskView } from "../src/lib/boards";
 import type { Worker } from "../src/lib/workers";
 
@@ -86,20 +84,6 @@ const row = (id: string, status: string, extra: Partial<BoardTaskView> = {}): Bo
   ...extra,
 });
 
-function snapshot(rows: BoardTaskView[], asks: Ask[] = [], workers: Worker[] = []): LoadedSnapshot {
-  const byHolder = new Map<string, BoardTaskView[]>();
-  for (const r of rows) byHolder.set(r.ownerSessionId, [...(byHolder.get(r.ownerSessionId) ?? []), r]);
-  const boards: LoadedSnapshot["boards"] = Object.fromEntries([...byHolder].map(([id, rs]) => [id, { ok: true, value: { refs: [rs[0]!.boardRef], rows: rs } }]));
-  return {
-    orgId: "org",
-    readAt: 0,
-    inventory: { ok: true, value: { workers } },
-    boards,
-    asks: { ok: true, value: asks },
-    inbox: inboxSection({ ok: true, value: asks }, boards, []),
-  } as unknown as LoadedSnapshot;
-}
-
 /**
  * The inbox view's answer over `tasks` and the asks no row claims, as the
  * server builds it: orchestration's list over the rows (each answered on its
@@ -145,7 +129,6 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
       { id: "eng.em", workerId: "eng.em", name: "em", team: "eng", kind: null },
       { id: "eng.idle", workerId: "eng.idle", name: "idle", team: "eng", kind: null },
     ] as unknown as Worker[];
-    const asks = [{ workerId: "eng.em", item: { suspensionId: "a1" }, since: 0 }] as unknown as Ask[];
     const tasks = [
       row("A", "in_progress", { assignee: "eng.coder" }),
       // Held on a question for you: running, and one Inbox item of its own (FIX-2131).

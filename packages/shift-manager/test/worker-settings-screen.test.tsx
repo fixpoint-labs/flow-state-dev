@@ -8,7 +8,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import type { Client } from "@flow-state-dev/client";
-import { type LabSnapshot } from "../src/lib/reads";
+import type { DirectoryFixture } from "./helpers/directory";
 import type { Worker } from "../src/lib/workers";
 import { toWorker } from "../src/lib/workers";
 import { MAX_RULE_CHARS } from "@flow-state-dev/workforce/browser";
@@ -52,28 +52,17 @@ vi.mock("../src/lib/workforce", () => ({
   useWorkforce: () => workforce,
 }));
 
-let fixture: LabSnapshot;
+let fixture: DirectoryFixture;
 // FIX-2775: the directory's reads are the fixture's, beside the real roster watch.
 vi.mock("../src/lib/directory-reads", async () => {
   const { useFixtureReads } = await import("./helpers/directory");
   return { useDirectoryReads: () => useFixtureReads(() => fixture) };
 });
-vi.mock("../src/lib/reads", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../src/lib/reads")>();
-  return { ...real, createLabReader: () => ({ read: async () => fixture, readBoard: async () => [], resume: async () => {} }) };
-});
-
-function lab(...more: Worker[]): LabSnapshot {
+function lab(...more: Worker[]): DirectoryFixture {
   return {
-    readAt: Date.UTC(2026, 9, 14, 9, 30),
     sessions: [],
-    orgId: "acme",
     inventory: { ok: true, value: { workers: [toWorker({ id: "researcher", kind: "agent", rules: true })!, toWorker({ id: "eng.coder", kind: "coder" })!, toWorker({ id: "eng.helper", kind: "agent", rules: false })!, ...more] } },
-    boards: {},
-    asks: { ok: true, value: [] },
-    inbox: { ok: true, value: [] },
-    resources: { ok: true, value: [] },
-    projects: { ok: true, value: { rows: [] } },
+    projects: { ok: true, value: [] },
   };
 }
 
