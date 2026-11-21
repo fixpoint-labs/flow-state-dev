@@ -10,7 +10,7 @@ import { clearMark, useCleared } from "../lib/cleared";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import { STALE_CLASS } from "./flow-state/connection-banner";
-import { costAmount, tokenCount } from "./flow-state/spend";
+import { costAmount, tokenCount, tokenTotal } from "./flow-state/spend";
 import { taskSignal } from "./flow-state/task-signals";
 import { reasonLine, type Popup } from "./Popups";
 import { taskLabel, taskLine } from "./TaskCard";
@@ -161,7 +161,7 @@ export function TeammatePanel({
     const long = isLongRunning(t, now);
     const start = attemptStartedAt(t);
     const elapsed = elapsedOf(t, start, now, signal);
-    const tokens = t.spend == null || (t.spend.inputTokens === null && t.spend.outputTokens === null) ? undefined : tokenCount((t.spend.inputTokens ?? 0) + (t.spend.outputTokens ?? 0));
+    const tokens = tokenTotal(t.spend);
     const meta = [runs.harness, runs.model, tokens].filter((x): x is string => x !== undefined);
     const words = cardWords(t, signal?.kind === "quiet" ? signal.text : undefined);
     return (

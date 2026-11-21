@@ -14,9 +14,9 @@
  * puts a request in the compose box, for Request changes; a note's asks the
  * worker that filed the task to follow up. Nothing is sent from the body.
  */
-import { useMemo, useState, type ReactNode } from "react";
-import { runReport, type ReviewDetail, type RunReport, type RunReportCheckStatus } from "@flow-state-dev/harness-manager/browser";
-import { CheckIcon, ChevronDownIcon, InfoIcon, MinusIcon, XIcon } from "lucide-react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { RUN_REPORT_HEADINGS, runReport, type ReviewDetail, type RunReport, type RunReportCheckStatus } from "@flow-state-dev/harness-manager/browser";
+import { ArrowUpIcon, ArrowUpRightIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, InfoIcon, MinusIcon, XIcon } from "lucide-react";
 import { cn } from "../lib/utils";
 import { MarkdownText } from "./flow-state/message-response";
 import { LandFailure, orderedLands, shortBranch, type ReviewAnswer, type ReviewLand } from "./flow-state/review-hold";
@@ -56,6 +56,35 @@ export function checkLines(review: Pick<ReviewDetail, "checks">, report: RunRepo
   });
   const reported = (report?.checks ?? []).map((check): CheckLine => ({ state: check.status ?? "reported", ...split(check.text), project: false }));
   return [...project, ...reported];
+}
+
+/** A Markdown heading line, trimmed first: no optional run before `$` to backtrack over on a long line. */
+const HEADING_LINE = /^#{1,4}\s+(.+)$/;
+const REPORT_HEADINGS = new Set(Object.values(RUN_REPORT_HEADINGS).map((heading) => heading.toLowerCase()));
+
+/**
+ * The answer's report, only when the report is all of it: it opens on one of the report's headings and
+ * has no other heading. Drawn as sections, any other text would be lost, so an answer with more (a
+ * "Next steps", a researcher's own outline, prose before the first heading) is `null` and shows whole.
+ * Exported for its test.
+ */
+export function wholeReport(answer: string | null | undefined): RunReport | null {
+  if (answer == null) return null;
+  const lines = answer
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  const headings = lines.flatMap((line) => {
+    const match = HEADING_LINE.exec(line);
+    if (match === null) return [];
+    // A closing run of #s ("## Checks ##") is dropped by a scan from the end: linear, where `/#+$/` isn't.
+    const text = match[1]!;
+    let end = text.length;
+    while (end > 0 && text[end - 1] === "#") end--;
+    return [text.slice(0, end).replace(/[:*_`]/g, "").trim().toLowerCase()];
+  });
+  if (lines.length === 0 || !HEADING_LINE.test(lines[0]!) || headings.some((heading) => !REPORT_HEADINGS.has(heading))) return null;
+  return runReport(answer);
 }
 
 /** How sure the judge is, in a word. */
@@ -116,10 +145,11 @@ function ConfidenceRing({ confidence, tone }: { confidence: number | null; tone:
   return (
     <div
       aria-hidden
-      className={cn("flex size-11 shrink-0 items-center justify-center rounded-full", TONE_TEXT[tone])}
-      style={{ background: `conic-gradient(currentColor 0 ${pct}%, var(--muted) ${pct}% 100%)` }}
+      className={cn("flex size-12 shrink-0 items-center justify-center rounded-full", TONE_TEXT[tone])}
+      // The track is border-strong: in this theme --muted is the card's own colour, and would vanish.
+      style={{ background: `conic-gradient(currentColor 0 ${pct}%, var(--border-strong) ${pct}% 100%)` }}
     >
-      <div className="flex size-9 items-center justify-center rounded-full bg-card text-xs font-semibold text-foreground">{confidence === null ? "–" : `${pct}%`}</div>
+      <div className="flex size-[38px] items-center justify-center rounded-full bg-card text-xs font-semibold text-foreground tabular-nums">{confidence === null ? "–" : `${pct}%`}</div>
     </div>
   );
 }
@@ -127,9 +157,9 @@ function ConfidenceRing({ confidence, tone }: { confidence: number | null; tone:
 /** A section's small upper-case heading. */
 function Section({ label, aside, children }: { label: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <section aria-label={label} className="flex flex-col gap-2.5">
+    <section aria-label={label} className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-xs font-medium tracking-wider text-muted-foreground uppercase">{label}</h3>
+        <h3 className="text-xs font-semibold tracking-[0.08em] text-text-3 uppercase">{label}</h3>
         {aside}
       </div>
       {children}
@@ -137,8 +167,37 @@ function Section({ label, aside, children }: { label: string; aside?: ReactNode;
   );
 }
 
+/** A folded block: a chevron that turns as it opens, the same look as the Files block's. Exported for the popup's steps. */
+export function Fold({ label, children, ...data }: { label: ReactNode; children: ReactNode } & Record<`data-${string}`, boolean | undefined>) {
+  return (
+    <details {...data} className="group rounded-xl border border-border bg-surface-raised/40">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 text-sm text-text-2 hover:text-foreground [&::-webkit-details-marker]:hidden">
+        <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+        {label}
+      </summary>
+      <div className="border-t border-border px-3.5 py-3">{children}</div>
+    </details>
+  );
+}
+
+/**
+ * A check's detail as two parts: a lead of "·"-joined facts ("vitest · labs/x · 310 / 310"), set in
+ * mono, and the prose after it. A detail whose first sentence has no "·" is all prose. A sentence ends
+ * at a full stop before a space or the end, so "4.2s" or "v1.2.3" stay inside the facts. Exported for its test.
+ */
+export function detailParts(detail: string): { facts: string | null; prose: string | null } {
+  const end = detail.search(/\.(\s|$)/);
+  const head = end < 0 ? detail : detail.slice(0, end);
+  if (!head.includes(" · ")) return { facts: null, prose: detail };
+  const rest = end < 0 ? "" : detail.slice(end + 1).trim();
+  return { facts: head.trim(), prose: rest === "" ? null : rest };
+}
+
 /** An inline Markdown line that wraps, where the card's default keeps it to one truncated line. */
 const WRAP = "overflow-visible whitespace-normal";
+
+/** Inline code at the size of the small text around it, rather than the body's. */
+const CODE_FITS = "[&_code]:px-1 [&_code]:py-0 [&_code]:text-xs";
 
 const STATE_LABEL: Record<CheckState, string> = {
   passed: "Passed",
@@ -159,22 +218,24 @@ function CheckLineView({ line, onDraft }: { line: CheckLine; onDraft?: (text: st
   const next = bad ? "Request fix" : gap ? "Request check" : null;
   const words = (line.detail === null ? line.title : `${line.title} (${line.detail})`).replace(/`/g, "");
   const output = line.tail?.trim() ? line.tail : null;
+  const parts = line.detail === null ? null : detailParts(line.detail);
   return (
-    <li data-check={line.state} data-project={line.project || undefined} className={cn("flex flex-col border-b border-border last:border-b-0", gap && "bg-warning/5", bad && "bg-destructive/5")}>
-      <div className="flex items-start gap-3 px-3.5 py-3">
+    <li data-check={line.state} data-project={line.project || undefined} className={cn("flex flex-col border-b border-border last:border-b-0", gap && "bg-warning-soft", bad && "bg-destructive/[0.06]")}>
+      <div className="flex items-start gap-3 px-4 py-3.5">
         <span
           className={cn(
-            "mt-px flex size-5 shrink-0 items-center justify-center rounded-full",
-            good ? "bg-success/15 text-success" : bad ? "bg-destructive/15 text-destructive" : gap ? "bg-warning/15 text-warning" : "bg-muted text-muted-foreground",
+            "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full",
+            good ? "bg-success-soft text-success" : bad ? "bg-destructive/15 text-destructive" : gap ? "bg-warning/15 text-warning" : "bg-border-strong text-text-2",
           )}
         >
           <Icon aria-hidden className="size-3" strokeWidth={3} />
         </span>
-        <div className="min-w-0 flex-1 text-sm">
-          <MarkdownText inline text={line.title} className={WRAP} />
-          {line.detail === null ? null : <MarkdownText inline text={line.detail} className={cn(WRAP, "block text-xs text-muted-foreground")} />}
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
+          <MarkdownText inline text={line.title} className={cn(WRAP, "font-medium")} />
+          {parts?.facts ? <MarkdownText inline text={parts.facts} className={cn(WRAP, CODE_FITS, "block font-mono text-xs text-text-3")} /> : null}
+          {parts?.prose ? <MarkdownText inline text={parts.prose} className={cn(WRAP, CODE_FITS, "block text-xs leading-relaxed text-text-2")} /> : null}
           {output === null ? null : (
-            <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="mt-0.5 text-xs text-muted-foreground underline-offset-2 hover:underline">
+            <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="mt-0.5 self-start text-xs text-text-2 underline-offset-2 hover:underline">
               {open ? "Hide output" : "Show output"}
             </button>
           )}
@@ -183,16 +244,88 @@ function CheckLineView({ line, onDraft }: { line: CheckLine; onDraft?: (text: st
           <button
             type="button"
             onClick={() => onDraft(bad ? `Fix the failing check: ${words}` : `Do this check: ${words}`)}
-            className={cn("h-7 shrink-0 rounded-md border px-2.5 text-xs whitespace-nowrap hover:bg-muted", gap ? "border-warning/40 text-warning" : "border-destructive/40 text-destructive")}
+            className={cn(
+              "h-7 shrink-0 rounded-md border px-2.5 text-xs font-medium whitespace-nowrap",
+              gap ? "border-warning-line bg-warning/5 text-warning-text hover:bg-warning/10" : "border-destructive/40 bg-destructive/5 text-destructive hover:bg-destructive/10",
+            )}
           >
             {next}
           </button>
         ) : (
-          <span className={cn("shrink-0 text-xs whitespace-nowrap", good ? "text-success" : bad ? "text-destructive" : "text-muted-foreground")}>{STATE_LABEL[line.state]}</span>
+          <span className={cn("shrink-0 pt-px text-xs font-medium whitespace-nowrap", good ? "text-success-text" : bad ? "text-destructive" : "text-text-2")}>{STATE_LABEL[line.state]}</span>
         )}
       </div>
-      {open && output !== null ? <pre className="overflow-x-auto border-t border-border bg-muted/40 px-3.5 py-2 font-mono text-xs leading-5">{output}</pre> : null}
+      {open && output !== null ? <pre className="overflow-x-auto border-t border-border bg-bg-subtle px-4 py-2.5 font-mono text-xs leading-5">{output}</pre> : null}
     </li>
+  );
+}
+
+/** A run's Markdown prose: the lead paragraphs in the body colour, bullets a step quieter, bold words bright. */
+const PROSE =
+  "text-sm leading-relaxed text-text-2 [&_li]:pl-1 [&_ul]:list-outside [&_ul]:pl-5 [&_p]:text-base [&_p]:leading-relaxed [&_p]:text-foreground [&_[data-streamdown=strong]]:text-foreground";
+
+/**
+ * A run report's sections: What changed, Checks and Worth knowing, each left out when empty. `onDraft`
+ * gives a failed or not-done check its button; `onFollowUp` gives each note one.
+ */
+function ReportSections({ changed, lines, notes, onDraft, onFollowUp }: { changed: string | null; lines: readonly CheckLine[]; notes: readonly string[]; onDraft?: (text: string) => void; onFollowUp?: (note: string) => void }) {
+  return (
+    <>
+      {changed ? (
+        <Section label="What changed">
+          <div data-review-answer className={PROSE}>
+            <MarkdownText text={changed} />
+          </div>
+        </Section>
+      ) : null}
+      {lines.length > 0 ? (
+        <Section label="Checks">
+          <ul className="overflow-hidden rounded-xl border border-border bg-surface-raised/30">
+            {lines.map((line, i) => (
+              <CheckLineView key={`${i}:${line.title}`} line={line} {...(onDraft ? { onDraft } : {})} />
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+      {notes.length > 0 ? (
+        <Section label="Worth knowing">
+          <ul className="flex flex-col gap-2">
+            {notes.map((note, i) => (
+              <li key={i} data-note className="flex items-start gap-3 rounded-xl border border-border bg-surface-raised/50 px-4 py-3.5">
+                <InfoIcon aria-hidden className="mt-[3px] size-3.5 shrink-0 text-text-3" />
+                <MarkdownText inline text={note} className={cn(WRAP, CODE_FITS, "min-w-0 flex-1 text-sm leading-relaxed text-text-2 [&_[data-streamdown=strong]]:text-foreground")} />
+                {onFollowUp ? (
+                  <button type="button" onClick={() => onFollowUp(note)} className="h-7 shrink-0 rounded-md border border-border-strong px-2.5 text-xs font-medium whitespace-nowrap hover:bg-surface-raised">
+                    Create follow-up
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * A task's final answer, outside a review: a coding run's report as its sections when the report is all
+ * of it (its checks as it reported them); anything else, and every answer of a task that isn't a coding
+ * run (`report` false), whole, as prose.
+ */
+export function RunAnswer({ answer, report: asReport }: { answer: string; report: boolean }) {
+  const report = useMemo(() => (asReport ? wholeReport(answer) : null), [answer, asReport]);
+  if (report === null) {
+    return (
+      <div className={PROSE}>
+        <MarkdownText text={answer} />
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-6">
+      <ReportSections changed={report.changed} lines={checkLines({ checks: null }, report)} notes={report.notes} />
+    </div>
   );
 }
 
@@ -203,104 +336,105 @@ function CheckLineView({ line, onDraft }: { line: CheckLine; onDraft?: (text: st
  */
 export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDetail; onDraft?: (text: string) => void; onFollowUp?: (note: string) => void }) {
   // Parsed once per answer, not on each keystroke in the compose box.
-  const report = useMemo(() => runReport(review.answer), [review.answer]);
+  const report = useMemo(() => wholeReport(review.answer), [review.answer]);
   const lines = checkLines(review, report);
   const verdict = verdictOf(review, lines);
   const changed = report === null ? (review.answer ?? null) : report.changed;
   const round = review.round ?? null;
   const subjects = round?.subjects ?? review.subjects;
   return (
-    <div data-review-body className="flex flex-col gap-5 [overflow-wrap:anywhere]">
-      <section aria-label="Verdict" data-review-judge data-tone={verdict.tone} className="flex gap-3.5 rounded-xl border border-border bg-muted/30 px-4 py-3.5">
+    <div data-review-body className="flex flex-col gap-6 [overflow-wrap:anywhere]">
+      <section aria-label="Verdict" data-review-judge data-tone={verdict.tone} className="flex items-start gap-4 rounded-xl border border-border bg-surface-raised/50 px-4 py-4">
         <ConfidenceRing confidence={verdict.confidence} tone={verdict.tone} />
         <div className="flex min-w-0 flex-col gap-1">
-          <div className="text-sm font-semibold">{verdict.headline}</div>
-          <p className="text-sm leading-relaxed text-muted-foreground">{verdict.body}</p>
+          <div className="text-base leading-6 font-semibold">{verdict.headline}</div>
+          <p className="text-sm leading-relaxed text-text-2">{verdict.body}</p>
         </div>
       </section>
-      {changed ? (
-        <Section label="What changed">
-          <div data-review-answer className="text-sm">
-            <MarkdownText text={changed} />
-          </div>
-        </Section>
-      ) : null}
-      {lines.length > 0 ? (
-        <Section label="Checks">
-          <ul className="overflow-hidden rounded-xl border border-border">
-            {lines.map((line, i) => (
-              <CheckLineView key={`${i}:${line.title}`} line={line} {...(onDraft ? { onDraft } : {})} />
-            ))}
-          </ul>
-        </Section>
-      ) : null}
-      {(report?.notes.length ?? 0) > 0 ? (
-        <Section label="Worth knowing">
-          <ul className="flex flex-col gap-2">
-            {report!.notes.map((note, i) => (
-              <li key={i} data-note className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 px-3.5 py-3">
-                <InfoIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                <MarkdownText inline text={note} className={cn(WRAP, "min-w-0 flex-1 text-sm text-muted-foreground")} />
-                {onFollowUp ? (
-                  <button type="button" onClick={() => onFollowUp(note)} className="h-7 shrink-0 rounded-md border border-border px-2.5 text-xs whitespace-nowrap hover:bg-muted">
-                    Create follow-up
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </Section>
-      ) : null}
-      {review.files != null || review.fileCount != null ? (
-        <Section label="Files">
-          <RunChanges
-            files={review.files ?? null}
-            {...(review.fileCount != null ? { fileCount: review.fileCount } : {})}
-            {...(review.added != null ? { added: review.added } : {})}
-            {...(review.removed != null ? { removed: review.removed } : {})}
-            className="bg-background"
-          />
-        </Section>
-      ) : null}
-      {subjects.length > 0 ? (
-        <details data-review-commits className="rounded-lg border border-border">
-          <summary className="cursor-pointer px-3.5 py-2.5 text-sm text-muted-foreground">
-            {round === null ? `${review.commits ?? subjects.length} commit${(review.commits ?? subjects.length) === 1 ? "" : "s"}` : `${round.commits} commit${round.commits === 1 ? "" : "s"} this round`}
-          </summary>
-          <ul className="px-3.5 pb-3 text-xs text-muted-foreground">
-            {subjects.map((subject, i) => (
-              <li key={i}>
-                · <MarkdownText inline text={subject} />
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-      {review.goal ? (
-        <details data-review-goal className="rounded-lg border border-border">
-          <summary className="cursor-pointer px-3.5 py-2.5 text-sm text-muted-foreground">Original request</summary>
-          <MarkdownText text={review.goal} className="px-3.5 pb-3 text-sm text-muted-foreground" />
-        </details>
-      ) : null}
+      <ReportSections changed={changed} lines={lines} notes={report?.notes ?? []} {...(onDraft ? { onDraft } : {})} {...(onFollowUp ? { onFollowUp } : {})} />
+      {/* Files, then the commits and the original request, folded: one group, closer together than the sections above. */}
+      <div className="flex flex-col gap-2 empty:hidden">
+        {review.files != null || review.fileCount != null ? (
+          <Section label="Files">
+            <RunChanges
+              files={review.files ?? null}
+              {...(review.fileCount != null ? { fileCount: review.fileCount } : {})}
+              {...(review.added != null ? { added: review.added } : {})}
+              {...(review.removed != null ? { removed: review.removed } : {})}
+              className="rounded-xl border-border bg-surface-raised/40 [&>button]:px-3.5 [&>button]:py-2.5"
+            />
+          </Section>
+        ) : null}
+        {subjects.length > 0 ? (
+          <Fold
+            data-review-commits
+            label={round === null ? `${review.commits ?? subjects.length} commit${(review.commits ?? subjects.length) === 1 ? "" : "s"}` : `${round.commits} commit${round.commits === 1 ? "" : "s"} this round`}
+          >
+            <ul className="flex flex-col gap-1 font-mono text-xs text-text-2">
+              {subjects.map((subject, i) => (
+                <li key={i}>
+                  <MarkdownText inline text={subject} className={WRAP} />
+                </li>
+              ))}
+            </ul>
+          </Fold>
+        ) : null}
+        {review.goal ? (
+          <Fold data-review-goal label="Original request">
+            <MarkdownText text={review.goal} className="text-sm text-text-2" />
+          </Fold>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-/** The review's line under the title: its commits, branch and pull requests. */
-export function ReviewMeta({ review }: { review: ReviewDetail }) {
-  const commits = review.commits === null ? null : `${review.commits} commit${review.commits === 1 ? "" : "s"}`;
-  return (
-    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-xs text-muted-foreground" data-review-meta>
-      {commits === null ? null : <span data-review-commit-count>{commits}</span>}
-      {review.branch === null ? null : (
-        <span title={review.branch} data-review-branch>
-          {shortBranch(review.branch)}
+/**
+ * A coding task's line under the title, its parts "·"-joined: what it ran on, what it spent and, while
+ * its run waits for review, its commits and branch; then each pull request, a link once its address
+ * is known. `on` is "Claude Code · claude-opus-5-5"; `tokens` is "1.3M tokens". Nothing to say: no line.
+ */
+export function RunMeta({ review, on, tokens, pullRequests }: { review?: ReviewDetail; on?: string; tokens?: string; pullRequests?: ReadonlyArray<{ number: number; url?: string }> }) {
+  const prs = pullRequests ?? review?.pullRequests ?? [];
+  const commits = review?.commits == null ? null : `${review.commits} commit${review.commits === 1 ? "" : "s"}`;
+  const parts: ReactNode[] = [
+    on === undefined ? null : (
+      <span key="on" data-harness>
+        {on}
+      </span>
+    ),
+    tokens === undefined ? null : <span key="tokens">{tokens}</span>,
+    commits === null ? null : (
+      <span key="commits" data-review-commit-count>
+        {commits}
+      </span>
+    ),
+    review == null || review.branch === null ? null : (
+      <span key="branch" title={review.branch} data-review-branch>
+        {shortBranch(review.branch)}
+      </span>
+    ),
+    ...prs.map((pr) =>
+      pr.url === undefined ? (
+        <span key={pr.number} data-meta-pull-request>
+          #{pr.number}
         </span>
-      )}
-      {(review.pullRequests ?? []).map((pr) => (
-        <a key={pr.url} href={pr.url} target="_blank" rel="noreferrer" className="underline">
-          PR #{pr.number}
+      ) : (
+        <a key={pr.number} href={pr.url} target="_blank" rel="noreferrer" data-meta-pull-request className="inline-flex items-center gap-0.5 font-medium text-brand underline-offset-2 hover:underline">
+          #{pr.number}
+          <ArrowUpRightIcon aria-hidden className="size-3" />
         </a>
+      ),
+    ),
+  ].filter((part) => part !== null);
+  if (parts.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-mono text-xs text-text-3" data-run-meta>
+      {parts.map((part, i) => (
+        <Fragment key={i}>
+          {i === 0 ? null : <span aria-hidden>·</span>}
+          {part}
+        </Fragment>
       ))}
     </div>
   );
@@ -354,7 +488,7 @@ export function ReviewFooter({
   const [menu, setMenu] = useState(false);
   const [sent, setSent] = useState<string | null | undefined>(undefined);
   const answerText = review?.answer;
-  const report = useMemo(() => runReport(answerText), [answerText]);
+  const report = useMemo(() => wholeReport(answerText), [answerText]);
   const failed = review?.landFailed ?? null;
   // A review asked again after a landing failed is a new ask: its buttons come back.
   const ask = holdId ?? failed?.message ?? null;
@@ -397,9 +531,10 @@ export function ReviewFooter({
   const others = ordered.slice(1);
   const open = (review === undefined ? [] : checkLines(review, report)).filter((line) => line.state === "failed" || line.state === "not done").length;
   const label = (land: ReviewLand) => (failed?.land === land ? `Retry: ${LAND_BUTTON[land]}` : LAND_BUTTON[land]);
-  const secondary = "h-9 rounded-lg border border-border px-3.5 text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50";
+  // A disabled secondary keeps its border, so it still reads as a button; only its words dim.
+  const secondary = "h-9 rounded-lg border border-border-strong px-3.5 text-sm font-medium hover:bg-surface-raised disabled:cursor-not-allowed disabled:text-text-3 disabled:hover:bg-transparent";
   return (
-    <section aria-label="Your review" data-review-footer className="flex flex-col gap-3">
+    <section aria-label="Your review" data-review-footer className="flex flex-col gap-3 py-1">
       {review === undefined && prompt ? (
         <div className="text-sm" data-review-prompt>
           <MarkdownText text={prompt} />
@@ -428,7 +563,7 @@ export function ReviewFooter({
           }
         }}
         placeholder={primary === null ? "What should change? Sent with Request changes" : "What should change, or a note the run reads if landing fails"}
-        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="w-full resize-none rounded-xl border border-border-strong bg-surface-raised/40 px-3.5 py-3 text-sm placeholder:text-text-3 focus-visible:border-ring focus-visible:outline-none"
       />
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" disabled={pending || note === ""} onClick={revise} className={secondary}>
@@ -446,7 +581,7 @@ export function ReviewFooter({
             data-land={primary ?? undefined}
             disabled={pending}
             onClick={() => accept(primary ?? undefined)}
-            className={cn("h-9 bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50", primary === null ? "rounded-lg" : "rounded-l-lg")}
+            className={cn("h-9 bg-brand px-4 text-sm font-semibold text-brand-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50", primary === null ? "rounded-lg" : "rounded-l-lg")}
           >
             {primary === null ? "Accept" : label(primary)}
           </button>
@@ -459,15 +594,15 @@ export function ReviewFooter({
                 aria-expanded={menu}
                 disabled={pending}
                 onClick={() => setMenu(!menu)}
-                className="flex h-9 w-8 items-center justify-center rounded-r-lg border-l border-primary-foreground/25 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                className="flex h-9 w-8 items-center justify-center rounded-r-lg border-l border-brand-foreground/20 bg-brand text-brand-foreground hover:opacity-90 disabled:opacity-50"
               >
                 <ChevronDownIcon aria-hidden className="size-3.5" />
               </button>
               {menu ? (
-                <div role="menu" className="absolute right-0 bottom-full z-10 mb-1 min-w-56 rounded-lg border border-border bg-popover p-1 shadow-lg">
-                  <button type="button" role="menuitem" onClick={() => accept()} className="flex w-full flex-col items-start rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-muted">
+                <div role="menu" className="absolute right-0 bottom-full z-10 mb-1.5 min-w-60 rounded-xl border border-border-strong bg-surface-raised p-1 shadow-lg">
+                  <button type="button" role="menuitem" onClick={() => accept()} className="flex w-full flex-col items-start gap-0.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium hover:bg-selected">
                     Accept without landing
-                    <span className="text-xs text-muted-foreground">Completes the task; the branch stays as it is.</span>
+                    <span className="text-xs font-normal text-text-2">Completes the task; the branch stays as it is.</span>
                   </button>
                 </div>
               ) : null}
@@ -475,7 +610,7 @@ export function ReviewFooter({
           )}
         </div>
       </div>
-      <p className="text-xs text-muted-foreground" data-land-hint>
+      <p className="text-xs leading-relaxed text-text-3" data-land-hint>
         {landHint(primary, review ?? { branch: null }, open)}
       </p>
       {error === null ? null : (
@@ -511,13 +646,14 @@ export function SteerCompose({ words, setWords, steer, placeholder }: { words: s
     }
   };
   return (
-    <section aria-label="Steer" className="flex flex-col gap-2">
-      <div className="flex items-end gap-2 rounded-lg border border-border bg-background p-1.5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring">
+    <section aria-label="Steer" className="flex flex-col gap-2 py-1">
+      {/* One line tall, as the composer: the box grows with what is typed, up to a limit, then scrolls. */}
+      <div className="flex items-end gap-2 rounded-xl border border-border-strong bg-surface-raised/40 p-1.5 pl-2 focus-within:border-ring">
         <textarea
           aria-label="Steer this task"
           data-testid="task-action-steer-input"
           value={words}
-          rows={2}
+          rows={1}
           disabled={pending}
           placeholder={placeholder ?? "Steer this task: what to do differently, or what else it should know"}
           onChange={(e) => setWords(e.target.value)}
@@ -527,16 +663,18 @@ export function SteerCompose({ words, setWords, steer, placeholder }: { words: s
               void send();
             }
           }}
-          className="min-h-10 flex-1 resize-none bg-transparent px-1.5 py-1 text-sm outline-none"
+          className="block field-sizing-content max-h-40 min-h-8 flex-1 resize-none overflow-y-auto bg-transparent px-1.5 py-1.5 text-sm leading-5 outline-none placeholder:text-text-3"
         />
         <button
           type="button"
           data-testid="task-action-steer"
+          aria-label={pending ? "Sending…" : "Send"}
+          title={pending ? "Sending…" : "Send"}
           disabled={pending || words.trim() === ""}
           onClick={() => void send()}
-          className="h-8 shrink-0 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="grid size-8 shrink-0 place-items-center rounded-sm bg-brand text-brand-foreground hover:brightness-110 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
-          {pending ? "Sending…" : "Steer"}
+          <ArrowUpIcon aria-hidden className="size-4" />
         </button>
       </div>
       {said === null ? null : (

@@ -378,7 +378,7 @@ describe("the teammates screen", () => {
     await screen.findByRole("complementary", { name: "Lead's panel" });
     await openByAddress("t-1");
     const popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" }, POPUP_READ);
-    await waitFor(() => expect(within(popup).getByRole("region", { name: "Result" }).textContent).toBe("Fixed the typo in README.md, line 1."));
+    await waitFor(() => expect(within(popup).getByRole("region", { name: "Result" }).querySelector("[data-result-answer]")?.textContent).toBe("Fixed the typo in README.md, line 1."));
     // The answer came on a read naming the task; every other board read named none, so none carried it.
     expect(server.boardReads.filter((read) => read.taskId !== undefined).every((read) => read.taskId === "t-1" && read.sessionId === LEAD)).toBe(true);
     expect(server.boardReads.some((read) => read.taskId === "t-1")).toBe(true);
@@ -397,7 +397,10 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(popup.textContent).toMatch(/Edit \/work\/README\.md/), { timeout: 2000 });
     // It ends: its answer lands in the popup open on it.
     server.board[LEAD]![0] = { ...server.board[LEAD]![0]!, status: "completed", completedAt: Date.now(), detail: { answer: "Fixed the typo in README.md, line 1.", answerCut: false } };
-    expect((await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 })).textContent).toBe("Fixed the typo in README.md, line 1.");
+    const result = await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 });
+    expect(result.querySelector("[data-result-answer]")?.textContent).toBe("Fixed the typo in README.md, line 1.");
+    // Its label is real text on screen, not a CSS-drawn one: find-in-page and selection reach it.
+    expect(result.querySelector("h3")?.textContent).toBe("Result");
     // The row says it's the one open, and the conversation stays.
     expect(item.getAttribute("aria-current")).toBe("true");
     expect(conversation()).toBeTruthy();
