@@ -47,6 +47,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   defineSessionBoard,
+  offeredOnSession,
   projectAddressSchema,
   routedTaskHistory,
   workerConfigOf,
@@ -214,7 +215,9 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       if (model === undefined) throw new Error(`EM worker "${workerConfigOf(ctx).workerId}" names no \`model:\`, so its turn has nothing to run on.`);
       return model;
     },
-    tools: (_input: unknown, ctx: BlockContext) => (settingsOf(ctx).tools ?? []).map((name) => catalog[name]!),
+    // The lead's `updateWorkstream` is left out on a session that leads no workstream.
+    tools: (_input: unknown, ctx: BlockContext) =>
+      (settingsOf(ctx).tools ?? []).map((name) => catalog[name]!).filter((tool) => offeredOnSession(tool, ctx)),
     user: (input: { message: string }) => input.message,
   } as never);
 

@@ -4,6 +4,9 @@
  * shape Workforce's other refusals use.
  */
 
+import { FlowError } from "@flow-state-dev/core";
+import { REFUSED_ERROR_CODE } from "@flow-state-dev/core/items";
+
 /**
  * Why a project or workstream write was refused. Each leaves the row and the
  * entries as they were.
@@ -58,12 +61,18 @@ export type ProjectRefusalReason =
   | "unknown-mcp-server"
   | "invalid-check";
 
-/** A project or workstream write refused on the project's own terms. */
-export class ProjectRefusedError extends Error {
+/**
+ * A project or workstream write refused on the project's own terms.
+ *
+ * A `FlowError` with core's refusal code and `{ reason }` as its details, so a
+ * block's trace records it as a refusal (which the DevTool draws as refused,
+ * not failed) and a retry policy doesn't run it again.
+ */
+export class ProjectRefusedError extends FlowError {
   readonly reason: ProjectRefusalReason;
 
   constructor(reason: ProjectRefusalReason, detail: string) {
-    super(`${reason}: ${detail}`);
+    super(`${reason}: ${detail}`, { code: REFUSED_ERROR_CODE, details: { reason } });
     this.name = "ProjectRefusedError";
     this.reason = reason;
   }

@@ -1,4 +1,5 @@
 import type { BlockTraceItem, OutputItem, StateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
+import { isRefusal } from "@flow-state-dev/core/items";
 import { sideChainTaskCount } from "./side-chain-task-count";
 import { parseBlockInstanceId } from "@flow-state-dev/core/internal";
 import type { DevtoolItem } from "./item-types";
@@ -39,6 +40,7 @@ export type TraceNode = {
   blockName?: string;
   blockKind?: string;
   blockInstanceId?: string;
+  /** `in_progress`, `completed`, `failed`, or `refused` for a block that declined on a precondition. */
   blockStatus?: string;
   blockDuration?: number;
   blockStartedAt?: number;
@@ -250,7 +252,8 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
           blockNode.blockDuration = bo.duration;
         }
         if (item.status === "completed") blockNode.blockStatus = "completed";
-        if (item.status === "failed") blockNode.blockStatus = "failed";
+        // A refusal (a block declining on a precondition) is drawn as refused, not failed.
+        if (item.status === "failed") blockNode.blockStatus = isRefusal(bo) ? "refused" : "failed";
         // block_trace is lifecycle metadata — never render as a visible child.
         // Store as traceItem so block nodes can be selected for detail. The
         // initial `added` row arrives without output; later phase patches fill
@@ -406,7 +409,7 @@ function inferBlockStatus(node: TraceNode, requestStatus: string): string {
     const anyFailed = childBlocks.some((c) => c.blockStatus === "failed");
     if (anyFailed) return "failed";
     const allDone = childBlocks.every(
-      (c) => c.blockStatus === "completed" || c.blockStatus === "failed",
+      (c) => c.blockStatus === "completed" || c.blockStatus === "failed" || c.blockStatus === "refused",
     );
     if (allDone) return "completed";
   }

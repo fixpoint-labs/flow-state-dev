@@ -62,6 +62,8 @@ export {
   isSuspensionItem,
   isSuspensionResumeItem,
   isSuspensionWait,
+  isRefusal,
+  REFUSED_ERROR_CODE,
   whenAnyItem,
   whenResourceChanged,
   whenResourceMatching

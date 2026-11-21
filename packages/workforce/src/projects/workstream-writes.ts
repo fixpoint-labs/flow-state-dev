@@ -77,6 +77,7 @@ import { defineLeadFitCheck, LEAD_FIT_STATE, leadFitCaseSchema, leadFitRecordSch
 import { isMember } from "./membership-gate";
 import { projectAt, PROJECT_ENTRY_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { ProjectRefusedError } from "./project-refusal";
+import { markLeadOnlyTool } from "./lead-tools";
 import { isAlreadyExists } from "./store-errors";
 import {
   WORKSTREAM_RESOURCES,
@@ -728,10 +729,13 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       return { workstream: written.workstream, ...(record === undefined ? {} : { record }) };
     }
   });
-  const updateWorkstreamTool = withRecord(
-    "updateWorkstream",
-    updateFromLead,
-    "Update the workstream you lead: its status (a short label in your own words; \"done\" marks it finished), due date, objectives (the whole list, each met or not) and your latest report. Every reader of the project sees it."
+  // Lead-only: a turn on a session that leads no workstream isn't offered it.
+  const updateWorkstreamTool = markLeadOnlyTool(
+    withRecord(
+      "updateWorkstream",
+      updateFromLead,
+      "Update the workstream you lead: its status (a short label in your own words; \"done\" marks it finished), due date, objectives (the whole list, each met or not) and your latest report. Every reader of the project sees it."
+    )
   );
 
   const editFromCoordinator = handler({
