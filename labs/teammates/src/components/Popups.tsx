@@ -256,10 +256,11 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
     ) : null;
   const pullRequestOpen = task !== undefined && waitsOnPullRequest(task);
   const answer = task?.detail?.answer ?? undefined;
-  // The compose box's words, kept with the task they were written for: Back can move the popup to another.
-  const [draft, setDraft] = useState({ id: popup.taskId, text: "" });
-  const words = draft.id === popup.taskId ? draft.text : "";
-  const setWords = (text: string) => setDraft({ id: popup.taskId, text });
+  // The compose box's words, kept per task: Back can move the popup to another, and a send that ends after
+  // the move clears only its own task's words.
+  const [drafts, setDrafts] = useState<Readonly<Record<string, string>>>({});
+  const words = drafts[popup.taskId] ?? "";
+  const setWords = (text: string) => setDrafts((all) => ({ ...all, [popup.taskId]: text }));
   // A coding run's review leads the body; until it is read, the card shows the hold's prompt.
   const review = task && waiting === "review" ? work.review : undefined;
   const hold = task === undefined ? undefined : holdOf(task);
