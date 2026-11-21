@@ -57,6 +57,12 @@ export interface SessionOverlayProps {
   title: ReactNode;
   /** How the work stands, at the header's end: working, replied, done, failed. */
   status?: ReactNode;
+  /** A small tile before the title, such as what kind of session it is. */
+  icon?: ReactNode;
+  /** `info` tints the status, such as when it waits on you; `success`, such as when its work is out; absent, it is neutral. */
+  statusTone?: "info" | "success";
+  /** A small mark before the status words, in place of the tinted status's dot. */
+  statusIcon?: ReactNode;
   /** What goes under the title, such as what it ran on and what it spent. */
   meta?: ReactNode;
   /** Actions that stay put under the header while the feed scrolls. */
@@ -73,8 +79,11 @@ export interface SessionOverlayProps {
   footer?: ReactNode;
 }
 
+/** The status pill's colours, by its tone. */
+const STATUS_TONE = { neutral: "bg-accent text-muted-foreground", info: "bg-info/15 text-info", success: "bg-success/15 text-success" } as const;
+
 /** One session over the thread, as a sheet or a modal. */
-export function SessionOverlay({ variant, label, title, status, meta, toolbar, onClose, feed: shared, children, footer }: SessionOverlayProps) {
+export function SessionOverlay({ variant, label, title, status, statusTone, statusIcon, icon, meta, toolbar, onClose, feed: shared, children, footer }: SessionOverlayProps) {
   const { host } = useContext(OverlayHost);
   const own = useJumpToLatest();
   const feed = shared ?? own;
@@ -140,16 +149,27 @@ export function SessionOverlay({ variant, label, title, status, meta, toolbar, o
         className={`flex h-full w-full ${modal ? "max-w-[var(--thread-width,46rem)]" : "max-w-3xl"} min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg`}
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="flex min-h-14 shrink-0 items-start gap-3 border-b border-border px-5 py-3">
-          <div className="min-w-0 flex-1">
-            <div className="text-base leading-6 font-semibold">{title}</div>
-            {meta ? <div className="mt-0.5 min-w-0">{meta}</div> : null}
-          </div>
-          {status ? (
-            <span data-overlay-status className="shrink-0 pt-1 font-mono text-xs tracking-widest text-muted-foreground uppercase">
-              {status}
-            </span>
+        <header className="flex min-h-14 shrink-0 items-start gap-3 border-b border-border px-5 py-4">
+          {icon ? (
+            <div aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-accent text-muted-foreground">
+              {icon}
+            </div>
           ) : null}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <div className="min-w-0 text-base leading-6 font-semibold">{title}</div>
+              {status ? (
+                <span
+                  data-overlay-status
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium [&_svg]:size-3.5 ${STATUS_TONE[statusTone ?? "neutral"]} ${statusTone !== undefined && statusIcon === undefined ? "before:size-1.5 before:rounded-full before:bg-current before:content-['']" : ""}`}
+                >
+                  {statusIcon}
+                  {status}
+                </span>
+              ) : null}
+            </div>
+            {meta ? <div className="mt-1 min-w-0">{meta}</div> : null}
+          </div>
           <button
             ref={closeButton}
             type="button"
