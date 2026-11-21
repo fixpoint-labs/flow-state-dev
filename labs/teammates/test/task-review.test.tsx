@@ -14,7 +14,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import type { ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { checkLines, landHint, ReviewBody, ReviewFooter, verdictOf } from "../src/components/TaskReview";
+import { checkLines, detailParts, landHint, ReviewBody, ReviewFooter, RunAnswer, verdictOf, wholeReport } from "../src/components/TaskReview";
 import type { ReviewAnswer } from "../src/components/flow-state/review-hold";
 
 afterEach(cleanup);
@@ -148,5 +148,43 @@ describe("the review's foot", () => {
   it("says what the primary button does, and what is still open", () => {
     expect(landHint("pull-request", { branch: "a/b" }, 1)).toBe("Opens a PR from …/b, with the goal, commits, checks and the judge's verdict as its description. 1 check is still open.");
     expect(landHint(null, { branch: null }, 0)).toBe("Completes the task; the branch stays as it is.");
+  });
+});
+
+describe("an answer drawn as report sections", () => {
+  it("only when the report is all of it, so no text outside its sections is lost", () => {
+    expect(wholeReport("## What changed\nFixed it.\n\n## Checks\n- passed: pnpm test")?.changed).toBe("Fixed it.");
+    // Another heading, prose before the first one, or no heading: the answer shows whole instead.
+    expect(wholeReport("## Checks\n- passed: tests\n## Next steps\nRestart the server")).toBeNull();
+    expect(wholeReport("Opened the PR.\n\n## Checks\n- passed: tests")).toBeNull();
+    expect(wholeReport("Fixed the typo in README.md, line 1.")).toBeNull();
+    expect(wholeReport(null)).toBeNull();
+    expect(wholeReport("## Checks ##\n- passed: tests")?.checks).toHaveLength(1);
+    // A long line that is nearly a heading reads in linear time.
+    const started = performance.now();
+    expect(wholeReport(`## ${" ".repeat(50_000)}x${" ".repeat(50_000)}#`)).toBeNull();
+    expect(wholeReport(`## ${"#".repeat(100_000)}x`)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+});
+
+describe("a check's detail", () => {
+  it("sets its leading \"·\" facts apart from the prose, without splitting at a dot inside a fact", () => {
+    expect(detailParts("vitest · labs/x · 4.2s. Extra sentence.")).toEqual({ facts: "vitest · labs/x · 4.2s", prose: "Extra sentence." });
+    expect(detailParts("pnpm · v1.2.3 · no errors")).toEqual({ facts: "pnpm · v1.2.3 · no errors", prose: null });
+    expect(detailParts("Not done. The tests cover grouping only.")).toEqual({ facts: null, prose: "Not done. The tests cover grouping only." });
+  });
+});
+
+describe("a task's answer outside a review", () => {
+  const REPORT = "## What changed\nFixed it.\n\n## Checks\n- passed: pnpm test";
+  it("is a coding run's report, in sections, only for a coding task", () => {
+    const { container, unmount } = render(<RunAnswer answer={REPORT} report />);
+    expect(container.querySelector('[aria-label="Checks"]')).not.toBeNull();
+    unmount();
+    // A teammate's answer with the same headings is its own Markdown: drawn whole, nothing read as a check.
+    const teammate = render(<RunAnswer answer={REPORT} report={false} />);
+    expect(teammate.container.querySelector('[aria-label="Checks"]')).toBeNull();
+    expect(teammate.container.textContent).toContain("passed: pnpm test");
   });
 });
