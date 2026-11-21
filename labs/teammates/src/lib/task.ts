@@ -18,15 +18,25 @@ export function taskStatus(task: Pick<CodingBoardTask, "status">): "running" | "
 }
 
 /**
- * Open, but doing nothing until something outside it moves: its run waits on
- * its pull requests to merge or close (the board's `pullRequests`, filled only
- * while that wait is open and unanswered), or it is held before it starts.
- * Waiting on you is not idle: the next move is yours, so it stays active.
+ * Its run opened pull requests and waits on them to merge or close: the
+ * board's `pullRequests`, filled only while that wait is open and unanswered.
+ * The panel, the card and the popup all read *PR open* from this one fact.
  */
-export function isIdle(task: Pick<CodingBoardTask, "status" | "state" | "asks" | "pullRequests">): boolean {
-  if (taskStatus(task) !== "running" || task.asks.length > 0) return false;
-  return task.state === "held" || task.pullRequests.length > 0;
-}
+export const waitsOnPullRequest = (task: Pick<CodingBoardTask, "status" | "pullRequests">): boolean =>
+  task.status === "in_progress" && task.pullRequests.length > 0;
+
+/**
+ * Open, but doing nothing until its pull request merges or closes. Waiting on
+ * you is not idle, even with a pull request open: the next move is yours.
+ */
+export const isIdle = (task: Pick<CodingBoardTask, "status" | "asks" | "pullRequests">): boolean => waitsOnPullRequest(task) && task.asks.length === 0;
+
+/** Still open and not {@link isIdle}: working, queued, or waiting on you. What *Running* counts. */
+export const isActive = (task: Pick<CodingBoardTask, "status" | "asks" | "pullRequests">): boolean => taskStatus(task) === "running" && !isIdle(task);
+
+/** The active coding tasks among `tasks`: what the sidebar's working dot and its *Running N tasks* line count. */
+export const activeCoding = (tasks: readonly CodingBoardTask[], isCoding: (id: string) => boolean): CodingBoardTask[] =>
+  tasks.filter((t) => isActive(t) && isCoding(workerOf(t)));
 
 /** The worker it was filed for; none for a task filed to nobody. */
 export const workerOf = (task: Pick<CodingBoardTask, "assignee">): string => task.assignee ?? "";
@@ -69,9 +79,9 @@ export function elapsedText(ms: number): string {
 }
 
 /** It is still active and this attempt started more than {@link LONG_RUNNING_MS} before `now`. Active is `taskStatus`'s "running", which folds in queued and waiting-on-you, so a review left waiting a day is tagged too; an {@link isIdle} task is not active, so a pull request left open a day is not. */
-export function isLongRunning(task: Pick<CodingBoardTask, "status" | "state" | "asks" | "pullRequests" | "run" | "startedAt">, now: number): boolean {
+export function isLongRunning(task: Pick<CodingBoardTask, "status" | "asks" | "pullRequests" | "run" | "startedAt">, now: number): boolean {
   const start = attemptStartedAt(task);
-  return taskStatus(task) === "running" && !isIdle(task) && start !== undefined && now - start > LONG_RUNNING_MS;
+  return isActive(task) && start !== undefined && now - start > LONG_RUNNING_MS;
 }
 
 /**

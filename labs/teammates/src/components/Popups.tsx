@@ -13,7 +13,7 @@ import {
 } from "../app";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
-import { waitsFor, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
+import { waitsFor, waitsOnPullRequest, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
 import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -249,12 +249,12 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
     ) : task && waiting === "question" ? (
       <QuestionPopup task={task} answer={actions.answer} />
     ) : null;
-  const waitsOnPullRequest = task?.status === "in_progress" && task.pullRequests.length > 0;
+  const pullRequestOpen = task !== undefined && waitsOnPullRequest(task);
   const answer = task?.detail?.answer ?? undefined;
   return (
-    <SessionOverlay variant="modal" label={line} title={title} status={waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : waitsOnPullRequest ? "PR open" : status} onClose={onClose} footer={pinned}>
+    <SessionOverlay variant="modal" label={line} title={title} status={waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : pullRequestOpen ? "PR open" : status} onClose={onClose} footer={pinned}>
       {/* Its run is done and its work is a pull request: open until it merges or closes. The Steer box wakes it to check. */}
-      {task !== undefined && waitsOnPullRequest ? <PullRequestOpen task={task} /> : null}
+      {task !== undefined && pullRequestOpen ? <PullRequestOpen task={task} /> : null}
       {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} steer rerun={rerun} />}
       {/* What a coding task's run changed, what it ran and how long it took, without opening a step. */}
       {task && coding ? <TaskSummary task={task} steps={steps} /> : null}
@@ -308,7 +308,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
         </section>
       ) : null}
       {/* The live line ends the feed while it runs: until its first step, the line above says it is starting; a task waiting on you isn't working. */}
-      {task && status === "running" && holdOf(task) === undefined && !waitsOnPullRequest && task.run?.sessionId !== undefined && steps.length > 0 ? (
+      {task && status === "running" && holdOf(task) === undefined && !pullRequestOpen && task.run?.sessionId !== undefined && steps.length > 0 ? (
         <StreamingIndicator message={workingStatus({ ...work.working, note: task.statusNote })} since={attemptStartedAt(task)} />
       ) : null}
     </SessionOverlay>

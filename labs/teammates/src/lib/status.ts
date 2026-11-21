@@ -15,7 +15,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useAppClient, useConversation, useTasks } from "../app";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
 import { stepOf } from "../components/flow-state/conversation-lines";
-import { attemptStartedAt, holdOf, isIdle, taskStatus, workerOf } from "./task";
+import { activeCoding, attemptStartedAt, holdOf, taskStatus, workerOf } from "./task";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom, useTalk } from "./talk";
 import { age, useNow } from "./use-watch";
@@ -107,7 +107,7 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
     return plain(from !== undefined ? `Replying to ${nameOf(from)}` : "Replying to you");
   }
   // The newest running task names the line: an old one left running must not hide the one you just started. An idle one (a pull request open) isn't running.
-  const coding = tasks.filter((t) => taskStatus(t) === "running" && !isIdle(t) && isCoding(workerOf(t))).sort((a, b) => (attemptStartedAt(b) ?? 0) - (attemptStartedAt(a) ?? 0));
+  const coding = activeCoding(tasks, isCoding).sort((a, b) => (attemptStartedAt(b) ?? 0) - (attemptStartedAt(a) ?? 0));
   if (coding.length === 1) return plain(`Running coding task: ${coding[0]!.title}`);
   if (coding.length > 1) return plain(`Running ${coding.length} tasks · ${coding[0]!.title}`);
   const ended = freshEndings(tasks, now, isCoding)[0];

@@ -5,7 +5,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useTasks } from "../app";
 import { displayName } from "../lib/roster";
 import { useNow, useStale } from "../lib/use-watch";
-import { attemptStartedAt, elapsedText, holdOf, harnessOf, isIdle, isLongRunning, modelOf, timeSignalOf, taskStatus, workerOf } from "../lib/task";
+import { attemptStartedAt, elapsedText, holdOf, harnessOf, isActive, isIdle, isLongRunning, modelOf, timeSignalOf, taskStatus, workerOf } from "../lib/task";
 import { clearMark, useCleared } from "../lib/cleared";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -76,7 +76,7 @@ function newestFirst(tasks: readonly CodingBoardTask[]): CodingBoardTask[] {
 function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<string>): Record<Filter, CodingBoardTask[]> {
   const of = (status: ReturnType<typeof taskStatus>) => newestFirst(tasks.filter((t) => taskStatus(t) === status));
   const open = of("running");
-  const running = open.filter((t) => !isIdle(t));
+  const running = open.filter(isActive);
   const isCleared = (t: CodingBoardTask) => taskStatus(t) === "failed" && cleared.has(clearMark(t));
   return {
     running: [...running.filter((t) => holdOf(t) !== undefined), ...running.filter((t) => holdOf(t) === undefined)],
@@ -154,16 +154,13 @@ export function TeammatePanel({
     const coding = isCoding(workerOf(t));
     const line = taskLine({ title: t.title, to: workerOf(t) }, coding, nameOf);
     const status = taskStatus(t);
-    const idle = isIdle(t);
+    const active = isActive(t);
     const runs = { harness: harnessOf(t), model: modelOf(t) };
     const { view, run } = timeSignalOf(t);
     const signal = taskSignal(view, run, now, { stale });
     const long = isLongRunning(t, now);
     const start = attemptStartedAt(t);
-    // An active task's clock on this attempt; an idle one's time since it last moved; an ended one's age, as its signal reads it.
-    const elapsed = idle
-      ? t.updatedAt == null ? undefined : elapsedText(now - t.updatedAt)
-      : status === "running" ? (start === undefined ? undefined : elapsedText(now - start)) : signal?.kind === "ended" ? signal.text : undefined;
+    const elapsed = elapsedOf(t, start, now, signal);
     const tokens = t.spend == null || (t.spend.inputTokens === null && t.spend.outputTokens === null) ? undefined : tokenCount((t.spend.inputTokens ?? 0) + (t.spend.outputTokens ?? 0));
     const meta = [runs.harness, runs.model, tokens].filter((x): x is string => x !== undefined);
     const words = cardWords(t, signal?.kind === "quiet" ? signal.text : undefined);
@@ -187,12 +184,12 @@ export function TeammatePanel({
               {coding ? t.title : line}
             </span>
             {elapsed === undefined ? null : (
-              <span className={cn("shrink-0 pt-px font-mono text-xs tabular-nums", long ? "text-warning-text" : status === "running" && !idle ? "text-success-text" : "text-text-3")} data-elapsed>
+              <span className={cn("shrink-0 pt-px font-mono text-xs tabular-nums", long ? "text-warning-text" : active ? "text-success-text" : "text-text-3")} data-elapsed>
                 {elapsed}
               </span>
             )}
           </span>
-          {status === "running" && !idle && signal?.kind === "working" && !long ? (
+          {active && signal?.kind === "working" && !long ? (
             <span aria-hidden className="block h-0.5 overflow-hidden rounded-full bg-border" data-progress>
               <span className="block h-full w-1/3 animate-pulse rounded-full bg-success" />
             </span>
@@ -345,6 +342,13 @@ export function ResetButton({ name, onReset }: { name: string; onReset: () => Pr
   );
 }
 
+/** A card's time: an active task's clock on this attempt; an idle one's time since it last moved; an ended one's age, as its signal reads it. */
+function elapsedOf(task: CodingBoardTask, start: number | undefined, now: number, signal: ReturnType<typeof taskSignal>): string | undefined {
+  if (isIdle(task)) return task.updatedAt == null ? undefined : elapsedText(now - task.updatedAt);
+  if (isActive(task)) return start === undefined ? undefined : elapsedText(now - start);
+  return signal?.kind === "ended" ? signal.text : undefined;
+}
+
 /**
  * What a card says of how its task stands, beside its meta, when that adds to
  * its time: *waiting on you* (the user must act), what an idle one waits
@@ -353,11 +357,7 @@ export function ResetButton({ name, onReset }: { name: string; onReset: () => Pr
  */
 function cardWords(task: CodingBoardTask, quiet: string | undefined): { text: string; tone: string } | undefined {
   const status = taskStatus(task);
-  if (holdOf(task)) {
-    const { word, tone } = taskPresentation(task);
-    return { text: word, tone };
-  }
-  if (isIdle(task)) {
+  if (holdOf(task) || isIdle(task)) {
     const { word, tone } = taskPresentation(task);
     return { text: word, tone };
   }
