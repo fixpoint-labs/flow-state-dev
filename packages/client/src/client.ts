@@ -11,7 +11,15 @@
 import type { ResumeAction, WireTopic } from "@flow-state-dev/contracts";
 import type { FileContent } from "@flow-state-dev/contracts/items";
 import type { ActionConfig, FlowActionInput, RequestStatusSnapshot, ViewHearing } from "@flow-state-dev/core/types";
-import { clientError, createTransport, requireValue, seg, topicPath, type Transport } from "./internal/http";
+import {
+  type AnswerLimit,
+  clientError,
+  createTransport,
+  requireValue,
+  seg,
+  topicPath,
+  type Transport
+} from "./internal/http";
 import { pause } from "./internal/pause";
 import {
   openRequestStream,
@@ -77,6 +85,16 @@ export type CreateClientOptions = {
    * `fetch`.
    */
   fetcher?: ClientFetch;
+  /**
+   * How long `flow().send` waits for the server to answer, in milliseconds.
+   * The server answers a send as soon as it takes it, so a send with no
+   * answer by then is lost on the way (a dropped connection, a proxy gone
+   * down): it rejects with a `ClientHttpError` of status 0, and a message box
+   * keeps its text for a Retry. Only the wait for the answer to start is
+   * timed; a stream that has started runs as long as it runs. Default
+   * `30_000`; `0` waits for ever.
+   */
+  sendTimeoutMs?: number;
 };
 
 /** What a session listing can add to its rows ({@link ListSessionsOptions.include}). */
@@ -605,11 +623,18 @@ export interface Client {
 const RESUME_ACTIONS: readonly ResumeAction[] = ["approve", "reject", "submit", "skip"];
 const JSON_HEADERS = { "content-type": "application/json" };
 const SSE_HEADERS = { accept: "text/event-stream" };
+/** How long a send waits for its answer by default: {@link CreateClientOptions.sendTimeoutMs}. */
+const DEFAULT_SEND_TIMEOUT_MS = 30_000;
 
 /** Build the one client. Another user or another server is another client. */
 export function createClient(options: CreateClientOptions): Client {
   const userId = requireValue(options.userId, "userId");
   const t = createTransport(options);
+  const sendTimeoutMs = options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
+  const sendLimit: AnswerLimit = {
+    ms: sendTimeoutMs,
+    message: `The server didn't answer the send within ${formatSeconds(sendTimeoutMs)}.`
+  };
 
   const sessions: SessionsApi = {
     list: async (listOptions = {}) => {
@@ -742,7 +767,7 @@ export function createClient(options: CreateClientOptions): Client {
     userId,
     flows: async () => (await t.json<{ flows: FlowListEntry[] }>("/api/flows")).flows,
     capabilities,
-    flow: <TFlow extends TypedFlow = UntypedFlow>(address: string) => flowHandle<TFlow>(t, userId, address),
+    flow: <TFlow extends TypedFlow = UntypedFlow>(address: string) => flowHandle<TFlow>(t, userId, address, sendLimit),
     sessions,
     resources,
     resource: (def, resourceOptions) =>
@@ -846,6 +871,12 @@ export function createClient(options: CreateClientOptions): Client {
   return client;
 }
 
+/** `30_000` as "30 seconds", `1_500` as "1.5 seconds". */
+function formatSeconds(ms: number): string {
+  const seconds = ms / 1000;
+  return `${seconds} second${seconds === 1 ? "" : "s"}`;
+}
+
 /** POST one file's raw bytes to an upload route and resolve to its reference. */
 async function uploadTo(t: Transport, path: string, userId: string, request: UploadRequest): Promise<FileContent> {
   const mediaType = request.mediaType ?? (request.data instanceof Blob ? request.data.type : "");
@@ -863,7 +894,12 @@ async function uploadTo(t: Transport, path: string, userId: string, request: Upl
 // Flow and request handles
 // ---------------------------------------------------------------------------
 
-function flowHandle<TFlow extends TypedFlow>(t: Transport, userId: string, address: string): FlowHandle<TFlow> {
+function flowHandle<TFlow extends TypedFlow>(
+  t: Transport,
+  userId: string,
+  address: string,
+  sendLimit: AnswerLimit
+): FlowHandle<TFlow> {
   const flow = requireValue(address, "flow address");
 
   async function send(
@@ -888,9 +924,9 @@ function flowHandle<TFlow extends TypedFlow>(t: Transport, userId: string, addre
         : `/api/flows/${seg(flow)}/${seg(sendOptions.sessionId)}/actions/${seg(actionName)}`;
     const init: RequestInit = { method: "POST", body: JSON.stringify(body) };
     if (sendOptions?.stream === true) {
-      return t.raw(path, { ...init, headers: { ...JSON_HEADERS, ...SSE_HEADERS } });
+      return t.raw(path, { ...init, headers: { ...JSON_HEADERS, ...SSE_HEADERS } }, undefined, sendLimit);
     }
-    const response = await t.json<ExecuteActionResponse>(path, { ...init, headers: JSON_HEADERS });
+    const response = await t.json<ExecuteActionResponse>(path, { ...init, headers: JSON_HEADERS }, undefined, sendLimit);
     const handle = requestHandle(
       t,
       response.request.flowId ?? flow,
