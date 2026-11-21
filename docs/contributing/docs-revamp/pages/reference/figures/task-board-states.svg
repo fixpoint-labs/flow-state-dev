@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 594">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="200" height="84"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="338" y="24" width="200" height="84"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="648" y="24" width="244" height="84"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="648" y="224" width="110" height="84"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="782" y="224" width="110" height="84"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="340" width="864" height="76"/>
+<rect class="hl" fill="#e8f551" x="346" y="52" width="184" height="24"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">STATUS</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="69">held</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="92">filed, not released</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="352" y="46">STATUS</text>
+<text class="nm on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="352" y="69">pending</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="352" y="92">waits for a worker</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="662" y="46">STATUS</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="662" y="69">in_progress</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="662" y="92">a worker has it</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="662" y="246">STATUS</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="662" y="269">errored</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="662" y="292">gave up</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="796" y="246">STATUS</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="796" y="269">completed</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="796" y="292">finished</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="362">STATUS</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="385">cancelled</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="404">stopped before it finished</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="338" y1="54" x2="230" y2="54" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="230" y1="90" x2="336" y2="90" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="538" y1="54" x2="646" y2="54" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="648" y1="90" x2="540" y2="90" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="700" y1="108" x2="700" y2="222" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="836" y1="108" x2="836" y2="222" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="770" y1="108" x2="770" y2="338" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="440" y1="108" x2="440" y2="338" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="80" y1="108" x2="80" y2="338" marker-end="url(#ah)"/>
+<line class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" x1="520" y1="338" x2="520" y2="110" marker-end="url(#ah)"/>
+<path class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" d="M648,266 H560 V100 H540" marker-end="url(#ah)"/>
+<rect class="ground" fill="#f0ece1" x="259" y="46.5" width="48" height="15"/>
+<text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" text-anchor="middle" x="283" y="58">HOLD</text>
+<rect class="ground" fill="#f0ece1" x="251.5" y="82.5" width="63" height="15"/>
+<text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" text-anchor="middle" x="283" y="94">RELEASE</text>
+<rect class="ground" fill="#f0ece1" x="568.5" y="46.5" width="49" height="15"/>
+<text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" text-anchor="middle" x="593" y="58">CLAIM</text>
+<rect class="ground" fill="#f0ece1" x="568.5" y="82.5" width="49" height="15"/>
+<text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" text-anchor="middle" x="593" y="94">RETRY</text>
+<rect class="ground" fill="#f0ece1" x="676" y="164.5" width="49" height="15"/>
+<text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" text-anchor="middle" x="700.5" y="176">FAILS</text>
+<rect class="ground" fill="#f0ece1" x="812" y="164.5" width="48" height="15"/>
+<text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" text-anchor="middle" x="836" y="176">DONE</text>
+<rect class="ground" fill="#f0ece1" x="742" y="192.5" width="56" height="15"/>
+<text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" text-anchor="middle" x="770" y="204">CANCEL</text>
+<rect class="ground" fill="#f0ece1" x="412" y="192.5" width="56" height="15"/>
+<text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" text-anchor="middle" x="440" y="204">CANCEL</text>
+<rect class="ground" fill="#f0ece1" x="52" y="192.5" width="56" height="15"/>
+<text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" text-anchor="middle" x="80" y="204">CANCEL</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="442" x2="920" y2="442"/>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="466">01</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="56" y="466">A failure with attempts left sends in_progress back to pending.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="491">02</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="56" y="491">A lapsed lease keeps the task in_progress. The next claim takes it back where it stands.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="516">03</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="56" y="516">completed, errored and cancelled are final. Only the retryTask action reopens errored or cancelled.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="541">04</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="56" y="541">A task waiting on a user keeps its status and gains a hold. It is not a seventh state.</text>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="568" x2="54" y2="568" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="572">MOVES TO</text>
+<line class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" x1="154" y1="568" x2="180" y2="568" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="188" y="572">ONLY THROUGH RETRYTASK</text>
+<rect class="hl" fill="#e8f551" x="385" y="562" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="419" y="572">WHAT A WORKER CLAIMS</text>
+</g>
+</svg>
