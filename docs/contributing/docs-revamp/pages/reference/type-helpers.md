@@ -15,6 +15,8 @@ The examples use a support desk: a `support` flow with a `reply` action that run
 ```ts title="src/flows/support/blocks/draft-reply.ts"
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { composeReply } from "../../../lib/replies";
+import { findTicket } from "../../../lib/tickets";
 
 export const draftReply = handler({
   name: "draft-reply",
@@ -23,7 +25,10 @@ export const draftReply = handler({
     tone: z.enum(["formal", "friendly"]).default("friendly"),
   }),
   outputSchema: z.object({ reply: z.string() }),
-  execute: async (input) => ({ reply: `Replying to ${input.ticketId}` }),
+  execute: async (input) => {
+    const ticket = await findTicket(input.ticketId);
+    return { reply: await composeReply(ticket, input.tone) };
+  },
 });
 ```
 
@@ -94,8 +99,9 @@ A helper that several blocks call with their own `ctx` takes the plain type. No 
 ```ts title="src/lib/log-ticket.ts"
 import type { BlockContext } from "@flow-state-dev/core";
 
+// Accepts the ctx of any block, whatever state or resources it declares.
 export function logTicket(ctx: BlockContext, ticketId: string) {
-  // Accepts the ctx of any block, whatever state or resources it declares.
+  ctx.emit.data("ticket-log", { ticketId });
 }
 ```
 
@@ -121,7 +127,7 @@ import { z } from "zod";
 export const tickets = defineResourceCollection({
   pattern: "tickets/**",
   scope: "session",
-  stateSchema: z.object({ title: z.string(), secret: z.string() }),
+  stateSchema: z.object({ title: z.string(), internalNotes: z.string() }),
   client: { expose: ["title"] },
 });
 ```
@@ -137,7 +143,7 @@ export function TicketTitle({ session, id }: { session: SessionView; id: string 
 }
 ```
 
-Reading `item.clientData.secret`, which was not exposed, is a compile error. `ClientDataOf` is compile-time only: the runtime payload stays `JsonValue`.
+Reading `item.clientData.internalNotes`, which was not exposed, is a compile error. `ClientDataOf` is compile-time only: the runtime payload stays `JsonValue`.
 
 ### Scope handles
 

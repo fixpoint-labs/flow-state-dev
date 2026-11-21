@@ -144,9 +144,19 @@ A custom filter is `(input, ...args) => unknown` and may return a Promise. Its p
 ```ts title="src/flows/support/lib/prompts.ts"
 import { loadPromptFile } from "@flow-state-dev/engine/prompt-file";
 
-export const pf = loadPromptFile("../prompts/draft-reply.md", import.meta.url, {
+export const refundOffer = loadPromptFile("../prompts/refund-offer.md", import.meta.url, {
   filters: { format_usd: (n) => `$${Number(n).toFixed(2)}` },
 });
+```
+
+```md title="src/flows/support/prompts/refund-offer.md"
+<system>
+You offer refunds for the support team.
+</system>
+
+<user>
+Offer {{ input.refundAmount | format_usd }} back on order {{ input.orderId }}.
+</user>
 ```
 
 ## How a template is found

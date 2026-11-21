@@ -17,6 +17,7 @@ The tables use one app, a `billing` flow. Stripe sends it `invoice.paid`, and th
 ```ts title="src/flows/billing/blocks/record-payment.ts"
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { markInvoicePaid } from "../../../lib/billing";
 
 export const recordPayment = handler({
   name: "record-payment",
@@ -24,7 +25,7 @@ export const recordPayment = handler({
     invoiceId: z.string(),
     deliveryId: z.string().optional(),
   }),
-  execute: (input) => ({ recorded: input.invoiceId }),
+  execute: (input) => markInvoicePaid(input.invoiceId, { deliveryId: input.deliveryId }),
 });
 ```
 

@@ -35,6 +35,8 @@ Written by `docs-writer` (sonnet), 1883 words. Scenario: A support desk: a `supp
 - After revise round 3, page sha256 d26dadbe8978: exit 0.
 - After the final fact-check fix, page sha256 852b02373b56: exit 0.
 
+- After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: `draftReply` loads the ticket with a `findTicket` stand-in and drafts with `composeReply(ticket, input.tone)`, so `tone` is used; `logTicket` emits a `ticket-log` data item through `ctx.emit.data` instead of having an empty body; the hidden ticket field is `internalNotes` instead of `secret`, and the sentence on reading an unexposed field names it (checked: `ClientDataOf<typeof tickets>` picks only `title`, so the read fails with TS2339). Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 1592 words. Page sha256 e21889f2cf39.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 058f82b78d46, and the 22 Reference row(s) pass 6 moved.
@@ -47,6 +49,8 @@ Final fact check of the page as it closed, sha256 d26dadbe8978: 2 untrue, fixed 
 
 - React's resource hooks (`useResource`, `useResourceCollection`, `useResourceCollectionList` and `useCollectionResource`) take the projection as a type parameter. Without it, `clientData` is `unknown`. Untrue: Only `useResourceCollection<TClient = unknown>`, `useResourceCollectionList<TClient = unknown>` and `useCollectionResource<TClient = unknown>` take a projection type parameter that defaults to `unknown`. `useResource<TDef extends ScopeResourceDef>(def, options)` has a type parameter for the resource definition, not the projection. It takes the definition as an argument and infers its value type (`ClientValue<TDef>`), so there is no `unknown` default to override. (packages/react/src/hooks/useResource.ts:178 (compare useResourceCollection.ts:174, useResourceCollectionList.ts:77, useCollectionResource.ts:30))
 - `BlockContext<...>`: "Every parameter defaults to an open record or map" Untrue: Not every parameter does. `TCapabilities` defaults to `{}`, `TParentInput` defaults to `unknown`, and `TFlowConfig` defaults to `Readonly<Record<string, unknown>>`. The state, resources, sequencer-state and targets parameters do default to open records or maps. Assignability of any block's `ctx` to plain `BlockContext` holds, but the stated reason is imprecise. Low severity. (packages/core/src/types/block.ts:326-358)
+
+- Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 ## 6 · Depth pass
 
