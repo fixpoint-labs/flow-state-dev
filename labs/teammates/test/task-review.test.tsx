@@ -163,6 +163,7 @@ describe("an answer drawn as report sections", () => {
     // A long line that is nearly a heading reads in linear time.
     const started = performance.now();
     expect(wholeReport(`## ${" ".repeat(50_000)}x${" ".repeat(50_000)}#`)).toBeNull();
+    expect(wholeReport(`## ${"#".repeat(100_000)}x`)).toBeNull();
     expect(performance.now() - started).toBeLessThan(200);
   });
 });

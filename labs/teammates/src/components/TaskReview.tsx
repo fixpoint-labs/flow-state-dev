@@ -76,8 +76,12 @@ export function wholeReport(answer: string | null | undefined): RunReport | null
     .filter((line) => line !== "");
   const headings = lines.flatMap((line) => {
     const match = HEADING_LINE.exec(line);
-    // A closing run of #s ("## Checks ##") is dropped with a plain replace, after the match.
-    return match === null ? [] : [match[1]!.replace(/#+$/, "").replace(/[:*_`]/g, "").trim().toLowerCase()];
+    if (match === null) return [];
+    // A closing run of #s ("## Checks ##") is dropped by a scan from the end: linear, where `/#+$/` isn't.
+    const text = match[1]!;
+    let end = text.length;
+    while (end > 0 && text[end - 1] === "#") end--;
+    return [text.slice(0, end).replace(/[:*_`]/g, "").trim().toLowerCase()];
   });
   if (lines.length === 0 || !HEADING_LINE.test(lines[0]!) || headings.some((heading) => !REPORT_HEADINGS.has(heading))) return null;
   return runReport(answer);
