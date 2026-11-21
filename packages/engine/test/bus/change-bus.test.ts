@@ -17,7 +17,7 @@ import {
 import { type StoreRegistry } from "../../src";
 import { createInMemoryStores } from "../../src/host";
 import { resolveStores } from "../../src/routes/http-handlers";
-import { storeIdentity } from "../../src/bus/publish-writes";
+import { publishSessionOwnerRun, storeIdentity } from "../../src/bus/publish-writes";
 import { writeSessionId } from "../../src/resources/default-write-flow";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -359,10 +359,17 @@ describe("withChangeBus · every request and session write publishes its session
     await tick();
     expect(t1).toEqual([]);
 
-    // A session a list shows still names its owner's topic.
+    // Nor an exposed field's delta, which the execution context publishes beside the store.
+    publishSessionOwnerRun(bus, session(write));
+    await tick();
+    expect(alice).toEqual([]);
+
+    // A session a list shows still names its owner's topic, for a write and for an exposed field's delta.
     await stores.session.set("s_listed", session("s_listed"), "absent");
     await tick();
-    expect(alice.map((n) => n.kind)).toEqual(["run"]);
+    publishSessionOwnerRun(bus, session("s_listed"));
+    await tick();
+    expect(alice.map((n) => n.kind)).toEqual(["run", "run"]);
   });
 
   // FIX-2625: a notice names what changed, from the ids the wrapper already

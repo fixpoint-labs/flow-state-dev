@@ -262,11 +262,11 @@ function ownerRunNotice(owner: { userId: string; tenantId: string | undefined })
   return notice(userTopic(owner.userId, owner.tenantId), "run");
 }
 
-// FIX-2864.
+// FIX-2864. A write session is never listed (FIX-2624).
 /**
  * Whether a write to session `sessionId` publishes `run` on its owner's user
- * topic: an owner, and a session a list of theirs can show. A write session is
- * never listed (FIX-2624).
+ * topic: an owner, and a session a list of theirs can show, which a write
+ * session never is.
  */
 function ownerHears(sessionId: string, userId: string | undefined): userId is string {
   return userId !== undefined && !isWriteSessionId(sessionId);
@@ -284,9 +284,9 @@ function ownerHears(sessionId: string, userId: string | undefined): userId is st
  */
 export function publishSessionOwnerRun(
   bus: ChangeBus,
-  session: { userId?: string | null; tenantId?: string | null }
+  session: { id: string; userId?: string | null; tenantId?: string | null }
 ): void {
-  if (session.userId == null) return;
+  if (session.userId == null || !ownerHears(session.id, session.userId)) return;
   publishNotices(bus, [ownerRunNotice({ userId: session.userId, tenantId: session.tenantId ?? undefined })]);
 }
 
