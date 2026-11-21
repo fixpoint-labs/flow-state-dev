@@ -6,7 +6,7 @@ description: "What a client receives when a block throws, every error code and w
 
 # Errors
 
-A request is one run of an action. It fails when a block in it throws, or when the input it was given is refused. Whatever was thrown, the client receives the same thing: one `error` item with a code, a message and optional details, and a stored request record that says `failed`. The code tells a screen or a monitoring tool what kind of failure it was. The thrown error, as a `FlowError`, also has a `retryable` flag. The `error` item does not carry it; the retry mechanisms below and `errorCapture` read it.
+A request is one run of an action. It fails when a block in it throws, or when the input it was given is refused. Whatever was thrown, the client receives the same thing: one `error` item with a code, a message and optional details, and a stored request record that says `failed`. The code tells a screen or a monitoring tool what kind of failure it was. The thrown error, as a `FlowError`, also has a `retryable` flag. The `error` item does not carry it; the retry mechanisms below and `errorCapture` read it. [When something fails](../concepts/when-something-fails.md) explains where a throw goes and how a flow catches it.
 
 The examples use the `support` flow. Its `handleTicket` action runs `lookUpOrder`, a block that throws when the order service is down.
 
@@ -320,6 +320,7 @@ Hooks that run when a request fails are documented where each is declared. Their
 
 ## Next
 
+- [When something fails](../concepts/when-something-fails.md): where a throw goes, how a step catches it, and the hooks that report it.
 - [Items and the stream](./items.md): every item type, including `error`, and who sees each.
 - [HTTP API](./http-api.md): the status codes a refused route returns.
 - [Pause, resume and replay](./durable-execution.md): what survives a restart, and how a suspended request resumes.
