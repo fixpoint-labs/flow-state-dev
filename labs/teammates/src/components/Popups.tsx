@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { conversationLines, useSessionFeed, type ItemLine } from "@flow-state-dev/react";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import type { RosterEntry, WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
