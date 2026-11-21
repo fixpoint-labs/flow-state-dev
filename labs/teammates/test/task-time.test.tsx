@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
 /**
- * A teammate's tasks carry their time in its panel: a running row times this
- * attempt's run in place of "running", a run that stopped answering (its
- * lease lapsed, the board's own rule) reads *quiet* in the warning colour, but
- * never while the panel's feed is stale, an ended row says how long ago it
- * ended, and the heading counts each state. The screen reads what the signal
+ * A teammate's tasks carry their time in its panel: a running card times this
+ * attempt's run, a run that stopped answering (its lease lapsed, the board's
+ * own rule) reads *quiet* in the warning colour, but never while the panel's
+ * feed is stale, an ended card says how long ago it ended, and a task open
+ * more than a day says *Long-running*. Durations past a day read in days, so
+ * a stalled task never reads as a plausible "71h 24m". The screen reads what the signal
  * needs from the coding board view's row: its `state`, its run's start and
  * its lease.
  *
@@ -19,8 +20,8 @@ import type { SessionConnectionStatus } from "@flow-state-dev/client";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { rosterEntry } from "./scripted-server";
 import { TeammatePanel } from "../src/components/TeammatePanel";
-import { timeSignalOf } from "../src/lib/task";
-import { codingTask, standInFollower, stubServer, TestProvider, type StubData } from "./stub-server";
+import { elapsedText, isLongRunning, LONG_RUNNING_MS, timeSignalOf } from "../src/lib/task";
+import { codingTask, hold, standInFollower, stubServer, TestProvider, type StubData } from "./stub-server";
 
 afterEach(cleanup);
 
@@ -47,11 +48,11 @@ async function panel(rows: CodingBoardTask[], connection: SessionConnectionStatu
   render(
     <TestProvider client={client}>
       <Follower />
-      <TeammatePanel worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} onOpen={() => {}} />
+      <TeammatePanel worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} isCoding={() => false} onOpen={() => {}} />
     </TestProvider>,
   );
   const shown = screen.getByRole("complementary", { name: "Lead's panel" });
-  await within(shown).findByText(/^Tasks \(/);
+  await within(shown).findByRole("heading", { name: /^Tasks/ });
   return shown;
 }
 
@@ -62,14 +63,18 @@ describe("a teammate's tasks and their time", () => {
     expect(timeSignalOf(listed("t2", "pending", { updatedAt: 5 })).run).toEqual({ startedAt: null, leaseUntil: null });
   });
 
-  it("times a working run, marks one that stopped answering quiet, ages an ended one, and counts each state", async () => {
+  it("times a working run, marks one that stopped answering quiet, and counts the running ones on their tile", async () => {
     const now = Date.now();
     const shown = await panel([
       listed("a", "in_progress", { updatedAt: now - 10_000, startedAt: now - (4 * MIN + 12_000), leaseUntil: now + 100_000 }),
       listed("b", "in_progress", { updatedAt: now - 40 * MIN, startedAt: now - 45 * MIN, leaseUntil: now - 38 * MIN }),
     ]);
-    expect(within(shown).getByText(/^Tasks \(2\) · 2 running$/)).toBeTruthy();
-    expect(within(shown).getByText(/^working · 4m 1[23]s$/)).toBeTruthy();
+    await waitFor(() => expect(within(shown).getByRole("tab", { name: /Running/ }).textContent).toBe("2Running"));
+    const card = (id: string) => within(shown).getByRole("button", { name: `Asked researcher to task ${id}` });
+    expect(card("a").querySelector("[data-elapsed]")?.textContent).toMatch(/^4m 1[23]s$/);
+    // Only a run that answers draws the thin bar; a quiet one says how long it has been quiet instead.
+    expect(card("a").querySelector("[data-progress]")).not.toBeNull();
+    expect(card("b").querySelector("[data-progress]")).toBeNull();
     const quiet = within(shown).getByText("quiet for 40m");
     expect(quiet.className).toContain("text-warning");
   });
@@ -78,7 +83,7 @@ describe("a teammate's tasks and their time", () => {
     const now = Date.now();
     const shown = await panel([listed("b", "in_progress", { updatedAt: now - 40 * MIN, startedAt: now - 45 * MIN, leaseUntil: now - 38 * MIN })], "stopped");
     expect(within(shown).queryByText(/quiet/)).toBeNull();
-    expect(within(shown).getByText(/^working · 45m/)).toBeTruthy();
+    expect(shown.querySelector("[data-elapsed]")?.textContent).toMatch(/^45m/);
   });
 
   it("never says quiet while the board's read fails, though the conversation's feed is live", async () => {
@@ -89,7 +94,7 @@ describe("a teammate's tasks and their time", () => {
     // The board's read fails from now: its last rows stay, stale, and say nothing of the run.
     data.boardFails = true;
     await waitFor(() => expect(within(shown).queryByText(/quiet/)).toBeNull(), { timeout: 3000 });
-    expect(within(shown).getByText(/^working · 45m/)).toBeTruthy();
+    expect(shown.querySelector("[data-elapsed]")?.textContent).toMatch(/^45m/);
   });
 
   it("never says working for a running task no lease holds (parked, or waiting on its pull request): it says how long it has been idle", async () => {
@@ -99,11 +104,60 @@ describe("a teammate's tasks and their time", () => {
     expect(within(shown).getByText("idle · 3d")).toBeTruthy();
   });
 
-  it("says how long ago an ended task ended, after its status", async () => {
+  it("says how long ago an ended task ended", async () => {
     const now = Date.now();
-    const shown = await panel([listed("c", "completed", { updatedAt: now - 12 * MIN })]);
-    expect(within(shown).getByText(/^Tasks \(1\) · 1 done$/)).toBeTruthy();
-    fireEvent.click(within(shown).getByRole("button", { name: /Done \(1\)/ }));
-    expect(within(shown).getByText("12m ago").closest("[data-status]")?.textContent).toBe("done · 12m ago");
+    const shown = await panel([listed("c", "cancelled", { updatedAt: now - 12 * MIN })]);
+    fireEvent.click(within(shown).getByRole("tab", { name: /Done/ }));
+    expect(within(shown).getByRole("button", { name: "Asked researcher to task c" }).querySelector("[data-elapsed]")?.textContent).toBe("12m ago");
+  });
+
+  it("tags a task still open after a day Long-running, in amber, and drops its bar: someone should look at it", async () => {
+    const now = Date.now();
+    const DAY = 24 * 60 * MIN;
+    const shown = await panel([
+      listed("stuck", "in_progress", { updatedAt: now - 10_000, startedAt: now - (2 * DAY + 23 * 60 * MIN), leaseUntil: now + 100_000 }),
+      listed("fresh", "in_progress", { updatedAt: now - 10_000, startedAt: now - 23 * 60 * MIN, leaseUntil: now + 100_000 }),
+    ]);
+    const stuck = within(shown).getByRole("button", { name: "Asked researcher to task stuck" });
+    expect(stuck.querySelector("[data-long-running]")?.textContent).toBe("Long-running");
+    expect(stuck.querySelector("[data-elapsed]")?.textContent).toBe("2d 23h");
+    expect(stuck.querySelector("[data-elapsed]")?.className).toContain("text-warning-text");
+    expect(stuck.querySelector("[data-progress]")).toBeNull();
+    // Under a day is ordinary work, however long it feels.
+    expect(within(shown).getByRole("button", { name: "Asked researcher to task fresh" }).querySelector("[data-long-running]")).toBeNull();
+  });
+});
+
+describe("the Long-running rule", () => {
+  const at = (status: string, startedAt: number) => codingTask({ id: "t", status, run: { sessionId: "r", requestId: "q", attempt: 1, startedAt } });
+
+  it("is a day of this attempt, and only for a task still active", () => {
+    const now = Date.now();
+    expect(LONG_RUNNING_MS).toBe(24 * 60 * MIN);
+    expect(isLongRunning(at("in_progress", now - LONG_RUNNING_MS - 1), now)).toBe(true);
+    expect(isLongRunning(at("in_progress", now - LONG_RUNNING_MS + 1), now)).toBe(false);
+    // A task that ended is over, not long-running, however long it took.
+    expect(isLongRunning(at("completed", now - 3 * LONG_RUNNING_MS), now)).toBe(false);
+    // A retry times itself: its earlier attempts don't make it long-running.
+    const retried = codingTask({ id: "t", status: "in_progress", startedAt: now - 3 * LONG_RUNNING_MS, run: { sessionId: "r", requestId: "q", attempt: 2, startedAt: now - MIN } });
+    expect(isLongRunning(retried, now)).toBe(false);
+  });
+
+  it("tags a task waiting on you or still queued past a day: the stall it exists to surface", () => {
+    // A review that has waited 72h on you is the case that asked for the tag; "active" has to include it.
+    const now = Date.now();
+    const started = { sessionId: "r", requestId: "q", attempt: 1, startedAt: now - 3 * LONG_RUNNING_MS };
+    const waiting = codingTask({ id: "t", status: "in_progress", run: started, asks: [hold("review", "Review the change", { taskId: "t" })] });
+    expect(isLongRunning(waiting, now)).toBe(true);
+    expect(isLongRunning(codingTask({ id: "t", status: "pending", run: started }), now)).toBe(true);
+  });
+});
+
+describe("a task card's elapsed time", () => {
+  it("keeps two units at most and reads days past a day, never hours in the dozens", () => {
+    expect(elapsedText(42_000)).toBe("42s");
+    expect(elapsedText(2 * MIN + 23_000)).toBe("2m 23s");
+    expect(elapsedText(63 * MIN)).toBe("1h 3m");
+    expect(elapsedText(71 * 60 * MIN + 24 * MIN)).toBe("2d 23h");
   });
 });

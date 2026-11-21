@@ -80,7 +80,10 @@ describe("a message another worker sent", () => {
   it("lands under the sender's name, marked as a reply", () => {
     drawLines(linesOf([received("c", "q1", { id: "msg_2", from: WRITER, text: "Nov 12", inReplyTo: "msg_1", budget: 3 })]), { nameOf: () => "writer" });
     const line = screen.getByRole("region", { name: "From writer" });
-    expect(line.textContent).toContain("← writer · reply");
+    // Its header names the sender and says it is a reply.
+    const header = line.querySelector("[data-part=label]")!;
+    expect(header.textContent).toContain("writer");
+    expect(header.textContent).toContain("reply");
     expect(line.textContent).toContain("Nov 12");
   });
 });
@@ -89,7 +92,7 @@ describe("a task the worker filed", () => {
   // From the board's task once it is read: `task-panel.test.tsx` draws the same card in a conversation over a board.
   it("is its card from the filing, before the board's task arrives", () => {
     drawLines(linesOf([filed("f", "q1", { taskId: "task_1", title: "Draft the post", assignee: WRITER })]), { nameOf: () => "writer" });
-    expect(screen.getByRole("button", { name: "Asked writer to draft the post" }).getAttribute("data-status")).toBe("running");
+    expect(screen.getByRole("button", { name: "Asked writer to draft the post" }).closest("[data-entry=task]")?.getAttribute("data-status")).toBe("running");
   });
 });
 

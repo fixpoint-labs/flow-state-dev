@@ -16,6 +16,7 @@ import type {
 import { makeSchemaStrict } from "./makeSchemaStrict";
 import { applyCaching } from "./caching";
 import { asRecord } from "./as-record";
+import { redactSecrets } from "../errors/serialize-error";
 import { sanitizeToolName, ensureUniqueAlias } from "../helpers/tool-name";
 
 export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
@@ -959,6 +960,12 @@ function createGeneratorModelFromAiSdk(
 
       const result = streamText(request as any);
 
+      // The first `error` part the stream carried. When a provider refuses
+      // the call (bad key, quota, bad request) the SDK reports the refusal
+      // only as this part, then rejects the settled-finish promises with a
+      // generic NoOutputGeneratedError; the catch below puts this one back.
+      let streamError: unknown;
+
       // Track tool names announced by `tool-input-start` so subsequent
       // `tool-input-delta` parts (which carry only `id`/`delta` on the wire)
       // can report the tool they belong to.
@@ -1046,6 +1053,7 @@ function createGeneratorModelFromAiSdk(
           }
         } else if (partRecord.type === "error") {
           console.error("[ai-sdk-stream] error event:", partRecord.error);
+          streamError ??= partRecord.error;
         } else if (partRecord.type === "tool-error") {
           console.error("[ai-sdk-stream] tool-error event:", partRecord.toolName, partRecord.error);
         } else if (partRecord.type === "abort") {
@@ -1094,8 +1102,23 @@ function createGeneratorModelFromAiSdk(
         // failed: This operation was aborted" (vercel/ai#9579) as opaque text
         // with no walkable cause. The clean top-level message keeps the
         // block-failure surface legible; the cause carries the detail.
-        const cause = err instanceof Error ? err : new Error(String(err));
-        const wrapped = new Error("AI SDK stream failed", { cause });
+        //
+        // When the rejection is only the SDK's "No output generated" wrapper
+        // and the stream carried the real error, that error is the cause and
+        // its status and message go on the top-level message, so the turn's
+        // error names why the provider refused (keys redacted).
+        const rejection = err instanceof Error ? err : new Error(String(err));
+        const providerError =
+          streamError !== undefined && isNoOutputGenerated(rejection)
+            ? streamError instanceof Error
+              ? streamError
+              : new Error(String(streamError))
+            : undefined;
+        const cause = providerError ?? rejection;
+        const wrapped = new Error(
+          providerError === undefined ? "AI SDK stream failed" : describeProviderError(providerError),
+          { cause }
+        );
         wrapped.name = "ModelStreamError";
         throw wrapped;
       }
@@ -1142,6 +1165,21 @@ function createGeneratorModelFromAiSdk(
   model.streamStep = (options) => model.stream!(asStepOptions(options));
 
   return model;
+}
+
+/** The AI SDK's generic "the stream produced no step" rejection. */
+function isNoOutputGenerated(error: Error): boolean {
+  return error.name === "AI_NoOutputGeneratedError" || error.name === "NoOutputGeneratedError";
+}
+
+/**
+ * One-line message for a provider's stream error: its HTTP status when it has
+ * one, and its own message with keys and tokens redacted.
+ */
+function describeProviderError(error: Error): string {
+  const statusCode = (error as { statusCode?: unknown }).statusCode;
+  const status = typeof statusCode === "number" ? ` (${statusCode})` : "";
+  return `Model provider error${status}: ${redactSecrets(error.message)}`;
 }
 
 /**
