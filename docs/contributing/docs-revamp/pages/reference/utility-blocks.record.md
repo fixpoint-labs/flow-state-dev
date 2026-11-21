@@ -42,6 +42,7 @@ Written by `docs-writer` (sonnet), 2937 words. Scenario: A support desk: its sup
 - After revise round 3, page sha256 36d931a8bed2: exit 1. Failed: type-check of TypeScript examples (apps/kitchen-sink/.docs-tc-R-04, tsc strict, against workspace @flow-state-dev/core; scratch folder deleted afterwards).
 
 - After the loop (review): the final fact check found no untrue claim. The four open findings were taken in one writer round. `technical-reply.ts` and `human-review.ts` are shown as titled examples, so every example type-checks at its titled path (strict, moduleResolution bundler; deleting one import gives TS2307). The page now answers the three missed cold-read questions: `intentRouter`'s threshold is a strict `<` and a below-threshold ticket with no fallback throws at request time, with the handler getting the original input (packages/core/src/utility/intent-router.ts:48-61, :104-108); `keyedRouter` counts only own keys of `blocks`, runs `fallback` or throws, and adapts no input (packages/core/src/utility/keyed-router.ts:82-90); `sessionTitleGenerator` is wired with `.sideChain`, `messageLimit` counts turns, and a title is written only when non-empty and changed. check-docs-page, lint-brand (parses as MDX), retired terms and model strings pass. 2920 words. Page sha256 602907b0b43f.
+- After the loop (PR review, Greptile): the two links that promised Errors and Resources covered `historySummary`'s failure and resource are replaced with the contracts inline: a failed fold keeps the previous summary and retries next turn; with no fold run, the `context` throws; the session resource exposes only `throughRequestId`, `complete` and `folds` (packages/core/src/utility/history-summary.ts:165-173, :309-337; history-summary-resource.ts:60). check-docs-page and lint-brand pass. 2986 words. Page sha256 96b0b79e758e.
 
 ## 5 · Fact check
 
@@ -52,6 +53,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 a3f
 Final fact check of the page as it closed, sha256 36d931a8bed2: no untrue claim found.
 
 - Re-run after the review edit: the changed claims were checked against the code each cites (intent-router.ts, keyed-router.ts, session-title-generator.ts, useSession.ts). No untrue claim remains open.
+- Re-run after the review edit: each finding was checked against the code by a read-only reviewer before the fix, and the fix re-read the cited lines. No untrue claim remains open.
 
 ## 6 · Depth pass
 

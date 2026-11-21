@@ -49,6 +49,7 @@ Written by `docs-writer` (sonnet), 2683 words. Scenario: A support desk: handleT
 - After the loop (review): the final fact check found three untrue claims, fixed in the loop's last round: `onTaskChangeFor` is exported from `@flow-state-dev/orchestration/tasks`, not the package root (packages/orchestration/src/tasks/index.ts); `.doUntil()`/`.doWhile()` throw once the block has run 251 times (packages/core/src/blocks/sequencer.ts:1772-1813); `.map()`'s output type is the mapper's return type, with no tracked output schema. That fix left the banned word "still", which failed pass 4. The five open editor findings and the banned word were taken in one writer round: side-chain failure is qualified where it says it never fails the request (packages/engine/src/execution/request-side-chain-pool.ts:111-114; packages/orchestration/src/task-board/task-request.ts:472-485); `block_trace` is defined at first use as an item; suspension and resume are explained and linked; the task board is linked; the request does not finish until every side chain has settled (packages/engine/src/execution/runAction.ts:2774). check-docs-page, lint-brand (parses as MDX), retired terms and model strings pass. 2798 words. Page sha256 97c16e54cdf5.
 
 - After the loop (Blocks depth pass): the Blocks page moved its mechanism here, the page that owns it: "Reading earlier results" (`ctx.getBlockOutput`, `ctx.getBlockResult`, `ctx.wasRescued`) and "State inside steps, loops and fan-out". A read-only fact check of the moved lines found two untrue claims across the receiving pages and eight lines that repeated or contradicted text already on a page; all were fixed. check-docs-page and lint-brand (parses as MDX) pass. 2974 words. Page sha256 738caf45fd23.
+- After the loop (PR review, Greptile): `.tap(factory, inlineConfig)` is named `tap:<block name>` (packages/core/src/blocks/sequencer.ts:2017). A sequencer's own `.rescue()` runs on the first failure of a matching step, so the run's retry policy sees no error (sequencer.ts:1078-1089; executeBlock.ts:336-348). check-docs-page and lint-brand pass. 3034 words. Page sha256 da40ef222263.
 
 ## 5 · Fact check
 
@@ -68,6 +69,7 @@ Final fact check of the page as it closed, sha256 71c858a4dcd2: 3 untrue, fixed 
 - Re-run after the review edit: each changed claim was checked by the writer against the code it cites. No untrue claim remains open.
 
 - Re-run after the review edit: the moved content was fact-checked against the code (about 95 claims); the fixes were checked against the code they cite. No untrue claim remains open.
+- Re-run after the review edit: each finding was checked against the code by a read-only reviewer before the fix, and the fix re-read the cited lines. No untrue claim remains open.
 
 ## 6 · Depth pass
 

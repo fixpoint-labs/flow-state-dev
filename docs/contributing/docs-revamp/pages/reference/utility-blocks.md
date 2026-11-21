@@ -324,7 +324,7 @@ Not a block. `utility.historySummary({ summarize, name? })` returns three parts.
 
 `summarize` is a block taking `{ summary: string | null, turns: LLMMessage[] }` and returning `{ summary: string, keyPoints? }`. `name` is the resource's accessor name and storage key, default `historySummary`.
 
-What happens when `summarize` fails, and the error when the fold step is missing, are on [Errors](./errors.md). The stored summary is capped at 8,000 characters, key points under a `Key points:` header.
+If `summarize` throws, the fold step catches it, logs a warning and keeps the previous summary, and the next turn tries again. Turns that leave the history window in the meantime mark the summary `complete: false`. If turns have left the window and no fold has run, the `context` preset throws `historySummary "<name>": turns have left the history window and no fold has run`. The stored summary is capped at 8,000 characters, key points under a `Key points:` header.
 
 ## What is stored
 
@@ -335,7 +335,7 @@ Only `upsertResource`, `sessionTitleGenerator` and `historySummary` keep anythin
 | `upsertResource`'s instance | The collection you declare | What that collection's `client` config exposes | Where the collection's scope and store put it | One per `key(input)` value |
 | `sessionTitleGenerator`'s title | The session, as metadata `title` | Clients reading the session (`useSession`, `session?.title`) | The session's metadata | One per session, replaced by later runs |
 
-`historySummary`'s session-scoped resource is described on [Resources and collections](./resources.md).
+`historySummary`'s resource is session-scoped and holds the summary. Clients see only `throughRequestId` (the last turn summarized), `complete` and `folds` (how many folds have run), never the summary's text.
 
 ## Next
 

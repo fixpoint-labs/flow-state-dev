@@ -79,7 +79,7 @@ Action-input refusal does not make `send` reject. The request is accepted, settl
 | A tool call that suspended | Recorded `failed` with `error.code` `"SUSPENSION"`. It is a pause, not a failure. |
 | A failure a `.rescue()` handled | No `error` item, no `final` event to [`errorCapture`](#errorcapture), no request-level `onErrored` hook. The block's own `onErrored` runs before the rescue. |
 | A step in `.sideChain()` that throws | The main chain goes on. |
-| A cancelled request | Ends `aborted` with an aborted message and no `error` item. A dropped connection ends it `interrupted`. |
+| A cancelled request | Ends `aborted` with an aborted message and no `error` item. Closing the HTTP connection is not a cancel: the stream closes and the run goes on. A request ends `interrupted` when the process running it dies, or when the `signal` passed to a direct `runAction` call aborts with no cancel on record. |
 
 ### A hook that throws after the action returned
 
@@ -199,7 +199,8 @@ These are set on a block's config, or with `.rescue()`. The action and request h
 - A handler with no `when`, or an empty one, matches any error.
 - A suspension signal is never rescued.
 - `ctx.wasRescued(block)` reports afterwards whether a handler recovered the block.
-- On the action's block, retries run first. Rescue fires after the last attempt, or at once for a non-retryable error.
+- On an action's block that is not a sequencer, retries run first. Rescue fires after the last attempt, or at once for a non-retryable error.
+- A sequencer's own `.rescue()` runs on the first failure of a matching step, and its output is the result, so the run's retry policy sees no error and does not retry. Only an error no handler matches, or one the handler throws, is retried.
 
 ### Retry
 
@@ -212,7 +213,7 @@ Where a policy comes from, and how it combines with rescue:
 | Where it is read | Only on the action's block. A block used as a step, a route or a tool runs once whatever its `retry`. A generator used as a tool is retried only by `tools.defaults.retry`. If the action's block is a sequencer, a `retry` on a step inside it is not read, and the run's policy retries the whole sequencer. |
 | The run's policy | The `retry` option of `runAction`. No HTTP or host option sets it. |
 | Merge | The block's fields override the run's, per field. `{ maxAttempts: 4 }` over `{ baseDelayMs: 100, maxAttempts: 2 }` gives `{ maxAttempts: 4, baseDelayMs: 100, maxDelayMs: 5000 }`. |
-| With rescue | Retries are used up first. Then a `rescue` on the action's block fires. |
+| With rescue | On an action's block that is not a sequencer, retries are used up first, then its `rescue` fires. A sequencer's `.rescue()` fires on the first failure, and a recovered run is not retried. |
 
 How the attempts run:
 
@@ -241,7 +242,7 @@ Each mechanism below has its own policy.
 |---|---|---|
 | A block's `retry` policy | Only when the policy sets `maxAttempts` above 1, and then any error except a `FlowError` with `retryable: false`. | [Retry](#retry), [Sequencer methods](./sequencer-methods.md) |
 | A tool's retry | Only when `tools.defaults.retry` is set on the flow. | [Generators](./generators.md) |
-| The model call | Yes, per model, then the next model in the group. | [Models](./models.md) |
+| The model call | `generate` and `generateStep` try each model in the group up to `maxAttemptsPerModel` times with backoff, and go to the next model at once on a non-retryable error or a provider package that fails to load. `stream` and `streamStep` try each model once, go to the next on a retryable error, and rethrow a non-retryable one. | [Models](./models.md) |
 | A BullMQ job | Yes, up to `attempts` (default 3), unless the failed result is marked `retryable: false`. A plain throw is marked `false`, so that job fails at once with no retry. | [Background work](./background-work.md) |
 | The retry route | Never. `handle.retry({ input? })` re-runs a `failed` or `interrupted` request as a new request with a new id, and the response names the old one in `retryOf`. The original record stays `failed`. A request that is `in_progress` answers `409`. A caller who does not own the request gets `404`, the same answer as an unknown id. Only a request that arrived over `http`, `mcp` or `scheduled`, or a source the host names, can be re-run. | [HTTP API](./http-api.md), [React](./api/react.md) |
 

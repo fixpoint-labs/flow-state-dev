@@ -295,6 +295,8 @@ Condition is evaluated once, before dispatch, and may be async. A `boolean` is a
 - On an action's root block with `.rescue()`: rescue runs after the last attempt (3 attempts, then the handler), and at once, without
   further attempts, for an error the retry policy calls non-retryable (`retryableErrors` not matching) (`eb:339-366`; `br:60-160` [test]).
 - Inside a sequencer, a step's `.rescue()` runs on its first failure.
+- A sequencer's own `.rescue()` is not deferred to the last attempt: the engine skips root rescue for a sequencer (`eb:336-337`), and the sequencer runs its handlers on the first failure of a matching step and returns the recovery output (`sq:1078-1089`), so the run's retry policy sees no error and does not retry. Only an error no handler matches, or one a handler throws, reaches the retry loop.
+- Chain names for `.tap`: `.tap(block)` and `.tap(fn)` are named `tap` (`sq:2046`); `.tap(factory, inlineConfig)` is named `tap:<inline block name>` (`sq:2017`).
 
 ---
 

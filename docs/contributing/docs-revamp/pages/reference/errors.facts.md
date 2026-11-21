@@ -184,9 +184,13 @@ An error with a `cause` there carries the same serialized `details.cause`. `eto:
 `ct:325-335`. Trace items are off the default client stream. `client/src/client.ts:1051` (`include: "trace"` only with
 `includeTrace: true`).
 
-**A13. Not failures.** A cancelled request ends `aborted` with an "aborted" message item and **no** `error` item; a dropped
-connection ends it `interrupted`. `ra:3118-3126` (the `wasIntentionalAbort` branch emits the aborted message, `emitTerminalError`
-only when not aborted) **[read]**. A step in `.sideChain()` that throws does not fail the main chain. `apps/docs/docs/sequencers/composing-blocks.md:205` **[doc]**.
+**A13. Not failures.** A cancelled request ends `aborted` with an "aborted" message item and **no** `error` item.
+`ra:3118-3126` (the `wasIntentionalAbort` branch emits the aborted message, `emitTerminalError`
+only when not aborted) **[read]**. **Correction:** a dropped HTTP connection does not end the request. The action route does not
+pass the request signal into `runAction`, so a disconnect only closes the stream and the run goes on
+(`engine/src/routes/action-routes.ts:166-172`) **[read]**. A request ends `interrupted` when its process dies and the stale sweep
+finds it (`ra:3063-3064`, `detectInterruptedRequests`), or when a direct `runAction` call's own `signal` aborts with no
+recorded cancel (`ra:3070-3092`, `wasIntentionalAbort` false) **[read]**. A step in `.sideChain()` that throws does not fail the main chain. `apps/docs/docs/sequencers/composing-blocks.md:205` **[doc]**.
 A failure a `.rescue()` handled is not a failure of the request: no `error` item and no `final` capture event (`engine/test/error-capture-final.test.ts:94-117` **[test]**).
 
 ---
@@ -300,7 +304,7 @@ on a block config as `retry`, `:1082`; a generator config as well, `core/src/blo
 - **A block whose input fails its schema is retried like any plain throw.** **[run]** a block with `retry: { maxAttempts: 3 }` and bad input: the input check ran 3 times (`execute` 0 times) and the request failed with the `Block "..." input validation failed` message. (Pass 8 should decide whether to keep this on the page; it is true and surprising.)
 - A retried `FlowError` that eventually fails is the `FlowError` itself on the item. `engine/test/retry-p-retry.test.ts:67`.
 - `onRetry` fires only before an attempt that will happen, not for the last failure; each failed attempt fires its own `errorCapture` event (D5). `rt:101-110`, `:150-157`; `eb:429-468`.
-- A `.rescue()` on a block runs only after the last attempt, or at once for an error that is not retryable. `eb:332-362`.
+- A `.rescue()` on an action's root block that is not a sequencer runs only after the last attempt, or at once for an error that is not retryable. `eb:332-362` (`eb:336-337` skips sequencers). A sequencer's own `.rescue()` runs on the first failure of a matching step and returns the recovery output, so the retry loop sees no error and does not retry; only an unmatched error, or one the handler throws, is retried. `core/src/blocks/sequencer.ts:1078-1089`.
 - A cancel (`signal` aborted) before, during a backoff wait, or during an attempt ends the loop with `Error("Retry aborted")`. `rt:118-127`, `:160-170`; `engine/test/retry-p-retry.test.ts:137-172` **[test]**.
 
 **C2. A tool's retry** (`defineFlow({ tools: { defaults: { retry } } })`, `core/src/types/flow.ts:92-95`) for tools called by a generator. `te:403-453`. Attempts `maxAttempts` (default 1), `baseDelayMs` default 0, `maxDelayMs` default unbounded, exponential. It
@@ -473,7 +477,7 @@ A failed request leaves four things. All belong to the request and sit in the re
 **Which errors are retried?**
 - Automatically, a block with a `retry` policy retries any thrown value except a `FlowError` with `retryable: false`, a `SuspensionError`, and anything outside `retryableErrors` when that is set; the default is no retries. (C1)
 - A tool under `tools.defaults.retry` retries on `retryableErrors` only, never a suspension error; it ignores `retryable`. (C2)
-- The model call retries per model (default 2 attempts) on 429, 500, 502, 503, network messages or the SDK's own `isRetryable`, then falls back to the next model. (C3)
+- `generate` and `generateStep` retry each model (`maxAttemptsPerModel`, default 2, with backoff) on 429, 500, 502, 503, network messages or the SDK's own `isRetryable`, and go to the next model at once on a non-retryable or provider-load error. `stream` and `streamStep` try each model once, go to the next on a retryable error and rethrow a non-retryable one. (C3, correction)
 - A queued job is retried only when the failed result is not marked `retryable: false`; a plain throw is marked false, so it is not. Default 3 attempts. (C4, C8)
 - A person or client can re-run a `failed` or `interrupted` request with the retry route, as a new request. (A9, C5)
 
