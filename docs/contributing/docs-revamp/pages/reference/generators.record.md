@@ -38,6 +38,8 @@ Written by `docs-writer` (sonnet), 3926 words. Scenario: The support flow's `sup
 
 - After the loop (batch 5 depth passes): the Prompt and resource templates depth pass moved one line here: a prompt file's `rawText` and frontmatter are recorded as `templateSource` and `templateFrontmatter` in the generator's capture (packages/core/src/blocks/generator.ts:3319-3324). A read-only fact check found it true. check-docs-page and lint-brand (parses as MDX) pass. 4016 words. Page sha256 3973c3fe264e.
 
+- After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: `lookUpOrder` reads a `findOrder` stand-in, `issueRefund` returns what a `refundOrder` stand-in refunded, and `supportAgent` reads the customer's plan from user state (`userStateSchema` plus a function context value) instead of hard-coding `pro`. Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 4144 words. Page sha256 b5d23d3583d5.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 bc8a84b3210f, and the 33 Reference row(s) pass 6 moved.
@@ -55,6 +57,8 @@ Final fact check of the page as it closed, sha256 d088167d0c22: 2 untrue, fixed 
 - Re-run after the review edit: each finding was checked against the code by a read-only reviewer before the fix, and the fix re-read the cited lines. No untrue claim remains open.
 
 - Re-run after the review edit: the moved lines were fact-checked against the code (about 22 claims across the three receiving pages); the fixes were checked against the code they cite. No untrue claim remains open.
+
+- Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 ## 6 · Depth pass
 

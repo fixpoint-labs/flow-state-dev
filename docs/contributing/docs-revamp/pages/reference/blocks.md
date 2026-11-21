@@ -15,24 +15,32 @@ The examples use a support desk. `handleTicket` is a sequencer that runs `cleanM
 ```ts title="src/flows/support/blocks/auto-reply.ts"
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { draftReplyFor } from "../../../lib/replies";
 
 export const autoReply = handler({
   name: "auto-reply",
   inputSchema: z.object({ text: z.string(), truncated: z.boolean() }),
   outputSchema: z.object({ reply: z.string() }),
-  execute: (input) => ({ reply: `Thanks, we got: ${input.text.slice(0, 80)}` }),
+  execute: async (input) => ({ reply: await draftReplyFor(input.text) }),
 });
 ```
 
 ```ts title="src/flows/support/blocks/escalate.ts"
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { queueForHuman } from "../../../lib/queue";
 
 export const escalate = handler({
   name: "escalate",
   inputSchema: z.object({ text: z.string(), truncated: z.boolean() }),
   outputSchema: z.object({ reply: z.string() }),
-  execute: () => ({ reply: "This message was long, so a person will read it." }),
+  sequencerStateSchema: z.object({ trimmedChars: z.number().default(0) }),
+  onErrored: (error) => console.warn("escalate failed", error.message),
+  execute: async (input, ctx) => {
+    const trimmedChars = ctx.sequencer?.state.trimmedChars ?? 0;
+    await queueForHuman({ text: input.text, trimmedChars });
+    return { reply: "This message was long, so a person will read it." };
+  },
 });
 ```
 
@@ -44,15 +52,11 @@ export const cleanMessage = handler({
   name: "clean-message",
   inputSchema: z.object({ message: z.string() }),
   outputSchema: z.object({ text: z.string(), truncated: z.boolean() }),
-  stateSchema: z.object({ trimmedChars: z.number().default(0) }),
-  sequencerStateSchema: z.object({ cleaned: z.number().default(0) }),
-  retry: { maxAttempts: 3, baseDelayMs: 200 },
-  onErrored: (error) => console.warn("clean-message failed", error.message),
+  sequencerStateSchema: z.object({ trimmedChars: z.number().default(0) }),
   execute: async (input, ctx) => {
     const text = input.message.trim();
     const kept = text.slice(0, 2000);
-    await ctx.self?.incState({ trimmedChars: text.length - kept.length });
-    await ctx.sequencer?.incState({ cleaned: 1 });
+    await ctx.sequencer?.patchState({ trimmedChars: text.length - kept.length });
     return { text: kept, truncated: kept.length < text.length };
   },
 });
@@ -83,7 +87,7 @@ export const handleTicket = sequencer({
   name: "handle-ticket",
   inputSchema: z.object({ message: z.string() }),
   outputSchema: z.object({ reply: z.string() }),
-  stateSchema: z.object({ cleaned: z.number().default(0) }),
+  stateSchema: z.object({ trimmedChars: z.number().default(0) }),
 })
   .step(cleanMessage)
   .step(pickReplier);
@@ -353,7 +357,7 @@ In a sequencer's own callbacks, `ctx.sequencer.state` is typed from its `stateSc
 | From a capability | A capability's `sequencerStateSchema` is installed on the sequencer that uses it, and conflicts the same way. |
 | Nesting | `ctx.sequencer` resolves to the nearest enclosing sequencer with state. A nested sequencer with no `stateSchema` is skipped. |
 
-In the example, `cleanMessage` asks for `cleaned` through `sequencerStateSchema`, and `handleTicket` declares it. If `handleTicket` declared `cleaned` as a string, building throws `SequencerSchemaMismatchError`, see [Errors](./errors.md#router-target-and-sequencer-state-errors).
+In the example, `cleanMessage` writes `trimmedChars` and `escalate` reads it. Both ask for it through `sequencerStateSchema`, and `handleTicket` declares it. `escalate` is a route of `pickReplier`, so its requirement passes through the router. If `handleTicket` declared `trimmedChars` as a string, building throws `SequencerSchemaMismatchError`, see [Errors](./errors.md#router-target-and-sequencer-state-errors).
 
 Fields marked `transientSlot(schema)` are left out of the checkpoint and reset on resume. See [State operations](./state-operations.md#transientslot).
 
