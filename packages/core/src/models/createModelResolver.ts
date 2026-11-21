@@ -128,6 +128,9 @@ const PROVIDER_PACKAGES: Record<string, PackageInfo> = {
   google: { pkg: "@ai-sdk/google", factory: "createGoogle" },
 };
 
+// Core depends on both gateway packages: a gateway key alone turns its
+// gateway on (providerDetection phase 3), so its package must load from
+// wherever core is installed, not only where the app happened to add it.
 const GATEWAY_PACKAGES: Record<string, PackageInfo> = {
   vercel: { pkg: "@ai-sdk/gateway", factory: "createGateway" },
   openrouter: { pkg: "@openrouter/ai-sdk-provider", factory: "createOpenRouter" },
