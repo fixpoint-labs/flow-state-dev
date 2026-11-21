@@ -111,6 +111,3 @@ export type {
   DebaterConfig,
   DebateInput,
 } from "./debate";
-
-export { secondOpinion, createSecondOpinionFlow } from "./second-opinion";
-export type { SecondOpinionConfig } from "./second-opinion";
