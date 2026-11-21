@@ -231,7 +231,31 @@ Import all of these from `@flow-state-dev/core`, except `SchemaInput` and `Schem
 | `SlotValue<S>` | What a kit's `install` receives for a slot. Its shape per slot kind: [Kits and slots](./kits.md). | A slot declaration. |
 | `SchemaInput<T>` and `SchemaOutput<T>` | `T["_input"]` and `T["_output"]` of a Zod type. `never` for anything else. Import from `@flow-state-dev/core/types`. | A Zod schema. |
 
-What `uses` reflects into a block's types, and what `.config()` refuses: [Capabilities](./capabilities.md).
+### What `uses` reflects into `ctx`
+
+A block's `ctx` is typed from the capabilities listed directly in its `uses`, from their top-level fields. `InferCapabilities` gives only the `ctx.cap` entry; the block's own types pick up the others without a helper.
+
+| Capability field | Appears as |
+|---|---|
+| `sessionStateSchema` | `ctx.session.state` |
+| `resources` | `ctx.resources.<key>` |
+| `targetStateSchemas` | `ctx.targets.<key>` |
+| `sequencerStateSchema` | `ctx.sequencer.state` |
+| `stateSchema` | `ctx.self.state` |
+| `fns` | `ctx.cap.<name>` |
+
+The type-only fields `sessionStateType`, `resourcesType`, `targetStatesType`, `sequencerStateType` and `stateSchemaType` override the type their matching field gives. They carry no runtime value, and setting one without its schema or map is a compile error. They survive `.presets()`, `.config()` and either chain. The `ctx.cap` namespace is the intersection over the listed capabilities, keyed by `name`.
+
+Limits:
+
+- A schema supplied only through a preset or a config resolver merges at runtime and adds nothing to the types. Declare it at the capability's top level to type it.
+- Request, user and org state are never reflected.
+- A dependency's schemas install at runtime, including its `fns`, and contribute nothing to the block's types. Redeclare them on the outer capability to type them.
+- A dynamic entry contributes nothing: `InferCapabilities` of a dynamic-only list is `{}`.
+- A capability with no `fns` types as `Record<string, never>` at `ctx.cap.<name>`, but at runtime no such key exists and reading it gives `undefined`.
+- A sequencer's `ctx` is not typed from its `uses`. Handler, generator, router and evaluator are.
+
+Everything else about capabilities, including what `.config()` refuses: [Capabilities](./capabilities.md).
 
 ## In React
 

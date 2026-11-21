@@ -176,6 +176,8 @@ Visibility is two flags, `{ client, history }`. `client` means the item is sent 
 | `status`, `error`, `container`, `source`, `state_change`, `resource_change`, `suspension`, `suspension_resume`, `continuation`, `tool_call_progress` | `{ client: true, history: false }`. Any `itemVisibility` stamp is ignored. |
 | `block_trace`, `router_decision`, `state_snapshot`, `generator_step` | `{ client: false, history: false }`, whatever stamp they carry. |
 
+A capability that sets `itemVisibility` is dropped for any block whose visibility is not among its values, and a block that sets none counts as `{ client: true, history: true }` ([Capabilities](./capabilities.md#composition-and-refusals)).
+
 A generator stamps its items with its `itemVisibility`:
 
 | Value | Meaning |

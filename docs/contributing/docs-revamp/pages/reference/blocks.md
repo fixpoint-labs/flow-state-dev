@@ -125,7 +125,7 @@ A block needs a non-empty `name`, or building throws `Cannot build "<kind>" bloc
 | `connectInput` | `(input, ctx) => nextInput` | none | handler, generator, evaluator, router | Runs before the input check, and `inputSchema` then checks its result. On a sequencer it is a method. |
 | `activeStatusMessage` | `string` or `(input, ctx) => string` | none | all | Calls `ctx.emit.status(message)` when the block starts. A sequencer's function receives the sequencer's `ctx`. |
 | `container` | `{ component?, label?, metadata? }` | none | **read only on sequencer and router** | Wraps the block's items in a `container` item. `label` and `metadata` may be functions of the input. A handler, generator or evaluator that sets it emits none. |
-| `uses` | capability list; an entry may be `(ctx) => CapabilityRef[]` | none | all | Installs capabilities. |
+| `uses` | capability list; an entry may be `(ctx) => CapabilityRef[]` | none | all | Installs capabilities. `context`, `tools`, `controlTools`, `history`, `model`, `providerOptions` or `caching` from one throws at build on any kind but a generator (`<key> is only valid on generator blocks.`), and `sequencerStateSchema` on any kind but a sequencer. [Capabilities](./capabilities.md) |
 
 These fields apply to some kinds only.
 
@@ -319,7 +319,7 @@ A block that declares a `stateSchema` has state of its own. A sequencer's `state
 | `ctx.sequencer` | The nearest enclosing sequencer that declares a `stateSchema`, including the block itself when it is that sequencer | `sequencerStateSchema` on the block, `stateSchema` on the sequencer | No enclosing sequencer has state. |
 | `ctx.targets.<name>`, `ctx.getTarget<T>(name)` | A named block | `targetStateSchemas` (types only) | No block of that name is in scope. See [State targets](#state-targets-and-parents). |
 
-A capability can contribute `stateSchema`, `sequencerStateSchema` and `targetStateSchemas`. It cannot declare `ctx.parent`: the capability preset has no `parentStateSchema` or `parentInputSchema`.
+A capability can contribute `stateSchema`, `sequencerStateSchema` and `targetStateSchemas`. A block's own state lives in memory for one run, and a block that is not a sequencer loses it at a suspend. A sequencer's `stateSchema` state is checkpointed and restored on resume: see [Pause, resume and replay](./durable-execution.md). It cannot declare `ctx.parent`: the capability preset has no `parentStateSchema` or `parentInputSchema`.
 
 Two sources that contribute the same `ctx.self` field, two capabilities or a capability and the block's own `stateSchema`, must use the same schema object. Otherwise building throws `Own-state conflict (<where>): field "<key>" is declared by two sources with different schema references. Two contributors to the same ctx.self field must share the schema definition (reference one constant) or use distinct field names.` Both sides must be `z.object()`. Targets with one name and different schemas throw `Target conflict in capability "<cap>" (<source>): "<name>" is declared with different schema references`.
 
