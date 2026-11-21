@@ -37,6 +37,8 @@ Written by `docs-writer` (sonnet), 4577 words. Scenario: A support desk: `mem` i
 
 - After the loop (review): section 1's "0 facts" is a miscount by the loop; memory.facts.md holds about 215 fact rows. Spot-checked the final fix: `digestIsStale` and `computeDigestSourceSignature` are root exports (packages/memory/src/index.ts). No change. 4700 words. Page sha256 c335a2a0cf22.
 
+- After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: the support flow now registers a `draftReply` generator with `uses: [mem.capability]` instead of `actions: {}`, so the installed memory is used. The `hygiene` snippet stays as it was: it lists the default values as a typed `HygieneConfig`, a reference listing rather than a block. The changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 4699 words. Page sha256 af0f21cc95aa.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 42b9dd717e09, and the 51 Reference row(s) pass 6 moved.
@@ -52,6 +54,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 42b
 Final fact check of the page as it closed, sha256 12e7d630757c: 1 untrue, fixed in a last round.
 
 - `isStale` and `computeSourceSignature` are exported. (Digest section, regeneration paragraph) Untrue: Neither name is exported from `@flow-state-dev/memory`. The package index exports them under verb-first aliases: `digestIsStale` and `computeDigestSourceSignature`. The bare names exist only as `mem.digest.helpers.isStale` and `mem.digest.helpers.computeSourceSignature` on a `system()` result, and as unexported symbols in `digest-helpers.ts`. A reader who imports `{ isStale }` or `{ computeSourceSignature }` from the package gets nothing. (/home/user/flow-state-dev/docs/contributing/docs-revamp/pages/reference/memory.md:177 (code: /home/user/flow-state-dev/packages/memory/src/index.ts:178-181; /home/user/flow-state-dev/packages/memory/src/memory-system.ts:529-532))
+
+- Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 ## 6 · Depth pass
 
