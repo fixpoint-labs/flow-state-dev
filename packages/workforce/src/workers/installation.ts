@@ -390,6 +390,16 @@ function declaredOf(row: WorkerResourceState): Record<string, unknown> {
 }
 
 /**
+ * A worker's problems as one clause for a sentence the caller ends: each
+ * problem's own closing full stop dropped (a flow's refusal is a whole
+ * sentence), joined with "; ". Every sentence that names a worker's problems
+ * goes through here, so none ends on a doubled stop.
+ */
+export function problemsClause(problems: readonly string[]): string {
+  return problems.map((problem) => problem.replace(/\.$/, "")).join("; ");
+}
+
+/**
  * Build the installation's worker model.
  *
  * Refuses a standard worker whose file names no flow, or names one the
@@ -873,7 +883,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     if (worker.found === "own") {
       if (worker.standardOnly) refuse(`Worker "${workerId}" ${standardOnlyReason(flow, false)}.`);
       const built = manifestOfRow(workerId, worker.row);
-      if (!built.ok) refuse(`Worker "${workerId}" can't run: ${built.problems.join("; ")}.`);
+      if (!built.ok) refuse(`Worker "${workerId}" can't run: ${problemsClause(built.problems)}.`);
       manifest = (built as { manifest: WorkerManifest }).manifest;
       description = worker.row.description;
     } else {
@@ -883,7 +893,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
 
     const minted = mint(manifest);
-    if (!minted.ok) refuse(`Worker "${workerId}" can't run: ${minted.problems.join("; ")}.`);
+    if (!minted.ok) refuse(`Worker "${workerId}" can't run: ${problemsClause(minted.problems)}.`);
     const instance = (minted as { worker: FlowInstance }).worker;
     const reached = (instance.resources ?? {}) as Record<string, unknown>;
 
