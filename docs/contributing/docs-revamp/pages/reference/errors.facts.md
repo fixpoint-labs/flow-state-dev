@@ -184,9 +184,13 @@ An error with a `cause` there carries the same serialized `details.cause`. `eto:
 `ct:325-335`. Trace items are off the default client stream. `client/src/client.ts:1051` (`include: "trace"` only with
 `includeTrace: true`).
 
-**A13. Not failures.** A cancelled request ends `aborted` with an "aborted" message item and **no** `error` item; a dropped
-connection ends it `interrupted`. `ra:3118-3126` (the `wasIntentionalAbort` branch emits the aborted message, `emitTerminalError`
-only when not aborted) **[read]**. A step in `.sideChain()` that throws does not fail the main chain. `apps/docs/docs/sequencers/composing-blocks.md:205` **[doc]**.
+**A13. Not failures.** A cancelled request ends `aborted` with an "aborted" message item and **no** `error` item.
+`ra:3118-3126` (the `wasIntentionalAbort` branch emits the aborted message, `emitTerminalError`
+only when not aborted) **[read]**. **Correction:** a dropped HTTP connection does not end the request. The action route does not
+pass the request signal into `runAction`, so a disconnect only closes the stream and the run goes on
+(`engine/src/routes/action-routes.ts:166-172`) **[read]**. A request ends `interrupted` when its process dies and the stale sweep
+finds it (`ra:3063-3064`, `detectInterruptedRequests`), or when a direct `runAction` call's own `signal` aborts with no
+recorded cancel (`ra:3070-3092`, `wasIntentionalAbort` false) **[read]**. A step in `.sideChain()` that throws does not fail the main chain. `apps/docs/docs/sequencers/composing-blocks.md:205` **[doc]**.
 A failure a `.rescue()` handled is not a failure of the request: no `error` item and no `final` capture event (`engine/test/error-capture-final.test.ts:94-117` **[test]**).
 
 ---
@@ -473,7 +477,7 @@ A failed request leaves four things. All belong to the request and sit in the re
 **Which errors are retried?**
 - Automatically, a block with a `retry` policy retries any thrown value except a `FlowError` with `retryable: false`, a `SuspensionError`, and anything outside `retryableErrors` when that is set; the default is no retries. (C1)
 - A tool under `tools.defaults.retry` retries on `retryableErrors` only, never a suspension error; it ignores `retryable`. (C2)
-- The model call retries per model (default 2 attempts) on 429, 500, 502, 503, network messages or the SDK's own `isRetryable`, then falls back to the next model. (C3)
+- `generate` and `generateStep` retry each model (`maxAttemptsPerModel`, default 2, with backoff) on 429, 500, 502, 503, network messages or the SDK's own `isRetryable`, and go to the next model at once on a non-retryable or provider-load error. `stream` and `streamStep` try each model once, go to the next on a retryable error and rethrow a non-retryable one. (C3, correction)
 - A queued job is retried only when the failed result is not marked `retryable: false`; a plain throw is marked false, so it is not. Default 3 attempts. (C4, C8)
 - A person or client can re-run a `failed` or `interrupted` request with the retry route, as a new request. (A9, C5)
 
