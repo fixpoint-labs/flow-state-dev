@@ -206,6 +206,18 @@ The order of items across a pause, the `suspension_resume` and `continuation` it
 
 What an in-memory store keeps, and what `durable: true` over memory allows: [Stores](./stores.md).
 
+## Sequencer checkpoints
+
+A sequencer's `durable` option is `true` unless set to `false`. A durable sequencer writes a checkpoint of its state at each step boundary, one per request and sequencer instance, overwritten each time.
+
+- A checkpoint holds the sequencer's `stateSchema` fields, minus those marked `transientSlot`. A sequencer with no `stateSchema`, and none around it that has one, writes none.
+- On a resume, a step whose output was recorded does not run again. The checkpoint restores the sequencer's state.
+- A state that fails the sequencer's `stateSchema` when a step ends skips the checkpoint write. A warning `[flow-state] sequencer "<name>" state failed stateSchema validation; checkpoint write skipped for blockInstanceId=<id>. Issues: ...` is logged, and the `state_snapshot` item carries `durable: false`.
+- With `durable: false` no checkpoint is written. `state_snapshot` items stream by tracing level: `minimal` none, `normal` the initial and terminal snapshots only, `verbose` every step. See [Environment variables](./environment.md).
+- The action-level `durable` flag is a different setting, covered on [Flows and actions](./flows.md).
+
+Block state that is not a sequencer's is not checkpointed. A block that waits with `ctx.suspend()` or `ctx.suspendForUser()` and is answered later runs its body again from the top. Its own state is rebuilt from the schema defaults, and the writes its code makes before the wait are made again. State written by code the resume does not run again is not restored. Keep state that must survive on an enclosing durable sequencer.
+
 ## Idempotency keys
 
 A block that runs again must not repeat a side effect. `ctx.idempotencyKey` and `ctx.runOnce` guard it.
@@ -265,8 +277,10 @@ A block that runs again must not repeat a side effect. `ctx.idempotencyKey` and 
 | `connectInput` mapping | A per-call wrapper's mapping the selector returns is kept across the pause. |
 | Any router, including a root action block | Resumes on its recorded route. |
 | Route names | Two different blocks cannot share one route name in a router. Defining it throws, because the decision stores the bare name. |
+| Pure selectors | The selector, and the mapping function of any `connectInput` or `connectOutput` wrapper it returns, should read only the input, because both run again on resume. The framework checks the route name, not that the closures are pure. |
+| `ctx.self` | Readable in `execute`. Do not write it there, because `execute` runs again on resume. Put a `.tap(handler)` in front and let that write. |
 
-Rules for selectors and mapping closures, and for the types routes share: [Blocks](./blocks.md).
+The types routes share are on [Blocks](./blocks.md).
 
 ## Answering a pause
 
@@ -379,7 +393,7 @@ Which host sweeps on a shared store, and when a router runs the sweeper: [Runtim
 | `false` | Off | Off |
 | `true` | On | On |
 
-Defaults per command and store, the providers `createFlowApiRouter` and `runAction` need, and `createCheckpointDurabilityProvider`: [Runtime configuration](./runtime.md). A sequencer's `durable` option: [Blocks](./blocks.md). The methods of a `DurabilityProvider`: [Stores](./stores.md).
+Defaults per command and store, the providers `createFlowApiRouter` and `runAction` need, and `createCheckpointDurabilityProvider`: [Runtime configuration](./runtime.md). A sequencer's `durable` option: [Sequencer checkpoints](#sequencer-checkpoints). The methods of a `DurabilityProvider`: [Stores](./stores.md).
 
 ## Errors
 

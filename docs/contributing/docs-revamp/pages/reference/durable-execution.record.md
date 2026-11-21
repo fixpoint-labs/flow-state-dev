@@ -37,6 +37,8 @@ Written by `docs-writer` (sonnet), 5603 words. Scenario: A `refunds` flow: `load
 
 - After the loop (review): read the record and the final fact check. Spot-checked the abort fix: the page names `RequestHandle.abort()` and `useSession().abortRequest()` in React (packages/react/src/hooks/useSession.ts:448). The Concurrency page took this page's resumed-request rows in the depth pass; they are kept there and re-checked in concurrency.record.md. One wording change: the `client.requests.interrupted` row says "Has the server sweep", since the vocabulary sweep reads "Asks" as the retired ask symbol. 4153 words. Page sha256 6559e947a90d.
 
+- After the loop (Blocks depth pass): the Blocks page moved its mechanism here, the page that owns it: a "Sequencer checkpoints" section (what a checkpoint holds, pure selectors, `ctx.self` in `execute`). Its `cleanupCheckpointsOnTerminal` sentence was cut as a repeat of the FAQ entry. A read-only fact check of the moved lines found two untrue claims across the receiving pages and eight lines that repeated or contradicted text already on a page; all were fixed. check-docs-page and lint-brand (parses as MDX) pass. 4441 words. Page sha256 54980f7caf1d.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 c208f90cbcbd, and the 34 Reference row(s) pass 6 moved.
@@ -48,6 +50,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 c20
 Final fact check of the page as it closed, sha256 1f9483885326: 1 untrue, fixed in a last round.
 
 - Discard: `abortRequest()` ends an interrupted request `aborted` (HTTP 204), and `session.abortRequest()` stops a request running in another process. These are listed as public methods in the 'Interrupted requests and continue' and 'Stopping a paused request' tables. Untrue: The client has no `abortRequest()` method. The public client method is `RequestHandle.abort()`, which calls POST /api/flows/:flowKind/requests/:requestId/abort. `abortRequest` exists only as the function `useSession` returns in @flow-state-dev/react, and as an internal engine helper. The route's behavior matches the page: 204 when it ends an interrupted request that no gate holds, or when it fires or ends a parked stop. The page should name `RequestHandle.abort()` (and `useSession().abortRequest()` for React) or the route. Evidence: packages/client/src/client.ts:371-372 (`abort(): Promise<void>`); packages/react/src/hooks/useSession.ts:448 and :2367 (`abortRequest`); packages/engine/src/routes/abort-routes.ts:43-74. (docs/contributing/docs-revamp/pages/reference/durable-execution.md:309 and :318 and :323)
+
+- Re-run after the review edit: the moved content was fact-checked against the code (about 95 claims); the fixes were checked against the code they cite. No untrue claim remains open.
 
 ## 6 · Depth pass
 

@@ -1084,10 +1084,10 @@ const EXEMPTIONS = [
   },
   {
     // The Task board reference names the midway question helper as orchestration exports it.
-    path: /^docs\/contributing\/docs-revamp\/pages\/reference\/task-board(?:\.facts)?\.md$/,
-    line: /\baskMidway\(/,
+    path: /^docs\/contributing\/docs-revamp\/pages\/reference\/task-(?:board|collections)(?:\.facts|\.record)?\.md$/,
+    line: /\baskMidway\b/,
     rules: ["ask-symbol-in-docs"],
-    why: "FIX-2699: `askMidway(ctx, board, …)`, the exported helper that opens a question midway (packages/orchestration/src/task-board/task-request.ts), named on the Reference page as the published task-board page already does",
+    why: "FIX-2699: `askMidway(ctx, board, …)`, the exported helper that opens a question midway (packages/orchestration/src/task-board/task-request.ts), named on the Task board and Task collections Reference pages (and their fact sheets and records) as the published task-board page already does",
   },
   {
     path: /^packages\/devtool\/(src\/react\/lib\/task-collection-state\.ts|test\/(task-collections-reason\.test\.tsx|task-collection-state\.test\.ts))$/,
