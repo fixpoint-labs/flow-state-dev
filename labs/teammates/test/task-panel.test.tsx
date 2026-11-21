@@ -39,6 +39,8 @@ const task = (id: string, over: Partial<CodingBoardTask>, times: { createdAt?: n
 const TASKS: CodingBoardTask[] = [
   task("r-old", {}, { startedAt: NOW - 42 * MIN }),
   task("r-asks", { asks: [hold("question", "Which branch?")] }, { startedAt: NOW - 3 * MIN }),
+  // Its run opened a pull request and waits on it to merge or close: open, but nothing runs.
+  task("i-pr", { pullRequests: [5512], updatedAt: NOW - 2 * 24 * 60 * MIN }, { startedAt: NOW - 3 * 24 * 60 * MIN }),
   task("f-old", { status: "errored", error: "Tests did not pass\nstack…" }, { completedAt: NOW - 50 * MIN }),
   task("f-new", { status: "errored", error: "No sign-in found" }, { completedAt: NOW - 5 * MIN }),
   ...Array.from({ length: 7 }, (_, i) => task(`d${i}`, { status: "completed" }, { completedAt: NOW - (10 + i) * MIN })),
@@ -69,10 +71,10 @@ const tiles = (panel: HTMLElement) => within(panel).getAllByRole("tab").map((t) 
 describe("a teammate's tasks in its panel", () => {
   it("totals them in the heading and counts each filter on its tile, Running first and selected", async () => {
     const panel = await renderPanel();
-    expect(within(panel).getByRole("heading", { name: "Tasks 12" })).toBeTruthy();
+    expect(within(panel).getByRole("heading", { name: "Tasks 13" })).toBeTruthy();
     // The tiles are the tabs: the only way to choose which tasks show. Done counts completed and cancelled alike.
     expect(within(panel).getByRole("tablist", { name: "Task status" })).toBeTruthy();
-    expect(tiles(panel)).toEqual([["2Running", "true"], ["2Failed", "false"], ["8Done", "false"]]);
+    expect(tiles(panel)).toEqual([["2Running", "true"], ["1Idle", "false"], ["2Failed", "false"], ["8Done", "false"]]);
   });
 
   it("puts a task waiting on you first among the running ones", async () => {
@@ -82,6 +84,27 @@ describe("a teammate's tasks in its panel", () => {
     expect(statusOf(running, 0)).toBe("waiting on you");
     // A running task with nothing for you says nothing more than its clock.
     expect(statusOf(running, 1)).toBeNull();
+  });
+
+  it("keeps a task waiting on its pull request out of Running: Idle lists it, says PR open, with no clock counting up or Long-running", async () => {
+    const panel = await renderPanel();
+    expect(rows(within(panel).getByRole("list", { name: "Running" }))).not.toContain("Asked researcher to task i-pr");
+    fireEvent.click(tab(panel, "Idle"));
+    const idle = within(panel).getByRole("list", { name: "Idle" });
+    expect(rows(idle)).toEqual(["Asked researcher to task i-pr"]);
+    expect(statusOf(idle, 0)).toBe("PR open");
+    const card = within(idle).getAllByRole("button")[0]!;
+    // Its age is since it last moved, not its three days open, and in the quiet colour: it is not working.
+    expect(card.querySelector("[data-elapsed]")?.textContent).toBe("2d 0h");
+    expect(card.querySelector("[data-elapsed]")?.className).toContain("text-text-3");
+    expect(card.querySelector("[data-progress]")).toBeNull();
+    expect(card.querySelector("[data-long-running]")).toBeNull();
+  });
+
+  it("keeps a task waiting on you in Running even while its pull request is open: the next move is yours", async () => {
+    const panel = await renderPanel([task("both", { pullRequests: [7], asks: [hold("review", "Review the work")] }, { startedAt: NOW - MIN })]);
+    expect(rows(within(panel).getByRole("list", { name: "Running" }))).toEqual(["Asked researcher to task both"]);
+    expect(tiles(panel).map(([t]) => t)).toEqual(["1Running", "0Idle", "0Failed", "0Done"]);
   });
 
   it("lists the failed ones newest first under their tile, each with its reason's first line", async () => {
@@ -98,9 +121,9 @@ describe("a teammate's tasks in its panel", () => {
   it("moves between the tiles with the arrow keys, as a tab list does", async () => {
     const panel = await renderPanel();
     fireEvent.keyDown(tab(panel, "Running"), { key: "ArrowRight" });
-    expect(tab(panel, "Failed").getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement).toBe(tab(panel, "Failed"));
-    fireEvent.keyDown(tab(panel, "Failed"), { key: "ArrowLeft" });
+    expect(tab(panel, "Idle").getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(tab(panel, "Idle"));
+    fireEvent.keyDown(tab(panel, "Idle"), { key: "ArrowLeft" });
     fireEvent.keyDown(tab(panel, "Running"), { key: "ArrowLeft" });
     expect(tab(panel, "Done").getAttribute("aria-selected")).toBe("true");
   });
@@ -207,12 +230,20 @@ describe("a task's line in the conversation", () => {
   });
 
   it("uses its panel row's word and colour", () => {
-    for (const t of [TASKS[1]!, TASKS[2]!, TASKS[0]!]) {
+    const byId = (id: string) => TASKS.find((t) => t.id === id)!;
+    const cases: [CodingBoardTask, string, string][] = [
+      [byId("r-asks"), "waiting on you", "text-attention"],
+      [byId("f-new"), "failed", "text-destructive"],
+      [byId("r-old"), "running", "text-muted-foreground"],
+      [byId("i-pr"), "PR open", "text-muted-foreground"],
+    ];
+    for (const [t, text, tone] of cases) {
       const { unmount } = render(<TaskCard task={t} nameOf={(id) => id} onOpen={() => {}} />);
       const word = document.querySelector("[data-task-status]")!;
-      const asks = t.asks.length > 0;
-      expect(word.textContent).toBe(asks ? "waiting on you" : t.status === "errored" ? "failed" : "running");
-      expect(word.className).toContain(asks ? "text-attention" : t.status === "errored" ? "text-destructive" : "text-muted-foreground");
+      expect(word.textContent).toBe(text);
+      expect(word.className).toContain(tone);
+      // An idle task doesn't count up as if it were working.
+      if (t.id === "i-pr") expect(document.querySelector("[data-task-since]")).toBeNull();
       unmount();
     }
   });

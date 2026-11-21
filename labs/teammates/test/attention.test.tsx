@@ -56,6 +56,12 @@ describe("the status line puts what needs you first", () => {
     expect(status({ tasks: [unstarted, fresh] }).text).toBe("Running 2 tasks · Add day dividers");
   });
 
+  it("doesn't count a task waiting on its pull request as running: three PRs open is idle, not 'Running 3 tasks'", () => {
+    const open = (id: string) => task(id, { pullRequests: [Number(id.slice(2))], startedAt: NOW - 3_600_000 });
+    expect(status({ tasks: [open("pr5451"), open("pr5452"), open("pr5512")] }).text).not.toMatch(/^Running/);
+    expect(status({ tasks: [open("pr5451"), task("new", { title: "Add day dividers", startedAt: NOW - 60_000 })] }).text).toBe("Running coding task: Add day dividers");
+  });
+
   it("a coding task that just ended, for two minutes, a failure in red", () => {
     const failed = task("t2", { status: "errored", completedAt: NOW - 30_000 });
     expect(status({ tasks: [failed] })).toEqual({ text: "Coding task failed: Task t2", tone: "text-destructive", needsYou: false });

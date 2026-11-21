@@ -332,7 +332,7 @@ describe("the teammates screen", () => {
     });
     const side = await screen.findByRole("complementary", { name: "Lead's panel" });
     const tiles = () => within(side).getAllByRole("tab").map((t) => t.textContent);
-    await waitFor(() => expect(tiles()).toEqual(["0Running", "1Failed", "3Done"]));
+    await waitFor(() => expect(tiles()).toEqual(["0Running", "0Idle", "1Failed", "3Done"]));
     // A failure is one click away, on its tile.
     fireEvent.click(within(side).getByRole("tab", { name: /Failed/ }));
     const failed = within(side).getByRole("list", { name: "Failed" });

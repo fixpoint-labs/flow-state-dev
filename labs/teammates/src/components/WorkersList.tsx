@@ -7,7 +7,7 @@ import { teammateAttention, supported, useAttention, useNotifyToggle, type Teamm
 import { useStable } from "../lib/stable";
 import { displayName } from "../lib/roster";
 import { freshEndings, needsOf, statusOf, useActivity } from "../lib/status";
-import { taskStatus, workerOf } from "../lib/task";
+import { isIdle, taskStatus, workerOf } from "../lib/task";
 import { useTalk } from "../lib/talk";
 import { useSeen } from "../lib/unread";
 import { useNow, useStale } from "../lib/use-watch";
@@ -230,7 +230,7 @@ function WorkerItem({
   // Reported up for the tab's title and the notifications; the same object while its content holds, so it reports only on change.
   const attention = useStable(teammateAttention(displayName(worker), loaded, unread, needsOf(inputs), freshEndings(tasks, now, isCoding)));
   useEffect(() => onReport(worker.id, attention), [onReport, worker.id, attention]);
-  const working = activity?.running === true || tasks.some((t) => taskStatus(t) === "running" && isCoding(workerOf(t)));
+  const working = activity?.running === true || tasks.some((t) => taskStatus(t) === "running" && !isIdle(t) && isCoding(workerOf(t)));
   return (
     <button
       type="button"
