@@ -48,6 +48,8 @@ Written by `docs-writer` (sonnet), 7608 words. Scenario: The support desk: a `su
 
 - After the loop (review): two fixes from the Greptile review, both checked against the code. `onError` is called before the error response is built, so a throw from it escapes the handler and no response is sent (packages/engine/src/routes/http-handlers.ts:977-986). The router's dispose waits only for requests a due wake started and requests that owe request-end hooks; on timeout it aborts the first and logs the second without aborting them, and other in-flight requests are not waited for (packages/engine/src/routes/createFlowApiRouter.ts:542-570, 736-752; packages/engine/src/execution/request-end-hooks.ts:58-70). 3668 words. Page sha256 92b10b285451.
 
+- After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: the Settings example declares `refunds.autoApproveUpTo` instead of a `sandbox.type` nothing read, and a new `approveRefund` excerpt reads it from `ctx.settings` to decide whether to refund through a `refundOrder` stand-in (`ctx.settings` is typed `FlowStateSettings`, packages/core/src/types/block.ts). Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 3677 words. Page sha256 1eacaba102b4.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 c4d4f35afcc0, and the 29 Reference row(s) pass 6 moved.
@@ -69,6 +71,8 @@ Final fact check of the page as it closed, sha256 6726a59441ed: 7 untrue, fixed 
 - Re-run after the review edit: each changed claim was checked by the writer against the code it cites; the reason union and dispose loop were re-read in review. No untrue claim remains open.
 
 - Re-run after the review edit: both changed claims were read against the cited code; no untrue claim remains open.
+
+- Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 ## 6 · Depth pass
 

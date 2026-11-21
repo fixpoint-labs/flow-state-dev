@@ -254,13 +254,31 @@ import { supportDesk } from "./src/flows/support-desk/flow";
 
 declare module "@flow-state-dev/core" {
   interface FlowStateSettings {
-    sandbox: { type: "local" | "vercel" | "memory" };
+    refunds: { autoApproveUpTo: number };
   }
 }
 
 export default createFlowState({
   flows: [supportDesk],
-  settings: { sandbox: { type: "local" } },
+  settings: { refunds: { autoApproveUpTo: 50 } },
+});
+```
+
+A block reads the value with its declared type:
+
+```ts title="src/flows/support-desk/blocks/approve-refund.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { refundOrder } from "../../../lib/orders";
+
+export const approveRefund = handler({
+  name: "approve-refund",
+  inputSchema: z.object({ orderId: z.string(), amount: z.number() }),
+  execute: async (input, ctx) => {
+    if (input.amount > ctx.settings.refunds.autoApproveUpTo) return { refunded: false };
+    await refundOrder(input.orderId);
+    return { refunded: true };
+  },
 });
 ```
 

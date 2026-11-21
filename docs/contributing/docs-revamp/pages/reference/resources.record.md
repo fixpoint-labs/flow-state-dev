@@ -37,6 +37,8 @@ Written by `docs-writer` (sonnet), 7051 words. Scenario: The support desk: `refu
 - After the loop (batch 5 depth passes): the Prompt and resource templates depth pass added the owner-private template rule to the content route. The fact check found it scoped to one route: the guard runs on both content routes, for stored entries and projected collections (packages/engine/src/routes/resource-routes.ts:114-132, :185, :250, :265), and lets a key through with no owner segment, the caller's own, or an `ownerWrites` collection covering it (packages/engine/src/resources/owner-private.ts:169-190). One sentence now states it for both routes. The HTTP routes table, at eight entries, is split into reads and writes to stay within six. check-docs-page and lint-brand (parses as MDX) pass. 7332 words. Page sha256 f24db522869a.
 - After the loop (batch 6 depth passes): the resource-clash line; the fact check found the messages differ, so the page now gives the capability-against-capability and capability-against-block messages (packages/core/src/capability/merge.ts:337, :785) and keeps the block and flow messages already on the page. check-docs-page and lint-brand pass. 7397 words. Page sha256 cf08d9272dc1.
 
+- After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: `refundPolicy` now has a use: a `draftReply` excerpt declares it and reads it with `readContent()` in its `user` slot. `ticketNotes` gets an `addNote` excerpt that creates a note, writes its body and queries the `byAuthor` index. The projected `orderView` reads and searches through `findOrder` and `searchOrders` stand-ins scoped by the context's `userId` and `orgId`, as the page's own rule asks, instead of an inline map matched by key prefix (the bare key reaches `read`: packages/engine/test/projected-resource-collection.test.ts). Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 7424 words. Page sha256 6131cb95a8b0.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 e3b0c44298fc, and the 4 Reference row(s) pass 6 moved.
@@ -52,6 +54,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 e3b
 
 - Re-run after the review edit: the moved lines were fact-checked against the code (about 22 claims across the three receiving pages); the fixes were checked against the code they cite. No untrue claim remains open.
 - Re-run after the review edit: the moved lines were fact-checked against the code (about 45 claims across six pages), and the fixes re-read the cited lines. No untrue claim remains open.
+
+- Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 ## 6 · Depth pass
 

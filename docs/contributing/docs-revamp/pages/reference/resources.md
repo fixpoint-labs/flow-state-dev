@@ -39,6 +39,26 @@ export const refundPolicy = defineResource({
 });
 ```
 
+The block that drafts replies declares it and reads the body:
+
+```ts title="src/flows/support/blocks/draft-reply.ts"
+import { generator } from "@flow-state-dev/core";
+import { z } from "zod";
+import { refundPolicy } from "../resources/refund-policy";
+
+export const draftReply = generator({
+  name: "draft-reply",
+  model: "openai/gpt-6-luna",
+  prompt: "You answer customer support messages. Follow the refund policy you are given.",
+  inputSchema: z.string(),
+  resources: { refundPolicy },
+  user: async (input, ctx) => {
+    const policy = await ctx.resources.refundPolicy.readContent();
+    return `Refund policy:\n${policy ?? ""}\n\nCustomer message:\n${input}`;
+  },
+});
+```
+
 ### `defineResource` fields
 
 | Field | Type | Meaning |
@@ -191,6 +211,27 @@ export const ticketNotes = defineResourceCollection({
 });
 ```
 
+A block adds a note and finds the notes by the same author through the index:
+
+```ts title="src/flows/support/blocks/add-note.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { ticketNotes } from "../resources/ticket-notes";
+
+export const addNote = handler({
+  name: "add-note",
+  inputSchema: z.object({ noteId: z.string(), text: z.string() }),
+  resources: { notes: ticketNotes },
+  execute: async (input, ctx) => {
+    const author = ctx.user.identity.userId ?? "unknown";
+    const note = await ctx.resources.notes.create(input.noteId, { author });
+    await note.writeContent(input.text);
+    const byAuthor = await ctx.resources.notes.findBy("byAuthor", author);
+    return { notesByAuthor: byAuthor.length };
+  },
+});
+```
+
 ### `defineResourceCollection` fields
 
 A collection takes the `defineResource` fields `scope`, `stateSchema`, `contentTemplate`, `contentTemplateRef`, `llmReadable`, `llmWritable`, `secret`, `writable`, `flowIsolation`, `sharedToLineage`, `prefetchMode`, `reactTo`, `edges`, `runBy` and `canWrite`, with these differences.
@@ -314,21 +355,20 @@ A key segment starting with `~` is reserved for these collections in every app. 
 ```ts title="src/flows/support/resources/orders.ts"
 import { defineProjectedResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
-
-const orders = new Map([["o-1", { status: "shipped" }]]);
+import { findOrder, searchOrders } from "../../../lib/orders";
 
 export const orderView = defineProjectedResourceCollection({
   pattern: "orders/*",
   scope: "user",
   stateSchema: z.object({ status: z.string() }),
-  async read({ key }) {
-    return orders.get(key) ?? null;
+  async read({ key, ctx }) {
+    const order = await findOrder(key);
+    if (!order || order.userId !== ctx.userId || order.orgId !== ctx.orgId) return null;
+    return { status: order.status };
   },
-  async search({ query }) {
-    const hits = [...orders]
-      .filter(([key]) => key.startsWith(query.search ?? ""))
-      .map(([key, state]) => ({ key, state }));
-    return { hits };
+  async search({ query, ctx }) {
+    const found = await searchOrders({ userId: ctx.userId, orgId: ctx.orgId, text: query.search });
+    return { hits: found.map((order) => ({ key: order.id, state: { status: order.status } })) };
   },
   client: { state: { read: true } },
 });
