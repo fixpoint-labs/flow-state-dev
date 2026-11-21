@@ -10,7 +10,7 @@ Some jobs come up in nearly every AI app: summarize this, sort this message into
 
 Most call a model with a fixed prompt, so you set options such as the model and the shape of the output, and never write the prompt. A few call no model at all.
 
-This page uses one app, a support desk. Its `support` flow sorts each ticket with `routeTicket` and hands it to a reply block. Every utility is `utility.<factory>`, imported from the root of core. There is no `@flow-state-dev/core/utility` subpath.
+This page uses one app, a support desk. Its `support` flow sorts each ticket, a `{ message }`, with `routeTicket` and hands it to a reply block. Every utility is `utility.<factory>`, imported from the root of core. There is no `@flow-state-dev/core/utility` subpath.
 
 ```ts title="src/flows/support/blocks/route-ticket.ts"
 import { utility } from "@flow-state-dev/core";
@@ -33,28 +33,40 @@ The three handlers are ordinary blocks, each in its own file beside this one. Mi
 
 ```ts title="src/flows/support/blocks/billing-reply.ts"
 import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { draftReplyFor } from "../../../lib/replies";
 
 export const billingReply = handler({
   name: "billing-reply",
-  execute: async () => ({ reply: "Your refund is on its way." }),
+  inputSchema: z.object({ message: z.string() }),
+  execute: async (input) => ({ reply: await draftReplyFor(input.message) }),
 });
 ```
 
 ```ts title="src/flows/support/blocks/technical-reply.ts"
 import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { draftReplyFor } from "../../../lib/replies";
 
 export const technicalReply = handler({
   name: "technical-reply",
-  execute: async () => ({ reply: "Try clearing your cache, then sign in again." }),
+  inputSchema: z.object({ message: z.string() }),
+  execute: async (input) => ({ reply: await draftReplyFor(input.message) }),
 });
 ```
 
 ```ts title="src/flows/support/blocks/human-review.ts"
 import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { queueForHuman } from "../../../lib/queue";
 
 export const humanReview = handler({
   name: "human-review",
-  execute: async () => ({ reply: "A person on our team will reply shortly." }),
+  inputSchema: z.object({ message: z.string() }),
+  execute: async (input) => {
+    await queueForHuman(input);
+    return { reply: "A person on our team will reply shortly." };
+  },
 });
 ```
 

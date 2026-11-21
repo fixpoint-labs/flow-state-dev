@@ -53,6 +53,8 @@ Written by `docs-writer` (sonnet), 3755 words. Scenario: A support desk: a `supp
 - After the loop (PR review): a review on the PR noted the page had no link to its concept page. One sentence in the second paragraph now links [What the browser sees](../concepts/what-the-browser-sees.md). check-docs-page and lint-brand pass. 3554 words. Page sha256 06641c325290.
 - After the loop (PR review, Greptile): the snapshot entry no longer names `client.derived`, which `defineFlow` refuses (packages/core/src/flow/defineFlow.ts:79-107); a computed value is a view, declared with `defineView` and read with `useView`. check-docs-page and lint-brand pass. 3565 words. Page sha256 b8c02e454656.
 
+- After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: the `reply` handler drafts with a `draftReplyFor` stand-in instead of echoing the input. Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 3565 words. Page sha256 21f2796ac049.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 1e7468d0089a, and the 15 Reference row(s) pass 6 moved.
@@ -69,6 +71,8 @@ Final fact check of the page as it closed, sha256 6b8415b73cc1: 2 untrue, fixed 
 - Re-run after the review edit: each changed claim was checked against the code it cites (serve.ts push default and `pushSecret`, the in-memory bus saying it crosses processes, the Postgres bus states, `useSubscription` reading on each notice, the `Roster` / `BoardColumns` / `BoardList` exports from @flow-state-dev/workforce/react, the FlowContext inheritance). No untrue claim remains open.
 - Re-run after the review edit: the added sentence makes no claim beyond naming the concept page, which was read before it was written.
 - Re-run after the review edit: each finding was checked against the code by a read-only reviewer before the fix, and the fix re-read the cited lines. No untrue claim remains open.
+
+- Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 ## 6 · Depth pass
 

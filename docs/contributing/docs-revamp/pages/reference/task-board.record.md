@@ -47,6 +47,8 @@ Written by `docs-writer` (sonnet), 7328 words. Scenario: A `research` flow whose
 
 - After the loop (review): the Greptile review on the PR. The task tools sentence linked Tools, which does not document them. It now says they work on the collection operations in Task collections, and the tools' fields, results and refusal codes are queued for that page as a Reference row. 4746 words. Page sha256 991b05720d3a.
 
+- After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: the `analyst` worker now returns `researchCompetitor(task.goal)` from a stand-in instead of a templated string. Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 4746 words. Page sha256 39d35f7e869e.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 84e0edadf0ea, and the 20 Reference row(s) pass 6 moved.
@@ -54,6 +56,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 84e
 - A refused dispatch fails the task with a `DispatchRefusedError` whose `refused` is one of eight values: `no-entry`, `flow-not-found`, `session-not-found`, `session-not-addressable`, `key-occupied`, `create-refused`, `no-dispatch-operation` or `dispatch-rejected`. Untrue: `DispatchRefusal` has ten values. Besides those eight it has `external-flow-runner` (an `id` delivery on a deployment whose runner hands work to an external queue and whose worker adapter supplies no shared lease backend) and `no-sender` (a `{ from: true }` target on a request the runtime did not dispatch). A `{ by: ... { id } }` session answer can reach `external-flow-runner`, so the list is incomplete for task dispatch. (/home/user/flow-state-dev/packages/core/src/types/dispatch.ts:484-516 (page: docs/contributing/docs-revamp/pages/reference/task-board.md:355))
 
 - Re-run after the review edit: no Reference page documents the task tools' fields yet; Task collections (R-24) owns the collection operations. True.
+
+- Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 ## 6 · Depth pass
 

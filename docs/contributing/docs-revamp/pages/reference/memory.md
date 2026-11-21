@@ -27,17 +27,27 @@ export const mem = system({
 ```
 
 ```ts title="src/flows/support/flow.ts"
-import { defineFlow } from "@flow-state-dev/core";
+import { z } from "zod";
+import { defineFlow, generator } from "@flow-state-dev/core";
 import { mem } from "./memory";
+
+const draftReply = generator({
+  name: "draft-reply",
+  model: "openai/gpt-6-luna",
+  prompt: "You answer customer support messages. Be brief and specific.",
+  inputSchema: z.string(),
+  user: (input) => input,
+  uses: [mem.capability],
+});
 
 export default defineFlow({
   kind: "support",
   resources: { ...mem.sessionResources, ...mem.userResources },
-  actions: {},
+  actions: { reply: draftReply },
 });
 ```
 
-`working: true` takes every default for a tier. A generator installs the memory with `uses: [mem.capability]`.
+`working: true` takes every default for a tier. `draftReply` installs the memory with `uses: [mem.capability]`.
 
 ## Quick answers
 

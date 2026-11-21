@@ -49,6 +49,8 @@ Written by `docs-writer` (sonnet), 5910 words. Scenario: A support desk: flow `s
 - After the loop (Blocks depth pass): the Blocks page moved its mechanism here, the page that owns it: a "State a block declares" section with the `ScopeStateSchemaConflictError` fields. The default-conflict message now carries its closing remedy sentence (packages/core/src/helpers/scope-state-merge.ts:86, :381-383). A read-only fact check of the moved lines found two untrue claims across the receiving pages and eight lines that repeated or contradicted text already on a page; all were fixed. check-docs-page and lint-brand (parses as MDX) pass. 5076 words. Page sha256 9864543a166d.
 - After the loop (batch 6 depth passes): one line on which capability schemas count toward a block's declared state; the fact check found it left out dependencies. It now says a statically listed capability and the capabilities it depends on count by their top-level schemas, while a preset, a config resolver, a dynamic entry and `requestStateSchema` contribute none (packages/core/src/flow/defineFlow.ts:777-797; packages/core/src/blocks/internal/resolve-capabilities.ts:122-129). check-docs-page and lint-brand pass. 5110 words. Page sha256 cea9937fcc8d.
 
+- After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: `reply` now uses the fields the flow declares: it reads `ctx.flow.config.region` (declared through `flowConfigSchema`), adds one to the session's `replyCount` and reads the user's `plan` to mark priority; the sentence after the examples says so. Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 5095 words. Page sha256 c2f6c49340f2.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 e66f59aaf521, and the 29 Reference row(s) pass 6 moved.
@@ -61,6 +63,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 e66
 
 - Re-run after the review edit: the moved content was fact-checked against the code (about 95 claims); the fixes were checked against the code they cite. No untrue claim remains open.
 - Re-run after the review edit: the moved lines were fact-checked against the code (about 45 claims across six pages), and the fixes re-read the cited lines. No untrue claim remains open.
+
+- Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 ## 6 · Depth pass
 
