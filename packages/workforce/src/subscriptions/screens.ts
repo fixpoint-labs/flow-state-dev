@@ -138,7 +138,10 @@ export function screenRefusal(kind: ScreenKind, event: SubscriptionEvent, entry:
     }
     case "allow":
       for (const listed of entry.screens) {
-        if (listed.screen === "allow" && !listed.ids.includes(event.sender.id)) return `"${event.sender.id}" isn't an allowed sender`;
+        if (listed.screen !== "allow") continue;
+        // With `bots`, a bot is matched against `bots` and anyone else against `ids`, never across.
+        const allowed = listed.bots === undefined ? listed.ids : event.sender.role === "bot" ? listed.bots : listed.ids;
+        if (!allowed.includes(event.sender.id)) return `"${event.sender.id}" isn't an allowed ${event.sender.role === "bot" && listed.bots !== undefined ? "bot" : "sender"}`;
       }
       return undefined;
   }

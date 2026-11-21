@@ -16,14 +16,14 @@ describe("githubReviewers", () => {
   });
 
   it("reads comma-separated logins as GitHub sends a sender's id, once each, and keeps which are bots", () => {
-    expect(githubReviewers("JHoffner, greptile-apps[bot] ,Cursor[bot],jhoffner")).toEqual({ ids: ["jhoffner", "greptile-apps", "cursor"], bots: ["greptile-apps", "cursor"] });
+    expect(githubReviewers("JHoffner, greptile-apps[bot] ,Cursor[bot],jhoffner")).toEqual({ users: ["jhoffner"], bots: ["greptile-apps", "cursor"] });
   });
 });
 
 describe("reviewedPullRequestFollow", () => {
   it("gives no follower when nobody is listed, rather than one that hears every sender", () => {
     expect(reviewedPullRequestFollow(github, undefined)).toBeUndefined();
-    expect(reviewedPullRequestFollow(github, { ids: [], bots: [] })).toBeUndefined();
+    expect(reviewedPullRequestFollow(github, { users: [], bots: [] })).toBeUndefined();
   });
 
   it("delivers a listed reviewer's review, a listed bot's and a listed outsider's, and no one else's", async () => {
@@ -40,6 +40,48 @@ describe("reviewedPullRequestFollow", () => {
       const heard = (await host.heard(session)).join("\n");
       for (const listed of ["bob-gh", "greptile-apps", "outside-dev"]) expect(heard).toContain(`review by ${listed}`);
       for (const unlisted of ["octocat", "codex", "stranger"]) expect(heard).not.toContain(`review by ${unlisted}`);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  // A bot's id is its app slug with `[bot]` dropped, the same form as a user's login, so a user who
+  // registers a listed bot's name must not pass as that bot on a public repository.
+  it("refuses a user whose login is a listed bot's name, and still hears the bot and the listed users", async () => {
+    const reviewers = githubReviewers("bob-gh, greptile-apps[bot]")!;
+    const host = bootSubscriptionsHost({ follower: reviewedPullRequestFollow(github, reviewers), service: { trustedBots: reviewers.bots } });
+    try {
+      const session = await host.follower("alice");
+      await host.act("alice", session, "respond", { message: "opened it [follow-pr:412]" }, "follower");
+      await host.route(event({ text: "from the impostor outside", sender: { id: "greptile-apps", name: "greptile-apps", role: "outsider" } }));
+      await host.route(event({ text: "from the impostor inside", sender: { id: "greptile-apps", name: "greptile-apps", role: "member" } }));
+      await host.route(event({ text: "from the real bot", sender: { id: "greptile-apps", name: "greptile-apps", role: "bot" } }));
+      await host.route(event({ text: "from bob", sender: { id: "bob-gh", name: "bob-gh", role: "member" } }));
+      await host.route(event({ text: "from a bot named bob", sender: { id: "bob-gh", name: "bob-gh", role: "bot" } }));
+      await host.route(event({ text: "from a trusted bot named bob", sender: { id: "codex", name: "codex", role: "bot" } }));
+      const heard = (await host.heard(session)).join("\n");
+      expect(heard).toContain("from the real bot");
+      expect(heard).toContain("from bob");
+      expect(heard).not.toContain("from the impostor");
+      expect(heard).not.toContain("from a bot named bob");
+      expect(heard).not.toContain("from a trusted bot");
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("with only users listed, refuses a bot the service trusts whose id is a listed user's login", async () => {
+    const reviewers = githubReviewers("codex")!;
+    // The harness's service trusts the bot `codex`; the reviewer list names a user `codex`.
+    const host = bootSubscriptionsHost({ follower: reviewedPullRequestFollow(github, reviewers) });
+    try {
+      const session = await host.follower("alice");
+      await host.act("alice", session, "respond", { message: "opened it [follow-pr:412]" }, "follower");
+      await host.route(event({ text: "from the bot codex", sender: { id: "codex", name: "codex", role: "bot" } }));
+      await host.route(event({ text: "from the user codex", sender: { id: "codex", name: "codex", role: "outsider" } }));
+      const heard = (await host.heard(session)).join("\n");
+      expect(heard).toContain("from the user codex");
+      expect(heard).not.toContain("from the bot codex");
     } finally {
       await host.dispose();
     }

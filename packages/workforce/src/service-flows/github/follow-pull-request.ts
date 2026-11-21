@@ -102,14 +102,16 @@ export function followPullRequest(options: FollowPullRequestOptions): PullReques
  * that hears only `reviewers`. On a public repository anyone can comment, and a
  * run acts on what it hears with a push, so with nobody listed this is
  * `undefined` and nothing is followed, never every sender. A listed reviewer is
- * heard whether or not they are in the project. A listed bot is heard only once
+ * heard whether or not they are in the project, and a user named like a listed
+ * bot is not that bot. A listed bot is heard only once
  * the GitHub service flow trusts it too: pass `reviewers.bots` as its `trustedBots`.
  */
 export function reviewedPullRequestFollow(
   github: SubscriptionProvider,
   reviewers: GitHubReviewers | undefined
 ): ((installation: WorkerInstallation) => PullRequestFollower) | undefined {
-  if (reviewers === undefined || reviewers.ids.length === 0) return undefined;
-  const ids = [...reviewers.ids];
-  return (installation) => followPullRequest({ providers: [github], installation, screens: [{ screen: "allow", ids }], outsiders: true });
+  if (reviewers === undefined || reviewers.users.length + reviewers.bots.length === 0) return undefined;
+  // Users and bots apart: an outsider passes as a listed user only, never as a bot that shares its name.
+  const allow = { screen: "allow" as const, ids: [...reviewers.users], bots: [...reviewers.bots] };
+  return (installation) => followPullRequest({ providers: [github], installation, screens: [allow], outsiders: true });
 }
