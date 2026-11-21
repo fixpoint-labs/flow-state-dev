@@ -38,6 +38,8 @@ Written by `docs-writer` (sonnet), 1883 words. Scenario: A support desk: a `supp
 
 - After the loop (review): one fix from the Greptile review. The preset-schema limit now names only block state schemas (`stateSchema`, `sequencerStateSchema`), the ones a block reads from the merged surface, and says a scope state schema supplied through a preset or config resolver has no effect, linking Capabilities. This matches the Capabilities fact check (packages/core/src/capability/merge.ts:512-523; packages/core/src/flow/defineFlow.ts:768-797). 1828 words. Page sha256 8cd56e9c6ae4.
 
+- After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: `draftReply` loads the ticket with a `findTicket` stand-in and drafts with `composeReply(ticket, input.tone)`, so `tone` is used; `logTicket` emits a `ticket-log` data item through `ctx.emit.data` instead of having an empty body; the hidden ticket field is `internalNotes` instead of `secret`, and the sentence on reading an unexposed field names it (checked: `ClientDataOf<typeof tickets>` picks only `title`, so the read fails with TS2339). Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 1592 words. Page sha256 e21889f2cf39.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 058f82b78d46, and the 22 Reference row(s) pass 6 moved.
@@ -53,6 +55,8 @@ Final fact check of the page as it closed, sha256 d26dadbe8978: 2 untrue, fixed 
 - Re-run after the review edit: the moved lines were fact-checked against the code (about 45 claims across six pages), and the fixes re-read the cited lines. No untrue claim remains open.
 
 - Re-run after the review edit: the changed claim was read against the cited code; no untrue claim remains open.
+
+- Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 ## 6 · Depth pass
 

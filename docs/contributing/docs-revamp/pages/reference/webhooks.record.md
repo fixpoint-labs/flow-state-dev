@@ -33,6 +33,8 @@ Written by `docs-writer` (sonnet), 2988 words. Scenario: A `billing` flow receiv
 - After revise round 1, page sha256 5fc0bf4137ff: exit 0.
 - After revise round 2, page sha256 34d9d49b3adf: exit 0.
 
+- After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: `recordPayment` marks the invoice paid through a `markInvoicePaid` stand-in, passing `deliveryId` as the page advises for idempotency, instead of echoing the invoice id. Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 3171 words. Page sha256 d0b850815725.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 a0a4e965a065, and the 13 Reference row(s) pass 6 moved.
@@ -42,6 +44,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 a0a
 - Reference row 11: Row 11: `ConcurrencyRejectedError` is "thrown from `dispatch` or rejecting `accepted`". Untrue: The reject refusal arrives through the handle, rejecting both `accepted` and `finished`. The host's comment says it arrives "never as a throw from `dispatch`". The webhook route also catches a throw from `dispatch`, defensively, but the host does not produce one. (/home/user/flow-state-dev/packages/engine/src/transports/errors.ts:51-61; /home/user/flow-state-dev/packages/engine/src/transports/host/createInboundTransportHost.ts:811-815; /home/user/flow-state-dev/packages/engine/src/transports/webhook/routes.ts:240-247) The row is recorded corrected.
 
 Final fact check of the page as it closed, sha256 34d9d49b3adf: no untrue claim found.
+
+- Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
 
 ## 6 · Depth pass
 
