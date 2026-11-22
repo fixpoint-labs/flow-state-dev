@@ -60,6 +60,12 @@ export function durationText(ms: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
+/** A run's tokens in and out together, as `tokenCount` says them ("1.3M"); `undefined` when neither side was reported. */
+export function tokenTotal(spend: Pick<SpendSummary, "inputTokens" | "outputTokens"> | null | undefined): string | undefined {
+  if (spend == null || (spend.inputTokens === null && spend.outputTokens === null)) return undefined;
+  return tokenCount((spend.inputTokens ?? 0) + (spend.outputTokens ?? 0));
+}
+
 /**
  * "claude-sonnet-4-5 · 12.4k tokens · $0.42 · 2 attempts · 4m 12s". Empty
  * when there is no spend to show.
