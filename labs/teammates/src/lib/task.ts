@@ -7,6 +7,7 @@
  */
 import type { InboxAnswer, RefileOverrides } from "@flow-state-dev/orchestration/inbox";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { leaseLapsed } from "@flow-state-dev/orchestration/tasks";
 import type { ReviewAnswer } from "../components/flow-state/review-hold";
 import { durationText } from "../components/flow-state/spend";
 import type { TaskSignalRun, TaskSignalView } from "../components/flow-state/task-signals";
@@ -58,6 +59,16 @@ export const modelOf = (task: Pick<CodingBoardTask, "spend">): string | undefine
 
 /** When this attempt's run started: its run link's start, else the task's own (a retry keeps its first start). */
 export const attemptStartedAt = (task: Pick<CodingBoardTask, "run" | "startedAt">): number | undefined => task.run?.startedAt ?? task.startedAt;
+
+/**
+ * Whether a run is on it now: it is running and holds a lease that hasn't
+ * lapsed (the board's rule, `leaseLapsed`: lapsed at its deadline). A task kept
+ * open, owing a turn or waiting on its pull request holds none.
+ */
+export const runsNow = (task: Pick<CodingBoardTask, "status" | "leaseUntil">, now: number): boolean =>
+  taskStatus(task) === "running" &&
+  task.leaseUntil != null &&
+  !leaseLapsed({ status: "in_progress", leaseUntil: task.leaseUntil } as Parameters<typeof leaseLapsed>[0], now);
 
 /**
  * How long a still-active task may run before its card calls it

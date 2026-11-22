@@ -801,8 +801,8 @@ describe("the teammates screen", () => {
     // Once the reply is in and read, nothing is running: idle, and nothing made up.
     await waitFor(() => expect(status("researcher")).toMatch(/^Idle/), { timeout: 3000 });
 
-    // A coding task its conversation filed runs: the board's row says so.
-    server.board[LEAD]!.push(coding("t-1", "cursor"));
+    // A coding task its conversation filed runs: the board says so, its lease held by the run.
+    server.board[LEAD]!.push(coding("t-1", "cursor", { leaseUntil: Date.now() + 60 * 60_000 }));
     await waitFor(() => expect(status("Lead")).toBe("Running coding task: Fix the typo in the README's first line"), { interval: 5, timeout: 2000 });
     expect(header()).toBe("Running coding task: Fix the typo in the README's first line");
   });

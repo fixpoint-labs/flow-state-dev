@@ -44,6 +44,7 @@ import {
   type RunRecordState,
 } from "../src";
 import { RUNS, collectionRef } from "../src/run-record";
+import { hostForConfig } from "../src/workspace";
 import { WORKTREES, worktreesCollection, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
 
@@ -164,6 +165,14 @@ export interface HostOptions {
    * restart: a new manager and engine over the same rows, records and checkouts.
    */
   restartOf?: { readonly dir: string; readonly stores: unknown };
+  /**
+   * Give the repository's `main` an upstream: a bare repository on disk as
+   * `origin`, set before the host pins its fetch settings, so a teammate can
+   * move the base on while a run works.
+   */
+  upstream?: boolean;
+  /** Stand in for the workspace host's `baseTip`, as a host that can't say where the base is now. */
+  baseTip?: () => Promise<string | undefined>;
 }
 
 /** Build one host. */
@@ -174,6 +183,13 @@ export function claimHost(options: HostOptions) {
     dirs.push(dir);
     mkdirSync(sourceRepo, { recursive: true });
     seedRepo(sourceRepo);
+    if (options.upstream === true) {
+      const git = (...args: string[]) => execFileSync("git", args, { cwd: sourceRepo, stdio: "pipe" });
+      execFileSync("git", ["clone", "-q", "--bare", sourceRepo, join(dir, "origin.git")]);
+      git("remote", "set-url", "origin", join(dir, "origin.git"));
+      git("fetch", "-q", "origin");
+      git("branch", "-q", "--set-upstream-to=origin/main", "main");
+    }
   }
 
   const fixedLedger = defineTaskCollection({ id: FIXED_BOARD, scope: "user" as const });
@@ -226,7 +242,10 @@ export function claimHost(options: HostOptions) {
         return options.isDone?.({ answer }) ?? true;
       },
     },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    workspace:
+      options.baseTip === undefined
+        ? { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }
+        : { ...hostForConfig({ root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 }), baseTip: options.baseTip },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script ?? [], seen, options.accepts),
@@ -517,6 +536,8 @@ export function claimHost(options: HostOptions) {
     answersSeen,
     dir,
     stores,
+    /** The bare upstream, when the host was given one (`upstream`). */
+    upstream: join(dir, "origin.git"),
   };
 }
 
@@ -528,3 +549,23 @@ export function messageOf(error: unknown): string {
 
 /** The harness task input schema, re-exported for seeding payload rows. */
 export { harnessTaskInputSchema };
+
+/**
+ * A teammate moves the upstream's `main` on (one new file, `teammate.txt`),
+ * and the run merges it into its branch in `cwd`, as a coder brings its branch
+ * up to date before a pull request.
+ */
+export function mergeTeammateWork(upstream: string, cwd: string): void {
+  const elsewhere = mkdtempSync(join(tmpdir(), "harness-manager-teammate-"));
+  dirs.push(elsewhere);
+  const git = (at: string, ...args: string[]) =>
+    execFileSync("git", ["-c", "user.email=mate@example.test", "-c", "user.name=Mate", ...args], { cwd: at, stdio: "pipe" });
+  git(elsewhere, "clone", "-q", upstream, "work");
+  const work = join(elsewhere, "work");
+  writeFileSync(join(work, "teammate.txt"), "a teammate's work\n");
+  git(work, "add", "teammate.txt");
+  git(work, "commit", "-q", "-m", "a teammate's change");
+  git(work, "push", "-q", "origin", "HEAD:main");
+  git(cwd, "fetch", "-q", upstream, "main");
+  git(cwd, "merge", "-q", "--no-edit", "-m", "merge main", "FETCH_HEAD");
+}

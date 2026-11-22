@@ -42,24 +42,37 @@ describe("the status line puts what needs you first", () => {
   it("a task that waits on you, above the same task running", () => {
     const asks = task("t1", { asks: [openHold("question", "Which branch?")] });
     expect(status({ tasks: [asks] })).toEqual({ text: "Waiting on you: Which branch?", tone: "text-attention", needsYou: true });
-    expect(status({ tasks: [task("t1", {})] }).text).toBe("Running coding task: Task t1");
+    expect(status({ tasks: [task("t1", { leaseUntil: NOW + 60_000 })] }).text).toBe("Running coding task: Task t1");
+  });
+
+  it("says a coding task is running only while a run holds its lease: one parked on its pull request says so, and one nothing runs claims nothing", () => {
+    // Its run ended and its work is pull request 7: no lease, it waits on the merge.
+    expect(status({ tasks: [task("t1", { pullRequests: [7] })] }).text).toBe("Waiting on its pull request: Task t1");
+    // Kept open with no run on it (a steer no turn took), or a run that stopped renewing: never "Running".
+    expect(status({ tasks: [task("t1", {})] }).text).toBe("Idle");
+    expect(status({ tasks: [task("t1", { leaseUntil: NOW - 1 })] }).text).toBe("Idle");
+    // At its deadline the lease has lapsed, as the board and the row's time signal read it.
+    expect(status({ tasks: [task("t1", { leaseUntil: NOW })] }).text).toBe("Idle");
+    // A live run outranks a parked task.
+    expect(status({ tasks: [task("t1", { pullRequests: [7] }), task("t2", { leaseUntil: NOW + 60_000 })] }).text).toBe("Running coding task: Task t2");
   });
 
   it("several running tasks: the newest names the line, so a task left running for days can't hide the one you just started", () => {
-    const stale = task("old", { title: "Clarify search guidance", startedAt: NOW - 72 * 3_600_000 });
-    const fresh = task("new", { title: "Add day dividers", startedAt: NOW - 60_000 });
+    // Each holds a live lease: only a task a run holds counts as running.
+    const stale = task("old", { title: "Clarify search guidance", startedAt: NOW - 72 * 3_600_000, leaseUntil: NOW + 60_000 });
+    const fresh = task("new", { title: "Add day dividers", startedAt: NOW - 60_000, leaseUntil: NOW + 60_000 });
     // Either order on the board: the line still names the newest.
     expect(status({ tasks: [stale, fresh] }).text).toBe("Running 2 tasks · Add day dividers");
     expect(status({ tasks: [fresh, stale] }).text).toBe("Running 2 tasks · Add day dividers");
     // A task with no start yet (queued, never run) ranks oldest: one that has started is what is happening now.
-    const unstarted = task("queued", { title: "Queued work", startedAt: undefined, run: undefined });
+    const unstarted = task("queued", { title: "Queued work", startedAt: undefined, run: undefined, leaseUntil: NOW + 60_000 });
     expect(status({ tasks: [unstarted, fresh] }).text).toBe("Running 2 tasks · Add day dividers");
   });
 
   it("doesn't count a task waiting on its pull request as running: three PRs open is idle, not 'Running 3 tasks'", () => {
     const open = (id: string) => task(id, { pullRequests: [Number(id.slice(2))], startedAt: NOW - 3_600_000 });
     expect(status({ tasks: [open("pr5451"), open("pr5452"), open("pr5512")] }).text).not.toMatch(/^Running/);
-    expect(status({ tasks: [open("pr5451"), task("new", { title: "Add day dividers", startedAt: NOW - 60_000 })] }).text).toBe("Running coding task: Add day dividers");
+    expect(status({ tasks: [open("pr5451"), task("new", { title: "Add day dividers", startedAt: NOW - 60_000, leaseUntil: NOW + 60_000 })] }).text).toBe("Running coding task: Add day dividers");
   });
 
   it("still reports a task that was idle on its pull request when the merge completes it", () => {
