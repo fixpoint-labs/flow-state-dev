@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 470" role="img" aria-label="What&#x27;s in the box. In the box, in the harness kit and workforce: one coding flow, the harness kit&#x27;s coder, which Shift Manager runs on; run settings on a coding task, harness and model; one order, task then worker then kit default, checked and refused rather than swapped; a model feed into every harness; Code with as structured turn state and the last pick, written into the run settings by the filing tool. A fence under it: what ran is read from the run, never from the pick. Composed in by the app: its default coder in one place, and its picker. Replaced in one line: the Coding harness and Coder text lines, Lead&#x27;s fallback and the client constant, the unread agent-flow harness setting, Shift Manager&#x27;s second harness list. Not built here: harness sessions&#x27; own model pick, the lab&#x27;s model picker (FIX-2598), run settings beyond harness and model, and PR policy as coder-flow options (FIX-2583)."
+<svg viewBox="0 0 940 470" role="img" aria-label="What&#x27;s in the box. In the box, in the harness kit and workforce: one coding flow, the harness kit&#x27;s coder, which Shift Manager runs on; run settings on a coding task, harness and model; one order, task then worker then kit default, on work, steer, message and door alike, checked and refused rather than swapped; a model feed into every harness; Code with as structured turn state and the last pick, written into the run settings by the filing tool. A fence under it: what ran is read from the run, never from the pick. Composed in by the app: its default coder in one place, and its picker. Replaced in one line: Teammates&#x27; Coding harness text line (the lab&#x27;s Coder: line goes with its workers, in FIX-2598), Lead&#x27;s fallback and the client constant, the unread agent-flow harness setting, Shift Manager&#x27;s second harness list. Not built here: harness sessions&#x27; own model pick, the lab&#x27;s model picker (FIX-2598), run settings beyond harness and model, and PR policy as coder-flow options (FIX-2583)."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -46,7 +46,7 @@
     <text class="t-b" x="32" y="96">Run settings on a coding task: harness, model</text>
     <text class="t-s" x="32" y="111">only the filer writes them; a follow-up inherits (FIX-2878)</text>
     <text class="t-b" x="32" y="132">One order: task, then worker, then kit default</text>
-    <text class="t-s" x="32" y="147">checked against what is filled and listed; refused, never swapped</text>
+    <text class="t-s" x="32" y="147">on work, steer, message and door; refused, never swapped</text>
     <text class="t-b" x="32" y="168">A model feed into every harness&#x27;s model resolver</text>
     <text class="t-s" x="32" y="183">the one HarnessSessionFeeds already has, on the task path</text>
     <text class="t-b" x="32" y="204">Code with: structured turn state, and the last pick</text>
@@ -70,7 +70,7 @@
   <g id="replaced">
     <rect class="lost" x="628" y="172" width="296" height="138" rx="6"/>
     <text class="t-tag c-lost" x="644" y="194">REPLACED IN ONE LINE</text>
-    <text class="t-b" x="644" y="216">Coding harness: and Coder: lines</text>
+    <text class="t-b" x="644" y="216">Teammates&#x27; Coding harness: line</text>
     <text class="t-b" x="644" y="238">Lead&#x27;s fallback, LEAD_FALLBACK_HARNESS</text>
     <text class="t-b" x="644" y="260">The unread agent-flow harness setting</text>
     <text class="t-b" x="644" y="282">Shift Manager&#x27;s second harness list</text>
