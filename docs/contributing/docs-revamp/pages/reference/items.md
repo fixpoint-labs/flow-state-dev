@@ -231,7 +231,9 @@ A request's record keeps its items, except every item with `transient: true` and
 | Stored | Append-only. | One entry per `(requestId, key)`. The latest replays on reload. |
 | `transient: true` | A one-shot. | Live only. The client replaces in place. |
 
-[Client configuration](./client.md) covers how a client you write replaces a re-sent item by `id`. The `onItem` option of `runAction` is on the [engine API](./api/engine.md).
+An item's `id` is unique within one request, not within a session. A keyed item emitted again takes the same id, goes back to in progress, then done again. A client that holds items overwrites by id and does not append. A store that holds a whole session's items keys by request id and item id together, as `useSession` does. An overwritten item that changes its `ts` or `itemIndex` is re-sorted into place; one that changes only values stays where it was.
+
+The `onItem` option of `runAction` is on the [engine API](./api/engine.md).
 
 ### What a resumed request shows
 
@@ -392,7 +394,17 @@ export function followRequest(
 }
 ```
 
-`request(id)` is a method of the flow handle that `client.flow(...)` returns. [Client configuration](./client.md) lists the `stream` options and which cursor it sends.
+`request(id)` is a method of the flow handle that `client.flow(...)` returns. `stream` takes these options besides the request callbacks:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `startingAfter` | none | Sent as `?starting_after=<n>`. Wins over `lastEventId`. |
+| `lastEventId` | none | Sent as the `Last-Event-ID` header, only when `startingAfter` is unset. |
+| `dedupWindowSize` | `1000` | How many recent event keys are remembered to drop a duplicate. |
+| `includeTrace` | `false` | Adds `?include=trace` and delivers `block_trace`, `router_decision` and `state_snapshot` items. |
+| `reconnect` | `false` | See the table below. |
+
+On every later connection the client sends the sequence number of the last event it delivered as `starting_after`.
 
 | Setting | Behavior |
 | --- | --- |
