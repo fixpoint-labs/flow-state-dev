@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 632" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The arc: twelve epic lanes from Aug 10 to Nov 15. Declared surface, FIX-1127, ran inside one day, Aug 12, and is done. Durable storage, FIX-1157, ran Aug 13 to Aug 28 and is done. Verified identity, FIX-1503, had its direction approved on Sep 22 and its bar runs to the now line with its one child not started. Keeping flows alive, FIX-1637, had its direction approved on Sep 29 and its bar runs to the now line with four of eight children done. One owner per fact, FIX-2036, filed Oct 15, and durable agents, FIX-2171, filed Oct 24, have no bar: both are in Backlog, though three and two of their children are done. Mechanism sweep, FIX-2316, ran Oct 30 to Oct 31 and is done. Clean SDK, FIX-2447, was filed Nov 1, its direction approved Nov 5, and it wrapped Nov 15 with 32 of 33 children done and one canceled. Vocabulary, FIX-2600, was filed Nov 6, its direction approved Nov 7, and its bar runs to the now line with four of five children done. Feature kits, FIX-2618, was filed Nov 8, its direction approved Nov 9, and its bar runs to the now line with ten of thirteen done. Kit reads in the apps, FIX-2683, was filed Nov 11 and has no bar; it waits on feature kits. Docs revamp, FIX-2696, was filed Nov 12, its direction approved the same day, and its bar runs to the now line with three of nine done. The now line is Nov 15.">
+<svg viewBox="0 0 940 802" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The arc: fifteen epic lanes from Aug 10 to Nov 22. Declared surface, FIX-1127, ran inside one day, Aug 12, and is done. Durable storage, FIX-1157, ran Aug 13 to Aug 28 and is done. Verified identity, FIX-1503, had its direction approved on Sep 22 and its bar runs to the now line with its one child not started. Keeping flows alive, FIX-1637, had its direction approved on Sep 29 and its bar runs to the now line with four of eight children done. One owner per fact, FIX-2036, filed Oct 15, and durable agents, FIX-2171, filed Oct 24, have no bar: both are in Backlog, though three and two of their children are done. Mechanism sweep, FIX-2316, ran Oct 30 to Oct 31 and is done. Clean SDK, FIX-2447, was filed Nov 1, its direction approved Nov 5, and it wrapped Nov 15 with 32 of 33 children done and one canceled. Vocabulary, FIX-2600, was filed Nov 6, its direction approved Nov 7, and its bar runs to the now line with four of five children done. Feature kits, FIX-2618, was filed Nov 8, its direction approved Nov 9, and its bar runs to the now line with 24 of 26 done and one canceled. Kit reads in the apps, FIX-2683, was filed Nov 11, its direction approved Nov 17, and its bar runs to the now line with 13 of 15 done and its closure next. Docs revamp, FIX-2696, was filed Nov 12, its direction approved the same day, and its bar runs to the now line with three of nine done. Showcase kits, FIX-2813, was filed Nov 18 and has no bar: it is in Backlog, though three of its four children have implementation PRs open. Kit system evolution, FIX-2874, and coder selection, FIX-2876, were both filed Nov 22 and have no bar; the first is open thinking, and the second's epic spec is being authored. The now line is Nov 22.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -21,118 +21,133 @@
     .t-now  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10px; }
   </style>
 
-  <!-- 7px per day: x = 200 + 7 * (days since Aug 10 00:00 UTC). Axis ends at 900 = Nov 18.
-       FIX-1127 Aug 12 15:37 = 218.6 to 23:56 = 221.0 · FIX-1157 Aug 13 23:15 = 227.8 to Aug 28 19:58 = 331.8
-       FIX-1503 spec merged Sep 22 13:20 = 504.9 · FIX-1637 spec merged Sep 29 19:51 = 555.8
-       FIX-2036 filed Oct 15 14:24 = 666.2 · FIX-2171 filed Oct 24 14:08 = 729.1
-       FIX-2316 started Oct 30 20:18 = 772.9 to Oct 31 02:01 = 774.6
-       FIX-2447 filed Nov 1 19:50 = 786.8, spec merged Nov 5 00:35 = 809.2, wrapped Nov 15 00:48 = 879.2
-       FIX-2600 filed Nov 6 23:19 = 815.8, spec merged Nov 7 00:42 = 823.2
-       FIX-2618 filed Nov 8 22:22 = 836.5, spec merged Nov 9 22:52 = 843.7 · FIX-2683 filed Nov 11 17:30 = 856.1
-       FIX-2696 filed Nov 12 02:39 = 858.8, spec merged Nov 12 22:00 = 864.4
-       (same-day bars drawn 3px wide so they stay visible) · now Nov 15 00:48 = 879.2 -->
+  <!-- 6px per day: x = 200 + 6 * (days since Aug 10 00:00 UTC). Axis ends at 900 = Dec 4.
+       Days: FIX-1127 2.65 · FIX-1157 3.97 · FIX-1503 43.56 · FIX-1637 50.83 · FIX-2036 66.60 · FIX-2171 75.59 · FIX-2316 81.85 · FIX-2447 83.83, 87.02 · FIX-2600 88.97, 89.03 · FIX-2618 90.93, 91.95 · FIX-2683 93.73, 99.83 · FIX-2696 94.11, 94.92 · FIX-2813 100.12 · FIX-2874 104.64 · FIX-2876 104.92
+       (same-day bars drawn 3px wide so they stay visible) · now Nov 22 23:27 = 829.9 -->
   <g id="axis">
     <text class="t-lbl" x="16" y="20">EPIC</text>
     <text class="t-lbl" x="200" y="20">AUG 10</text>
-    <text class="t-lbl" x="340" y="20">AUG 30</text>
-    <text class="t-lbl" x="480" y="20">SEP 19</text>
-    <text class="t-lbl" x="620" y="20">OCT 9</text>
-    <text class="t-lbl" x="760" y="20">OCT 29</text>
-    <text class="t-lbl" x="900" y="20" text-anchor="end">NOV 18</text>
+    <text class="t-lbl" x="320" y="20">AUG 30</text>
+    <text class="t-lbl" x="440" y="20">SEP 19</text>
+    <text class="t-lbl" x="560" y="20">OCT 9</text>
+    <text class="t-lbl" x="680" y="20">OCT 29</text>
+    <text class="t-lbl" x="800" y="20">NOV 18</text>
     <path class="axis" d="M200 30 H900"/>
-    <path class="tick" d="M200 30 V600 M340 30 V600 M480 30 V600 M620 30 V600 M760 30 V600 M900 30 V600"/>
+    <path class="tick" d="M200 30 V756 M320 30 V756 M440 30 V756 M560 30 V756 M680 30 V756 M800 30 V756"/>
   </g>
 
   <g id="declared-surface">
     <text class="t-lane" x="16" y="56">declared surface</text>
     <text class="t-s"    x="16" y="70">FIX-1127 · 3/3</text>
-    <rect class="done" x="218.6" y="42" width="3" height="26" rx="1"/>
-    <text class="t-s" x="230" y="59">one day · Aug 12 · wrapped</text>
+    <rect class="done" x="215.9" y="42" width="3.0" height="26" rx="1"/>
+    <text class="t-s" x="228" y="59">one day · Aug 12 · wrapped</text>
   </g>
 
   <g id="durable-storage">
     <text class="t-lane" x="16" y="104">durable storage</text>
     <text class="t-s"    x="16" y="118">FIX-1157 · 6/7</text>
-    <rect class="done" x="227.8" y="90" width="104" height="26" rx="4"/>
-    <text class="t-s" x="340" y="107">Aug 13 · re-scoped Aug 20 · wrapped Aug 28</text>
+    <rect class="done" x="223.8" y="90" width="89.2" height="26" rx="4"/>
+    <text class="t-s" x="322" y="107">Aug 13 · re-scoped Aug 20 · wrapped Aug 28</text>
   </g>
 
   <g id="verified-identity">
     <text class="t-lane" x="16" y="152">verified identity</text>
     <text class="t-s"    x="16" y="166">FIX-1503 · 0/1</text>
-    <rect class="flight" x="504.9" y="138" width="374.3" height="26" rx="4"/>
-    <text class="t-s" x="512" y="155">direction approved Sep 22 · its one child not started</text>
+    <rect class="flight" x="461.3" y="138" width="368.5" height="26" rx="4"/>
+    <text class="t-s" x="468" y="155">direction approved Sep 22 · its one child not started</text>
   </g>
 
   <g id="keeping-flows-alive">
     <text class="t-lane" x="16" y="200">keeping flows alive</text>
     <text class="t-s"    x="16" y="214">FIX-1637 · 4/8</text>
-    <rect class="flight" x="555.8" y="186" width="323.4" height="26" rx="4"/>
-    <text class="t-s" x="563" y="203">Sep 29 · 4 done · closure spec approved</text>
+    <rect class="flight" x="505.0" y="186" width="324.9" height="26" rx="4"/>
+    <text class="t-s" x="512" y="203">Sep 29 · 4 done · closure spec approved</text>
   </g>
 
   <g id="one-owner-per-fact">
     <text class="t-lane" x="16" y="248">one owner per fact</text>
     <text class="t-s"    x="16" y="262">FIX-2036 · 3/10</text>
-    <path class="filed" d="M666.2 238 V256"/>
-    <text class="t-s" x="660" y="251" text-anchor="end">filed Oct 15 · Backlog · 3 children done Oct 20</text>
+    <path class="filed" d="M599.6 238 V256"/>
+    <text class="t-s" x="593" y="251" text-anchor="end">filed Oct 15 · Backlog · 3 children done Oct 20</text>
   </g>
 
   <g id="durable-agents">
     <text class="t-lane" x="16" y="296">durable agents</text>
     <text class="t-s"    x="16" y="310">FIX-2171 · 2/15</text>
-    <path class="filed" d="M729.1 286 V304"/>
-    <text class="t-s" x="723" y="299" text-anchor="end">filed Oct 24 · Backlog · 2 children done</text>
+    <path class="filed" d="M653.5 286 V304"/>
+    <text class="t-s" x="647" y="299" text-anchor="end">filed Oct 24 · Backlog · 2 children done</text>
   </g>
 
   <g id="mechanism-sweep">
     <text class="t-lane" x="16" y="344">mechanism sweep</text>
     <text class="t-s"    x="16" y="358">FIX-2316 · 5/5</text>
-    <rect class="done" x="772.9" y="330" width="3" height="26" rx="1"/>
-    <text class="t-s" x="765" y="347" text-anchor="end">filed Oct 29 · ran Oct 30–31 · wrapped</text>
+    <rect class="done" x="691.1" y="330" width="3.0" height="26" rx="1"/>
+    <text class="t-s" x="684" y="347" text-anchor="end">filed Oct 29 · ran Oct 30–31 · wrapped</text>
   </g>
 
   <g id="clean-sdk">
     <text class="t-lane" x="16" y="392">clean SDK</text>
     <text class="t-s"    x="16" y="406">FIX-2447 · 32/33</text>
-    <path class="filed" d="M786.8 378 V404"/>
-    <rect class="done" x="809.2" y="378" width="70.0" height="26" rx="4"/>
-    <text class="t-s" x="780" y="395" text-anchor="end">filed Nov 1 · direction Nov 5 · wrapped Nov 15 · 1 canceled</text>
+    <path class="filed" d="M703.0 378 V404"/>
+    <rect class="done" x="722.1" y="378" width="60.1" height="26" rx="4"/>
+    <text class="t-s" x="696" y="395" text-anchor="end">filed Nov 1 · direction Nov 5 · wrapped Nov 15 · 1 canceled</text>
   </g>
 
   <g id="vocabulary">
     <text class="t-lane" x="16" y="440">vocabulary</text>
     <text class="t-s"    x="16" y="454">FIX-2600 · 4/5</text>
-    <path class="filed" d="M815.8 426 V452"/>
-    <rect class="flight" x="823.2" y="426" width="56.0" height="26" rx="4"/>
-    <text class="t-s" x="809" y="443" text-anchor="end">filed Nov 6 · direction Nov 7 · closure spec approved</text>
+    <path class="filed" d="M733.8 426 V452"/>
+    <rect class="flight" x="734.2" y="426" width="95.7" height="26" rx="4"/>
+    <text class="t-s" x="727" y="443" text-anchor="end">filed Nov 6 · direction Nov 7 · closure spec approved</text>
   </g>
 
   <g id="feature-kits">
     <text class="t-lane" x="16" y="488">feature kits</text>
-    <text class="t-s"    x="16" y="502">FIX-2618 · 10/13</text>
-    <path class="filed" d="M836.5 474 V500"/>
-    <rect class="flight" x="843.7" y="474" width="35.5" height="26" rx="4"/>
-    <text class="t-s" x="830" y="491" text-anchor="end">filed Nov 8 · direction Nov 9 · 10 done</text>
+    <text class="t-s"    x="16" y="502">FIX-2618 · 24/26</text>
+    <path class="filed" d="M745.6 474 V500"/>
+    <rect class="flight" x="751.7" y="474" width="78.1" height="26" rx="4"/>
+    <text class="t-s" x="739" y="491" text-anchor="end">filed Nov 8 · direction Nov 9 · 24 done, 1 canceled</text>
   </g>
 
   <g id="kit-reads-in-apps">
     <text class="t-lane" x="16" y="536">kit reads in the apps</text>
-    <text class="t-s"    x="16" y="550">FIX-2683 · 0/0</text>
-    <path class="filed" d="M856.1 524 V542"/>
-    <text class="t-s" x="850" y="539" text-anchor="end">filed Nov 11 · Backlog · waits on feature kits</text>
+    <text class="t-s"    x="16" y="550">FIX-2683 · 13/15</text>
+    <path class="filed" d="M762.4 522 V548"/>
+    <rect class="flight" x="799.0" y="522" width="30.9" height="26" rx="4"/>
+    <text class="t-s" x="755" y="539" text-anchor="end">filed Nov 11 · direction Nov 17 · closure next</text>
   </g>
 
   <g id="docs-revamp">
     <text class="t-lane" x="16" y="584">docs revamp</text>
     <text class="t-s"    x="16" y="598">FIX-2696 · 3/9</text>
-    <path class="filed" d="M858.8 570 V596"/>
-    <rect class="flight" x="864.4" y="570" width="14.8" height="26" rx="3"/>
-    <text class="t-s" x="852" y="587" text-anchor="end">filed Nov 12 · direction Nov 12 · carries FIX-2739</text>
+    <path class="filed" d="M764.7 570 V596"/>
+    <rect class="flight" x="769.5" y="570" width="60.4" height="26" rx="4"/>
+    <text class="t-s" x="758" y="587" text-anchor="end">filed Nov 12 · direction Nov 12 · carries FIX-2739</text>
+  </g>
+
+  <g id="showcase-kits">
+    <text class="t-lane" x="16" y="632">showcase kits</text>
+    <text class="t-s"    x="16" y="646">FIX-2813 · 0/4</text>
+    <path class="filed" d="M800.7 622 V640"/>
+    <text class="t-s" x="794" y="635" text-anchor="end">filed Nov 18 · Backlog · 3 implementation PRs open</text>
+  </g>
+
+  <g id="kit-system-evolution">
+    <text class="t-lane" x="16" y="680">kit system evolution</text>
+    <text class="t-s"    x="16" y="694">FIX-2874 · 0/0</text>
+    <path class="filed" d="M827.8 670 V688"/>
+    <text class="t-s" x="821" y="683" text-anchor="end">filed Nov 22 · Backlog · open thinking, parked</text>
+  </g>
+
+  <g id="coder-selection">
+    <text class="t-lane" x="16" y="728">coder selection</text>
+    <text class="t-s"    x="16" y="742">FIX-2876 · 0/4</text>
+    <path class="filed" d="M829.5 718 V736"/>
+    <text class="t-s" x="823" y="731" text-anchor="end">filed Nov 22 · epic spec being authored</text>
   </g>
 
   <g id="now">
-    <path class="now" d="M879.2 30 V610"/>
-    <text class="t-now" x="873" y="624" text-anchor="end">NOW · NOV 15</text>
+    <path class="now" d="M829.9 30 V766"/>
+    <text class="t-now" x="836" y="780" text-anchor="start">NOW · NOV 22</text>
   </g>
 </svg>
