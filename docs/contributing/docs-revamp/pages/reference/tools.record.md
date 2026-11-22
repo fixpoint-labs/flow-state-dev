@@ -37,6 +37,8 @@ Written by `docs-writer` (sonnet), 6604 words. Scenario: A `research` flow with 
 
 - After the loop (review): read the record and the final fact check. Spot-checked the MCP filter fix against packages/tools/src/mcp/filter.ts:42-46 (`disabledTools` matched on name before the marker is read) and the three refusal strings against packages/tools/src/bash/projection-setup.ts:179-189 (quoted verbatim, em dashes included). No change. 6303 words. Page sha256 81ee91e18682.
 
+- After the loop (Blocks depth pass): the Blocks page moved its mechanism here, the page that owns it: "Tool hooks" and "Caching a tool's result". The cache hit now names the flat fields `cached: true`, `cacheAgeMs` and `sourceTask` (packages/contracts/src/items/types.ts:422-445). A read-only fact check of the moved lines found two untrue claims across the receiving pages and eight lines that repeated or contradicted text already on a page; all were fixed. check-docs-page and lint-brand (parses as MDX) pass. 6828 words. Page sha256 caa7ddf794c8.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 e9c05d85c536, and the 5 Reference row(s) pass 6 moved.
@@ -52,6 +54,8 @@ Final fact check of the page as it closed, sha256 5f28c3c2dee3: 4 untrue, fixed 
 - "A tool with no MCP marker passes through" (`defaultMcpFilterTools` and `mcp.disabledTools`). Untrue: Only `disabledServers` spares unmarked tools. `disabledTools` is matched on `tool.name` before the marker is read, so any tool in the list is removed even if it did not come from an MCP server. (packages/tools/src/mcp/filter.ts:43-44. Page line 498.)
 - `createBashBlocks` returns "handler blocks, or sequencers around a handler when the provider needs setup (`moat`, `vercel`, `upstash`)". Untrue: For `moat`, `bashWriteFile` is a bare handler (the host-fs leaf), not a sequencer. Only `bashCommand` and `bashReadFile` are sequencers for MOAT. `vercel` and `upstash` get sequencers for all three. (packages/tools/src/bash/blocks.ts:1084-1095. Page line 298.)
 - MOAT option `runName` defaults to "Per session: `fsdev-<session id, 20 characters>-<12 hex>`". Untrue: That default applies only under `createBashCapability` and `createBashBlocks`. Under `createBashTool` there is no session identity. The run name is the `bashSession.sandboxId` when one is persisted, otherwise `fsdev-<random UUID>`. (packages/tools/src/bash/resolve-sandbox.ts:96 (blocks default: packages/tools/src/bash/blocks.ts, `defaultMoatRunName`). Page line 421.)
+
+- Re-run after the review edit: the moved content was fact-checked against the code (about 95 claims); the fixes were checked against the code they cite. No untrue claim remains open.
 
 ## 6 · Depth pass
 

@@ -143,6 +143,7 @@ The public union, `OutputItem`, has the first thirteen rows. The trace types in 
 | A `tool_output` for a tool that suspended | Saved as a `failed` item with `error.code === "SUSPENSION"`. Its real result replaces it when the answer resumes the run. `isSuspensionWait(item)` tests for it. |
 | A `tool_output` or `block_trace` value over the record limit | `output` and `modelOutput` are absent, and `outputOmitted` (or the trace's `output`) holds `{ kind: "omitted", bytes, preview }`. The limit is 256 KiB serialized, set per server with `maxRecordedValueBytes`. `preview` is the first 512 characters. `bytes` is `null` when the value could not be serialized. |
 | A resume that must hand on an omitted value | Fails with `RECORDED_VALUE_OMITTED`, naming the block. The run keeps the full value. The record, the stream and later prompts see the placeholder. |
+| A `state_change` from block state | `scope: "block_instance"`, with `blockInstanceId`. |
 | A `data` item with no renderer | On the stream and in the session, and draws nothing. Code reads it back by `dataType`. |
 
 ### Emitting from a block
