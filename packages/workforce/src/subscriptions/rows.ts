@@ -74,6 +74,15 @@ const screenSettingsSchema = z.object({
   screens: z.array(listedScreenSchema).default([]),
   /** The subscription takes outsiders' events (epic Q1's per-subscription opt-in). */
   outsiders: z.literal(true).optional(),
+  // FIX-2873.
+  /**
+   * The custom screen a bot sender is handed on to: the sender screen lets any
+   * bot through to it, rather than only the service's `trustedBots`, and that
+   * screen decides. Set only by host code (`SubscribeWrite`), never a model's
+   * input, and honoured only while the subscription lists that custom screen
+   * ({@link botsHandedOn}).
+   */
+  botsScreenedBy: z.string().min(1).max(100).optional(),
   /** The subscriber's own id at the provider, for `own`. */
   self: z.string().min(1).optional(),
   /**
@@ -182,6 +191,23 @@ export const indexEntrySchema = screenSettingsSchema.extend({
 });
 
 export type IndexEntry = z.infer<typeof indexEntrySchema>;
+
+// FIX-2873.
+/**
+ * The custom screen a subscription hands a bot sender on to, or `undefined`
+ * when it hands none on: its `botsScreenedBy`, only while it lists that
+ * custom screen. A row written or restored without the screen (a model's
+ * rewrite of the same thread, a stale index entry) hands no bot on, so a
+ * listed bot never reaches a subscription that has no list screen. The write
+ * (`subscribe`), routing and delivery all decide through this one function.
+ */
+export function botsHandedOn(entry: { readonly botsScreenedBy?: string | undefined; readonly screens: readonly ListedScreen[] }): string | undefined {
+  const name = entry.botsScreenedBy;
+  if (name === undefined) return undefined;
+  return entry.screens.some((listed) => listed.screen === "custom" && listed.name === name) ? name : undefined;
+}
+
+type ListedScreen = z.infer<typeof listedScreenSchema>;
 
 /**
  * One thread's subscriptions, by subscription id. Two users subscribing to one

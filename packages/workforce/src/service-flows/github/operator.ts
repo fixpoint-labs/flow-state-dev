@@ -4,14 +4,17 @@
  * and for that user alone. `operatorGitHubToken` reads the token once at
  * start; `operatorGitHub` builds the routines' provider on it, which refuses a
  * GitHub routine asked for with no token, or by any other user, naming
- * `GITHUB_TOKEN`, so the token is never lent.
+ * `GITHUB_TOKEN`, so the token is never lent. With `reviewers`, it declares
+ * the trusted reviewers' list screen, asked of GitHub with the
+ * operator's token for the operator's own subscriptions only.
  *
  * Node-only (`operatorGitHubToken` asks `gh`): the server entry exports it,
  * the browser entry doesn't.
  */
 import { execFileSync } from "node:child_process";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import type { BlockContext, EvaluationModel } from "@flow-state-dev/core/types";
 import { githubSubscriptionProvider, type GitHubSubscriptionProvider } from "./provider";
+import { GITHUB_REVIEWERS_SCREEN, githubTrustedReviewersScreen, type GitHubTrustedReviewers } from "./trusted-reviewers";
 
 /** How long `gh auth token` may take before the host starts with no token. */
 const GH_TIMEOUT_MS = 10_000;
@@ -40,6 +43,13 @@ export interface OperatorGitHubOptions {
   token: string | undefined;
   /** GitHub's REST API root. Default GitHub's own; a check names its stub. */
   apiUrl?: string;
+  /**
+   * The trusted reviewers (`githubTrustedReviewers`): the provider declares their list
+   * screen, first among its custom screens, for their follow to list.
+   */
+  reviewers?: GitHubTrustedReviewers;
+  /** The model a routine's `interest` screen is judged on. Absent: a routine listing `interest` is refused. */
+  interestModel?: string | EvaluationModel;
 }
 
 /**
@@ -49,9 +59,31 @@ export interface OperatorGitHubOptions {
  * saves nothing; a poll for anyone else reads nothing.
  */
 export function operatorGitHub(options: OperatorGitHubOptions): GitHubSubscriptionProvider {
-  const { operator, token, apiUrl } = options;
+  const { operator, token, apiUrl, reviewers, interestModel } = options;
   const reads = (ctx: BlockContext) => (ctx.session.identity as { userId?: string }).userId === operator;
-  const github = githubSubscriptionProvider({ token: (ctx) => (reads(ctx) ? token : undefined), ...(apiUrl === undefined ? {} : { apiUrl }) });
+  const custom =
+    reviewers === undefined
+      ? undefined
+      : {
+          // Who may steer a run through its pull request, read from the list for each event. A person is asked
+          // of GitHub with the operator's token, lent only to the operator's own subscriptions: decided on the
+          // subscription's owner, since routing runs as the service. Declared first: a later screen goes after it.
+          [GITHUB_REVIEWERS_SCREEN]: githubTrustedReviewersScreen({
+            reviewers: reviewers.read,
+            token: (_ctx, entry) => (entry.userId === operator ? token : undefined),
+            ...(apiUrl === undefined ? {} : { apiUrl }),
+            resources: reviewers.resources
+          })
+        };
+  const screens =
+    custom === undefined && interestModel === undefined
+      ? undefined
+      : { ...(interestModel === undefined ? {} : { interestModel }), ...(custom === undefined ? {} : { custom }) };
+  const github = githubSubscriptionProvider({
+    token: (ctx) => (reads(ctx) ? token : undefined),
+    ...(apiUrl === undefined ? {} : { apiUrl }),
+    ...(screens === undefined ? {} : { screens })
+  });
   return {
     ...github,
     async canRead(key: string, ctx: BlockContext) {

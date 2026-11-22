@@ -8,12 +8,12 @@ import { codexHarness } from "@flow-state-dev/codex";
 import type { ModelResolver, PrincipalResolutionContext } from "@flow-state-dev/core/types";
 import { cursorHarness } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
-import { ASK_MARKER_IGNORED, assertPositiveInt, scriptedHarness, type Harness } from "@flow-state-dev/harness-manager";
+import { ASK_MARKER_IGNORED, assertPositiveInt, GOAL_JUDGE_MODEL, scriptedHarness, type Harness } from "@flow-state-dev/harness-manager";
 import { codingDrainBudgetMs, harnesses } from "@flow-state-dev/harness-manager/kit";
 import { system } from "@flow-state-dev/memory";
 import { sqliteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { fetch, search } from "@flow-state-dev/tools";
-import { operatorGitHub, projectSourceTools, reviewedPullRequestFollow, type GitHubReviewers } from "@flow-state-dev/workforce";
+import { githubTrustedReviewers, operatorGitHub, projectSourceTools } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { checkCommandsFrom, localWorkspaceHost, setupCommandFrom, type WorkspaceSetup } from "@flow-state-dev/workspace";
@@ -38,7 +38,6 @@ export interface TeammatesOptions {
   modelResolver?: ModelResolver;
   githubToken?: string;
   githubApiUrl?: string;
-  /** The GitHub logins a coding run's pull request is heard from; absent, no pull request is followed. */ githubReviewers?: GitHubReviewers;
 }
 
 /** The working folder: an existing git checkout, as an absolute path, never a fallback. @throws When unset, missing or not a checkout. */
@@ -79,7 +78,8 @@ export async function openTeammates(options: TeammatesOptions) {
   const scripted = options.scriptedHarnessStepMs;
   const stub = (id: string, label: string): Harness => ({ id, label, agent: scriptedHarness({ stepEveryMs: scripted! }).slot, readiness: async () => ({ ready: true }), pass: [] });
   const beside = (index: string) => options.store.replace(/(\.[^./\\]+)?$/, `-${index}$1`);
-  const github = operatorGitHub({ operator: options.userId, token: options.githubToken, ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }) });
+  const reviewers = githubTrustedReviewers({ operator: options.userId, judgeModel: GOAL_JUDGE_MODEL });
+  const github = operatorGitHub({ operator: options.userId, token: options.githubToken, reviewers, ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }) });
   return createFlowState({
     kits: [
       workforce({
@@ -89,14 +89,14 @@ export async function openTeammates(options: TeammatesOptions) {
           showSettings: ["icon", "color", "model", "harness"],
           model: options.model,
           catalog: { ...projectSourceTools(workspace), search: search(), fetch: fetch() },
-          uses: [mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true })],
+          uses: [mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }), reviewers.capability],
           afterAnswer: mem.captureFromItems,
           maxSteps: 100,
         },
         routines: { index: sqliteScheduleIndex({ filename: beside("clock") }), providers: [github], poll: { index: sqliteScheduleIndex({ filename: beside("poll") }) } },
-        github: { provider: github, poll: true, trustedBots: options.githubReviewers?.bots ?? [] },
+        github: { provider: github, poll: true },
       }),
-      harnesses({ workspace, defaultHarness: harness, review: true, checks, runTimeoutMs, branchPrefix: "teammates/", logReadiness: true, onPullRequestRecorded: reviewedPullRequestFollow(github, options.githubReviewers) }),
+      harnesses({ workspace, defaultHarness: harness, review: true, checks, runTimeoutMs, branchPrefix: "teammates/", logReadiness: true, onPullRequestRecorded: reviewers.follow(github) }),
       scripted === undefined ? claudeCode() : claudeCode().without(harnesses.slots.harnesses, "claude-code"),
     ],
     fill: { [harnesses.slots.harnesses]: scripted === undefined ? [codexHarness(), cursorHarness({ model: "composer-2.5" })] : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")] },

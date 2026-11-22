@@ -15,12 +15,14 @@
  *    subscribed to that pull request for reviews, comments and CI, and the
  *    thread is polled, because a Lab on a laptop has no public URL to push to.
  *    Nothing subscribes the coordinator's conversation.
- * 2. Only a trusted reviewer reaches the run (FIX-2789): a login the
- *    `github-reviewers` document lists that can write to the repository,
- *    asked of GitHub when the comment arrives. A listed login without write
- *    access, an unlisted one and a bot don't, and the operator's edit to the
- *    list applies to the next comment with no restart. The run acts on what
- *    it hears with Bash and a push, so this is who can steer it.
+ * 2. Only a trusted reviewer reaches the run (FIX-2789, FIX-2873): an
+ *    account on workforce's one stored list, a listed bot, or a listed person
+ *    who can write to the repository, asked of GitHub when the comment
+ *    arrives. `GITHUB_REVIEWERS` is the list's default until it is first
+ *    saved; a save, an empty one included, applies to the next comment with no
+ *    restart. A listed bot is heard on the run's follow and on no other
+ *    subscription. The run acts on what it hears with Bash and a push, so this
+ *    is who can steer it.
  * 3. A GitHub event routine listing the `interest` screen is saved, not
  *    refused with `no_interest_model`.
  *
@@ -32,7 +34,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type {
   FlowInstance,
   GeneratorModel,
@@ -44,8 +46,8 @@ import { routeServiceEvent } from "@flow-state-dev/engine/internal";
 import type { SubscriptionEvent } from "@flow-state-dev/core/types";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
+import { GITHUB_REVIEWERS_DOC, githubReviewersDocument } from "@flow-state-dev/workforce";
 import {
-  GITHUB_REVIEWERS_FLOW,
   LAB_ORG_ID,
   LAB_USER_ID,
   openLab,
@@ -62,7 +64,7 @@ const REPO_THREAD = "github:acme/storefront";
 
 const dirs: string[] = [];
 /** Each login's permission on acme/storefront, as GitHub answers it. */
-const PERMISSIONS: Record<string, string> = { jhoffner: "admin", reader: "read", maintainer: "write" };
+const PERMISSIONS: Record<string, string> = { alice: "write", bob: "admin", carol: "read" };
 /** Every permission GitHub was asked, with the token it was asked with. */
 const permissionAsks: string[] = [];
 const PATH = process.env.PATH;
@@ -83,6 +85,8 @@ process.stdout.write(JSON.stringify(path.includes("/pulls?") ? [pr] : pr));
   );
   chmodSync(join(bin, "gh"), 0o755);
   process.env.PATH = `${bin}${delimiter}${PATH ?? ""}`;
+  // The list's default, read when the Lab opens.
+  vi.stubEnv("GITHUB_REVIEWERS", "alice,greptile-apps[bot]");
   // GitHub's REST API, as the routines' provider reads it with the operator's token: the repository is readable,
   // and each login's permission on it is what PERMISSIONS says (none: not a collaborator).
   api = createServer((req, res) => {
@@ -108,6 +112,7 @@ process.stdout.write(JSON.stringify(path.includes("/pulls?") ? [pr] : pr));
 
 afterAll(async () => {
   process.env.PATH = PATH;
+  vi.unstubAllEnvs();
   await new Promise((resolve) => api.close(resolve));
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
@@ -267,6 +272,8 @@ describe("the coder follows the pull request its run opens", () => {
         thread: s.thread,
         kinds: s.kinds,
         screens: s.screens,
+        outsiders: s.outsiders,
+        botsScreenedBy: s.botsScreenedBy,
         enabled: s.enabled,
         taskId: s.taskId,
       })),
@@ -276,6 +283,9 @@ describe("the coder follows the pull request its run opens", () => {
         thread: PR_THREAD,
         kinds: ["review", "comment", "check"],
         screens: [{ screen: "custom", name: "github-reviewers" }],
+        // The list screen decides who outside the project is heard, and which bots.
+        outsiders: true,
+        botsScreenedBy: "github-reviewers",
         enabled: true,
         // The coder's task: its failure or cancel ends the follow, so a failed run stops hearing its pull request.
         taskId: task.id,
@@ -306,12 +316,12 @@ describe("the coder follows the pull request its run opens", () => {
 });
 
 let commentSeq = 0;
-/** A comment on #7, as GitHub's normalizer gives it. */
-function commentFrom(login: string, role: SubscriptionEvent["sender"]["role"] = "member"): SubscriptionEvent {
+/** A comment on #7 (or `thread`), as GitHub's normalizer gives it. */
+function commentFrom(login: string, role: SubscriptionEvent["sender"]["role"] = "member", thread = PR_THREAD): SubscriptionEvent {
   commentSeq += 1;
   return {
     provider: "github",
-    threads: [REPO_THREAD, PR_THREAD],
+    threads: [REPO_THREAD, thread],
     kind: "comment",
     object: { id: `comment-${commentSeq}`, version: 1 },
     sender: { id: login, name: login, role },
@@ -347,61 +357,48 @@ async function routeGitHub(lab: Lab, event: SubscriptionEvent) {
   return { verdict, delivered: runs.some((run) => run.output?.act === "sent") };
 }
 
+/** Save the list as the Shift Coordinator's approved edit leaves it: the stored row the document reads from then on. */
+async function save(lab: Lab, logins: string[]) {
+  const runtime = await lab.state.getRuntime();
+  await (runtime.stores as any).content.set("org", LAB_ORG_ID, GITHUB_REVIEWERS_DOC, githubReviewersDocument(logins));
+}
+
 describe("who can steer the coder through its pull request", () => {
-  it("only a listed login that can write: not one that can't, not an unlisted one, never a bot", async () => {
+  it("a listed bot, or a listed person who can write: GITHUB_REVIEWERS until saved, then the saved list, an empty one included", async () => {
     const lab = await openFollowingLab("coder-trusted-reviewers");
     await coderOpensPullRequest(lab);
+    // An ordinary GitHub routine of the Shift Coordinator's, on another pull request, with no list screen.
+    const saved = await act(lab, ROSTER_FLOW, `roster-${globalThis.crypto.randomUUID()}`, "saveRoutine", {
+      worker: SHIFT_COORDINATOR,
+      trigger: { event: { provider: "github", thread: "github:acme/storefront#8", kinds: ["comment"], interest: "Comments on #8." } },
+    });
+    expect(saved.output, JSON.stringify(saved.output)).toMatchObject({ ok: true });
+    const heard = async (login: string, role?: SubscriptionEvent["sender"]["role"]) => (await routeGitHub(lab, commentFrom(login, role))).delivered;
+
+    // Nothing saved: the setting is the list.
     permissionAsks.length = 0;
-    // jhoffner: listed in the document the tree seeds, and an admin on the repository.
-    expect(await routeGitHub(lab, commentFrom("jhoffner"))).toMatchObject({ verdict: { pass: true }, delivered: true });
-    expect(permissionAsks).toContain("jhoffner Bearer operator-token");
-    // The operator lists two more; reader can only read.
-    const set = await act(lab, GITHUB_REVIEWERS_FLOW, `reviewers-${globalThis.crypto.randomUUID()}`, "setGitHubReviewers", { logins: ["jhoffner", "reader", "ci-bot"] });
-    expect(set.error).toBeUndefined();
-    const refused = [
-      await routeGitHub(lab, commentFrom("reader")),
-      await routeGitHub(lab, commentFrom("stranger")),
-      await routeGitHub(lab, commentFrom("ci-bot", "bot")),
-    ];
-    expect(refused.map((r) => [r.verdict?.pass, r.verdict?.reason, r.delivered])).toEqual([
-      [false, 'custom:github-reviewers: "reader" can\'t write to acme/storefront', false],
-      [false, 'custom:github-reviewers: "stranger" isn\'t a trusted reviewer', false],
-      // The sender screen drops an untrusted bot first; the reviewers screen never passes one either.
-      [false, expect.stringMatching(/bot "ci-bot"/), false],
-    ]);
-  }, 120_000);
+    expect(await heard("alice"), "nothing saved: alice (a writer) heard").toBe(true);
+    expect(permissionAsks.length > 0 && permissionAsks.every((ask) => ask === "alice Bearer operator-token"), "a listed person is asked of GitHub, with the operator's token").toBe(true);
+    expect(await heard("greptile-apps", "bot"), "nothing saved: the listed bot heard").toBe(true);
+    expect(await heard("bob"), "nothing saved: bob refused").toBe(false);
+    expect(await heard("greptile-apps", "outsider"), "a user named like the listed bot refused").toBe(false);
+    // The listed bot on #8, which only the ordinary routine follows: it has no list screen, so nothing wakes.
+    const elsewhere = await routeGitHub(lab, commentFrom("greptile-apps", "bot", "github:acme/storefront#8"));
+    expect(elsewhere.delivered, "ordinary subscription not woken").toBe(false);
+    expect(elsewhere.verdict?.reason).toMatch(/bot "greptile-apps"/);
 
-  it("reads the list for each comment: the operator's edit applies to the next one, with no restart", async () => {
-    const lab = await openFollowingLab("coder-reviewers-edit");
-    await coderOpensPullRequest(lab);
-    const session = `reviewers-${globalThis.crypto.randomUUID()}`;
-    expect((await routeGitHub(lab, commentFrom("maintainer"))).verdict).toMatchObject({ pass: false, reason: 'custom:github-reviewers: "maintainer" isn\'t a trusted reviewer' });
-    expect((await act(lab, GITHUB_REVIEWERS_FLOW, session, "setGitHubReviewers", { logins: ["jhoffner", "maintainer"] })).error).toBeUndefined();
-    expect(await routeGitHub(lab, commentFrom("maintainer"))).toMatchObject({ verdict: { pass: true }, delivered: true });
-    expect((await act(lab, GITHUB_REVIEWERS_FLOW, session, "setGitHubReviewers", { logins: ["maintainer"] })).error).toBeUndefined();
-    expect((await routeGitHub(lab, commentFrom("jhoffner"))).verdict).toMatchObject({ pass: false, reason: 'custom:github-reviewers: "jhoffner" isn\'t a trusted reviewer' });
-  }, 120_000);
+    // Saved empty: nobody, whatever the setting says.
+    await save(lab, []);
+    expect(await heard("alice"), "save []: alice refused").toBe(false);
+    expect(await heard("greptile-apps", "bot"), "save []: the bot refused").toBe(false);
 
-  it("lets no one but the operator change the list", async () => {
-    const lab = await openFollowingLab("coder-reviewers-operator-only");
-    await coderOpensPullRequest(lab);
-    const runtime = await lab.state.getRuntime();
-    const other = (await runAction({
-      orgId: LAB_ORG_ID,
-      flow: runtime.registry.get(GITHUB_REVIEWERS_FLOW) as FlowInstance,
-      actionName: "setGitHubReviewers",
-      input: { logins: ["mallory"] },
-      userId: "u_someone_else",
-      sessionId: `reviewers-${globalThis.crypto.randomUUID()}`,
-      stores: runtime.stores,
-      runtimeConfig: runtime.runtimeConfig,
-    } as never)) as { error?: unknown };
-    expect(other.error).toMatchObject({ blockName: "set-github-reviewers" });
-    // The list is as the tree seeded it: jhoffner still steers, mallory doesn't.
-    expect((await routeGitHub(lab, commentFrom("jhoffner"))).verdict).toMatchObject({ pass: true });
-    PERMISSIONS.mallory = "admin";
-    expect((await routeGitHub(lab, commentFrom("mallory"))).verdict).toMatchObject({ pass: false, reason: 'custom:github-reviewers: "mallory" isn\'t a trusted reviewer' });
-    delete PERMISSIONS.mallory;
+    // Saved with others: heard on the next comment, with no restart. A listed reader isn't.
+    await save(lab, ["bob", "carol", "cursor[bot]"]);
+    expect(await heard("bob"), "saved: bob heard").toBe(true);
+    expect(await heard("cursor", "bot"), "saved: cursor[bot] heard").toBe(true);
+    const carol = await routeGitHub(lab, commentFrom("carol"));
+    expect([carol.verdict?.reason, carol.delivered], "listed reader-only carol refused").toEqual(['custom:github-reviewers: "carol" can\'t write to acme/storefront', false]);
+    expect(await heard("alice"), "alice, no longer listed, refused").toBe(false);
   }, 120_000);
 });
 

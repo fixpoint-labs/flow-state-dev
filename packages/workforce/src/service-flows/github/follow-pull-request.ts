@@ -24,7 +24,6 @@ import { installationPolling, pollingOn } from "../../subscriptions/poll";
 import { subscriptionResources } from "../../subscriptions/rows";
 import { subscribe, type SubscribeInput, type SubscribeOutcome, type SubscriptionProvider } from "../../subscriptions/subscribe";
 import { GITHUB_PROVIDER, githubThreadKey } from "./normalize";
-import type { GitHubReviewers } from "./trusted-reviewers";
 
 /** The kinds a followed pull request is heard for. **Pinned.** */
 export const FOLLOWED_PULL_REQUEST_KINDS = ["review", "comment", "check"] as const;
@@ -43,7 +42,7 @@ export interface FollowPullRequestOptions {
   /**
    * The screens the follow lists, for a host whose coding session acts on
    * what it hears: an event they refuse never reaches the session (a custom
-   * screen such as `githubTrustedReviewersScreen`, declared on the
+   * screen such as the trusted reviewers' list screen, declared on the
    * provider). Absent: every sender the sender screen passes.
    */
   readonly screens?: SubscribeInput["screens"];
@@ -53,6 +52,13 @@ export interface FollowPullRequestOptions {
    * `allow` list: on its own it lets anyone through.
    */
   readonly outsiders?: true;
+  // FIX-2873.
+  /**
+   * Hand every bot sender on to this custom screen, which `screens` must list,
+   * rather than only the bots the service trusts: that screen decides which bots
+   * this follow hears. No other subscription is affected.
+   */
+  readonly botsScreenedBy?: string;
 }
 
 /** The thread a recorded pull request is followed on, or `undefined` when it isn't GitHub's. */
@@ -87,7 +93,12 @@ export function followPullRequest(options: FollowPullRequestOptions): PullReques
       undefined,
       // Its close reaches the session, so a task waiting on the pull request wakes (FIX-2535 D3).
       // The run's task, when it works one: its failure or cancel ends the follow.
-      { hearsClose: true, ...(run?.taskId === undefined ? {} : { taskId: run.taskId }), ...(polling === undefined ? {} : { polling }) }
+      {
+        hearsClose: true,
+        ...(run?.taskId === undefined ? {} : { taskId: run.taskId }),
+        ...(polling === undefined ? {} : { polling }),
+        ...(options.botsScreenedBy === undefined ? {} : { botsScreenedBy: options.botsScreenedBy })
+      }
     );
     await options.onFollowed?.(pr, outcome, ctx);
     if ("refused" in outcome) throw new Error(outcome.refused);
@@ -95,23 +106,4 @@ export function followPullRequest(options: FollowPullRequestOptions): PullReques
   return Object.assign(follower, {
     resources: options.installation === undefined ? subscriptionResources : { ...subscriptionResources, ...installationPolling(options.installation).resources }
   });
-}
-
-/**
- * A pull-request follower for the harness kit (`harnesses({ onPullRequestRecorded })`)
- * that hears only `reviewers`. On a public repository anyone can comment, and a
- * run acts on what it hears with a push, so with nobody listed this is
- * `undefined` and nothing is followed, never every sender. A listed reviewer is
- * heard whether or not they are in the project, and a user named like a listed
- * bot is not that bot. A listed bot is heard only once
- * the GitHub service flow trusts it too: pass `reviewers.bots` as its `trustedBots`.
- */
-export function reviewedPullRequestFollow(
-  github: SubscriptionProvider,
-  reviewers: GitHubReviewers | undefined
-): ((installation: WorkerInstallation) => PullRequestFollower) | undefined {
-  if (reviewers === undefined || reviewers.users.length + reviewers.bots.length === 0) return undefined;
-  // Users and bots apart: an outsider passes as a listed user only, never as a bot that shares its name.
-  const allow = { screen: "allow" as const, ids: [...reviewers.users], bots: [...reviewers.bots] };
-  return (installation) => followPullRequest({ providers: [github], installation, screens: [allow], outsiders: true });
 }

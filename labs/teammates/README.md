@@ -216,7 +216,7 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | `TEAMMATES_RUN_TIMEOUT_MS` | the wall-clock budget for one coding run, in milliseconds | `1200000` (20 minutes) |
 | `TEAMMATES_SETUP` | a command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`; no shell | none |
 | `GITHUB_TOKEN` | the token a routine that follows a GitHub pull request reads GitHub with, for the lab's own user alone | what `gh auth token` answers at start; none, and GitHub routines are refused |
-| `TEAMMATES_GITHUB_REVIEWERS` | the GitHub logins, comma-separated, a coding run hears on the pull request it opens: their reviews and comments reach the run's session, which answers them in the pull request. List a bot by its login, such as `greptile-apps[bot]`: the lab trusts it on the GitHub service too, which a bot needs to be heard. The repository is public and a run acts on what it hears, so no one else is heard | none, and a run follows no pull request |
+| `GITHUB_REVIEWERS` | the GitHub accounts, comma-separated, a coding run hears on the pull request it opens: their reviews and comments reach the run's session, which answers them in the pull request. List a bot by its login, such as `greptile-apps[bot]`; a person is heard only while they can also push to the repository. It is the default of the trusted-reviewers list until that list is first saved: after that the saved list wins, an empty one included, and Chief of Staff changes it on your own word, with your Approve in Inbox. The repository is public and a run acts on what it hears, so no one else is heard. Renamed from `TEAMMATES_GITHUB_REVIEWERS`, which is no longer read | none: nobody is heard until the list is saved |
 | `TEAMMATES_CHECKS` | the commands a coding run's worktree must pass before its task is done, `;`-separated, such as `pnpm typecheck; pnpm test`; no shell, so a `;` inside one command, even quoted, isn't supported. A red one sends the run back with the command's output | none |
 
 The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`). Each coding agent needs its
@@ -271,6 +271,12 @@ checkout that doesn't. The checkout's own branch and working tree are never chan
   A pull request's events are polled (no public URL) on the operator's own GitHub token, for the
   operator alone (workforce's `operatorGitHub`); `fsdev dev` ticks the polls and the clock routines,
   each from a SQLite file of its own beside the store.
+- **Trusted reviewers** are workforce's one stored list (`githubTrustedReviewers`), `GITHUB_REVIEWERS`
+  its default until it is first saved. A coding run follows its pull request through the list's
+  follow, which hears a listed bot or a listed person who can push, and nobody else; the GitHub
+  service trusts no bot of its own. The list's only writer is its `setGitHubReviewers` tool, which
+  Lead alone picks, through the `githubReviewers` capability rather than a `tools:` line, so it
+  keeps every tool it had. No HTTP action writes the list.
 - Every request is the lab's own user in the lab's own org, never a user the request names: the
   operator-only GitHub token is gated on it. `openTeammates`'s `user` option, which names the user
   each request is (the lab's own when it names none), is for a goal's host that needs two users

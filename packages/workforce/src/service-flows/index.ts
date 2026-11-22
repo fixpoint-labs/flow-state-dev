@@ -18,8 +18,17 @@ export {
 } from "./github/provider";
 export { operatorGitHub, operatorGitHubToken, type OperatorGitHubOptions } from "./github/operator";
 export { githubServiceFlow, type GitHubServiceFlowOptions } from "./github/service-flow";
-export { followPullRequest, reviewedPullRequestFollow, type FollowPullRequestOptions } from "./github/follow-pull-request";
-export { githubLoginsListed, githubReviewers, githubTrustedReviewersScreen, type GitHubReviewers, type GitHubTrustedReviewersOptions } from "./github/trusted-reviewers";
+export { followPullRequest, type FollowPullRequestOptions } from "./github/follow-pull-request";
+export {
+  GITHUB_REVIEWERS_SCREEN,
+  githubTrustedReviewers,
+  githubTrustedReviewersScreen,
+  type GitHubTrustedReviewers,
+  type GitHubTrustedReviewersOptions,
+  type GitHubTrustedReviewersScreenOptions
+} from "./github/trusted-reviewers";
+export { GITHUB_REVIEWERS_DOC, githubLoginsListed, githubReviewersDocument } from "./github/reviewers-document";
+export { GITHUB_REVIEWERS_JUDGE, GITHUB_REVIEWERS_TOOL } from "./github/reviewers-tool";
 export {
   internalServiceFlow,
   type InternalServiceFlow,

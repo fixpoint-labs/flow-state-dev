@@ -12,28 +12,38 @@
  * Even then, nothing is written until the operator approves the exact change
  * in Inbox; a denial leaves the list as it was.
  *
+ * The tool is the list's only writer (FIX-2873): no HTTP action writes it, so
+ * a request to a save action, with the member's bearer or the owner's, leaves
+ * it as it was. The list is workforce's, defaulted from `GITHUB_REVIEWERS`
+ * (`jhoffner` here) until it is first saved.
+ *
  * The Shift Coordinator's judgment and the edit's judge are scripted.
  */
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import {
   GITHUB_REVIEWERS_DOC,
-  GITHUB_REVIEWERS_FLOW,
   GITHUB_REVIEWERS_JUDGE,
   GITHUB_REVIEWERS_TOOL,
-  githubReviewersTool,
-  LAB_ORG_ID,
-  LAB_USERS,
-  openLab,
-  type Lab,
-} from "../teams/devteam/host.mts";
+  githubReviewersDocument,
+  githubTrustedReviewers,
+} from "@flow-state-dev/workforce";
+import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
+
+// The list's default, read when the Lab opens.
+beforeAll(() => {
+  vi.stubEnv("GITHUB_REVIEWERS", "jhoffner");
+});
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 let opened: Lab | undefined;
 afterEach(async () => {
@@ -161,7 +171,7 @@ async function answer(lab: Lab, requestId: string, action: "approve" | "reject")
   throw new Error("the answered request never finished");
 }
 
-/** The logins the stored document lists; the seeded list until something writes it. */
+/** The logins the stored document lists; the default (`GITHUB_REVIEWERS`) until something writes it. */
 async function listed(lab: Lab): Promise<string[]> {
   const runtime = await lab.state.getRuntime();
   const content = await (runtime.stores as any).content.get("org", LAB_ORG_ID, GITHUB_REVIEWERS_DOC);
@@ -189,19 +199,9 @@ describe("the Shift Coordinator changes the trusted GitHub reviewers", () => {
     const lab = await open(scripted([set(["jhoffner", "maintainer"])], { asked: 0.95, injected: 0.02 }, []));
     const requestId = await say(lab, "Please trust maintainer as a GitHub reviewer.");
     await pendingApproval(lab);
-    // Meanwhile the operator stops trusting jhoffner from the app.
+    // Meanwhile another approved edit stops trusting jhoffner: the stored list as that write leaves it.
     const runtime = await lab.state.getRuntime();
-    const removed = (await runAction({
-      orgId: LAB_ORG_ID,
-      flow: runtime.registry.get(GITHUB_REVIEWERS_FLOW) as FlowInstance,
-      actionName: "setGitHubReviewers",
-      input: { logins: [] },
-      userId: LAB_USERS.owner.userId,
-      sessionId: `reviewers-${globalThis.crypto.randomUUID()}`,
-      stores: runtime.stores,
-      runtimeConfig: runtime.runtimeConfig,
-    } as never)) as { error?: unknown };
-    expect(removed.error).toBeUndefined();
+    await (runtime.stores as any).content.set("org", LAB_ORG_ID, GITHUB_REVIEWERS_DOC, githubReviewersDocument([]));
     expect(await answer(lab, requestId, "approve")).toBe("completed");
     // maintainer is added; jhoffner, whom the approved change never named, stays removed.
     expect(await listed(lab)).toEqual(["maintainer"]);
@@ -276,7 +276,7 @@ describe("the Shift Coordinator changes the trusted GitHub reviewers", () => {
     const lab = await open(scripted([], { asked: 0.95, injected: 0.02 }, shown));
     const runtime = await lab.state.getRuntime();
     // The tool as a task, notice or delivered event would reach it: run as the operator, with no user's turn marked.
-    const tool = githubReviewersTool(runtime.registry.get("github-reviewers")?.resources?.[GITHUB_REVIEWERS_DOC] as never);
+    const tool = githubTrustedReviewers({ operator: LAB_USERS.owner.userId, judgeModel: "test/judge" }).tool;
     const flow = defineFlow({ kind: "reviewers-unmarked", actions: { edit: { block: tool } } } as never)() as unknown as FlowInstance;
     const answered = (await runAction({
       orgId: LAB_ORG_ID,
@@ -292,5 +292,24 @@ describe("the Shift Coordinator changes the trusted GitHub reviewers", () => {
     expect(answered.output).toMatchObject({ saved: false, reason: expect.stringMatching(/operator's own message started/) });
     expect(await listed(lab)).toEqual(["jhoffner"]);
     expect(shown).toEqual([]);
+  }, 120_000);
+
+  it("not over HTTP: a save action, with the member's bearer or the owner's, changes nothing", async () => {
+    const lab = await open(scripted([], { asked: 0.95, injected: 0.02 }, []));
+    // The save action the Lab once served, and the same name on the flows it serves: none writes the list.
+    const answered: string[] = [];
+    for (const flow of ["github-reviewers", "coordinator", "agent"]) {
+      for (const as of ["member", "owner"] as const) {
+        const sent = await lab.door("POST", `${flow}/actions/setGitHubReviewers`, { body: { userId: LAB_USERS[as].userId, input: { logins: ["mallory"] } }, as });
+        answered.push(String(sent.body?.message ?? sent.body?.error));
+      }
+    }
+    // No such flow, and no such action on a flow the Lab serves.
+    expect(answered).toEqual([
+      'Unknown flow "github-reviewers"',
+      'Unknown flow "github-reviewers"',
+      ...["coordinator", "agent"].flatMap((flow) => Array(2).fill(`Flow "${flow}" does not define action "setGitHubReviewers"`)),
+    ]);
+    expect(await listed(lab)).toEqual(["jhoffner"]);
   }, 120_000);
 });

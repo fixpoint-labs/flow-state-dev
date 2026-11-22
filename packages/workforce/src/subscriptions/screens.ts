@@ -8,8 +8,9 @@
  * of one kind included.
  *
  * - `sender` fails closed (epic Q1): members and collaborators pass, a bot
- *   passes when the service lists it, and an outsider (or a sender of unknown
- *   role) passes only a subscription that opted in.
+ *   passes when the service lists it, or on to the custom screen a host's
+ *   subscription names in `botsScreenedBy`, and an outsider (or a
+ *   sender of unknown role) passes only a subscription that opted in.
  * - `own` drops the subscriber's own actions.
  * - `labels`: the event carries one of the listed labels.
  * - `words`: the title or text holds one of the listed words, ignoring case.
@@ -35,7 +36,7 @@
 import { handler } from "@flow-state-dev/core";
 import { subscriptionEventSchema, type BlockContext, type DeclaredResourceEntry, type EvaluationModel, type SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { indexEntrySchema, type IndexEntry, type ScreenKind } from "./rows";
+import { botsHandedOn, indexEntrySchema, type IndexEntry, type ScreenKind } from "./rows";
 
 /**
  * One verdict: a subscription, whether it passed, and the screen that decided it and why. **Pinned** (D1).
@@ -118,7 +119,12 @@ export function screenRefusal(kind: ScreenKind, event: SubscriptionEvent, entry:
     case "sender": {
       const role = event.sender.role;
       if (role === "member" || role === "collaborator") return undefined;
-      if (role === "bot") return options.trustedBots.includes(event.sender.id) ? undefined : `bot "${event.sender.id}" isn't one the service lets through`;
+      if (role === "bot") {
+        if (options.trustedBots.includes(event.sender.id)) return undefined;
+        // FIX-2873: a subscription a host made with `botsScreenedBy` hands any bot on to that custom screen, which decides.
+        if (botsHandedOn(entry) !== undefined) return undefined;
+        return `bot "${event.sender.id}" isn't one the service lets through`;
+      }
       const outsidersPass = entry.outsiders === true;
       return outsidersPass ? undefined : `"${event.sender.id}" is outside the project (${role}), and this subscription takes no outsiders`;
     }
