@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Before: three sources decide trust. Shift Manager's folder file seeds its stored list, read by its own screen, flow, tool and operator helpers. Teammates reads TEAMMATES_GITHUB_REVIEWERS into an allow list that hears bots and outsiders. After: one stored list in workforce, defaulted from GITHUB_REVIEWERS until saved, read per event with the write check; both apps install it"
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .src   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .in    { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .arrow { stroke:var(--code); stroke-width:1.4; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; text-decoration:line-through; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+  <g id="before">
+    <text class="t-lbl" x="16" y="26">BEFORE · THREE SOURCES, TWO PATHS</text>
+    <rect class="n-box" x="16" y="38" width="212" height="250" rx="5"/>
+    <text class="t-lbl" x="28" y="56">SHIFT MANAGER</text>
+    <rect class="gone" x="26" y="66" width="192" height="40" rx="4"/>
+    <text class="t-g" x="34" y="83">folder file github-reviewers.md</text>
+    <text class="t-g" x="34" y="98">seeds jhoffner</text>
+    <rect class="gone" x="26" y="114" width="192" height="58" rx="4"/>
+    <text class="t-g" x="34" y="131">its own stored-list flow, tool,</text>
+    <text class="t-g" x="34" y="146">screen wiring · about 300 lines</text>
+    <text class="t-g" x="34" y="161">operator helper copies, two</text>
+    <text class="t-s" x="28" y="196">hears: listed · can write</text>
+    <text class="t-s" x="28" y="212">bots: never</text>
+    <rect class="n-box" x="240" y="38" width="212" height="250" rx="5"/>
+    <text class="t-lbl" x="252" y="56">TEAMMATES</text>
+    <rect class="gone" x="246" y="66" width="200" height="40" rx="4"/>
+    <text class="t-g" x="252" y="83">TEAMMATES_GITHUB_REVIEWERS</text>
+    <text class="t-g" x="252" y="98">read at start, restart to change</text>
+    <rect class="gone" x="246" y="114" width="200" height="58" rx="4"/>
+    <text class="t-g" x="252" y="131">allow list · reviewedPullRequest</text>
+    <text class="t-g" x="252" y="146">Follow · githubReviewers</text>
+    <text class="t-g" x="252" y="161">trustedBots wiring</text>
+    <text class="t-s" x="252" y="196">hears: listed · outsiders too</text>
+    <text class="t-s" x="252" y="212">bots: when listed · no write check</text>
+  </g>
+  <path class="arrow" d="M 462 160 L 490 160 M 482 153 L 490 160 L 482 167"/>
+  <g id="after">
+    <text class="t-lbl" x="500" y="26">AFTER · ONE SOURCE, IN WORKFORCE</text>
+    <rect class="in" x="500" y="38" width="424" height="40" rx="5"/>
+    <text class="t-lbl" x="512" y="55">SETTING · READ AT START</text>
+    <text class="t-s" x="512" y="70">GITHUB_REVIEWERS · the default until the list is first saved</text>
+    <rect class="src" x="500" y="90" width="424" height="98" rx="5"/>
+    <text class="t-lbl" x="512" y="108">WORKFORCE · TRUSTED REVIEWERS</text>
+    <text class="t-c" x="512" y="130">github-reviewers document · the one list</text>
+    <text class="t-s" x="512" y="150">save action · coordinator tool · screen: listed, can write, never a bot</text>
+    <text class="t-s" x="512" y="170">operatorGitHub takes reviewers · one operatorGitHubToken</text>
+    <rect class="app" x="500" y="200" width="206" height="88" rx="5"/>
+    <text class="t-lbl" x="512" y="218">SHIFT MANAGER</text>
+    <text class="t-s" x="512" y="238">installs it</text>
+    <text class="t-s" x="512" y="256">coordinator's catalog takes the tool</text>
+    <rect class="app" x="718" y="200" width="206" height="88" rx="5"/>
+    <text class="t-lbl" x="730" y="218">TEAMMATES</text>
+    <text class="t-s" x="730" y="238">installs it</text>
+    <text class="t-s" x="730" y="256">the save action, in its flows</text>
+  </g>
+  <g id="legend">
+    <text class="t-g" x="16" y="326">struck</text><text class="t-s" x="62" y="326">removed</text>
+    <rect class="src" x="150" y="314" width="16" height="14" rx="3"/><text class="t-s" x="172" y="326">the one source</text>
+    <rect class="in" x="290" y="314" width="16" height="14" rx="3"/><text class="t-s" x="312" y="326">an input from outside: only a default</text>
+    <rect class="app" x="530" y="314" width="16" height="14" rx="3"/><text class="t-s" x="552" y="326">what each app does: install it</text>
+    <text class="t-s" x="16" y="360">A saved list keeps the ref github-reviewers, so a list Shift Manager already saved still reads.</text>
+    <text class="t-s" x="16" y="380">Counts from poc/sources/check.sh on main bb1c09790.</text>
+  </g>
+</svg>
