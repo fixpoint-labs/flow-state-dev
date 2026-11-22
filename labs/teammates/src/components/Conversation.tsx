@@ -1,4 +1,5 @@
 import { FlowProvider, useInterruptKeys, useJumpToLatest, type ItemLine } from "@flow-state-dev/react";
+import { PencilIcon } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SENT_MESSAGE_DATA_TYPE, type RosterEntry, type SentMessageValue } from "@flow-state-dev/workforce/browser";
 import type { AppContext } from "../../flows/lab-context.mts";
@@ -208,8 +209,15 @@ export function Conversation({
             </p>
           )}
         </div>
-        <button type="button" onClick={() => setPanel("edit")} aria-haspopup="dialog" className={HEADER_BUTTON}>
-          Edit teammate
+        <button
+          type="button"
+          onClick={() => setPanel("edit")}
+          aria-haspopup="dialog"
+          aria-label="Edit teammate"
+          title="Edit teammate"
+          className={cn(HEADER_BUTTON, "grid w-8 place-items-center px-0 text-text-2 hover:text-foreground")}
+        >
+          <PencilIcon aria-hidden className="size-4" />
         </button>
         {worker.standard ? null : (
           <button ref={fireButton} type="button" onClick={() => setPanel("fire")} aria-expanded={panel === "fire"} className={cn(HEADER_BUTTON, "text-danger")}>
