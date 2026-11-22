@@ -9,14 +9,16 @@
 # term is classified below, by path. A file nobody classified fails the run, so a fourth
 # source can't hide. --control plants an unclassified env read in labs/ and must FAIL.
 #
-# The six counters, in the order the echo line and the want strings use:
+# The seven counters, in the order the echo line and the want strings use:
 #   1 app_env_reads       `process.env.*GITHUB_REVIEWERS` read by an app (labs/, shift-manager)
 #   2 folder_seeds        github-reviewers.md files that seed a list
 #   3 token_helper_defs   definitions of `operatorGitHubToken`
 #   4 app_screen_builders app-side calls that build a reviewer screen or allow-list follow
 #   5 public_save_actions `setGitHubReviewers` registered as a public (HTTP) action
-#   6 app_static_bots     an app passing `trustedBots` a fixed list instead of the stored one
-# Today: 1 1 2 2 1 1. After FIX-2873: 0 0 1 0 0 0.
+#   6 app_static_bots     an app passing `trustedBots` a fixed list
+#   7 list_fed_trusted_bots  the stored list fed into the service-wide `trustedBots` (must stay 0:
+#                         it would admit a listed bot on every subscription; bots are admitted per follow)
+# Today: 1 1 2 2 1 1 0. After FIX-2873: 0 0 1 0 0 0 0.
 set -uo pipefail
 MODE=today CONTROL=0 ROOT=.
 for a in "$@"; do case "$a" in --after) MODE=after ;; --control) CONTROL=1 ;; *) ROOT=$a ;; esac; done
@@ -55,9 +57,10 @@ token_helper_defs=$(src 'export function operatorGitHubToken' | wc -l)
 app_screen_builders=$(src 'githubTrustedReviewersScreen\(|reviewedPullRequestFollow\(' | grep -v 'packages/workforce/src/service-flows/github/' | wc -l)
 public_save_actions=$(src 'actions: \{ *setGitHubReviewers' | wc -l)
 app_static_bots=$(grep -rlE 'trustedBots: *(\[|options\.)' labs packages/shift-manager --include=*.ts --include=*.mts 2>/dev/null | grep -vE '/(node_modules|test)/|\.test\.' | wc -l)
-got="$app_env_reads $folder_seeds $token_helper_defs $app_screen_builders $public_save_actions $app_static_bots"
-echo "app_env_reads=$app_env_reads folder_seeds=$folder_seeds token_helper_defs=$token_helper_defs app_screen_builders=$app_screen_builders public_save_actions=$public_save_actions app_static_bots=$app_static_bots"
+list_fed_trusted_bots=$(src 'trustedBots: *(reviewers|[a-zA-Z]*[Rr]eviewers)\.' | wc -l)
+got="$app_env_reads $folder_seeds $token_helper_defs $app_screen_builders $public_save_actions $app_static_bots $list_fed_trusted_bots"
+echo "app_env_reads=$app_env_reads folder_seeds=$folder_seeds token_helper_defs=$token_helper_defs app_screen_builders=$app_screen_builders public_save_actions=$public_save_actions app_static_bots=$app_static_bots list_fed_trusted_bots=$list_fed_trusted_bots"
 
-if [ "$MODE" = today ]; then want="1 1 2 2 1 1"; else want="0 0 1 0 0 0"; fi
+if [ "$MODE" = today ]; then want="1 1 2 2 1 1 0"; else want="0 0 1 0 0 0 0"; fi
 [ "$got" = "$want" ] || { echo "counts $got, want $want ($MODE)"; fail=1; }
 [ "$fail" = 0 ] && echo "PASS ($MODE)" || { echo "FAIL ($MODE)"; exit 1; }

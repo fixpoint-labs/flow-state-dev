@@ -33,8 +33,8 @@ write check for an app, and only an app installed on the repository can comment 
 | | |
 |---|---|
 | **Instead of** | List membership alone, with no write check, which is the literal reading. Or "bots never", which Jake rejected |
-| **Because** | The list is only as safe as its write path. Cursor's security review showed a run can rewrite it: Teammates makes every HTTP caller the operator, and Shift Manager's owner bearer is a constant in its source ([POC](poc/save-action/save-action.poc.ts)). The public save action goes, but a run on these hosts can still forge the tool's turn and its Approve over HTTP. With the write check, a forged or stale entry can only add someone who can already push. Without it, the list hands steering to anyone |
-| **Locks in** | A listed person who loses write access stops being heard. Teammates gains one GitHub call per comment from a listed person |
+| **Because** | The list is only as safe as its write path. Cursor's security review showed a run can rewrite it: Teammates makes every HTTP caller the operator, and Shift Manager's owner bearer is a constant in its source ([POC](poc/save-action/save-action.poc.ts)). The public save action goes, but a run on these hosts can still forge the tool's turn and its Approve over HTTP: an accepted residual, fixed by [FIX-2882](https://linear.app/fixpoint-labs/issue/FIX-2882). Until then, the write check means a forged or stale person entry adds only someone who can already push. A forged bot entry is bounded too: a GitHub App can comment only on a repository it is installed on, which takes an org owner or repo admin (settled below). The exception is `github-actions[bot]`, which posts whatever a workflow posts, so it should never be listed. Without the write check, a forged person entry hands steering to anyone |
+| **Locks in** | A listed person who loses write access stops being heard. Teammates gains one GitHub call per comment from a listed person. A listed bot is as trustworthy as the app's installation on the repository |
 
 ![D2: chosen, listed bots and listed writers; instead of, list membership alone or bots never. Decides it: a forged or stale entry is heard only if it can push. Price: one GitHub call per comment from a listed person. Flips if only the operator, in person, can edit the list](figures/d2-listed-bots-and-writers.svg)
 
@@ -81,6 +81,13 @@ It comes down to one GitHub setup: the token and the reviewers, under one prefix
   exports and from Shift Manager. An in-process caller, such as a test, may keep it as an
   internal action, which the engine never routes from HTTP. Teammates' Lead gets the tool. This
   is settled, below.
+- **Bot admission is per subscription, never service-wide.** The service's `trustedBots` is not
+  fed from the list, because the sender screen applies it to every GitHub subscription, at
+  routing and at delivery. The run's follow carries a row setting, beside `outsiders`, that hands
+  a bot on to that row's list screen. Only host code sets it, and only on a row that lists a
+  custom screen. A listed bot never wakes an ordinary subscription.
+- **Forgeable coordinator writes are an accepted residual** here. A run calling its host app over
+  HTTP as the operator is [FIX-2882](https://linear.app/fixpoint-labs/issue/FIX-2882)'s.
 - **Users and bots stay apart** in the list: `name[bot]` matches only a bot sender, and a plain
   login only a user. A user who registers a listed bot's name is refused (#5540's fix).
 - **The list moves into workforce** with the tool and screen, about 250 to 350 lines. Move the
@@ -141,13 +148,24 @@ error to point at it.
   rewrote it to `mallory`. The engine never routes an internal action from HTTP
   (`engine/src/execution/resolve-action-core.ts`).
 - **Three sources today** — **CONFIRMED** by [`poc/sources/check.sh`](poc/sources/check.sh) on
-  `main`: `PASS (today)`, `1 1 2 2 1 1`. The planted control fails. `--after` fails with
-  `want 0 0 1 0 0 0`.
+  `main`: `PASS (today)`, `1 1 2 2 1 1 0`. The planted control fails. `--after` fails with
+  `want 0 0 1 0 0 0 0`. Counter 7 (`list_fed_trusted_bots`) is a guard that reads 0 today; a
+  planted `trustedBots: reviewers.bots` turns it red.
 - **A stored row wins over the definition content, even an emptied list. A `contentTemplate`
   would win over a stored row** — read in `engine/src/context/resource-registry.ts`. Cursor's
   review confirmed the first half.
-- **The sender screen passes collaborators and refuses bots outside `trustedBots`** — read in
-  `workforce/src/subscriptions/screens.ts`.
+- **The sender screen passes collaborators and refuses bots outside `trustedBots`, and
+  `trustedBots` is service-wide** — read in `workforce/src/subscriptions/screens.ts` and
+  `workforce/src/service-flows/service-flow.ts` (the chain at routing, and the screens again for
+  each subscription at delivery). Codex's round-2 finding; it holds.
+- **A GitHub App can comment only on a repository it is installed on** — **CONFIRMED** from
+  GitHub's docs. Creating an issue or pull-request comment needs the Issues or Pull requests
+  **write** repository permission
+  ([permissions for GitHub Apps](https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps)).
+  An installation token reaches only the repositories its installation was granted
+  ([authenticating as an installation](https://docs.github.com/en/enterprise-cloud@latest/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation)).
+  Public visibility opens reads only. Installing takes an org owner or a repo admin. Exception:
+  `github-actions[bot]` relays whatever a workflow posts.
 
 ## Analysis
 
@@ -161,7 +179,7 @@ independent agent: this worker had no sub-agent tool.
 4. **New factors** — Jake's reversal of D2, and Cursor's write-path finding. Both folded.
 5. **Necessity** — two trust paths disagree on a security boundary.
 6. **Ergonomics** — one setting, beside the token.
-7. **Concerns** — caller identity in both hosts, recorded under *Leaves*.
+7. **Concerns** — caller identity in both hosts: an accepted residual, [FIX-2882](https://linear.app/fixpoint-labs/issue/FIX-2882).
 
 ## How it got here
 
@@ -171,6 +189,10 @@ independent agent: this worker had no sub-agent tool.
   review showed a run could rewrite the list over HTTP, so the public save action went, the
   tool became the only write, and the write check stays for people as a backstop. D3 approved.
   The list screen stays first, so FIX-2880's evaluator has a place after it.
+- **Review round 2** — Codex: bot admission moved from the service-wide `trustedBots` to the run's
+  follow, because the service-wide gate would let a listed bot wake any subscription. The goal
+  narrowed to "no direct HTTP write", with forged coordinator writes an accepted residual
+  ([FIX-2882](https://linear.app/fixpoint-labs/issue/FIX-2882)), and D2 now states the bot bound.
 
 ## Notes from review
 
