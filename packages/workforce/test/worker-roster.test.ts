@@ -30,6 +30,20 @@ describe("hiring a worker", () => {
     expect((await second.turn("alice", session.id)).output).toMatchObject({ worker: "scribe", tone: "terse" });
   });
 
+  // A host whose flow no longer declares a setting a stored row carries: the run refuses it in one sentence.
+  it("refuses to run a stored worker whose setting the flow no longer declares, ending on one full stop", async () => {
+    const h = host();
+    expect((await h.rosterAction("alice", "hire", { id: "scribe", flow: FIXTURE, settings: { tone: "terse" } })).error).toBeUndefined();
+
+    const older = bootHost(h.stores, { withoutTone: true });
+    const session = await older.client("alice").ensureWorkerSession({ worker: "scribe" });
+    const turn = await older.turn("alice", session.id);
+    const message = messageOf(turn.error);
+    expect(message).toMatch(/"tone" is not a declared setting/);
+    expect(message).not.toMatch(/\.\./);
+    expect(message).toMatch(/[^.]\.$/);
+  });
+
   // BR-3.
   it("refuses a hire, fork or fire onto a standard worker, naming it and suggesting a fork", async () => {
     const h = host();
@@ -79,6 +93,7 @@ describe("hiring a worker", () => {
     expect(messageOf(unknownFlow.error)).toContain('names flow "nope", which isn\'t a worker flow here');
     const badSetting = await h.rosterAction("alice", "hire", { id: "b", flow: FIXTURE, settings: { colour: "red" } });
     expect(messageOf(badSetting.error)).toContain("colour");
+    expect(messageOf(badSetting.error)).toMatch(/"colour" is not a declared setting\. Nothing was written\.$/);
     expect((await h.client("alice").roster()).filter((entry) => !entry.standard)).toEqual([]);
   });
 
