@@ -66,22 +66,33 @@ service-flow sessions earns its place here.
   runs its overlapping fires in one session under the flow's concurrency policy, as two tabs on one
   conversation do; an author who needs order there declares `concurrency` keyed on the session. No
   new check.
-- **The id names the flow instance, the user and org the fire runs as, and the schedule id**, so
-  two flows with the same static schedule id, or two principals firing one static schedule, never
-  share a session (the session binds its flow and its user, and refuses a mismatch). The encoding is
-  the implementer's, as long as it is one-to-one and one URL path segment. Tenants are already kept
+- **The id names the org and user the fire runs as, the flow instance, and the schedule id**,
+  spelled like the engine's other derived ids (`owner-run:`, `service-route:`: a prefix, then the
+  parts URL-encoded and joined by `:`), so two flows with the same static schedule id, or two
+  principals firing one static schedule, never share a session (the session binds its flow and its
+  user, and refuses a mismatch). The prefix word is the implementer's. Tenants are already kept
   apart by the session storage key.
 - **The reserved prefix, and its convergence point.** Every dispatch passes the inbound host's
-  `refuseReservedAddress`; a per-schedule id is admitted there only from the scheduled source
-  (`source` is set by the transport, never the caller, BP-031). The session create route and the
-  action route check it in their handlers, as they check write-session ids. The scheduled endpoint
-  is the only writer of the id. The listing, state and request reads stay open to the session's
-  owner, which the DevTool needs; delete stays open too, and the next fire recreates the session.
+  `refuseReservedAddress` (webhooks included, before they create a session); a schedule id is
+  admitted there only from the scheduled source (`source` is set by the transport, never the
+  caller, BP-031). The session create route and the action route check it in their handlers, as
+  they check write-session ids. Those are three of the write prefix's six points: the other three
+  (`reserved-addresses.ts` on every HTTP route, the listing, change notices) hide a write session,
+  and a schedule's session must stay listable and readable to its owner, which the DevTool needs.
+  So it is its own check beside `isWriteSessionId`, not a widening of it. The scheduled endpoint is
+  the only writer of the id. Delete stays open; the next fire recreates the session. `fsdev run`
+  (a trusted local operator) is not guarded, as for write sessions.
 - **Not stored on a schedule row.** The resolver option applies to every row it resolves, and the
   collection schema gains no field, so a schedule written through a client can't pick a session.
 - **The service flow's retention is `maxAge: "24h"`.** About 288 fires a day: enough to look back
-  over a day of polling in the DevTool, and bounded. The flow's other sessions are one-off webhook
-  runs, which retention never touches after their one request. One line to change.
+  over a day of polling in the DevTool, and bounded. Retention evicts completed and interrupted
+  fires only, after a completed one, so a poll that keeps failing still grows its session; that is
+  retention's rule everywhere, not new here. The flow's one-off webhook runs are never touched after
+  their one request. Its `service-route:` session, where every routing runs and which nothing caps
+  today, is capped too; the implementer confirms nothing reads that session's request history
+  (the routing keeps its state in resources) before relying on it. One line to change.
+- **The comment in the dispatch endpoint that says scheduled envelopes have no session** goes
+  with this change.
 - **The poll opts in; nothing else changes.** Routine and task schedules on the roster flow keep
   one-off fires.
 
@@ -109,7 +120,15 @@ routes already refuse a reserved prefix (`write-session-id.ts`, `createInboundTr
 
 ## Analysis
 
-Pending: written by the analysis pass before the PR opens.
+2026-11-22 · watermark `3bdcd281` · **build as scoped, three folds.**
+- Reuse: the preset is new (the webhook-style free id is rightly rejected); the reserved prefix extends the host guard; retention is reused. Missed: the engine's own derived ids, `owner-run:` and `service-route:`.
+- Prior art: Temporal and Trigger.dev run each fire separately and group runs by schedule id; in FSD the session is the grouping unit, so `per-schedule` is the analogue.
+- Other shapes: reuse the derived-id family rather than a third format. Folded.
+- New factors: Issue 1 is FIX-2888, in development and independent; FIX-2887 in Backlog; FIX-2630 does not move this.
+- Necessity: right size. Ergonomics: `session` on a schedule (where fires run) beside `session` on a flow (session config) is a small surprise. Major concerns: none.
+- **Folded:** the derived-id precedent, and the id spelled like it (FIX-2889 filed for the two unreserved ones) · the retention line, which missed the flow's `service-route:` session · the reserved-prefix line, which said two checks where the write prefix has six and this one joins three.
+- **Recorded:** retention never evicts failed fires; `fsdev run` creates sessions unguarded; the stale "no session" comment in the dispatch endpoint.
+- Goal validation (blind) also ran. **Folded:** a slow-fire signal (o) with its control, the existing sessions named in the goal, harder (m) (row, owner, request listing) and (n) (action and read), retention tested through the real dispatch path.
 
 ## Notes from review
 
