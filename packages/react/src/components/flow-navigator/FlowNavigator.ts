@@ -51,7 +51,7 @@ import {
   type FlowNavigatorClient,
   type LeafSessions
 } from "./reads";
-import { arrangeSessionRows, partitionOneOffRows, type SessionRow } from "./dispatch-runs";
+import { arrangeSessionRows, partitionOneOffSessions, type SessionRow } from "./dispatch-runs";
 import { sessionAge, sessionLabel, sessionRowState } from "./session-row";
 
 /** A leaf, plus the state of its session list — what a slot is handed. */
@@ -494,7 +494,7 @@ function SessionList(props: {
   // One-off runs (one delivery each) can outnumber everything else on a flow,
   // so they fold into one line, closed until it is opened. The runs one of them
   // started fold with it, so they stay drawn under what started them.
-  const { lasting, oneOff, oneOffCount } = useMemo(() => partitionOneOffRows(arranged), [arranged]);
+  const { lasting, oneOff, oneOffCount } = useMemo(() => partitionOneOffSessions(arranged), [arranged]);
   const [oneOffOpen, setOneOffOpen] = useState(false);
 
   const sessionLine = (entry: SessionRow, extraDepth: number): ReactNode => {

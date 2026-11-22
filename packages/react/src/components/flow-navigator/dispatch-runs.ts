@@ -125,7 +125,7 @@ export function arrangeSessionRows(
 }
 
 /** A leaf's arranged sessions, split into the ones drawn in the list and the one-off group. */
-export type PartitionedSessionRows = {
+export type PartitionedSessions = {
   /** Sessions drawn in the list, in arranged order. */
   readonly lasting: readonly SessionRow[];
   /** One-off sessions and the runs they started, in arranged order. */
@@ -139,14 +139,14 @@ export type PartitionedSessionRows = {
  * sessions (one delivery each, see `isOneOffSessionId`) can outnumber the
  * rest of a flow, so a navigator draws them in one closed group.
  */
-export function partitionOneOffRows(rows: readonly SessionRow[]): PartitionedSessionRows {
+export function partitionOneOffSessions(arranged: readonly SessionRow[]): PartitionedSessions {
   // `arrangeSessionRows` puts every run after the session that started it, so
   // one pass carries the group through a chain of runs, however long.
   const folded = new Set<string>();
   const lasting: SessionRow[] = [];
   const oneOff: SessionRow[] = [];
   let oneOffCount = 0;
-  for (const entry of rows) {
+  for (const entry of arranged) {
     const isOneOff = isOneOffSessionId(entry.session.id);
     const underOneOff = entry.depth === 1 && entry.parentSessionId !== undefined && folded.has(entry.parentSessionId);
     if (isOneOff || underOneOff) {
@@ -157,5 +157,5 @@ export function partitionOneOffRows(rows: readonly SessionRow[]): PartitionedSes
       lasting.push(entry);
     }
   }
-  return oneOffCount === 0 ? { lasting: rows, oneOff: [], oneOffCount: 0 } : { lasting, oneOff, oneOffCount };
+  return oneOffCount === 0 ? { lasting: arranged, oneOff: [], oneOffCount: 0 } : { lasting, oneOff, oneOffCount };
 }
