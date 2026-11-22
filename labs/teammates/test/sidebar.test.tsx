@@ -42,7 +42,7 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-function renderLab() {
+function renderApp() {
   render(
     <TestProvider server={scriptedServer({ speed: 0.05 })} client={stubServer({}).client}>
       <App />
@@ -57,7 +57,7 @@ const teammates = () => [...sidebar().querySelectorAll<HTMLElement>("[data-worke
 describe("the sidebar", () => {
   it("collapses to a rail that still lists and opens every teammate, and a wide window remembers it", async () => {
     fakeWindow(false);
-    renderLab();
+    renderApp();
     await waitFor(() => expect(teammates().length).toBeGreaterThan(1));
     expect(collapsed()).toBe(false);
     const count = teammates().length;
@@ -74,7 +74,7 @@ describe("the sidebar", () => {
 
     // A reload on a wide window starts the way it was left.
     cleanup();
-    renderLab();
+    renderApp();
     await waitFor(() => expect(teammates().length).toBeGreaterThan(1));
     expect(collapsed()).toBe(true);
     fireEvent.click(within(sidebar()).getByRole("button", { name: "Open sidebar" }));
@@ -83,7 +83,7 @@ describe("the sidebar", () => {
 
   it("collapses on its own on a narrow window, and opens again when the window widens", async () => {
     const window = fakeWindow(true);
-    renderLab();
+    renderApp();
     await waitFor(() => expect(teammates().length).toBeGreaterThan(1));
     expect(collapsed()).toBe(true);
 
