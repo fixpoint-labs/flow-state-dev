@@ -125,6 +125,7 @@ export function groupFlowsIntoSections(
         ? "collection"
         : "singleton";
 
+      // Copies of one kind share one definition, so their descriptions agree.
       const described = entries.find((entry) => entry.description != null)?.description;
       const about = described === undefined ? {} : { description: described };
       const only = entries.length === 1 ? entries[0]! : undefined;

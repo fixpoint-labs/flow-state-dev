@@ -16,6 +16,8 @@
  * is no request flag that widens this view.
  */
 import type { JsonObject, SessionLabel } from "@flow-state-dev/core/types";
+import { toError } from "@flow-state-dev/core/helpers";
+import { warnOnce } from "@flow-state-dev/core/internal";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { clientVisibleStateKeys } from "../context/client-visible-state";
 import type { SessionRecord } from "../stores/types";
@@ -52,31 +54,26 @@ export function toClientSession(
   // The fields read as a run reads them: with the schema's defaults.
   const read = owner.ok ? applyScopeStateDefaults(scopeStateSchema(owner.flow, "session"), state) : state;
   const shown = visibleState(read, visible);
-  const label = owner.ok ? labelOf(owner.flow.session?.label, envelope, bareId, shown) : undefined;
+  const label = owner.ok ? labelOf(owner.flow.session?.label, owner.flow.kind, bareId, shown) : undefined;
   return { ...envelope, id: bareId, state: shown, ...(label === undefined ? {} : { label }) };
 }
 
 /**
  * The flow's name for the session, from what a client may see of it. A label
  * that throws or names nothing leaves the session unlabelled: a display hint
- * never costs a read.
+ * never costs a read. A throw is said once per flow kind, so a broken label is
+ * not silent.
  */
-function labelOf(
-  label: SessionLabel | undefined,
-  record: Pick<SessionRecord, "topic" | "coordinate">,
-  id: string,
-  state: JsonObject
-): string | undefined {
+function labelOf(label: SessionLabel | undefined, flowKind: string, id: string, state: JsonObject): string | undefined {
   if (label === undefined) return undefined;
   try {
-    const named = label({
-      id,
-      state,
-      ...(record.topic == null ? {} : { topic: record.topic }),
-      ...(record.coordinate == null ? {} : { coordinate: record.coordinate })
-    });
+    const named = label({ id, state });
     return typeof named === "string" && named.trim() !== "" ? named : undefined;
-  } catch {
+  } catch (error) {
+    warnOnce(
+      `engine/session-label/${flowKind}`,
+      `flow "${flowKind}": session.label threw, so its sessions go out unlabelled: ${toError(error).message}`
+    );
     return undefined;
   }
 }

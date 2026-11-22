@@ -23,6 +23,7 @@
  * session list is not a guarantee about what else exists.
  */
 import type { SessionSummary } from "@flow-state-dev/client";
+import { isOneOffSessionId } from "@flow-state-dev/contracts/helpers";
 
 /** One row of the arranged list. */
 export type SessionRow = {
@@ -121,4 +122,40 @@ export function arrangeSessionRows(
   }
 
   return rows;
+}
+
+/** A leaf's arranged sessions, split into the ones drawn in the list and the one-off group. */
+export type PartitionedSessionRows = {
+  /** Sessions drawn in the list, in arranged order. */
+  readonly lasting: readonly SessionRow[];
+  /** One-off sessions and the runs they started, in arranged order. */
+  readonly oneOff: readonly SessionRow[];
+  /** How many one-off sessions `oneOff` holds, its runs not counted. */
+  readonly oneOffCount: number;
+};
+
+/**
+ * Split arranged sessions into the list and the one-off group. One-off
+ * sessions (one delivery each, see `isOneOffSessionId`) can outnumber the
+ * rest of a flow, so a navigator draws them in one closed group.
+ */
+export function partitionOneOffRows(rows: readonly SessionRow[]): PartitionedSessionRows {
+  // `arrangeSessionRows` puts every run after the session that started it, so
+  // one pass carries the group through a chain of runs, however long.
+  const folded = new Set<string>();
+  const lasting: SessionRow[] = [];
+  const oneOff: SessionRow[] = [];
+  let oneOffCount = 0;
+  for (const entry of rows) {
+    const isOneOff = isOneOffSessionId(entry.session.id);
+    const underOneOff = entry.depth === 1 && entry.parentSessionId !== undefined && folded.has(entry.parentSessionId);
+    if (isOneOff || underOneOff) {
+      folded.add(entry.session.id);
+      oneOff.push(entry);
+      if (isOneOff) oneOffCount += 1;
+    } else {
+      lasting.push(entry);
+    }
+  }
+  return oneOffCount === 0 ? { lasting: rows, oneOff: [], oneOffCount: 0 } : { lasting, oneOff, oneOffCount };
 }

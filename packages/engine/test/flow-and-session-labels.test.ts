@@ -9,8 +9,9 @@
  */
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance, JsonObject } from "@flow-state-dev/core/types";
+import { __resetDeprecationWarningsForTests } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "../src";
 import { createInMemoryStores } from "../src/host";
 
@@ -136,5 +137,25 @@ describe("a flow's session label", () => {
     const body = await get(host(stores), "sessions?userId=u_1");
     expect(body.sessions.map((s: { id: string }) => s.id)).toEqual(["s_throws"]);
     expect(body.sessions[0]).not.toHaveProperty("label");
+  });
+
+  it("says once, by flow kind, that a label threw, so a broken label is not silent", async () => {
+    // Another test here makes the same label throw; forget that warning.
+    __resetDeprecationWarningsForTests();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const stores = createInMemoryStores();
+      await seed(stores, "s_one", "throwing", {});
+      await seed(stores, "s_two", "throwing", {});
+      const router = host(stores);
+      await get(router, "sessions?userId=u_1");
+      await get(router, "sessions/s_one");
+      const said = warn.mock.calls.map((call) => String(call[0])).filter((line) => line.includes("session.label"));
+      expect(said).toHaveLength(1);
+      expect(said[0]).toContain('"throwing"');
+      expect(said[0]).toContain("label broke");
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

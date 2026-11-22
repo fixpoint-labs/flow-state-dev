@@ -14,7 +14,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import type { FlowListEntry, SessionsApi, SessionSummary } from "@flow-state-dev/client";
 import { FlowNavigator } from "../src/components/flow-navigator/FlowNavigator";
-import { arrangeSessionRows } from "../src/components/flow-navigator/dispatch-runs";
+import { arrangeSessionRows, partitionOneOffRows } from "../src/components/flow-navigator/dispatch-runs";
 
 afterEach(cleanup);
 
@@ -27,6 +27,39 @@ const row = (id: string, parentSessionId?: string): SessionSummary =>
     updatedAt: 1,
     ...(parentSessionId === undefined ? {} : { parentSessionId }),
   }) as unknown as SessionSummary;
+
+describe("partitionOneOffRows", () => {
+  const ids = (rows: readonly { session: SessionSummary }[]) => rows.map((entry) => entry.session.id);
+
+  it("folds a one-off session and every run under it, so no run is drawn under a hidden parent", () => {
+    // A run started by a run sits under the first run's parent at one level,
+    // so a chain from a one-off session is drawn as one block. Leaving its
+    // last link in the list would draw it indented under a closed group.
+    const parts = partitionOneOffRows(
+      arrangeSessionRows([
+        row("sess_talk"),
+        row("ephemeral_a"),
+        row("dsx_b", "ephemeral_a"),
+        row("dsx_c", "dsx_b"),
+        row("dsx_d", "sess_talk"),
+      ])
+    );
+
+    expect(ids(parts.lasting)).toEqual(["sess_talk", "dsx_d"]);
+    expect(ids(parts.oneOff)).toEqual(["ephemeral_a", "dsx_b", "dsx_c"]);
+    // The group's count is its one-off sessions, not the runs they started.
+    expect(parts.oneOffCount).toBe(1);
+  });
+
+  it("leaves a listing with no one-off session as it is", () => {
+    const arranged = arrangeSessionRows([row("sess_talk"), row("dsx_1", "sess_talk")]);
+    const parts = partitionOneOffRows(arranged);
+
+    expect(parts.lasting).toBe(arranged);
+    expect(parts.oneOff).toEqual([]);
+    expect(parts.oneOffCount).toBe(0);
+  });
+});
 
 describe("arrangeSessionRows", () => {
   it("draws a run one level under the session that started it", () => {

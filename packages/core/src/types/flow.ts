@@ -410,7 +410,8 @@ export type SessionConfig = {
    * (the listing and the single read) and goes out as the session's `label`.
    * It sees only the state the session shows (its readonly and `client.expose`
    * fields), so it cannot publish a private one. Keep it cheap and pure.
-   * Return `undefined` to name nothing; a throw leaves that session unlabelled.
+   * Called once per session per read. Return `undefined` to name nothing; a
+   * throw leaves that session unlabelled and is warned about once per flow kind.
    * Display only, never an address or an authority.
    */
   label?: SessionLabel;
@@ -428,10 +429,6 @@ export type SessionLabelInput = {
   readonly id: string;
   /** The state fields the session shows, with the schema's defaults applied. */
   readonly state: Readonly<JsonObject>;
-  /** The key a dispatched run's id was derived from, when it is one. */
-  readonly topic?: string;
-  /** The entry a dispatched run was sent to, as `<type>:<target>`. */
-  readonly coordinate?: string;
 };
 
 /** See {@link SessionConfig.label}. */

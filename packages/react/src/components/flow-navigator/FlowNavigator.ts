@@ -51,7 +51,7 @@ import {
   type FlowNavigatorClient,
   type LeafSessions
 } from "./reads";
-import { arrangeSessionRows, type SessionRow } from "./dispatch-runs";
+import { arrangeSessionRows, partitionOneOffRows, type SessionRow } from "./dispatch-runs";
 import { sessionAge, sessionLabel, sessionRowState } from "./session-row";
 
 /** A leaf, plus the state of its session list — what a slot is handed. */
@@ -475,18 +475,6 @@ type LeafContext = {
   readonly now: number;
 };
 
-/**
- * The id prefix the engine mints for a request sent with no session: a run
- * that is its own whole session, such as one webhook delivery
- * (`createExecutionContext`).
- */
-const ONE_OFF_SESSION_PREFIX = "ephemeral_";
-
-/** A session that is one request sent with no session of its own. */
-function isOneOffRun(session: SessionSummary): boolean {
-  return session.id.startsWith(ONE_OFF_SESSION_PREFIX);
-}
-
 /** An open leaf's session list, drawn from the read its row holds. */
 function SessionList(props: {
   readonly leaf: FlowNavigatorLeaf;
@@ -504,13 +492,9 @@ function SessionList(props: {
   // depth 0 in the order it arrived.
   const arranged = useMemo(() => arrangeSessionRows(state.sessions), [state.sessions]);
   // One-off runs (one delivery each) can outnumber everything else on a flow,
-  // so they fold into one line, closed until it is opened. A run one of them
-  // dispatched folds with it, so it stays drawn under what started it.
-  const oneOffIds = new Set(arranged.filter((entry) => isOneOffRun(entry.session)).map((entry) => entry.session.id));
-  const folds = (entry: SessionRow): boolean =>
-    oneOffIds.has(entry.session.id) || (entry.depth === 1 && oneOffIds.has(entry.parentSessionId!));
-  const oneOff = oneOffIds.size === 0 ? [] : arranged.filter(folds);
-  const lasting = oneOffIds.size === 0 ? arranged : arranged.filter((entry) => !folds(entry));
+  // so they fold into one line, closed until it is opened. The runs one of them
+  // started fold with it, so they stay drawn under what started them.
+  const { lasting, oneOff, oneOffCount } = useMemo(() => partitionOneOffRows(arranged), [arranged]);
   const [oneOffOpen, setOneOffOpen] = useState(false);
 
   const sessionLine = (entry: SessionRow, extraDepth: number): ReactNode => {
@@ -567,7 +551,7 @@ function SessionList(props: {
             },
             content: [
               twisty(oneOffOpen),
-              createElement("span", { style: label }, `One-off runs (${oneOffIds.size})`)
+              createElement("span", { style: label }, `One-off runs (${oneOffCount})`)
             ],
             trailing: null
           }),
