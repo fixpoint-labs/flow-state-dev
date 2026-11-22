@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 const KEY = "teammates.sidebar";
 
-/** Below this width the sidebar starts as a rail of icons, so the conversation keeps the room. */
+/** Below this width the sidebar starts as a rail of icons, so the conversation keeps the space. */
 export const NARROW_QUERY = "(max-width: 1023px)";
 
 const narrowNow = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(NARROW_QUERY).matches;
