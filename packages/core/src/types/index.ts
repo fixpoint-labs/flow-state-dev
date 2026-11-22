@@ -115,6 +115,8 @@ export type {
   RetentionPolicy,
   ScopeResourceConfig,
   SessionConfig,
+  SessionLabel,
+  SessionLabelInput,
   ToolLifecycleEvent,
   ToolsConfig,
   UserConfig

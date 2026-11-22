@@ -475,20 +475,111 @@ type LeafContext = {
   readonly now: number;
 };
 
+/**
+ * The id prefix the engine mints for a request sent with no session: a run
+ * that is its own whole session, such as one webhook delivery
+ * (`createExecutionContext`).
+ */
+const ONE_OFF_SESSION_PREFIX = "ephemeral_";
+
+/** A session that is one request sent with no session of its own. */
+function isOneOffRun(session: SessionSummary): boolean {
+  return session.id.startsWith(ONE_OFF_SESSION_PREFIX);
+}
+
 /** An open leaf's session list, drawn from the read its row holds. */
 function SessionList(props: {
   readonly leaf: FlowNavigatorLeaf;
   readonly depth: number;
   readonly state: LeafSessions;
   readonly context: LeafContext;
+  /** What the leaf's flow is for, said beside an empty list. */
+  readonly description?: string;
 }): ReactNode {
-  const { leaf, depth, state, context } = props;
+  const { leaf, depth, state, context, description } = props;
   const { selectedSessionId, onSelectSession, slots } = context;
   // Arranged, not re-sorted: the listing's order is the server's, and this only
   // moves a dispatch run to sit under the session that started it. With the
   // include off there are no runs in the list and every row comes back at
   // depth 0 in the order it arrived.
   const arranged = useMemo(() => arrangeSessionRows(state.sessions), [state.sessions]);
+  // One-off runs (one delivery each) can outnumber everything else on a flow,
+  // so they fold into one line, closed until it is opened. A run one of them
+  // dispatched folds with it, so it stays drawn under what started it.
+  const oneOffIds = new Set(arranged.filter((entry) => isOneOffRun(entry.session)).map((entry) => entry.session.id));
+  const folds = (entry: SessionRow): boolean =>
+    oneOffIds.has(entry.session.id) || (entry.depth === 1 && oneOffIds.has(entry.parentSessionId!));
+  const oneOff = oneOffIds.size === 0 ? [] : arranged.filter(folds);
+  const lasting = oneOffIds.size === 0 ? arranged : arranged.filter((entry) => !folds(entry));
+  const [oneOffOpen, setOneOffOpen] = useState(false);
+
+  const sessionLine = (entry: SessionRow, extraDepth: number): ReactNode => {
+    const { session } = entry;
+    const isSelected = selectedSessionId === session.id;
+    const dispatchRun = describeDispatchRun(entry);
+    return createElement(
+      "li",
+      { key: session.id },
+      createElement(Row, {
+        // One level under the session that started it, and never a
+        // second: `entry.depth` is 0 or 1 by construction.
+        depth: depth + entry.depth + extraDepth,
+        isSelected,
+        button: {
+          "aria-current": isSelected ? "true" : undefined,
+          "data-session-id": session.id,
+          title: session.id,
+          "aria-description": sessionRowState(session)?.label,
+          ...(dispatchRun === undefined
+            ? {}
+            : { "data-dispatch-run-of": dispatchRun.parentSessionId }),
+          onClick: () => onSelectSession(session.id, leaf)
+        },
+        content: [
+          twisty(null),
+          createElement("span", { style: label }, sessionLabel(session)),
+          ...sessionMeta(session, context.now)
+        ],
+        trailing: slots.rowTrailing?.({
+          type: "session",
+          leaf,
+          session,
+          isSelected,
+          ...(dispatchRun === undefined ? {} : { dispatchRun })
+        })
+      })
+    );
+  };
+
+  const oneOffGroup =
+    oneOff.length === 0
+      ? null
+      : createElement(
+          "li",
+          { key: "one-off-runs" },
+          createElement(Row, {
+            depth,
+            button: {
+              "aria-expanded": oneOffOpen,
+              "data-one-off-runs": "",
+              title: "Requests sent with no session, each run in a session of its own",
+              onClick: () => setOneOffOpen((was) => !was)
+            },
+            content: [
+              twisty(oneOffOpen),
+              createElement("span", { style: label }, `One-off runs (${oneOffIds.size})`)
+            ],
+            trailing: null
+          }),
+          oneOffOpen
+            ? createElement(
+                "ul",
+                { style: childList },
+                treeLine(depth),
+                ...oneOff.map((entry) => sessionLine(entry, 1))
+              )
+            : null
+        );
 
   const rows =
     state.error !== null
@@ -503,45 +594,14 @@ function SessionList(props: {
           ? createElement(
               "li",
               { role: "none" },
-              createElement("p", { style: noteStyle(depth) }, "No sessions yet")
+              createElement("p", { style: noteStyle(depth) }, "No sessions yet"),
+              // What the flow is for, so an empty list reads as expected
+              // rather than as a fault.
+              description === undefined
+                ? null
+                : createElement("p", { style: noteStyle(depth), "data-flow-description": "" }, description)
             )
-          : arranged.map((entry) => {
-              const { session } = entry;
-              const isSelected = selectedSessionId === session.id;
-              const dispatchRun = describeDispatchRun(entry);
-              return createElement(
-                "li",
-                { key: session.id },
-                createElement(Row, {
-                  // One level under the session that started it, and never a
-                  // second: `entry.depth` is 0 or 1 by construction.
-                  depth: depth + entry.depth,
-                  isSelected,
-                  button: {
-                    "aria-current": isSelected ? "true" : undefined,
-                    "data-session-id": session.id,
-                    title: session.id,
-                    "aria-description": sessionRowState(session)?.label,
-                    ...(dispatchRun === undefined
-                      ? {}
-                      : { "data-dispatch-run-of": dispatchRun.parentSessionId }),
-                    onClick: () => onSelectSession(session.id, leaf)
-                  },
-                  content: [
-                    twisty(null),
-                    createElement("span", { style: label }, sessionLabel(session)),
-                    ...sessionMeta(session, context.now)
-                  ],
-                  trailing: slots.rowTrailing?.({
-                    type: "session",
-                    leaf,
-                    session,
-                    isSelected,
-                    ...(dispatchRun === undefined ? {} : { dispatchRun })
-                  })
-                })
-              );
-            });
+          : [...lasting.map((entry) => sessionLine(entry, 0)), oneOffGroup];
 
   return createElement(
     "ul",
@@ -571,8 +631,9 @@ function LeafRow(props: {
   readonly button: Record<string, unknown>;
   readonly trailing: ReactNode;
   readonly context: LeafContext;
+  readonly description?: string;
 }): ReactNode {
-  const { leaf, depth, isOpen, name, button, trailing, context } = props;
+  const { leaf, depth, isOpen, name, button, trailing, context, description } = props;
   const state = useLeafSessions(
     context.source,
     leaf,
@@ -613,7 +674,7 @@ function LeafRow(props: {
           { "data-leaf-detail": leaf.address, style: detailStyle(depth) },
           detail
         ),
-    isOpen ? createElement(SessionList, { leaf, depth: depth + 1, state, context }) : null
+    isOpen ? createElement(SessionList, { leaf, depth: depth + 1, state, context, description }) : null
   );
 }
 
@@ -630,6 +691,7 @@ function KindRow(props: {
     "aria-expanded": isOpen,
     "data-kind": group.kind,
     "data-cardinality": group.cardinality,
+    ...(group.description === undefined ? {} : { title: group.description }),
     onClick: () => toggle(`kind:${group.kind}`)
   };
   const trailing = context.slots.rowTrailing?.({
@@ -639,7 +701,8 @@ function KindRow(props: {
     isOpen
   });
 
-  // A singleton's kind row IS its leaf: there is no copy to pick, so the
+  // A singleton's kind line IS its leaf, and so is the kind line of a
+  // collection's one copy named for its kind: there is no copy to pick, so the
   // instance level is not drawn and the sessions hang directly under it.
   if (group.leaf !== null) {
     return createElement(LeafRow, {
@@ -649,7 +712,8 @@ function KindRow(props: {
       name: group.kind,
       button,
       trailing,
-      context
+      context,
+      ...(group.description === undefined ? {} : { description: group.description })
     });
   }
 
@@ -679,8 +743,10 @@ function KindRow(props: {
               button: {
                 "aria-expanded": instanceOpen,
                 "data-instance-id": instance.id,
+                ...(instance.description == null ? {} : { title: instance.description }),
                 onClick: () => toggle(key)
               },
+              ...(instance.description == null ? {} : { description: instance.description }),
               trailing: context.slots.rowTrailing?.({
                 type: "instance",
                 kind: group.kind,

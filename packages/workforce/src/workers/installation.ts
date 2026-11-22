@@ -26,6 +26,7 @@ import type {
   SessionCreateCheck,
   SessionCreateCheckInput,
   SessionCreateCheckResult,
+  SessionLabel,
   InitialSkill
 } from "@flow-state-dev/core/types";
 import type {
@@ -299,7 +300,8 @@ export interface WorkerInstallation extends WorkerGrants {
    * ({@link SESSION_BOARD_SERVER_OWNED}, which carries `workProjectId` too). A flow without those fields still refuses a
    * create that seeds one, by name, rather than dropping it. `workProjectId` is exposed to the
    * session read too, so a screen shows the project a conversation works in. The app's
-   * {@link sessionFields} join the schema, `serverOwned` and the session read. It also carries,
+   * {@link sessionFields} join the schema, `serverOwned` and the session read. Its `label` names a
+   * session by its worker, and its task when it has one. It also carries,
    * under a framework-only symbol, the request-end hook that adds every
    * request's spend to the worker's usage record (`worker-usage`).
    */
@@ -310,6 +312,7 @@ export interface WorkerInstallation extends WorkerGrants {
     createCheck: SessionCreateCheck;
     serverOwned: readonly string[];
     client: { expose: readonly string[] };
+    label: SessionLabel;
     [SESSION_REQUEST_END_HOOK]: SessionRequestEndHook;
   };
   /**
@@ -991,6 +994,22 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     };
   };
 
+  /**
+   * What a reader calls a worker session: its worker's name, and the task it
+   * was opened for when it was. A standard worker's name is its file's
+   * `name:`; a hired worker's is on its owner's roster, which a label cannot
+   * read, so it reads as its id. Both fields are readonly, so the session
+   * shows them.
+   */
+  const workerSessionLabel: SessionLabel = ({ state }) => {
+    const workerId = state[WORKER_ID_STATE_KEY];
+    if (typeof workerId !== "string") return undefined;
+    const found = standard.get(workerId);
+    const worker = (found === undefined ? null : workerDisplayName(found)) ?? workerId;
+    const taskId = state[TASK_ID_STATE_KEY];
+    return typeof taskId === "string" ? `${worker} · ${taskId}` : worker;
+  };
+
   const installation: WorkerInstallation = {
     resources,
     documents,
@@ -1007,7 +1026,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
           stateSchema: z.object({ ...sessionStateShape, ...workerMessageStateShape, ...(extraShape ?? {}) }) as never,
           createCheck,
           serverOwned: SESSION_BOARD_SERVER_OWNED,
-          client: { expose: [WORK_PROJECT_STATE_KEY] }
+          client: { expose: [WORK_PROJECT_STATE_KEY] },
+          label: workerSessionLabel
         },
         sessionFields
       );

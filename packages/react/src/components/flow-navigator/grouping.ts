@@ -53,14 +53,18 @@ export type FlowNavigatorLeaf = {
 export type FlowNavigatorKindGroup = {
   readonly kind: string;
   readonly cardinality: FlowCardinality;
+  /** What the flow is for, from the first of its entries that says. */
+  readonly description?: string;
   /**
    * The copies under a collection kind, in flow-list order. Empty for a
    * singleton, which has no instance level to draw.
    */
   readonly instances: readonly FlowListEntry[];
   /**
-   * The singleton's own leaf — its id, which *is* its kind. `null` for a
-   * collection kind, whose leaves are its instances.
+   * The kind's own leaf, when the kind's line is the only line there is to
+   * read under: a singleton's (its id, which *is* its kind), or a collection's
+   * one copy named for its kind. `null` for a collection kind whose leaves are
+   * its instances.
    */
   readonly leaf: FlowNavigatorLeaf | null;
 };
@@ -84,6 +88,12 @@ export type FlowNavigatorSectionView = {
  * once, so its entries agree, and where they somehow did not, reading the kind
  * as a collection keeps every copy addressable instead of filing them all
  * under a kind query that would mix them together.
+ *
+ * A collection holding ONE copy whose id is its kind draws no copy level: the
+ * copy's line would only say the kind's name again. The kind's line becomes
+ * that copy's leaf, still addressed by the copy's id and still a collection, so its
+ * reads are the ones the copy's own line would have made. A single copy with a
+ * name of its own keeps its level, because the name is something to read.
  */
 export function groupFlowsIntoSections(
   flows: readonly FlowListEntry[],
@@ -115,11 +125,18 @@ export function groupFlowsIntoSections(
         ? "collection"
         : "singleton";
 
+      const described = entries.find((entry) => entry.description != null)?.description;
+      const about = described === undefined ? {} : { description: described };
+      const only = entries.length === 1 ? entries[0]! : undefined;
+      if (cardinality === "collection" && only?.id === kind) {
+        return { kind, cardinality, ...about, instances: entries, leaf: { kind, address: only.id, cardinality } };
+      }
       return cardinality === "collection"
-        ? { kind, cardinality, instances: entries, leaf: null }
+        ? { kind, cardinality, ...about, instances: entries, leaf: null }
         : {
             kind,
             cardinality,
+            ...about,
             instances: [],
             leaf: { kind, address: entries[0]?.id ?? kind, cardinality },
           };

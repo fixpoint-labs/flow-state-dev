@@ -1481,6 +1481,7 @@ function defineAgentFlowAround(
 
   const flow = defineFlow({
     kind: AGENT_FLOW,
+    description: "The default worker flow: every worker without a flow of its own talks here, one session per conversation.",
     // Required by contract C2. A plain singleton's workers mint and are then
     // refused at REGISTRATION, one by one — which is why the goal check for
     // this flow reaches the registry rather than stopping at the mint.
