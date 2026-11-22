@@ -115,8 +115,8 @@ describe("arrangeSessionRows", () => {
   });
 });
 
-function server(rows: SessionSummary[]) {
-  const listSessions = vi.fn<SessionsApi["list"]>(async () => rows);
+function server(sessions: SessionSummary[]) {
+  const listSessions = vi.fn<SessionsApi["list"]>(async () => sessions);
   return {
     listSessions,
     client: {
