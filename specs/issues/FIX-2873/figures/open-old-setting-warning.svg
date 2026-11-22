@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D2: who a coding run hears. Chosen: listed, can write, never a bot, in both apps. Instead of: the list may name review bots, heard without a write check. Decides it: a bot&#x27;s review quotes a stranger&#x27;s text into a run that pushes; chosen never delivers it, instead delivers it. Price: Teammates loses bot review, most of the review on this repository. One rule for every entry: chosen checks write access for every login, instead lets bots skip it. Locks in: Teammates runs answer only writers. Flips if: FIX-2686&#x27;s fence lands."
+<svg viewBox="0 0 940 418" role="img" aria-label="Open: warn at start when TEAMMATES_GITHUB_REVIEWERS is still set? Recommended: no warning; the implementation PR tells the operator to rename the line. Or: a one-line start-time warning. Decides it: who runs Teammates; one operator reads the PR, a warning helps operators who don&#x27;t. Price of no warning: if the rename is missed, PR comments stop reaching runs with no error. Price of the warning: code for a name that no longer exists, with no owner to remove it. Flips if: anyone besides Jake runs Teammates."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -12,6 +12,7 @@
     .ask    { fill:var(--surface-2); }
     .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
     .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .rec    { stroke-dasharray:5 4; }
     .decide { fill:var(--accent-soft); }
     .bar    { fill:var(--accent); }
     .row    { stroke:var(--rule); stroke-width:1; }
@@ -35,67 +36,66 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Whose comments may a coding run act on, in both apps?</text>
+    <text class="t-lbl" x="32" y="32">OPEN · THE CALL</text>
+    <text class="t-q" x="32" y="52">Warn at start when the old TEAMMATES_GITHUB_REVIEWERS is still set?</text>
   </g>
 
   <g id="options">
-    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Listed, can write, never a bot</text>
+    <rect class="chosen rec" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="228" y="112">No warning; the PR says rename</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">The list may name review bots</text>
+    <text class="t-tag c-mute" x="592" y="93">OR</text>
+    <text class="t-h c-lost" x="592" y="112">A one-line start warning</text>
   </g>
 
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">A STRANGER&#x27;S TEXT</text>
-    <text class="t-lbl" x="32" y="169">IN A BOT&#x27;S REVIEW</text>
+    <text class="t-lbl" x="32" y="156">WHO RUNS</text>
+    <text class="t-lbl" x="32" y="169">TEAMMATES</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Never reaches the run</text>
-    <text class="t-s" x="248" y="179">bots are refused before the list</text>
-    <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Reaches a run that pushes</text>
-    <text class="t-s" x="612" y="179">no fence on that turn yet, FIX-2686</text>
+    <text class="t-b" x="248" y="161">One operator, who reads the PR</text>
+    <text class="t-s" x="248" y="179">the rename is one line in .env.local</text>
+    <text class="mark tie" x="592" y="162">=</text>
+    <text class="t-b" x="612" y="161">Helps an operator who doesn&#x27;t</text>
+    <text class="t-s" x="612" y="179">none known today</text>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="216">CODEX, CURSOR,</text>
-    <text class="t-lbl" x="32" y="229">GREPTILE REVIEW</text>
+    <text class="t-lbl" x="32" y="216">RENAME MISSED</text>
     <text class="mark minus" x="228" y="219">−</text>
-    <text class="t-b" x="248" y="218">Teammates&#x27; runs stop hearing it</text>
-    <text class="t-s" x="248" y="236">most review here; a person relays it</text>
+    <text class="t-b" x="248" y="218">Comments stop reaching runs</text>
+    <text class="t-s" x="248" y="236">no error; runs just hear nobody</text>
     <text class="mark plus" x="592" y="219">+</text>
-    <text class="t-b" x="612" y="218">Heard, as Teammates does today</text>
-    <text class="t-s" x="612" y="236">the call #5540 made</text>
+    <text class="t-b" x="612" y="218">The log names the new setting</text>
+    <text class="t-s" x="612" y="236">on every start</text>
     <line class="row" x1="16" y1="250" x2="924" y2="250"/>
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="274">ONE RULE FOR</text>
-    <text class="t-lbl" x="32" y="287">EVERY ENTRY</text>
+    <text class="t-lbl" x="32" y="274">CODE LEFT</text>
+    <text class="t-lbl" x="32" y="287">BEHIND</text>
     <text class="mark plus" x="228" y="277">+</text>
-    <text class="t-b" x="248" y="276">Listed and can write</text>
-    <text class="t-s" x="248" y="294">the same check for every login</text>
+    <text class="t-b" x="248" y="276">None</text>
+    <text class="t-s" x="248" y="294">the architect fenced compatibility out</text>
     <text class="mark minus" x="592" y="277">−</text>
-    <text class="t-b" x="612" y="276">Bots skip the write check</text>
-    <text class="t-s" x="612" y="294">GitHub can&#x27;t answer it for an app</text>
+    <text class="t-b" x="612" y="276">A check for a dead name</text>
+    <text class="t-s" x="612" y="294">no issue owns removing it</text>
     <line class="row" x1="16" y1="308" x2="924" y2="308"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="324" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="345">LOCKS IN</text>
-    <text class="t-b" x="32" y="365">Teammates&#x27; runs answer only people who can write</text>
-    <text class="t-s" x="32" y="383">re-admitting bots is a new decision</text>
+    <text class="t-b" x="32" y="365">The old name simply stops working</text>
+    <text class="t-s" x="32" y="383">no alias, no refusal, no warning</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="324" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="345">FLIPS IF</text>
-    <text class="t-b" x="494" y="365">FIX-2686&#x27;s fence ships first</text>
-    <text class="t-s" x="494" y="383">then bots can be listed by name[bot], one small change</text>
+    <text class="t-b" x="494" y="365">Anyone besides Jake runs Teammates</text>
+    <text class="t-s" x="494" y="383">then the warning pays for itself</text>
   </g>
 </svg>

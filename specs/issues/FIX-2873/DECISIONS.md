@@ -2,40 +2,46 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-What was considered, what was chosen, why, and what each choice locks in. Three decisions are
-the sign-off surface. D2 is the one to weigh.
+What was considered, what was chosen, why, and what each choice locks in. Jake approved D3 and
+the bot half of D2. The write-check half of D2, D1, and one open question are his to answer.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-2873 · one source of trusted reviewers"] --> D2["D2 · bots never · listed and can write · both apps"]
-  D2 -.->|"rejected"| X2["the list may name review bots<br/>a stranger's text reaches a run that pushes"]
+  I["FIX-2873 · one source of trusted reviewers"] --> D2["D2 · listed bots · listed people who can push"]
+  D2 -.->|"rejected"| X2a["list membership alone<br/>a forged or stale entry steers a run"]
+  D2 -.->|"rejected by Jake"| X2b["bots never<br/>bot review is the common case"]
   I --> D1["D1 · GITHUB_REVIEWERS is the default until the first save"]
   D1 -.->|"rejected"| X1a["seed once at first start<br/>a later change is ignored silently"]
   D1 -.->|"rejected"| X1b["fall back whenever the list is empty<br/>emptying the list can't stop steering"]
-  I --> D3["D3 · one setting named GITHUB_REVIEWERS"]
+  I --> D3["D3 · one setting named GITHUB_REVIEWERS · approved"]
   D3 -.->|"rejected"| X3["a new prefixed name<br/>a second GitHub vocabulary"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d2"></a>
-## D2 · One screen in both apps: listed, can write to the repository, never a bot. Teammates' runs stop hearing review bots and listed outsiders
+## D2 · A listed bot is heard. A listed person is heard only when they can also push to the repository
+
+**Jake's words:** "Bots can trigger code changes (this is the most common case). Whatever
+accounts are in our list are allowed." **The bot half is his call and is settled.** Read
+literally, "whatever accounts" also drops FIX-2789's per-comment write check. **I recommend
+keeping that check for people**, and this card argues it. Bots skip it: GitHub can't answer a
+write check for an app, and only an app installed on the repository can comment there.
 
 | | |
 |---|---|
-| **Instead of** | Letting the stored list name review bots (`greptile-apps[bot]`), heard without a write check, as Teammates does today |
-| **Because** | A run acts on what it hears, with Bash and a push. A bot's review quotes the pull request and its comments, so a listed bot carries a stranger's words into that run. Nothing fences a delivery-woken turn yet ([FIX-2686](https://linear.app/fixpoint-labs/issue/FIX-2686)). Jake asked to keep FIX-2789's write check and "bots are never trusted" |
-| **Locks in** | Teammates' runs answer only people with write access. Codex, Cursor, Greptile and Gitar review, which #5540 said is most review here, reaches a run only when a person relays it. Re-admitting bots is a new decision, best taken after FIX-2686 lands |
+| **Instead of** | List membership alone, with no write check, which is the literal reading. Or "bots never", which Jake rejected |
+| **Because** | The list is only as safe as its write path. Cursor's security review showed a run can rewrite it: Teammates makes every HTTP caller the operator, and Shift Manager's owner bearer is a constant in its source ([POC](poc/save-action/save-action.poc.ts)). The public save action goes, but a run on these hosts can still forge the tool's turn and its Approve over HTTP. With the write check, a forged or stale entry can only add someone who can already push. Without it, the list hands steering to anyone |
+| **Locks in** | A listed person who loses write access stops being heard. Teammates gains one GitHub call per comment from a listed person |
 
-![D2: chosen, listed, can write, never a bot, in both apps; instead of, the list may name review bots. Decides it: a bot quotes a stranger's text into a run that pushes. Price: Teammates loses bot review. Flips if FIX-2686's fence lands](figures/d2-bots-never.svg)
+![D2: chosen, listed bots and listed writers; instead of, list membership alone or bots never. Decides it: a forged or stale entry is heard only if it can push. Price: one GitHub call per comment from a listed person. Flips if only the operator, in person, can edit the list](figures/d2-listed-bots-and-writers.svg)
 
-It comes down to a stranger's text: a listed bot quotes it into a run that can push.
+It comes down to a forged or stale entry: without the check, it steers a run that pushes.
 
-**What would change my mind:** FIX-2686's fence shipping first, so a delivery-woken turn can't
-push on a bot's say-so. Then listing bots by `name[bot]` in the same stored list is a small,
-separate change.
+**What would change my mind:** both hosts proving who a caller is, so only the operator, in
+person, can change the list. Then membership alone is a safe gate.
 
 <a name="d1"></a>
 ## D1 · `GITHUB_REVIEWERS` is the list's default until the list is first saved. After that, only the saved list counts, an emptied list included
@@ -43,24 +49,26 @@ separate change.
 | | |
 |---|---|
 | **Instead of** | Seeding the store once from the setting at first start, or falling back to the setting whenever the saved list is empty |
-| **Because** | An operator who empties the list means "nobody". A fallback on emptiness would bring the setting's logins back, so the list could never stop all steering. "Never saved" is whether a stored row exists, which the engine already decides for a resource's definition content. It is never whether the list has logins: `githubLoginsListed(null)` and an emptied list both read `[]` |
-| **Locks in** | The setting is a default, never an override. After the first save, changing `GITHUB_REVIEWERS` does nothing, with no warning, and the operator edits the list instead. Before it, a changed setting applies on the next start. The saved list is what the operator sees, so the setting's logins show there too until a save |
+| **Because** | An operator who empties the list means "nobody". A fallback on emptiness would bring the setting's accounts back, so the list could never stop all steering. "Never saved" is whether a stored row exists, which the engine already decides for a resource's definition content. It is never whether the list has entries: `githubLoginsListed(null)` and an emptied list both read `[]` |
+| **Locks in** | The setting is a default, never an override. After the first save, changing `GITHUB_REVIEWERS` does nothing, with no warning. Anything that deletes the row (a store wipe, a reset) brings the setting back, even after the operator emptied the list |
 
 ![D1: chosen, the default until the first save; instead of, seed once or fall back when empty. Decides it: emptying the list trusts nobody, except under fallback. Price: a setting changed after a save is ignored. Flips if the setting must win over a saved list](figures/d1-default-until-saved.svg)
 
-It comes down to emptying the list: a fallback on emptiness re-trusts the setting's logins.
+It comes down to emptying the list: a fallback on emptiness re-trusts the setting's accounts.
 
-**What would change my mind:** operators who manage trust only through their environment, and
-never through the list. Then the setting should win, and the save action should go.
+**What would change my mind:** operators who manage trust only through their environment. Then
+the setting should win, and the tool should go.
 
 <a name="d3"></a>
-## D3 · The one setting is `GITHUB_REVIEWERS`, read by workforce beside `GITHUB_TOKEN`
+## D3 · The one setting is `GITHUB_REVIEWERS`, read by workforce beside `GITHUB_TOKEN` · approved
+
+**Approved by Jake on #5561:** "I'm fine with GITHUB_REVIEWERS".
 
 | | |
 |---|---|
 | **Instead of** | A new name, such as `FSD_GITHUB_REVIEWERS` |
-| **Because** | An operator sets up GitHub once: `GITHUB_TOKEN` and `GITHUB_REVIEWERS`, both read by workforce's operator helpers, so no app spells its own. The name FIX-2789 retired meant "whose comments are trusted", and it means that again, now as a default |
-| **Locks in** | A public setting name every app reads. An operator who kept `GITHUB_REVIEWERS` from before FIX-2789 gets those logins back as the default on a store that never saved a list. They are still checked for write access |
+| **Because** | An operator sets up GitHub once: `GITHUB_TOKEN` and `GITHUB_REVIEWERS`, both read by workforce, so no app spells its own |
+| **Locks in** | A public setting every app reads. An operator who kept it from before FIX-2789 gets those accounts back as the default on a store that never saved a list |
 
 ![D3: chosen, GITHUB_REVIEWERS beside GITHUB_TOKEN; instead of, a new prefixed name. Decides it: one GitHub setup to learn. Price: a retired name returns, narrower](figures/d3-one-setting.svg)
 
@@ -68,24 +76,30 @@ It comes down to one GitHub setup: the token and the reviewers, under one prefix
 
 ## Decided, not asked
 
-- **The list, its save action, the coordinator tool and the screen move into workforce** beside
-  `trusted-reviewers.ts`, about 250 to 350 lines. Shift Manager's `operatorGitHub` and
-  `operatorGitHubToken` fold into workforce's; `operatorGitHub` takes `reviewers` and the
-  interest model. The architect fenced both.
-- **The convergence point for "who may steer a run" is the trusted-reviewer screen** on the
-  operator's GitHub provider. Every follow lists it: Shift Manager's coder flow and Teammates'
-  harness kit. No other screen admits a sender to a run's pull request.
-- **The document keeps the ref `github-reviewers`** and its frontmatter, so a list already saved
-  still reads.
-- **"Never saved" is the engine's stored-row test**, never `githubLoginsListed(...).length`. The
-  goal check's control pins it.
-- **A `[bot]` login in `GITHUB_REVIEWERS` refuses start, naming it.** It is a mistake to report.
-- **`TEAMMATES_GITHUB_REVIEWERS` goes with no alias and no refusal**, per the architect's fence.
-  The implementation PR tells the operator to rename the line.
-- **Teammates always follows a run's pull request**, so a reviewer added later is heard. It gets
-  the save action; giving Lead the tool is the app's call.
-- **FIX-2686's spec names one source**: workforce's `github-reviewers` document, read per event
-  with the live write check, defaulted by `GITHUB_REVIEWERS`. A comment on FIX-2686 says so.
+- **The only write path is the coordinator tool. No HTTP route writes the list, in either app.**
+  A security fix, not a fork. The raw `setGitHubReviewers` action goes from what workforce
+  exports and from Shift Manager. An in-process caller, such as a test, may keep it as an
+  internal action, which the engine never routes from HTTP. Teammates' Lead gets the tool. This
+  is settled, below.
+- **Users and bots stay apart** in the list: `name[bot]` matches only a bot sender, and a plain
+  login only a user. A user who registers a listed bot's name is refused (#5540's fix).
+- **The list moves into workforce** with the tool and screen, about 250 to 350 lines. Move the
+  tool's check, judge and approve steps as they are. Shift Manager's `operatorGitHub` and
+  `operatorGitHubToken` fold into workforce's, keeping `interestModel` and the custom screens.
+- **The convergence point for "who may steer a run" is the list screen**, listed first by
+  `reviewers.follow`. Both hosts follow through it. A provider-level screen was rejected,
+  because it would also screen the operator's own GitHub routines.
+- **The document keeps the ref `github-reviewers`** and its frontmatter, so a saved list still
+  reads. The default and a save share one document builder.
+- **`GITHUB_REVIEWERS` is read when `githubTrustedReviewers()` is called** at host start, not
+  at import, so a `.env` loaded first still applies.
+- **"Never saved" is the engine's stored-row test**, never an emptiness test. A control pins it.
+- **`TEAMMATES_GITHUB_REVIEWERS` goes with no alias** (the architect's fence). Whether to warn
+  is open, below.
+- **Teammates always follows a run's pull request**, so an account added later is heard. With no
+  `GITHUB_TOKEN`, the run shows a note that the pull request isn't followed.
+- **FIX-2686's spec names one source**: workforce's `github-reviewers` document, read per event.
+  A listed bot is heard, and a listed person also needs write access. A comment on FIX-2686 says so.
 - **`reviewedPullRequestFollow` and `githubReviewers` are removed, not deprecated.** Neither has
   shipped.
 
@@ -93,40 +107,75 @@ It comes down to one GitHub setup: the token and the reviewers, under one prefix
 
 | Alternative | Why not |
 |---|---|
-| Rename `TEAMMATES_GITHUB_REVIEWERS` to a shared name and stop | One name, two paths that still disagree on bots and write access. The issue's smaller goal |
-| Keep the folder file as the default, the setting overriding it | Two defaults is two sources. The folder file goes |
-| The default read in the screen (`null` gives the setting's logins) | The same trust, but the saved list the operator sees reads empty while the setting's logins pass |
-| Write the setting's logins into the store at start (seed once) | A start-time write per app, and a seeded row looks like the operator's choice. Lost in D1 |
-| A keyed `providers` or `topics` slot, or a GitHub kit | [FIX-2874](https://linear.app/fixpoint-labs/issue/FIX-2874), parked until after the release |
+| Rename the setting and stop | One name, two rules. The issue's smaller goal |
+| Keep the folder file as a second default | Two defaults is two sources |
+| The default read in the screen (`null` gives the setting's accounts) | The saved list the operator sees reads empty while the setting's accounts pass |
+| Seed the store once at start | A start-time write per app, and a seeded row looks like the operator's choice. Lost in D1 |
+| Keep a public save action behind a bearer | Shift Manager's bearer is a constant in source; Teammates has none |
+| A keyed `providers` slot, or a GitHub kit | [FIX-2874](https://linear.app/fixpoint-labs/issue/FIX-2874), after the release |
+
+<a name="open"></a>
+## Open · Warn at start when `TEAMMATES_GITHUB_REVIEWERS` is still set?
+
+**Plain terms.** The old Teammates setting stops working. If the operator forgets to rename the
+line, runs quietly stop hearing review. A one-line warning at start would name the new setting.
+
+**The trade-off.** A warning catches a missed rename. It is also code for a name that no longer
+exists, which nobody owns removing, and the architect fenced compatibility out.
+
+**My recommendation: no warning.** One operator runs Teammates, and the implementation PR tells
+them to rename one line.
+
+**What would change my mind:** anyone besides Jake running Teammates.
+
+**If I'm wrong:** a missed rename silences PR review in Teammates until someone notices, with no
+error to point at it.
+
+![Open: recommended, no warning, the PR says rename; or a one-line start warning. Decides it: who runs Teammates. Price of no warning: a missed rename silences review with no error. Flips if anyone besides Jake runs Teammates](figures/open-old-setting-warning.svg)
 
 ## Settled
 
-- **Three sources and two helper copies today** — **CONFIRMED** by
-  [`poc/sources/check.sh`](poc/sources/check.sh) on `main` `bb1c09790`: every matching file
-  classified, `PASS (today)`. The planted control fails. `--after` fails on `main` with `counts 1
-  1 2 2, want 0 0 1 0`, the red state the implementation turns green.
-- **A stored row wins over the definition content, even an emptied list** — read in
-  `engine/src/context/resource-registry.ts`, not run. The goal check's control runs it.
-- **A refused follow fails no run** — read in `core/src/helpers/pull-request-recorder.ts`: it
-  becomes a status note.
+- **No HTTP route may write the list** — **CONFIRMED** by
+  [`poc/save-action`](poc/save-action/save-action.poc.ts) on `main` `bb1c09790`. Over Shift
+  Manager's real HTTP door, the member's bearer left the list unchanged, and the owner's bearer
+  rewrote it to `mallory`. The engine never routes an internal action from HTTP
+  (`engine/src/execution/resolve-action-core.ts`).
+- **Three sources today** — **CONFIRMED** by [`poc/sources/check.sh`](poc/sources/check.sh) on
+  `main`: `PASS (today)`, `1 1 2 2 1 1`. The planted control fails. `--after` fails with
+  `want 0 0 1 0 0 0`.
+- **A stored row wins over the definition content, even an emptied list. A `contentTemplate`
+  would win over a stored row** — read in `engine/src/context/resource-registry.ts`. Cursor's
+  review confirmed the first half.
+- **The sender screen passes collaborators and refuses bots outside `trustedBots`** — read in
+  `workforce/src/subscriptions/screens.ts`.
 
 ## Analysis
 
-2026-11-22 · watermark 2026-11-20 (#5540) · **Right approach, one finding folded.** Run in this
-session, not by an independent agent: this worker had no sub-agent tool.
+2026-11-22 · watermark 2026-11-20 (#5540) · **Right approach.** Run in this session, not by an
+independent agent: this worker had no sub-agent tool.
 
 1. **Reuse** — every Adds row moves or extends an existing piece. See
    [Builds on / Adds](SPEC.md#whats-already-here-and-the-debt).
 2. **Prior art** — a default under a user-edited value is the common shape. Confirms D1.
-3. **Other shapes** — the setting as the only source. It loses edit without restart.
-4. **New factors** — #5540 chose the `allow` screen for bot review. **Folded**: D2 says it
-   reverses that.
+3. **Other shapes** — the setting as the only source loses edit without restart.
+4. **New factors** — Jake's reversal of D2, and Cursor's write-path finding. Both folded.
 5. **Necessity** — two trust paths disagree on a security boundary.
 6. **Ergonomics** — one setting, beside the token.
-7. **Concerns** — D2 removes most of Teammates' heard review. Recorded as D2.
+7. **Concerns** — caller identity in both hosts, recorded under *Leaves*.
 
 ## How it got here
 
 - **Draft** — framed as three sources deciding trust differently. One stored list in workforce,
-  defaulted from `GITHUB_REVIEWERS` through the resource's definition content. Built on
-  FIX-2789's screen and the existing follow.
+  defaulted from `GITHUB_REVIEWERS` through the resource's definition content.
+- **Review round 1** — D2 flipped: Jake ruled that listed bots are heard. Cursor's security
+  review showed a run could rewrite the list over HTTP, so the public save action went, the
+  tool became the only write, and the write check stays for people as a backstop. D3 approved.
+  The list screen stays first, so FIX-2880's evaluator has a place after it.
+
+## Notes from review
+
+- "Move it as is — no reshaping of the coordinator tool's judge/approve sequencer while moving it." — second-look comment ([#5561](https://github.com/fixpoint-labs/flow-state-dev/pull/5561#issuecomment-7086496831))
+- "Preserve today's `interestModel: JUDGE_MODEL` + custom screens wiring." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5561#discussion_r4660238384))
+- "Name each counter in the file header and in the echo line." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5561#discussion_r4660238387)). Done in `check.sh`.
+
+These are inputs, not instructions.

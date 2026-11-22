@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FIX-2873 spec evidence: every place that decides whose GitHub comments a coding run trusts.
+# FIX-2873 spec evidence: every place that decides whose GitHub comments a coding run acts on.
 #
 # Throwaway, retained with the spec. Not production code and not run by any suite.
 #
@@ -7,52 +7,57 @@
 #
 # Totality: every non-test source file under packages/ and labs/ that mentions a reviewer
 # term is classified below, by path. A file nobody classified fails the run, so a fourth
-# source can't hide. Today it expects three sources and two copies of the operator helpers;
-# --after expects the one source in workforce. --control plants an unclassified env read in
-# labs/ and must FAIL.
+# source can't hide. --control plants an unclassified env read in labs/ and must FAIL.
+#
+# The six counters, in the order the echo line and the want strings use:
+#   1 app_env_reads       `process.env.*GITHUB_REVIEWERS` read by an app (labs/, shift-manager)
+#   2 folder_seeds        github-reviewers.md files that seed a list
+#   3 token_helper_defs   definitions of `operatorGitHubToken`
+#   4 app_screen_builders app-side calls that build a reviewer screen or allow-list follow
+#   5 public_save_actions `setGitHubReviewers` registered as a public (HTTP) action
+#   6 app_static_bots     an app passing `trustedBots` a fixed list instead of the stored one
+# Today: 1 1 2 2 1 1. After FIX-2873: 0 0 1 0 0 0.
 set -uo pipefail
 MODE=today CONTROL=0 ROOT=.
 for a in "$@"; do case "$a" in --after) MODE=after ;; --control) CONTROL=1 ;; *) ROOT=$a ;; esac; done
 cd "$ROOT"
 
-TERMS='GITHUB_REVIEWERS|githubTrustedReviewersScreen|reviewedPullRequestFollow|githubReviewers\(|function operatorGitHub|github-reviewers'
+TERMS='GITHUB_REVIEWERS|githubTrustedReviewersScreen|reviewedPullRequestFollow|githubReviewers\(|function operatorGitHub|github-reviewers|setGitHubReviewers'
 PLANT=labs/_fix2873_control.mts
 if [ "$CONTROL" = 1 ]; then echo 'export const r = process.env.ACME_GITHUB_REVIEWERS;' > "$PLANT"; trap 'rm -f "$PLANT"' EXIT; fi
 
+src() { grep -rlE "$1" packages labs --include=*.ts --include=*.mts --include=*.tsx 2>/dev/null | grep -vE '/(node_modules|dist|test|tests)/|\.test\.|\.spec\.'; }
 files=$(grep -rlE "$TERMS" packages labs --include=*.ts --include=*.mts --include=*.tsx --include=*.md 2>/dev/null \
   | grep -vE '/(node_modules|dist|test|tests)/|\.test\.|\.spec\.|CHANGELOG|README' || true)
 folder=$(find packages labs -name github-reviewers.md -not -path '*/node_modules/*' 2>/dev/null || true)
 
 fail=0
-# What each classified file is. `source:` lines are counted; `uses:` lines only read the one source.
 classify() {
   case "$1" in
-    packages/workforce/src/service-flows/github/trusted-reviewers.ts) echo "source: workforce screen + stored list" ;;
-    packages/workforce/src/service-flows/github/operator.ts) echo "copy: operatorGitHub, operatorGitHubToken (workforce)" ;;
-    packages/workforce/src/service-flows/github/follow-pull-request.ts) echo "source: allow-list follow (reviewedPullRequestFollow)" ;;
+    packages/workforce/src/service-flows/github/*.ts) echo "workforce: the one source, its screen, follow and operator helpers" ;;
     packages/workforce/src/service-flows/index.ts|packages/workforce/src/index.ts|packages/workforce/src/server.ts) echo "uses: re-export" ;;
-    packages/shift-manager/teams/devteam/host.mts) echo "source: stored list, its flow, tool and screen (Shift Manager) + copy: operator helpers" ;;
+    packages/shift-manager/teams/devteam/host.mts) echo "Shift Manager host: today its own list, flow, tool, screen and helper copies" ;;
     packages/shift-manager/teams/devteam/workforce/org/resources/github-reviewers.md) echo "source: folder file seed" ;;
     packages/shift-manager/teams/devteam/workforce/org/workers/*/WORKER.md) echo "uses: worker guidance" ;;
+    labs/teammates/workforce/*/WORKER.md|labs/teammates/workforce/*/*/WORKER.md|labs/teammates/workforce/*/*/*/WORKER.md) echo "uses: worker guidance" ;;
     packages/shift-manager/teams/devteam/*fsdev.config.mts) echo "uses: token helper" ;;
-    labs/teammates/fsdev.config.mts) echo "source: TEAMMATES_GITHUB_REVIEWERS env var" ;;
+    labs/teammates/fsdev.config.mts) echo "Teammates config: today TEAMMATES_GITHUB_REVIEWERS" ;;
     labs/teammates/host.mts) echo "uses: follow wiring" ;;
     *) echo "UNCLASSIFIED" ;;
   esac
 }
-for f in $files $folder; do c=$(classify "$f"); echo "$f -> $c"; [ "$c" = UNCLASSIFIED ] && fail=1; done | sort -u
+for f in $files $folder; do echo "$f -> $(classify "$f")"; done | sort -u
 for f in $files $folder; do [ "$(classify "$f")" = UNCLASSIFIED ] && fail=1; done
 
-env_reads=$(grep -rhoE 'process\.env\.[A-Z_]*GITHUB_REVIEWERS' packages labs --include=*.ts --include=*.mts 2>/dev/null | grep -v node_modules | sort -u | wc -l)
-copies=$(grep -rlE 'export function operatorGitHubToken' packages labs --include=*.ts --include=*.mts 2>/dev/null | grep -vE 'node_modules|/dist/' | wc -l)
-deciders=$(grep -rlE 'githubTrustedReviewersScreen\(|reviewedPullRequestFollow\(' packages labs --include=*.ts --include=*.mts 2>/dev/null \
-  | grep -vE 'node_modules|/dist/|/test/|\.test\.' | grep -v 'packages/workforce/src/service-flows/github/' | wc -l)
-nfolder=$(echo -n "$folder" | grep -c . || true)
-echo "env reads of *GITHUB_REVIEWERS: $env_reads · folder seed files: $nfolder · operatorGitHubToken definitions: $copies · app-side screen builders: $deciders"
+app_env_reads=$(grep -rhoE 'process\.env\.[A-Z_]*GITHUB_REVIEWERS' labs packages/shift-manager --include=*.ts --include=*.mts 2>/dev/null | sort -u | wc -l)
+folder_seeds=$(echo -n "$folder" | grep -c . || true)
+token_helper_defs=$(src 'export function operatorGitHubToken' | wc -l)
+app_screen_builders=$(src 'githubTrustedReviewersScreen\(|reviewedPullRequestFollow\(' | grep -v 'packages/workforce/src/service-flows/github/' | wc -l)
+public_save_actions=$(src 'actions: \{ *setGitHubReviewers' | wc -l)
+app_static_bots=$(grep -rlE 'trustedBots: *(\[|options\.)' labs packages/shift-manager --include=*.ts --include=*.mts 2>/dev/null | grep -vE '/(node_modules|test)/|\.test\.' | wc -l)
+got="$app_env_reads $folder_seeds $token_helper_defs $app_screen_builders $public_save_actions $app_static_bots"
+echo "app_env_reads=$app_env_reads folder_seeds=$folder_seeds token_helper_defs=$token_helper_defs app_screen_builders=$app_screen_builders public_save_actions=$public_save_actions app_static_bots=$app_static_bots"
 
-if [ "$MODE" = today ]; then want="1 1 2 2"; else want="0 0 1 0"; fi
-# After: the one env read lives in workforce, so no `process.env.*GITHUB_REVIEWERS` in an app; workforce reads env by name.
-got="$env_reads $nfolder $copies $deciders"
-[ "$MODE" = after ] && got="$(grep -rhoE 'process\.env\.[A-Z_]*GITHUB_REVIEWERS' labs packages/shift-manager --include=*.ts --include=*.mts 2>/dev/null | grep -v node_modules | sort -u | wc -l) $nfolder $copies $deciders"
+if [ "$MODE" = today ]; then want="1 1 2 2 1 1"; else want="0 0 1 0 0 0"; fi
 [ "$got" = "$want" ] || { echo "counts $got, want $want ($MODE)"; fail=1; }
 [ "$fail" = 0 ] && echo "PASS ($MODE)" || { echo "FAIL ($MODE)"; exit 1; }

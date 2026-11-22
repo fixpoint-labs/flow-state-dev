@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="Before: three sources decide trust. Shift Manager's folder file seeds its stored list, read by its own screen, flow, tool and operator helpers. Teammates reads TEAMMATES_GITHUB_REVIEWERS into an allow list that hears bots and outsiders. After: one stored list in workforce, defaulted from GITHUB_REVIEWERS until saved, read per event with the write check; both apps install it"
+<svg viewBox="0 0 940 400" role="img" aria-label="Before: three sources decide trust. Shift Manager's folder file seeds its stored list, read by its own screen, flow, tool and operator helpers. Teammates reads TEAMMATES_GITHUB_REVIEWERS into an allow list that hears bots and outsiders. After: one stored list in workforce, defaulted from GITHUB_REVIEWERS until saved, written only by the coordinator tool, heard from listed bots and listed writers; both apps install it"
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -56,8 +56,8 @@
     <rect class="src" x="500" y="90" width="424" height="98" rx="5"/>
     <text class="t-lbl" x="512" y="108">WORKFORCE · TRUSTED REVIEWERS</text>
     <text class="t-c" x="512" y="130">github-reviewers document · the one list</text>
-    <text class="t-s" x="512" y="150">save action · coordinator tool · screen: listed, can write, never a bot</text>
-    <text class="t-s" x="512" y="170">operatorGitHub takes reviewers · one operatorGitHubToken</text>
+    <text class="t-s" x="512" y="150">list screen: a listed bot, or a listed person who can write</text>
+    <text class="t-s" x="512" y="170">written only by the coordinator tool, with Approve · one operatorGitHubToken</text>
     <rect class="app" x="500" y="200" width="206" height="88" rx="5"/>
     <text class="t-lbl" x="512" y="218">SHIFT MANAGER</text>
     <text class="t-s" x="512" y="238">installs it</text>
@@ -65,7 +65,7 @@
     <rect class="app" x="718" y="200" width="206" height="88" rx="5"/>
     <text class="t-lbl" x="730" y="218">TEAMMATES</text>
     <text class="t-s" x="730" y="238">installs it</text>
-    <text class="t-s" x="730" y="256">the save action, in its flows</text>
+    <text class="t-s" x="730" y="256">Lead takes the coordinator tool</text>
   </g>
   <g id="legend">
     <text class="t-g" x="16" y="326">struck</text><text class="t-s" x="62" y="326">removed</text>
@@ -73,6 +73,6 @@
     <rect class="in" x="290" y="314" width="16" height="14" rx="3"/><text class="t-s" x="312" y="326">an input from outside: only a default</text>
     <rect class="app" x="530" y="314" width="16" height="14" rx="3"/><text class="t-s" x="552" y="326">what each app does: install it</text>
     <text class="t-s" x="16" y="360">A saved list keeps the ref github-reviewers, so a list Shift Manager already saved still reads.</text>
-    <text class="t-s" x="16" y="380">Counts from poc/sources/check.sh on main bb1c09790.</text>
+    <text class="t-s" x="16" y="380">No HTTP save action in either app. FIX-2880 adds an injection check after the list screen. Counts: poc/sources/check.sh.</text>
   </g>
 </svg>
