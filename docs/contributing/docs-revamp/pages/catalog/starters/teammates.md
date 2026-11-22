@@ -64,7 +64,7 @@ pnpm --filter @flow-state-dev/teammates dev
 
 That builds the screen, then `fsdev dev --app` serves it at the root of the URL on the `App:` line the command prints. The model is `openai/gpt-6-luna`.
 
-The app reads a few variables, among them the working folder (`TEAMMATES_WORKDIR`), a search provider's key and the user it acts as. The [Environment reference](../../reference/environment.md) lists each with its default. Coding runs need a coding agent this machine is signed in to, and researcher's `search` needs a search provider's key.
+The app reads a few variables in its `fsdev.config.mts`, among them the working folder (`TEAMMATES_WORKDIR`), a search provider's key and the user it acts as. The [Environment reference](../../reference/environment.md) lists the search keys. Coding runs need a coding agent this machine is signed in to, and researcher's `search` needs a search provider's key.
 
 ## Watch two workers talk
 
