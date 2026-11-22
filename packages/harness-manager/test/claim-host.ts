@@ -321,10 +321,25 @@ export function claimHost(options: HostOptions) {
     uses: [ledgerResources],
     execute: async (input, ctx) => {
       const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
+      const task = ref.get(input.id);
+      const hold = task === undefined ? undefined : openOwnHolds(task)[0];
+      if (hold === undefined) return { outcome: "declined", reason: "no-open-question" };
+      return ref.answer!(input.id, { questionId: hold.id, message: input.answer, from: "user", by: ALICE });
+    },
+  });
+  // A message from outside the app answering the task's external wait, as a delivery from a followed pull request writes it
+  // (workforce's `answerExternalWait`): its words from `"service"`, by the sender's handle.
+  const deliver = handler({
+    name: "claim-host-deliver",
+    inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string(), message: z.string() }),
+    outputSchema: z.unknown(),
+    uses: [ledgerResources],
+    execute: async (input, ctx) => {
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       const row = ref.get(input.id);
       const hold = row === undefined ? undefined : openOwnHolds(row)[0];
       if (hold === undefined) return { outcome: "declined", reason: "no-open-question" };
-      return ref.answer!(input.id, { questionId: hold.id, message: input.answer, from: "user", by: ALICE });
+      return ref.answer!(input.id, { questionId: hold.id, message: input.message, from: "service", by: "github", key: `message:${hold.id}` });
     },
   });
   // A line typed in the task's session, as its door writes it (`steerFromLine`): a steer, or the answer to what the row waits on.
@@ -397,6 +412,7 @@ export function claimHost(options: HostOptions) {
       row: { block: rowAction },
       answer: { block: answer },
       line: { block: line },
+      deliver: { block: deliver },
       steer: { block: steer },
       cancel: { block: cancel },
       records: { block: records },

@@ -107,12 +107,13 @@ export function LandFailure({ failed }: { failed: { land: ReviewLand; message: s
 
 /** Where an accepted run's work went, as harness-manager's output records it. */
 export type LandedWork =
-  | { kind: "pull-request"; url: string; number: number; branch: string; base: string }
+  | { kind: "pull-request"; url: string; number: number; branch: string; base: string; state?: "merged" | "closed" }
   | { kind: "merge"; branch: string; commit: string; checkout: string; from: string };
 
 /**
  * Where an accepted run's work went, and what comes next: the pull request's
- * link, or the branch and commit it was merged at in your checkout.
+ * link, or the branch and commit it was merged at in your checkout. A pull
+ * request that has since merged or closed says so, and asks for nothing next.
  */
 export function LandedOutcome({ landed }: { landed: LandedWork }) {
   return (
@@ -123,7 +124,8 @@ export function LandedOutcome({ landed }: { landed: LandedWork }) {
           <a href={landed.url} target="_blank" rel="noreferrer" className="font-semibold underline">
             pull request #{landed.number}
           </a>{" "}
-          into <code className="font-mono">{landed.base}</code>. Next: review and merge it.
+          into <code className="font-mono">{landed.base}</code>.{" "}
+          {landed.state === "merged" ? "It has merged." : landed.state === "closed" ? "It was closed without merging." : "Next: review and merge it."}
         </>
       ) : (
         <>

@@ -1149,6 +1149,13 @@ const managerStateSchema = z.object({
    * `null` on any other turn.
    */
   wake: z.string().nullable().default(null),
+  // FIX-2884.
+  /**
+   * What the wake found when a person's words woke it and its pull requests had
+   * merged or closed: the lead those words reach the run under, in place of the
+   * one for a pull request still open. `null` on any other turn.
+   */
+  wakeNews: z.string().nullable().default(null),
   // FIX-2086.
   /** How many more harness steps this request ran for a steer. Each names that read. */
   steerSteps: z.number().nullable().default(null),
@@ -2633,6 +2640,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         goal: input.goal,
         decided: null,
         wake: null,
+        wakeNews: null,
         openedAt: Date.now(),
       });
 
@@ -3115,7 +3123,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const briefed = specSection === undefined ? withRestored : `${specSection}\n\n${withRestored}`;
       const withSteers = steers.length === 0 ? briefed : `${briefed}\n\n${renderSteers(steers, STEERS_IN_BRIEF)}`;
       return {
-        prompt: news.length === 0 ? withSteers : `${withSteers}\n\n${renderSteers(news, PULL_REQUEST_NEWS)}`,
+        prompt: news.length === 0 ? withSteers : `${withSteers}\n\n${renderSteers(news, state.wakeNews ?? PULL_REQUEST_NEWS)}`,
         ...(attachments.length > 0 ? { attachments: [...attachments] } : {}),
       };
     },
@@ -3900,9 +3908,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   /**
    * **The wake a task's pull-request wait owes**, before anything
    * else runs: the turn the wait's release owes reads its pull requests
-   * first. Merged or closed settles the task here, with no harness run, by
-   * ending the chain on {@link SettledOnPullRequests}; open or unreadable
-   * goes on, and the wake's words reach the run as its brief. A pass-through
+   * first. Merged or closed, with only outside news on the wake (the pull
+   * request's own delivery, a deadline), settles the task here, with no harness
+   * run, by ending the chain on {@link SettledOnPullRequests}. Words a person
+   * sent always run, led by what became of the pull requests, and
+   * the settle after the run ends the task. Open or unreadable goes on, and the
+   * wake's words reach the run as its brief. A pass-through
    * unless `awaitPullRequests` is on and this turn is that wake: the row's
    * newest external wait is answered, by a steer this attempt has not taken.
    */
@@ -3939,6 +3950,15 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         return;
       }
       if (pullRequestsVerdict(reads.read) === "hold") return;
+      // FIX-2884: words a person sent, or the filer on their behalf, always reach the run, told what became of
+      // the pull requests; the settle after it reads them again and ends the task. Only news from outside (the
+      // pull request's own merge or close, a deadline) settles here with no run.
+      // The steer that answered the wait is taken by the time this reads it; any after it are not yet.
+      const woke = row === undefined ? [] : [answerOf(row, wait.id), ...untakenSteers(row)];
+      if (woke.some((steer) => steer !== undefined && spokenToTheRun(steer))) {
+        await ctx.sequencer!.patchState({ wakeNews: settledPullRequestNews(reads.read) });
+        return;
+      }
       throw new SettledOnPullRequests(await settleOnPullRequests(ctx, prs, output, { reads }));
     },
   });
@@ -5140,6 +5160,29 @@ const STEERS_IN_BRIEF =
 const PULL_REQUEST_NEWS =
   "News on your pull request, which is still open. Your checkout and your earlier work are as you left them. " +
   "Act on what it says, then push your changes to the pull request's branch:";
+
+// FIX-2884.
+/** Whether `steer` is words someone sent the run: a person's, or the filer's on their behalf. A service's delivery or the board's deadline is news, not a message to answer. */
+function spokenToTheRun(steer: Pick<TaskSteer, "from">): boolean {
+  return steer.from === "user" || steer.from === "filer";
+}
+
+// FIX-2884.
+/**
+ * The lead a person's words open with when the wake found the task's pull
+ * requests merged or closed: what became of each, and that the run answers the
+ * words rather than pushing to a branch that is done. The settle after the run
+ * reads the pull requests again and ends the task.
+ */
+function settledPullRequestNews(read: readonly PullRequestRead[]): string {
+  const each = read.map(
+    (pr) => `Pull request #${pr.number} ${pr.state === "merged" ? "has merged" : pr.state === "closed" ? "was closed without merging" : "is still open"}.`,
+  );
+  return (
+    `${each.join(" ")} Your checkout and your earlier work are as you left them. Answer the message below. ` +
+    "Push nothing to a merged or closed pull request's branch: if the message asks for more changes, say they need a new task:"
+  );
+}
 
 /** The lead the step after a stop for a steer opens with. */
 const STOPPED_LEAD =

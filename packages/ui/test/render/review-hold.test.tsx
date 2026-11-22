@@ -220,6 +220,17 @@ describe("a review whose host can land the work offers two labelled accepts", ()
     expect(screen.getByText("/work/relay")).toBeTruthy();
     expect(screen.getByText(/Next: push main when you're ready\./)).toBeTruthy();
   });
+
+  it("a pull request that has since merged or closed says so, and asks for no review", () => {
+    const pr = { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: "b", base: "main" } as const;
+    render(<LandedOutcome landed={{ ...pr, state: "merged" }} />);
+    expect(screen.getByText(/It has merged\./)).toBeTruthy();
+    expect(screen.queryByText(/review and merge/)).toBeNull();
+    cleanup();
+    render(<LandedOutcome landed={{ ...pr, state: "closed" }} />);
+    expect(screen.getByText(/It was closed without merging\./)).toBeTruthy();
+    expect(screen.queryByText(/review and merge/)).toBeNull();
+  });
 });
 
 /** harness-manager's `harnessReviewAnswerSchema` as the engine stores it (zod-to-json-schema). */
