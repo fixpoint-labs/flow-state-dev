@@ -164,6 +164,7 @@ import {
 import {
   claimRequestRecord,
   principalOwnsRequest,
+  stampAdoptedRequestSession,
   type RequestPrincipal
 } from "./request-principal";
 import { refuseInstancePin } from "./instance-pin";
@@ -1752,10 +1753,25 @@ export async function createExecutionContext<
       flow,
       requestRecord as RequestRecord
     )) as typeof requestRecord;
-  } else if (requestRecord.source === undefined) {
-    // Pre-FIX-438 records read from a store that hasn't been migrated
-    // default to the HTTP source. New writes always carry the field.
-    requestRecord = { ...requestRecord, source: "http" };
+  } else {
+    if (requestRecord.source === undefined) {
+      // Pre-FIX-438 records read from a store that hasn't been migrated
+      // default to the HTTP source. New writes always carry the field.
+      requestRecord = { ...requestRecord, source: "http" };
+    }
+    // An adopted record was written before this run's session id existed:
+    // `runAction` claims it first, and a transport host writes its stub at
+    // enqueue, both with the caller's session id, which a sessionless run
+    // (a scheduled fire) does not have. The one-off session minted above is
+    // the session this request runs in, so the stored record names it, or
+    // every reader that finds a session's requests by id finds none.
+    if (!noSession && requestRecord.sessionId == null) {
+      requestRecord = (await stampAdoptedRequestSession(
+        stores,
+        requestRecord as RequestRecord,
+        sessionId
+      )) as typeof requestRecord;
+    }
   }
 
   if (requestRecord === undefined) {

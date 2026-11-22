@@ -136,3 +136,28 @@ export async function claimRequestRecord<T extends RequestRecord>(
   await stores.request.set(record.id, claimed, "any");
   return claimed;
 }
+
+// FIX-2888.
+/**
+ * Name the session a run resolved on the request record it adopted, when that
+ * record was written without one. A sessionless run's session id is minted by
+ * the execution context, after `runAction` or a transport host already wrote
+ * the record, so the stored record names no session until this writes it.
+ *
+ * A full-record write by the run that holds the record, like the hand-off in
+ * {@link claimRequestRecord} and the run's request-state writes: `sessionId`
+ * is an indexed column, which `setFieldsIfStatus` does not write. It leaves
+ * `items` off, so the stored ones are kept, and `set` never touches
+ * `abortRequested`, so a cancel recorded since the record was read survives.
+ *
+ * Returns the record as the run should hold it.
+ */
+export async function stampAdoptedRequestSession<T extends RequestRecord>(
+  stores: Pick<StoreRegistry, "request">,
+  record: T,
+  sessionId: string
+): Promise<T> {
+  const { items: _items, ...body } = record;
+  await stores.request.set(record.id, { ...body, sessionId }, "any");
+  return { ...record, sessionId };
+}

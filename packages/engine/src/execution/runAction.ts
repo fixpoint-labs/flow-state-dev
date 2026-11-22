@@ -2481,7 +2481,10 @@ async function runActionAttempt<
             // registry holds under that name.
             flowId: options.flow.id,
             actionName: options.actionName,
-            sessionId: options.sessionId,
+            // The session the run ran in, which the request record names: a
+            // sessionless run's is the one-off session its context minted, and
+            // a stop or continue finds the gate by the record's session.
+            sessionId: ctx.session.identity.id,
             userId: options.userId,
             reason: suspendError.reason,
             ...(suspendError.kind === undefined ? {} : { kind: suspendError.kind }),
@@ -2530,7 +2533,7 @@ async function runActionAttempt<
             }
           }
           await provider.suspend(record);
-          if (isWaitGate(record)) paidPark = parkOwedKey({ id: requestId, sessionId: options.sessionId, tenantId: options.tenantId });
+          if (isWaitGate(record)) paidPark = parkOwedKey({ id: requestId, sessionId: ctx.session.identity.id, tenantId: options.tenantId });
           // A sweeper on this provider brings its tick forward to the deadline.
           if (record.expiresAt !== undefined) noteSuspensionDeadline(provider, record.expiresAt);
         }
