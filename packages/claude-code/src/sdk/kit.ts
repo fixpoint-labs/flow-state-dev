@@ -83,6 +83,7 @@ export const claudeCode = defineKit({
     flows: [
       defineFlow({
         kind: CLAUDE_CODE_FLOW,
+        description: "Where the Claude Code harness records its runs and workspaces. Nobody talks to it, so it has no sessions.",
         resources: { ...claudeCodeWorkRecorderResources, ...claudeCodeWorkspaceResources },
       } as never)({ id: CLAUDE_CODE_FLOW } as never) as unknown as FlowInstance,
     ],

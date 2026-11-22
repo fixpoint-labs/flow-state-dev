@@ -131,6 +131,7 @@ export const harnesses = defineKit({
         [HARNESSES_FLOW]: (installation: WorkerInstallation) => [
           defineFlow({
             kind: HARNESSES_FLOW,
+            description: "The coding harnesses' readiness and the coding board, read as views. Nobody talks to it, so it has no sessions.",
             views: {
               readiness: harnessReadinessView(readiness),
               [CODING_BOARD_VIEW]: codingBoardView(installation, config.defaultHarness),

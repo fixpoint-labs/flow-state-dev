@@ -282,6 +282,7 @@ export function coderWorkerFlow(
 
       return defineFlow({
         kind: CODER_FLOW,
+        description: "The coding worker flow: a worker that codes runs each task here, in a coding harness.",
         cardinality: "collection",
         // Optional only so the shared copy, which carries no worker's settings, can be built.
         configSchema: workerConfigSchema().extend({

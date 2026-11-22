@@ -74,12 +74,29 @@ describe("groupFlowsIntoSections", () => {
     // Same section definition, different server answer: the depth follows the
     // flow. Nothing in the section said which shape to expect.
     const asCollection = groupFlowsIntoSections(
-      [entry("chat", "chat", "collection")],
+      [entry("chat-main", "chat", "collection")],
       [{ label: "Coordinators", kinds: ["chat"] }]
     );
 
     expect(asCollection[0]!.kinds[0]!.leaf).toBeNull();
-    expect(asCollection[0]!.kinds[0]!.instances.map((i) => i.id)).toEqual(["chat"]);
+    expect(asCollection[0]!.kinds[0]!.instances.map((i) => i.id)).toEqual(["chat-main"]);
+  });
+
+  it("draws no copy level for a collection's one copy named for its kind", () => {
+    // The copy's line would only say the kind's name again. The kind's line
+    // is its leaf, still addressed by the copy's id and still a collection.
+    const [view] = groupFlowsIntoSections(
+      [entry("agent", "agent", "collection")],
+      [{ label: "Workers", kinds: ["agent"] }]
+    );
+    expect(view!.kinds[0]!.leaf).toEqual({ kind: "agent", address: "agent", cardinality: "collection" });
+
+    // A second copy brings the level back: there is now a copy to pick.
+    const [two] = groupFlowsIntoSections(
+      [entry("agent", "agent", "collection"), entry("agent-b", "agent", "collection")],
+      [{ label: "Workers", kinds: ["agent"] }]
+    );
+    expect(two!.kinds[0]!.leaf).toBeNull();
   });
 
   it("keeps a kind in one section out of another", () => {

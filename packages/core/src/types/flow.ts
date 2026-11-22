@@ -405,12 +405,34 @@ export type SessionConfig = {
    */
   serverOwned?: readonly string[];
   /**
+   * What a reader calls one of this flow's sessions when it has no title:
+   * "Amy" rather than `wks_9b74…`. Runs on every read of a session
+   * (the listing and the single read) and goes out as the session's `label`.
+   * It sees only the state the session shows (its readonly and `client.expose`
+   * fields), so it cannot publish a private one. Keep it cheap and pure.
+   * Called once per session per read. Return `undefined` to name nothing; a
+   * throw leaves that session unlabelled and is warned about once per flow kind.
+   * Display only, never an address or an authority.
+   */
+  label?: SessionLabel;
+  /**
    * Framework-facing, not a flow-author field: a request-end hook the package
    * that built this session config adds to every request of the flow (see
    * `SESSION_REQUEST_END_HOOK` in `./request-end`).
    */
   readonly [SESSION_REQUEST_END_HOOK]?: SessionRequestEndHook;
 };
+
+/** What {@link SessionConfig.label} is handed: the session as a reader sees it. */
+export type SessionLabelInput = {
+  /** The session's id, as a caller addresses it. */
+  readonly id: string;
+  /** The state fields the session shows, with the schema's defaults applied. */
+  readonly state: Readonly<JsonObject>;
+};
+
+/** See {@link SessionConfig.label}. */
+export type SessionLabel = (session: SessionLabelInput) => string | undefined;
 
 export type RequestConfig = {
   stateSchema?: ZodTypeAny;
@@ -538,6 +560,12 @@ export type FlowDefinition<
   TConfigSchema extends ZodTypeAny | undefined = undefined
 > = {
   kind: string;
+  /**
+   * What the flow is for, in a sentence a person reads beside its name in a
+   * flow list (the developer tool shows it on an empty session list). Display
+   * only; it goes out on the flow list.
+   */
+  description?: string;
   /**
    * Instance cardinality — see {@link FlowCardinality}. Omitted means
    * `"singleton"`. Definition-only: `rejectDefinitionOnlyOptions` refuses it
@@ -786,6 +814,8 @@ export type FlowInstance<
    */
   id: string;
   kind: string;
+  /** See {@link FlowDefinition.description}. Absent when the definition has none. */
+  description?: string;
   /** Normalized from the definition; see {@link FlowCardinality}. */
   cardinality: FlowCardinality;
   requireUser: boolean;
