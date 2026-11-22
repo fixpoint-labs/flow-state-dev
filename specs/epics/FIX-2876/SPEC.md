@@ -38,20 +38,20 @@ flowchart LR
   L1 -->|"run report: Codex and that model · no text line"| P["PASS · the goal is met"]
   L2 -->|"the last pick · a new coder starts fresh"| P
   L3 -->|"runs on the shared flow, on that harness"| P
-  C["control · the flow reads the worker only"] -.->|"must FAIL legs a and c"| A
+  C["control · the flow reads the worker only"] -.->|"must FAIL every leg"| A
 ```
 
 Leg b is the one the smaller goal skips: a turn no user started must keep the person's pick, and
 a follow-up that changes coder must not resume the old vendor's session.
-Under the control, legs a and c must fail, which is what makes their PASS mean something.
+Under the control every leg must fail, which is what makes a PASS mean something.
 
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue, [FIX-2883](https://linear.app/fixpoint-labs/issue/FIX-2883), on one `main` commit after every other child merges. Teammates in the browser; Shift Manager through its coder goals |
-| **Signal** | **a:** the stored message has no `Coding harness:` text, the task's run settings name Codex and the model, and the run report says the same. **b:** the next task carries the conversation's last pick, and a steer on it runs on that harness; a follow-up naming another coder starts a fresh session on it or is refused loudly ([ER-8](DECISIONS.md#who-owns-what)), never resumes the old one. **c:** `coder.mts` is gone, and the run uses the task's harness, not the worker's |
-| **Input** | The scripted harnesses, which report the model they were handed ([ER-6](DECISIONS.md#who-owns-what)), so no signed-in vendor is needed; a held-out prompt; a model read from the harness's list at run time |
+| **Signal** | **a:** the stored message has no `Coding harness:` text, the task's run settings name Codex and the model, and the run report says the same. **b:** the next task carries the conversation's last pick. A steer, a delivered message and a door talk on it each run on that harness and model, and each fails by name on one that isn't allowed ([ER-2](DECISIONS.md#who-owns-what)). A follow-up naming another coder starts a fresh session on it or is refused loudly, through the manager and through the door, never resumes the old one ([ER-8](DECISIONS.md#who-owns-what)). **c:** `coder.mts` is gone, and the run uses the task's harness, not the worker's |
+| **Input** | The scripted harnesses, which report the model they were handed ([ER-6](DECISIONS.md#who-owns-what)), so no signed-in vendor is needed; for leg b's new coder, two scripted harnesses under different ids, which report one `source`; a held-out prompt; a model read from the harness's list at run time |
 | **Anti-game** | Read the run's own report and the stored task. Never the picker, Lead's reply or a stubbed board call |
-| **Control that must fail** | A coder flow that reads only the worker's `harness:`: legs a and c. Today's `main`: all three |
+| **Control that must fail** | A coder flow that reads only the worker's `harness:`: every leg, b through its steer, message and door. A resume check that compares the handle's `source`: leg b's new coder. Today's `main`: all three |
 
 ## What's in the box
 
