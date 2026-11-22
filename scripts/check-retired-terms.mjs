@@ -22,7 +22,11 @@
  * So a second retired word on an excepted line still counts. Each exception
  * names the terms it may strip and the rule behind it. An exception that strips
  * nothing fails the run: an exception nobody needs is a hole waiting for a
- * live use. Never widen an exception to go green: rename the line.
+ * live use. Never widen an exception to go green: rename the line. The one
+ * exception to that is an exception whose path names only pending changesets:
+ * `changeset version` deletes the note in the commit the release job pushes,
+ * so there it strips nothing by design. The run prints it as released and
+ * passes; remove it once that release ships.
  *
  * ## Ground is a surface, not a folder
  *
@@ -460,11 +464,15 @@ export function census({ files, paths }, { extraExceptions = [], reads = NAME_RE
     for (const hit of scanFile(path, text, exceptions, stripped)) hits.push({ path, area: area.id, ...hit });
     for (const hit of scanTreeRules(path, text, stripped, { reads })) hits.push({ path, area: area.id, ...hit });
   }
-  const stale = [...exceptions, ...TREE_EXEMPTIONS].filter((e) => !stripped[e.id]).map((e) => e.id);
+  // An exception for a pending release note keeps nothing once `changeset version` deletes the
+  // note, which the release job's own push does; it is reported, not failed (FIX-2885).
+  const unused = [...exceptions, ...TREE_EXEMPTIONS].filter((e) => !stripped[e.id]);
+  const stale = unused.filter((e) => !e.releaseNote).map((e) => e.id);
+  const released = unused.filter((e) => e.releaseNote).map((e) => e.id);
   const glossaryText = files.get(GLOSSARY);
   const glossary = glossaryText === undefined ? { missing: [...GLOSSARY_TERMS], repeated: [] } : checkGlossary(glossaryText);
   const ok = unscoped.length === 0 && hits.length === 0 && stale.length === 0 && glossary.missing.length === 0 && glossary.repeated.length === 0;
-  return { files: paths.length, unscoped, areaCounts, stripped, hits, stale, glossary, ok };
+  return { files: paths.length, unscoped, areaCounts, stripped, hits, stale, released, glossary, ok };
 }
 
 /** Every tracked path under `root`, and the text of each one that is text. */
@@ -573,8 +581,11 @@ export const ADDED_PLANTS = [
 /** An exception that matches nothing, which the run must report stale. */
 export const STALE_PLANT = { id: "zz-planted-stale", terms: ["seat"], strip: /zz-never-matches/g, why: "planted" };
 
+/** An exception for a release note `changeset version` has deleted: it matches nothing, and the run must not fail on it. */
+export const RELEASED_PLANT = { ...STALE_PLANT, id: "zz-planted-released-note", releaseNote: true };
+
 /**
- * Plant {@link PLANTS} and {@link STALE_PLANT} into a tree and report, for
+ * Plant {@link PLANTS}, {@link STALE_PLANT} and {@link RELEASED_PLANT} into a tree and report, for
  * each, whether the census refused it.
  * @param {{ files: Map<string, string>; paths: string[] }} tree
  */
@@ -589,7 +600,7 @@ export function control(tree, { reads = NAME_READS } = {}) {
     files.set(plant.path, `${text}\n`);
     lineOf.set(plant, text.split("\n").length);
   }
-  const r = census({ files, paths }, { extraExceptions: [STALE_PLANT], reads });
+  const r = census({ files, paths }, { extraExceptions: [STALE_PLANT, RELEASED_PLANT], reads });
   const results = PLANTS.filter((p) => p.term !== null).map((p) => {
     const line = lineOf.get(p);
     const hit = r.hits.some((h) => h.path === p.path && h.line === line && h.term === p.term);
@@ -607,6 +618,8 @@ export function control(tree, { reads = NAME_READS } = {}) {
   for (const r of NAME_READS) results.push({ what: `the ${r.read} read has a plant`, refused: planted.has(r.read), passes: true });
   results.push({ what: "a second glossary row for Worker", refused: r.glossary.repeated.includes("Worker") });
   results.push({ what: "an exception that strips nothing", refused: r.stale.includes(STALE_PLANT.id) });
+  const releasedHeld = !r.stale.includes(RELEASED_PLANT.id) && r.released.includes(RELEASED_PLANT.id);
+  results.push({ what: "an exception for a released note, which strips nothing (must pass)", refused: releasedHeld, passes: true });
   results.push({ what: "a folder no area names", refused: r.unscoped.includes("zz-planted-folder/notes.md") });
   return { results, ok: results.every((x) => x.refused) };
 }
@@ -623,12 +636,13 @@ function print(r) {
   for (const rule of TREE_RULES) if (byTerm[rule.id]) console.log(`  ${rule.id}: ${byTerm[rule.id]} counted, a word the ${rule.term} entry retires (say ${rule.say}: ${rule.anchor.join(", ")})`);
   if (r.unscoped.length > 0) console.error(`UNSCOPED (no area): ${r.unscoped.join(", ")}`);
   if (r.stale.length > 0) console.error(`STALE EXCEPTIONS (remove them): ${r.stale.join(", ")}`);
+  if (r.released.length > 0) console.log(`released notes: ${r.released.join(", ")} keep a changeset that is no longer pending; remove them once the release ships`);
   if (r.glossary.missing.length > 0) console.error(`GLOSSARY: no row for ${r.glossary.missing.join(", ")}`);
   if (r.glossary.repeated.length > 0) console.error(`GLOSSARY: more than one row for ${r.glossary.repeated.join(", ")}`);
   const lines = new Set(r.hits.map((h) => `${h.path}:${h.line}`));
   const inFiles = new Set(r.hits.map((h) => h.path));
   if (r.hits.length > 0) console.error(`FAIL · ${lines.size} lines in ${inFiles.size} files use a retired term`);
-  if (r.ok) console.log("check-retired-terms: PASS · no retired term outside its exceptions, every exception strips something, every file has an area, one glossary row per term");
+  if (r.ok) console.log("check-retired-terms: PASS · no retired term outside its exceptions, every exception strips something or keeps a released note, every file has an area, one glossary row per term");
 }
 
 const argOf = (flag) => {

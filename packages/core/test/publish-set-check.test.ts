@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
-import { findPublishable, neverPublish } from "../../../scripts/validate-publish-set.mjs";
+import { findPublishable, findUnversionable, neverPublish } from "../../../scripts/validate-publish-set.mjs";
 
 type Offender = { dir: string; name: string | null; reason: string };
 type Manifest = { name?: string; private?: boolean };
@@ -59,5 +59,53 @@ describe("packages held out of the publish set", () => {
 
   it("covers @thought-fabric/core, the exclusion the list was added for", () => {
     expect(neverPublish).toContain("thought-fabric-core");
+  });
+});
+
+type Unversionable = { path: string; name: string; reason: string };
+
+const unversionable = (fragments: Record<string, string>): Unversionable[] =>
+  (findUnversionable as (f: { path: string; source: string }[], p: Map<string, boolean>) => Unversionable[])(
+    Object.entries(fragments).map(([path, source]) => ({ path, source })),
+    new Map([
+      ["@flow-state-dev/workforce", false],
+      ["@flow-state-dev/orchestration", false],
+      ["@flow-state-dev/ui", true],
+    ]),
+  );
+
+/**
+ * `changeset version` fails the whole release, not one fragment, when a note names a package it
+ * skips (every private one) beside a published one, or a name with no package. One such note on
+ * main froze the Version Packages PR, so the guard must refuse it on the PR that adds it.
+ */
+describe("pending changesets name published packages only", () => {
+  it("flags a private package named beside published ones, the shape changeset version rejects", () => {
+    const offenders = unversionable({
+      ".changeset/mixed.md": '---\n"@flow-state-dev/ui": patch\n"@flow-state-dev/workforce": patch\n---\n\nNote (FIX-1).\n',
+    });
+    expect(offenders).toEqual([
+      { path: ".changeset/mixed.md", name: "@flow-state-dev/ui", reason: "is private, so changeset version skips it" },
+    ]);
+  });
+
+  it("flags a fragment naming only a private package: it releases nothing, so BP-022 says write none", () => {
+    const offenders = unversionable({ ".changeset/ui.md": "---\n'@flow-state-dev/ui': minor\n---\n\nNote.\n" });
+    expect(offenders.map((o) => o.name)).toEqual(["@flow-state-dev/ui"]);
+  });
+
+  it("flags a name no workspace package has, which changeset version cannot find", () => {
+    const offenders = unversionable({ ".changeset/typo.md": '---\n"@flow-state-dev/wrokforce": patch\n---\n\nNote.\n' });
+    expect(offenders).toEqual([
+      { path: ".changeset/typo.md", name: "@flow-state-dev/wrokforce", reason: "is not a workspace package" },
+    ]);
+  });
+
+  it("passes published packages and an empty fragment that carries docs intent only", () => {
+    const offenders = unversionable({
+      ".changeset/ok.md": '---\n"@flow-state-dev/orchestration": patch\n"@flow-state-dev/workforce": minor\n---\n\nNote.\n',
+      ".changeset/docs-only.md": "---\n---\n\nThe registry is private (FIX-1). Mentions \"@flow-state-dev/ui\": patch in prose.\n",
+    });
+    expect(offenders).toEqual([]);
   });
 });

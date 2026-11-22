@@ -14,11 +14,20 @@
  * to ship still carries `private: true`. Deleting the field is then a red check
  * rather than a surprise on the release run.
  *
- * Exits non-zero naming the package and the fix. No dependencies, so CI runs it
- * without an install.
+ * It also reads every pending changeset against the workspace, because the
+ * same field decides what `changeset version` will take. `privatePackages:
+ * { version: false }` skips every private package, and `changeset version`
+ * rejects a fragment that names a skipped package beside a published one, or a
+ * name no workspace package has. It fails the whole run, not that fragment, so
+ * one bad note stops the Version Packages PR for every release behind it
+ * (FIX-870, FIX-2885). A fragment may name published packages only (BP-022);
+ * this is checked on every PR, not first met by the release job.
+ *
+ * Exits non-zero naming the package or fragment and the fix. No dependencies,
+ * so CI runs it without an install.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -72,17 +81,84 @@ export function findPublishable(dirs, read) {
   return offenders;
 }
 
+/** A frontmatter line naming a package and a bump — `"@scope/pkg": patch`. */
+const PACKAGE_BUMP = /^\s*['"]([^'"]+)['"]\s*:\s*(patch|minor|major)\s*$/gm;
+
+/**
+ * The pending fragments that `changeset version` would refuse, as `{ path, name, reason }`.
+ *
+ * Exported so a test can drive it against fixtures.
+ *
+ * @param {{ path: string, source: string }[]} fragments — `.changeset/*.md` other than the README.
+ * @param {Map<string, boolean>} packages — each workspace package's name and whether it is private.
+ */
+export function findUnversionable(fragments, packages) {
+  const offenders = [];
+  for (const { path, source } of fragments) {
+    const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n?---/)?.[1] ?? "";
+    for (const [, name] of frontmatter.matchAll(PACKAGE_BUMP)) {
+      if (!packages.has(name)) offenders.push({ path, name, reason: "is not a workspace package" });
+      else if (packages.get(name)) offenders.push({ path, name, reason: "is private, so changeset version skips it" });
+    }
+  }
+  return offenders;
+}
+
+/**
+ * Each workspace package's name and whether it is private, from the
+ * `packages:` globs in `pnpm-workspace.yaml` (`dir/*` or a bare `dir`).
+ */
+function readWorkspace() {
+  const yaml = readFileSync(join(ROOT, "pnpm-workspace.yaml"), "utf8");
+  const globs = [...(yaml.match(/^packages:\n((?:\s+(?:-.*|#.*)\n)+)/m)?.[1] ?? "").matchAll(/^\s+-\s+(\S+)/gm)].map((m) => m[1]);
+  const dirs = globs.flatMap((glob) => {
+    if (!glob.endsWith("/*")) return [glob];
+    const parent = glob.slice(0, -2);
+    if (!existsSync(join(ROOT, parent))) return [];
+    return readdirSync(join(ROOT, parent), { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => `${parent}/${d.name}`);
+  });
+  const packages = new Map();
+  for (const dir of dirs) {
+    const file = join(ROOT, dir, "package.json");
+    if (!existsSync(file)) continue;
+    const manifest = JSON.parse(readFileSync(file, "utf8"));
+    if (manifest.name) packages.set(manifest.name, manifest.private === true);
+  }
+  return packages;
+}
+
+const readPendingChangesets = () =>
+  readdirSync(join(ROOT, ".changeset"))
+    .filter((f) => f.endsWith(".md") && f !== "README.md")
+    .map((f) => ({ path: `.changeset/${f}`, source: readFileSync(join(ROOT, ".changeset", f), "utf8") }));
+
 const readManifest = (dir) =>
   JSON.parse(readFileSync(join(ROOT, "packages", dir, "package.json"), "utf8"));
 
 function main() {
   const offenders = findPublishable(NEVER_PUBLISH, readManifest);
+  const fragments = readPendingChangesets();
+  const unversionable = findUnversionable(fragments, readWorkspace());
+
+  if (unversionable.length > 0) {
+    console.error(`\n✗ ${unversionable.length} package name(s) in pending changesets that changeset version would refuse:\n`);
+    for (const { path, name, reason } of unversionable) console.error(`    ${path}  →  ${name} ${reason}`);
+    console.error(
+      `\n  A changeset names published packages only (BP-022). Drop the private package's` +
+        `\n  line, and its part of the note; a note with no published package left needs no` +
+        `\n  changeset. changeset version fails the whole release on one such fragment.` +
+        `\n  See docs/contributing/release-notes-workflow.md.\n`,
+    );
+  }
 
   if (offenders.length === 0) {
     console.log(
       `✓ ${NEVER_PUBLISH.length} package(s) held out of the publish set`,
     );
-    process.exit(0);
+    if (unversionable.length === 0) console.log(`✓ ${fragments.length} pending changeset(s) name published packages only`);
+    process.exit(unversionable.length === 0 ? 0 : 1);
   }
 
   console.error(

@@ -1642,6 +1642,15 @@ const byCheck = (check) => {
 };
 export const SWEEP_EXEMPTIONS = byCheck("sweep");
 
+/**
+ * Whether an exemption's path names pending changesets and nothing else. `changeset version`
+ * deletes those notes in the commit the release job pushes, so on that commit such an
+ * exemption keeps nothing: the guard reports it released, not stale (FIX-2829, FIX-2885).
+ * A path with a top-level alternative (`|^`) may name other files too, so it stays strict.
+ * @param {RegExp} path
+ */
+const keepsOnlyPendingNotes = (path) => path.source.startsWith("^\\.changeset\\/") && !path.source.includes("|^");
+
 /** The bare retirements: they name no check, so the sweep and the guard both read them. */
 const BARE = new Set(RETIREMENTS.filter((r) => r.check === undefined).map((r) => r.id));
 
@@ -1657,6 +1666,7 @@ const SHARED_GUARD_EXEMPTIONS = SWEEP_EXEMPTIONS.filter((e) => e.rules.some((id)
     id: `shared-${i}-${terms.join("+")}`,
     terms,
     why: e.why,
+    releaseNote: keepsOnlyPendingNotes(e.path),
     where: (path) => e.path.test(path),
     strip: (_path, line) => (e.line && !e.line.test(line.trim()) ? line : res.reduce((l, re) => l.replace(re, " "), line)),
   };
