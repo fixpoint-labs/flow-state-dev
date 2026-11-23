@@ -19,6 +19,7 @@ import { redriveResolvedGate, stopsAtItsGate, stopSuspendedRequest } from "../sr
 import { expireUnderLease } from "../src/durability/resume-under-lease";
 import { handleAbortRequest } from "../src/routes/abort-routes";
 import { handleAnswerSuspension } from "../src/routes/answer-routes";
+import { scheduleSessionId } from "../src/transports/scheduled/schedule-session-id";
 import type { RuntimeConfig } from "../src/runtime-config";
 import type { ExecutionResult } from "../src/execution/types";
 
@@ -95,14 +96,14 @@ function harness(flow: FlowInstance) {
   return { stores, provider, registry, runtimeConfig, deps, finished, drain };
 }
 
-async function park(h: ReturnType<typeof harness>, flow: FlowInstance, input: unknown) {
+async function park(h: ReturnType<typeof harness>, flow: FlowInstance, input: unknown, sessionId: string = SESSION) {
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     input,
     userId: USER,
-    sessionId: SESSION,
+    sessionId,
     stores: h.stores,
     runtimeConfig: h.runtimeConfig
   });
@@ -1084,5 +1085,25 @@ describe("a stop of a task's run waiting on a user", () => {
     expect(stopsAtItsGate({ source: "http" }, { reason: "user_input" })).toBe(false);
     expect(stopsAtItsGate({ source: "task" }, { reason: "external_event" })).toBe(false);
     expect(stopsAtItsGate({ source: "task" }, { reason: "user_approval" })).toBe(true);
+  });
+});
+
+// FIX-2886.
+describe("suspendForUser: a stop in a schedule's session", () => {
+  it("refuses an answer, so an answered fire can't run beside the schedule's next fire", async () => {
+    // A suspended fire leaves the active registry, so the schedule's overlap
+    // check lets the next fire start. Answering the earlier one would run it
+    // beside that fire, in the same session.
+    const seen: string[] = [];
+    const flow = askingFlow(seen);
+    const h = harness(flow);
+    const session = scheduleSessionId({ orgId: DEFAULT_ORG_ID, userId: USER, flowId: "asking", scheduleId: "nightly" });
+    const { requestId, gate } = await park(h, flow, { options: { kind: "review", prompt: "Look at this." } }, session);
+
+    const answer = await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" });
+    expect(answer.status).toBe(404);
+    await h.drain();
+    expect(h.finished).toHaveLength(0);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
   });
 });

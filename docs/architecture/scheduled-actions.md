@@ -247,7 +247,7 @@ The id is colon-free on purpose. A session's storage key is
 colon-joined id could be split across the header and the body and
 pre-claimed. The prefix is reserved beside the write session's
 `fsd-write.`, by its own check (`isScheduleSessionId`, bare or after
-`:`), at four points:
+`:`), at five points:
 
 - the inbound host's `refuseReservedAddress` admits it only from
   `source === "scheduled"`, ahead of the resource-send pass;
@@ -258,6 +258,10 @@ pre-claimed. The prefix is reserved beside the write session's
   (`isRequestPublicReentryAllowed`), and request listings mark it
   `retryable: false`: a re-run would skip the overlap check, and the
   next fire catches up instead.
+- the answer route refuses an answer to a user's stop in it: a
+  suspended fire has left the active registry, so the next fire may
+  already be running there. A schedule whose fires wait for a person
+  keeps `"per-fire"`.
 
 Unlike a write session, its owner still lists and reads it: the
 listing, the read routes and change notices don't hide it.
