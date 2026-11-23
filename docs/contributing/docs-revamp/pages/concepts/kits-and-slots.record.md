@@ -52,6 +52,8 @@ Written by `docs-writer` (sonnet), 751 words. Scenario: A help-desk app that ins
 
 - After PR review: the second `fsdev.config.ts` shows only its change (`// workspace as in the first example`), as `coding-harnesses.md` does, and the `harnesses/kit.ts` sketch drops `defaultHarness`, which the prose never used. No claim changed. 878 words. Page sha256 1f15fc46f0de.
 
+- After PR review (Greptile): the first example names the repository as `const repo = process.cwd()`, used in `localRepositories` and `source`, since `localWorkspaceHost` matches a listed repository only by absolute path and refuses a bare `"."` as `invalid-remote`. 878 words. Page sha256 b9b37c661eaa.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 6030ce3e30d6, and the 8 Reference row(s) pass 6 moved.
@@ -63,6 +65,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 603
 - Re-run after the review edit: the caution states product status, not behaviour; no claim about behaviour changed. No untrue claim remains open.
 
 - Re-run after the reconcile edit: checked against `harness-manager/src/kit/harnesses-kit.ts:52,117-146`, `workforce/src/kit/workforce-kit.ts:136-185`, `claude-code/src/sdk/kit.ts:72-78`, `codex/src/harness.ts:32`, `engine/src/flowstate/kits.ts:66,74-84,172-189` and `core/src/kit/define-kit.ts:59,170`. No untrue claim remains open.
+
+- Re-run after the review edit: checked against `packages/workspace/src/local-host.ts:681,1427-1431`. No untrue claim remains open.
 
 ## 6 · Depth pass
 

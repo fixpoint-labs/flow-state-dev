@@ -35,11 +35,13 @@ import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import helpDeskFlow from "./src/flows/help-desk/flow";
 
+const repo = process.cwd();
+
 const workspace = localWorkspaceHost({
   root: ".fsdev/runs",
   remotes: { allow: [] },
-  localRepositories: ["."],
-  source: () => ({ kind: "repo", repo: "." }),
+  localRepositories: [repo],
+  source: () => ({ kind: "repo", repo }),
 });
 
 export default createFlowState({
