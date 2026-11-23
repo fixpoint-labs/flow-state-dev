@@ -122,11 +122,16 @@ function isNormalizedWrapper(error: FlowError): boolean {
 
 /**
  * Count `to` as an engine wrapper too, when `from` is one and `to` is a
- * rebuild of the same failure (it keeps `from`'s cause). The engine's
- * normalized-error seam calls this on the error its interceptor returns.
+ * rebuild of the same failure: the same cause and the same message, so the
+ * layer `displayCause` drops still only repeats the cause. A rebuild with a
+ * new message says something the cause does not, so it is treated as an
+ * author's error and its cause is shown. The engine's normalized-error seam
+ * calls this on the error its interceptor returns.
  */
 export function copyWrapperMarker(from: FlowError, to: FlowError): FlowError {
-  if (isNormalizedWrapper(from) && to.cause === from.cause) markWrapper(to);
+  if (isNormalizedWrapper(from) && to.cause === from.cause && to.message === from.message) {
+    markWrapper(to);
+  }
   return to;
 }
 

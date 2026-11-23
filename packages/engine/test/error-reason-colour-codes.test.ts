@@ -114,6 +114,100 @@ describe("a failed turn's reason has no terminal colour codes", () => {
     expect(displayCause(rethrown)).toBe(thrown);
   });
 
+  it("treats a seam rebuild with a new message as an author's error, and keeps unwrapping an unchanged one", () => {
+    const thrown = Object.assign(new Error("raw"), { code: "ECONNRESET" });
+    const wrapper = normalizeError(thrown);
+    const friendly = applyNormalizedErrorSeam(
+      { interceptNormalizedError: (error) => new FlowError("friendly", { cause: error.cause }) },
+      wrapper,
+      {} as ExecutionMetadata
+    );
+    expect(displayCause(friendly)).toBe(thrown);
+    const unchanged = applyNormalizedErrorSeam(
+      { interceptNormalizedError: (error) => new FlowError(error.message, { cause: error.cause }) },
+      wrapper,
+      {} as ExecutionMetadata
+    );
+    expect(displayCause(unchanged)).toBeUndefined();
+  });
+
+  it("keeps the raw cause's name, code and message when the seam rewrites the message", async () => {
+    const friendlySeam = {
+      interceptNormalizedError: (error: FlowError) => new FlowError("friendly", { cause: error.cause })
+    };
+    const raw = () => Object.assign(new Error("raw"), { code: "ECONNRESET" });
+    const expected = { name: "Error", code: "ECONNRESET", message: "raw" };
+
+    // The terminal error item.
+    const itemFlow = defineFlow({
+      kind: "friendly-item",
+      actions: {
+        run: handler({
+          name: "fails",
+          inputSchema: z.object({}),
+          outputSchema: z.string(),
+          execute: () => {
+            throw raw();
+          }
+        })
+      }
+    })();
+    const itemResult = await runActionInternal({
+      orgId: DEFAULT_ORG_ID,
+      flow: itemFlow,
+      actionName: "run",
+      input: {},
+      requestId: "req_friendly_item",
+      sessionId: "sess_friendly_item",
+      userId: "user_friendly_item",
+      stores: createInMemoryStores(),
+      runtimeConfig: {},
+      internalSeams: friendlySeam
+    });
+    const errorItem = itemResult.items.find((item) => item.type === "error") as
+      | { message?: string; details?: { cause?: unknown } }
+      | undefined;
+    expect(errorItem?.message).toBe("friendly");
+    expect(errorItem?.details?.cause).toMatchObject(expected);
+
+    // The failed block_trace of a step, under the same seam. The seam does not
+    // reach the block_trace path, so the trace carries the raw error's own
+    // message, and (as on main) no details.cause for a plain throw.
+    const failing = handler({
+      name: "fails",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: () => {
+        throw raw();
+      }
+    });
+    const traceFlow = defineFlow({
+      kind: "friendly-trace",
+      actions: { run: sequencer({ name: "seq", inputSchema: z.object({}) }).step(failing) }
+    })();
+    const response = createResponseEmitter({ requestId: "req_friendly_trace", now: () => Date.now() });
+    await runActionInternal({
+      orgId: DEFAULT_ORG_ID,
+      flow: traceFlow,
+      actionName: "run",
+      input: {},
+      requestId: "req_friendly_trace",
+      sessionId: "sess_friendly_trace",
+      userId: "user_friendly_trace",
+      stores: createInMemoryStores(),
+      responseEmitter: response,
+      runtimeConfig: {},
+      internalSeams: friendlySeam
+    });
+    const trace = response
+      .getItems()
+      .find((item) => item.type === "block_trace" && (item as { blockName?: string }).blockName === "fails") as
+      | { error?: { message?: string; details?: { cause?: unknown } } }
+      | undefined;
+    expect(trace?.error?.message).toBe("raw");
+    expect(trace?.error?.details?.cause).toBeUndefined();
+  });
+
   it("keeps a cause first normalized as a raw throw, then given as an author's cause with the same text", () => {
     const thrown = Object.assign(new Error("\u001b[31mplain\u001b[0m"), { code: "ECONNRESET" });
     normalizeError(thrown);
