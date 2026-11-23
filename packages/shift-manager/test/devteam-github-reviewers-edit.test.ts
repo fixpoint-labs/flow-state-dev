@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
@@ -381,7 +382,7 @@ describe("the Shift Coordinator changes the trusted GitHub reviewers", () => {
     const answered: string[] = [];
     for (const flow of ["github-reviewers", "coordinator", "agent"]) {
       for (const as of Object.keys(LAB_USERS) as (keyof typeof LAB_USERS)[]) {
-        const sent = await lab.door("POST", `${flow}/actions/setGitHubReviewers`, { body: { userId: LAB_USERS[as].userId, input: { logins: ["mallory"] } }, as });
+        const sent = await lab.door("POST", `${flow}/actions/setGitHubReviewers`, { body: { userId: LAB_USERS[as].userId, sessionId: oneOffSessionId(), input: { logins: ["mallory"] } }, as });
         answered.push(String(sent.body?.message ?? sent.body?.error));
       }
     }
