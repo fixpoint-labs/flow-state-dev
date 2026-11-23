@@ -1849,6 +1849,14 @@ export async function createExecutionContext<
   // How many writes now running record how the request ended (FIX-2145):
   // theirs outlive an explicit abort. See `WRITES_OUTLIVE_ABORT`.
   let writesOutlivingAbort = 0;
+  const outliveAbort: WritesOutliveAbort = async (write) => {
+    writesOutlivingAbort += 1;
+    try {
+      return await write();
+    } finally {
+      writesOutlivingAbort -= 1;
+    }
+  };
 
   const requestRef: { current: RequestRecord } = {
     current: requestRecord
@@ -3595,7 +3603,7 @@ export async function createExecutionContext<
   const requestSpendLedger = interruptedEndingLive
     ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel), {}, [], [...(requestRecord.spentHarnessRuns ?? []), ...loggedSpend.harnessRuns])
     : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns, requestRecord.spentHarnessRuns);
-  const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
+  const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding(), outliveAbort);
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.
   // A crash's continuation names no resolution: the log's latest is how the
@@ -5075,14 +5083,7 @@ export async function createExecutionContext<
   (rootContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
   attachRequestEndRegistry(rootContext, requestEndRegistry);
   (rootContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = requestSpendLedger;
-  (rootContext as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT] = async (write) => {
-    writesOutlivingAbort += 1;
-    try {
-      return await write();
-    } finally {
-      writesOutlivingAbort -= 1;
-    }
-  };
+  (rootContext as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT] = outliveAbort;
   (rootContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
   attachBuiltInHost(rootContext, builtInHost);
   // FIX-751: bind the live context so reactive dispatchers can run blocks

@@ -81,14 +81,23 @@ const NO_SPEND: RequestSpend = { byModel: {}, harnessRuns: [] };
 /**
  * Build one request's registry. `takeSpend` hands the request's spend since
  * the last ending to each run's hooks (the request's spend ledger).
+ * `outliveAbort` runs a hook added with `writesOutliveAbort`; a
+ * registry built without one runs such a hook as any other.
  */
-export function createRequestEndRegistry(takeSpend: () => RequestSpend = () => NO_SPEND): RequestEndRegistry {
+export function createRequestEndRegistry(
+  takeSpend: () => RequestSpend = () => NO_SPEND,
+  outliveAbort?: WritesOutliveAbort
+): RequestEndRegistry {
   const hooks: RequestEndHook[] = [];
   let release: (() => void) | undefined;
   const registry: RequestEndRegistry = {
     seam: {
-      add: (hook) => {
-        hooks.push(hook);
+      add: (hook, options) => {
+        hooks.push(
+          options?.writesOutliveAbort === true && outliveAbort !== undefined
+            ? (ending) => outliveAbort(async () => hook(ending))
+            : hook
+        );
         if (release === undefined) owed.set(registry, new Promise<void>((resolve) => (release = resolve)));
       }
     },
@@ -135,9 +144,10 @@ async function runHooks(
 // FIX-2145.
 /**
  * Where a request's context keeps the function that runs a request-end hook
- * with its resource writes not stopped by an explicit abort. Only
- * the session config's hook runs through it: it records what the request
- * spent, which an abort doesn't undo. Engine-internal.
+ * with its resource writes not stopped by an explicit abort. The
+ * session config's hook runs through it: it records what the request
+ * spent, which an abort doesn't undo. So does a hook added with
+ * `writesOutliveAbort`, through the registry. Engine-internal.
  */
 export const WRITES_OUTLIVE_ABORT: unique symbol = Symbol("@flow-state-dev/engine/writes-outlive-abort");
 

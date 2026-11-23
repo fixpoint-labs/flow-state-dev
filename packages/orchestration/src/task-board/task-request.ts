@@ -36,9 +36,13 @@
  *   and the run resumes `cancelled`.
  * - **held** — the turn asked questions (`TaskCollectionRef.ask`): it ends
  *   unsettled, and writes nothing more. The last answer owes the next turn.
- * - **failed, aborted, interrupted** — the attempt fails, where it does today
+ * - **failed, interrupted** — the attempt fails, where it does today
  *   (a gate's rescue has usually done it already, and then this writes
  *   nothing).
+ * - **aborted** — a person stopped the request: the task is cancelled.
+ *
+ * The check's writes outlive the request's abort (`writesOutliveAbort`), so a
+ * stopped request settles its task at once, never at its lease's lapse.
  *
  * **Admission** re-mints the claim from the row, clears `keptOpenBy`, and gives
  * the row a lease again, renewed until the request ends. Admitting a turn the
@@ -289,7 +293,9 @@ export async function admitClaimedTask(
   };
   // The hook closes over its own record: a resume reuses the request id, so a
   // hook from the run before it must never check (or drop) the resume's record.
-  const registered = onRequestEnded(ctx, (ending) => endRequest(key, record, ending));
+  // Its writes settle the task, so a stopped request's must land (FIX-2795):
+  // stopped on the abort, they left the row running until its lease lapsed.
+  const registered = onRequestEnded(ctx, (ending) => endRequest(key, record, ending), { writesOutliveAbort: true });
   // What the request spends, written onto the row while it runs (FIX-2288):
   // only where its end settles it, so a live part never outlives its request.
   if (registered) record.spendTick = startSpendTick(record);
@@ -426,9 +432,15 @@ async function endRequest(
 /** The guards every write of the check presents: advisory, fenced on the claim. */
 const guardsOf = (ticket: TaskClaimTicket) => ({ ifAllowed: true, claim: ticket }) as const;
 
-/** Whether a request ending is one that fails the attempt. */
-const failsTheAttempt = (status: RequestEnding["status"]) =>
-  status === "failed" || status === "aborted" || status === "interrupted";
+/**
+ * Whether a request ending is one that fails the attempt. Not `aborted`: a
+ * person stopped the request, and its task is cancelled ({@link USER_STOPPED}).
+ */
+const failsTheAttempt = (status: RequestEnding["status"]) => status === "failed" || status === "interrupted";
+
+// FIX-2795.
+/** Why a task is cancelled when a person stopped the request working it. */
+const USER_STOPPED = "The request working the task was stopped.";
 
 /** The one check (rule 6), at the end of a request admitted for the task. A failure to record comes back. */
 async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | undefined> {
@@ -468,6 +480,16 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
       cancelRefusedStop(record.ctx, row.id, mirror.source);
     }
     return undefined;
+  }
+  // A person stopped the request (the abort route, `stopRequest`): the task
+  // stops with it, rather than retrying the work they stopped (FIX-2795).
+  if (ending.status === "aborted") {
+    try {
+      await advisoryCancel(ref, row.id, USER_STOPPED, guardsOf(ticket));
+      return undefined;
+    } catch (error) {
+      return error instanceof Error ? error : new Error(String(error));
+    }
   }
   // The first failure only, on purpose: one fails the attempt, and the row records one error.
   const background = ending.backgroundFailures?.[0];

@@ -130,10 +130,23 @@ export interface RequestEndVerdict {
  */
 export type RequestEndHook = (ending: RequestEnding) => void | RequestEndVerdict | Promise<void | RequestEndVerdict>;
 
+// FIX-2795.
+/** How a request-end hook runs. */
+export interface RequestEndHookOptions {
+  /**
+   * The hook's resource writes are not stopped by the request's explicit
+   * abort. For a hook whose writes record how the request ended (the claim
+   * gate settling the task a stopped request worked), which a stop must not
+   * undo. Off by default: any other hook's writes stop on the abort, as the
+   * request's own do.
+   */
+  readonly writesOutliveAbort?: boolean;
+}
+
 /** The per-request registry the runtime attaches under {@link REQUEST_END_SEAM}. */
 export interface RequestEndSeam {
   /** Add a hook for the running request. Hooks run in the order they were added. */
-  add(hook: RequestEndHook): void;
+  add(hook: RequestEndHook, options?: RequestEndHookOptions): void;
 }
 
 /** The context slot the runtime attaches its request-end registry under. */
@@ -147,10 +160,11 @@ export const REQUEST_END_SEAM: unique symbol = Symbol.for("@flow-state-dev/reque
  *   context, or a block run outside a request. The caller decides what that
  *   means for it.
  */
-export function onRequestEnded(ctx: object, hook: RequestEndHook): boolean {
+export function onRequestEnded(ctx: object, hook: RequestEndHook, options?: RequestEndHookOptions): boolean {
   const seam = (ctx as Pick<InternalBlockContext, typeof REQUEST_END_SEAM>)[REQUEST_END_SEAM];
   if (seam == null) return false;
-  seam.add(hook);
+  if (options === undefined) seam.add(hook);
+  else seam.add(hook, options);
   return true;
 }
 
