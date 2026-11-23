@@ -7,7 +7,7 @@
 | A team that… | Today | After this epic |
 |---|---|---|
 | **asks a teammate for a code change** | Picks *Code with*, which travels as a `Coding harness:` line in the message and is lost on reload. The model is whatever the harness value was built with | The pick is structured state that survives a reload and reaches the task. The run reports the harness and model it used |
-| **switches coder on work in flight** | Cancels the task and files a new one to another worker | Names the harness and model on a follow-up or a new task, for the same coder worker |
+| **switches coder** | Cancels the task and files a new one to another worker | Names the harness and model on the next request, to the same coder worker. A run in flight keeps the coder it started with; a new coder is a new task |
 | **sets an app's default coder** | Teammates has four knobs that agree only by convention. Shift Manager has an env var, its own coding flow and two harness lists | Sets one value: the harness kit's `defaultHarness` |
 | **builds an app on the harness kit** | Copies the coding flow to change how a harness is picked, as Shift Manager did. `harness` is a binding on one worker kind and a UI hint on another. A task's input is typed nowhere | Gets one flow with one documented resolution order, and a task input the flow declares and filing checks. `harness` means one thing, and a worker can lock it |
 
@@ -25,40 +25,41 @@ that, through one coding flow and one resolution order.**
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | A pick that reaches the run. Today a picked model never reaches a coding task, and switching coder throws the task away. It serves goal 4 of `docs/objectives.md`, keep the foundation honest: eleven places pick a coder today ([below](#whats-already-here-and-the-debt)) |
+| **The real need** | A pick that reaches the run. Today a picked model never reaches a coding task, and switching coder means cancelling and refiling to another worker. It serves goal 4 of `docs/objectives.md`, keep the foundation honest: eleven places pick a coder today ([below](#whats-already-here-and-the-debt)) |
 | **Smaller, and rejected** | "One default-coder knob" (FIX-2877 alone). The knobs merge, but the pick still travels as text and the model is still fixed when the harness value is built |
 | **Bigger, and not this epic's** | A model choice for harness *sessions* (Kitchen Sink's harness mode keeps its own) · the lab's picker UI ([FIX-2598](https://linear.app/fixpoint-labs/issue/FIX-2598)) · run settings beyond harness and model · PR policy as flow options (FIX-2583) |
-| **Not done if** | The closure check has not run · an app keeps its own coding flow or a second default · a `Coding harness:` line survives · the lab's `Coder:` line is gone while its per-harness workers remain (FIX-2598 removes both together) · a steer, message or door routes by the worker alone · a changed coder resumes another vendor's session · a refused harness runs on something else · a refused model runs, or falls to the default without saying so · a filer's tool args, `input` or `metadata` set the harness or model · a locked worker runs another harness · a task's input goes unchecked at filing or claim · the report reads the pick, not the run · a closure bug is open |
+| **Not done if** | The closure check has not run · an app keeps its own coding flow or a second default · a `Coding harness:` line survives · the lab's `Coder:` line is gone while its per-harness workers remain (FIX-2598 removes both together) · a steer, message, door or resume reads anything but the run's frozen harness and model · a later pick changes a run in flight · a changed coder resumes another vendor's session · a refused harness runs on something else · a refused model runs, or falls to the default without saying so · a filer's tool args, `input` or `metadata` set the harness or model · a filing no person started falls to the kit default or widens its pick · a model-written assignee routes a coding task · a locked worker runs another harness · a plan run that wrote passes · a task's input goes unchecked at filing or claim · the report reads the pick, not the run · a closure bug is open |
 
 ```mermaid
 flowchart LR
   A["Teammates in a browser · Shift Manager"] --> L1["leg a · pick Codex and a model · ask for a change"]
-  A --> L2["leg b · a follow-up · worker-filed, then a new coder"]
-  A --> L3["leg c · Shift Manager task names a harness"]
-  A --> L4["leg d · a filing names another coder · a locked worker"]
+  A --> L2["leg b · worker-filed · a later pick · then a new coder"]
+  A --> L3["leg c · a Shift Manager task on its default"]
+  A --> L4["leg d · a filing names its own coder · a locked worker · a plan run"]
   L1 -->|"run report: Codex and that model · no text line · survives a reload"| P["PASS · the goal is met"]
-  L2 -->|"the last pick · a new coder starts fresh"| P
-  L3 -->|"runs on the shared flow, on that harness"| P
-  L4 -->|"plan mode holds · refused by name"| P
+  L2 -->|"the run's frozen pick · a new coder is a new task, fresh"| P
+  L3 -->|"the shared flow, on defaultHarness"| P
+  L4 -->|"plan mode holds · refused by name · a write fails"| P
   C["controls · one per leg, in the table below"] -.->|"each must FAIL its leg"| A
 ```
 
-Leg b is the one the smaller goal skips: a turn no user started must keep the person's pick, and
-a follow-up that changes coder must not resume the old vendor's session. Leg d is the security
-leg: a filing cannot choose its own coder, and a locked worker cannot be talked out of its harness.
+Leg b is the one the smaller goal skips: a task a worker files must keep its run's pick, a pick
+made later must not change a run in flight, and a new coder is a new task that never resumes the
+old vendor's session. Leg d is the security leg: a filing cannot choose its own coder or assignee,
+a locked worker cannot be talked out of its harness, and a plan run that wrote fails.
 Under each control its leg must fail, which is what makes a PASS mean something.
 
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue, [FIX-2883](https://linear.app/fixpoint-labs/issue/FIX-2883), on one `main` commit after every other child merges. Teammates in the browser; Shift Manager through its coder goals |
-| **Signal** | **a:** the stored message has no `Coding harness:` text, the task's run settings name Codex and the model, and the run report says the same. After a reload, a second request with no new pick carries the same harness and model, on the stored task and in the run report. **b:** the next task carries the conversation's last pick. A steer, a delivered message and a door talk on it each run on that harness and model, and each fails by name on one that isn't allowed ([ER-2](DECISIONS.md#who-owns-what)). A follow-up naming another coder starts a fresh session on it or is refused loudly, through the manager and through the door, never resumes the old one ([ER-8](DECISIONS.md#who-owns-what)). **c:** `coder.mts` is gone, and the run uses the task's harness (the person's pick, written by the server), not the worker's. **d:** a filing whose tool args name `claude-code` while the turn's pick is plan mode, or absent, runs in plan mode ([ER-10](DECISIONS.md#who-owns-what)). A model named while the harness's catalog failed, and a Cursor param the catalog did not list, are each refused by name and run on the harness default ([ER-2](DECISIONS.md#who-owns-what)). A worker locked to plan mode refuses an edit-capable pick by name ([ER-11](DECISIONS.md#who-owns-what)). An input that does not fit the coder flow's schema is refused at filing ([ER-9](DECISIONS.md#who-owns-what)) |
-| **Input** | The scripted harnesses, which report the model they were handed ([ER-6](DECISIONS.md#who-owns-what)), so no signed-in vendor is needed; for leg b's new coder, two scripted harnesses under different ids, which report one `source`; a held-out prompt; a model read from the harness's list at run time; for leg d, a scripted harness whose catalog fails |
-| **Anti-game** | Read the run's own report and the stored task. Never the picker, Lead's reply or a stubbed board call |
-| **Control that must fail** | A coder flow that reads only the worker's `harness:`: legs a, b and c, b through its steer, message and door. A resume check that compares the handle's `source`: leg b's new coder. A filing tool that keeps the filer's harness and model, a model check that skips a failed catalog, and a lock that is ignored: leg d. Today's `main`: all four |
+| **Signal** | **a:** the stored message has no `Coding harness:` text, the task's run settings name Codex and the model, and the run report says the same. After a reload, a second request with no new pick carries the same harness and model, on the stored task and in the run report. **b:** a task filed from a worker's run carries that run's frozen harness and model, not the kit default and not the task session's carried copy ([ER-10](DECISIONS.md#who-owns-what)). After a new pick in the conversation, a steer, a delivered message, a door talk and a resume on a task already claimed each still run on its frozen harness and model ([ER-2](DECISIONS.md#who-owns-what)). A follow-up naming another coder is a new task, filed from the conversation's turn, which starts a fresh session on that coder; the door takes no pick, and neither path resumes the old session ([ER-8](DECISIONS.md#who-owns-what)). **c:** `coder.mts` is gone, and a Shift Manager task runs through the shared coder flow on its worker's harness, or the kit's `defaultHarness` when the worker names none. Shift Manager has no picker. **d:** a filing whose tool args name `claude-code` while the turn's pick is plan mode, or absent, runs in plan mode, and a filing whose model-written assignee names a worker the turn's routing doesn't is refused or restamped ([ER-10](DECISIONS.md#who-owns-what)). A model named while the harness's catalog failed, and a Cursor param the catalog did not list, are each refused by name and run on the harness default ([ER-2](DECISIONS.md#who-owns-what)). A worker locked to plan mode refuses an edit-capable pick by name at filing or claim ([ER-11](DECISIONS.md#who-owns-what)). A plan-mode run that writes a file, adds a ref or changes the common git dir fails by name ([ER-12](DECISIONS.md#who-owns-what)). An input that does not fit the coder flow's schema is refused at filing ([ER-9](DECISIONS.md#who-owns-what)) |
+| **Input** | The scripted harnesses, which report the model they were handed ([ER-6](DECISIONS.md#who-owns-what)), so no signed-in vendor is needed; for leg b's new coder, two scripted harnesses under different ids, which report one `source`; a held-out prompt; a model read from the harness's list at run time; for leg d, a scripted harness whose catalog fails and a scripted plan-mode harness that writes |
+| **Anti-game** | Read the run's own report, the run record and the stored task. Never the picker, Lead's reply or a stubbed board call |
+| **Control that must fail** | A coder flow that reads only the worker's `harness:`: legs a and b, b through its steer, message and door. A route that reads the session's current `codeWith` over the frozen pair: leg b's later pick. A resume check that compares the handle's `source`: leg b's new coder. A stamper that reads the task session's carried copy, or falls to the kit: leg b's worker-filed task. A host that keeps its own coder flow (`.without(workforce.slots.workerFlows, "coder")`): leg c. A filing tool that keeps the filer's harness, model or assignee, a model check that skips a failed catalog, a lock that is ignored, and a skipped plan postcheck: leg d. Today's `main`: all four |
 
 ## What's in the box
 
-![In the box: one coding flow, a typed task input whose run settings the server writes, one order on every route with a worker lock, a model feed, and Code with as a turn-written session field. Fence: what ran is read from the run. Composed in: the app's one default and its picker. Replaced: Teammates' text line and the extra knobs. Not built: harness sessions' pick, the lab's picker, more settings, PR policy](figures/end-state.svg)
+![In the box: one coding flow, a typed task input whose run settings the server writes, one order, frozen per run for every route, with a worker lock, a model feed, and Code with as a turn-written session field. Fence: what ran is read from the run. Composed in: the app's one default and its picker. Replaced: Teammates' text line and the extra knobs. Not built: harness sessions' pick, the lab's picker, more settings, PR policy](figures/end-state.svg)
 
 Everything in the box is framework: an app sets one default and draws a picker. The fence keeps
 the report honest, because a run that ignored the pick, or fell back from a refused model, must
@@ -79,8 +80,8 @@ The reviewed snapshot; live state is in Linear.
 |---|---|---|---|
 | [FIX-2877](https://linear.app/fixpoint-labs/issue/FIX-2877) | Shift Manager on the shared `coder` flow; one default-coder value per app; one meaning for `harness`. No new app behaviour; the shared flow gains, as options, what Shift Manager's copy does that it doesn't (its split of feature work from answers) | Without it, run settings are built twice or Shift Manager never gets them | Backlog · parked |
 | [FIX-2894](https://linear.app/fixpoint-labs/issue/FIX-2894) | Typed task input: a flow's `work` entry declares what its tasks take; `createTask` and `updateTask` check it at filing, the entry checks it again at claim, and `listDelegates` shows it | Run settings are fields of that input ([D1](DECISIONS.md#d1)), so the input needs a type before FIX-2878 can add them | Backlog · parked |
-| [FIX-2878](https://linear.app/fixpoint-labs/issue/FIX-2878) | `codingTaskInput { harness?, model?, feature?, project? }`, the coder flow's declared input, with `harnessFeature` and `input.project` moved into it; the order task, worker, kit default, on every route the coder flow has; a filer's harness and model never honoured; a model checked against a catalog that answered; a worker's harness lock; a changed coder starts a fresh session; a model feed into every harness | The substance: the only way a model reaches a coding run | Backlog · blocked by FIX-2894 |
-| [FIX-2879](https://linear.app/fixpoint-labs/issue/FIX-2879) | *Code with* through workforce's `sessionFields`, made a keyed slot with a `written: "turn"` mode: the harness kit fills `codeWith`, the respond action takes optional `fields`, and the pick stays on the session for turns no user started; the server stamps it into the task at filing; one shared instruction. A planned split for the spec-set author: the package half (the session field, the stamp), which the lab waits on ([D3](DECISIONS.md#d3)), and the Teammates half (the worker collapse) | Removes Teammates' text protocol (the lab's `Coder:` is FIX-2598's); the stamp is the only way a person's pick reaches a task ([ER-10](DECISIONS.md#who-owns-what)) | Backlog · blocked by FIX-2877 and FIX-2878 |
+| [FIX-2878](https://linear.app/fixpoint-labs/issue/FIX-2878) | `codingTaskInput { harness?, model?, feature?, project? }`, the coder flow's declared input, with `harnessFeature` and `input.project` moved into it; the order (a harness: task, worker, kit default; a model: task, then the harness's own) run at the first claim and frozen on the run record for every other route; a filer's harness, model and assignee never honoured, and a background filing inheriting its run's pick; a model checked against a catalog that answered; a worker's harness lock; a changed coder starts a fresh session; a plan-run postcheck; a model feed into every harness | The substance: the only way a model reaches a coding run | Backlog · blocked by FIX-2894 |
+| [FIX-2879](https://linear.app/fixpoint-labs/issue/FIX-2879) | *Code with* through workforce's `sessionFields`, made a keyed slot with a `written: "turn"` mode: the harness kit fills `codeWith`, the respond action takes optional `fields`, and the pick stays on the session for turns no user started; the server stamps it, or the filing run's frozen pick, into the task at filing, through a host-supplied stamper on `createTask`; one shared instruction. A planned split for the spec-set author: the package half (the session field, the stamp), which the lab waits on ([D3](DECISIONS.md#d3)), and the Teammates half (the worker collapse) | Removes Teammates' text protocol (the lab's `Coder:` is FIX-2598's); the stamp is the only way a person's pick reaches a task ([ER-10](DECISIONS.md#who-owns-what)) | Backlog · blocked by FIX-2877 and FIX-2878 |
 | [FIX-2883](https://linear.app/fixpoint-labs/issue/FIX-2883) · closure · **required** | The QA run on one `main` commit | Finds what falls between the others | Backlog · blocked by the four above |
 
 All four take the spec route; none is a bug. Their specs come later as one spec-set PR. Four
@@ -121,6 +122,8 @@ half once the spec set splits it. FIX-2599 only reads the carrier; no block is w
   (FIX-2598). This set gives it a carrier; it builds no lab UI. The lab's `Coder:` line and its
   eight per-harness workers go together in FIX-2598, and plan mode's `claude-code-plan` id becomes
   a run setting in FIX-2599 ([D3](DECISIONS.md#d3)).
+- **Shift Manager's picker.** A *Code with* picker in Shift Manager is out of scope: FIX-2877 adds
+  no app behaviour, so its tasks run on the worker's or the kit's `defaultHarness`.
 - **PR policy** is FIX-2583's; **worker messages** are FIX-1990's; **the kit system** is FIX-2874's.
 - **The escape hatch** in [FIX-2627 D1](../../issues/FIX-2627/DECISIONS.md#d1): an app whose rule
   the config lacks can still write its own flow from harness-manager's blocks.
@@ -147,6 +150,9 @@ at build. After the set, one order and one default per app: all of it for coding
 | A declared input on a flow's `work` entry, checked at filing and claim (FIX-2894) | Task `input`, typed `unknown` and parsed late by each reader (`harnessTaskInputSchema` at attempt start) · `listDelegates`' `takes` | **Extends** `workerTaskEntry` with an `input` schema and `listDelegates` with it; a flow that declares none takes an open record, as today |
 | Run settings as fields of the coder flow's input (FIX-2878) | The namespaced `harnessFeature` key (FIX-2282) · `input.project` · free-form `metadata` | **Extends** the first two into one schema, `codingTaskInput { harness?, model?, feature?, project? }`; the namespacing goes. `harness` and `model` are server-written ([ER-10](DECISIONS.md#who-owns-what)) |
 | A harness lock on a worker (FIX-2878) | The worker's `harness:` line (FIX-2152 ER-9) | **Extends** that line with a lock; FIX-2878's spec names it |
+| A run's frozen harness id and model (FIX-2878) | `run-record.ts`'s row, which holds `sessionId` | **Extends** the row with two fields, nullable with default null (BP-030), like every field on it |
+| A plan-run postcheck (FIX-2878) | `runChangedFiles` in `coder-flow.ts`, which reads a dirty tree and the tree against the base | **Extends** it with new refs and the common git dir, and fails a plan run instead of running checks |
+| A run-settings stamper on `createTask`, and the assignee stamp (FIX-2879, FIX-2878) | `createTask`'s host hooks (`needsProject`) · the board's workstream rule for a row's assignee | **Extends** both: one more host hook, provided by the harness kit, and one more assignee check |
 | A model feed in `HarnessFeeds` (FIX-2878) | `HarnessSessionFeeds.model` and each agent's `model` resolver | **Extends** the same name and resolver onto the task path, widened to the harness's own model value |
 | Shift Manager's needs as `coder` options (FIX-2877) | `coderWorkerFlow`'s options and `codingPhase` | **Extends**, as FIX-2627 D1 locks in |
 | Turn state on the default agent flow (FIX-2879) | The kit's `sessionFields` (server-written, inherited at hand-over) · agent-flow `settings` (never read) | **Extends** `sessionFields` into a keyed slot with a `written: "turn"` mode, not a new session-schema slot. The harness kit fills `codeWith`; the respond action takes optional `fields`; each turn writes its pick, and it stays for turns no user started |
@@ -155,17 +161,17 @@ at build. After the set, one order and one default per app: all of it for coding
 | The debt | |
 |---|---|
 | **Removes** | `coder.mts` (438 lines) and Shift Manager's second list · three of Teammates' four knobs · Teammates' `Coding harness:` protocol and the prompt rules that parse it · the unread agent-flow `harness` setting · two of Teammates' three coding workers, if [D2](DECISIONS.md#d2) holds · the `harnessFeature` namespace and the late per-reader parses of task input |
-| **Adds** | A declared input on a flow's `work` entry, `codingTaskInput`, a harness lock, a model feed on `HarnessFeeds`, and a `written: "turn"` mode on `sessionFields`. All published, permanent by design |
+| **Adds** | A declared input on a flow's `work` entry, `codingTaskInput`, a harness lock, a model feed on `HarnessFeeds`, a `written: "turn"` mode on `sessionFields`, and a run-settings stamper hook on `createTask`. All published, permanent by design. Internal: the frozen pair on the run record and the plan-run postcheck |
 | **Leaves** | Harness sessions' own model pick. The lab's per-harness coder workers and its `Coder:` line, which FIX-2598 removes together |
 
-**Net: down.** Two apps shed a flow, three knobs and a text protocol; the packages gain five
+**Net: down.** Two apps shed a flow, three knobs and a text protocol; the packages gain eight
 extensions of pieces they already have, and every reader stops parsing task input on its own.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met), at that size:** four legs, a turn no user
-started and a filing that names its own coder included. If wrong: a picker that works until a
-worker's message files the next task.
+**[The goal](#the-goal-and-how-well-know-its-met), at that size:** four legs, a task a worker
+files and a filing that names its own coder included. If wrong: a picker that works until a
+worker's run files the next task.
 
 **[The set's debt](#whats-already-here-and-the-debt), net down.** If wrong: run-settings fields
 nobody uses, because no one switches coder per task.
@@ -183,6 +189,8 @@ nobody uses, because no one switches coder per task.
 **Open: none.** D2 and D3 answer the questions FIX-2878 and FIX-2879 put to the owner, as
 recommendations to sign. Five calls are already made and recorded in
 [Decided in review](DECISIONS.md#decided-in-review): where run settings live, FIX-2894, FIX-2879's
-carrier, the security rule (ER-10) and the worker lock (ER-11).
+carrier, the security rule (ER-10) and the worker lock (ER-11). The engineering manager's
+corrections after them are recorded there too: the pick frozen per run, background filings
+inheriting it, the assignee stamp, and the plan-run postcheck (ER-12).
 
 Epic · 4 issues and a closure · Framework simplification & cleanup · goal 4 of `docs/objectives.md`, keep the foundation honest

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, whether Teammates keeps one coding worker per harness once a task names its harness. Chosen: one coder worker, whose harness line is only its default. Instead of: one worker per harness, as today. It comes down to the first row: switching coder is naming it on the task or a follow-up, against cancelling and refiling to another worker. The price: which coder ran is read off the task card and the run report, not the roster row. The roster drops to one coding row. Locks in that the card shows the harness and model that ran, read from the run. Flips if people pick a coder by its roster row rather than on the request."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, whether Teammates keeps one coding worker per harness once a task names its harness. Chosen: one coder worker, whose harness line is only its default. Instead of: one worker per harness, as today. It comes down to the first row: switching coder is naming it on the next request, to the same worker, while a run in flight keeps its own coder, against cancelling and refiling to another worker chosen by id. The price: which coder ran is read off the task card and the run report, not the roster row. The roster drops to one coding row. Locks in that the card shows the harness and model that ran, read from the run. Flips if people pick a coder by its roster row rather than on the request."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -57,14 +57,14 @@
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
     <text class="t-lbl" x="32" y="156">SWITCH CODER</text>
-    <text class="t-lbl" x="32" y="169">ON A TASK</text>
+    <text class="t-lbl" x="32" y="169">NEXT REQUEST</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Name it on the task or a follow-up</text>
-    <text class="t-s" x="248" y="179">nothing is cancelled</text>
+    <text class="t-b" x="248" y="161">Name it on the request, same worker</text>
+    <text class="t-s" x="248" y="179">a run in flight keeps its own coder</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Cancel it, refile to another worker</text>
-    <text class="t-s" x="612" y="179">the run&#x27;s session and context are lost</text>
+    <text class="t-s" x="612" y="179">the coder is chosen by worker id</text>
   </g>
 
   <g id="row-2">

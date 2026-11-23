@@ -107,6 +107,8 @@ each turn, so the last pick wins.
   userMessage: (input) => input.message,
   concurrency: REPLY_CONCURRENCY,
 },
+// The coder flow's own `respond`, the door (`harnessSessionDoor`), takes no `fields`: a door talk
+// always runs on the task's frozen coder (ER-8). Another coder is a new task, filed from this turn.
 
 /** NEW (FIX-2879): write this turn's `written: "turn"` fields before the turn runs. */
 async function writeTurnFields(declared: SessionFields, fields: Record<string, unknown>, ctx: BlockContext) {
@@ -121,23 +123,41 @@ async function writeTurnFields(declared: SessionFields, fields: Record<string, u
 }
 ```
 
-## 3 · Filing: the server writes harness and model (ER-10)
+## 3 · Filing: the server writes harness, model and assignee (ER-10)
 
-What the filer sent is dropped, whatever it is. Then the session's last pick is written in. A
-hand-over carries `codeWith` into the task's session (`carriedSessionFields`), so a task filed by a
-worker carries it too. The stamp runs before `assertInputFor`.
+What the filer sent is dropped, whatever it is. Then the server writes the pick in, through a
+stamper the host supplies to `createTask` and the harness kit provides, so workforce reads no
+harness-kit field. From a person's turn, the pick is the session's last `codeWith`. From a filing
+no person started, it is the frozen pair on the filing run's own record (step 4), never the task
+session's carried copy (`carriedSessionFields`), which was taken at hand-over and can be stale. The
+stamp runs before `assertInputFor`.
 
 ```ts
 // packages/workforce/src/conversation-board/board.ts, inside the guarded createTask
-const init = stampRunSettings(heldAsTurnSays(ctx, asked)); // NEW: drop in FIX-2878, write in FIX-2879
+const init = await stampRunSettings(heldAsTurnSays(ctx, asked)); // NEW: drop in FIX-2878, write in FIX-2879
 
-/** NEW: whatever the filer's tool args, input or metadata said, harness and model are the turn's. */
-const stampRunSettings = (init: TaskInit): TaskInit => {
+/** NEW: whatever the filer's tool args, input or metadata said, harness and model are the server's. */
+const stampRunSettings = async (init: TaskInit): Promise<TaskInit> => {
   const { harness: _h, model: _m, ...rest } = (init.input ?? {}) as Record<string, unknown>;
-  // FIX-2879: the pick the session holds. The hook's shape (how workforce reads a harness-kit
-  // field without knowing the harness kit) is the spec set's to choose.
-  const pick = options.runSettingsOf?.(ctx.session.state); // NEW (FIX-2879)
-  return { ...init, input: { ...rest, ...pick } }; // no pick: the task carries none, and the worker's harness is used
+  // NEW (FIX-2879): host-supplied, beside `needsProject`; its spec picks the final name.
+  const stamped = await options.runSettingsOf?.(ctx); // { pick?, assignee? }, or undefined: no harness kit here
+  // ER-10: the assignee is the turn's routing's, never a model-written one. FIX-2878's spec picks refuse or restamp.
+  if (stamped?.assignee !== undefined && init.assignee !== undefined && init.assignee !== stamped.assignee) {
+    throw new TaskWriteRefusedError("assignee_refused", `this turn routes coding work to "${stamped.assignee}", not "${init.assignee}". Nothing was filed.`);
+  }
+  return { ...init, input: { ...rest, ...stamped?.pick } }; // a person's turn with no pick: none, and the worker's harness is used
+};
+
+// packages/harness-manager/src/kit/harnesses-kit.ts: the harness kit's stamper (NEW, FIX-2879)
+const runSettingsOf = async (ctx: BlockContext) => {
+  const assignee = await routedCoderOf(ctx); // the coding worker the authenticated turn routes to; FIX-2878's spec reads it
+  const run = await activeRunOf(ctx); // the filing session's own run record, if it is a coding run
+  if (run !== undefined) {
+    // A filing no person started: the filing run's frozen pair, kept exactly. Never the kit default, never wider.
+    return { assignee, pick: { harness: run.harnessId!, ...(run.model == null ? {} : { model: run.model }) } };
+  }
+  const codeWith = (ctx.session.state as { codeWith?: { harness: string; model?: unknown } }).codeWith;
+  return { assignee, pick: codeWith }; // a person's turn, or a conversation turn no user started (Q-C)
 };
 ```
 
@@ -156,13 +176,22 @@ it("a filer cannot choose its own coder", async () => {
   expect(task.input).toEqual({ harness: "claude-code-plan" }); // the turn's pick; the filer's model is gone too
   expect((await runOf(task)).harness).toBe("claude-code-plan"); // read from the run, not the task
 });
+
+it("a task a worker's run files inherits that run's frozen pick", async () => {
+  const parent = await claimed(board, { assignee: "teammates.coder", input: {} }, { codeWith: { harness: "claude-code-plan" } });
+  await conversation.respond({ message: "now use codex", fields: { codeWith: { harness: "codex" } } }); // a later pick
+  const child = await asRunOf(parent).createTask({ assignee: "teammates.coder", goal: "split the fix", input: { harness: "codex" } });
+  expect(child.input).toEqual({ harness: "claude-code-plan" }); // the filing run's pair: not the later pick, not the kit default
+});
 ```
 
-## 4 · One order, on every route (ER-2, ER-11)
+## 4 · One order at the claim, frozen for every route (ER-2, ER-11)
 
 `harnessOf` resolves from the worker alone today. It is replaced by one resolver over the task.
-The order is the task, then the worker, then the kit. The work and steer routes are handed the
-task. The message and door routes find it from the session.
+For a harness the order is the task, then the worker, then the kit; for a model, the task, then the
+harness value's own default. Only a fresh work claim runs it, and it freezes what it resolved on the
+run record. Steer, message, door and resume read that frozen pair, never the session's current
+`codeWith`, so a pick made after the claim changes nothing in flight.
 
 ```ts
 // packages/harness-manager/src/kit/coder-flow.ts, replacing harnessOf
@@ -178,21 +207,31 @@ const resolveRun = async (ctx: BlockContext, task: { input?: unknown } | undefin
   const found = id === undefined ? undefined : built[id];
   if (found === undefined) throw new Error(`no harness "${id ?? "(none)"}" here; one of ${ids.join(", ")}. Nothing ran.`);
   const review = (worker.config.review as boolean | undefined) ?? options.review === true;
-  // Model: the task's, checked (step 5), else the harness's own default. ER-2 also names worker and
-  // kit layers for a model; neither has a model field today, so none is drawn here.
+  // Model: the task's, checked (step 5), else the harness value's own default (cursorHarness({ model })).
+  // There is no worker-config model and no kit-default model (ER-2).
   return { ...found, id, manager: review ? found.reviewed : found.manager, model: await checkModel(harnesses[id]!, asked.model) };
 };
 
-/** The task this session works, for the routes that are handed none (a message, the door). */
-const sessionTaskOf = async (ctx: BlockContext) => {
+/** NEW (FIX-2878): the pair a fresh work claim froze, for every other route. */
+const frozenRunOf = async (ctx: BlockContext) => {
   const filed = await board(ctx);
-  return filed === undefined ? undefined : sessionTask(filed.tasks, ctx.session.identity.id);
+  const task = filed === undefined ? undefined : sessionTask(filed.tasks, ctx.session.identity.id);
+  const run = task === undefined ? undefined : await readRunRecord(ctx, runTopicOf(task));
+  if (run?.harnessId == null) throw new Error("this session's task has not been claimed; nothing to steer. Nothing ran.");
+  const found = built[run.harnessId];
+  if (found === undefined) throw new Error(`the run's harness "${run.harnessId}" is not here any more. Nothing ran.`);
+  return { ...found, id: run.harnessId, model: { model: run.model ?? undefined } };
 };
 
-// In byHarness: work and steer are handed the task; message and door look it up.
+// In byHarness: only the work entry's fresh claim resolves; steer, message and door read the frozen pair.
 execute: async (input: { input?: unknown } & Record<string, unknown>, ctx: never) => {
-  // A task's own input carries `goal`; a message or a door line doesn't (the door's `taskId` is a label only).
-  const chosen = await resolveRun(ctx, "goal" in input ? input : await sessionTaskOf(ctx));
+  // A task's own input carries `goal`; a steer, a message or a door line doesn't (the door's `taskId` is a label only).
+  const freshClaim = "goal" in input && route === "work"; // `route`: byHarness's own argument, one per entry
+  const chosen = freshClaim ? await resolveRun(ctx, input) : await frozenRunOf(ctx);
+  if (freshClaim) {
+    // NEW (FIX-2878): frozen beside `sessionId`; both fields `.nullable().default(null)` (BP-030).
+    await writeRunRecord(ctx, { harnessId: chosen.id, model: chosen.model.model ?? null });
+  }
   if (ready) {
     const missing = await refusal(chosen.id);
     if (missing !== undefined) throw new Error(missing); // a refused harness fails; it never moves to another
@@ -234,15 +273,18 @@ export interface HarnessFeeds {
 }
 ```
 
-A session is resumed only by the harness that started it, matched by its `id`. `source` cannot
-tell `claude-code` from `claude-code-plan`, because both report `claude-code/sdk`.
+A session is resumed only by the harness that started it, matched by the `id` frozen on the run
+record. `source` cannot tell `claude-code` from `claude-code-plan`, because both report
+`claude-code/sdk`. The door takes no pick, so on its path the frozen harness is also the one
+dispatched; the check matters when a fresh work claim resolved differently from the session on
+record.
 
 ```ts
 // manager.ts, the harness block's resume feed (each manager is built for one harness id)
 resume: (ctx) => {
   const state = harnessCtxState(ctx);
-  // NEW (FIX-2878): the run row records `previousHarness` beside the session it names.
-  return state?.previousHarness === harnessId ? (state.previousSessionId ?? null) : null; // another coder: a fresh session
+  // NEW (FIX-2878): the run row's frozen `harnessId`, beside the session it names.
+  return state?.harnessId === harnessId ? (state.previousSessionId ?? null) : null; // another coder: a fresh session
 },
 
 // session-door.ts, the talk: the same check on the door's path
