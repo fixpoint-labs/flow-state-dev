@@ -54,7 +54,7 @@ const readLegacy = (raw: Record<string, unknown>): Record<string, unknown> => {
   const marker = harnessFeatureSchema.safeParse(harnessFeature); // { issue, phase? }
   if (!marker.success) throw new Error("this task's feature marker is malformed. Nothing ran."); // never run as an answer
   const { issue, phase } = marker.data;
-  if (phase !== undefined && phase !== "implement") throw new Error(`this task's feature marker names phase "${phase}", which no mode reads. Nothing ran.`);
+  if (phase !== undefined && phase !== "implement") throw new Error(`legacy task names phase "${phase}", which no registered mode keeps. Nothing ran.`);
   return { ...rest, mode: "implement", issue };
 };
 
@@ -535,9 +535,10 @@ const checkMode = (input: CodingTaskInput, worker: { id: string; config: { lock?
 /** At filing, and again at claim. */
 const checkRequires = (name: string, input: CodingTaskInput) => {
   const mode = modes[name];
-  if (mode === undefined) throw new TaskWriteRefusedError("unknown_mode", `no mode "${name}" here; one of ${Object.keys(modes).join(", ")}. Nothing was filed.`);
+  // The refusal texts are FIX-2878's (its SPEC Examples). `quoted` renders `"implement" and "answer"`.
+  if (mode === undefined) throw new TaskWriteRefusedError("unknown_mode", `this app has no mode "${name}". Its modes are ${quoted(Object.keys(modes))}. Nothing was filed.`);
   for (const need of mode.requires ?? []) {
-    if (input[need] === undefined) throw new TaskWriteRefusedError("mode_needs_input", `mode "${name}" requires ${need}; this task names none. Nothing was filed.`);
+    if (input[need] === undefined) throw new TaskWriteRefusedError("mode_needs_input", `mode "${name}" needs "${need}", and this filing has none. Nothing was filed.`);
   }
 };
 ```
@@ -554,10 +555,10 @@ Task filings, as the board stores them, in Shift Manager:
 { "goal": "Make the docs job run nightly", "input": { "mode": "implement", "issue": "ENG-142" } }
 // An unknown mode: refused.
 { "goal": "Review ENG-142", "input": { "mode": "review" } }
-//   → refused: no mode "review" here; one of implement, answer. Nothing was filed.
+//   → refused: this app has no mode "review". Its modes are "implement" and "answer". Nothing was filed.
 // Implement with no issue: refused, never run as an answer instead.
 { "goal": "Make the docs job run nightly", "input": { "mode": "implement" } }
-//   → refused: mode "implement" requires issue; this task names none. Nothing was filed.
+//   → refused: mode "implement" needs "issue", and this filing has none. Nothing was filed.
 // A filer naming its own done check or workspace: those keys are dropped, as server-owned fields are.
 { "goal": "Make the docs job run nightly", "input": { "mode": "implement", "issue": "ENG-142", "doneWhen": "always", "workspace": "/" } }
 //   → stored: { "mode": "implement", "issue": "ENG-142", "harness": …, "model": …, "plan": … } — implement's own doneWhen and workspace run
@@ -592,7 +593,7 @@ never run as an answer:
 // stored:  { "harnessFeature": { "issue": "ENG-142", "phase": "implement" } }
 // read as: { "mode": "implement", "issue": "ENG-142" }
 // stored:  { "harnessFeature": { "issue": "ENG-142", "phase": "code" } }
-//   → refused: this task's feature marker names phase "code", which no mode reads. Nothing ran.
+//   → refused: legacy task names phase "code", which no registered mode keeps. Nothing ran.
 // stored:  { "harnessFeature": { "phase": "implement" } }   → refused: this task's feature marker is malformed. Nothing ran.
 // stored:  { "mode": "answer", "harnessFeature": { "issue": "ENG-142" } }
 //   → refused at claim: this task has both a mode and a feature marker; the marker never overrides a mode. Nothing ran.
