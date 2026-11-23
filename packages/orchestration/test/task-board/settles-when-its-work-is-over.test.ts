@@ -1092,13 +1092,34 @@ describe("a stopped request settles its task when it ends, never at its lease's 
       return "first answer";
     });
     await h.run();
-    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "steer", attempts: 1 });
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "steer", turnOwed: true, attempts: 1, turn: 1 });
     h.setSteerTurn(async (_steers, ctx) => stopSelf(ctx));
     const { requestId } = await h.runLater("steerTurn");
     expect((await h.requests.get(requestId!))?.status).toBe("aborted");
-    // Not cancelled, not failed: the stop was of that turn, not of the task.
+    // Not cancelled, not failed: the stop was of that turn, not of the task. Its answer is not taken.
     const task = await h.row();
     expect(task).toMatchObject({ status: "in_progress", keptOpenBy: "steer", attempts: 1, output: "first answer" });
+    expect(task?.leaseUntil).toBeUndefined();
+    // The turn the stopped request's admission took is owed again: with no wake to start it, the
+    // board's claim takes it on the same attempt, as it takes any owed turn.
+    expect(task?.turnOwed).toBe(true);
+    const claimed = await h.reclaim();
+    expect(claimed).toMatchObject({ id: "t1", attempts: 1, turn: 3 });
+  });
+
+  it("a person's stop of a later request while the task's own request is parked keeps none of its answer", async () => {
+    const h = await harness();
+    h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "user_input", message: "which one?" }));
+    await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "suspended" });
+    const before = (await h.row())?.output;
+    // A notice turn whose answer counts as the task's result, stopped after it answered.
+    h.setLaterTurn(async (ctx) => stopSelf(ctx));
+    const { requestId } = await h.runLater("notice");
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    const task = await h.row();
+    expect(task).toMatchObject({ status: "in_progress", keptOpenBy: "suspended", attempts: 1 });
+    expect(task?.output).toEqual(before);
     expect(task?.leaseUntil).toBeUndefined();
   });
 

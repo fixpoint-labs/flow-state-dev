@@ -135,6 +135,12 @@ interface Admitted {
    * later one admitted for it while it waits (a notice, a steer's turn).
    */
   readonly own: boolean;
+  // FIX-2795.
+  /**
+   * Whether this request's admission took a turn the row owed (`turnOwed`):
+   * a later request that a person stops gives that turn back to the row.
+   */
+  readonly tookOwedTurn?: true;
   // FIX-2288.
   /** The tick writing this request's live spend onto the row, while it runs. */
   spendTick?: Ticker;
@@ -240,6 +246,7 @@ export async function admitClaimedTask(
   let ticket = options.ticket;
   let row = options.row;
   const prior = row.keptOpenBy ?? undefined;
+  const owedTurn = row.turnOwed === true;
   // The task's own request resuming a turn that asked (FIX-2133): the turn is
   // over, and the row, owed turn included, is the next turn's. Admitted for
   // nothing to write: it takes no lease and no turn.
@@ -287,6 +294,7 @@ export async function admitClaimedTask(
     rules: options.rules ?? {},
     inline: false,
     own: options.own,
+    ...(owedTurn && !askedTurn && ref.setKeptOpenBy !== undefined ? { tookOwedTurn: true as const } : {}),
     writer: crypto.randomUUID(),
     admittedAt: Date.now(),
     recovered: readRequestSpend(ctx),
@@ -464,8 +472,9 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
   if (!claimHolds(ref, ticket, row)) return undefined;
   // A later request (a notice, a steer's turn) while the task's own request is
   // suspended settles nothing and fails nothing: the task still waits on that
-  // request, and keeps an answer this one gave that counts.
-  if (!record.own && waitsOnItsOwnRequest(record.prior)) {
+  // request, and keeps an answer this one gave that counts. One a person
+  // stopped keeps no answer (below).
+  if (!record.own && waitsOnItsOwnRequest(record.prior) && ending.status !== "aborted") {
     await waitOn(record, row, record.prior!, record.answer);
     return undefined;
   }
@@ -488,8 +497,10 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
     // waits again on what it waited on. An answer the turn gave before the
     // stop, even one that counts as the task's result, is not taken: the row
     // keeps the output it had.
+    // A turn the row owed and this request's admission took is owed again,
+    // so the row's next claim can take it even if no wake starts it.
     if (!record.own) {
-      if (record.prior !== undefined) await waitOn(record, row, record.prior, undefined);
+      if (record.prior !== undefined) await waitOn(record, row, record.prior, undefined, undefined, record.tookOwedTurn === true);
       return undefined;
     }
     // A person stopped the task's own request (the abort route,
