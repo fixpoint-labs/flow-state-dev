@@ -973,6 +973,13 @@ const EXEMPTIONS = [
     why: "the Teammates lab's own worker is called Chief of Staff; the Shift Coordinator decision (FIX-2244) retires that name for Shift Manager's coordinator, not for this lab",
   },
   {
+    // The Harness runs and Workforce reference pages quote names and messages the code still spells with ask.
+    path: /^docs\/contributing\/docs-revamp\/pages\/reference\/(?:harness-runs|workforce)(?:\.facts)?\.md$/,
+    line: /\brun\.askMarkerPath\b|Asks are read from worker sessions|it wasn't set at hire to change its own/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: Reference pages quoting the harness manager's `run.askMarkerPath` field and two workforce error messages verbatim; the pages must name what the code returns",
+  },
+  {
     // The Messaging record quotes Shift Manager's own line text for a send that asks for a reply.
     path: /^docs\/contributing\/docs-revamp\/pages\/catalog\/workforce\/messaging\.record\.md$/,
     line: /"Asked <id>"/,

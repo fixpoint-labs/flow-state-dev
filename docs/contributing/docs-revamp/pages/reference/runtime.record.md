@@ -50,6 +50,8 @@ Written by `docs-writer` (sonnet), 7608 words. Scenario: The support desk: a `su
 
 - After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: the Settings example declares `refunds.autoApproveUpTo` instead of a `sandbox.type` nothing read, and a new `approveRefund` excerpt reads it from `ctx.settings` to decide whether to refund through a `refundOrder` stand-in (`ctx.settings` is typed `FlowStateSettings`, packages/core/src/types/block.ts). Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 3677 words. Page sha256 1eacaba102b4.
 
+- After the loop (review): the R-27 depth pass added that `codingDrainBudgetMs` computes a coding run's drain budget to the `dispatchDrainTimeoutMs` row. Checked against packages/engine/src/flowstate/createFlowState.ts:151, 669-700 and packages/harness-manager/src/kit/coder-flow.ts:177-191: true. 3698 words. Page sha256 43ed16ac0360.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 c4d4f35afcc0, and the 29 Reference row(s) pass 6 moved.
@@ -73,6 +75,8 @@ Final fact check of the page as it closed, sha256 6726a59441ed: 7 untrue, fixed 
 - Re-run after the review edit: both changed claims were read against the cited code; no untrue claim remains open.
 
 - Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
+
+- Re-run after the review edit: a code reader checked the moved lines against the code; no untrue claim remains open.
 
 ## 6 · Depth pass
 

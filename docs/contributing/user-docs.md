@@ -316,6 +316,13 @@ src/
 - **Show it in action, often.** A concept page has a short example for each idea it teaches, not
   one long listing. Each example does one thing and is short enough to read at a glance. All of
   them belong to the page's one scenario, so the reader meets the same names throughout.
+- **Examples do real work.** A block that would read data reads it: from a resource the block
+  declares when that is one line (`await ctx.resources.orders.getOptional(input.orderId)`),
+  otherwise from a stand-in in `src/lib/` that the page imports and does not show
+  (`findOrder(orderId)`). Never return an invented value such as `` `Order ${id} has shipped.` ``.
+  Everything an example declares (a resource, a state field, a tool, a setting) has a visible use
+  in one of the page's examples, or is cut. Reuse the stand-in names other pages use: `findOrder`,
+  `refundOrder`, `draftReplyFor`, `queueForHuman`, `findTicket`.
 - **Every example type-checks** against the package source, or, for a surface that is specified
   and not built, against a declaration file written for it that is removed when the page is
   reconciled at cutover.

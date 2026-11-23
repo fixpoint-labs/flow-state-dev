@@ -13,6 +13,10 @@ import YourAppFillsASlot from "./figures/your-app-fills-a-slot.svg";
 
 A kit is a feature packaged so your app installs it with one entry in its config. It brings the code that does the work, the config that code takes, and a folder of files in your repo that it reads. A slot is an opening a kit leaves so other kits, or your app, can add to it.
 
+:::caution Experimental
+Kits are experimental. `defineKit`, slots and the kit options can change between releases.
+:::
+
 ## If you know plugins
 
 You list a kit in your config and it adds a feature, as a plugin does. The difference is who knows whom. A kit declares typed openings, and another kit fills one by naming it. The kit that owns the opening has never heard of the kit that fills it.
