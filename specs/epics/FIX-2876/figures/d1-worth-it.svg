@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, whether one way to pick a coder is worth three issues and a closure after the release. Chosen: three issues and a closure. Instead of: only the cleanup, FIX-2877. It comes down to the first row: with the set, a task carries its harness and model and one order resolves them, so a picked model reaches the run; with the cleanup alone, the harness stays fixed per worker and switching coder means cancelling and refiling. The price: an epic and package changes in harness-manager, workforce and the task tools, against one issue. Goal 4: eleven places become one order, against knobs merged and the text lines kept. Locks in run settings as a published field. Flips if nobody switches coder or model per task."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, whether one way to pick a coder is worth four issues and a closure after the release. Chosen: four issues and a closure. Instead of: only the cleanup, FIX-2877. It comes down to the first row: with the set, a task carries its harness and model and one order resolves them, so a picked model reaches the run; with the cleanup alone, the harness stays fixed per worker and switching coder means cancelling and refiling. The price: an epic and package changes in orchestration, harness-manager and workforce, against one issue. Goal 4: eleven places become one order, against knobs merged and the text lines kept. Locks in run settings as fields of the coder flow&#x27;s declared task input; later settings join that schema. Flips if nobody switches coder or model per task."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -41,13 +41,13 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Is one way to pick a coder worth three issues and a closure, after the release?</text>
+    <text class="t-q" x="32" y="52">Is one way to pick a coder worth four issues and a closure, after the release?</text>
   </g>
 
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Three issues and a closure</text>
+    <text class="t-h c-code" x="228" y="112">Four issues and a closure</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Only the cleanup, FIX-2877</text>
@@ -70,8 +70,8 @@
   <g id="row-2">
     <text class="t-lbl" x="32" y="222">COST</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">An epic, and three package changes</text>
-    <text class="t-s" x="248" y="241">harness-manager, workforce, the task tools</text>
+    <text class="t-b" x="248" y="223">An epic, and four package changes</text>
+    <text class="t-s" x="248" y="241">orchestration, harness-manager, workforce</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">One issue, no new surface</text>
     <text class="t-s" x="612" y="241">cleanup in two apps</text>
@@ -92,8 +92,8 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Run settings: a published field on coding tasks</text>
-    <text class="t-s" x="32" y="389">permanent; later settings join the same field</text>
+    <text class="t-b" x="32" y="371">Run settings: fields of the coder flow&#x27;s task input</text>
+    <text class="t-s" x="32" y="389">declared and checked; later settings join that schema</text>
   </g>
 
   <g id="flips-if">
