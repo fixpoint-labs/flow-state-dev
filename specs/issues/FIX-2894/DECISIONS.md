@@ -55,7 +55,7 @@ It comes down to the unassigned task: refusing moves leaves it with no way onto 
 |---|---|
 | **Instead of** | The whole schema with server-owned fields marked read-only, or a short text summary |
 | **Because** | A model files from what it reads. A field it may not write is one it will try to write, and the value is dropped without a word. JSON Schema is what a model's tool parameters already use, and the issue asks for it |
-| **Locks in** | `input` on a delegate row is public: `{ schema, project }` or `null`. The schema is the filer's view, so it can differ from the type code imports (`z.infer` of the declared schema). A schema a JSON Schema can't express (a `refine`) shows only its shape |
+| **Locks in** | `input` on a delegate row is public: `{ schema, project }` or `null`. The schema is JSON Schema draft-07, fully inlined, with no `$ref` or `definitions`. It is the filer's view, so it can differ from the type code imports (`z.infer` of the declared schema). A rule a JSON Schema can't express (a `refine`, a `check`, a `refuse`) reaches the model only through the field's `.describe()` text, which flow authors must write |
 
 ![D3. What listDelegates shows: the filer's fields as JSON Schema, chosen, beside the whole schema with server fields marked. Decides it: a model tries to write what it reads. Price: the shown shape differs from the code type. Locks in input on a delegate row; flips if models ignore read-only marks reliably](figures/d3-shape.svg)
 
@@ -69,9 +69,19 @@ It comes down to what a model does with a field it reads: it writes it.
   step (checked against the worker's own flow), `patchSettings` (`updateTask`'s input and
   assignee) and `setAssignee`. An inline step never reaches a `work` entry and stays open.
 - **The order:** `refuse` on what was sent · drop every `serverOwned` name · `fill` (a filing or
-  a move) or keep the stored values (an edit) · parse · `check` · parse its return again · the
-  project requirement · store the parsed value. The project the board writes into `input`
-  (`ownProjectIn`) is written before the parse.
+  a move) or keep the stored values (an edit) · parse · `check` · parse its return again ·
+  **re-pin** · the project requirement · store the parsed value. The project the board writes
+  into `input` (`ownProjectIn`) is written before the parse.
+- **Re-pin: `check` never changes a server-owned field** (coordinator, review round 1). After
+  `check`, the board compares each `serverOwned` name with the value it filled, or kept on an
+  edit. A difference refuses the write as `input_refused`, named as a bug in the flow, and the
+  board never stores a server-owned value `check` returned. FIX-2878's default-mode write is
+  allowed: `mode` is filer-written, not server-owned.
+- **An edit on a declared flow reads the stored row through `stored` first** and takes the kept
+  server-owned values from that read, then runs `refuse` · drop · keep · parse · `check` ·
+  re-pin. An unassigned row, or a row on an open flow, has no declaration and stays unchecked
+  on an edit; a move onto a declared flow is then a filing ([D2](#d2)), so nothing it carried
+  counts.
 - **The lookup:** the installation reads the declaration off each flow's `work` entry, as
   `takesConversationTasks` reads the entry's mark today, and the board takes one internal option,
   `taskInputOf(flowKind)`, in place of `needsProject(flowKind)`. No app sets it. It is read per
@@ -79,7 +89,7 @@ It comes down to what a model does with a field it reads: it writes it.
 - **`serverOwned` names may lie outside the schema.** Such a name is only dropped. That is how
   FIX-2878 drops `doneWhen` and `workspace`, so the sketch's separate `dropped` list folds in.
 - **`fill` returns only server-owned fields;** anything else it returns is ignored. `check` may
-  change any field (FIX-2878 writes the default mode) and returns the input to store.
+  change a filer's field (FIX-2878 writes the default mode) and returns the input to store.
 - **The hooks are handed** the request's context, the assignee, and the assignee's worker (id
   and config, read per call). FIX-2878's lock needs the config; its D3 flips without it.
 - **The claim parses only the schema,** after `stored`, and hands the worker block the parsed
@@ -89,9 +99,12 @@ It comes down to what a model does with a field it reads: it writes it.
   assignee, its flow, the first issue's path and what was expected. Every filing refusal ends
   `Nothing was filed.`, on `updateTask` too. Exact wording is the implementer's; what each names
   is not.
-- **A schema that transforms is refused when the flow is built** (a `.transform`, a `.preprocess`
-  or a `.pipe` anywhere in it). `.default` and `.refine` are allowed: parsing a parsed value again
-  gives the same value.
+- **A schema must survive the JSON round trip the stored row takes:** `parse(JSON round trip of
+  parse(x))` equals `parse(x)`. A schema that can break it is refused when the flow is built:
+  `.transform`, `.preprocess`, `.pipe`, `.catch`, `z.coerce.*`, `z.date`, `z.bigint`, `z.map` and
+  `z.set`, anywhere in it. `.default`, `.refine` and `.describe` keep it.
+- **A rule only `check` or `refuse` enforces goes in the field's `.describe()` too,** so a model
+  reads it in `listDelegates` before it is refused. A rule for flow authors, in the docs line.
 - **No assignee and one task-taking delegate:** checked against it, as the issue asks. Several:
   unchecked until assigned ([D2](#d2)).
 - **Shift Manager's `coder.mts`** moves its `needsProject` into its work entry's declaration if
@@ -136,5 +149,9 @@ not by a fresh sub-agent: this dispatch has no agent tool. Weigh it as a self-ch
 - **Draft** — framed as the board half of ER-9: one declaration on the `work` entry, one
   filing check on every writer, a claim parse. Built on `assertProjectFor`'s seat and session
   state's `serverOwned`; answered the epic's BP-030 note with a dual-read (D1).
+- **Review round 1** (Gitar, coordinator's calls) — `check` can no longer change a server-owned
+  field (re-pin after `check`); an edit reads the stored row through `stored` first; the
+  build-time refusal became a JSON round-trip invariant; a `check`-only rule is carried in the
+  field's description, and `listDelegates` emits inlined draft-07.
 
 **Open: none.**

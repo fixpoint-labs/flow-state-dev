@@ -49,10 +49,10 @@ The check reads the stored row and what the worker block was handed, never the t
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/workforce/a-task-fits-its-flow/` · a real model for the **Discover** leg, scripted for the rest · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | **Discover:** in 5 runs, a model that has only `listDelegates` files a task for a flow declaring `{ ticket: /^ENG-\d+$/, kind: "fix" \| "probe" }`, and the first filing is accepted in at least 4. **Refuse:** a misfit on `createTask`, `createTasks`, a routed filing, a `session: "new"` step and `updateTask` is refused with `input_refused`, naming the path, and no row is written. **Own:** a filer's server-owned value is replaced by the filler's on filing, and kept from the stored row on `updateTask`. **Move:** assigning an unassigned row, and reassigning to a worker on another declared flow, run the filler and the parse. **Claim:** a stored row that no longer fits fails its attempt, naming the field, and the block never runs; a row the flow's `stored` maps runs on the mapped input. **Open:** a flow with no declaration stores and hands over any object unchanged. **Project:** a declaration with `project: "required"` refuses as `no_project` does today |
+| **Signal** | **Discover:** in 5 runs, a model that has only `listDelegates` files a task for a flow declaring `{ ticket: /^ENG-\d+$/, kind: "fix" \| "probe" }`, and the first filing is accepted in at least 4. **Refuse:** a misfit on `createTask`, `createTasks`, a routed filing, a `session: "new"` step and `updateTask` is refused with `input_refused`, naming the path, and no row is written. **Own:** a filer's server-owned value is replaced by the filler's on filing, and kept from the stored row (read through `stored`) on `updateTask`; a `check` that returns a different `requestedBy` is refused with `input_refused` and nothing is written. **Move:** assigning an unassigned row, and reassigning to a worker on another declared flow, run the filler and the parse. **Claim:** a stored row that no longer fits fails its attempt, naming the field, and the block never runs; a row the flow's `stored` maps runs on the mapped input. **Open:** a flow with no declaration stores and hands over any object unchanged. **Project:** a declaration with `project: "required"` refuses as `no_project` does today |
 | **Input** | A scripted `triage` flow (below), an agent flow with no declaration, a conversation with one and with two delegates. A different shape or field name must pass too |
 | **Anti-game** | Read the stored row and the input the worker block received. Never the tool's reply, and never a stubbed board |
-| **Control that must fail** | `GOAL_CONTROL=hide-shape` fails **Discover** (at most 1 of 5); `filing-only` (only `createTask` checks) fails **Refuse**; `trust-filer` fails **Own**; `move-unchecked` fails **Move**; `trust-stored` fails **Claim**. Today's `main` fails every signal but **Open** and **Project**. The PR shows each FAIL before the PASS |
+| **Control that must fail** | `GOAL_CONTROL=hide-shape` fails **Discover** (at most 1 of 5); `filing-only` (only `createTask` checks) fails **Refuse**; `trust-filer` and `check-rewrites-owned` (the scripted `check` overwrites `requestedBy`, and the board stores it) fail **Own**; `move-unchecked` fails **Move**; `trust-stored` fails **Claim**. Today's `main` fails every signal but **Open** and **Project**. The PR shows each FAIL before the PASS |
 
 ## What changes
 
@@ -88,7 +88,8 @@ Every write that puts input on a task passes one filing check, and the claim par
 ```
 
 **Docs:** update `delegating-work.md` with a *What a delegate takes* section (the declaration,
-the refusal, `listDelegates`'s `input`), update `projects.md` where it names `needsProject`, and
+the refusal, `listDelegates`'s `input`, and the rule that a `check`-only rule goes in the
+field's description), update `projects.md` where it names `needsProject`, and
 update the workforce README's `workerTaskEntry`, `workerFlow` and `listDelegates` rows. The
 glossary gains *Task input* in the implementation PR. All through the changeset; the pages
 follow at release.
@@ -99,7 +100,7 @@ follow at release.
 flowchart LR
   W["createTask · createTasks · routed · step (new session) · updateTask · assign · reassign"] --> L["assignee → its flow → the work entry's declaration"]
   L -->|"none"| O["open record · as today"]
-  L --> RF["refuse(sent)"] --> D["drop server-owned"] --> FL["fill · or keep stored on an edit"] --> PA["parse"] --> CH["check"] --> PR["project"] --> S["stored parsed"]
+  L --> RF["refuse(sent)"] --> D["drop server-owned"] --> FL["fill · or keep stored on an edit"] --> PA["parse"] --> CH["check"] --> RP["re-pin server-owned"] --> PR["project"] --> S["stored parsed"]
   S --> C["claim · stored() · parse"] --> BL["the worker block, handed the parsed input"]
 ```
 
@@ -115,7 +116,11 @@ must not be able to say it was someone else (BP-031).
 const triageInput = z
   .object({
     ticket: z.string().regex(/^ENG-\d+$/),
-    severity: z.enum(["low", "high"]).default("low"),
+    severity: z
+      .enum(["low", "high"])
+      .default("low")
+      // `check` enforces this rule, so the field's description carries it to listDelegates.
+      .describe('"high" only for a worker that is on call; any other worker refuses it'),
     requestedBy: z.string().min(1), // server-owned: the filler writes it
   })
   .strict();
@@ -188,7 +193,11 @@ for it to work in. Nothing was filed. Set the project of the conversation that f
 ### The flow's own refusal and check
 
 A flow can refuse by what the filer sent, before anything is dropped (`refuse`), and check the
-parsed input, returning what to store (`check`). Both run on filing and on `updateTask`:
+parsed input, returning what to store (`check`). Both run on filing and on `updateTask`.
+
+**A rule for flow authors:** a rule that only `check` or `refuse` enforces goes in the affected
+field's `.describe()` text too, so a model reads it in `listDelegates` before it is refused. The
+on-call rule below is the one in `severity`'s description above.
 
 ```ts
 input: taskInput(triageInput, {
@@ -217,6 +226,22 @@ input: taskInput(triageInput, {
 //   → not_on_call: "ops.intern" isn't on call, so it takes no high-severity task. Nothing was filed.
 ```
 
+`check` may change a filer's field, never a server-owned one. After `check`, the board compares
+each `serverOwned` name with the value it filled (or kept, on an edit). A difference is a bug in
+the flow: the write is refused, and the board never stores a server-owned value `check` returned.
+
+```ts
+check: (input) => ({ ...input, requestedBy: "u_admin" }), // a buggy check
+```
+
+```text
+input_refused: flow "triage"'s check changed "requestedBy", which only its filler writes.
+This is a bug in the flow, not in the task. Nothing was filed.
+```
+
+FIX-2878's `checkMode` writes the default `mode` into a task that names none. That is allowed:
+`mode` is filer-written, not server-owned.
+
 The coder flow fills these hooks with FIX-2878's rules, which this issue does not define:
 
 ```ts
@@ -232,8 +257,10 @@ input: taskInput(codingTaskInputSchema, {
 
 ### `updateTask`
 
-`updateTask` replaces `input` whole. It runs the same check, but never calls the filler: a
-server-owned field keeps its stored value, whatever the filer sent.
+`updateTask` replaces `input` whole. It never calls the filler: a server-owned field keeps its
+stored value, whatever the filer sent. On a declared flow the order is: read the stored row
+through `stored` and take the server-owned values from that read · `refuse` · drop · keep ·
+parse · `check` · re-pin.
 
 ```jsonc
 // stored: { "ticket": "ENG-142", "severity": "low", "requestedBy": "u_jane" }
@@ -242,6 +269,29 @@ server-owned field keeps its stored value, whatever the filer sent.
 { "id": "t_17", "input": { "ticket": "150" } }
 //   → input_refused: this task's input doesn't fit what "ops.triager" takes (flow "triage"):
 //     at "ticket", invalid. Read what it takes with listDelegates. Nothing was filed.
+```
+
+A row stored in an old shape keeps the server-owned values its `stored` read gives:
+
+```jsonc
+// stored: { "ticketId": "ENG-9", "reporter": "u_jane" }   // stored maps reporter → requestedBy
+{ "id": "t_18", "input": { "ticket": "ENG-9", "severity": "high", "requestedBy": "u_admin" } }
+//   → stored: { "ticket": "ENG-9", "severity": "high", "requestedBy": "u_jane" }
+```
+
+An unassigned row, or a row on an open flow, has no declaration, so an edit stays unchecked, as
+today. Nothing it carries counts: when a move puts it on a declared flow, that move is a filing
+([D2](DECISIONS.md#d2)), which drops the server-owned fields and calls the filler.
+
+```jsonc
+// t_22, unassigned (two delegates), stored { "ticket": "ENG-3" }
+{ "id": "t_22", "input": { "ticket": "ENG-3", "requestedBy": "u_admin" } }
+//   → stored as sent: { "ticket": "ENG-3", "requestedBy": "u_admin" }  (no declaration yet)
+{ "id": "t_22", "assignee": "ops.triager" }
+//   → stored: { "ticket": "ENG-3", "severity": "low", "requestedBy": "u_jane" }  (dropped, then filled)
+// t_23 on ops.helper (flow "agent", open)
+{ "id": "t_23", "input": { "anything": true, "requestedBy": "u_admin" } }
+//   → stored as sent; a later move onto "triage" is checked as a filing and refuses "anything"
 ```
 
 A reassign to another worker on the same flow is an edit too: the stored values stay. Assigning
@@ -286,14 +336,18 @@ task whose project came from its conversation is not refused at its next claim.
   { "worker": "ops.triager", "description": "Triages incidents", "takes": "tasks",
     "input": { "schema": { "type": "object", "additionalProperties": false, "required": ["ticket"],
                            "properties": { "ticket": { "type": "string", "pattern": "^ENG-\\d+$" },
-                                           "severity": { "type": "string", "enum": ["low", "high"], "default": "low" } } },
+                                           "severity": { "type": "string", "enum": ["low", "high"], "default": "low",
+                                                         "description": "\"high\" only for a worker that is on call; any other worker refuses it" } },
+                           "$schema": "http://json-schema.org/draft-07/schema#" },
                "project": "required" } },
   { "worker": "ops.helper", "description": null, "takes": "tasks", "input": null }
 ] }
 ```
 
 `requestedBy` is not shown: a filer never writes it ([D3](DECISIONS.md#d3)). `input: null` is a
-flow that declares nothing.
+flow that declares nothing. The schema is JSON Schema draft-07, fully inlined: no `$ref` and no
+`definitions`, so a model reads it in one piece. The on-call rule reaches the model through
+`severity`'s description, before any refusal.
 
 ### A flow with no declaration
 
@@ -304,13 +358,20 @@ flow that declares nothing.
 
 ### Refused when the flow is built
 
-A task input is parsed at filing and again at claim, so a schema that transforms values is
-refused at build:
+A task input is parsed at filing, stored as JSON, and parsed again at claim. So the schema must
+keep this invariant: **`parse(JSON round trip of parse(x))` equals `parse(x)`.** A schema that
+can break it is refused when the flow is built. That is `.transform`, `.preprocess`, `.pipe`,
+`.catch`, `z.coerce.*`, `z.date`, `z.bigint`, `z.map` and `z.set`, anywhere in the schema.
+`.default`, `.refine` and `.describe` keep it.
 
 ```ts
 workerTaskEntry({ name: "triage-work", turn, input: taskInput(z.object({ n: z.string().transform(Number) })) });
-//   → Error: workerTaskEntry "triage-work": a task input may not transform values (at "n");
-//     it is parsed at filing and again at claim. Use a plain schema.
+//   → Error: workerTaskEntry "triage-work": a task input may not use .transform (at "n"). It is
+//     stored as JSON and parsed again at claim, so it must parse the same after a JSON round trip.
+workerTaskEntry({ name: "triage-work", turn, input: taskInput(z.object({ due: z.date() })) });
+//   → Error: workerTaskEntry "triage-work": a task input may not use z.date (at "due"). It is
+//     stored as JSON and parsed again at claim, so it must parse the same after a JSON round trip.
+//     Use an ISO string: z.string().datetime().
 ```
 
 ## What stays as it is
