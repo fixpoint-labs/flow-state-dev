@@ -45,6 +45,8 @@ Written by `docs-writer` (sonnet), 1292 words. Scenario: A team that wants every
 
 - After the loop (review): the six open findings are closed: `itemVisibility` is explained in a clause and the opt-out rule stated as behaviour, with `supervisor` glossed; the forward reference to the library and activator is cut; `refreshSeededSkills` is described by what it takes; the activation sentence says the skill stays active in every generator of the session that lists the capability; and "How a skill activates" says to give the activator the same `initialSkills` as the library. A second overstatement, that a `supervisor`'s helpers get no skills, now holds only when the library sets `{ client: true, history: true }`. 1185 words. Page sha256 aaa2409a3879.
 
+- After the batch fact check: the `itemVisibility` paragraph says a generator with none set counts as `{ client: true, history: true }`, and `supervisor` marks its default reviewer, not its helpers (`packages/core/src/capability/types.ts:286-294`, `packages/patterns/src/supervisor/index.ts:164`). 1191 words. Page sha256 1a579ca6c9cf.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 47bbbd3360b3, and the 16 Reference row(s) pass 6 moved.

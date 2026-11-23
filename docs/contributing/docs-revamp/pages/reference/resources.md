@@ -190,7 +190,7 @@ Every handle, for a single resource or a collection entry, carries three fixed s
 | `scope` | `"session"`, `"user"` or `"org"` | `session` |
 | `uri` | `${scope}/${path}` | `session/ticketNotes/n-1` |
 
-Resource state and content are stored under the id of their scope: the session's id for `session`, the lineage's id for `sharedToLineage` resources, and the user and org record ids for `user` and `org`. A copy that visits a scope id finds the resources under it and no others.
+Resource state and content are stored under the id of their scope: the session's id for `session`, the lineage's id for `sharedToLineage` resources, and the user and org scope ids for `user` and `org`: the record's id, plus the flow's id when the resource is flow-isolated. A copy that visits a scope id finds the resources under it and no others.
 
 `uri` is an identifier string, not an RFC 3986 URI: do not pass it to `new URL()`. A collection key is normalized when it is resolved: backslashes become `/`, leading and trailing slashes are dropped, repeated slashes collapse, and `..`, null bytes and control characters are refused. A single resource's `path` is its `ref` unchanged. A `ref` on a collection is never read, because a collection is identified by its `pattern`.
 
@@ -814,7 +814,7 @@ The DevTool labels each load with the mode that triggered it.
 |---|---|
 | Flow eager | A resource declared on the flow, when the request starts |
 | Action eager | A resource declared under the action that runs, when the action starts |
-| Block eager | A lazy single resource, when the block that declares it starts |
+| Block eager | A lazy single resource, or an eager one not yet loaded, when the block that declares it starts |
 | Lazy | A read inside a block that needs the data |
 
 Eager is the default for a collection. A lazy collection loads on the first read that needs the data: `get`, `getOptional`, `list` and `count` each record a Lazy load. `findBy` loads through `list`. `create`, `getOrCreate`, `upsert` and `delete` also load the key first but record no load. Nothing loads before one of these runs.

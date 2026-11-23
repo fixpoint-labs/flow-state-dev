@@ -84,7 +84,7 @@ The page starts from the DevTool open on the session (B-06 covers opening it). `
     | What the panel shows | What it means for the page | Source |
     | --- | --- | --- |
     | Row reads `no-client` | The resource is not in the browser's snapshot at all | `rt:240-255`; `ru:460`, `:520`; `rst:557-566` |
-    | Collection row has `client`, no `state.read` | The page gets `count` and nothing else; Client tab carries the `state.read is false` notice | `ru:481`; `ds:145-147`; `rsv:136-143` |
+    | A collection with `client`, no `state.read` | The page gets `count` and nothing else; Client tab carries the `state.read is false` notice | `ru:481`; `ds:145-147`; `rsv:136-143` |
     | Single resource with `client` and no `data` | The page gets no state | `ru:527-529`; `sa:167-175` |
     | Client tab lacks the field | The projection (`expose` / `exclude` / `data`) leaves it out | `cp:229-238` |
     | Neither tab has the field | It is a `secret` field, or never stored | `cp:157-190`; `ds:449` |

@@ -491,7 +491,7 @@ The trace types are `block_trace`, `router_decision`, `state_snapshot` and `gene
 
 ### Resource load records
 
-Each entry in `resourceLoads` records one read of a resource's stored data, never the content that came back.
+Each entry in `resourceLoads` records one load or read of a resource's stored data, never the content that came back.
 
 | Field | Meaning |
 | --- | --- |

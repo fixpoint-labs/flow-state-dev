@@ -129,7 +129,7 @@ A skill folder is read when your code calls `readSkillsDirectory`. In a running 
 | Stored | One key per file: `skills/<name>/SKILL.md` and `skills/<name>/<path>`, with `skills` the `prefix`. With `partitionBy`, `skills/<partition>/<name>/...`. |
 | How many | One set per scope holder, per partition, and per flow copy under `flowIsolation`. No cap unless `maxInstances` is set. |
 
-Seeding writes the bundled skills into a collection on its first use, once per collection per process: the first render of a binding, the first call of the load tool or `runSkill`, the activator's seed step, or the first read by the `discover` tool's skills source. It never puts back a skill a holder deleted and never removes a file the source dropped. A folder added to the source is copied on the next read. It leaves an edited copy alone, with one exception: a skill already seeded is written again from the source when its stored `contextMode` is set and is not `inline`, or when the source `SKILL.md` declares a `context` that differs from the stored `contextMode`. A later change to the folder on disk does not reach a collection that already holds the skill.
+Seeding writes the bundled skills into a collection on its first use, once per collection per process: the first render of a binding, the first call of the load tool or `runSkill`, the activator's seed step, or the first read by the `discover` tool's skills source. It never puts back a skill a holder deleted and never removes a file the source dropped. A skill added to the source is copied the next time seeding runs. It leaves an edited copy alone, with one exception: a skill already seeded is written again from the source when its stored `contextMode` is set and is not `inline`, or when the source `SKILL.md` declares a `context` that differs from the stored `contextMode`. A later change to the folder on disk does not reach a collection that already holds the skill.
 
 | Call | Does |
 | --- | --- |
@@ -149,7 +149,7 @@ Seeding writes the bundled skills into a collection on its first use, once per c
 | `scope` | `"org" \| "user" \| "session"` or a resource scope | `"org"` | Where the collection lives. |
 | `collectionConfig` | `{ maxInstances?, prefix?, flowIsolation? }` | none | `maxInstances` caps manifests and files together. `prefix` is the key prefix and the mount path `${SKILL_DIR}` resolves under. `flowIsolation: true` gives each registered copy of the flow its own skill set; it is refused at `scope: "session"`. |
 | `partitionBy` | `(ctx) => string \| undefined` | none | One skill set per partition. Return a non-empty string from data only the server writes. `undefined` means that run reads no skills and its writes throw. `""` or a non-string throws. |
-| `itemVisibility` | visibility or list | none | Attaches the skills only to generators with a matching `itemVisibility`, or none set. `{ client: true, history: true }` keeps them off a generator marked `{ client: true, history: false }`; the `supervisor` pattern marks the generators it delegates to that way. |
+| `itemVisibility` | visibility or list | none | Attaches the skills only to generators whose `itemVisibility` matches. A generator with none set counts as `{ client: true, history: true }`, so that value keeps the skills off a generator marked `{ client: true, history: false }`, such as the `supervisor` pattern's default reviewer. |
 
 A preset is a named switch on the library, set in the same `.with()` call as the binding options. `.with()` takes presets and binding keys in one object; any other key throws.
 

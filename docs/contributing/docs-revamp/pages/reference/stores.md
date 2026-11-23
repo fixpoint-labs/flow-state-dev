@@ -393,7 +393,7 @@ No command copies records from one adapter to another. A script reads one store 
 | Paused runs | A run waiting at a stop for an answer is not on the new store. Answer or discard every stop before a move. |
 | Attachment bytes | Held outside the store, in the folder the `blobs` slot uses (`.fsdev/blobs/<profile>/` by default). A move does not carry them. |
 | Traces, leases and dynamic schedules | Not carried. The new store starts with no leases. Recreate schedules there, as in [Schedules](./schedules.md). |
-| The in-memory store | Keeps data for one process only, so it cannot be the source of a move. |
+| The in-memory store | Keeps data for one process only, so a move script in another process cannot read it. |
 | Records with no `flowId` or `orgId` | Carry no attribution and arrive as stored. They need the same attribution they needed on the old store. |
 | Write modes | `"absent"` writes only when the key is missing. `resourceState.set` honours it and `content.set` overwrites, so a rerun leaves records alone and overwrites content. |
 | `session.list` | Returns top-level sessions by default. `parentage: "all"` includes child sessions. |
