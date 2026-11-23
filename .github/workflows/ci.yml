@@ -407,9 +407,10 @@ jobs:
             turbo-${{ runner.os }}-${{ github.job }}-
 
       # The suite runner's judgement rules (lockfile pins, case count, what
-      # counts as a pass), pinned against fixtures before the slow steps.
+      # counts as a pass) and what counts as a shipped test file, pinned
+      # against fixtures before the slow steps.
       - name: Suite runner rules
-        run: node --test scripts/packed-install/suite.test.mjs
+        run: node --test scripts/packed-install/suite.test.mjs scripts/packed-install/run.test.mjs
 
       - name: Release build
         run: pnpm release:build

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { HarnessCallbackContext, HarnessSteer } from "../../types/harness";
-import { harnessSteering } from "../harness-steering";
+import type { HarnessCallbackContext, HarnessSteer } from "../src/types/harness";
+import { harnessSteering } from "../src/helpers/harness-steering";
 
 /** The context a harness feed or the steer action sees: only the identities are read. */
 function ctxOf(session: string, request: string, tenantId?: string): HarnessCallbackContext {
