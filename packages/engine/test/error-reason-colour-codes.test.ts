@@ -55,6 +55,19 @@ describe("a failed turn's reason has no terminal colour codes", () => {
     expect(details?.cause).toMatchObject({ name: "Error", code: "ECONNRESET" });
   });
 
+  it("keeps an author's own cause when the author's message is the coloured one", () => {
+    // The thrown messages differ, so the cause was kept before stripping
+    // existed; stripping the outer message must not make it look like a wrapper.
+    const cause = Object.assign(new Error("plain"), { code: "ECONNRESET" });
+    const normalized = normalizeError(new FlowError("\u001b[31mplain\u001b[0m", { cause }));
+    expect(normalized.message).toBe("plain");
+    expect(displayCause(normalized)).toBe(cause);
+    // Normalizing again (as each layer of the engine does) keeps the decision.
+    expect(displayCause(normalizeError(normalized))).toBe(cause);
+    const details = errorDetailsWithCause({ details: normalized.details, cause: displayCause(normalized) });
+    expect(details?.cause).toMatchObject({ name: "Error", code: "ECONNRESET" });
+  });
+
   it("reaches the turn's recorded error item and request result clean", async () => {
     const stores = createInMemoryStores();
     const flow = defineFlow({
