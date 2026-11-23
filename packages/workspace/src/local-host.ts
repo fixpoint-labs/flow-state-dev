@@ -198,8 +198,14 @@ export interface LocalWorkspaceHostOptions {
   /**
    * The remotes this host may reach. `allow` lists hosts, reached over
    * `https` or `ssh`, and may include `"file"` to permit `file://` remotes.
+   *
+   * `pass` names more variables of the host's environment that its remote
+   * calls (fetch, push, `ls-remote`, `gh`) may see, beyond the GitHub, ssh,
+   * TLS and proxy ones they always get: the ones a credential helper reads,
+   * such as `AWS_ACCESS_KEY_ID` for CodeCommit's. Names only; no local git
+   * call, setup command or check ever sees them.
    */
-  remotes: { allow: readonly string[] };
+  remotes: { allow: readonly string[]; pass?: readonly string[] };
   /** Where each run's files come from. Kept on the host for its callers to ask. */
   source: RunSource;
   /**
@@ -689,12 +695,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     // nobody will answer.
     GIT_TERMINAL_PROMPT: "0",
   };
-  /**
-   * The person's own credential helpers, read once at start from outside any
-   * clone: what a remote's fetch replays, never a helper a run wrote into the
-   * clone's shared config.
-   */
-  const ownCredentialHelpers = readCredentialHelpers(tmpdir());
+  /** What the host's remote calls may see of its environment: the fixed list and the host's own names. */
+  const remotePass: readonly string[] = [...HOST_REMOTE_PASS, ...(options.remotes.pass ?? [])];
 
   /** Live kept-files projections, by the directory they fill. */
   const live = new Map<string, Promise<Projection>>();
@@ -911,20 +913,25 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
    * command written there is never read by a call that holds the host's
    * credentials. The clone's tracking refs are then set to what was fetched,
    * the ones gone from the remote deleted, by a local call.
+   *
+   * The credential helpers replayed are the person's own, read in the clone
+   * so a global `includeIf "gitdir:…"` that matches it applies, with every
+   * helper from the clone's own config (and anything it includes) left out.
    */
   async function refresh(clone: string, remote: AllowedRemote, left: () => number, stamp = true): Promise<string> {
     let defaultBranch: string;
     let scratch: string | undefined;
     try {
       scratch = scratchDir();
+      const helpers = readCredentialHelpers(clone);
       const isolated = { ...env, GIT_DIR: scratch, GIT_OBJECT_DIRECTORY: join(clone, "objects") };
       const inScratch = async (args: string[], remoteCall: boolean) =>
         (
-          await run("git", remoteCall ? [...remoteCallConfig(remote.scheme, ownCredentialHelpers), ...args] : [...NO_HOOKS, ...args], {
+          await run("git", remoteCall ? [...remoteCallConfig(remote.scheme, helpers), ...args] : [...NO_HOOKS, ...args], {
             cwd: scratch!,
             timeoutMs: left(),
             env: remoteCall ? { ...isolated, GIT_ALLOW_PROTOCOL: remote.scheme, GIT_SSH_COMMAND: "ssh" } : isolated,
-            ...(remoteCall ? { pass: HOST_REMOTE_PASS, gitCredentials: true } : { pass: HOST_GIT_PASS }),
+            ...(remoteCall ? { pass: remotePass, gitCredentials: true } : { pass: HOST_GIT_PASS }),
           })
         ).stdout;
       await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env, pass: HOST_GIT_PASS });
@@ -1363,7 +1370,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
               cwd: scratch,
               timeoutMs: Math.max(1, Math.floor(left() * FETCH_BUDGET_SHARE)),
               env: { ...isolated, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" },
-              pass: HOST_REMOTE_PASS,
+              pass: remotePass,
               gitCredentials: true,
             },
           );
@@ -2339,7 +2346,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     );
   }
 
-  const landHost = (repo: string) => ({ repo, pins: fetchPins.get(repo), env, pullRequestRepo: options.pullRequestRepo });
+  const landHost = (repo: string) => ({ repo, pins: fetchPins.get(repo), env, remotePass, pullRequestRepo: options.pullRequestRepo });
 
   /** `WorkspaceHost.land`: the run's checkout must be a worktree of a listed repository. */
   async function land(target: LandTarget, request: LandRequest): Promise<Landed> {
