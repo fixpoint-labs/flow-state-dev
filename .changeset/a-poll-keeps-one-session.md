@@ -1,0 +1,10 @@
+---
+"@flow-state-dev/core": patch
+"@flow-state-dev/scheduled": patch
+"@flow-state-dev/engine": patch
+"@flow-state-dev/workforce": patch
+---
+
+A schedule can run every fire in one session: `session: "per-schedule"` on a schedule, or on `createResourceCollectionScheduleResolver` for every row it resolves, and the flow's `session.retention` caps that session's history; leaving it out (`"per-fire"`) keeps one one-off run per fire (FIX-2886). The session's id is derived by the framework under the reserved `fsd-schedule.` prefix: only the scheduled dispatch creates it or runs in it, its owner can list and read it, and retry, continue and resume refuse a request in it. A fire in it can't stop for a user or wait: the stop fails the fire and a wait answers `wait_unavailable`, so a schedule whose fires stop or wait keeps `"per-fire"`. Workforce's subscription poll now keeps one session per poll, with a day of history.
+
+Docs: apps/docs/docs/server/scheduled.md (new section "Where a fire runs", after "Overlap policy"), apps/docs/docs/server/schedule-index.md (the resolver's `session` option), packages/scheduled/README.md (the option in the resolver's table)

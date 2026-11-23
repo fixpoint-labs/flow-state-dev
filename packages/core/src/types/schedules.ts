@@ -197,6 +197,23 @@ export type ScheduleConfig = ActionCore & {
    */
   onOverlap?: "skip" | "allow";
 
+  // FIX-2886 D1.
+  /**
+   * Where this schedule's fires run.
+   *
+   * - `"per-fire"` (default): each fire is a one-off run in a session of its
+   *   own.
+   * - `"per-schedule"`: every fire runs in one session, kept for this
+   *   schedule. The framework derives its id from the org and user the fire
+   *   runs as, the flow instance and the schedule id, and reserves its
+   *   prefix: only a scheduled dispatch may create the session or run in it,
+   *   while its owner can still list and read it. The flow's
+   *   `session.retention` caps its history.
+   *
+   * A preset, not an id: a schedule can't name the session it fires into.
+   */
+  session?: "per-fire" | "per-schedule";
+
   /**
    * Optional human description, surfaced in DevTool and the listing
    * endpoint. Free text.
@@ -457,6 +474,17 @@ export function validateScheduleConfig(args: {
     throw new Error(
       `Flow "${kind}" schedule "${id}" has unsupported onOverlap value ${JSON.stringify(schedule.onOverlap)}. ` +
         `Use "skip" (default) or "allow". "queue" is reserved for a future durable-queue release.`
+    );
+  }
+
+  if (
+    schedule.session !== undefined &&
+    schedule.session !== "per-fire" &&
+    schedule.session !== "per-schedule"
+  ) {
+    throw new Error(
+      `Flow "${kind}" schedule "${id}" has unsupported session value ${JSON.stringify(schedule.session)}. ` +
+        `Use "per-fire" (default) or "per-schedule". A schedule can't name its session: the framework derives it.`
     );
   }
 
