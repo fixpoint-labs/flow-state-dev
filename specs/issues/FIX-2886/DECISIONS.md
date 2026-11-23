@@ -80,7 +80,16 @@ service-flow sessions earns its place here.
   (`reserved-addresses.ts` on every HTTP route, the listing, change notices) hide a write session,
   and a schedule's session must stay listable and readable to its owner, which the DevTool needs.
   So it is its own check beside `isWriteSessionId`, not a widening of it. The scheduled endpoint is
-  the only writer of the id. Delete stays open; the next fire recreates the session. `fsdev run`
+  the only writer of the id.
+- **No public re-entry in a schedule's session.** Retry, continue and resume (`recovery-routes.ts`,
+  `resume-routes.ts`) re-run a request in its recorded session by calling `runAction` directly,
+  so they pass none of the checks above or the schedule's overlap check; `scheduled` is on the
+  public re-entry allow-list (`public-reentry.ts`), and retry takes caller input. Today that runs in
+  a throwaway session. In a schedule's own session it would let the owner run chosen input beside a
+  live fire. So a request whose session carries the schedule prefix is refused on those routes,
+  answered as a request that can't be re-entered, and listed `retryable: false`. A per-fire
+  schedule keeps re-entry as today. A failed poll fire needs no retry: the next fire catches up
+  from the poll's mark. Delete stays open; the next fire recreates the session. `fsdev run`
   (a trusted local operator) is not guarded, as for write sessions.
 - **Not stored on a schedule row.** The resolver option applies to every row it resolves, and the
   collection schema gains no field, so a schedule written through a client can't pick a session.
