@@ -26,7 +26,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Fixing a small gap inside the closure PR, where it was found |
 | **Because** | A fix changes behaviour, and behaviour in this epic is reviewed against a child spec. A fix in a QA PR has no spec behind it, and its reviewer reads goal code. The epic's own rule is that the closure finds what falls between the children. Filing the gap as a bug under the epic gives it an owner, a spec to answer to, and a regression row: the closure row that failed |
-| **Locks in** | The epic wraps only after each finding's fix merges and the closure runs green again on that commit. Each finding costs at least one PR and one re-run, even a one-line fix. Goal files are the one exception: a superseded child goal is updated by the child that superseded it, and a stale one is a finding against that child |
+| **Locks in** | The epic wraps only after each finding's fix merges and the closure runs green again on that commit. Each finding costs at least one PR and one re-run, even a one-line fix. A child goal that a later child's code turns red is that later child's to update, in its own implementation PR: FIX-2878's updates FIX-2877's goals *a* and *c*, and FIX-2879's updates goal *a*'s per-harness workers. The closure only re-runs them, and a goal still stale on the closure commit is a finding like any other |
 
 ![D1, who fixes a gap the closure finds. Chosen: a bug under the epic, fixed in its own PR. Instead of: fixed inside the closure PR. It comes down to who reviews the fix: the owning child's spec and reviewer, against a QA PR that reads goal code. The price is time to wrap: each finding adds a PR and a re-run. Locks in: the epic wraps only when every finding has merged and the closure is green again. Flips if: the findings are all goal-file fixes](figures/d1-findings-are-bugs.svg)
 
@@ -75,9 +75,18 @@ FIX-2879 could for a2 and FIX-2878 for b9. Then that row rolls the child's signa
 - **Thresholds are the children's.** A row that rolls up a model-backed child signal keeps its
   threshold (FIX-2879 *Pick* 2 of 3, *Words* 3 of 3; FIX-2877 *a* 3 of 3). Model-free rows pass
   1 of 1, and a flaky one is a finding, not a retry.
-- **Today's `main` as a control.** `GOAL_COMMIT=0a9ac03b4` for legs a and c, which reach the apps
-  over HTTP. Legs b and d import a lock and modes that do not exist there, so their red state is
-  the code the checker reads on that commit. That is a recorded fact, not a run.
+- **Every row has a red state, and it is executed.** A row's red state is a named control that
+  must turn it red, or, for a leg a or c row, `GOAL_COMMIT=0a9ac03b4` (today's `main`), since those
+  legs reach the apps over HTTP. Legs b and d import a lock and modes that do not exist on today's
+  `main`, so every b and d row names a control, and the checker requires it. What the code on
+  that commit does is kept as context (`contextOnMain`), and it is never counted as a red state.
+- **Who updates a child goal that the final commit changes.** The implementation PR of the child
+  whose code turns it red, because a PR never leaves a goal it broke red. FIX-2878's code
+  retires the server-written assignee and starts a pre-freeze session fresh, so its
+  implementation PR updates FIX-2877's goals *a* and *c*. FIX-2879's code collapses Teammates'
+  per-harness workers, so its implementation PR updates goal *a*'s worker and board-pick
+  expectations. The closure re-runs them and owns no edit to them. A goal still stale on the
+  closure commit is a closure finding, filed by [D1](#d1).
 - **Controls are load-time patches** (`goals/lib/module-patch`), never written to the checkout,
   so no control is behaviour the closure adds.
 - **One host for legs b and d.** A harness-kit host under the closure's directory, with modes,
@@ -93,10 +102,12 @@ FIX-2879 could for a2 and FIX-2878 for b9. Then that row rolls the child's signa
   `match-by-id` is recorded as unconstructible, not as passed.
 - **A finding is filed through `issue-manager`** as a child of FIX-2876 that blocks FIX-2883. It
   names the row, the control and the commit, and gets the bug route.
-- **The invariant and its convergence point.** "Every child signal is rolled up, and every cited
-  name exists" converges in [`poc/coverage/coverage.json`](poc/coverage/coverage.json). Every
-  writer of a row goes through it, and [`check.mjs`](poc/coverage/check.mjs) asserts totality
-  over every child's *Signal* row, so a signal a child adds later and no row covers fails the check.
+- **The invariant and its convergence point.** "Every clause of every goal signal is covered, every
+  row has a red state, and every cited name exists" converges in
+  [`poc/coverage/coverage.json`](poc/coverage/coverage.json). Every writer of a row goes through
+  it. [`check.mjs`](poc/coverage/check.mjs) splits each *Signal* row into clauses mechanically
+  and asserts totality over them. So a scenario a child adds later, or rewords, fails the check
+  until a row covers it.
 
 ## Considered and dropped
 
@@ -109,18 +120,22 @@ FIX-2879 could for a2 and FIX-2878 for b9. Then that row rolls the child's signa
 
 ## Settled
 
-- **The matrix is total and its citations exist.** CONFIRMED by
-  [`poc/coverage/check.mjs`](poc/coverage/check.mjs) on `0a9ac03b4`: 28 rows roll up every signal
-  of the epic (4), FIX-2877 (3), FIX-2878 (16) and FIX-2879 (7). Eight rows rest on a promise no
-  child goal covers in full, five with no child signal at all. There are ten closure controls and
-  two superseded child signals, and all ten red-on-main lines are present. `--control` plants a
-  missing signal, a dropped row, a reused control name and an absent line, and it FAILS on all
-  four. Run with `node specs/issues/FIX-2883/poc/coverage/check.mjs` from the repo root.
+- **The matrix is total, clause by clause, and every row has a red state.** CONFIRMED by
+  [`poc/coverage/check.mjs`](poc/coverage/check.mjs) on `0a9ac03b4`. 28 rows cover all 80
+  clauses of the goal signals: the epic 24, FIX-2877 9, FIX-2878 34, FIX-2879 13. Eight rows
+  also rest on a promise no child goal covers in full, five with no child signal at all. 26 rows
+  name a control and 2 rely on `GOAL_COMMIT`. There are twelve closure controls and three
+  superseded child assertions. `--control` plants an uncovered clause, an unknown clause, a b or
+  d row with no control, a reused control name and a reworded clause, and it FAILS on all five.
+  Run with `node specs/issues/FIX-2883/poc/coverage/check.mjs` from the repo root (`--clauses`
+  lists every clause).
 - **Two child goals disagree with a later child about the final state.** CONFIRMED by reading
   them. FIX-2877's goal *c* keeps "its branch, checkout and saved session", but
   [FIX-2878 D2](../FIX-2878/DECISIONS.md#d2) starts a session from before the freeze fresh once.
-  FIX-2877's goal *a* expects the default's worker as the assignee, which FIX-2878 retires. The
-  later, signed decision wins (CLAUDE.md §6). The checker holds both as `superseded`.
+  FIX-2877's goal *a* expects the default's worker as the assignee, which FIX-2878 retires, and a
+  board pick of the Cursor worker, which FIX-2879 removes. The later, signed decision wins
+  (CLAUDE.md §6). The checker holds all three assertions as `superseded`, each with the
+  implementation PR that updates it.
 
 ## Analysis
 
@@ -148,5 +163,10 @@ is weaker than the skill asks. The reviewer at the gate should read it with that
   four legs over the public client and a goal host, each row citing the child signal or promise
   it rolls up, with a checker that proves the matrix total. It builds on the epic's legs and
   `closure-smarter-agents`' shape.
+- **Review (Codex, round 1).** The matrix went from whole signals to their 80 clauses, because
+  naming a signal hid scenarios no row ran. Five scenarios were added (a6, d5, d7), and the
+  checker found four more (a3, b1, b2, c2). The red state for legs b and d is now a named control
+  on every row, because code on the base commit does not run a row. The update of a stale
+  FIX-2877 goal belongs to the implementation PR whose code turns it red.
 
 **Open: none.**

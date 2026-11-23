@@ -1,99 +1,737 @@
 {
   "base": "0a9ac03b4",
   "specs": {
-    "FIX-2876": ["specs/epics/FIX-2876/SPEC.md", "specs/epics/FIX-2876/DECISIONS.md"],
-    "FIX-2877": ["specs/issues/FIX-2877/SPEC.md", "specs/issues/FIX-2877/DECISIONS.md"],
-    "FIX-2878": ["specs/issues/FIX-2878/SPEC.md", "specs/issues/FIX-2878/DECISIONS.md"],
-    "FIX-2879": ["specs/issues/FIX-2879/SPEC.md", "specs/issues/FIX-2879/DECISIONS.md"]
+    "FIX-2876": [
+      "specs/epics/FIX-2876/SPEC.md",
+      "specs/epics/FIX-2876/DECISIONS.md"
+    ],
+    "FIX-2877": [
+      "specs/issues/FIX-2877/SPEC.md",
+      "specs/issues/FIX-2877/DECISIONS.md"
+    ],
+    "FIX-2878": [
+      "specs/issues/FIX-2878/SPEC.md",
+      "specs/issues/FIX-2878/DECISIONS.md"
+    ],
+    "FIX-2879": [
+      "specs/issues/FIX-2879/SPEC.md",
+      "specs/issues/FIX-2879/DECISIONS.md"
+    ]
   },
   "provisional": {
-    "FIX-2894": "No spec on main yet. Its rows cite epic ER-9; the build rebinds them to FIX-2894's signal names when its spec merges."
+    "FIX-2894": "No spec on main yet. d6 cites epic ER-9; the build rebinds it to FIX-2894's clauses when its spec merges."
+  },
+  "clauses": {
+    "FIX-2876:a#0": "the stored message has no `Coding harness:`",
+    "FIX-2876:a#1": "After a reload, a second request with",
+    "FIX-2876:b#0": "a task filed from a worker's run",
+    "FIX-2876:b#1": "one filed from a delegate's session after",
+    "FIX-2876:b#2": "a retry keeps the frozen `review` mode",
+    "FIX-2876:b#3": "After a new pick in the conversation,",
+    "FIX-2876:b#4": "A retry after the app changed the",
+    "FIX-2876:b#5": "A follow-up naming another coder is a",
+    "FIX-2876:b#6": "the door takes no pick, and neither",
+    "FIX-2876:b#7": "a plan session is never resumed as",
+    "FIX-2876:b#8": "After the app's `defaultMode` changes, a retry",
+    "FIX-2876:b#9": "a run started under the legacy `phase`",
+    "FIX-2876:c#0": "`coder.mts` is gone, and a Shift Manager",
+    "FIX-2876:c#1": "Shift Manager has no picker",
+    "FIX-2876:d#0": "a filing whose tool args name `claude-code`",
+    "FIX-2876:d#1": "A model named while the harness's catalog",
+    "FIX-2876:d#2": "A claim whose `plan` is true on",
+    "FIX-2876:d#3": "A worker locked to plan mode refuses",
+    "FIX-2876:d#4": "A plan-mode run that writes a file",
+    "FIX-2876:d#5": "one during which another task creates a",
+    "FIX-2876:d#6": "An input that does not fit the",
+    "FIX-2876:d#7": "a task naming `doneWhen` or `workspace` is",
+    "FIX-2876:d#8": "a legacy `harnessFeature` row runs in the",
+    "FIX-2876:d#9": "A filing whose session has no resolvable",
+    "FIX-2877:a#0": "for each value, in every run (3",
+    "FIX-2877:a#1": "With the default on `codex`, an ask",
+    "FIX-2877:a#2": "a person assigning the task to the",
+    "FIX-2877:a#3": "A filing made inside a coding run",
+    "FIX-2877:a#4": "A *Code with* pick landing on its",
+    "FIX-2877:a#5": "A teammate hired with a `harness` setting",
+    "FIX-2877:b#0": "for each id, the run record names",
+    "FIX-2877:c#0": "a run started on the kit's default",
+    "FIX-2877:c#1": "A new run on the same mode",
+    "FIX-2878:Inherit#0": "the child's run record and report name",
+    "FIX-2878:Freeze#0": "after worker B's file changes to `c`,",
+    "FIX-2878:Default#0": "a retry after `a`'s default model changed",
+    "FIX-2878:Review#0": "a retry after the worker's `review` flipped",
+    "FIX-2878:Order#0": "a task with nothing on it, to",
+    "FIX-2878:Legacy#0": "a task in today's shape, unmarked, with",
+    "FIX-2878:Plan#0": "a filer who clears or flips `plan`,",
+    "FIX-2878:Plan#1": "`plan: true` on an unmarked harness fails",
+    "FIX-2878:Plan#2": "the read-only harness with `plan: false` runs",
+    "FIX-2878:Lock#0": "a filing that would put `a` on",
+    "FIX-2878:Lock#1": "a lock on a model with params",
+    "FIX-2878:Postcheck#0": "a read-only run that writes a file",
+    "FIX-2878:Postcheck#1": "one during which another task creates a",
+    "FIX-2878:Resume#0": "a row with a session and no",
+    "FIX-2878:No-pick#0": "a filing with no pick, from outside",
+    "FIX-2878:No-pick#1": "the same filing to a worker locked",
+    "FIX-2878:Mode#0": "a filing naming a mode the app",
+    "FIX-2878:Mode#1": "`mode: \"implement\"` with no `issue` is refused",
+    "FIX-2878:Mode#2": "a task with no mode, claimed while",
+    "FIX-2878:Mode#3": "a task filed with no mode while",
+    "FIX-2878:Mode#4": "a task stored in `implement` whose mode's",
+    "FIX-2878:Mode#5": "a child it files with no mode",
+    "FIX-2878:Mode#6": "and with no `mode`, an app whose",
+    "FIX-2878:Mode lock#0": "a filing naming `implement` to a worker",
+    "FIX-2878:Mode lock#1": "a stored row with `harnessFeature: { issue",
+    "FIX-2878:Mode lock#2": "with no `mode` and an app default",
+    "FIX-2878:Mode lock#3": "The lock compares the resolved mode, never",
+    "FIX-2878:Legacy feature#0": "on Shift Manager, a stored row in",
+    "FIX-2878:Legacy feature#1": "on a kit app that registers only",
+    "FIX-2878:Legacy feature#2": "a stored marker with `phase: \"review\"` is",
+    "FIX-2878:Legacy feature#3": "a marker with no valid `issue`, or",
+    "FIX-2878:Legacy write#0": "a fresh filing and an `updateTask` that",
+    "FIX-2878:Mode update#0": "before the first claim, `updateTask` changing `mode`",
+    "FIX-2878:Mode update#1": "after the first claim it can't change",
+    "FIX-2879:Pick#0": "a send with `codeWith` Codex and a",
+    "FIX-2879:Pick#1": "the stored message has no `Coding harness:`",
+    "FIX-2879:Reload#0": "a fresh client reads `codeWith` off the",
+    "FIX-2879:Words#0": "with Claude Code picked, \"have Codex do",
+    "FIX-2879:Words#1": "any task it files runs on Claude",
+    "FIX-2879:No person#0": "a routine fired in the conversation files",
+    "FIX-2879:Filed task#0": "a researcher's task is filed under a",
+    "FIX-2879:Filed task#1": "*Code with* changes between two filings, and",
+    "FIX-2879:Delegated#0": "a coding run locked to plan mode",
+    "FIX-2879:Delegated#1": "the new run is a plan run",
+    "FIX-2879:Refused#0": "a send whose `fields` name an open-only",
+    "FIX-2879:Refused#1": "So is a harness that isn't filled,",
+    "FIX-2879:Refused#2": "A second principal posting `fields` on this"
   },
   "rows": [
-    { "id": "a1", "leg": "a", "rollsUp": [["FIX-2876", "a"], ["FIX-2879", "Pick"]],
-      "controls": [["text-line", "FIX-2879"], ["no-fill", "FIX-2879"], ["worker-only", "FIX-2878"]] },
-    { "id": "a2", "leg": "a", "rollsUp": [["FIX-2876", "a"], ["FIX-2879", "Reload"]],
-      "promise": [["FIX-2879", "*Code with* shows the conversation's pick, read from the session"]],
-      "controls": [["text-line", "FIX-2879"]] },
-    { "id": "a3", "leg": "a", "rollsUp": [["FIX-2877", "a"], ["FIX-2878", "Order"]], "controls": [] },
-    { "id": "a4", "leg": "a", "rollsUp": [["FIX-2879", "Words"], ["FIX-2877", "a"]],
-      "controls": [["text-line", "FIX-2879"]] },
-    { "id": "a5", "leg": "a", "rollsUp": [["FIX-2879", "No person"]],
-      "controls": [["no-fill", "FIX-2879"]] },
-    { "id": "a6", "leg": "a", "rollsUp": [["FIX-2879", "Refused"]], "controls": [] },
-
-    { "id": "b1", "leg": "b", "rollsUp": [["FIX-2876", "b"], ["FIX-2878", "Inherit"], ["FIX-2879", "Delegated"]],
-      "controls": [["worker-only", "FIX-2878"], ["use-carried", "FIX-2879"], ["drop-ancestry", "FIX-2879"], ["kit-fallback", "closure"]] },
-    { "id": "b2", "leg": "b", "rollsUp": [["FIX-2876", "b"], ["FIX-2879", "Filed task"]],
-      "controls": [["use-carried", "FIX-2879"]] },
-    { "id": "b3", "leg": "b", "rollsUp": [["FIX-2876", "b"], ["FIX-2878", "Freeze"]],
-      "controls": [["re-resolve", "FIX-2878"], ["worker-only", "FIX-2878"]] },
-    { "id": "b4", "leg": "b", "rollsUp": [["FIX-2878", "Default"]],
-      "controls": [["null-default", "FIX-2878"]] },
-    { "id": "b5", "leg": "b", "rollsUp": [["FIX-2878", "Review"]],
-      "controls": [["live-review", "FIX-2878"]] },
-    { "id": "b6", "leg": "b", "rollsUp": [["FIX-2878", "Mode"]],
-      "promise": [["FIX-2876", "After the app's `defaultMode` changes, a retry and a steer of a claimed `implement` task still run `implement`"]],
-      "controls": [["live-mode", "FIX-2878"]] },
-    { "id": "b7", "leg": "b", "rollsUp": [["FIX-2876", "b"]],
-      "promise": [["FIX-2876", "A follow-up naming another coder is a new task, filed from the conversation's turn, and that task starts a fresh session on its own harness"],
-                  ["FIX-2879", "takes no `fields`: a talk to a running task stays on its frozen coder"]],
-      "controls": [["match-by-source", "FIX-2878"], ["door-takes-pick", "closure"]] },
-    { "id": "b8", "leg": "b", "rollsUp": [["FIX-2878", "Resume"], ["FIX-2877", "c"]],
-      "controls": [["match-by-source", "FIX-2878"], ["no-legacy-key", "FIX-2877"]] },
-    { "id": "b9", "leg": "b", "rollsUp": [["FIX-2876", "b"]],
-      "promise": [["FIX-2876", "a plan session on `claude-code` is never resumed as an edit session on `claude-code`"]],
-      "controls": [["match-by-id", "closure"]] },
-
-    { "id": "c1", "leg": "c", "rollsUp": [["FIX-2876", "c"], ["FIX-2877", "b"], ["FIX-2878", "Order"]],
-      "controls": [["own-coder-flow", "closure"]] },
-    { "id": "c2", "leg": "c", "rollsUp": [["FIX-2877", "b"]], "controls": [] },
-    { "id": "c3", "leg": "c", "rollsUp": [["FIX-2878", "Mode"], ["FIX-2878", "Legacy feature"]],
-      "controls": [["drop-feature", "FIX-2878"]] },
-
-    { "id": "d1", "leg": "d", "rollsUp": [["FIX-2876", "d"], ["FIX-2878", "Plan"]],
-      "promise": [["FIX-2876", "a filing whose tool args name `claude-code` while the turn's pick is plan mode, or absent, runs in plan mode"]],
-      "controls": [["filer-plan", "FIX-2878"]] },
-    { "id": "d2", "leg": "d", "rollsUp": [["FIX-2876", "d"], ["FIX-2878", "Lock"]],
-      "controls": [["no-lock", "FIX-2878"], ["lock-by-reference", "FIX-2878"], ["lock-on-meant-worker", "closure"], ["lock-harness-only", "closure"]] },
-    { "id": "d3", "leg": "d", "rollsUp": [["FIX-2876", "d"]],
-      "promise": [["FIX-2878", "The run uses the harness default and says which model it refused and why"]],
-      "controls": [["skip-failed-catalog", "closure"]] },
-    { "id": "d4", "leg": "d", "rollsUp": [["FIX-2878", "Plan"]],
-      "controls": [["ignore-plan", "closure"]] },
-    { "id": "d5", "leg": "d", "rollsUp": [["FIX-2878", "Postcheck"]],
-      "controls": [["no-postcheck", "FIX-2878"], ["unscoped-postcheck", "FIX-2878"]] },
-    { "id": "d6", "leg": "d", "rollsUp": [["FIX-2876", "d"]],
-      "promise": [["FIX-2878", "a filer's `doneWhen` or `workspace` reaches a run"]],
-      "provisional": "FIX-2894", "controls": [] },
-    { "id": "d7", "leg": "d", "rollsUp": [["FIX-2876", "d"], ["FIX-2878", "Mode"], ["FIX-2878", "Mode lock"], ["FIX-2878", "Legacy feature"], ["FIX-2878", "Legacy write"], ["FIX-2878", "Mode update"]],
-      "controls": [["unchecked-mode", "FIX-2878"], ["inherited-key-mode", "FIX-2878"], ["raw-mode-requires", "FIX-2878"], ["claim-default", "FIX-2878"], ["no-claim-requires", "FIX-2878"], ["inherit-mode", "FIX-2878"], ["raw-mode-lock", "FIX-2878"], ["no-mode-lock", "FIX-2878"], ["lock-before-legacy", "FIX-2878"], ["coerce-phase", "FIX-2878"], ["implement-only-legacy", "FIX-2878"], ["accept-legacy-write", "FIX-2878"], ["unchecked-update", "FIX-2878"]] },
-    { "id": "d8", "leg": "d", "rollsUp": [["FIX-2876", "d"]],
-      "promise": [["FIX-2879", "(no root: refused)"]],
-      "controls": [["no-root-default", "closure"]] },
-    { "id": "d9", "leg": "d", "rollsUp": [["FIX-2876", "d"], ["FIX-2878", "No-pick"]],
-      "controls": [["server-assignee", "FIX-2878"], ["empty-no-pick", "closure"]] },
-    { "id": "d10", "leg": "d", "rollsUp": [["FIX-2878", "Legacy"]],
-      "controls": [["trust-stored", "FIX-2878"]] }
+    {
+      "id": "a1",
+      "leg": "a",
+      "main": true,
+      "covers": [
+        "FIX-2876:a#0",
+        "FIX-2879:Pick#0",
+        "FIX-2879:Pick#1",
+        "FIX-2877:a#4"
+      ],
+      "controls": [
+        [
+          "text-line",
+          "FIX-2879"
+        ],
+        [
+          "no-fill",
+          "FIX-2879"
+        ],
+        [
+          "worker-only",
+          "FIX-2878"
+        ]
+      ]
+    },
+    {
+      "id": "a2",
+      "leg": "a",
+      "main": true,
+      "covers": [
+        "FIX-2876:a#1",
+        "FIX-2879:Reload#0"
+      ],
+      "promise": [
+        [
+          "FIX-2879",
+          "*Code with* shows the conversation's pick, read from the session"
+        ]
+      ],
+      "controls": [
+        [
+          "text-line",
+          "FIX-2879"
+        ]
+      ]
+    },
+    {
+      "id": "a3",
+      "leg": "a",
+      "main": true,
+      "covers": [
+        "FIX-2877:a#0",
+        "FIX-2877:a#2",
+        "FIX-2877:a#5",
+        "FIX-2878:Order#0"
+      ],
+      "controls": []
+    },
+    {
+      "id": "a4",
+      "leg": "a",
+      "main": true,
+      "covers": [
+        "FIX-2879:Words#0",
+        "FIX-2879:Words#1",
+        "FIX-2877:a#1"
+      ],
+      "controls": [
+        [
+          "text-line",
+          "FIX-2879"
+        ]
+      ]
+    },
+    {
+      "id": "a5",
+      "leg": "a",
+      "main": true,
+      "covers": [
+        "FIX-2879:No person#0"
+      ],
+      "controls": [
+        [
+          "no-fill",
+          "FIX-2879"
+        ]
+      ]
+    },
+    {
+      "id": "a6",
+      "leg": "a",
+      "covers": [
+        "FIX-2879:Refused#0",
+        "FIX-2879:Refused#1",
+        "FIX-2879:Refused#2"
+      ],
+      "controls": [
+        [
+          "accept-any-fields",
+          "closure"
+        ]
+      ]
+    },
+    {
+      "id": "b1",
+      "leg": "b",
+      "covers": [
+        "FIX-2876:b#0",
+        "FIX-2878:Inherit#0",
+        "FIX-2879:Delegated#0",
+        "FIX-2879:Delegated#1",
+        "FIX-2877:a#3"
+      ],
+      "controls": [
+        [
+          "worker-only",
+          "FIX-2878"
+        ],
+        [
+          "use-carried",
+          "FIX-2879"
+        ],
+        [
+          "drop-ancestry",
+          "FIX-2879"
+        ],
+        [
+          "kit-fallback",
+          "closure"
+        ]
+      ]
+    },
+    {
+      "id": "b2",
+      "leg": "b",
+      "covers": [
+        "FIX-2876:b#1",
+        "FIX-2879:Filed task#0",
+        "FIX-2879:Filed task#1"
+      ],
+      "controls": [
+        [
+          "use-carried",
+          "FIX-2879"
+        ]
+      ]
+    },
+    {
+      "id": "b3",
+      "leg": "b",
+      "covers": [
+        "FIX-2876:b#3",
+        "FIX-2878:Freeze#0"
+      ],
+      "controls": [
+        [
+          "re-resolve",
+          "FIX-2878"
+        ],
+        [
+          "worker-only",
+          "FIX-2878"
+        ]
+      ]
+    },
+    {
+      "id": "b4",
+      "leg": "b",
+      "covers": [
+        "FIX-2876:b#4",
+        "FIX-2878:Default#0"
+      ],
+      "controls": [
+        [
+          "null-default",
+          "FIX-2878"
+        ]
+      ]
+    },
+    {
+      "id": "b5",
+      "leg": "b",
+      "covers": [
+        "FIX-2876:b#2",
+        "FIX-2878:Review#0"
+      ],
+      "controls": [
+        [
+          "live-review",
+          "FIX-2878"
+        ]
+      ]
+    },
+    {
+      "id": "b6",
+      "leg": "b",
+      "covers": [
+        "FIX-2876:b#8",
+        "FIX-2878:Mode#2"
+      ],
+      "promise": [
+        [
+          "FIX-2876",
+          "After the app's `defaultMode` changes, a retry and a steer of a claimed `implement` task still run `implement`"
+        ]
+      ],
+      "controls": [
+        [
+          "live-mode",
+          "FIX-2878"
+        ]
+      ]
+    },
+    {
+      "id": "b7",
+      "leg": "b",
+      "covers": [
+        "FIX-2876:b#5",
+        "FIX-2876:b#6"
+      ],
+      "promise": [
+        [
+          "FIX-2876",
+          "A follow-up naming another coder is a new task, filed from the conversation's turn, and that task starts a fresh session on its own harness"
+        ],
+        [
+          "FIX-2879",
+          "takes no `fields`: a talk to a running task stays on its frozen coder"
+        ]
+      ],
+      "controls": [
+        [
+          "match-by-source",
+          "FIX-2878"
+        ],
+        [
+          "door-takes-pick",
+          "closure"
+        ]
+      ]
+    },
+    {
+      "id": "b8",
+      "leg": "b",
+      "covers": [
+        "FIX-2876:b#9",
+        "FIX-2878:Resume#0",
+        "FIX-2877:c#0",
+        "FIX-2877:c#1"
+      ],
+      "controls": [
+        [
+          "match-by-source",
+          "FIX-2878"
+        ],
+        [
+          "no-legacy-key",
+          "FIX-2877"
+        ]
+      ]
+    },
+    {
+      "id": "b9",
+      "leg": "b",
+      "covers": [
+        "FIX-2876:b#7"
+      ],
+      "promise": [
+        [
+          "FIX-2876",
+          "a plan session on `claude-code` is never resumed as an edit session on `claude-code`"
+        ]
+      ],
+      "controls": [
+        [
+          "match-by-id",
+          "closure"
+        ]
+      ]
+    },
+    {
+      "id": "c1",
+      "leg": "c",
+      "main": true,
+      "covers": [
+        "FIX-2876:c#0",
+        "FIX-2877:b#0"
+      ],
+      "controls": [
+        [
+          "own-coder-flow",
+          "closure"
+        ]
+      ]
+    },
+    {
+      "id": "c2",
+      "leg": "c",
+      "main": true,
+      "covers": [
+        "FIX-2877:b#0",
+        "FIX-2876:c#1"
+      ],
+      "controls": []
+    },
+    {
+      "id": "c3",
+      "leg": "c",
+      "covers": [
+        "FIX-2878:Legacy feature#0"
+      ],
+      "controls": [
+        [
+          "drop-feature",
+          "FIX-2878"
+        ]
+      ]
+    },
+    {
+      "id": "d1",
+      "leg": "d",
+      "covers": [
+        "FIX-2876:d#0",
+        "FIX-2878:Plan#0"
+      ],
+      "promise": [
+        [
+          "FIX-2876",
+          "a filing whose tool args name `claude-code` while the turn's pick is plan mode, or absent, runs in plan mode"
+        ]
+      ],
+      "controls": [
+        [
+          "filer-plan",
+          "FIX-2878"
+        ]
+      ]
+    },
+    {
+      "id": "d2",
+      "leg": "d",
+      "covers": [
+        "FIX-2876:d#3",
+        "FIX-2878:Lock#0",
+        "FIX-2878:Lock#1"
+      ],
+      "controls": [
+        [
+          "no-lock",
+          "FIX-2878"
+        ],
+        [
+          "lock-by-reference",
+          "FIX-2878"
+        ],
+        [
+          "lock-on-meant-worker",
+          "closure"
+        ],
+        [
+          "lock-harness-only",
+          "closure"
+        ]
+      ]
+    },
+    {
+      "id": "d3",
+      "leg": "d",
+      "covers": [
+        "FIX-2876:d#1"
+      ],
+      "promise": [
+        [
+          "FIX-2878",
+          "The run uses the harness default and says which model it refused and why"
+        ]
+      ],
+      "controls": [
+        [
+          "skip-failed-catalog",
+          "closure"
+        ]
+      ]
+    },
+    {
+      "id": "d4",
+      "leg": "d",
+      "covers": [
+        "FIX-2876:d#2",
+        "FIX-2878:Plan#1",
+        "FIX-2878:Plan#2"
+      ],
+      "controls": [
+        [
+          "ignore-plan",
+          "closure"
+        ]
+      ]
+    },
+    {
+      "id": "d5",
+      "leg": "d",
+      "covers": [
+        "FIX-2876:d#4",
+        "FIX-2876:d#5",
+        "FIX-2878:Postcheck#0",
+        "FIX-2878:Postcheck#1"
+      ],
+      "controls": [
+        [
+          "no-postcheck",
+          "FIX-2878"
+        ],
+        [
+          "unscoped-postcheck",
+          "FIX-2878"
+        ]
+      ]
+    },
+    {
+      "id": "d6",
+      "leg": "d",
+      "covers": [
+        "FIX-2876:d#6",
+        "FIX-2876:d#7"
+      ],
+      "promise": [
+        [
+          "FIX-2878",
+          "a filer's `doneWhen` or `workspace` reaches a run"
+        ]
+      ],
+      "provisional": "FIX-2894",
+      "controls": [
+        [
+          "open-input",
+          "closure"
+        ]
+      ]
+    },
+    {
+      "id": "d7",
+      "leg": "d",
+      "covers": [
+        "FIX-2876:d#6",
+        "FIX-2876:d#8",
+        "FIX-2878:Mode#0",
+        "FIX-2878:Mode#1",
+        "FIX-2878:Mode#3",
+        "FIX-2878:Mode#4",
+        "FIX-2878:Mode#5",
+        "FIX-2878:Mode#6",
+        "FIX-2878:Mode lock#0",
+        "FIX-2878:Mode lock#1",
+        "FIX-2878:Mode lock#2",
+        "FIX-2878:Mode lock#3",
+        "FIX-2878:Legacy feature#0",
+        "FIX-2878:Legacy feature#1",
+        "FIX-2878:Legacy feature#2",
+        "FIX-2878:Legacy feature#3",
+        "FIX-2878:Legacy write#0",
+        "FIX-2878:Mode update#0",
+        "FIX-2878:Mode update#1"
+      ],
+      "controls": [
+        [
+          "unchecked-mode",
+          "FIX-2878"
+        ],
+        [
+          "inherited-key-mode",
+          "FIX-2878"
+        ],
+        [
+          "raw-mode-requires",
+          "FIX-2878"
+        ],
+        [
+          "claim-default",
+          "FIX-2878"
+        ],
+        [
+          "no-claim-requires",
+          "FIX-2878"
+        ],
+        [
+          "inherit-mode",
+          "FIX-2878"
+        ],
+        [
+          "raw-mode-lock",
+          "FIX-2878"
+        ],
+        [
+          "no-mode-lock",
+          "FIX-2878"
+        ],
+        [
+          "lock-before-legacy",
+          "FIX-2878"
+        ],
+        [
+          "coerce-phase",
+          "FIX-2878"
+        ],
+        [
+          "implement-only-legacy",
+          "FIX-2878"
+        ],
+        [
+          "accept-legacy-write",
+          "FIX-2878"
+        ],
+        [
+          "unchecked-update",
+          "FIX-2878"
+        ]
+      ]
+    },
+    {
+      "id": "d8",
+      "leg": "d",
+      "covers": [
+        "FIX-2876:d#9"
+      ],
+      "promise": [
+        [
+          "FIX-2879",
+          "(no root: refused)"
+        ]
+      ],
+      "controls": [
+        [
+          "no-root-default",
+          "closure"
+        ]
+      ]
+    },
+    {
+      "id": "d9",
+      "leg": "d",
+      "covers": [
+        "FIX-2876:d#9",
+        "FIX-2878:No-pick#0",
+        "FIX-2878:No-pick#1"
+      ],
+      "controls": [
+        [
+          "server-assignee",
+          "FIX-2878"
+        ],
+        [
+          "empty-no-pick",
+          "closure"
+        ]
+      ]
+    },
+    {
+      "id": "d10",
+      "leg": "d",
+      "covers": [
+        "FIX-2878:Legacy#0"
+      ],
+      "controls": [
+        [
+          "trust-stored",
+          "FIX-2878"
+        ]
+      ]
+    }
   ],
   "superseded": [
-    { "spec": "FIX-2877", "signal": "a", "by": "FIX-2878",
+    {
+      "spec": "FIX-2877",
+      "clauses": [
+        "FIX-2877:a#0"
+      ],
+      "owner": "FIX-2878 implementation PR",
       "was": "the stored task's assignee is the coding worker whose `harness:` is that value",
-      "now": "the run record names the default harness; the assignee is the model's, on Teammates' one coder worker (FIX-2879)" },
-    { "spec": "FIX-2877", "signal": "c", "by": "FIX-2878",
+      "now": "the run record names the default harness; the assignee is the model's (FIX-2878 retires the server-written assignee)"
+    },
+    {
+      "spec": "FIX-2877",
+      "clauses": [
+        "FIX-2877:a#0",
+        "FIX-2877:a#2"
+      ],
+      "owner": "FIX-2879 implementation PR",
+      "was": "a person assigning the task to the Cursor worker on the board runs it on Cursor",
+      "now": "Teammates has one coder worker; a person's pick is Code with (FIX-2879 collapses the per-harness workers)"
+    },
+    {
+      "spec": "FIX-2877",
+      "clauses": [
+        "FIX-2877:c#0"
+      ],
+      "owner": "FIX-2878 implementation PR",
       "was": "it keeps its branch, checkout and saved session",
-      "now": "it keeps its key, branch and checkout; its pre-freeze session starts fresh once (FIX-2878 D2)" }
+      "now": "it keeps its key, branch and checkout; its pre-freeze session starts fresh once (FIX-2878 D2)"
+    }
   ],
-  "redOnMain": [
-    ["labs/teammates/src/components/Composer.tsx", "onSend(withHarness(typed, picked, defaultHarness), files)"],
-    ["labs/teammates/src/lib/harness.ts", "const line = `Coding harness: ${harnessName(harness)}`;"],
-    ["packages/harness-manager/src/harness-stub.ts", "model: \"stub-model\""],
-    ["packages/harness-manager/src/kit/coder-flow.ts", "const chosen = await harnessOf(ctx);"],
-    ["packages/harness-manager/src/session-door.ts", "resume: record.sessionId,"],
-    ["packages/harness-manager/src/run-record.ts", "source: z.string().nullable().default(null),"],
-    ["packages/shift-manager/teams/devteam/host.mts", ".without(workforce.slots.workerFlows, \"coder\")"],
-    ["packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts", "defineCoderWorkerFlow"],
-    ["packages/harness-manager/src/manager.ts", "export const HARNESS_FEATURE_KEY = \"harnessFeature\";"],
-    ["labs/teammates/workforce/teams/teammates/workers/chief-of-staff/WORKER.md", "assign it to that one"]
-  ]
+  "contextOnMain": {
+    "note": "Context only, never evidence of a red state: what the code on the base commit does today. Each row's red state is its control, or GOAL_COMMIT for legs a and c.",
+    "lines": [
+      [
+        "labs/teammates/src/components/Composer.tsx",
+        "onSend(withHarness(typed, picked, defaultHarness), files)"
+      ],
+      [
+        "packages/harness-manager/src/harness-stub.ts",
+        "model: \"stub-model\""
+      ],
+      [
+        "packages/harness-manager/src/kit/coder-flow.ts",
+        "const chosen = await harnessOf(ctx);"
+      ],
+      [
+        "packages/harness-manager/src/session-door.ts",
+        "resume: record.sessionId,"
+      ],
+      [
+        "packages/shift-manager/teams/devteam/host.mts",
+        ".without(workforce.slots.workerFlows, \"coder\")"
+      ],
+      [
+        "packages/harness-manager/src/manager.ts",
+        "export const HARNESS_FEATURE_KEY = \"harnessFeature\";"
+      ]
+    ]
+  }
 }

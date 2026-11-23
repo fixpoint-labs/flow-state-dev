@@ -36,7 +36,7 @@ flowchart LR
   B --> P
   S --> P
   D --> P
-  C["controls · 10 the closure owns · the children's own · today's main"] -.->|"each must FAIL its row first"| M
+  C["controls · 12 the closure owns · the children's own · today's main"] -.->|"each must FAIL its row first"| M
 ```
 
 Every row reads the stored task, the run record and the scripted harness's report of what it
@@ -45,16 +45,16 @@ ran and with which model. Each control must fail its named row before any PASS c
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/coder-selection/runs-on-the-coder-that-was-picked/` · `GOAL_LEG=a\|b\|c\|d`, all four by default · leg a: the Teammates lab over HTTP through the public client, a real model for Lead (the lab's default), and one browser check, the composer after a reload ([D2](DECISIONS.md#d2)) · legs b and d: a goal host under the same directory, no model · leg c: Shift Manager through `goals/lib/shift-manager` · run by the implementer on the commit after the last child merges · verdicts in its `goal.md` and the closure PR |
-| **Signal** | The 28 rows of the [coverage matrix](#the-coverage-matrix), each its own named assertion, each citing the child signal it rolls up, or the child or epic text that promises it ([D3](DECISIONS.md#d3)). Thresholds are the child's: a row that rolls up a model-backed signal keeps that signal's (FIX-2879's *Pick* 2 of 3, *Words* 3 of 3); model-free rows pass 1 of 1. Then every child goal [re-run](#what-else-runs-on-the-same-commit), and the [sweep](#what-else-runs-on-the-same-commit) printing nothing |
+| **Signal** | The 28 rows of the [coverage matrix](#the-coverage-matrix), each its own named assertion. Together they cover all 80 clauses of the epic's and the children's goal signals, each row naming the clauses it covers, or the child or epic text that promises it ([D3](DECISIONS.md#d3)). Thresholds are the child's: a row that rolls up a model-backed signal keeps that signal's (FIX-2879's *Pick* 2 of 3, *Words* 3 of 3); model-free rows pass 1 of 1. Then every child goal [re-run](#what-else-runs-on-the-same-commit), and the [sweep](#what-else-runs-on-the-same-commit) printing nothing |
 | **Input** | Scripted harnesses under the ids `codex`, `claude-code`, `claude-code-plan` and `cursor` for Teammates, and `alpha` and `beta` for the host, all reporting one `source`, each listing two models and reporting the one it was handed ([epic ER-6](../../epics/FIX-2876/DECISIONS.md#who-owns-what)). Also one whose catalog fails, one whose default model changes between attempts, a plan harness that writes, and a second task that makes a branch. The model a row picks is read from the harness's own list at run time, never its default. Asks are drawn from two wordings. Another pair of ids must pass too |
 | **Anti-game** | Never the picker, Lead's reply, the filing tool's answer, the task's stored input as the proof of what ran, or a stubbed board. A refusal is graded on what was stored and what ran, not on its wording |
-| **Control that must fail** | Per row, in the matrix: the children's own controls, by their names, and ten the closure owns: `kit-fallback`, `door-takes-pick`, `match-by-id`, `own-coder-flow`, `lock-on-meant-worker`, `lock-harness-only`, `skip-failed-catalog`, `ignore-plan`, `no-root-default`, `empty-no-pick`. Each is a load-time module patch (`goals/lib/module-patch`), never written to the checkout. **Today's `main`** (`0a9ac03b4`): `GOAL_COMMIT=0a9ac03b4` must FAIL legs a and c, which drive the apps over HTTP. Legs b and d cannot load there, because the lock and the modes do not exist yet. Their red state is the code the checker reads on that commit ([below](#red-on-main)) |
+| **Control that must fail** | Per row, in the matrix: the children's own controls, by their names, and twelve the closure owns: `kit-fallback`, `door-takes-pick`, `match-by-id`, `own-coder-flow`, `lock-on-meant-worker`, `lock-harness-only`, `skip-failed-catalog`, `ignore-plan`, `no-root-default`, `empty-no-pick`, `accept-any-fields`, `open-input`. Each is a load-time module patch (`goals/lib/module-patch`), never written to the checkout. **Every row has a red state.** 26 rows name a control that must turn them red. Two more (a3, c2) are red on today's `main` through `GOAL_COMMIT=0a9ac03b4`, which must also FAIL legs a and c, since they drive the apps over HTTP. Legs b and d cannot load on today's `main`, because the lock and the modes do not exist yet, so each of their rows needs a named control, and the checker requires one. What the code on that commit does is [context](#red-on-main), never evidence of a red state |
 
 ## What changes
 
-![The closure, as a picture. On the left, what the children promise: FIX-2894 through epic rule ER-9 until its spec merges, FIX-2877's three goal signals, FIX-2878's sixteen and FIX-2879's seven. In the middle, four legs on one main commit: a with six rows, b with nine, c with three, d with ten. Eight rows also rest on a promise no child goal names in full. On the right, each control fails first, then the legs pass, the child goals are re-run and the sweep prints nothing. A finding is a bug under the epic](figures/what-changes.svg)
+![The closure, as a picture. On the left, what the children promise, as goal-signal clauses: FIX-2894 through epic rule ER-9 until its spec merges, FIX-2877's nine, FIX-2878's thirty-four and FIX-2879's thirteen. In the middle, four legs on one main commit: a with six rows, b with nine, c with three, d with ten. Eight rows also rest on a promise no child goal names in full. On the right, each control fails first, then the legs pass, the child goals are re-run and the sweep prints nothing. A finding is a bug under the epic](figures/what-changes.svg)
 
-Every child signal goes into at least one leg. The closure's own rows are the eight cases the
+Every clause of every child signal goes into at least one leg. The closure's own rows are the eight cases the
 epic promises and no child's goal covers in full, most of them between two children.
 
 **What the closure adds, all under `goals/`** (no package, app or lab file changes, [D1](DECISIONS.md#d1)):
@@ -66,7 +66,7 @@ epic promises and no child's goal covers in full, most of them between two child
 +   legs/            # a.mts (Teammates), b.mts and d.mts (the host), c.mts (Shift Manager)
 +   lab/             # Teammates with scripted coders filled under the vendor ids
 +   host/            # a harness-kit host: modes, locked workers, the odd scripted harnesses
-+   controls/        # the ten closure-owned patches
++   controls/        # the twelve closure-owned patches
 +   rerun.mts        # every child goal, on the same commit, with its verdict
 +   sweep.mts        # the not-done-if sweep
 ```
@@ -78,21 +78,29 @@ line, since the pages follow at release.
 ## The coverage matrix
 
 [`poc/coverage/coverage.json`](poc/coverage/coverage.json) is the matrix.
-[`check.mjs`](poc/coverage/check.mjs) re-derives it from the specs and code on disk. Every signal
-of the epic and the three child specs on `main` is rolled up (4, 3, 16 and 7). Every cited
-signal, promise and child control exists. The ten closure controls reuse no child's name. Ten
-red-on-main lines are on `0a9ac03b4`. `--control` plants a missing signal, a dropped row, a
-reused name and an absent line, and must FAIL.
+[`check.mjs`](poc/coverage/check.mjs) re-derives it from the specs on disk.
+
+- **Clauses.** The checker splits each spec's *Signal* row into signals, and each signal into its
+  clauses (the scenarios it names), at each `;` and each sentence end. That gives 80 clauses:
+  the epic 24, FIX-2877 9, FIX-2878 34, FIX-2879 13. Each clause is pinned by its opening words,
+  so a reworded child spec fails the check until the matrix follows it.
+- **Totality.** Every clause is covered by a row that names it, so a scenario no row exercises
+  fails the check.
+- **Citations.** Every cited promise and child control exists. The twelve closure controls reuse
+  no child's name.
+- **Red states.** Every row has one: a named control, or `GOAL_COMMIT` for an a or c row.
+- **Its own control.** `--control` plants an uncovered clause, an unknown clause, a b or d row
+  with no control, a reused control name and a reworded clause. The check must FAIL on all five.
 
 | Leg | Rows | Rolls up | The closure's own ([D3](DECISIONS.md#d3)) |
 |---|---|---|---|
-| **a** · a person's pick reaches the run | a1–a6 | FIX-2879 *Pick, Reload, Words, No person, Refused* · FIX-2877 *a* · FIX-2878 *Order* | a2's browser reload |
-| **b** · a run keeps its coder | b1–b9 | FIX-2878 *Inherit, Freeze, Default, Review, Mode, Resume* · FIX-2879 *Delegated, Filed task* · FIX-2877 *c* | b6's steer, b7 a new coder, b9 a plan session |
-| **c** · Shift Manager on the shared flow | c1–c3 | FIX-2877 *b* · FIX-2878 *Order, Mode, Legacy feature* | — |
-| **d** · only the server picks, and refusals have names | d1–d10 | FIX-2878 *Plan, Lock, Postcheck, Mode, Mode lock, Legacy feature, Legacy write, Mode update, No-pick, Legacy* · FIX-2894 via ER-9 | d1's turn pick, d3 a failed catalog, d6 a filer's `doneWhen`, d8 no root |
+| **a** · a person's pick reaches the run | a1–a6 | epic *a* · FIX-2879 *Pick, Reload, Words, No person, Refused* · FIX-2877 *a* · FIX-2878 *Order* | a2's browser reload |
+| **b** · a run keeps its coder | b1–b9 | epic *b* · FIX-2878 *Inherit, Freeze, Default, Review, Mode, Resume* · FIX-2879 *Delegated, Filed task* · FIX-2877 *a, c* | b6's steer, b7 a new coder, b9 a plan session |
+| **c** · Shift Manager on the shared flow | c1–c3 | epic *c* · FIX-2877 *b* · FIX-2878 *Legacy feature* | — |
+| **d** · only the server picks, and refusals have names | d1–d10 | epic *d* · FIX-2878 *Plan, Lock, Postcheck, Mode, Mode lock, Legacy feature, Legacy write, Mode update, No-pick, Legacy* · FIX-2894 via ER-9 | d1's turn pick, d3 a failed catalog, d6 a filer's `doneWhen`, d8 no root |
 
 FIX-2894 has no spec yet, so d6 cites [epic ER-9](../../epics/FIX-2876/DECISIONS.md#who-owns-what).
-The build ties d6 to FIX-2894's signal names when that spec merges, and a promise its spec drops
+The build ties d6 to FIX-2894's clauses when that spec merges, and a promise its spec drops
 is a finding.
 
 ## Examples
@@ -135,6 +143,10 @@ send   "Add a line to the README"
 read   run record: codex, codex's own default model, plan false
 start  again with TEAMMATES_HARNESS=claude-code, nothing else edited, the same ask
 read   run record: claude-code, its own default model
+hire   a teammate with a harness setting: its roster row has none
+note   FIX-2877 a's own goal expects the default's worker as the assignee, and a board pick of the
+       Cursor worker. On this commit the assignee is the model's, on the one coder worker; the
+       goal is updated by the PRs that change it (see "Two child goals")
 red    GOAL_COMMIT=0a9ac03b4: with codex set, Lead still files on teammates.cursor
 ```
 
@@ -159,9 +171,11 @@ fails  no-fill (it runs on the default)
 ```text
 a6 · a pick the server will not store                                 FIX-2879 Refused
 send   fields { codeWith: { harness: "devin" } }                  refused; neither message nor field stored
+send   fields { codeWith: { harness: 42 } }  (does not parse)     refused; neither message nor field stored
 send   fields { codeWith: { harness: "codex", model: "gpt-0" } }  refused; codex does not list gpt-0
 send   fields { repository: "acme/app" }    (an open-only field)  refused; nothing stored
 send   any fields on s1, as a second user                         the same answer as an unknown session id
+fails  accept-any-fields (the write rule patched to store any field: each send above is stored)
 ```
 
 ### Leg b · a run keeps its coder
@@ -172,6 +186,7 @@ claim  task P on worker A: frozen alpha, alpha-m2, plan false
 file   from P's run: { title: "Update the docs", assignee: "B", input: { harness: "beta" } }
 read   the child's run record: worker B, harness alpha, model alpha-m2, plan false
        (not beta from the tool args, not B's harness line, not the kit default)
+read   the child's assignee is B, as the run filed it: a filing inside a coding run is not rewritten
 fails  worker-only · use-carried · kit-fallback
 
 b1' · the same, two steps down                                         FIX-2879 Delegated
@@ -186,6 +201,8 @@ set    s1's codeWith cursor; Lead files a researcher task R
 send   a turn on s1 with fields { codeWith: { harness: "codex" } }
 file   from R's session: a coding task
 read   it runs on codex, the root conversation's current pick, not R's carried copy (cursor)
+send   a turn on s1 with codeWith claude-code; R files a second coding task
+read   the second task runs on claude-code: it follows the change between two filings
 fails  use-carried
 ```
 
@@ -270,6 +287,8 @@ fails  own-coder-flow
 c2 · one list of harnesses                                             FIX-2877 b
 read   the readiness view's harness ids equal the coder's
 hire   a coder with harness: devin: refused, naming exactly the readiness ids
+read   no Shift Manager page draws a Code with control
+red    GOAL_COMMIT=0a9ac03b4: the readiness ids and the coder's differ
 ```
 
 ```text
@@ -323,6 +342,7 @@ d5 · a plan run that wrote fails                                       FIX-2878
 run    a plan run that writes notes.md in its worktree      fails, naming notes.md
 run    a plan run that creates the branch tmp/x             fails, naming refs/heads/tmp/x
 run    a plan run while another task creates other/y        passes
+run    a plan run during which a git fetch and a git gc run     passes
 fails  no-postcheck · unscoped-postcheck
 ```
 
@@ -331,6 +351,7 @@ d6 · a task's input is what the flow declares                         epic d ·
 file   { mode: "implement", issue: 142 }                      refused at filing, naming issue
 file   { mode: "answer", doneWhen: "always", workspace: { host: "/" } }   stored without both keys
 read   listDelegates shows the coder's input fields; a flow that declares none takes an open record
+fails  open-input (the declared check patched off: the filing is taken as an open record)
 ```
 
 ```text
@@ -349,7 +370,12 @@ seed   { harnessFeature: { issue: "ENG-142" } } reaching explainer          refu
 file   createTask or updateTask sending harnessFeature     legacy_marker; nothing filed or changed
 update before the first claim: mode review, implement with no issue, against a lock    refused as at filing
 update after the first claim: any mode change          the frozen mode runs
-fails  FIX-2878's twelve, in the matrix
+file   no mode while defaultMode is answer; the default becomes implement before the first claim
+                                                 it keeps its stored answer, and runs
+seed   implement with an issue; before its first claim, implement's requires gains a field it lacks
+                                                 refused at claim, naming the field
+file   from an implement run, a child with no mode   runs in the app's default, not implement
+fails  every FIX-2878 control row d7 lists in the matrix
 ```
 
 ```text
@@ -385,13 +411,17 @@ the goals that already route coding work: `teammates-lab/routes-only-to-ready-ha
 `closure-smarter-agents`.
 
 <a name="two-child-goals-the-final-commit-changes"></a>
-**Two child goals the final commit changes.** A later child supersedes them by design, and the
-superseding child updates the goal in its own PR. A stale one is a finding against that child.
+**Two child goals the final commit changes.** A later child changes what they expect, by design.
+**The implementation PR of the child whose code turns a goal red updates that goal**, because a
+PR never leaves a goal it broke red. So FIX-2878's implementation PR updates FIX-2877's goals
+*a* (the server-written assignee) and *c* (the saved session). FIX-2879's updates goal *a*'s
+per-harness workers, which it collapses. The closure only re-runs the goals. A goal still stale
+on the closure commit is a closure finding: a bug under the epic, by [D1](DECISIONS.md#d1).
 
 | Child goal | Its own commit asserts | On the closure commit |
 |---|---|---|
-| FIX-2877 *a* | The task's assignee is the worker whose `harness:` is the default | The run record names the default. The assignee is the model's, on Teammates' one coder worker (FIX-2878 retires the interim, FIX-2879 collapses the workers). `model-assignee` becomes FIX-2878's `server-assignee` |
-| FIX-2877 *c* | The resumed run keeps its branch, checkout **and saved session** | It keeps its key, branch and checkout. Its session from before the freeze starts fresh once ([FIX-2878 D2](../FIX-2878/DECISIONS.md#d2)) |
+| FIX-2877 *a* | The task's assignee is the worker whose `harness:` is the default, and a person's board pick of the Cursor worker runs on Cursor | The run record names the default. The assignee is the model's, on Teammates' one coder worker. Updated by FIX-2878's implementation PR (it retires the interim assignee; `model-assignee` becomes its `server-assignee`) and by FIX-2879's (it collapses the workers) |
+| FIX-2877 *c* | The resumed run keeps its branch, checkout **and saved session** | It keeps its key, branch and checkout. Its session from before the freeze starts fresh once ([FIX-2878 D2](../FIX-2878/DECISIONS.md#d2)). Updated by FIX-2878's implementation PR |
 
 **The sweep** (`sweep.mts`), on that commit, each item printing nothing: a `Coding harness:` line
 or a rule reading one in Teammates · `coder.mts` or `.without(workforce.slots.workerFlows, "coder")`
@@ -403,12 +433,12 @@ whose one line of evidence is missing · a glossary entry the epic names (*Run s
 *Session field*, *Harness* amended) absent · a child changeset without its part of the docs line.
 
 <a name="red-on-main"></a>
-**Red on main.** On `0a9ac03b4`, the checker reads each of these: the composer appends
+**Today's `main`, as context (not evidence).** On `0a9ac03b4` the composer appends
 `Coding harness:` through `withHarness`; the scripted harness reports `stub-model` whatever it
 was handed; `harnessOf` re-reads the worker for the steer, message, door and claim routes; the
-session door resumes the recorded session unchecked; the run record keeps `source`; Shift Manager
-switches the kit's `coder` off and runs `coder.mts`; `harnessFeature` is the live marker; Lead's
-prompt routes by a coder named in words.
+session door resumes the recorded session unchecked; Shift Manager switches the kit's `coder` off
+and runs `coder.mts`; `harnessFeature` is the live marker. This says why the rows should fail
+there. It proves nothing: a row's red state is its control, or `GOAL_COMMIT` for legs a and c.
 
 ## How a run is checked
 
@@ -442,19 +472,19 @@ harness ran.
 | **Whatever already checks this goal end to end:** none. Searched `goals/` for `codeWith`, `runs-on-the-coder`, `coder-selection` and the children's goal paths; the children's goals exist only in their specs. The closest: `goals/closure-smarter-agents/` (FIX-2541), whose coder ask grades a report, not the coder that ran | **Builds on** its shape: one directory, legs as modules, a re-run of child goals. This is not a second check of the same thing |
 | The epic's goal check, signals and controls ([FIX-2876](../../epics/FIX-2876/SPEC.md#the-goal-and-how-well-know-its-met)) | **Builds** them. **Amends in part** the *Goal check* row's "Teammates in the browser": the browser is one reload ([D2](DECISIONS.md#d2)) |
 | The owner's review notes on this issue (epic review rounds 1 and 2): integration-first, one matrix of route by assertion, steer, message and door on a task whose settings differ from its worker's | **Kept**: legs a, b and d over the public client, the matrix above, b3 |
-| FIX-2877 goals *a*, *b*, *c* · FIX-2878's sixteen signals · FIX-2879's seven · ER-9 for FIX-2894 | **Rolled up**, each cited by name. Two FIX-2877 assertions are **superseded** on the closure commit by FIX-2878 and FIX-2879 ([above](#two-child-goals-the-final-commit-changes)) |
+| FIX-2877 goals *a*, *b*, *c* · FIX-2878's sixteen signals · FIX-2879's seven · ER-9 for FIX-2894 | **Rolled up**, clause by clause, 80 clauses in all. Two FIX-2877 goals are **superseded** on the closure commit, and the implementation PRs of FIX-2878 and FIX-2879 update them ([above](#two-child-goals-the-final-commit-changes)) |
 | `goals/lib`: `runGoal`, `tell.over`, `module-patch`, `shift-manager`, `client-actions`, `playwright` | **Builds on**: the verdict format, the controls and the drivers |
 | `goals/harness-manager/host.mts` and `goals/teammates-lab/lab.mts` | **Builds on** where they fit; the implementer decides whether the new host extends the first |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | The closure goal directory, its host and its lab | The children's goals · `closure-smarter-agents` | **Composed**: each child goal proves one child; this one runs them together on one commit, from the same `goals/lib` pieces |
-| Ten closure-owned controls | The children's controls | **Extends**: the ten cover only what no child's control reaches; the checker refuses a reused name |
+| Twelve closure-owned controls | The children's controls | **Extends**: the twelve cover only what no child's control reaches; the checker refuses a reused name |
 
 | The debt | |
 |---|---|
-| **Removes** | Nothing in code. Two stale child assertions are updated by the children that supersede them |
-| **Adds** | One goal directory with its host, lab and ten controls. It is permanent by design: it is the regression check for the epic |
+| **Removes** | Nothing in code. Two stale child goals are updated by the implementation PRs that turn them red |
+| **Adds** | One goal directory with its host, lab and twelve controls. It is permanent by design: it is the regression check for the epic |
 | **Leaves** | The lab's `Coder:` line and per-harness workers (FIX-2598). Plan mode as a setting (FIX-2599): b9 and d4 change shape when it lands |
 
 **Net: flat.** No code moves. One goal directory joins the library, and it is the only place the
@@ -481,4 +511,4 @@ a check nobody re-runs after the wrap.
 
 **Open: none.** D2 is the one to weigh: it narrows the epic's "Teammates in the browser".
 
-Improvement · goals only: `goals/coder-selection/` · medium: four legs, 28 rows, ten controls · closure of epic [FIX-2876](../../epics/FIX-2876/SPEC.md) · blocked by FIX-2877, FIX-2878, FIX-2879 and FIX-2894
+Improvement · goals only: `goals/coder-selection/` · medium: four legs, 28 rows over 80 clauses, twelve controls · closure of epic [FIX-2876](../../epics/FIX-2876/SPEC.md) · blocked by FIX-2877, FIX-2878, FIX-2879 and FIX-2894

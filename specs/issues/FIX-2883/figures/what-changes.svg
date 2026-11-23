@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 410" role="img" aria-label="The closure, as a picture. On the left, what the children promise: FIX-2894 through epic rule ER-9 until its spec merges, FIX-2877's three goal signals, FIX-2878's sixteen and FIX-2879's seven. In the middle, four legs on one main commit: a, a person's pick reaches the run, six rows; b, a run keeps its coder, nine rows; c, Shift Manager on the shared flow, three rows; d, only the server picks and refusals have names, ten rows. Eight rows also rest on a promise the epic makes and no child goal covers in full. On the right, each control fails its row first, then the 28 rows pass, the child goals are re-run, and the sweep prints nothing. A finding is a bug under the epic."
+<svg viewBox="0 0 940 410" role="img" aria-label="The closure, as a picture. On the left, what the children promise: FIX-2894 through epic rule ER-9 until its spec merges, the clauses of each child's goal signals: FIX-2877's nine, FIX-2878's thirty-four and FIX-2879's thirteen. In the middle, four legs on one main commit: a, a person's pick reaches the run, six rows; b, a run keeps its coder, nine rows; c, Shift Manager on the shared flow, three rows; d, only the server picks and refusals have names, ten rows. Eight rows also rest on a promise the epic makes and no child goal covers in full. On the right, each control fails its row first, then the 28 rows pass, the child goals are re-run, and the sweep prints nothing. A finding is a bug under the epic."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,13 +36,13 @@
     <text class="t-s" x="30" y="85">through epic ER-9 until its spec merges</text>
     <rect class="kid" x="16" y="114" width="256" height="56" rx="5"/>
     <text class="t-b" x="30" y="137">FIX-2877 · one flow, one default</text>
-    <text class="t-s" x="30" y="155">3 goal signals · 2 superseded later</text>
+    <text class="t-s" x="30" y="155">9 clauses in 3 signals · 2 goals superseded</text>
     <rect class="kid" x="16" y="184" width="256" height="56" rx="5"/>
     <text class="t-b" x="30" y="207">FIX-2878 · run settings, frozen</text>
-    <text class="t-s" x="30" y="225">16 goal signals</text>
+    <text class="t-s" x="30" y="225">34 clauses in 16 signals</text>
     <rect class="kid" x="16" y="254" width="256" height="56" rx="5"/>
     <text class="t-b" x="30" y="277">FIX-2879 · Code with</text>
-    <text class="t-s" x="30" y="295">7 goal signals</text>
+    <text class="t-s" x="30" y="295">13 clauses in 7 signals</text>
   </g>
 
   <g id="wires-in">
@@ -77,7 +77,7 @@
   <g id="verdict">
     <rect class="ctl" x="676" y="44" width="248" height="76" rx="5"/>
     <text class="t-g" x="690" y="67">First, each control FAILs</text>
-    <text class="t-s" x="690" y="85">its named row: 10 the closure owns,</text>
+    <text class="t-s" x="690" y="85">its named row: 12 the closure owns,</text>
     <text class="t-s" x="690" y="101">the children's own, today's main</text>
     <rect class="pass" x="676" y="136" width="248" height="96" rx="5"/>
     <text class="t-b" x="690" y="159">Then PASS · 28 rows</text>
