@@ -89,7 +89,6 @@ export const harnesses = defineKit({
   requires: [workforce],
   config: z.object({
     workspace: z.custom<WorkspaceHost>((value) => typeof value === "object" && value !== null),
-    defaultHarness: z.string().min(1).optional(),
   }),
   slots: { harnesses: slot.keyed(harnessSchema) },
   contributes: ({ config, slots }) => ({
@@ -114,16 +113,9 @@ import { claudeCode } from "@flow-state-dev/claude-code";
 import { codexHarness } from "@flow-state-dev/codex";
 import { createFlowState } from "@flow-state-dev/engine";
 import { harnesses } from "@flow-state-dev/harness-manager/kit";
-import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import helpDeskFlow from "./src/flows/help-desk/flow";
-
-const workspace = localWorkspaceHost({
-  root: ".fsdev/runs",
-  remotes: { allow: [] },
-  localRepositories: ["."],
-  source: () => ({ kind: "repo", repo: "." }),
-});
+// workspace as in the first example
 
 export default createFlowState({
   kits: [

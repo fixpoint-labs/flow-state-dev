@@ -50,6 +50,8 @@ Written by `docs-writer` (sonnet), 751 words. Scenario: A help-desk app that ins
 
 - After the reconcile edit: the cutover placeholders are replaced with the kits as built. Real imports (`@flow-state-dev/harness-manager/kit`, `@flow-state-dev/workforce/kit`), `harnesses({ workspace })`, a keyed `harnesses` slot with `without(slot, key)`, and the real install-order rule replace the reconcile comments. The three examples type-check with 0 errors in the example files against the workspace package sources; deliberate breaks (`harnesses({})`, `claudeCode({ plan: "yes" })`, an unknown slot) each fail in the example. 878 words. Page sha256 ba07cb14dfd8.
 
+- After PR review: the second `fsdev.config.ts` shows only its change (`// workspace as in the first example`), as `coding-harnesses.md` does, and the `harnesses/kit.ts` sketch drops `defaultHarness`, which the prose never used. No claim changed. 878 words. Page sha256 1f15fc46f0de.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 6030ce3e30d6, and the 8 Reference row(s) pass 6 moved.
