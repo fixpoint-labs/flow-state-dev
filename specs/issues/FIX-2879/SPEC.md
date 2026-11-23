@@ -44,7 +44,7 @@ Lead's reply or the picker. Under each control its named signal must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/teammates-lab/code-with-reaches-the-task/` · Teammates over HTTP through the public client, scripted coders, a real model for Lead · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | **Pick:** a send with `codeWith` Codex and a model read from the harnesses flow's model list files one task whose stored input, run record and scripted report all name Codex and that model; the stored message has no `Coding harness:` text, in at least 2 runs of 3. **Reload:** a fresh client reads `codeWith` off the session, and a second send with no fields files a task on the same pair. **Words:** with Claude Code picked, "have Codex do it" runs nothing on Codex, in 3 runs of 3; any task it files runs on Claude Code. **No person:** a routine fired in the conversation files a task on its pick. **Filed task:** a researcher's task is filed under a Cursor pick, the person moves *Code with* to Codex, and the researcher's next coding filing runs on Codex: it reads the root conversation's current pick. *Code with* changes between two filings, and the second task follows. **Delegated:** a coding run locked to plan mode files a researcher task that files coding work; the new run is a plan run on the parent's harness, in 3 runs of 3. **Refused:** a send whose `fields` name an open-only field, or a value that doesn't parse, is refused and stores neither the field nor the message. So is a harness that isn't filled, or a model its harness didn't list. A second principal posting `fields` on this session stores nothing and gets the same response as an unknown session id |
+| **Signal** | **Pick:** a send with `codeWith` Codex and a model read from the harnesses flow's model list files one task whose stored input, run record and scripted report all name Codex and that model; the stored message has no `Coding harness:` text, in at least 2 runs of 3. **Reload:** a fresh client reads `codeWith` off the session, and a second send with no fields files a task on the same run settings. **Words:** with Claude Code picked, "have Codex do it" runs nothing on Codex, in 3 runs of 3; any task it files runs on Claude Code. **No person:** a routine fired in the conversation files a task on its pick. **Filed task:** a researcher's task is filed under a Cursor pick, the person moves *Code with* to Codex, and the researcher's next coding filing runs on Codex: it reads the root conversation's current pick. *Code with* changes between two filings, and the second task follows. **Delegated:** a coding run locked to plan mode files a researcher task that files coding work; the new run is a plan run on the parent's harness, in 3 runs of 3. **Refused:** a send whose `fields` name an open-only field, or a value that doesn't parse, is refused and stores neither the field nor the message. So is a harness that isn't filled, or a model its harness didn't list. A second principal posting `fields` on this session stores nothing and gets the same response as an unknown session id |
 | **Input** | Two scripted harnesses under the ids `codex` and `claude-code`, each listing two models and reporting the model it ran and whether it ran in plan mode ([ER-6](../../epics/FIX-2876/DECISIONS.md#who-owns-what)). The change request is drawn from two wordings; no worker file or prompt names a harness |
 | **Anti-game** | Read the stored task, the run record and the scripted report. Never Lead's reply, the picker, or a stubbed board |
 | **Control that must fail** | `GOAL_CONTROL=text-line` (the composer's line back, no `fields`) fails **Pick** and **Reload**; `no-fill` (the filler ignores `codeWith`) fails **Pick** and **No person**; `use-carried` (the filler reads the session's carried copy) fails **Filed task**, so the carried copy fails closed. `drop-ancestry` (the hand-over carries no run triple) fails **Delegated**. Today's `main` fails all but **Refused**. The PR shows each FAIL before the PASS |
@@ -72,7 +72,7 @@ the server writes, and the server copies it into the task.
 
 ```diff
 + [workforce.slots.sessionFields]: { codeWith: { schema: codeWithSchema, written: "turn" } },
-+ // codeWith: { harness: "codex", model?: "gpt-6-luna" }
++ // codeWith: { harness: "codex", model?: "gpt-6-luna", plan?: false }   plan is inert until FIX-2599
 ```
 
 **Teammates' send:**
@@ -104,8 +104,8 @@ flowchart LR
   B["browser · send with fields"] -->|"respond · message and fields"| W["server writes codeWith · own conversation · own user · turn fields only"]
   W --> L["Lead's turn · files a task · no coder in it"]
   N["a routine · a reply · a task's result"] --> L
-  L -->|"board drops harness and model"| F["harness kit's filler"]
-  F -->|"coding run: its frozen pair · else the session's codeWith"| I["task input · harness · model"]
+  L -->|"board drops harness, model and plan"| F["harness kit's filler"]
+  F -->|"coding run: its frozen run settings · else D3's order"| I["task input · harness · model · plan"]
   I --> C["first claim · FIX-2878"]
   X["Re-run on · setSessionFields, then refile"] --> W
 ```
@@ -121,6 +121,7 @@ the session, whoever started the turn, which is why nothing a model writes can c
 - **The Claude Code-style lab** keeps its `Coder:` line and per-harness workers until FIX-2598, which writes the same `codeWith`. It only moves its `repository` field to the slot here.
 - **Shift Manager** gets no picker; its tasks run on the worker's or the kit's default (epic).
 - **Harness sessions** (Kitchen Sink's harness mode) keep their own model pick.
+- **Plan mode** stays behind `claude-code-plan`. `codeWith` takes `plan?`, checked at the write like `harness` and `model`, but nothing reads it until [FIX-2599](https://linear.app/fixpoint-labs/issue/FIX-2599).
 
 ## What's already here, and the debt
 
@@ -132,15 +133,15 @@ the session, whoever started the turn, which is why nothing a model writes can c
 | `Harness.models` (FIX-2458), read today only by FIX-2878's claim check | **Extended** with a view on the harnesses flow, beside readiness, for a picker |
 | `READINESS_GUIDANCE` and FIX-2877's default-coder line in the harness kit's capability | **Extended** with the one instruction, which names the conversation's pick |
 | Teammates' `withHarness`, `LEAD_FALLBACK_HARNESS`, Lead's routing rules, three coding workers, *Re-run on* by worker | **Removed**, or moved onto the one coder |
-| Epic [ER-5](../../epics/FIX-2876/DECISIONS.md#who-owns-what), [D2](../../epics/FIX-2876/DECISIONS.md#d2), [D3](../../epics/FIX-2876/DECISIONS.md#d3), [Q-C](../../epics/FIX-2876/DECISIONS.md#decided-in-review); [FIX-2616 D1](../../epics/FIX-2616/DECISIONS.md#d1) | **Built.** ER-5's "never the carried copy" holds everywhere, since `codeWith` is no longer carried. ER-10 gains [D3](DECISIONS.md#d3)'s steps for filings outside a coding run: the root conversation's current pick, then the person's no-pick default, else a refusal. Both rows' text is amended; ER-10 is FIX-2878's, so the epic follow-up is coordinated with its spec. FIX-2616 D1 (the pick is the person's) is kept |
+| Epic [ER-5](../../epics/FIX-2876/DECISIONS.md#who-owns-what), [D2](../../epics/FIX-2876/DECISIONS.md#d2), [D3](../../epics/FIX-2876/DECISIONS.md#d3), [Q-C](../../epics/FIX-2876/DECISIONS.md#decided-in-review); [FIX-2616 D1](../../epics/FIX-2616/DECISIONS.md#d1) | **Built.** ER-5's "never the carried copy" holds everywhere, since `codeWith` is no longer carried. ER-10 gains [D3](DECISIONS.md#d3)'s steps for filings outside a coding run: the root conversation's current pick, then the person's no-pick default, else a refusal. Both rows' text is amended, folded into the epic amendment on #5605; ER-10 is FIX-2878's, so the wording is coordinated with its spec. FIX-2616 D1 (the pick is the person's) is kept |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | `workforce.slots.sessionFields`, keyed, each entry `{ schema, written: "open" \| "turn" }` | The kit's `sessionFields` config key | **Replaces** it, with no alias (BP-034): a slot lets the harness kit fill a field, and a key given twice is refused, naming both |
 | `fields?` on the agent and coordinator flows' respond action | `doorTask`, which adds `taskId` the same way | **Extends** the action's input; it writes through `setSessionFieldsAction`'s rule |
 | `fields?` on the client's `send` | `send`'s `taskId`, sent only to a door that takes one | **Extends**: sent only to a door that takes fields, refused elsewhere |
-| `codeWith` and its exported name and schema | FIX-2878's run-settings shape (`harness`, `model`) | **Composed** on the slot; the model shape is FIX-2878's |
-| The filler reading `codeWith` | FIX-2878's filler | **Extends** it by one source |
+| `codeWith` (`{ harness, model?, plan? }`) and its exported name and schema | FIX-2878's run-settings shape (`harness`, `model`, `plan`) | **Composed** on the slot; the shape is FIX-2878's. `plan` is inert until FIX-2599 |
+| The filler reading the pick | FIX-2878's filler | **Extends** it by four sources: the session's own `codeWith`, the walk to the root conversation's `codeWith`, the run triple carried at hand-over, and a refusal when no root resolves ([D3](DECISIONS.md#d3)) |
 | The harnesses flow's model list | The readiness view on the same flow · Kitchen Sink's per-mode model lists | **Extends** the flow with one view over `Harness.models`; Kitchen Sink's are for sessions |
 
 | The debt | |
@@ -169,7 +170,7 @@ field nobody but the harness kit uses.
 3. **[D3](DECISIONS.md#d3) · A filing from a session no person writes to uses the person's
    current pick.** If wrong: someone who moves *Code with* finds a delegate's next task followed.
 
-**Open: none.** D3 is the one to weigh: it amends the wording of epic ER-5 and ER-10 (inside or below a coding run, that run's triple; otherwise the root conversation's current `codeWith`, then the person's no-pick default, else refused).
+**Open: none.** D3 is the one to weigh: it amends the wording of epic ER-5 and ER-10 (inside or below a coding run, that run's triple; otherwise the root conversation's current `codeWith`, then the person's no-pick default, else refused), folded into the epic amendment on #5605.
 
 Feature · `workforce`, `harness-manager`, Teammates lab, Claude Code-style lab · medium-large · epic
 [FIX-2876](../../epics/FIX-2876/SPEC.md) · blocked by FIX-2877 and FIX-2878 · two PRs: the
