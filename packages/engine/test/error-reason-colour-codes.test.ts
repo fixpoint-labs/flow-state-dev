@@ -11,7 +11,22 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { runAction } from "../src";
 import { displayCause, normalizeError } from "../src/errors/normalize-error";
+import { runActionInternal } from "../src/execution/runAction";
+import { applyNormalizedErrorSeam } from "../src/execution/internal/seams";
+import type { ExecutionMetadata } from "../src/execution/types";
 import { createInMemoryStores } from "../src/host";
+
+/** What a field-preserving `interceptNormalizedError` seam returns. */
+const cloneError = (error: FlowError): FlowError =>
+  new FlowError(error.message, {
+    code: error.code,
+    retryable: error.retryable,
+    details: error.details,
+    cause: error.cause,
+    blockName: error.blockName,
+    blockInstanceId: error.blockInstanceId,
+    scope: error.scope
+  });
 
 // What the AI SDK throws for a gateway call with no key, through a pipe.
 const COLOURED =
@@ -66,6 +81,64 @@ describe("a failed turn's reason has no terminal colour codes", () => {
     expect(displayCause(normalizeError(normalized))).toBe(cause);
     const details = errorDetailsWithCause({ details: normalized.details, cause: displayCause(normalized) });
     expect(details?.cause).toMatchObject({ name: "Error", code: "ECONNRESET" });
+  });
+
+  it("keeps that decision on a clone made by the normalized-error seam", () => {
+    const cause = Object.assign(new Error("plain"), { code: "ECONNRESET" });
+    const normalized = normalizeError(new FlowError("\u001b[31mplain\u001b[0m", { cause }));
+    const cloned = applyNormalizedErrorSeam(
+      { interceptNormalizedError: cloneError },
+      normalized,
+      {} as ExecutionMetadata
+    );
+    expect(cloned).not.toBe(normalized);
+    expect(displayCause(cloned)).toBe(cause);
+  });
+
+  it("still unwraps a wrapper's clone, and keeps a wrapped error given later as a different message's cause", () => {
+    const thrown = new Error(COLOURED, { cause: new Error("socket closed") });
+    const wrapper = normalizeError(thrown);
+    expect(displayCause(cloneError(wrapper))).toBe(thrown.cause);
+    // The same error, now the cause of an author's error that says something else.
+    const rethrown = normalizeError(new FlowError("Could not reach the model", { cause: thrown }));
+    expect(displayCause(rethrown)).toBe(thrown);
+  });
+
+  it("keeps the author's cause on the terminal error item when the seam clones the error", async () => {
+    const flow = defineFlow({
+      kind: "coloured-author-failure",
+      actions: {
+        run: handler({
+          name: "call-service",
+          inputSchema: z.object({}),
+          outputSchema: z.string(),
+          execute: () => {
+            throw new FlowError("\u001b[31mplain\u001b[0m", {
+              cause: Object.assign(new Error("plain"), { code: "ECONNRESET" })
+            });
+          }
+        })
+      }
+    })();
+
+    const result = await runActionInternal({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      requestId: "req_author_cause",
+      sessionId: "sess_author_cause",
+      userId: "user_author_cause",
+      stores: createInMemoryStores(),
+      runtimeConfig: {},
+      internalSeams: { interceptNormalizedError: cloneError }
+    });
+
+    const errorItem = result.items.find((item) => item.type === "error") as
+      | { message?: string; details?: { cause?: unknown } }
+      | undefined;
+    expect(errorItem?.message).toBe("plain");
+    expect(errorItem?.details?.cause).toMatchObject({ name: "Error", code: "ECONNRESET" });
   });
 
   it("reaches the turn's recorded error item and request result clean", async () => {
