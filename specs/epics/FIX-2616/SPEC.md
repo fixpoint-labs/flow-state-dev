@@ -65,7 +65,7 @@ repository's own git, never from the chip.
 
 ## What's in the box
 
-![In the box: the lab's harness choice with the models of that harness only, and plan mode as an option of a harness that has one, signed off before work; the packages' plan-mode answer from each harness and the shared model-choice shape (its models are FIX-2458's). A fence: what a harness offers is asked of its package and the lab keeps no list. Composed in by the app: the person's choice, stored once and read by the harness slot. Replaced: the Coder chip and its message line, the Plan first worker, Kitchen Sink's copy of the choice shape. Not built: repositories and the sidebar, attachments, a plan mode for a harness that has none, any workforce package change](figures/end-state.svg)
+![In the box: the lab's harness choice with the models of that harness only, and plan mode as an option of a harness that has one, signed off before work; the packages' plan-mode answer from each harness and the shared model-choice shape (its models are FIX-2458's). A fence: what a harness offers is asked of its package and the lab keeps no list. Composed in by the app: the person's choice, carried by FIX-2876's Code with field and read by the harness slot. Replaced: the Coder chip and its message line, the Plan first worker, Kitchen Sink's copy of the choice shape. Not built: repositories and the sidebar, attachments, a plan mode for a harness that has none, any workforce package change, which is FIX-2876's](figures/end-state.svg)
 
 The fence keeps the lab from becoming a second list: the packages say what a harness offers, and
 the lab shows it ([ER-1](DECISIONS.md#who-owns-what)).
