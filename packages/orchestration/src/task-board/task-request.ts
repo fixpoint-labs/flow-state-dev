@@ -36,9 +36,13 @@
  *   and the run resumes `cancelled`.
  * - **held** — the turn asked questions (`TaskCollectionRef.ask`): it ends
  *   unsettled, and writes nothing more. The last answer owes the next turn.
- * - **failed, aborted, interrupted** — the attempt fails, where it does today
+ * - **failed, interrupted** — the attempt fails, where it does today
  *   (a gate's rescue has usually done it already, and then this writes
  *   nothing).
+ * - **aborted** — a person stopped the request: the task is cancelled.
+ *
+ * The check's writes outlive the request's abort (`writesOutliveAbort`), so a
+ * stopped request settles its task at once, never at its lease's lapse.
  *
  * **Admission** re-mints the claim from the row, clears `keptOpenBy`, and gives
  * the row a lease again, renewed until the request ends. Admitting a turn the
@@ -64,11 +68,12 @@ import {
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskKeptOpenBy,
+  type TaskWriteOutcome,
 } from "../tasks";
 import { DEFAULT_LEASE_DURATION_MS } from "../tasks/collection/internal";
 import { MAX_QUESTION_PROMPT, type ExternalWait } from "../tasks/schema/hold";
 import { readCommittedTask } from "../tasks/collection/read-committed";
-import { untakenSteers } from "../tasks/steers";
+import { readFor, untakenBy, untakenSteers } from "../tasks/steers";
 import { ticketStillRunsTask } from "../tasks/collection/internal";
 import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
 import { isTerminalStatus } from "../tasks/schema/task-status";
@@ -133,6 +138,15 @@ interface Admitted {
    * later one admitted for it while it waits (a notice, a steer's turn).
    */
   readonly own: boolean;
+  // FIX-2795.
+  /**
+   * Whether this request's admission took a turn the row owed (`turnOwed`):
+   * a later request that a person stops gives that turn back to the row.
+   */
+  readonly tookOwedTurn?: true;
+  // FIX-2795.
+  /** Set by the check of a request a person stopped: every write it makes untakes the steers this request took. */
+  stoppedBy?: string;
   // FIX-2288.
   /** The tick writing this request's live spend onto the row, while it runs. */
   spendTick?: Ticker;
@@ -238,6 +252,7 @@ export async function admitClaimedTask(
   let ticket = options.ticket;
   let row = options.row;
   const prior = row.keptOpenBy ?? undefined;
+  const owedTurn = row.turnOwed === true;
   // The task's own request resuming a turn that asked (FIX-2133): the turn is
   // over, and the row, owed turn included, is the next turn's. Admitted for
   // nothing to write: it takes no lease and no turn.
@@ -285,13 +300,16 @@ export async function admitClaimedTask(
     rules: options.rules ?? {},
     inline: false,
     own: options.own,
+    ...(owedTurn && !askedTurn && ref.setKeptOpenBy !== undefined ? { tookOwedTurn: true as const } : {}),
     writer: crypto.randomUUID(),
     admittedAt: Date.now(),
     recovered: readRequestSpend(ctx),
   };
   // The hook closes over its own record: a resume reuses the request id, so a
   // hook from the run before it must never check (or drop) the resume's record.
-  const registered = onRequestEnded(ctx, (ending) => endRequest(key, record, ending));
+  // Its writes settle the task, so a stopped request's must land (FIX-2795):
+  // stopped on the abort, they left the row running until its lease lapsed.
+  const registered = onRequestEnded(ctx, (ending) => endRequest(key, record, ending), { writesOutliveAbort: true });
   // What the request spends, written onto the row while it runs (FIX-2288):
   // only where its end settles it, so a live part never outlives its request.
   if (registered) record.spendTick = startSpendTick(record);
@@ -428,9 +446,15 @@ async function endRequest(
 /** The guards every write of the check presents: advisory, fenced on the claim. */
 const guardsOf = (ticket: TaskClaimTicket) => ({ ifAllowed: true, claim: ticket }) as const;
 
-/** Whether a request ending is one that fails the attempt. */
-const failsTheAttempt = (status: RequestEnding["status"]) =>
-  status === "failed" || status === "aborted" || status === "interrupted";
+/**
+ * Whether a request ending is one that fails the attempt. Not `aborted`: a
+ * person stopped the request, and its task is cancelled ({@link USER_STOPPED}).
+ */
+const failsTheAttempt = (status: RequestEnding["status"]) => status === "failed" || status === "interrupted";
+
+// FIX-2795.
+/** Why a task is cancelled when a person stopped the request working it. */
+const USER_STOPPED = "The request working the task was stopped.";
 
 /** The one check (rule 6), at the end of a request admitted for the task. A failure to record comes back. */
 async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | undefined> {
@@ -457,8 +481,9 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
   }
   // A later request (a notice, a steer's turn) while the task's own request is
   // suspended settles nothing and fails nothing: the task still waits on that
-  // request, and keeps an answer this one gave that counts.
-  if (!record.own && waitsOnItsOwnRequest(record.prior)) {
+  // request, and keeps an answer this one gave that counts. One a person
+  // stopped keeps no answer (below).
+  if (!record.own && waitsOnItsOwnRequest(record.prior) && ending.status !== "aborted") {
     await waitOn(record, row, record.prior!, record.answer);
     return undefined;
   }
@@ -504,6 +529,29 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
     }
     return undefined;
   }
+  if (ending.status === "aborted") {
+    if (!record.own) return checkStopped(record, row);
+    // A person stopped the task's own request (the abort route,
+    // `stopRequest`): the task stops with it, rather than retrying the work
+    // they stopped (FIX-2795). An answer it gave before the stop settles
+    // nothing either: the person stopped the run, so its result is not taken.
+    let refused: string | undefined;
+    const failure = await settleAtRequestEnd({
+      ctx: record.ctx,
+      collection: ref,
+      claim: ticket,
+      recorder: "cancel",
+      settle: async (write) => {
+        const outcome = await advisoryCancel(ref, row.id, USER_STOPPED, { ...guardsOf(ticket), write });
+        if (outcome.outcome === "declined") refused = outcome.reason;
+        return outcome;
+      },
+    });
+    if (refused !== undefined) {
+      console.warn(`[task-board] task "${row.id}": its request was stopped, and the cancel it owed was refused (${refused})`);
+    }
+    return failure;
+  }
   // The first failure only, on purpose: one fails the attempt, and the row records one error.
   const background = ending.backgroundFailures?.[0];
   if (failsTheAttempt(ending.status) || background !== undefined) {
@@ -524,12 +572,70 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
   return checkAnswered(record, row);
 }
 
+// FIX-2795.
+/**
+ * The check for a later request admitted for the task (a steer's turn, a
+ * notice) that a person stopped. The stop was of that turn, not of the task:
+ * it fails nothing and cancels nothing. Two things of the turn are dropped,
+ * and then the task is checked as at any later request's end, each wait's
+ * reason judged as it stands now, never restored from what the row waited on
+ * before the turn:
+ *
+ * - **its answer** is not taken, even one that counts as the task's result;
+ * - **the steers its read took** are untaken again in the check's write: it
+ *   never answered them, so the turn after it must read them.
+ *
+ * Then, by what the row waited on when the turn was admitted:
+ *
+ * - **nothing, a turn owed** (the last question answered): the turn is given
+ *   back, owed again with no lease, for the board's claim.
+ * - **the task's own request, parked** (`suspended`): it waits on that again.
+ *   A later turn ends nothing of it, and while the turn ran the row admitted
+ *   no resume.
+ * - **its filed work, or a steer's turn** (the task's own request answered):
+ *   steers left untaken owe a steer's turn; else work it filed and still open
+ *   holds it; else nothing holds it, and it settles on the answer its own
+ *   request kept.
+ *
+ * So no write here leaves the row running with no lease, no wait whose
+ * reason holds, and no turn owed. A declined write is logged: the row is then
+ * another claim's or ended, or its lease lapsed first.
+ */
+async function checkStopped(record: Admitted, row: Task, rechecked = false): Promise<Error | undefined> {
+  const { ref, ticket } = record;
+  record.answer = undefined;
+  record.stoppedBy = requestKey(record.ctx);
+  const parked = (outcome: TaskWriteOutcome | undefined) => {
+    if (outcome?.outcome === "declined") {
+      console.warn(`[task-board] task "${row.id}": a stopped later request couldn't park the task again (${outcome.reason}); the next claim takes it`);
+    }
+  };
+  if (record.prior === undefined) {
+    // Admitted from an owed turn alone (a later request is admitted only from
+    // a wait or an owed turn).
+    if (ref.setKeptOpenBy !== undefined) parked(await ref.setKeptOpenBy(row.id, null, { claim: ticket, owesTurn: true, untakeSteersOf: record.stoppedBy }));
+    return undefined;
+  }
+  if (record.prior === "suspended") {
+    parked(await waitOn(record, row, "suspended", undefined));
+    return undefined;
+  }
+  // As stored, with the steers this request took untaken, as the write below leaves them.
+  const stored = untakenBy((await readCommittedTask(ref, row.id)) ?? row, record.stoppedBy);
+  if (untakenSteers(stored).length > 0 && (await oweSteerTurn(record, row))) return undefined;
+  if ((await holdingWork(record, row)) !== undefined) {
+    parked(await waitOn(record, row, "filed", undefined));
+    return undefined;
+  }
+  return completeFenced(record, row, row.output, !rechecked, (fresh) => checkStopped(record, fresh, true));
+}
+
 /**
  * Whether request `requestId` took any of `task`'s steers on its attempt:
  * every read that takes one names the request in its `takenIn`.
  */
 function tookSteers(task: Task, requestId: string): boolean {
-  return (task.steers ?? []).some((steer) => steer.takenBy === task.attempts && steer.takenIn?.includes(requestId) === true);
+  return (task.steers ?? []).some((steer) => steer.takenBy === task.attempts && readFor(steer.takenIn, requestId));
 }
 
 /** A task whose own request stopped (for a person, or any other wait) and has not ended. */
@@ -685,10 +791,28 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
   // Done. The latest checkpoint stays the output (the collection's rule);
   // otherwise this request's answer, or the one the task kept while it waited.
   const output = record.answer !== undefined ? record.answer.output : row.output;
-  // A steer that lands after the read above, while held work was checked,
-  // would be settled over: the complete itself declines on an untaken steer,
-  // where a turn can be owed for it, and the check runs once more.
-  const fenceSteers = !noProgress && !rechecked && record.rules.steerTurn !== undefined && ref.setKeptOpenBy !== undefined;
+  return completeFenced(record, row, output, !noProgress && !rechecked, (fresh) => checkAnswered(record, fresh, true));
+}
+
+// FIX-2086 D2; FIX-2795.
+/**
+ * The check's completion, the one way the task settles done at a request's
+ * end. A steer that lands after the check read the row, while held work was
+ * checked, would be settled over: with `fence`, the complete itself declines
+ * on an untaken steer, and `recheck` runs on the row as stored, where a turn
+ * can be owed for it. Once only (a recheck passes no fence), and only while
+ * this request's claim still holds the row: a steer for an attempt that took
+ * the row over is that attempt's to take.
+ */
+async function completeFenced(
+  record: Admitted,
+  task: Task,
+  output: unknown,
+  fence: boolean,
+  recheck: (fresh: Task) => Promise<Error | undefined>
+): Promise<Error | undefined> {
+  const { ref, ticket } = record;
+  const fenceSteers = fence && record.rules.steerTurn !== undefined && ref.setKeptOpenBy !== undefined;
   let lateSteer = false;
   const settled = await settleAtRequestEnd({
     ctx: record.ctx,
@@ -696,7 +820,7 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
     claim: ticket,
     recorder: "complete",
     settle: async (write) => {
-      const outcome = await advisoryComplete(ref, row.id, output, {
+      const outcome = await advisoryComplete(ref, task.id, output, {
         ...guardsOf(ticket),
         ...(fenceSteers ? { refuseUntakenSteers: true } : {}),
         write,
@@ -706,11 +830,9 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
     },
   });
   if (!lateSteer) return settled;
-  // Checked again only while this request's claim still holds the row: a
-  // steer for an attempt that took the row over is that attempt's to take.
-  const fresh = await readCommittedTask(ref, row.id);
+  const fresh = await readCommittedTask(ref, task.id);
   if (!claimHolds(ref, ticket, fresh)) return undefined;
-  return checkAnswered(record, fresh, true);
+  return recheck(fresh);
 }
 
 /** What else holds the task open: work it filed, or nothing. */
@@ -742,6 +864,7 @@ async function waitOn(
     ...(answer !== undefined ? { answer } : {}),
     ...(hold !== undefined ? { hold: hold } : {}),
     ...(owesTurn === true ? { owesTurn: true } : {}),
+    ...(record.stoppedBy !== undefined ? { untakeSteersOf: record.stoppedBy } : {}),
   });
 }
 
@@ -967,8 +1090,8 @@ export async function askMidway(
   // `runOnce` on purpose: a durable replay tells again, by the same hold ids.
   if (ledger.tellMidwayQuestions !== undefined) {
     try {
-      const row = await readCommittedTask(ledger, claim.taskId);
-      if (row !== undefined && (asked.ok || askedOnTicket(row, claim))) await ledger.tellMidwayQuestions(row);
+      const task = await readCommittedTask(ledger, claim.taskId);
+      if (task !== undefined && (asked.ok || askedOnTicket(task, claim))) await ledger.tellMidwayQuestions(task);
     } catch (error) {
       // Best effort: the question stands on the row and in the Inbox either way.
       console.warn(`[task-board] task "${claim.taskId}" couldn't be read to tell the filer its question; it stays in the Inbox: ${(error as Error).message}`);

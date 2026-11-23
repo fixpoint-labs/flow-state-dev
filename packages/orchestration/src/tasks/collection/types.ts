@@ -929,9 +929,18 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
       // FIX-2086 D2; FIX-2133 D3.
       /**
        * With `"steer"`: the turn a steer no request took is owed, marked on the row (`turnOwed`) so the claim can take it when no
-       * wake starts it.
+       * wake starts it. With `null` and no `leaseUntil`: a stopped request
+       * gives back the owed turn its admission took; the row drops its lease
+       * and owes the turn again.
        */
       owesTurn?: boolean;
+      // FIX-2795.
+      /**
+       * A stopped request: the steers it took on this attempt are untaken
+       * again in the same write, for the turn after it. With a wait set, or a
+       * turn given back.
+       */
+      untakeSteersOf?: string;
     }
   ): Promise<TaskWriteOutcome>;
   // FIX-2133; BP-030.

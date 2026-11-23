@@ -53,6 +53,35 @@ export function untakenSteers(task: Pick<Task, "steers" | "attempts">): TaskStee
   return (task.steers ?? []).filter((steer) => steer.takenBy !== task.attempts);
 }
 
+// FIX-2795.
+/**
+ * Whether the read named `takenIn` is request `requestId`'s: one of its
+ * `:`-separated segments is the id, whole. Never a substring: `req_1` is not
+ * in `step:req_10`.
+ */
+export function readFor(takenIn: string | undefined, requestId: string): boolean {
+  return takenIn !== undefined && takenIn.split(":").includes(requestId);
+}
+
+/**
+ * `task` with the steers request `requestId` took on its current attempt
+ * untaken again: what a stopped request gives back (`untakeSteersOf`).
+ * `task` itself when it took none.
+ */
+export function untakenBy<T extends Pick<Task, "steers" | "attempts">>(task: T, requestId: string): T {
+  const steers = task.steers ?? [];
+  const took = (steer: TaskSteer) => steer.takenBy === task.attempts && readFor(steer.takenIn, requestId);
+  if (!steers.some(took)) return task;
+  return {
+    ...task,
+    steers: steers.map((steer) => {
+      if (!took(steer)) return steer;
+      const { takenBy: _by, takenIn: _in, ...rest } = steer;
+      return rest;
+    }),
+  };
+}
+
 /** The steers `task`'s current attempt took in the read named `takenIn`. */
 export function steersTakenIn(task: Pick<Task, "steers" | "attempts">, takenIn: string): TaskSteer[] {
   return (task.steers ?? []).filter((steer) => steer.takenBy === task.attempts && steer.takenIn === takenIn);
