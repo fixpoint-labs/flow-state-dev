@@ -14,7 +14,8 @@ import {
 } from "../app";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
-import { waitsFor, waitsOnPullRequest, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
+import { waitsFor, waitsOnPullRequest, holdOf, attemptDurationMs, attemptStartedAt, elapsedText, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
+import { useNow } from "../lib/use-watch";
 import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -238,8 +239,13 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const setWords = (text: string) => setDrafts((all) => ({ ...all, [popup.taskId]: text }));
   // A coding run's review leads the body; one it can't read leaves the foot with the hold's prompt.
   const review = task && waiting === "review" ? work.review : undefined;
-  const total = tokenTotal(task?.spend);
-  const spent = total === undefined ? undefined : `${total} tokens`;
+  const tokens = tokenTotal(task?.spend);
+  const spent = tokens === undefined ? undefined : `${tokens} tokens`;
+  // The whole task's time in the header, waits included: live while it runs, its attempt's length once it ends.
+  // The live line below counts only the reply in flight.
+  const now = useNow(1000, status === "running");
+  const started = task === undefined ? undefined : attemptStartedAt(task);
+  const totalMs = task === undefined ? undefined : status === "running" ? (started === undefined ? undefined : now - started) : attemptDurationMs(task);
   // The header's status, read once: its words, and the pill's tone and mark.
   const badge: { label: ReactNode; tone: "neutral" | "info" | "success"; icon?: ReactNode } =
     waiting === "review"
@@ -334,7 +340,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
       ) : null}
       {/* The live line ends the feed while it runs: until its first step, the line above says it is starting; a task waiting on you isn't working. */}
       {task && status === "running" && holdOf(task) === undefined && !pullRequestOpen && task.run?.sessionId !== undefined && steps.length > 0 ? (
-        <StreamingIndicator message={workingStatus({ ...work.working, note: task.statusNote })} since={attemptStartedAt(task)} />
+        <StreamingIndicator message={workingStatus({ ...work.working, note: task.statusNote })} since={replyStartedAt(steps) ?? attemptStartedAt(task)} />
       ) : null}
     </>
   );
@@ -350,6 +356,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
             {...(review ? { review } : {})}
             {...(on === undefined ? {} : { on })}
             {...(spent === undefined ? {} : { tokens: spent })}
+            {...(totalMs === undefined ? {} : { total: elapsedText(totalMs) })}
             {...(pullRequests.length > 0 ? { pullRequests } : {})}
           />
         ) : undefined
@@ -392,6 +399,22 @@ function ReviewLead({ children }: { children: ReactNode }) {
 
 /** How many file chips show before the rest fold into "+N more". */
 const CHIPS_SHOWN = 8;
+
+/**
+ * When the reply in flight began: the first item of the run's latest turn. A
+ * task woken on its pull request runs a new turn on the same attempt, so this,
+ * not the attempt's start, is how long the reply has taken. Undefined with no lines.
+ */
+export function replyStartedAt(lines: readonly ItemLine[]): number | undefined {
+  const turn = lines.at(-1)?.requestId;
+  if (turn === undefined) return undefined;
+  const times = lines
+    .filter((line) => line.requestId === turn)
+    .flatMap((line) => ("items" in line ? line.items : "item" in line ? [line.item] : []))
+    .map((item) => item.ts)
+    .filter((ts): ts is number => typeof ts === "number");
+  return times.length === 0 ? undefined : Math.min(...times);
+}
 
 /** "Edited 2 files · ran 5 commands · 2m 14s", and a chip per file the run recorded, named by its file name. */
 function TaskSummary({ task, steps }: { task: CodingBoardTask; steps: readonly ItemLine[] }) {

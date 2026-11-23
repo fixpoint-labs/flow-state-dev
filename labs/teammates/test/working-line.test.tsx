@@ -98,6 +98,22 @@ describe("a running task's feed ends in a live working line", () => {
     expect(within(popup).getByTestId("run-timer").textContent).toBe("(4m 15s)");
   });
 
+  it("on a task woken after a long wait, the live line counts this reply and the header counts the whole task", async () => {
+    // The attempt started two days ago and waited on its pull request; a message woke it 90 seconds ago, as a new turn.
+    const WOKEN = STARTED + 2 * 86_400_000 + 3 * 3_600_000;
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(WOKEN + 90_000);
+    const earlier = { ...said, ts: STARTED + 60_000 };
+    const reply = (id: string, ts: number, status: string) => ({ ...test(status), id, requestId: "req-2", ts });
+    const { popup } = open(RUNNING, { items: { "run-1": [earlier, reply("t2", WOKEN, "completed"), reply("t3", WOKEN + 30_000, "in_progress")] } });
+    await waitFor(() => expect(within(popup).getByTestId("run-timer").textContent).toBe("(1m 30s)"));
+    // Never the attempt's age on the live line: that reads as a reply stuck for days.
+    expect(within(popup).getByTestId("run-timer").textContent).not.toContain("h");
+    expect(popup.querySelector("[data-run-total]")?.textContent).toBe("2d 3h");
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(within(popup).getByTestId("run-timer").textContent).toBe("(1m 32s)");
+  });
+
   it.each([
     ["done", { status: "completed", detail: { answer: "Fixed.", answerCut: false } }],
     ["failed", { status: "errored", error: "The checks stayed red." }],
