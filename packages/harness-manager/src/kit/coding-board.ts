@@ -161,7 +161,7 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
             asks: held,
             harness,
             review,
-            landed: landedOf(output.landed, output.pullRequests) ?? null,
+            landed: landedOf(output.landed) ?? null,
             error: (entry.status === "errored" || entry.status === "cancelled") && typeof task?.error === "string" ? task.error : null,
             pullRequests: wait === null ? [] : wait.pullRequests.map((pullRequest) => pullRequest.number),
             runFlow: task?.run?.sessionId === undefined ? null : (flows.get(task.run.sessionId) ?? null),

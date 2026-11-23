@@ -16,7 +16,7 @@ export const landedWorkSchema = z.union([
     branch: z.string(),
     base: z.string(),
     // FIX-2884.
-    /** What became of the pull request once the task settled on it; absent while it is open or was never read. */
+    /** What became of the pull request, as the settle that ended the task on it stamped it; absent while open or unread. */
     state: z.enum(["merged", "closed"]).optional(),
   }),
   z.object({ kind: z.literal("merge"), branch: z.string(), commit: z.string(), checkout: z.string(), from: z.string() }),
@@ -25,24 +25,35 @@ export const landedWorkSchema = z.union([
 /** Where an accepted run's work went. */
 export type LandedWork = z.infer<typeof landedWorkSchema>;
 
-/**
- * Where an accepted run's work went, from its output's `landed`, or `undefined`
- * when it names none readable. `pullRequests`, the output's settled reads, says
- * whether the pull request it opened has since merged or closed.
- */
-export function landedOf(value: unknown, pullRequests?: unknown): LandedWork | undefined {
+/** Where an accepted run's work went, from its output's `landed`, or `undefined` when it names none readable. */
+export function landedOf(value: unknown): LandedWork | undefined {
   const parsed = landedWorkSchema.safeParse(value);
   if (!parsed.success) return undefined;
   // Only the shape's fields, never extra keys a run wrote beside them.
   const landed = parsed.data;
   if (landed.kind === "merge") return { kind: "merge", branch: landed.branch, commit: landed.commit, checkout: landed.checkout, from: landed.from };
-  const state = settledState(pullRequests, landed.number);
-  return { kind: "pull-request", url: landed.url, number: landed.number, branch: landed.branch, base: landed.base, ...(state === undefined ? {} : { state }) };
+  return {
+    kind: "pull-request",
+    url: landed.url,
+    number: landed.number,
+    branch: landed.branch,
+    base: landed.base,
+    ...(landed.state === undefined ? {} : { state: landed.state }),
+  };
 }
 
-/** The merged or closed state `pullRequests` records for pull request `number`, if it records one. */
-function settledState(pullRequests: unknown, number: number): "merged" | "closed" | undefined {
-  if (!Array.isArray(pullRequests)) return undefined;
-  const found = pullRequests.find((pr): pr is { number: number; state: unknown } => typeof pr === "object" && pr !== null && (pr as { number?: unknown }).number === number);
-  return found?.state === "merged" || found?.state === "closed" ? found.state : undefined;
+// FIX-2884.
+/**
+ * `landed` with what became of its pull request, from `read`, the settle's
+ * reads: `state` once it merged or closed, nothing added while open or when
+ * `read` doesn't hold it. Matched by address, since a number repeats across
+ * repositories. A merge, or no landing, comes back as given.
+ */
+export function withSettledState<L extends { readonly kind: string; readonly url?: string }>(
+  landed: L | null,
+  read: ReadonlyArray<{ readonly url: string | null; readonly state: "open" | "merged" | "closed" }>,
+): L | null {
+  if (landed === null || landed.kind !== "pull-request" || landed.url === undefined) return landed;
+  const found = read.find((pr) => pr.url === landed.url);
+  return found === undefined || found.state === "open" ? landed : { ...landed, state: found.state };
 }

@@ -158,6 +158,7 @@ import {
   type TaskPullRequest,
 } from "./await-pull-requests";
 import { PULL_REQUEST_EVENT } from "./pull-request-wait";
+import { withSettledState } from "./landed-work";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { effectiveCut, headCommit, readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
 import { commandCheckResultSchema, commandChecksSummary, readVerdict, type CommandCheckResult } from "./command-check";
@@ -989,6 +990,9 @@ const landedSchema = z.discriminatedUnion("kind", [
     // FIX-2781; BP-030.
     /** `true` when the pull request was already open from the branch, which was pushed to it. Absent on one an accept opened. */
     existing: z.boolean().optional(),
+    // FIX-2884; BP-030.
+    /** What became of it, stamped by the settle that ended the task on it: absent while open, unread, or on records before it was. */
+    state: z.enum(["merged", "closed"]).optional(),
     // FIX-2858; BP-030.
     /** The run's base, gone from the remote, when the pull request went into the default branch instead. */
     baseGone: z.string().optional(),
@@ -1153,7 +1157,9 @@ const managerStateSchema = z.object({
   /**
    * What the wake found when a person's words woke it and its pull requests had
    * merged or closed: the lead those words reach the run under, in place of the
-   * one for a pull request still open. `null` on any other turn.
+   * one for a pull request still open. Non-null only when `wake` is, and the
+   * mark that this turn only answers (no review, no judge's verdict). `null` on
+   * any other turn.
    */
   wakeNews: z.string().nullable().default(null),
   // FIX-2086.
@@ -3851,13 +3857,17 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         { transient: false },
       );
     }
-    const settled = { ...output, pullRequests: "unreadable" in reads ? null : reads.read.map(outputPullRequest) };
+    const settled = {
+      ...output,
+      pullRequests: "unreadable" in reads ? null : reads.read.map(outputPullRequest),
+      // FIX-2884.
+      landed: "unreadable" in reads ? output.landed : withSettledState(output.landed, reads.read),
+    };
     // A wake that settles runs no harness, and its open cleared the session the run confirmed:
     // put it back, so a later message to the finished task still resumes it.
     const confirmed = woken !== undefined ? { sessionId: state.previousSessionId } : {};
     if (verdict === "complete") {
-      // A wake's own words go with it: the task is done, and nothing is left owed.
-      if (woken !== undefined) await takeSteersFor(ctx, `pull-request-wake:${ctx.request.identity.id}`, () => []);
+      // A wake that settles here took what it was owed before choosing to: nothing is left owed.
       await fenced(writeRunRecord(ctx, identity, { outcome: "succeeded", reason: null, ...confirmed }), "the run record was completed");
       return settled;
     }
@@ -3950,12 +3960,15 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         return;
       }
       if (pullRequestsVerdict(reads.read) === "hold") return;
-      // FIX-2884: words a person sent, or the filer on their behalf, always reach the run, told what became of
-      // the pull requests; the settle after it reads them again and ends the task. Only news from outside (the
-      // pull request's own merge or close, a deadline) settles here with no run.
-      // The steer that answered the wait is taken by the time this reads it; any after it are not yet.
-      const woke = row === undefined ? [] : [answerOf(row, wait.id), ...untakenSteers(row)];
-      if (woke.some((steer) => steer !== undefined && spokenToTheRun(steer))) {
+      // FIX-2884.
+      // Words a person sent, or the filer on their behalf, always reach the run, told what became of the pull
+      // requests; the settle after it reads them again and ends the task. Only news from outside (the pull
+      // request's own merge or close, a deadline) settles here with no run. Everything owed is taken first, in
+      // one write, and the choice reads what that write took: a line sent while GitHub was read is never taken
+      // with a settle that doesn't answer it. A taken steer is this attempt's, so the brief still shows it.
+      const take = await takeSteersFor(ctx, `pull-request-wake:${ctx.request.identity.id}`, () => []);
+      const now = await committedRow(ctx);
+      if (personSpokeOnWake(now === undefined ? undefined : answerOf(now, wait.id), take?.taken ?? [])) {
         await ctx.sequencer!.patchState({ wakeNews: settledPullRequestNews(reads.read) });
         return;
       }
@@ -4006,6 +4019,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const prs = awaitPullRequests
         ? await taskPullRequests(ctx, (await readRunRecord(ctx, state.topic!))?.requestIds ?? [ctx.request.identity.id])
         : [];
+      // FIX-2884.
+      // A turn that only answered a person on a merged or closed pull request settles on it, whatever a judge read.
+      if (state.wakeNews !== null && prs.length > 0) {
+        return settleOnPullRequests(ctx, prs, { ...decision.output, judged: read !== null, review: null, landed: decision.landed ?? null });
+      }
       if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) {
         if (read.verdict === "not-done") {
           if (prs.length === 0) throw new HarnessAttemptFailed(`the judge found the task not done: ${read.reason}`);
@@ -4080,6 +4098,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const state = managerState(harnessCtxState(ctx));
       const decision = state.decided;
       if (!reviewChanges || decision?.settle !== "complete") return input;
+      // FIX-2884.
+      // A turn that answered a person after the pull request merged or closed has nothing to review;
+      // the settle reads the pull request again and ends the task.
+      if (state.wakeNews !== null) return input;
       const read = input?.verdict ?? null;
       // The judge's not-done fails the try and its ask holds a question, at the settle, as without review.
       if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) return input;
@@ -5165,6 +5187,12 @@ const PULL_REQUEST_NEWS =
 /** Whether `steer` is words someone sent the run: a person's, or the filer's on their behalf. A service's delivery or the board's deadline is news, not a message to answer. */
 function spokenToTheRun(steer: Pick<TaskSteer, "from">): boolean {
   return steer.from === "user" || steer.from === "filer";
+}
+
+// FIX-2884.
+/** Whether a person spoke on a pull-request wake: the steer that answered the wait, or one the wake took after it. */
+function personSpokeOnWake(answer: TaskSteer | undefined, taken: readonly TaskSteer[]): boolean {
+  return (answer !== undefined && spokenToTheRun(answer)) || taken.some(spokenToTheRun);
 }
 
 // FIX-2884.

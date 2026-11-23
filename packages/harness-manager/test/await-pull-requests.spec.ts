@@ -344,6 +344,58 @@ describe("a coding task whose run opened a pull request", () => {
     expect(untakenSteers(again)).toEqual([]);
   }, 60_000);
 
+  it("merged: a line typed while the wake reads the pull request is answered by a run, never taken with the settle", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = await waitingLab();
+    await run(lab);
+
+    // The merge's own news wakes the wait; while the wake reads #7 from GitHub, the person asks about it.
+    const gate = join(bin, "gate");
+    rmSync(gate, { force: true });
+    setGh({ listed: [7], states: { 7: "merged" }, gate });
+    await deliver(lab, "Pull request #7 was merged.");
+    const woken = lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    while (prReads().length === 0) await new Promise((resolve) => setTimeout(resolve, 20));
+    await line(lab, "did it merge cleanly?");
+    writeFileSync(gate, "");
+    const result = await woken;
+    expect(result.result.error, messageOf(result.result.error)).toBeUndefined();
+
+    expect(lab.seen).toHaveLength(2);
+    expect(lab.seen[1]!.prompt).toContain("did it merge cleanly?");
+    expect(lab.seen[1]!.prompt).toContain("Pull request #7 has merged.");
+    const done = await row(lab);
+    expect(done.status).toBe("completed");
+    expect(untakenSteers(done)).toEqual([]);
+  }, 60_000);
+
+  it("merged, with reviewChanges on: the answer turn completes the task, and asks for no review of the merged work", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = claimHost({
+      mode: "claim",
+      // The answer turn leaves a commit on the branch: with the pull request merged there is nothing left to review it on.
+      script: [{ answer: "Opened PR #7." }, { commits: 1, answer: "Yes, #7 merged." }],
+      manager: { awaitPullRequests: true, reviewChanges: true },
+      durable: true,
+    });
+    await lab.seed({ ...AT, id: "t1", goal: "fix the bug", input: {} });
+    await run(lab);
+    // The task waits on its pull request.
+    const first = await row(lab);
+    expect(openHolds(first).map((hold) => hold.ask.kind)).toEqual(["external"]);
+
+    setGh({ listed: [7], states: { 7: "merged" } });
+    await line(lab, "Is the PR still open?");
+    await run(lab);
+
+    expect(lab.seen).toHaveLength(2);
+    const done = await row(lab);
+    // Not held on a review: the work is the merged pull request, and the turn only answered the person.
+    expect(openHolds(done)).toEqual([]);
+    expect(done.status).toBe("completed");
+    expect(done.output).toMatchObject({ pullRequests: [{ number: 7, state: "merged" }] });
+  }, 60_000);
+
   it("one merged and one closed: completes, the closed one noted on the output", async () => {
     setGh({ listed: [7, 8], states: { 7: "open", 8: "open" } });
     const lab = await waitingLab();
@@ -373,7 +425,8 @@ describe("a coding task whose run opened a pull request", () => {
     await run(lab);
     expect(lab.seen).toHaveLength(2);
     expect((await row(lab)).status).toBe("in_progress");
-    expect(openHolds(await row(lab)).map((hold) => hold.ask.kind)).toEqual(["external"]);
+    const first = await row(lab);
+    expect(openHolds(first).map((hold) => hold.ask.kind)).toEqual(["external"]);
   }, 60_000);
 
   it("unreadable (gh signed out): the line runs, the task waits again with a status note, and nothing settles it", async () => {
