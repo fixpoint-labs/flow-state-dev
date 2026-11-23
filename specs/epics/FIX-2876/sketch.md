@@ -263,10 +263,11 @@ harness value's own default; for plan, the task's. Until FIX-2599, `plan` never 
 id: `plan: true` on a harness that is not a plan harness fails the claim, and a plan harness is a
 plan run whatever `plan` says. Only a fresh work claim runs it, and it freezes the harness, the
 **effective** model (the harness default included, never a null that reads the option later) and
-the plan setting on the run record as one triple. A worker's lock is then checked against that
-triple, on every field the lock names. Steer, message, door and
-resume read that frozen triple, never the session's current
-`codeWith`, so a pick made after the claim changes nothing in flight.
+the plan setting as one triple, and with it `review` and the stored `mode`: together, the frozen
+run settings, on the run record. A worker's lock is then checked against them, on every field the
+lock names. Steer, message, door and resume read the frozen run settings, never the session's
+current `codeWith` or the app's current `defaultMode`, so nothing changed after the claim reaches
+a run in flight.
 
 ```ts
 // packages/harness-manager/src/kit/coder-flow.ts, replacing harnessOf
@@ -307,7 +308,7 @@ const resolveRun = async (ctx: BlockContext, task: { input?: unknown } | undefin
   return { ...found, id, manager: review ? found.reviewed : found.manager, model: { ...checked, model: triple.model ?? undefined }, plan, triple, frozen: { ...triple, review, mode } };
 };
 
-/** NEW (FIX-2878): the triple a fresh work claim froze, for every other route. */
+/** NEW (FIX-2878): the frozen run settings a fresh work claim wrote, for every other route. */
 const frozenRunOf = async (ctx: BlockContext) => {
   const filed = await board(ctx);
   const task = filed === undefined ? undefined : sessionTask(filed.tasks, ctx.session.identity.id);
@@ -315,10 +316,15 @@ const frozenRunOf = async (ctx: BlockContext) => {
   if (run?.harnessId == null) throw new Error("this session's task has not been claimed; nothing to steer. Nothing ran.");
   const found = built[run.harnessId];
   if (found === undefined) throw new Error(`the run's harness "${run.harnessId}" is not here any more. Nothing ran.`);
-  return { ...found, id: run.harnessId, model: { model: run.model ?? undefined }, plan: run.plan };
+  // `mode` is the frozen one, never the app's current defaultMode: a claimed implement task stays implement.
+  return { ...found, id: run.harnessId, model: { model: run.model ?? undefined }, plan: run.plan, mode: run.mode };
 };
 
-// In byHarness: only the work entry's fresh claim resolves; steer, message and door read the frozen triple.
+// runTopicOf: new runs write `<epic>/<issue>/<modeName>`; a reader tries that key, then the legacy
+// phase-value key (implement ↔ code, default ↔ the old single-phase value). No migration and no
+// rewrite: a run started under the old key finishes under it. FIX-2877's spec owns the detail.
+
+// In byHarness: only the work entry's fresh claim resolves; steer, message and door read the frozen run settings.
 execute: async (input: { input?: unknown } & Record<string, unknown>, ctx: never) => {
   // A task's own input carries `goal`; a steer, a message or a door line doesn't (the door's `taskId` is a label only).
   const freshClaim = "goal" in input && route === "work"; // `route`: byHarness's own argument, one per entry
