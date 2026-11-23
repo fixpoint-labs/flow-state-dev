@@ -500,7 +500,13 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
     // A turn the row owed and this request's admission took is owed again,
     // so the row's next claim can take it even if no wake starts it.
     if (!record.own) {
-      if (record.prior !== undefined) await waitOn(record, row, record.prior, undefined, undefined, record.tookOwedTurn === true);
+      if (record.prior !== undefined) {
+        await waitOn(record, row, record.prior, undefined, undefined, record.tookOwedTurn === true);
+      } else if (record.tookOwedTurn === true && ref.setKeptOpenBy !== undefined) {
+        // An owed turn with no wait beside it (the last question answered):
+        // the row owes it again, with no lease, as the answer left it.
+        await ref.setKeptOpenBy(row.id, null, { claim: ticket, owesTurn: true });
+      }
       return undefined;
     }
     // A person stopped the task's own request (the abort route,

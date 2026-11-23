@@ -1107,6 +1107,32 @@ describe("a stopped request settles its task when it ends, never at its lease's 
     expect(claimed).toMatchObject({ id: "t1", attempts: 1, turn: 3 });
   });
 
+  it("a person's stop of a later request that took the turn an answered question owed gives that turn back", async () => {
+    const h = await harness();
+    h.setBehaviour(async (ctx, ledger) => {
+      await askMidway(ctx, ledger, [{ prompt: "Which date column?" }]);
+      return "a partial answer";
+    });
+    await h.run();
+    const held = (await h.row())!;
+    await (await h.ledger()).answer!("t1", { questionId: openHolds(held)[0]!.id, message: "signup_date", from: "user", by: "u1" });
+    // The answer owes one more turn, with no wait beside it.
+    const owed = (await h.row())!;
+    expect(owed).toMatchObject({ status: "in_progress", turnOwed: true, attempts: 1, turn: 1 });
+    expect(owed.keptOpenBy).toBeUndefined();
+    // A later request admitted from that row takes the turn, and is stopped.
+    h.setLaterTurn(async (ctx) => stopSelf(ctx));
+    const { requestId } = await h.runLater("notice");
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    // The row owes the turn again, with no lease: not left running until a lease lapses.
+    const task = (await h.row())!;
+    expect(task).toMatchObject({ status: "in_progress", turnOwed: true, attempts: 1 });
+    expect(task.leaseUntil).toBeUndefined();
+    expect(task.keptOpenBy).toBeUndefined();
+    // No clock moved: the board's claim takes that turn now, on the same attempt.
+    expect(await h.reclaim()).toMatchObject({ id: "t1", attempts: 1, turn: (task.turn ?? 0) + 1 });
+  });
+
   it("a person's stop of a later request while the task's own request is parked keeps none of its answer", async () => {
     const h = await harness();
     h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "user_input", message: "which one?" }));

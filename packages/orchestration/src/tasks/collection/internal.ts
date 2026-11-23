@@ -1243,7 +1243,7 @@ export function requireClaimTicket(
   }
 }
 
-// FIX-2086; FIX-2077; FIX-2133.
+// FIX-2086; FIX-2077; FIX-2133; FIX-2795.
 /**
  * The patch `setKeptOpenBy` writes: set, with the request's answer
  * kept by {@link completionPatch}'s output rule and no lease unless one is
@@ -1258,13 +1258,22 @@ export function requireClaimTicket(
  * advances the turn generation and clears the mark. Set with `owesTurn`, the
  * wait is a turn owed (the steer turn), which the claim may take.
  *
- * @throws when clearing without a finite `leaseUntil`: a programming error.
+ * Cleared with `owesTurn` and no `leaseUntil`: a later request
+ * that took an owed turn with no wait beside it (the last question answered)
+ * was stopped, and gives the turn back. The row drops its lease and owes the
+ * turn again, as the answer left it, so the claim may take it.
+ *
+ * @throws when clearing without a finite `leaseUntil`, other than to give a
+ *   turn back: a programming error.
  */
 export function waitingOnPatch(
   task: Task,
   keptOpenBy: Task["keptOpenBy"],
   options: { leaseUntil?: number; answer?: { output: unknown }; hold?: SuspensionHold; resume?: boolean; owesTurn?: boolean }
 ): Partial<Task> {
+  if (keptOpenBy == null && options.owesTurn === true && options.leaseUntil === undefined) {
+    return { keptOpenBy: undefined, leaseUntil: undefined, turnOwed: true };
+  }
   if (keptOpenBy == null) {
     assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
     const resumed = options.resume === true ? holdWrite(task, { op: "resume" }) : "unchanged";

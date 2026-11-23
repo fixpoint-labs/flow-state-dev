@@ -929,7 +929,9 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
       // FIX-2086 D2; FIX-2133 D3.
       /**
        * With `"steer"`: the turn a steer no request took is owed, marked on the row (`turnOwed`) so the claim can take it when no
-       * wake starts it.
+       * wake starts it. With `null` and no `leaseUntil`: a stopped request
+       * gives back the owed turn its admission took; the row drops its lease
+       * and owes the turn again.
        */
       owesTurn?: boolean;
     }
