@@ -4,12 +4,13 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **sets Teammates' default coder** (`TEAMMATES_HARNESS=codex`) | Lead still files unnamed coding work on `teammates.cursor`. The composer adds a `Coding harness: Codex` line to every message to work around it | The task lands on the Codex worker, set by the server whatever Lead wrote. The composer sends the message as typed |
+| **sets Teammates' default coder** (`TEAMMATES_HARNESS=codex`) | Lead still files unnamed coding work from a person's message on `teammates.cursor`. The composer adds a `Coding harness: Codex` line to every message to work around it | The task lands on the Codex worker, set by the server whatever Lead wrote. The composer sends the message as typed |
 | **asks Lead for a change and picks no coder** | Lead follows its prompt's fallback, `teammates.cursor` | The server puts it on the app's one default |
+| **runs a coding task whose worker files more work from inside the run** | The worker's model picks the assignee | Unchanged: the model's assignee stands. FIX-2878's run settings win on an unlocked worker, and its lock refuses a mismatch |
 | **names a coder in words, or something Lead reads does** ("have Cursor do it", a README's `Coding harness: Cursor`) | Lead files it on that coder, any one on the roster, whatever its sandbox | The task still goes to the default. Until FIX-2879, a coder is picked only by a person assigning the task on the board |
 | **edits a teammate in Teammates** | Sees a "Default coding harness" field. The server never reads it; only the composer's starting pick does | Sees no such field. Until FIX-2879, the *Code with* picker has no effect: every filing goes to the app's default |
 | **starts Shift Manager with `DEVFORCE_LAB_HARNESS=codex`** | The coder runs on Codex. The readiness view lists only Claude Code, and a Codex run with no sign-in fails inside the run | The same coder. Readiness lists every harness the coder runs, and a task on one that is not ready is refused at once, saying why |
-| **hires a Shift Manager coder with `harness: cursor`** | Runs on Cursor, through Shift Manager's own coding flow | Runs on Cursor, through the shared `coder` flow, for a task a person assigns it; a coordinator's filing with no pick goes to the default. Same checks, same judge |
+| **hires a Shift Manager coder with `harness: cursor`** | Runs on Cursor, through Shift Manager's own coding flow | Runs on Cursor, through the shared `coder` flow, for a task a person assigns it. A coordinator's own filing with no pick goes to the default; a worker's filing inside its run can still go to a role-specific coder worker. Same checks, same judge |
 | **builds an app on the harness kit** | Copies the coding flow to change how a task is phased or checked, as Shift Manager did | Sets an option: a separate phase for feature work, tool approval, and the app's own worker settings |
 
 ## The goal, and how we'll know it's met
@@ -22,7 +23,7 @@ the coder that runs changes, with nothing else edited.**
 | **The real need** | [FIX-2627](https://linear.app/fixpoint-labs/issue/FIX-2627) promised one coding flow for the labs, and Shift Manager kept its own. Teammates' four knobs agree only by convention. Epic [FIX-2876](../../epics/FIX-2876/SPEC.md) needs one flow and one default before run settings ([FIX-2878](https://linear.app/fixpoint-labs/issue/FIX-2878)) and *Code with* ([FIX-2879](https://linear.app/fixpoint-labs/issue/FIX-2879)) build on them ([ER-1, ER-3, ER-4](../../epics/FIX-2876/DECISIONS.md#who-owns-what)) |
 | **Smaller, and rejected** | "`coder.mts` is deleted and the constants are gone." That can pass while Shift Manager runs a renamed copy, or while Lead still reaches the default only because its prompt names the same worker |
 | **Bigger, and not this issue's** | A harness or model per task (FIX-2878). The pick as structured state, and one coder worker in Teammates (FIX-2879). A *Code with* picker in Shift Manager (not in the epic) |
-| **Not done if** | The kit's `coder` is still switched off in Shift Manager · a coding task with no pick lands where the model's assignee, or a `Coding harness:` line, says · the composer still compares against a constant · the readiness view and the coder accept different harness ids · Shift Manager's coder goals were not run on the shared flow · an agent-flow teammate can still save a `harness` setting |
+| **Not done if** | The kit's `coder` is still switched off in Shift Manager · a coding task filed with no pick outside any coding run lands where the model's assignee, or a `Coding harness:` line, says · the composer still compares against a constant · the readiness view and the coder accept different harness ids · Shift Manager's coder goals were not run on the shared flow · an agent-flow teammate can still save a `harness` setting |
 
 ```mermaid
 flowchart LR
@@ -40,7 +41,7 @@ control its leg must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | Leg a: `goals/teammates-lab/one-default-picks-the-coder/`, real model, Lead on the lab's default. Leg b: `goals/shift-manager/its-coder-is-the-shared-flow/`, no model. Run by the implementer at completion; verdicts in the implementation PR. Shift Manager's existing coder goals (`goals/devforce-lab/*`, `goals/shift-manager/*` that open a Lab) run too, on the shared flow |
-| **Signal** | **a:** for each value, in every run (3 of 3), the stored task's assignee is the coding worker whose `harness:` is that value, the run record names that harness, and the stored message has no `Coding harness:` text. With the default on `codex`, an ask whose message and README (which Lead reads) both say `Coding harness: Cursor` still lands on the Codex worker, 3 of 3; a person assigning the task to the Cursor worker on the board runs it on Cursor. A *Code with* pick landing on its coder is FIX-2879's check, not this one. A teammate hired with a `harness` setting has none on its roster row. **b:** for each id, the run record names that harness, the run is a `coder` flow run, and a hire naming an id outside the readiness rows is refused with exactly the readiness ids |
+| **Signal** | **a:** for each value, in every run (3 of 3), the stored task's assignee is the coding worker whose `harness:` is that value, the run record names that harness, and the stored message has no `Coding harness:` text. With the default on `codex`, an ask whose message and README (which Lead reads) both say `Coding harness: Cursor` still lands on the Codex worker, 3 of 3; a person assigning the task to the Cursor worker on the board runs it on Cursor. A filing made inside a coding run is not rewritten: no signal reads one as moved to the default. A *Code with* pick landing on its coder is FIX-2879's check, not this one. A teammate hired with a `harness` setting has none on its roster row. **b:** for each id, the run record names that harness, the run is a `coder` flow run, and a hire naming an id outside the readiness rows is refused with exactly the readiness ids |
 | **Input** | A held-out ask, "add a line to the README", in two wordings, plus the planted-text ask; scripted harnesses (`GOAL_HARNESS=stub`), so no vendor sign-in is needed. Leg b: two scripted harness values under different ids |
 | **Anti-game** | No worker file or prompt names the default. Read the stored task, the message and the run record, never Lead's reply or the picker. The server's no-pick assignee ([D2](DECISIONS.md#d2)) is the mechanism under test, not a way round it; what it must not do is read the default from anything a model wrote |
 | **Control that must fail** | Leg a: `GOAL_CONTROL=model-assignee` (the server's no-pick write patched out, so Lead's assignee stands) must FAIL *on the default, every run*; today's `main` must FAIL it for `codex`, and FAIL the planted-text ask. Leg b: today's `main` must FAIL *a `coder` flow run* and *readiness ids equal the coder's* |
@@ -73,8 +74,12 @@ at it. Shift Manager's own flow folds into the shared one ([D1](DECISIONS.md#d1)
 + the app's default.
 ```
 
-With no pick, the server writes a coding task's assignee from the kit's `defaultHarness` and
-ignores the model's ([D2](DECISIONS.md#d2)). The harness kit's context names the default beside the
+With no pick, on a filing made outside any coding run (a person's turn, or a linked non-coding
+session), the server writes a coding task's assignee from the kit's `defaultHarness` and ignores
+the model's ([D2](DECISIONS.md#d2)). A filing made inside or below a coding run keeps the model's
+assignee. The rule is **interim**: FIX-2878 retires it once its filler writes the server's default
+run settings, with its marker, on the no-pick path; from then the model's assignee is honoured and
+FIX-2878's lock checks it. The harness kit's context names the default beside the
 readiness rows, so Lead can say which coder took it. `LEAD_FALLBACK_HARNESS` and the `Coding
 harness:` line go, and the composer sends nothing in their place. The per-teammate field goes
 ([D3](DECISIONS.md#d3)).
@@ -110,7 +115,7 @@ lists every coder). `/release-docs` updates `shift-manager/from-a-checkout.md`, 
 ```mermaid
 flowchart LR
   E["DEVFORCE_LAB_HARNESS or TEAMMATES_HARNESS"] --> K["harness kit · defaultHarness"]
-  K --> W["no pick · the server writes the assignee"]
+  K --> W["no pick, outside a coding run · the server writes the assignee (interim)"]
   W --> F["the shared coder flow · worker harness, else default"]
   K --> X["the kit's context · readiness and the default"]
   X --> L["Lead and the Shift Coordinator · told, not routing"]
@@ -126,9 +131,11 @@ client read it; none keeps a copy, and no model chooses from it.
 - Teammates' three coding workers. FIX-2879 collapses them
   ([epic D2](../../epics/FIX-2876/DECISIONS.md#d2)).
 - A person's own assignment from the board wins. That is the only pick until FIX-2879.
-- Shift Manager's tasks, phases, checks, judge, pull-request follow and EM. It gets no picker. Its
-  EM files on `eng.coder`, which has no `harness:` line, so the no-pick rule leaves its routing
-  as it is.
+- A filing made inside or below a coding run keeps the model's assignee, as today.
+- Shift Manager's tasks, phases, checks, judge, pull-request follow and EM. It gets no picker. A
+  coordinator's own no-pick filing gets the default; its EM files on `eng.coder`, which has no
+  `harness:` line, so its routing stays as it is. A worker's filing inside its run keeps the
+  model's assignee, so it can still route to a role-specific coder worker.
 - The task input's `harnessFeature` key, which FIX-2878 moves into the declared input.
 
 ## What's already here, and the debt
@@ -141,6 +148,7 @@ client read it; none keeps a copy, and no model chooses from it.
 | `harnessReadinessCapability` and `READINESS_GUIDANCE`, already steering Lead (`goals/teammates-lab/routes-only-to-ready-harnesses`) | **Extends** with the default coder |
 | [FIX-2627 → What stays as it is](../FIX-2627/SPEC.md#what-stays-as-it-is): Shift Manager's flow "stays its own" | **Superseded**, as [epic ER-1](../../epics/FIX-2876/DECISIONS.md#who-owns-what) says. [D1](../FIX-2627/DECISIONS.md#d1)'s escape hatch stays for apps outside this repo |
 | FIX-2486: a Shift Manager coder names a harness | **Kept**, on the kit's `harness:` setting |
+| FIX-2878's run settings, filler and lock | **Builds before it.** FIX-2877 merges first: FIX-2878 imports and renames `harnessFeature`. **Hands off** the no-pick assignee: FIX-2878 retires it once its filler writes the server's default run settings, with its marker, on the no-pick path |
 | FIX-2879's *Code with* pick | **Hands off**: FIX-2879 brings the structured pick (respond `fields`, the `codeWith` session field, the composer sending it), and that is where it enters D2 as a pick. This issue adds no field and no composer send |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
@@ -148,16 +156,16 @@ client read it; none keeps a copy, and no model chooses from it.
 | `phases`: a feature phase with its workspace, and the answer phase | `codingPhase` and `commandCheck` | **Extends**: the kit's checks wrap whichever phase runs; the default is today's one phase |
 | `approveTools` | `harnessManager({ approveTools })` | **Extends**: forwarded, like `review` |
 | The app's worker settings, documents and actions on `coder` | The agent flow's `settings` option | **Extends** in the same shape; the flow never reads them. `resources` is the fork's file-declared documents (`resourcesFromDocs`), installed at flow level beside the installation's |
-| The server's no-pick assignee | `checkAssignee`, `harnessOf` | **Extends** the kit's filing of a coding task: `checkAssignee` accepts any roster id, so the default is written before it |
+| The server's no-pick assignee, **interim** | `checkAssignee`, `harnessOf` | **Extends** the kit's filing of a coding task made outside any coding run: `checkAssignee` accepts any roster id, so the default is written before it. Retired by FIX-2878 |
 | The default coder in the kit's context | `harnessReadinessCapability` | **Extends** the same capability |
 
 | The debt | |
 |---|---|
 | **Removes** | `coder.mts`, `coderHarnessNames`, `HARNESS_SETTING`, `workerHarnesses` and Shift Manager's second list · `LEAD_FALLBACK_HARNESS` and the `Coding harness:` line · Lead's `teammates.cursor` fallback and its rule to follow a coder named in words · the agent-flow `harness` setting and its form field · Shift Manager's judge wrapper (`judge.mts`). Their readers are [listed](#what-changes) |
-| **Adds** | Three harness-kit options, one context line, and the server's no-pick assignee. Public and permanent by design |
+| **Adds** | Three harness-kit options and one context line, public and permanent by design. The server's no-pick assignee, interim: FIX-2878 retires it |
 | **Leaves** | Teammates' three per-harness workers (FIX-2879). Until then the server maps the default to the worker whose `harness:` matches |
 
-**Net: down.** A 438-line fork, a second list and three knobs go; the kit gains three options, a line and one filing rule.
+**Net: down.** A 438-line fork, a second list and three knobs go; the kit gains three options, a line and one interim filing rule.
 
 ## Sign off
 
@@ -171,8 +179,9 @@ kit options and a line come. If wrong: options only Shift Manager uses.
 1. **[D1](DECISIONS.md#d1) · Shift Manager moves onto the shared flow: what the flow already does
    is dropped, and the flow gains three options for the rest.** If wrong: three public options
    carrying one app's habits.
-2. **[D2](DECISIONS.md#d2) · With no coder picked, the server puts a coding task on the default
-   coder, whatever Lead wrote; text naming a coder is not a pick.** If wrong: someone who names a
+2. **[D2](DECISIONS.md#d2) · With no coder picked, outside any coding run, the server puts a coding
+   task on the default coder, whatever Lead wrote; text naming a coder is not a pick. Interim:
+   FIX-2878 retires it; a filing inside a coding run keeps the model's assignee.** If wrong: someone who names a
    coder in words gets the default. Until FIX-2879, so does someone who uses *Code with*: the
    picker has no effect in that gap, an accepted cost that ends when FIX-2879 ships.
 3. **[D3](DECISIONS.md#d3) · The per-teammate "default coding harness" goes, not renamed.** If
