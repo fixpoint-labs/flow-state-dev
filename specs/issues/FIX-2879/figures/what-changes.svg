@@ -1,0 +1,103 @@
+<svg viewBox="0 0 940 300" role="img" aria-label="Before and after, the same six steps in aligned columns: the browser, the request, the session, Lead&#x27;s turn, the task, and who runs it. Today: Code with is React state only; the request is message text with a Coding harness line added; the session keeps nothing, so a reload loses it; Lead&#x27;s prompt reads the line and picks a worker; the task is assigned to teammates.codex with no model; three coder workers, one per harness. After: Codex and a listed model are picked; the request carries the message and a codeWith field; the server writes codeWith on the session each turn; Lead files a task with no coder in it; the harness kit&#x27;s filler writes harness and model into the task; one coder runs the task&#x27;s pick. The gone parts are message text, the prompt rule and the per-harness workers."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+      .arrow { fill:var(--ink-3); }
+    .today { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="300"/>
+  <g id="columns">
+    <text class="t-lbl" x="26" y="28">THE BROWSER</text>
+    <text class="t-lbl" x="179" y="28">THE REQUEST</text>
+    <text class="t-lbl" x="332" y="28">THE SESSION</text>
+    <text class="t-lbl" x="485" y="28">LEAD’S TURN</text>
+    <text class="t-lbl" x="638" y="28">THE TASK</text>
+    <text class="t-lbl" x="791" y="28">WHO RUNS IT</text>
+  </g>
+  <g id="today">
+    <text class="t-tag c-gone" x="16" y="56">TODAY · THE PICK IS WORDS A MODEL READS</text>
+    <rect class="today" x="16" y="66" width="141" height="58" rx="5"/>
+    <text class="t-b c-lost" x="26" y="90">Code with: Codex</text>
+    <text class="t-s" x="26" y="108">React state only</text>
+    <polygon class="arrow" points="158,91 167,95 158,99"/>
+    <rect class="today" x="169" y="66" width="141" height="58" rx="5"/>
+    <text class="t-b c-lost" x="179" y="90">Message text</text>
+    <text class="t-s" x="179" y="108">+ a Coding harness line</text>
+    <polygon class="arrow" points="311,91 320,95 311,99"/>
+    <rect class="today" x="322" y="66" width="141" height="58" rx="5"/>
+    <text class="t-b c-lost" x="332" y="90">Nothing kept</text>
+    <text class="t-s" x="332" y="108">lost on reload</text>
+    <polygon class="arrow" points="464,91 473,95 464,99"/>
+    <rect class="today" x="475" y="66" width="141" height="58" rx="5"/>
+    <text class="t-b c-lost" x="485" y="90">Prompt reads the line</text>
+    <text class="t-s" x="485" y="108">picks a worker</text>
+    <polygon class="arrow" points="617,91 626,95 617,99"/>
+    <rect class="today" x="628" y="66" width="141" height="58" rx="5"/>
+    <text class="t-b c-lost" x="638" y="90">teammates.codex</text>
+    <text class="t-s" x="638" y="108">the assignee · no model</text>
+    <polygon class="arrow" points="770,91 779,95 770,99"/>
+    <rect class="today" x="781" y="66" width="141" height="58" rx="5"/>
+    <text class="t-b c-lost" x="791" y="90">Three coder workers</text>
+    <text class="t-s" x="791" y="108">one per harness</text>
+  </g>
+  <line class="row" x1="16" y1="146" x2="924" y2="146"/>
+  <g id="after">
+    <text class="t-tag c-code" x="16" y="172">AFTER · THE PICK IS A FIELD THE SERVER WRITES</text>
+    <rect class="chosen" x="16" y="182" width="141" height="58" rx="5"/>
+    <text class="t-b c-code" x="26" y="206">Codex · gpt-6-luna</text>
+    <text class="t-s" x="26" y="224">picked, model listed</text>
+    <polygon class="arrow" points="158,207 167,211 158,215"/>
+    <rect class="chosen" x="169" y="182" width="141" height="58" rx="5"/>
+    <text class="t-b c-code" x="179" y="206">message + fields</text>
+    <text class="t-s" x="179" y="224">{ codeWith }</text>
+    <polygon class="arrow" points="311,207 320,211 311,215"/>
+    <rect class="chosen" x="322" y="182" width="141" height="58" rx="5"/>
+    <text class="t-b c-code" x="332" y="206">codeWith, written</text>
+    <text class="t-s" x="332" y="224">by the server, per turn</text>
+    <polygon class="arrow" points="464,207 473,211 464,215"/>
+    <rect class="chosen" x="475" y="182" width="141" height="58" rx="5"/>
+    <text class="t-b c-code" x="485" y="206">Files a task</text>
+    <text class="t-s" x="485" y="224">no coder in it</text>
+    <polygon class="arrow" points="617,207 626,211 617,215"/>
+    <rect class="chosen" x="628" y="182" width="141" height="58" rx="5"/>
+    <text class="t-b c-code" x="638" y="206">Filler writes</text>
+    <text class="t-s" x="638" y="224">harness and model</text>
+    <polygon class="arrow" points="770,207 779,211 770,215"/>
+    <rect class="chosen" x="781" y="182" width="141" height="58" rx="5"/>
+    <text class="t-b c-code" x="791" y="206">One coder</text>
+    <text class="t-s" x="791" y="224">runs the task’s pick</text>
+  </g>
+  <g id="foot">
+    <rect class="foot" x="16" y="256" width="908" height="32" rx="5"/>
+    <text class="t-s" x="32" y="276">Gone: the Coding harness line, the prompt rule that reads it, two coder workers. A turn no person started reads the same codeWith.</text>
+  </g>
+</svg>
