@@ -23,7 +23,7 @@ export const KIT_MODE = "default";
  * registers one under this name. Interim: the marker is how a task names
  * feature work until a task names its mode itself.
  */
-export const FEATURE_MODE = "implement";
+const FEATURE_MODE = "implement";
 
 /** The task-input fields a mode can need: the ones a filer writes. */
 const TASK_INPUT_FIELDS = ["issue", "project"] as const;
