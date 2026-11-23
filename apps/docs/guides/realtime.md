@@ -101,7 +101,7 @@ Every `subscribe` call on one client shares one connection.
 | Host | What happens |
 |------|--------------|
 | `serve()` from `@flow-state-dev/node`, including `fsdev dev` and `fsdev serve` | One WebSocket per client carries the notices. |
-| Vercel, Next.js, `createServerApp` alone (Lambda, Bun, Deno) | No push. The read runs every `pollIntervalMs`. |
+| Vercel, Next.js, `createServerApp` alone (Bun, Deno) | No push. The read runs every `pollIntervalMs`. |
 
 You don't write different code for either. The client asks the server what it supports and picks.
 

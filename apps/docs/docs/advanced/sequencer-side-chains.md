@@ -77,7 +77,7 @@ The drain runs until the pool is empty, so a background task that queues more ba
 
 The request is not reported finished until the background work queued before its terminal hooks has settled — whether it succeeded or not. If the action throws, if the user hits stop, or if the client disconnects mid-stream, the request still waits for those tasks before the terminal record is written and the stream closes.
 
-That matters most on ephemeral hosts (Vercel, Next.js `after()`, Lambda), where the platform is free to freeze the container the moment the request returns. A task still running at that point can be cut off with a write half-applied. Because the request holds itself open until the pool settles, a `.sideChain()` task that captures memory or writes a summary gets to finish even on a turn the user cancelled.
+That matters most on ephemeral hosts (Vercel, Next.js `after()`, other serverless functions), where the platform is free to freeze the container the moment the request returns. A task still running at that point can be cut off with a write half-applied. Because the request holds itself open until the pool settles, a `.sideChain()` task that captures memory or writes a summary gets to finish even on a turn the user cancelled.
 
 Two timing details are worth knowing about.
 
