@@ -94,6 +94,7 @@ import {
   GUARD_TERMS as TERMS,
   PERSON_PINS,
   PUBLISHED_TERMS,
+  RELEASE_NOTE_EXEMPTIONS,
   sharedGuardExemption,
   TREE_EXEMPTIONS,
   TREE_RULES,
@@ -445,7 +446,14 @@ export function checkGlossary(text) {
  *   the text of each one that reads as text
  * @param {{ extraExceptions?: object[]; reads?: typeof NAME_READS }} [options] `reads`: the parser reads (a test drops one)
  */
-export function census({ files, paths }, { extraExceptions = [], reads = NAME_READS } = {}) {
+/**
+ * A pending changeset: a note at the top of `.changeset/`, never its README. `changeset version`
+ * deletes exactly these, so a `releaseNote` flag may name these and nothing else.
+ * @param {string} path
+ */
+export const isPendingChangeset = (path) => /^\.changeset\/[^/]+\.md$/.test(path) && path !== ".changeset/README.md";
+
+export function census({ files, paths }, { extraExceptions = [], releaseNotes = RELEASE_NOTE_EXEMPTIONS, reads = NAME_READS } = {}) {
   const exceptions = [...EXCEPTIONS, ...extraExceptions];
   const unscoped = [];
   const areaCounts = {};
@@ -474,11 +482,14 @@ export function census({ files, paths }, { extraExceptions = [], reads = NAME_RE
   const noteGone = (e) => e.releaseNote === true && !paths.some((path) => e.where(path, files.get(path) ?? ""));
   const stale = unused.filter((e) => !noteGone(e)).map((e) => e.id);
   const released = unused.filter(noteGone).map((e) => e.id);
-  // The flag is the author's word that the path names release notes only. Hold it to that: one
-  // that names any file outside `.changeset/` would hide a stale exception there.
-  const misflagged = exceptions
-    .filter((e) => e.releaseNote === true)
-    .flatMap((e) => paths.filter((path) => !path.startsWith(".changeset/") && e.where(path, files.get(path) ?? "")).map((path) => `${e.id} (${path})`));
+  // The flag is the author's word that the path names pending notes only. Hold every flagged
+  // exemption to that, of any check: one that names another tracked file would hide a stale
+  // exception there. A glossary exemption is read by its path; a planted guard exception by `where`.
+  const flagged = [...releaseNotes, ...extraExceptions.filter((e) => e.releaseNote === true)];
+  const names = (e, path) => (e.path instanceof RegExp ? e.path.test(path) : e.where(path, files.get(path) ?? ""));
+  const misflagged = flagged.flatMap((e) =>
+    paths.filter((path) => !isPendingChangeset(path) && names(e, path)).map((path) => `${e.id ?? e.path} (${path})`),
+  );
   const glossaryText = files.get(GLOSSARY);
   const glossary = glossaryText === undefined ? { missing: [...GLOSSARY_TERMS], repeated: [] } : checkGlossary(glossaryText);
   const ok =
@@ -613,7 +624,18 @@ export const NOTE_PLANTS = [
 ];
 
 /**
- * Plant {@link PLANTS}, {@link STALE_PLANT} and {@link NOTE_PLANTS} into a tree and report, for
+ * A sweep-only exemption, the glossary's raw shape, flagged `releaseNote` on a path that names
+ * the changesets' README too: the sweep never reads the flag, so only the guard's check sees it.
+ */
+export const SWEEP_NOTE_MISFLAG_PLANT = {
+  path: /^\.changeset\/(zz-planted-sweep|README)\.md$/,
+  rules: ["hold-names"],
+  releaseNote: true,
+  why: "planted",
+};
+
+/**
+ * Plant {@link PLANTS}, {@link STALE_PLANT}, {@link NOTE_PLANTS} and {@link SWEEP_NOTE_MISFLAG_PLANT} into a tree and report, for
  * each, whether the census refused it.
  * @param {{ files: Map<string, string>; paths: string[] }} tree
  */
@@ -634,7 +656,12 @@ export function control(tree, { reads = NAME_READS } = {}) {
     paths.push(file);
   }
   const extraExceptions = [STALE_PLANT, ...NOTE_PLANTS.map((p) => p.exception)];
-  const r = census({ files, paths }, { extraExceptions, reads });
+  if (!files.has(".changeset/README.md")) {
+    files.set(".changeset/README.md", "Changesets.\n");
+    paths.push(".changeset/README.md");
+  }
+  const releaseNotes = [...RELEASE_NOTE_EXEMPTIONS, SWEEP_NOTE_MISFLAG_PLANT];
+  const r = census({ files, paths }, { extraExceptions, releaseNotes, reads });
   const results = PLANTS.filter((p) => p.term !== null).map((p) => {
     const line = lineOf.get(p);
     const hit = r.hits.some((h) => h.path === p.path && h.line === line && h.term === p.term);
@@ -652,6 +679,10 @@ export function control(tree, { reads = NAME_READS } = {}) {
   for (const r of NAME_READS) results.push({ what: `the ${r.read} read has a plant`, refused: planted.has(r.read), passes: true });
   results.push({ what: "a second glossary row for Worker", refused: r.glossary.repeated.includes("Worker") });
   results.push({ what: "an exception that strips nothing", refused: r.stale.includes(STALE_PLANT.id) });
+  results.push({
+    what: "a sweep-only exemption flagged releaseNote on a path that names the changesets' README",
+    refused: r.misflagged.includes(`${SWEEP_NOTE_MISFLAG_PLANT.path} (.changeset/README.md)`),
+  });
   for (const { exception, stale, misflagged } of NOTE_PLANTS) {
     if (misflagged) results.push({ what: `release-note exception ${exception.id}, whose path names a file outside .changeset/`, refused: r.misflagged.some((m) => m.startsWith(`${exception.id} `)) });
     if (stale) results.push({ what: `release-note exception ${exception.id}, which keeps nothing`, refused: r.stale.includes(exception.id) });
@@ -673,7 +704,7 @@ function print(r) {
   for (const rule of TREE_RULES) if (byTerm[rule.id]) console.log(`  ${rule.id}: ${byTerm[rule.id]} counted, a word the ${rule.term} entry retires (say ${rule.say}: ${rule.anchor.join(", ")})`);
   if (r.unscoped.length > 0) console.error(`UNSCOPED (no area): ${r.unscoped.join(", ")}`);
   if (r.stale.length > 0) console.error(`STALE EXCEPTIONS (remove them): ${r.stale.join(", ")}`);
-  if (r.misflagged.length > 0) console.error(`RELEASE-NOTE EXCEPTIONS THAT NAME OTHER FILES (drop releaseNote or narrow the path): ${r.misflagged.join(", ")}`);
+  if (r.misflagged.length > 0) console.error(`RELEASE-NOTE EXEMPTIONS THAT NAME A FILE OTHER THAN A PENDING CHANGESET (drop releaseNote or narrow the path): ${r.misflagged.join(", ")}`);
   if (r.released.length > 0) console.log(`released notes: ${r.released.join(", ")} keep a changeset that is no longer pending; remove them once the release ships`);
   if (r.glossary.missing.length > 0) console.error(`GLOSSARY: no row for ${r.glossary.missing.join(", ")}`);
   if (r.glossary.repeated.length > 0) console.error(`GLOSSARY: more than one row for ${r.glossary.repeated.join(", ")}`);
@@ -754,9 +785,8 @@ function main() {
  * @param {{ extraExceptions?: object[] }} [options]
  */
 export function staleOnVersionCommit(tree, { extraExceptions = [] } = {}) {
-  const pending = (path) => /^\.changeset\/[^/]+\.md$/.test(path) && path !== ".changeset/README.md";
   const now = new Set(census(tree, { extraExceptions }).stale);
-  const after = census({ files: tree.files, paths: tree.paths.filter((path) => !pending(path)) }, { extraExceptions });
+  const after = census({ files: tree.files, paths: tree.paths.filter((path) => !isPendingChangeset(path)) }, { extraExceptions });
   return after.stale.filter((id) => !now.has(id));
 }
 

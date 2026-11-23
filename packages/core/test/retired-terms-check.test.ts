@@ -21,6 +21,7 @@ import {
   PLANTS,
   NOTE_PLANTS,
   STALE_PLANT,
+  SWEEP_NOTE_MISFLAG_PLANT,
   staleOnVersionCommit,
   census,
   checkGlossary,
@@ -77,12 +78,12 @@ describe("the guard refuses a retired word wherever it isn't kept on purpose", (
     expect(results.filter((x) => !x.refused)).toEqual([]);
     expect(ok).toBe(true);
     // One result per plant with a term, plus the duplicate row, the stale
-    // exception and the unscoped folder, one per release-note plant (and one more
+    // exception, the unscoped folder and the sweep-only misflag, one per release-note plant (and one more
     // for each misflagged one), then one per added-names plant and one per
     // parser read (each must have a plant).
     const notes = NOTE_PLANTS as Array<{ misflagged: boolean }>;
     expect(results).toHaveLength(
-      (PLANTS as Array<{ term: string | null }>).filter((p) => p.term !== null).length + 3 + notes.length + notes.filter((p) => p.misflagged).length + (ADDED_PLANTS as unknown[]).length + (NAME_READS as unknown[]).length,
+      (PLANTS as Array<{ term: string | null }>).filter((p) => p.term !== null).length + 4 + notes.length + notes.filter((p) => p.misflagged).length + (ADDED_PLANTS as unknown[]).length + (NAME_READS as unknown[]).length,
     );
   });
 
@@ -261,6 +262,17 @@ describe("totality: every file has an area, every exception earns its place", ()
     expect(run(note, [keeps(false)]).stale).not.toContain("zz-planted-note-keeper");
     expect(onVersion(tree(note), { extraExceptions: [keeps(false)] })).toEqual(["zz-planted-note-keeper"]);
     expect(onVersion(tree(note), { extraExceptions: [keeps(true)] })).toEqual([]);
+  });
+
+  // The sweep never reads the flag, so a sweep-only exemption flagged on a path that names more
+  // than pending notes must still be refused by the guard, from the glossary's raw shape.
+  it("refuses the releaseNote flag on a sweep-only exemption whose path names the changesets' README", () => {
+    const r = (census as (t: Tree, o: object) => Census & { misflagged: string[] })(
+      tree({ ".changeset/README.md": "Changesets.\n", ".changeset/zz-planted-sweep.md": "---\n---\n\nNote.\n" }),
+      { releaseNotes: [SWEEP_NOTE_MISFLAG_PLANT] },
+    );
+    expect(r.misflagged).toEqual([`${(SWEEP_NOTE_MISFLAG_PLANT as { path: RegExp }).path} (.changeset/README.md)`]);
+    expect(r.ok).toBe(false);
   });
 
   // The flag is the author's word, so a path that also names a real file must not ride on it.

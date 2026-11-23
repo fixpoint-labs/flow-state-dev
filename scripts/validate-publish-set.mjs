@@ -23,11 +23,18 @@
  * (FIX-870, FIX-2885). A fragment may name published packages only (BP-022);
  * this is checked on every PR, not first met by the release job.
  *
- * Exits non-zero naming the package or fragment and the fix. No dependencies,
- * so CI runs it without an install.
+ * `--changesets` runs that second check alone. It reads each fragment with
+ * Changesets' own parser (`@changesets/parse`, resolved through the installed
+ * `@changesets/cli` so it is the copy `changeset version` runs), so a fragment
+ * it can't parse fails here exactly as it would there. That needs the install,
+ * so CI runs it in the Export check job; the default run needs no dependencies
+ * and stays in Process guards.
+ *
+ * Exits non-zero naming the package or fragment and the fix.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { workspaceManifests } from "./workspace-members.mjs";
@@ -83,38 +90,37 @@ export function findPublishable(dirs, read) {
 }
 
 /**
- * A frontmatter line naming a package and a bump, in each shape YAML allows for one: the name
- * single- or double-quoted, or bare when it doesn't start with `@`; the bump quoted or bare;
- * a trailing `# comment`. `changeset version` reads the frontmatter as YAML, so a shape this
- * doesn't know is refused rather than skipped: skipping it is how a private name would slip by.
+ * The parser `changeset version` reads fragments with, from the installed `@changesets/cli`.
+ * @returns {(source: string) => { releases: { name: string, type: string }[], summary: string }}
  */
-const ENTRY =
-  /^\s*(?:"(?<dq>[^"]+)"|'(?<sq>[^']+)'|(?<bare>[^\s"'@#:][^\s:#]*))\s*:\s*(?<q>["']?)(?:patch|minor|major|none)\k<q>\s*(?:#.*)?$/;
+export function loadChangesetParser() {
+  const fromCli = createRequire(createRequire(import.meta.url).resolve("@changesets/cli/package.json"));
+  const parse = fromCli("@changesets/parse");
+  return parse.default ?? parse;
+}
 
 /**
- * The pending fragments that `changeset version` would refuse, as `{ path, name, reason }`.
+ * The pending fragments that `changeset version` would refuse, as `{ path, name, reason }`:
+ * one its parser throws on, and each release that names a private package or a name no
+ * workspace package has.
  *
  * Exported so a test can drive it against fixtures.
  *
  * @param {{ path: string, source: string }[]} fragments — `.changeset/*.md` other than the README.
  * @param {Map<string, boolean>} packages — each workspace package's name and whether it is private.
+ * @param {ReturnType<typeof loadChangesetParser>} parse — Changesets' fragment parser.
  */
-export function findUnversionable(fragments, packages) {
+export function findUnversionable(fragments, packages, parse) {
   const offenders = [];
   for (const { path, source } of fragments) {
-    const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
-    if (!frontmatter) {
-      offenders.push({ path, name: null, reason: "has no frontmatter" });
+    let releases;
+    try {
+      ({ releases } = parse(source));
+    } catch (error) {
+      offenders.push({ path, name: null, reason: `cannot be parsed: ${String(error.message).split("\n")[0]}` });
       continue;
     }
-    for (const line of frontmatter[1].split(/\r?\n/)) {
-      if (/^\s*(#.*)?$/.test(line)) continue;
-      const entry = ENTRY.exec(line)?.groups;
-      if (!entry) {
-        offenders.push({ path, name: line.trim(), reason: "is not a package and bump this check can read" });
-        continue;
-      }
-      const name = entry.dq ?? entry.sq ?? entry.bare;
+    for (const { name } of releases) {
       if (!packages.has(name)) offenders.push({ path, name, reason: "is not a workspace package" });
       else if (packages.get(name)) offenders.push({ path, name, reason: "is private, so changeset version skips it" });
     }
@@ -140,28 +146,33 @@ const readPendingChangesets = () =>
 const readManifest = (dir) =>
   JSON.parse(readFileSync(join(ROOT, "packages", dir, "package.json"), "utf8"));
 
+/** `--changesets`: every pending fragment, read with Changesets' parser. */
+function mainChangesets() {
+  const fragments = readPendingChangesets();
+  const unversionable = findUnversionable(fragments, readWorkspace(), loadChangesetParser());
+  if (unversionable.length === 0) {
+    console.log(`✓ ${fragments.length} pending changeset(s) parse and name published packages only`);
+    process.exit(0);
+  }
+  console.error(`\n✗ ${unversionable.length} problem(s) in pending changesets that changeset version would refuse:\n`);
+  for (const { path, name, reason } of unversionable) console.error(`    ${path}  →  ${name ?? "the fragment"} ${reason}`);
+  console.error(
+    `\n  A changeset names published packages only (BP-022). Drop the private package's` +
+      `\n  line, and its part of the note; a note with no published package left needs no` +
+      `\n  changeset. changeset version fails the whole release on one such fragment.` +
+      `\n  See docs/contributing/release-notes-workflow.md.\n`,
+  );
+  process.exit(1);
+}
+
 function main() {
   const offenders = findPublishable(NEVER_PUBLISH, readManifest);
-  const fragments = readPendingChangesets();
-  const unversionable = findUnversionable(fragments, readWorkspace());
-
-  if (unversionable.length > 0) {
-    console.error(`\n✗ ${unversionable.length} entr(ies) in pending changesets that changeset version would refuse, or this check can't read:\n`);
-    for (const { path, name, reason } of unversionable) console.error(`    ${path}  →  ${name ?? "the fragment"} ${reason}`);
-    console.error(
-      `\n  A changeset names published packages only (BP-022). Drop the private package's` +
-        `\n  line, and its part of the note; a note with no published package left needs no` +
-        `\n  changeset. changeset version fails the whole release on one such fragment.` +
-        `\n  See docs/contributing/release-notes-workflow.md.\n`,
-    );
-  }
 
   if (offenders.length === 0) {
     console.log(
       `✓ ${NEVER_PUBLISH.length} package(s) held out of the publish set`,
     );
-    if (unversionable.length === 0) console.log(`✓ ${fragments.length} pending changeset(s) name published packages only`);
-    process.exit(unversionable.length === 0 ? 0 : 1);
+    process.exit(0);
   }
 
   console.error(
@@ -189,5 +200,6 @@ if (
   process.argv[1] !== undefined &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  main();
+  if (process.argv.includes("--changesets")) mainChangesets();
+  else main();
 }

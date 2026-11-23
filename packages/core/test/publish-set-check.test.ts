@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
-import { findPublishable, findUnversionable, neverPublish } from "../../../scripts/validate-publish-set.mjs";
+import { findPublishable, findUnversionable, loadChangesetParser, neverPublish } from "../../../scripts/validate-publish-set.mjs";
 
 type Offender = { dir: string; name: string | null; reason: string };
 type Manifest = { name?: string; private?: boolean };
@@ -64,15 +64,21 @@ describe("packages held out of the publish set", () => {
 
 type Unversionable = { path: string; name: string | null; reason: string };
 
+// The real parser `changeset version` runs, so a case here fails exactly when the release would.
+const parse = (loadChangesetParser as () => unknown)();
+
 const unversionable = (fragments: Record<string, string>): Unversionable[] =>
-  (findUnversionable as (f: { path: string; source: string }[], p: Map<string, boolean>) => Unversionable[])(
+  (findUnversionable as (f: { path: string; source: string }[], p: Map<string, boolean>, parse: unknown) => Unversionable[])(
     Object.entries(fragments).map(([path, source]) => ({ path, source })),
     new Map([
       ["@flow-state-dev/workforce", false],
       ["@flow-state-dev/orchestration", false],
       ["@flow-state-dev/ui", true],
     ]),
+    parse,
   );
+
+const unparsable = (path: string) => ({ path, name: null, reason: expect.stringMatching(/^cannot be parsed: /) as unknown as string });
 
 /**
  * `changeset version` fails the whole release, not one fragment, when a note names a package it
@@ -116,18 +122,23 @@ describe("pending changesets name published packages only", () => {
     ]);
   });
 
-  it("refuses an entry shape it can't read, rather than skipping a name it might hide", () => {
+  // Each of these makes changeset version throw, so each must fail here, by the same parser.
+  it("refuses a fragment changeset version can't parse: a flow mapping, no frontmatter, a bad delimiter, a duplicate key", () => {
     const offenders = unversionable({
-      ".changeset/flow.md": '---\n{ "@flow-state-dev/ui": patch }\n---\n\nNote.\n',
+      ".changeset/flow.md": '---\n{ "@flow-state-dev/ui": patch, }}\n---\n\nNote.\n',
       ".changeset/none.md": "No frontmatter at all.\n",
+      ".changeset/dashes.md": '---\n"@flow-state-dev/workforce": patch\n----\n\nNote.\n',
+      ".changeset/twice.md": '---\n"@flow-state-dev/workforce": patch\n"@flow-state-dev/workforce": minor\n---\n\nNote.\n',
     });
     expect(offenders).toEqual([
-      { path: ".changeset/flow.md", name: '{ "@flow-state-dev/ui": patch }', reason: "is not a package and bump this check can read" },
-      { path: ".changeset/none.md", name: null, reason: "has no frontmatter" },
+      unparsable(".changeset/flow.md"),
+      unparsable(".changeset/none.md"),
+      unparsable(".changeset/dashes.md"),
+      unparsable(".changeset/twice.md"),
     ]);
   });
 
-  it("passes published packages and an empty fragment that carries docs intent only", () => {
+  it("passes published packages, comments, and an empty fragment", () => {
     const offenders = unversionable({
       ".changeset/ok.md": '---\n"@flow-state-dev/orchestration": patch\n# a comment line\n"@flow-state-dev/workforce": "minor" # comment\n---\n\nNote.\n',
       ".changeset/docs-only.md": "---\n---\n\nThe registry is private (FIX-1). Mentions \"@flow-state-dev/ui\": patch in prose.\n",

@@ -1646,6 +1646,12 @@ const byCheck = (check) => {
 };
 export const SWEEP_EXEMPTIONS = byCheck("sweep");
 
+/**
+ * Every exemption its author flagged `releaseNote: true`, of any check: the path names pending
+ * changesets and nothing else. The guard holds each to that against the tracked tree.
+ */
+export const RELEASE_NOTE_EXEMPTIONS = EXEMPTIONS.filter((e) => e.releaseNote === true);
+
 /** The bare retirements: they name no check, so the sweep and the guard both read them. */
 const BARE = new Set(RETIREMENTS.filter((r) => r.check === undefined).map((r) => r.id));
 
