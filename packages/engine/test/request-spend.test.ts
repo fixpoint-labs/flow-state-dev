@@ -35,6 +35,7 @@ import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
 import { createRequestSpendLedger } from "../src/execution/request-spend-ledger";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const previousObservability = process.env.FSDEV_TRACE_OBSERVABILITY;
 afterEach(() => {
@@ -228,7 +229,7 @@ describe("request spend ledger", () => {
     const stores = createInMemoryStores();
     const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
 
-    const initial = await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", stores, runtimeConfig: { durabilityProvider: provider } });
+    const initial = await runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", stores, runtimeConfig: { durabilityProvider: provider } });
     const [suspension] = (await provider.listSuspended({ status: "pending" })) as SuspensionRecord[];
     await provider.suspend({ ...suspension!, status: "approved", resolvedAt: Date.now(), resumeData: {} });
     const registry = createFlowRegistry();
@@ -261,7 +262,7 @@ describe("request spend ledger", () => {
       actions: { run: { inputSchema: z.object({}), block: handler({ name: "noop", inputSchema: z.any(), execute: async () => ({}) }) } }
     })({ id: "spend-startup" });
 
-    await expect(runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", stores: createInMemoryStores(), runtimeConfig: { modelResolver: resolverReporting(usage4x4) } })).rejects.toThrow("startup failed");
+    await expect(runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", stores: createInMemoryStores(), runtimeConfig: { modelResolver: resolverReporting(usage4x4) } })).rejects.toThrow("startup failed");
     expect(endings.map((ending) => [ending.status, ending.spend.byModel["openai/gpt-6-luna"]?.total])).toEqual([["failed", 8]]);
   });
 
@@ -287,7 +288,7 @@ describe("request spend ledger", () => {
       actions: { run: { inputSchema: z.object({}), block: handler({ name: "noop", inputSchema: z.any(), execute: async () => ({}) }) } }
     })({ id: "spend-startup-side" });
 
-    await expect(runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", stores: createInMemoryStores(), runtimeConfig: { modelResolver: slow } })).rejects.toThrow("startup failed");
+    await expect(runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", stores: createInMemoryStores(), runtimeConfig: { modelResolver: slow } })).rejects.toThrow("startup failed");
     expect(endings.map((ending) => [ending.status, ending.spend.byModel["openai/gpt-6-luna"]?.total])).toEqual([["failed", 8]]);
   });
 
@@ -324,7 +325,7 @@ describe("request spend ledger", () => {
     const stores = createInMemoryStores();
     const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
 
-    const initial = await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", stores, runtimeConfig: { durabilityProvider: provider } });
+    const initial = await runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", stores, runtimeConfig: { durabilityProvider: provider } });
     const [suspension] = (await provider.listSuspended({ status: "pending" })) as SuspensionRecord[];
     await provider.suspend({ ...suspension!, status: "approved", resolvedAt: Date.now(), resumeData: {} });
     const registry = createFlowRegistry();
@@ -388,7 +389,7 @@ describe("request spend ledger", () => {
     const runtimeConfig = { durabilityProvider: provider, modelResolver };
     const disconnect = new AbortController();
 
-    const running = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-interrupt", signal: disconnect.signal, stores, runtimeConfig });
+    const running = runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-interrupt", signal: disconnect.signal, stores, runtimeConfig });
     while (!waited) await new Promise((resolve) => setTimeout(resolve, 5));
     disconnect.abort();
     await running;
@@ -448,7 +449,7 @@ describe("request spend ledger", () => {
     const runtimeConfig = { durabilityProvider: provider, modelResolver };
     const disconnect = new AbortController();
 
-    const running = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-observer", signal: disconnect.signal, stores, runtimeConfig });
+    const running = runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-observer", signal: disconnect.signal, stores, runtimeConfig });
     while (!waited) await new Promise((resolve) => setTimeout(resolve, 5));
     disconnect.abort();
     await running;
@@ -522,7 +523,7 @@ describe("request spend ledger", () => {
     const runtimeConfig = { durabilityProvider: provider, modelResolver };
     const disconnect = new AbortController();
 
-    const older = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-late", signal: disconnect.signal, stores, runtimeConfig });
+    const older = runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-late", signal: disconnect.signal, stores, runtimeConfig });
     while (!waited) await new Promise((resolve) => setTimeout(resolve, 5));
     disconnect.abort();
     while (!observerHeld) await new Promise((resolve) => setTimeout(resolve, 5));
@@ -593,7 +594,7 @@ describe("request spend ledger", () => {
     const runtimeConfig = { durabilityProvider: provider, modelResolver };
     const disconnect = new AbortController();
 
-    const older = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-live", signal: disconnect.signal, stores, runtimeConfig });
+    const older = runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-live", signal: disconnect.signal, stores, runtimeConfig });
     while (!waited) await new Promise((resolve) => setTimeout(resolve, 5));
     disconnect.abort();
     while (!observerHeld) await new Promise((resolve) => setTimeout(resolve, 5));
@@ -670,7 +671,7 @@ describe("request spend ledger", () => {
     const runtimeConfig = { durabilityProvider: provider };
     const disconnect = new AbortController();
 
-    const older = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-live-h", signal: disconnect.signal, stores, runtimeConfig });
+    const older = runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-live-h", signal: disconnect.signal, stores, runtimeConfig });
     while (!waited) await new Promise((resolve) => setTimeout(resolve, 5));
     disconnect.abort();
     while (!observerHeld) await new Promise((resolve) => setTimeout(resolve, 5));
@@ -738,7 +739,7 @@ describe("request spend ledger", () => {
     const runtimeConfig = { durabilityProvider: provider, modelResolver };
     const disconnect = new AbortController();
 
-    const deadRun = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-dead", signal: disconnect.signal, stores, runtimeConfig });
+    const deadRun = runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-dead", signal: disconnect.signal, stores, runtimeConfig });
     while (!waited) await new Promise((resolve) => setTimeout(resolve, 5));
     disconnect.abort();
     while (!died) await new Promise((resolve) => setTimeout(resolve, 5));
@@ -803,7 +804,7 @@ describe("request spend ledger", () => {
       const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
       const runtimeConfig = { durabilityProvider: provider, modelResolver: resolverReporting(usage4x4) };
 
-      const deadRun = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-crash-harness", stores, runtimeConfig });
+      const deadRun = runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-crash-harness", stores, runtimeConfig });
       while (!stalledOnce) await new Promise((resolve) => setTimeout(resolve, 5));
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect((await detectInterruptedRequests({ stores, staleThresholdMs: -1 })).map((swept) => swept.entry.requestId)).toEqual(["r-crash-harness"]);
@@ -870,7 +871,7 @@ describe("request spend ledger", () => {
       const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
       const runtimeConfig = { durabilityProvider: provider, modelResolver: resolverReporting(usage4x4) };
 
-      const deadRun = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-crash-harness-runs", stores, runtimeConfig });
+      const deadRun = runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-crash-harness-runs", stores, runtimeConfig });
       while (!stalledOnce) await new Promise((resolve) => setTimeout(resolve, 5));
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect((await detectInterruptedRequests({ stores, staleThresholdMs: -1 })).map((swept) => swept.entry.requestId)).toEqual(["r-crash-harness-runs"]);
@@ -944,7 +945,7 @@ describe("request spend ledger", () => {
       const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
       const runtimeConfig = { durabilityProvider: provider, modelResolver };
 
-      const deadRun = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-crash", stores, runtimeConfig });
+      const deadRun = runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-crash", stores, runtimeConfig });
       while (!stalledOnce) await new Promise((resolve) => setTimeout(resolve, 5));
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect((await detectInterruptedRequests({ stores, staleThresholdMs: -1 })).map((swept) => swept.entry.requestId)).toEqual(["r-crash"]);

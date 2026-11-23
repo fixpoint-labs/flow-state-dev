@@ -18,6 +18,7 @@ import {
 } from "../../../src";
 import { createInMemoryStores } from "../../../src/host";
 import { isScheduleSessionId } from "../../../src/transports/scheduled/schedule-session-id";
+import { isOneOffSessionId } from "@flow-state-dev/core/helpers";
 import { recentTimes } from "./recent-times";
 
 const SECRET = "scheduler-secret";
@@ -164,7 +165,23 @@ describe("a schedule that does not opt in", () => {
     for (const fired of fires) await settled(stores, fired.requestId);
     const sessions = (await stores.session.list({})).map((session) => session.id);
     expect(sessions).toHaveLength(2);
-    expect(sessions.every((id) => id.startsWith("ephemeral_"))).toBe(true);
+    expect(sessions.every(isOneOffSessionId)).toBe(true);
     expect(sessions.some(isScheduleSessionId)).toBe(false);
+  });
+
+  it("names its one-off session on the request record from the first write, made at the endpoint", async () => {
+    const { router, stores } = build();
+    held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fired = await fire(router, "polls", "plain", LATEST);
+    expect(fired.status).toBe("accepted");
+    // Read while the fire is still running: the record named its session
+    // before the run built its context, not after.
+    const running = await stores.request.get(fired.requestId);
+    expect(running?.status).toBe("in_progress");
+    expect(isOneOffSessionId(running!.sessionId!)).toBe(true);
+    release!();
+    expect((await settled(stores, fired.requestId)).sessionId).toBe(running!.sessionId);
   });
 });

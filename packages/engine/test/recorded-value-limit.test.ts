@@ -27,6 +27,7 @@ import { createResponseEmitter } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { DurabilityProvider } from "../src/durability/types";
 import type { StoreRegistry } from "../src/stores/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const MARKER = "HELD_OUT_MARKER_7f3c";
 const LIMIT = 4096;
@@ -330,6 +331,7 @@ async function suspendThenApprove(flow: FlowInstance, input: unknown) {
   const { stores, provider } = durableStores();
   const runtimeConfig = { durabilityProvider: provider, maxRecordedValueBytes: LIMIT };
   const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",

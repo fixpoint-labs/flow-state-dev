@@ -44,7 +44,7 @@ type ActionRunInput = {
   actionName: string;
   input: unknown;
   userId: string;
-  sessionId?: string;
+  sessionId: string;
   requestId: string;
   /** Always set — it comes from the resolved principal, which requires one. */
   orgId: string;
@@ -78,6 +78,22 @@ export async function handleExecuteAction(
   ctx: ActionRouteContext,
   resourceSend?: ResourceSend
 ): Promise<Response> {
+  const body = await parseJsonBody(request);
+  const namedSessionId = resourceSend?.sessionId ?? route.sessionId ?? getString(body.sessionId);
+  // Every run names its session, and only the caller knows which
+  // conversation it means: a send with none is refused by name, before the
+  // flow is looked up, the caller is resolved or anything is written (so it
+  // answers the same for every address). The server never makes one up.
+  if (namedSessionId === undefined || namedSessionId.length === 0) {
+    return jsonResponse(400, {
+      error: "session-required",
+      message:
+        "Name the session this action runs in, in the path or as `sessionId` in the body: " +
+        "a session from createSession(), or oneOffSessionId() from @flow-state-dev/core/helpers for a run of its own."
+    });
+  }
+  const sessionId: string = namedSessionId;
+
   const flowKind = resourceSend?.flowKind ?? route.flowKind;
   const flow = ctx.registry.get(flowKind);
   // The default write flow runs only on a send addressed to a resource.
@@ -86,12 +102,9 @@ export async function handleExecuteAction(
       error: `Unknown flow "${flowKind}"`
     });
   }
-
-  const body = await parseJsonBody(request);
-  const sessionId = resourceSend?.sessionId ?? route.sessionId ?? getString(body.sessionId);
   // A write session is the server's to find or make for its writer (FIX-2624):
   // a client that names one could take another writer's.
-  if (resourceSend === undefined && sessionId !== undefined && isWriteSessionId(sessionId)) {
+  if (resourceSend === undefined && isWriteSessionId(sessionId)) {
     return jsonResponse(400, {
       error: "reserved-session-id",
       message: `Session ids starting with "${WRITE_SESSION_PREFIX}" are the server's write sessions; a client can't name one.`
@@ -99,7 +112,7 @@ export async function handleExecuteAction(
   }
   // FIX-2886: only the scheduled dispatch runs in a schedule session, a
   // resource send included.
-  if (sessionId !== undefined && isScheduleSessionId(sessionId)) {
+  if (isScheduleSessionId(sessionId)) {
     return jsonResponse(400, { error: "reserved-session-id", message: new ScheduleSessionIdError(sessionId).message });
   }
   const metadata = asObject(body.metadata);

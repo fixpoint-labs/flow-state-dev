@@ -26,6 +26,10 @@ import { stripResumeMetadata } from "./resume-metadata";
 import { hasLiveRequestAttempt } from "./request-attempts";
 import { resolveRecordOwner } from "../context/record-owner";
 import { isTerminalRequestStreamEvent } from "../stores/subscribe-helpers";
+import { LegacySessionlessRequestError, namesSession } from "../context/record-session";
+import { settledRecordFields } from "./request-action-result";
+import { PARKED } from "../durability/stop-suspended";
+import { resolveRequestIncarnation } from "../stores/scope-keys";
 
 export interface ContinueRequestOptions {
   /** The suspended/interrupted request to continue, re-entered under this id. */
@@ -53,7 +57,7 @@ export interface ContinueRequestOptions {
    * `start`'s signal also stops the run. Absent, the run starts at once.
    */
   startRun?: (
-    run: { flow: FlowInstance; record: RequestRecord; orgId: string },
+    run: { flow: FlowInstance; record: RequestRecord; orgId: string; sessionId: string },
     start: (signal?: AbortSignal) => Promise<ExecutionResult>
   ) => Promise<ExecutionResult>;
 }
@@ -94,6 +98,16 @@ export async function continueRequest(
     );
   }
   const flow = owner.flow;
+
+  // A request recorded with no session is history, never run again (a run
+  // needs its session). Checked before anything is registered. A stop is the
+  // one continuation it still gets: settled `aborted` here, with nothing run.
+  if (!namesSession(record)) {
+    if (resumeContext?.resumedBy === "stop" || record.abortRequested === true) {
+      return settleLegacyStop(stores, record);
+    }
+    throw new LegacySessionlessRequestError("continuing this request");
+  }
 
   // Per-flow SSE heartbeat override wins over the host default, mirroring
   // `dispatch`.
@@ -204,7 +218,7 @@ export async function continueRequest(
       runtimeConfig
     }) as Promise<ExecutionResult>;
   const finished =
-    options.startRun === undefined ? start() : options.startRun({ flow, record, orgId }, start);
+    options.startRun === undefined ? start() : options.startRun({ flow, record, orgId, sessionId: record.sessionId }, start);
 
   // Close the live stream once the run settles so the SSE connection ends.
   const settled = finished.finally(() => {
@@ -226,6 +240,33 @@ export async function continueRequest(
   void settled.catch(() => {});
 
   return { requestId, liveStream, finished };
+}
+
+/**
+ * Settle a stop of a request recorded with no session: the stop's gate is
+ * already resolved by the caller, and the request ends `aborted` without
+ * running, since a run needs a session. Releases the continuation lease, as
+ * the run would have at its terminal.
+ */
+async function settleLegacyStop(stores: StoreRegistry, record: RequestRecord): Promise<ContinueRequestResult> {
+  const now = Date.now();
+  // Fenced on the record still parked under the incarnation read: a request
+  // that moved on, or another under the id, is left as it is.
+  await stores.request.setFieldsIfStatus(
+    record.id,
+    { ...settledRecordFields({ status: "aborted" }), finalizedAtMs: now },
+    PARKED,
+    now,
+    resolveRequestIncarnation(record)
+  );
+  try {
+    const lease = await stores.leases.get(record.id);
+    if (lease !== null) await stores.leases.release(record.id, lease.leaseId);
+  } catch {
+    // Best-effort: the lease lapses on its own.
+  }
+  const finished = Promise.resolve<ExecutionResult>({ output: undefined, items: [], durationMs: 0, requestId: record.id });
+  return { requestId: record.id, liveStream: null, finished };
 }
 
 // FIX-2675.

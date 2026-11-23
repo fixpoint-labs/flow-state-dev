@@ -65,7 +65,8 @@ import {
 import { generateId } from "../../utils/generate-id";
 import {
   OrgRequiredError,
-  PrincipalResolutionError
+  PrincipalResolutionError,
+  SessionRequiredError
 } from "../errors";
 import {
   continuationDecision,
@@ -444,21 +445,27 @@ export async function resolveInProcessPrincipal(
  */
 // FIX-2624; FIX-2886; BP-031.
 /**
- * Refuse a dispatch, from any transport, that names a write session or the
- * default write flow, unless it is the server's own resource send. The
- * default write flow answers as an address this process does not hold.
+ * Refuse a dispatch, from any transport, that names no session, or names a
+ * write session or the default write flow, unless it is the server's own
+ * resource send. The default write flow answers as an address this process
+ * does not hold.
  *
  * A schedule session is admitted only from the scheduled transport, whose
  * `source` the transport sets and no caller can. Checked ahead of the
  * resource-send pass, so a resource send can't reach one either.
  */
 function refuseReservedAddress(envelope: InboundRequestEnvelope): void {
-  if (envelope.sessionId !== undefined && isScheduleSessionId(envelope.sessionId) && envelope.source !== SCHEDULED_SOURCE) {
+  // Every run names its session: an envelope with none (an untyped caller) is
+  // refused by name, before anything is written or enqueued.
+  if (typeof envelope.sessionId !== "string" || envelope.sessionId.length === 0) {
+    throw new SessionRequiredError(envelope.flowKind, "host.dispatch");
+  }
+  if (isScheduleSessionId(envelope.sessionId) && envelope.source !== SCHEDULED_SOURCE) {
     throw new ScheduleSessionIdError(envelope.sessionId);
   }
   if (isServerResourceSend(envelope)) return;
   if (envelope.flowKind === DEFAULT_WRITE_FLOW) throw new UnknownFlowError(envelope.flowKind);
-  if (envelope.sessionId !== undefined && isWriteSessionId(envelope.sessionId)) {
+  if (isWriteSessionId(envelope.sessionId)) {
     throw new ReservedSessionIdError(envelope.sessionId);
   }
 }
@@ -598,32 +605,29 @@ export function createInboundTransportHost(
     flow: FlowInstance,
     dispatchEnvelope: DispatchEnvelope
   ): Promise<SessionRecord | undefined> => {
-    let session: SessionRecord | undefined;
-    if (dispatchEnvelope.sessionId !== undefined) {
-      session = await stores.session.get(
-        resolveSessionStorageKey(dispatchEnvelope.sessionId, dispatchEnvelope.tenantId)
+    const session = await stores.session.get(
+      resolveSessionStorageKey(dispatchEnvelope.sessionId, dispatchEnvelope.tenantId)
+    );
+    assertSessionAdmitted(flow, session, {
+      sessionId: dispatchEnvelope.sessionId,
+      userId: dispatchEnvelope.userId,
+      tenantId: dispatchEnvelope.tenantId
+    });
+    // The organization binding the run enforces at execution, checked here
+    // too so a request from another organization is refused before it takes
+    // a place on the session's key. An unattributed session is left to the
+    // execution-time check, which names that condition itself.
+    if (
+      session !== undefined &&
+      tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
+      isOrgAttributed(session) &&
+      session.orgId !== dispatchEnvelope.orgId
+    ) {
+      throw new OrgBindingMismatchError(
+        dispatchEnvelope.sessionId,
+        session.orgId as string,
+        dispatchEnvelope.orgId as string
       );
-      assertSessionAdmitted(flow, session, {
-        sessionId: dispatchEnvelope.sessionId,
-        userId: dispatchEnvelope.userId,
-        tenantId: dispatchEnvelope.tenantId
-      });
-      // The organization binding the run enforces at execution, checked here
-      // too so a request from another organization is refused before it takes
-      // a place on the session's key. An unattributed session is left to the
-      // execution-time check, which names that condition itself.
-      if (
-        session !== undefined &&
-        tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
-        isOrgAttributed(session) &&
-        session.orgId !== dispatchEnvelope.orgId
-      ) {
-        throw new OrgBindingMismatchError(
-          dispatchEnvelope.sessionId,
-          session.orgId as string,
-          dispatchEnvelope.orgId as string
-        );
-      }
     }
     const active = await stores.activeRequests.get(dispatchEnvelope.requestId);
     if (active !== undefined && !ownsRecord(flow, active)) {
@@ -691,7 +695,7 @@ export function createInboundTransportHost(
     // flow, is another session this request was never admitted to. A child
     // created since admission found none is new, so a view of its parent finds
     // it by its update time already.
-    if (dispatchEnvelope.sessionId !== undefined && admitted !== undefined) {
+    if (admitted !== undefined) {
       const sessionKey = resolveSessionStorageKey(
         dispatchEnvelope.sessionId,
         dispatchEnvelope.tenantId
@@ -1466,7 +1470,7 @@ export function createInboundTransportHost(
    * parked request for the sweep.
    */
   const startContinuationInTurn = async (
-    { flow, record, orgId }: { flow: FlowInstance; record: RequestRecord; orgId: string },
+    { flow, record, orgId, sessionId }: { flow: FlowInstance; record: RequestRecord; orgId: string; sessionId: string },
     start: (signal?: AbortSignal) => Promise<ExecutionResult>,
     leaseId: string | undefined
   ): Promise<ExecutionResult> => {
@@ -1480,7 +1484,7 @@ export function createInboundTransportHost(
               actionName: record.actionName,
               input: record.input,
               userId: record.userId,
-              sessionId: record.sessionId,
+              sessionId,
               orgId,
               tenantId: record.tenantId,
               source: record.source,

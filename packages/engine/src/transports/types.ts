@@ -83,8 +83,15 @@ export interface InboundRequestEnvelope {
   /** Raw input; validated by `action.inputSchema` downstream. */
   input: unknown;
 
-  /** Existing session, or undefined for a new session. */
-  sessionId?: string;
+  /**
+   * The session the run lands in. **Required**: every run names its session,
+   * and its request record names it from the first write. An existing
+   * session, a new id (born on the run's first write), or, for a run that
+   * belongs to no conversation, `oneOffSessionId()` from
+   * `@flow-state-dev/core/helpers`. Missing at run time, `dispatch` throws
+   * `SessionRequiredError` before anything is written.
+   */
+  sessionId: string;
   /** Adapter-generated or framework-generated when absent. */
   requestId?: string;
   // FIX-1442.

@@ -99,24 +99,6 @@ describe("createExecutionContext", () => {
     expect(typeof model.generate).toBe("function");
   });
 
-  it("creates an ephemeral session when no sessionId is provided", async () => {
-    const flow = createFlow();
-    const stores = createInMemoryStores();
-
-    const ctx = await createExecutionContext({
-    orgId: DEFAULT_ORG_ID,
-      flow,
-      actionName: "run",
-      requestId: "req_no_session",
-      userId: "user_no_session",
-      stores
-    });
-
-    expect(ctx.session).toBeDefined();
-    expect(ctx.session.identity.type).toBe("session");
-    expect(ctx.user.identity.userId).toBe("user_no_session");
-  });
-
   it("applies token-based llm history limit using the active model (turn-aligned)", async () => {
     // Turn-aligned token packing: a whole request's messages fit or don't.
     // Both messages from the single prior request fit the 64-token budget,

@@ -19,6 +19,7 @@ import { createInMemoryStores } from "../src/host";
 import { InstancePinMismatchError } from "../src/context/instance-pin";
 import { getPersistedData } from "../src/resources/internal";
 import { createMockModelResolver } from "@flow-state-dev/testing";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const verified = {
   resolvePrincipal: (context: { request?: Request }) => {
@@ -355,6 +356,7 @@ describe("the fence around the cell", () => {
 
     for (const [who, reason] of [[BOB_ACME, "owning-user"], [ALICE_GLOBEX, "owning-org"]] as const) {
       const refused = runAction({
+        sessionId: oneOffSessionId(),
         flow: worker,
         actionName: "save",
         input: { tag: "x", marker: "REFUSED-M" },

@@ -15,10 +15,12 @@ import {
   callerReachesRequest,
   jsonResponse,
   JsonMediaTypeError,
+  legacySessionlessResponse,
   parseJsonBody,
   SSE_HEADERS,
   unknownRequestResponse
 } from "./route-utils";
+import { namesSession } from "../context/record-session";
 import { generateId } from "../utils/generate-id";
 import { tenantMatches } from "../stores/scope-keys";
 import { isRequestPublicReentryAllowed } from "./public-reentry";
@@ -115,6 +117,10 @@ export async function handleRetryRequest(
   if (!isRequestPublicReentryAllowed(originalRecord, ctx.runtimeConfig.publicReentrySources)) {
     return unknownRequestResponse(route.requestId);
   }
+
+  // A request recorded with no session is history, never run again: a named
+  // 409, not the generic failure below.
+  if (!namesSession(originalRecord)) return legacySessionlessResponse("retrying this request");
 
   // Parse optional input override
   let inputOverride: unknown;

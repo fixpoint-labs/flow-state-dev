@@ -12,6 +12,7 @@ import { createFlowRouteHandlers } from "../../src/routes/http-handlers";
 import { createInMemoryStores } from "../../src/host";
 import { DEFAULT_MAX_BUFFERED_SSE_BYTES } from "../../src/streaming/sse-stream";
 import type { StoreRegistry } from "../../src/stores/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const KIND = "bounded-stream-flow";
 const MESSAGE_BYTES = 64 * 1024;
@@ -51,7 +52,7 @@ function postRun(router: ReturnType<typeof createFlowApiRouter>, requestId: stri
     new Request(`http://localhost/api/flows/${KIND}/actions/run`, {
       method: "POST",
       headers: { "content-type": "application/json", ...(accept ? { accept } : {}) },
-      body: JSON.stringify({ userId: "user_1", requestId, input: {} })
+      body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "user_1", requestId, input: {} })
     }),
     { params: { path: [KIND, "actions", "run"] } }
   );
@@ -142,7 +143,7 @@ describe("request SSE stream buffer bound", () => {
       new Request(`http://localhost/api/flows/${KIND}/actions/run`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: "user_1", requestId, input: {} })
+        body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "user_1", requestId, input: {} })
       }),
       { path: [KIND, "actions", "run"] }
     );

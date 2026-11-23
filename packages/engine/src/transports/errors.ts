@@ -49,6 +49,32 @@ export class OrgRequiredError extends Error {
 }
 
 /**
+ * Thrown when a run is started with no session id: by `runAction`, the
+ * inbound host's `dispatch`, or any other seam a run passes through. Every
+ * run names its session, and an entry point that starts a run belonging to no
+ * conversation makes a one-off id with `oneOffSessionId()` before it
+ * dispatches. Thrown before anything is registered or written.
+ *
+ * Like {@link OrgRequiredError}, it answers the framework's embedder and
+ * carries no status; the HTTP action route answers a send with no session
+ * `400 { error: "session-required" }` itself, before principal resolution.
+ */
+export class SessionRequiredError extends Error {
+  readonly code = "session-required";
+  readonly flowKind: string;
+
+  constructor(flowKind: string, seam = "this call") {
+    super(
+      `${seam} requires a session id for flow "${flowKind}". Pass the id of the ` +
+        `conversation the run belongs to, or oneOffSessionId() from ` +
+        `@flow-state-dev/core/helpers for a run of its own.`
+    );
+    this.name = "SessionRequiredError";
+    this.flowKind = flowKind;
+  }
+}
+
+/**
  * Rejects the `accepted` and `finished` of the handle `host.dispatch` returns
  * (before any request record exists, and only once the caller's ownership of
  * the session has been checked) when an action's concurrency policy is

@@ -23,6 +23,7 @@ import {
   type WebhookInboundEvent,
   type WebhookServiceRoute
 } from "@flow-state-dev/core/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 import { routeServiceEvent } from "../../durability/owner-runs";
 import type { InboundRequestEnvelope, InboundTransportHost, ResolvedPrincipal } from "../types";
 import { PrincipalResolutionError } from "../errors";
@@ -152,10 +153,10 @@ export async function handleWebhook(
   //    via the `metadata.webhook` coordinate, not by this name.
   const action = binding.block.name;
   let input: unknown;
-  let sessionId: string | undefined;
+  let boundSessionId: string | undefined;
   try {
     input = await binding.input(event);
-    sessionId = binding.sessionId ? await binding.sessionId(event) : undefined;
+    boundSessionId = binding.sessionId ? await binding.sessionId(event) : undefined;
   } catch (err) {
     return jsonResponse(500, { error: "route_failed", message: errorMessage(err) });
   }
@@ -176,7 +177,7 @@ export async function handleWebhook(
       source: WEBHOOK_TRANSPORT_SOURCE,
       request: req,
       rawBody,
-      envelope: { flowKind, action, sessionId, metadata, input }
+      envelope: { flowKind, action, sessionId: boundSessionId, metadata, input }
     });
   } catch (err) {
     if (err instanceof PrincipalResolutionError) {
@@ -185,13 +186,18 @@ export async function handleWebhook(
     throw err;
   }
 
-  // 8. Build the envelope, enforce org binding, ensure the session, dispatch.
+  // 8. Settle the session: the binding's, or, when it names none, a one-off
+  //    session of the delivery's own, made here so the request record names
+  //    it from its first write. Then build the envelope, enforce org binding,
+  //    ensure the session (named or one-off, the same way), dispatch.
+  const sessionId =
+    boundSessionId !== undefined && boundSessionId.length > 0 ? boundSessionId : oneOffSessionId();
   const envelope: InboundRequestEnvelope = {
     source: WEBHOOK_TRANSPORT_SOURCE,
     flowKind,
     action,
     input,
-    ...(sessionId !== undefined ? { sessionId } : {}),
+    sessionId,
     principal,
     rawBody,
     responseEmitter: null,
@@ -205,32 +211,30 @@ export async function handleWebhook(
     return jsonResponse(403, { error: "dispatch_rejected", message: errorMessage(err) });
   }
 
-  if (sessionId !== undefined) {
-    try {
-      await ensureSessionForWebhook({
-        stores: host.stores,
-        sessionId,
-        flow,
-        principal,
-        provider,
-        eventType
-      });
-    } catch (err) {
-      // The flow refused to create this session (its stateSchema or its
-      // create check refused a session with no initial state). Not retryable: the
-      // same delivery would be refused again.
-      if (err instanceof SessionCreateRefusedError) return sessionCreateRefusedResponse(err);
-      // The session store is unavailable; the action can't run coherently
-      // without its session. A 503 lets the provider retry once the store
-      // recovers; the underlying error is logged, not leaked in the body.
-      host.logger?.error?.("webhook session upsert failed", {
-        provider,
-        eventType,
-        sessionId,
-        error: errorMessage(err)
-      });
-      return jsonResponse(503, { error: "session_unavailable" });
-    }
+  try {
+    await ensureSessionForWebhook({
+      stores: host.stores,
+      sessionId,
+      flow,
+      principal,
+      provider,
+      eventType
+    });
+  } catch (err) {
+    // The flow refused to create this session (its stateSchema or its
+    // create check refused a session with no initial state). Not retryable: the
+    // same delivery would be refused again.
+    if (err instanceof SessionCreateRefusedError) return sessionCreateRefusedResponse(err);
+    // The session store is unavailable; the action can't run coherently
+    // without its session. A 503 lets the provider retry once the store
+    // recovers; the underlying error is logged, not leaked in the body.
+    host.logger?.error?.("webhook session upsert failed", {
+      provider,
+      eventType,
+      sessionId,
+      error: errorMessage(err)
+    });
+    return jsonResponse(503, { error: "session_unavailable" });
   }
 
   let handle;
