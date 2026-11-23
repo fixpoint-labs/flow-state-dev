@@ -38,7 +38,6 @@ describe("runAction with no session id", () => {
       ...({ sessionId } as { sessionId: string }),
     });
     await expect(run).rejects.toBeInstanceOf(SessionRequiredError);
-    await expect(run).rejects.toMatchObject({ code: "session-required" });
     expect(await stores.request.get(requestId)).toBeUndefined();
     expect(await stores.activeRequests.listAll()).toEqual([]);
     expect(await stores.session.list()).toEqual([]);

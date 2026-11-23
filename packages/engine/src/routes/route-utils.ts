@@ -2,7 +2,7 @@
  * Shared utilities for route handlers: response builders, parsing, and validation helpers.
  */
 import { isOrgAttributed, UnattributedOrgError, type OrgAttributedRecord } from "../context/org-attribution";
-import { LEGACY_SESSIONLESS_REQUEST, LegacySessionlessRequestError } from "../context/record-session";
+import { LegacySessionlessRequestError } from "../context/record-session";
 import type { JsonObject, ResourceConfig } from "@flow-state-dev/core/types";
 import {
   extractBareTopic,
@@ -160,10 +160,8 @@ export function unknownRequestResponse(requestId: string): Response {
  * the record is left as it is. See `context/record-session.ts`.
  */
 export function legacySessionlessResponse(seam: string): Response {
-  return jsonResponse(409, {
-    error: LEGACY_SESSIONLESS_REQUEST,
-    message: new LegacySessionlessRequestError(seam).message
-  });
+  const refused = new LegacySessionlessRequestError(seam);
+  return jsonResponse(409, { error: refused.reason, message: refused.message });
 }
 
 /**

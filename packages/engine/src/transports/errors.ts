@@ -60,7 +60,6 @@ export class OrgRequiredError extends Error {
  * `400 { error: "session-required" }` itself, before principal resolution.
  */
 export class SessionRequiredError extends Error {
-  readonly code = "session-required";
   readonly flowKind: string;
 
   constructor(flowKind: string, seam = "this call") {
