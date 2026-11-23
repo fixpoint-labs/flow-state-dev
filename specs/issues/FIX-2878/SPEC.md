@@ -103,9 +103,11 @@ also pin `mode`, which the filer writes ([an example](#a-worker-locked-to-a-mode
 + //  doneWhen and workspace are not task fields: a filer's are dropped.
 ```
 
-The modes themselves (`modes` on the harness kit, each with its instructions, done check and
-workspace, and Shift Manager's `implement` and `answer`) are registered by the app, in the
-set's modes design. This issue reads the registered set: it validates a filing against it,
+The modes themselves are registered by the app on the harness kit, as
+[FIX-2877](https://github.com/fixpoint-labs/flow-state-dev/pull/5606) specifies: `modes` (each a `ModeSpec` with its
+instructions, done check and workspace) and `defaultMode`, which is `default` when absent. Shift
+Manager registers `implement` and `answer` and sets `defaultMode: "answer"`. A task with no
+`mode` runs in the app's `defaultMode`. This issue reads the registered set: it validates a filing against it,
 freezes the task's mode at the first claim, and makes every route read the frozen mode.
 
 **A harness value says two more things:** its `defaultModel`, so the first claim freezes the
@@ -178,12 +180,13 @@ feature marker one for one, with one legacy read left behind.
 
 ## Examples
 
-These use Shift Manager's two modes: `implement` (needs `issue`) and `answer`, its default.
+These use Shift Manager's two modes: `implement` (needs `issue`) and `answer`, its
+`defaultMode`.
 Refusal wording is the implementer's; what each one names is not.
 
 ### Filing a task
 
-A task that names no mode runs in the app's default mode, here `answer`.
+A task that names no mode runs in the app's `defaultMode`, here `answer`.
 
 ```json
 { "title": "Why does the nightly export skip archived rows?", "assignee": "coder" }
@@ -297,7 +300,7 @@ What is stored on the task:
 
 ### A child filing names no mode
 
-A run in `implement` that files a follow-up with no mode gets the app's default, `answer`, not
+A run in `implement` that files a follow-up with no mode gets the app's `defaultMode`, `answer`, not
 its own mode. The mode is not inherited; only the three run settings are.
 
 ```json
