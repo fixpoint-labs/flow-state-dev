@@ -70,7 +70,7 @@ It comes down to one source for two harnesses: matching by source resumes a plan
 | **Instead of** | Refusing only at claim, which the epic requires and allows to be the only check (ER-11) |
 | **Because** | At filing the refusal reaches the filer while the person is still in the conversation, and nothing is filed. At claim it arrives as a failed task, later and elsewhere. The filler already runs on every coding filing and knows the assignee, so the check is one read of that worker's file. The claim check stays for tasks filed before the lock was set |
 | **Accepted** | **A filing that inherits its parent run's settings and meets a lock with other fixed values is refused.** It is never widened and never silently swapped to the worker's values (ER-10: an inherited pick is kept, never widened). So a worker locked to the plan harness takes only filings already on it: from a run on it, or a no-pick filing when the plan harness is the kit default. The refusal returned to the filer names the conflict and says to file to an unlocked worker or tell the person, so the filing model can recover |
-| **Locks in** | The public name `lock:` on a worker's file: fixed values for any server-owned run setting (`harness`, `plan`, `model`) and for `mode`, compared with deep equality, so a Cursor model with other params differs. A mode is the filer's to pick, and a lock is how a worker bounds that pick: `lock: { mode: answer }` refuses an implement filing by name (epic ER-11's refusal, applied to the mode), and an old `harnessFeature` row too, since the legacy read turns it into implement before the lock compares. The refusal reads the same in both places, naming the field, the worker's value and the one asked for |
+| **Locks in** | The public name `lock:` on a worker's file: fixed values for any server-owned run setting (`harness`, `plan`, `model`) and for `mode`, compared with deep equality, so a Cursor model with other params differs. A mode is the filer's to pick, and a lock is how a worker bounds that pick: `lock: { mode: answer }` refuses an implement filing at filing, from the assignee worker's config, with `TaskWriteRefusedError("mode_locked", 'worker "<id>" always runs with mode <pinned>; this task asked for <name>. Nothing was filed.')` (epic ER-11's refusal, applied to the mode; the claim re-check stays), and an old `harnessFeature` row too, since the legacy read turns it into implement before the lock compares. The refusal reads the same in both places, naming the field, the worker's value and the one asked for |
 
 **What would change my mind:** FIX-2894's filler not being handed the assignee. Then the lock
 is checked at claim only, as the epic allows, and this card goes.
@@ -151,13 +151,17 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
   are dropped at filing, like a filer's `harness`, and the run uses its mode's. Per-task wording
   is allowed: the task's own text is appended to the mode's instructions.
 - **`harnessFeature` is read once more, then never written** (BP-030 dual-read). Its published
-  names go with no alias. A stored row with `harnessFeature: { issue }` reads as `mode:
-  "implement"` with that issue at its first claim, which freezes `implement`. A malformed marker
-  is refused at claim by name, never run as an answer, as today. Nothing writes the key.
-- **The legacy read comes first, then the checks** (coordinator decision). An old marker
-  becomes `mode: "implement"` with its issue before anything compares the mode, so the mode
-  validation and the lock ([D3](#d3)) see the derived mode, never an absent one. A worker locked
-  to `answer` refuses an old feature row by name at claim; it never runs it as an answer.
+  names go with no alias. The read is a pre-parse step on the task-input declaration, so
+  filing, `updateTask` and the claim all see `{ mode: "implement", issue }`; the first claim
+  freezes `implement`. A marker's `phase` value is ignored: any well-formed marker reads as
+  implement. A marker with no valid `issue` is refused by name, never run as an answer, as
+  today. Nothing writes the key.
+- **One order for every check** (coordinator decision): the legacy read, then the default
+  mode, then the registered set and `requires`, then the lock ([D3](#d3)). So validation and the
+  lock see the derived mode, never an absent one, and a worker locked to `answer` refuses an old
+  feature row by name; it never runs it as an answer.
+- **`updateTask` may change the mode before the first claim,** re-checked exactly as at filing
+  (registered set, `requires`, lock). After the first claim the mode is frozen.
 - **Fixed boards stay.** Their rows keep `harnessTaskInputSchema` at the top of `input` and don't
   run the coder flow; folding them into `codingTaskInput` would change rows this epic doesn't own.
 - **Read-only is a mark on the `Harness` value,** set by Claude Code's plan harness, never an id
@@ -253,4 +257,6 @@ facts:* four `byHarness` routes and the `harness` action, by `grep` on `coder-fl
   before validation and the lock, so a worker locked to `answer` refuses an old feature row;
   required input is FIX-2877's `ModeSpec.requires` (#5606); figures list the mode; the epic's
   modes amendment is #5612; the default mode is written in at filing and the claim re-checks
-  `requires`; the amendment notes sit below the opening problem.
+  `requires`; the amendment notes sit below the opening problem; the `mode_locked` refusal, one
+  check order, the legacy read as a pre-parse step ignoring `phase`, and `updateTask` re-checks
+  before the first claim, all aligned with the epic's #5612.
