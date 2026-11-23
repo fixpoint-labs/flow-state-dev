@@ -14,7 +14,9 @@ request → session → user → org
 - **User**: Persisted, spans sessions, holds user preferences/resources
 - **Org**: Persisted, shared across users
 
-**Phase 1 policy:** User context is required for all flow execution. Sessions are always available — ephemeral sessions auto-create when no `sessionId` is provided.
+**Phase 1 policy:** User context is required for all flow execution, and every request names its session from the first write of its record. A caller that knows its conversation passes its id; one that names none is refused before anything is written (`400 session-required` over HTTP, `SessionRequiredError` from `runAction` and `host.dispatch`). A one-shot send passes `oneOffSessionId()` (`@flow-state-dev/core/helpers`), the only place a one-off `ephemeral_` id is made; the webhook route, the scheduled endpoint (`per-fire`) and the MCP adapter call it themselves for a run with no session. The prefix is for display only (the navigator folds one-off sessions by it).
+
+**Requests recorded with no session.** Records written before this rule may have no `sessionId`. They stay readable and stoppable: a stop finds their gates and settles a parked one `aborted` without running it. Running one again is refused by name with `LegacySessionlessRequestError` (`legacy-sessionless-request`, a `409` over HTTP): a resume, a continuation, a recovery retry, a wake and the retry route. A queued BullMQ job with no session is settled failed under that name and not retried. Read types keep `sessionId` optional for these rows (`context/record-session.ts`).
 
 ## State Operations
 

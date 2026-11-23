@@ -34,7 +34,7 @@ export function newSessionId(): string {
 /**
  * Bind `target` as the default and ensure its flow kind has a stable session id,
  * minting one on first use. Seeding here — not at turn time — guarantees a turn
- * never runs under an engine-minted `ephemeral_…` id (which would not persist
+ * never runs in a one-off `ephemeral_…` session (which would not persist
  * history across turns). Returns the active session id and whether it was freshly
  * minted (vs resumed from an earlier `/use` of the same flow).
  */
