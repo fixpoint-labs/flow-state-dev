@@ -19,6 +19,7 @@ import {
   runAction
 } from "@flow-state-dev/engine";
 import {
+  abortRequest,
   createInMemoryStores
 } from "@flow-state-dev/engine/host";
 import { z } from "zod";
@@ -314,9 +315,19 @@ async function harness(
     return result;
   };
 
+  /** Continue a request as a host's restart does for one it finds `interrupted`. */
+  const continueInterrupted = async (requestId: string) => {
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const { finished } = await continueRequest({ requestId, stores, flowRegistry: registry, runtimeConfig } as never);
+    return finished;
+  };
+
   return {
     log,
     stop,
+    continueInterrupted,
+    requests: stores.request,
     waits,
     /** A steer written onto the stored row alone, as a host's upgrade step writes one: the row's wait is left as it was. */
     rawSteer: async (message: string) => {
@@ -1008,5 +1019,100 @@ describe("a task turn's model waits on a person one way per turn (FIX-2131)", ()
     const done = (await h.row())!;
     expect(done).toMatchObject({ status: "completed", attempts: 1 });
     expect(done.output).toEqual({ ok: true, kind: "review", answered: true, answer: "looks right" });
+  });
+});
+
+// FIX-2795.
+describe("a stopped request settles its task when it ends, never at its lease's lapse", () => {
+  /** Stop the running request from inside its own turn, as the abort route does: the durable intent, then the controller. */
+  const stopSelf = async (ctx: BlockContext) => {
+    await ctx.session.stopRequest(ctx.request.identity.id);
+    await sleep(5);
+    return "an answer the stop overtook";
+  };
+
+  it("a person's stop of the task's own request cancels the task, and its dependents with it", async () => {
+    const h = await harness();
+    await (await h.ledger()).createTask({ id: "t2", goal: "after it", assignee: "coder", input: {}, deps: ["t1"] });
+    h.setBehaviour(stopSelf);
+    const { requestId } = await h.run();
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    const task = await h.row();
+    // Not failed: another attempt would redo the work the person stopped. Its lease is gone with it.
+    expect(task).toMatchObject({ status: "cancelled", attempts: 1 });
+    expect(task?.leaseUntil).toBeUndefined();
+    // The answer the stop overtook settles nothing.
+    expect(task?.output).toBeUndefined();
+    // The cancel is an ending like any other: its filer hears it, and a row that waits on it is cancelled too.
+    expect(h.events.filter((e) => e.kind === "cancelled").map((e) => e.taskId)).toContain("t1");
+    expect((await h.ledger()).get("t2")).toMatchObject({ status: "cancelled", labels: expect.arrayContaining(["skipped"]) });
+  });
+
+  it("a stop from inside the process fails the attempt: free for its next claim at once, holding no lease", async () => {
+    const h = await harness();
+    h.setBehaviour(async (ctx) => {
+      abortRequest(ctx.request.identity.id);
+      await sleep(5);
+      return "an answer the stop overtook";
+    });
+    const { requestId } = await h.run();
+    expect((await h.requests.get(requestId!))?.status).toBe("interrupted");
+    const task = await h.row();
+    expect(task).toMatchObject({ status: "pending", attempts: 1 });
+    expect(task?.leaseUntil).toBeUndefined();
+    // No clock moved: the next claim takes it now, not when a lease would have lapsed.
+    expect(await h.reclaim()).toMatchObject({ status: "in_progress", attempts: 2 });
+  });
+
+  it("an interrupted request's continuation finds its claim gone, and writes nothing on the next attempt's row", async () => {
+    // Before, the row stayed running under the interrupted request's lease, and its continuation settled it on attempt 1.
+    const h = await harness();
+    let stopped = false;
+    h.setBehaviour(async (ctx) => {
+      if (!stopped) {
+        stopped = true;
+        abortRequest(ctx.request.identity.id);
+        await sleep(5);
+      }
+      return "the continuation's answer";
+    });
+    const { requestId } = await h.run();
+    const next = (await h.reclaim())!;
+    expect(next).toMatchObject({ attempts: 2 });
+    await h.continueInterrupted(requestId!);
+    // The second attempt's row, as its claim left it.
+    expect(await h.row()).toMatchObject({ status: "in_progress", attempts: 2, leaseUntil: next.leaseUntil });
+    expect((await h.row())?.output).toBeUndefined();
+  });
+
+  it("a person's stop of a later request for the task (its steer's turn) settles nothing: the task waits as before", async () => {
+    const h = await harness({ steerTurn: true });
+    h.setBehaviour(async (_ctx, ledger) => {
+      await ledger.steer!("t1", { message: "Use the North America numbers", from: "filer" });
+      return "first answer";
+    });
+    await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "steer", attempts: 1 });
+    h.setSteerTurn(async (_steers, ctx) => stopSelf(ctx));
+    const { requestId } = await h.runLater("steerTurn");
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    // Not cancelled, not failed: the stop was of that turn, not of the task.
+    const task = await h.row();
+    expect(task).toMatchObject({ status: "in_progress", keptOpenBy: "steer", attempts: 1, output: "first answer" });
+    expect(task?.leaseUntil).toBeUndefined();
+  });
+
+  it("a stop that lands after a later attempt took the row writes nothing on it: the cancel is fenced", async () => {
+    const h = await harness();
+    let next: Task | undefined;
+    h.setBehaviour(async (ctx) => {
+      // The lease lapses and the next claim takes the row, while this stale request still runs.
+      h.advance(60_000);
+      next = (await h.reclaim())!;
+      return stopSelf(ctx);
+    });
+    await h.run();
+    expect(next).toMatchObject({ attempts: 2 });
+    expect(await h.row()).toMatchObject({ status: "in_progress", attempts: 2, leaseUntil: next!.leaseUntil });
   });
 });

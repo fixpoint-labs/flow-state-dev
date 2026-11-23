@@ -133,13 +133,7 @@ export type RequestEndHook = (ending: RequestEnding) => void | RequestEndVerdict
 // FIX-2795.
 /** How a request-end hook runs. */
 export interface RequestEndHookOptions {
-  /**
-   * The hook's resource writes are not stopped by the request's explicit
-   * abort. For a hook whose writes record how the request ended (the claim
-   * gate settling the task a stopped request worked), which a stop must not
-   * undo. Off by default: any other hook's writes stop on the abort, as the
-   * request's own do.
-   */
+  /** The hook's resource writes are not stopped by an explicit abort of the request. Off by default. */
   readonly writesOutliveAbort?: boolean;
 }
 
@@ -163,8 +157,7 @@ export const REQUEST_END_SEAM: unique symbol = Symbol.for("@flow-state-dev/reque
 export function onRequestEnded(ctx: object, hook: RequestEndHook, options?: RequestEndHookOptions): boolean {
   const seam = (ctx as Pick<InternalBlockContext, typeof REQUEST_END_SEAM>)[REQUEST_END_SEAM];
   if (seam == null) return false;
-  if (options === undefined) seam.add(hook);
-  else seam.add(hook, options);
+  seam.add(hook, options);
   return true;
 }
 

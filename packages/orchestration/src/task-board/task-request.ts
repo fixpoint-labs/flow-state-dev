@@ -481,15 +481,37 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
     }
     return undefined;
   }
-  // A person stopped the request (the abort route, `stopRequest`): the task
-  // stops with it, rather than retrying the work they stopped (FIX-2795).
   if (ending.status === "aborted") {
-    try {
-      await advisoryCancel(ref, row.id, USER_STOPPED, guardsOf(ticket));
+    // A person stopped a later request admitted for the task (a steer's turn,
+    // a notice): it settles nothing and fails nothing, as a later request that
+    // suspends doesn't. The stop was of this turn, not of the task: the row
+    // waits again on what it waited on. An answer the turn gave before the
+    // stop, even one that counts as the task's result, is not taken: the row
+    // keeps the output it had.
+    if (!record.own) {
+      if (record.prior !== undefined) await waitOn(record, row, record.prior, undefined);
       return undefined;
-    } catch (error) {
-      return error instanceof Error ? error : new Error(String(error));
     }
+    // A person stopped the task's own request (the abort route,
+    // `stopRequest`): the task stops with it, rather than retrying the work
+    // they stopped (FIX-2795). An answer it gave before the stop settles
+    // nothing either: the person stopped the run, so its result is not taken.
+    let refused: string | undefined;
+    const failure = await settleAtRequestEnd({
+      ctx: record.ctx,
+      collection: ref,
+      claim: ticket,
+      recorder: "cancel",
+      settle: async (write) => {
+        const outcome = await advisoryCancel(ref, row.id, USER_STOPPED, { ...guardsOf(ticket), write });
+        if (outcome.outcome === "declined") refused = outcome.reason;
+        return outcome;
+      },
+    });
+    if (refused !== undefined) {
+      console.warn(`[task-board] task "${row.id}": its request was stopped, and the cancel it owed was refused (${refused})`);
+    }
+    return failure;
   }
   // The first failure only, on purpose: one fails the attempt, and the row records one error.
   const background = ending.backgroundFailures?.[0];

@@ -1,4 +1,4 @@
-import { WRITES_OUTLIVE_ABORT, attachRequestEndRegistry, createRequestEndRegistry, type WritesOutliveAbort } from "../execution/request-end-hooks";
+import { attachRequestEndRegistry, createRequestEndRegistry, type WritesOutliveAbort } from "../execution/request-end-hooks";
 import { createRequestSpendLedger, isInterruptedEndingHeld, loggedSpendOf, sumSpend } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { createBoardNoticeSeam } from "../bus/board-notice";
@@ -1847,7 +1847,11 @@ export async function createExecutionContext<
   }
 
   // How many writes now running record how the request ended (FIX-2145):
-  // theirs outlive an explicit abort. See `WRITES_OUTLIVE_ABORT`.
+  // theirs outlive an explicit abort. See `WritesOutliveAbort`. The count is
+  // the request's, not the hook's: while one such hook runs, every resource
+  // write of the request outlives the abort. The hooks run one at a time after
+  // the request's last drain, so only work an earlier hook left running
+  // unawaited can overlap one.
   let writesOutlivingAbort = 0;
   const outliveAbort: WritesOutliveAbort = async (write) => {
     writesOutlivingAbort += 1;
@@ -5083,7 +5087,6 @@ export async function createExecutionContext<
   (rootContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
   attachRequestEndRegistry(rootContext, requestEndRegistry);
   (rootContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = requestSpendLedger;
-  (rootContext as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT] = outliveAbort;
   (rootContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
   attachBuiltInHost(rootContext, builtInHost);
   // FIX-751: bind the live context so reactive dispatchers can run blocks
