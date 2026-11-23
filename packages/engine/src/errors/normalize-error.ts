@@ -65,15 +65,15 @@ export function normalizeError(
       blockInstanceId: options.blockInstanceId,
       scope: options.scope,
       details: options.details
-    }, message);
-    if (classified !== undefined) return classified;
+    });
+    if (classified !== undefined) return markWrapper(classified);
   }
 
   const code = options.code ?? inferCode(normalized);
   const retryable = options.retryable ?? inferRetryable(normalized, code);
 
   if (normalized instanceof FlowError) {
-    return new FlowError(message, {
+    const renormalized = new FlowError(message, {
       code,
       retryable,
       blockName: options.blockName ?? normalized.blockName,
@@ -82,17 +82,34 @@ export function normalizeError(
       cause: normalized.cause,
       details: options.details ?? normalized.details
     });
+    // Re-normalizing a wrapper keeps the same raw cause, so it stays a wrapper.
+    return SYNTHETIC_WRAPPERS.has(normalized) ? markWrapper(renormalized) : renormalized;
   }
 
-  return new FlowError(message, {
-    code,
-    retryable,
-    blockName: options.blockName,
-    blockInstanceId: options.blockInstanceId,
-    scope: options.scope,
-    cause: normalized,
-    details: options.details
-  });
+  return markWrapper(
+    new FlowError(message, {
+      code,
+      retryable,
+      blockName: options.blockName,
+      blockInstanceId: options.blockInstanceId,
+      scope: options.scope,
+      cause: normalized,
+      details: options.details
+    })
+  );
+}
+
+/**
+ * The FlowErrors `normalizeError` built around a raw throw, whose message it
+ * copied (colour codes stripped) from that `cause`. `displayCause` unwraps
+ * these by identity, so an author's own cause that only differs by colour
+ * codes is never mistaken for one.
+ */
+const SYNTHETIC_WRAPPERS = new WeakSet<FlowError>();
+
+function markWrapper(error: FlowError): FlowError {
+  SYNTHETIC_WRAPPERS.add(error);
+  return error;
 }
 
 /**
@@ -106,13 +123,17 @@ export function normalizeError(
  * cause, an extra wrapper level. Unwrapping the synthetic layer makes the
  * server's `block_trace` / terminal error details match the raw-throw seam
  * (`emit-tool-output`), which serializes the original error's `.cause` directly.
+ *
+ * A wrapper `normalizeError` built is recognized by identity, since its
+ * message may differ from the cause's by stripped colour codes. Any other
+ * FlowError unwraps only when the messages are exactly equal.
  */
 export function displayCause(error: FlowError): unknown {
   const cause = error.cause;
   if (
     cause instanceof Error &&
     !FlowError.isInstance(cause) &&
-    stripAnsi(cause.message) === error.message
+    (SYNTHETIC_WRAPPERS.has(error) || cause.message === error.message)
   ) {
     return (cause as Error & { cause?: unknown }).cause;
   }
