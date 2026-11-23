@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, where Lead learns the app&#x27;s default coder. Chosen: the harness kit&#x27;s context, beside the readiness rows. Instead of: a coding worker named in Lead&#x27;s prompt, as today. It comes down to the first row: with the context line, changing TEAMMATES_HARNESS alone moves Lead, while a prompt that names a worker needs an edit every time the default moves. The price is the second row: Lead maps the default to a worker by its roster harness, a model&#x27;s choice, where the prompt names the worker outright. The third row is a tie: a coder the user names wins either way. Locks in: every worker holding the harness kit&#x27;s capability is told the default coder, in every app on the kit. Flips if: Lead misses the mapping in the goal check."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, who chooses the worker a coding task goes to when no coder is picked. Chosen: the server, which writes the default&#x27;s worker as the assignee. Instead of: Lead, told the default by the harness kit&#x27;s context and mapping it to a worker. It comes down to the first row: when text Lead reads names another coder, such as a Coding harness: Cursor line, the server still puts the task on the default, where Lead would file it on that coder. The price is the second row: a coder named in words no longer moves the task; Code with does, where Lead would follow the words. The third row is a tie: a Code with pick wins either way. Locks in: on the no-pick path, in every app on the kit, the server writes the assignee and ignores the model&#x27;s. Flips if: people need to pick a coder in words."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -35,61 +35,61 @@
   <g id="the-call">
   <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
   <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
-  <text class="t-q" x="32" y="52">Where does Lead learn the app&#x27;s default coder?</text>
+  <text class="t-q" x="32" y="52">With no coder picked, who chooses the worker a coding task goes to?</text>
   </g>
   <g id="options">
   <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
   <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-  <text class="t-h c-code" x="228" y="112">The harness kit&#x27;s context</text>
+  <text class="t-h c-code" x="228" y="112">The server: the default&#x27;s worker</text>
   <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
   <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-  <text class="t-h c-lost" x="592" y="112">A worker named in Lead&#x27;s prompt</text>
+  <text class="t-h c-lost" x="592" y="112">Lead, told the default by the kit</text>
   </g>
   <g id="row-0">
   <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
   <rect class="bar" x="16" y="134" width="4" height="62"/>
-  <text class="t-lbl" x="32" y="156">TEAMMATES_HARNESS</text>
-  <text class="t-lbl" x="32" y="169">ALONE</text>
+  <text class="t-lbl" x="32" y="156">TEXT LEAD READS</text>
+  <text class="t-lbl" x="32" y="169">NAMES ANOTHER</text>
   <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
   <text class="mark plus" x="228" y="162">+</text>
-  <text class="t-b" x="248" y="161">Moves Lead</text>
-  <text class="t-s" x="248" y="179">no prompt or client edit</text>
+  <text class="t-b" x="248" y="161">Still the default</text>
+  <text class="t-s" x="248" y="179">a Coding harness: line is not a pick</text>
   <text class="mark minus" x="592" y="162">−</text>
-  <text class="t-b" x="612" y="161">Does nothing</text>
-  <text class="t-s" x="612" y="179">the prompt still names teammates.cursor</text>
+  <text class="t-b" x="612" y="161">Files it on that coder</text>
+  <text class="t-s" x="612" y="179">whatever its sandbox; nothing checks after</text>
   </g>
   <g id="row-1">
-  <text class="t-lbl" x="32" y="222">HOW LEAD FINDS</text>
-  <text class="t-lbl" x="32" y="235">THE WORKER</text>
+  <text class="t-lbl" x="32" y="222">A CODER NAMED</text>
+  <text class="t-lbl" x="32" y="235">IN WORDS</text>
   <text class="mark minus" x="228" y="224">−</text>
-  <text class="t-b" x="248" y="223">By the roster&#x27;s harness</text>
-  <text class="t-s" x="248" y="241">a model&#x27;s choice, held by the goal check</text>
+  <text class="t-b" x="248" y="223">Doesn&#x27;t move it</text>
+  <text class="t-s" x="248" y="241">pick it with Code with instead</text>
   <text class="mark plus" x="592" y="224">+</text>
-  <text class="t-b" x="612" y="223">Named outright</text>
-  <text class="t-s" x="612" y="241">no mapping to get wrong</text>
+  <text class="t-b" x="612" y="223">Moves it</text>
+  <text class="t-s" x="612" y="241">Lead follows the words</text>
   <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
   <g id="row-2">
-  <text class="t-lbl" x="32" y="280">A CODER THE</text>
-  <text class="t-lbl" x="32" y="293">USER NAMES</text>
+  <text class="t-lbl" x="32" y="280">A CODE WITH</text>
+  <text class="t-lbl" x="32" y="293">PICK</text>
   <text class="mark tie" x="228" y="282">=</text>
   <text class="t-b" x="248" y="281">Wins</text>
-  <text class="t-s" x="248" y="299">as today</text>
+  <text class="t-s" x="248" y="299">sent beside the message</text>
   <text class="mark tie" x="592" y="282">=</text>
   <text class="t-b" x="612" y="281">Wins</text>
-  <text class="t-s" x="612" y="299">as today</text>
+  <text class="t-s" x="612" y="299">Lead reads it</text>
   <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
   <g id="locks-in">
   <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
   <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-  <text class="t-b" x="32" y="371">Every coordinator on the kit sees the default</text>
-  <text class="t-s" x="32" y="389">one more line beside readiness, in every app</text>
+  <text class="t-b" x="32" y="371">The server writes the no-pick assignee</text>
+  <text class="t-s" x="32" y="389">in every app on the kit; the model&#x27;s is ignored</text>
   </g>
   <g id="flips-if">
   <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
   <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-  <text class="t-b" x="494" y="371">Lead misses the mapping</text>
-  <text class="t-s" x="494" y="389">then a fourth worker with no harness line</text>
+  <text class="t-b" x="494" y="371">People need to pick a coder in words</text>
+  <text class="t-s" x="494" y="389">then FIX-2879&#x27;s pick comes sooner</text>
   </g>
   </svg>

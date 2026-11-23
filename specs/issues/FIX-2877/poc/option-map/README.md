@@ -31,5 +31,13 @@ OPTION_MAP_CONTROL=1 node specs/issues/FIX-2877/poc/option-map/check.mjs    # mu
 **Result on `main` `26e76736b` (2026-11-23).** 25 pieces: 14 `HAS`, 7 `GAINS`, 4 `DROP`; 8
 sites found. PASS. The control exits 1 with `UNCLASSIFIED: plantedOption`.
 
+The 7 `GAINS` are fork keys, not options. They land in D1's three: `phase`, `answerPhase` and
+`answerWorkspace` in `phases`; `approveTools` in its own; `resources`, `setting.document` and
+`[INSPECT_ENTRY]` in the app's worker extension.
+
+The checker does not list readers of the symbols that go (`coderHarnessNames`, `HARNESS_SETTING`,
+`workerHarnesses`, `JUDGE_MODEL`, the fork's `CODER_FLOW`). The spec's
+[What changes](../../SPEC.md#what-changes) lists them, by grep.
+
 Once FIX-2877 is implemented the fork is gone and this check fails by design: it describes the
 tree the spec was written against.

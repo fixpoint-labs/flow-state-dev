@@ -13,8 +13,8 @@ flowchart TD
   I["FIX-2877"] --> D1["D1 · Shift Manager on the shared flow · three options for the rest"]
   D1 -.->|"rejected · run settings built twice"| X1["keep Shift Manager's own flow"]
   D1 -.->|"rejected · still a fork"| X1b["rebuild it from harness-manager's blocks"]
-  I --> D2["D2 · Lead reads the default from the kit's context"]
-  D2 -.->|"rejected · a prompt edit per change"| X2["the default's worker named in Lead's prompt"]
+  I --> D2["D2 · no pick · the server writes the default's worker"]
+  D2 -.->|"rejected · any text Lead reads can steer it"| X2["Lead maps the default to a worker, from its prompt or context"]
   I --> D3["D3 · the per-teammate default goes"]
   D3 -.->|"rejected · a second default"| X3["rename it and keep reading it"]
 ```
@@ -38,20 +38,20 @@ app knowledge. Then FIX-2627 D1's escape hatch, and a comment on the epic, as it
 It comes down to run settings: on the shared flow they arrive once; a fork needs them built twice.
 
 <a name="d2"></a>
-## D2 · Lead learns the default coder from the harness kit's context, not its prompt
+## D2 · With no coder picked, the server puts a coding task on the default coder
 
 | | |
 |---|---|
-| **Instead of** | Lead's prompt naming the default's worker (`teammates.cursor`) and the client keeping a copy, as today. Also weighed: a fourth coding worker with no `harness:`, which would run on the default |
-| **Because** | The readiness rows already steer Lead from that capability (`goals/teammates-lab/routes-only-to-ready-harnesses`), so one more line there is the place every app's coordinator already reads. A prompt that names a worker needs an edit each time the default moves ([epic ER-3](../../epics/FIX-2876/DECISIONS.md#who-owns-what)). A fourth worker adds a roster row FIX-2879 would remove ([epic D2](../../epics/FIX-2876/DECISIONS.md#d2)) |
-| **Locks in** | Every worker holding the harness kit's capability is told the app's default coder, in every app on the kit. Until FIX-2879, Lead maps that default to the coding worker whose roster `harness` matches: a model's choice, held by the goal check. The composer names a harness only when you picked one |
+| **Instead of** | Lead choosing the worker: today its prompt names `teammates.cursor` and the client keeps a copy; the first draft had Lead read the default from the kit's context and map it to a worker by the roster's `harness`. Also weighed: a fourth coding worker with no `harness:`, which would run on the default |
+| **Because** | A model's assignee follows any text the model reads. With `TEAMMATES_HARNESS=codex`, a README, an issue or another worker's message that says `Coding harness: Cursor` files the task on Cursor, whose sandbox is off (`sandboxOptions: { enabled: false }`), and nothing after it checks: `checkAssignee` accepts any roster id, `harnessOf` honours a pinned worker's `harness:`, and the work entry refuses only a harness that is not ready. The server already holds the default (`defaultHarness`), so writing the assignee from it is one rule, not a model's guess a goal check can only sample. A fourth worker would bound it too, but adds a roster row FIX-2879 removes ([epic D2](../../epics/FIX-2876/DECISIONS.md#d2)) |
+| **Locks in** | In every app on the kit, a coding task filed with no pick gets its assignee from the server: the roster's coder worker whose `harness` is the default, else one with no `harness:` line (which `harnessOf` runs on the default). With neither, the filing is refused, saying why. The model's assignee is ignored there. A pick is structured or it is not one: the composer's *Code with* pick, sent beside the message, or a person's own assignment from the board. A `Coding harness:` line, or a coder named in words, in the message, a goal or anything Lead reads, is not a pick. The kit's context still names the default beside readiness, so Lead says which coder took it ([epic ER-3](../../epics/FIX-2876/DECISIONS.md#who-owns-what)) |
 
-**What would change my mind:** Lead missing the mapping in the goal check. Then the fourth
-worker, pulling FIX-2879's collapse forward.
+**What would change my mind:** people needing to pick a coder in words often enough that
+*Code with* doesn't cover it. Then FIX-2879's pick comes sooner; the rule stays.
 
-![D2 · Where does Lead learn the default coder? Chosen: the harness kit's context, beside readiness. Instead of: a worker named in Lead's prompt. Decides it: changing TEAMMATES_HARNESS alone moves Lead, where the prompt needs an edit. Price: Lead maps the default to a worker by model choice. Tie: a coder the user names wins either way. Locks in a default line for every coordinator on the kit; flips if Lead misses the mapping](figures/d2-context.svg)
+![D2 · With no coder picked, who chooses the worker? Chosen: the server, the default's worker. Instead of: Lead, told the default by the kit's context. Decides it: text Lead reads that names another coder still lands on the default, where Lead would file it there. Price: a coder named in words no longer moves it; Code with does. Tie: a Code with pick wins either way. Locks in a server-written assignee on the no-pick path in every app on the kit; flips if people need to pick in words](figures/d2-context.svg)
 
-It comes down to one knob: with the context line, the env var alone moves Lead; with the prompt, it can't.
+It comes down to who can steer it: the server's rule reads only the default; Lead reads everything.
 
 <a name="d3"></a>
 ## D3 · The per-teammate "default coding harness" goes, not renamed
@@ -88,6 +88,10 @@ It comes down to one default: a renamed setting is still the second one.
 - **Stop-on-steer is the harness block's.** A check that needs it declares `stopsOnAbort` on its
   harness block, which the manager already reads. Per-harness run budgets go: one `runTimeoutMs`.
 - **Old rows (BP-030).** A stored agent-flow worker with `settings.harness` is read without it, never refused.
+- **The pick rides beside the message.** The composer sends *Code with* as a field the server reads,
+  not a line in the text, so the no-pick rule can tell a pick from words. FIX-2879 still keeps it
+  per conversation, puts it on the task's declared input, and collapses the workers; the epic says
+  the pick reaches the task without text there, and this is the turn-level half of that.
 - **Coordination.** [#5585](https://github.com/fixpoint-labs/flow-state-dev/pull/5585) (FIX-2873,
   trusted reviewers) touches both hosts and Lead's `WORKER.md`; FIX-2583 touches `coder-flow.ts`. The second to merge rebases.
 
@@ -99,6 +103,7 @@ It comes down to one default: a renamed setting is still the second one.
 | A per-harness run budget and stop-on-steer on the kit | One budget serves both apps; stop-on-steer is already a harness block's declaration |
 | Templating Lead's prompt from `TEAMMATES_HARNESS` | The template is a second reader of the env var, in app code |
 | A harness-less fourth Teammates worker | Changes the roster, which is FIX-2879's ([D2](#d2)) |
+| Lead maps the default from the kit's context (the first draft's D2) | A model's choice: text Lead reads can file the task on a wider-sandbox coder, and nothing after it checks ([D2](#d2)) |
 
 ## Settled
 
@@ -120,10 +125,28 @@ this worker has no sub-agent tool, so the analyst and validators were not indepe
 - *Other shapes:* keep the fork, the escape hatch, a fourth worker. All lost ([considered](#considered-and-dropped)).
 - *New since:* #5585 (FIX-2873) open on both hosts, **recorded** under coordination.
 - *Necessity:* the issue is the epic's prerequisite; nothing smaller meets ER-1.
-- *Concern:* D2 leans on Lead mapping a harness to a worker. **Open to the goal check**, with D2's flip.
+- *Concern:* D2 leaned on Lead mapping a harness to a worker. **Closed in review**: the server writes it ([D2](#d2)).
+
+## Notes from review
+
+For the implementer; none changes the approach.
+
+- **The third option's shape** (Cursor, on D1). It carries `resources` (the fork's file-declared
+  documents, from `resourcesFromDocs`), the `document` setting and the inspect action. Prefer the
+  agent flow's `settings` shape for the setting and documents, and add only what Shift Manager
+  can't say that way, over one catch-all `resources` option. If it can't be narrowed, D1's flip
+  applies.
+- **Counting** (Cursor). The POC's 7 `GAINS` are fork keys, not options: three phase keys, one
+  `approveTools`, three app-extension pieces. Now said in the spec's debt table and the POC README.
+- **Removed-symbol readers** (Gitar). Listed in the spec's [What changes](SPEC.md#what-changes) by
+  grep, not by the checker, which confirms only the knob and list sites.
 
 ## How it got here
 
 - **Draft** — framed as the epic's one-flow, one-default prerequisite; Shift Manager moves onto
   the kit's `coder` with three options, Lead reads the default from the kit's capability, the
   per-teammate setting goes. Builds on FIX-2627's shared flow and FIX-2391's readiness context.
+- **Review round 1** — D2 changed: with no pick, the server writes the assignee and ignores the
+  model's, since a model's choice can be steered by text it reads (Cursor and Codex). The goal check
+  requires every run on the default and plants a `Coding harness: Cursor` line. The readers of
+  removed symbols, the judge goal's migration and the 7-to-3 count are named (Gitar, Cursor).
