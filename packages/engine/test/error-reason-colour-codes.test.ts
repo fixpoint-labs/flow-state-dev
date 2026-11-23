@@ -174,7 +174,7 @@ describe("a failed turn's reason has no terminal colour codes", () => {
   });
 
   it("hands public error hooks a plain throw's error with details undefined", async () => {
-    const seen: Array<{ hook: string; details: unknown; hasDetailsKey: boolean }> = [];
+    const seen: Array<{ hook: string; details: unknown; symbols: symbol[] }> = [];
     const record = (hook: string) =>
       handler({
         name: `record-${hook}`,
@@ -182,7 +182,7 @@ describe("a failed turn's reason has no terminal colour codes", () => {
         outputSchema: z.any(),
         execute: (input: { error?: FlowError }) => {
           if (input?.error !== undefined) {
-            seen.push({ hook, details: input.error.details, hasDetailsKey: input.error.details !== undefined });
+            seen.push({ hook, details: input.error.details, symbols: Object.getOwnPropertySymbols(input.error) });
           }
           return input;
         }
@@ -204,7 +204,7 @@ describe("a failed turn's reason has no terminal colour codes", () => {
       },
       request: { onErrored: record("request.onErrored"), onFinished: record("request.onFinished") }
     })();
-    const captured: unknown[] = [];
+    const captured: Array<{ details: unknown; symbols: symbol[] }> = [];
 
     await runAction({
       orgId: DEFAULT_ORG_ID,
@@ -215,13 +215,21 @@ describe("a failed turn's reason has no terminal colour codes", () => {
       sessionId: "sess_hook_details",
       userId: "user_hook_details",
       stores: createInMemoryStores(),
-      runtimeConfig: { errorCapture: (event: { error: FlowError }) => void captured.push(event.error.details) }
+      runtimeConfig: {
+        errorCapture: (event: { error: FlowError }) =>
+          void captured.push({ details: event.error.details, symbols: Object.getOwnPropertySymbols(event.error) })
+      }
     });
 
-    expect(seen.length).toBeGreaterThan(0);
-    for (const entry of seen) expect(entry.details).toBeUndefined();
+    // The hooks get the error exactly as on main: no details, nothing hidden on it.
+    expect(seen.map((entry) => entry.hook)).toEqual(
+      expect.arrayContaining(["action.onErrored", "request.onErrored", "request.onFinished"])
+    );
     expect(captured.length).toBeGreaterThan(0);
-    for (const details of captured) expect(details).toBeUndefined();
+    for (const entry of [...seen, ...captured]) {
+      expect(entry.details).toBeUndefined();
+      expect(entry.symbols).toEqual([]);
+    }
   });
 
   it("emits no marker on the error item, with and without details of its own", async () => {

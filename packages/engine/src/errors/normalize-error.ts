@@ -100,36 +100,33 @@ export function normalizeError(
 }
 
 /**
- * Marks a FlowError that `normalizeError` built around a raw throw: a
- * non-enumerable symbol property on the error itself, so `details` and every
- * other public field stay as they were, and JSON, spread and `serializeError`
- * never see it.
+ * The FlowErrors that `normalizeError` built around a raw throw, kept out of
+ * band so nothing on the error itself (fields, `details`, symbols) changes.
+ * Keyed by the wrapper object, so each error's membership is its own.
  *
- * A path that rebuilds the error without copying the marker (see
+ * A path that rebuilds the error without adding the rebuild here (see
  * {@link copyWrapperMarker}) makes it look like an author's error, so its
  * cause is shown rather than unwrapped. That fails safe: more information,
  * never less.
  */
-const NORMALIZED_WRAPPER = Symbol.for("@flow-state-dev/engine/normalized-wrapper");
+const NORMALIZED_WRAPPERS = new WeakSet<FlowError>();
 
 function markWrapper(error: FlowError): FlowError {
-  Object.defineProperty(error, NORMALIZED_WRAPPER, { value: true });
+  NORMALIZED_WRAPPERS.add(error);
   return error;
 }
 
 function isNormalizedWrapper(error: FlowError): boolean {
-  return (error as unknown as Record<symbol, unknown>)[NORMALIZED_WRAPPER] === true;
+  return NORMALIZED_WRAPPERS.has(error);
 }
 
 /**
- * Carry the wrapper marker from `from` to `to`, when `to` is a rebuild of the
- * same failure (it keeps `from`'s cause). The engine's normalized-error seam
- * calls this on the error its interceptor returns.
+ * Count `to` as an engine wrapper too, when `from` is one and `to` is a
+ * rebuild of the same failure (it keeps `from`'s cause). The engine's
+ * normalized-error seam calls this on the error its interceptor returns.
  */
 export function copyWrapperMarker(from: FlowError, to: FlowError): FlowError {
-  if (to !== from && isNormalizedWrapper(from) && to.cause === from.cause && !isNormalizedWrapper(to)) {
-    markWrapper(to);
-  }
+  if (isNormalizedWrapper(from) && to.cause === from.cause) markWrapper(to);
   return to;
 }
 
