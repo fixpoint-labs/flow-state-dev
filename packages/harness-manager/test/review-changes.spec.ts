@@ -30,6 +30,7 @@ import {
   resolveResourceCollection,
   type SuspensionHold,
   type Task,
+  type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
 import { cancelAndResume, openOwnHolds } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
@@ -764,11 +765,15 @@ describe("a judged run on a board read from the claim, with review on", () => {
     }, { timeout: 10_000, interval: 50 });
   }, 60_000);
 
-  // FIX-2847.
-  it("ends the run's review stop when its task is cancelled after the check read the row and before it mirrored the stop", async () => {
-    // The check reads the row running, then a cancel lands before its write that mirrors the stop: the write is refused.
-    let cancelled = false;
-    const lab = claimHost({
+  // FIX-2847. The cases below force what lands between the check's read of the row and its write
+  // that mirrors the run's stop: the write is refused, and no mirror holds the stop.
+  /** A host whose claim gate runs `meanwhile` once, just before its write that mirrors the review stop. */
+  type SetKeptOpenBy = NonNullable<TaskCollectionRef["setKeptOpenBy"]>;
+  const hostWithGap = (
+    meanwhile: (ref: TaskCollectionRef, id: string, claim: Parameters<SetKeptOpenBy>[2]["claim"]) => Promise<void>,
+    ran: { done: boolean },
+  ) =>
+    claimHost({
       mode: "claim",
       durable: true,
       script: [{ answer: "added the line", commits: 1 }],
@@ -777,29 +782,74 @@ describe("a judged run on a board read from the claim, with review on", () => {
         new Proxy(ref, {
           get(target, key, receiver) {
             if (key !== "setKeptOpenBy") return Reflect.get(target, key, receiver);
-            return async (...args: Parameters<NonNullable<typeof ref.setKeptOpenBy>>) => {
+            return async (...args: Parameters<SetKeptOpenBy>) => {
               const [id, , options] = args;
-              if (options?.hold !== undefined && !cancelled) {
-                cancelled = true;
-                await target.cancel(id, "cancelled by the test, between the read and the write");
-              }
+              if (options?.hold === undefined || ran.done) return target.setKeptOpenBy!(...args);
+              ran.done = true;
+              await meanwhile(target, id, options.claim);
               return target.setKeptOpenBy!(...args);
             };
           },
         }),
     });
-    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
-    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
-    expect(cancelled).toBe(true);
-    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
-    expect(task.status).toBe("cancelled");
-    expect(task.holds?.some((h) => h.source.kind === "suspension") ?? false).toBe(false);
+  /** No request of the first attempt is left `suspended` (or running): the stop was ended. */
+  const firstAttemptEnds = async (lab: ReturnType<typeof claimHost>) => {
     const store = (await (lab.stores as StoreAdapter).resolve(["primary"])).request!;
     await vi.waitFor(async () => {
       const statuses = (await store.list({ sessionId: "s_task_tasks_conv-a_t1" })).map((r) => r.status);
       expect(statuses.length).toBeGreaterThan(0);
       expect(statuses.filter((s) => s === "suspended" || s === "in_progress")).toEqual([]);
     }, { timeout: 10_000, interval: 50 });
+  };
+  const LATER = 10 * 60_000;
+
+  it("ends the run's review stop when its task is cancelled after the check read the row and before it mirrored the stop", async () => {
+    const ran = { done: false };
+    const lab = hostWithGap(async (ref, id) => void (await ref.cancel(id, "cancelled by the test, between the read and the write")), ran);
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(ran.done).toBe(true);
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(task.status).toBe("cancelled");
+    expect(task.holds?.some((h) => h.source.kind === "suspension") ?? false).toBe(false);
+    await firstAttemptEnds(lab);
+  }, 60_000);
+
+  it("ends the old attempt's review stop when a later attempt takes the row in that gap, and leaves the later attempt's row alone", async () => {
+    const ran = { done: false };
+    let taken: Task | undefined;
+    const lab = hostWithGap(async (ref, id) => {
+      // The lease lapses, a sweep reclaims the row, and the next claim takes it: a second attempt.
+      await ref.reclaim(Date.now() + LATER);
+      taken = JSON.parse(JSON.stringify(await ref.claim("other-drain", { leaseDurationMs: LATER, eligibility: (t) => t.id === id }))) as Task;
+    }, ran);
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(taken).toMatchObject({ status: "in_progress", attempts: 2 });
+    await firstAttemptEnds(lab);
+    // The second attempt's row, as its claim left it: not cancelled, no mirror, its lease its own.
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(task).toMatchObject({ status: "in_progress", attempts: 2, leaseUntil: taken!.leaseUntil });
+    expect(task.holds?.some((h) => h.source.kind === "suspension") ?? false).toBe(false);
+  }, 60_000);
+
+  it("takes the row back and mirrors the review stop when only its claim's lease lapsed in that gap", async () => {
+    // No reclaim moved the row: it is still this attempt's and turn's. Cancelling the stop here would
+    // let the run's resume, admitted on the same attempt, complete the task on a review nobody gave.
+    const ran = { done: false };
+    const lab = hostWithGap(async (ref, id, claim) => {
+      // The claim's lease ends in the past: the write that follows finds it lapsed.
+      const renewed = await ref.renewLease(id, Date.now() - 1, { claim });
+      expect(renewed.outcome).toBe("recorded");
+    }, ran);
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(ran.done).toBe(true);
+    // The review waits for its person, on the row, as it does with no lapse: no lease, nothing settled.
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(task).toMatchObject({ status: "in_progress", attempts: 1, keptOpenBy: "suspended" });
+    expect(task.leaseUntil).toBeUndefined();
+    expect(task.holds?.find((h) => h.source.kind === "suspension")?.ask).toMatchObject({ kind: "review" });
   }, 60_000);
 
   it("holds a judge's ask on a question, with no review", async () => {
