@@ -162,7 +162,11 @@ export interface RunCheckoutCommandsOptions {
   commands: readonly string[];
   /** The wall clock for all of them together, in milliseconds. */
   timeoutMs: number;
-  /** Extra environment, laid over the process's own. */
+  /**
+   * Variables to set for the commands. They never inherit the host's whole
+   * environment, only `WORKSPACE_BASE_PASS`: a command the run can rewrite
+   * (a package script) gains no secret the host didn't name here.
+   */
   env?: Record<string, string>;
   /**
    * Stops the commands early: the running one is stopped with its group and

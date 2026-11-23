@@ -73,6 +73,7 @@ import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HOST_GIT_PASS, HOST_REMOTE_PASS } from "./child-env";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 import {
   asideName,
@@ -698,9 +699,18 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   const heldWork = options.heldWork;
   let id: string | undefined;
 
-  /** Git as the host runs it: none of the repository's hooks (`NO_HOOKS`), and this host's environment. */
+  /**
+   * Git as the host runs it: none of the repository's hooks (`NO_HOOKS`), and
+   * this host's environment, with the host's git settings and no credential.
+   */
   async function git(cwd: string, args: string[], timeoutMs: number): Promise<string> {
-    const { stdout } = await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs, env });
+    const { stdout } = await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs, env, pass: HOST_GIT_PASS });
+    return stdout.trim();
+  }
+
+  /** {@link git} for a call that reaches the remote, and so is handed the host's credentials. */
+  async function remoteGit(cwd: string, args: string[], timeoutMs: number): Promise<string> {
+    const { stdout } = await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs, env, pass: HOST_REMOTE_PASS });
     return stdout.trim();
   }
 
@@ -711,6 +721,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         cwd,
         timeoutMs: left(),
         env: { ...env, ...extra?.env },
+        pass: HOST_GIT_PASS,
         ...(extra?.input !== undefined ? { input: extra.input } : {}),
       });
       return extra?.raw === true ? stdout : stdout.trim();
@@ -897,11 +908,11 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   async function refresh(clone: string, remote: AllowedRemote, left: () => number, stamp = true): Promise<string> {
     let defaultBranch: string;
     try {
-      const head = await git(clone, ["ls-remote", "--symref", "--", remote.url, "HEAD"], left());
+      const head = await remoteGit(clone, ["ls-remote", "--symref", "--", remote.url, "HEAD"], left());
       const match = /^ref: refs\/heads\/(\S+)\s+HEAD$/m.exec(head);
       if (match === null) throw new Error("the remote reports no default branch");
       defaultBranch = match[1]!;
-      await git(clone, ["fetch", "--quiet", "--prune", "--", remote.url, "+refs/heads/*:refs/remotes/origin/*"], left());
+      await remoteGit(clone, ["fetch", "--quiet", "--prune", "--", remote.url, "+refs/heads/*:refs/remotes/origin/*"], left());
       await git(clone, ["symbolic-ref", "refs/remotes/origin/HEAD", `refs/remotes/origin/${defaultBranch}`], left());
     } catch (error) {
       throw unreadable(remote, error);
@@ -1277,10 +1288,10 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           scratch = scratchDir();
           const objects = join(await git(repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"], left()), "objects");
           const isolated = { ...env, GIT_DIR: scratch, GIT_OBJECT_DIRECTORY: objects };
-          await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env });
+          await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env, pass: HOST_GIT_PASS });
           // The copy last fetched, so only what is new crosses the wire.
           const previous = await git(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], left()).catch(() => "");
-          if (previous !== "") await run("git", ["update-ref", ref, previous], { cwd: scratch, timeoutMs: left(), env: isolated });
+          if (previous !== "") await run("git", ["update-ref", ref, previous], { cwd: scratch, timeoutMs: left(), env: isolated, pass: HOST_GIT_PASS });
           await run(
             "git",
             [
@@ -1312,9 +1323,10 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
               cwd: scratch,
               timeoutMs: Math.max(1, Math.floor(left() * FETCH_BUDGET_SHARE)),
               env: { ...isolated, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" },
+              pass: HOST_REMOTE_PASS,
             },
           );
-          const fetched = (await run("git", ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], { cwd: scratch, timeoutMs: left(), env: isolated })).stdout.trim();
+          const fetched = (await run("git", ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], { cwd: scratch, timeoutMs: left(), env: isolated, pass: HOST_GIT_PASS })).stdout.trim();
           // Only over the copy this fetch started from: a provision running
           // beside this one may have fetched something newer since. A ref
           // that failed to move for any other reason (a lock) is a failed
@@ -1896,6 +1908,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       cwd,
       timeoutMs: left(),
       env: { ...env, GIT_LITERAL_PATHSPECS: "1" },
+      pass: HOST_GIT_PASS,
       maxBuffer: READ_OUTPUT_MAX_BYTES,
     });
     return stdout;
@@ -2018,6 +2031,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           cwd: repo,
           timeoutMs: left(),
           env: { ...env, GIT_LITERAL_PATHSPECS: "1" },
+          pass: HOST_GIT_PASS,
           onLine: (record) => {
             // `<commit>:<path>\0<line>\0<text>`
             if (!record.startsWith(`${commit}:`)) return;
@@ -2443,6 +2457,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         cwd: tree,
         timeoutMs: left(),
         env: { ...env, GIT_INDEX_FILE: join(scratch, "index") },
+        pass: HOST_GIT_PASS,
       });
       return stdout.trim();
     };
@@ -2455,7 +2470,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         const [meta, path] = entry.split("\t") as [string, string];
         const [mode, blob] = meta.split(" ") as [string, string];
         if (mode !== "100644" && mode !== "100755") continue;
-        const { stdout } = await run("git", [...NO_HOOKS, `--git-dir=${gitDir}`, "cat-file", "blob", blob], { cwd: tree, timeoutMs: left(), env });
+        const { stdout } = await run("git", [...NO_HOOKS, `--git-dir=${gitDir}`, "cat-file", "blob", blob], { cwd: tree, timeoutMs: left(), env, pass: HOST_GIT_PASS });
         mkdirSync(dirname(join(tree, path)), { recursive: true });
         writeFileSync(join(tree, path), stdout);
       }

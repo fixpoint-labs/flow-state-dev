@@ -15,6 +15,7 @@ import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { chmodSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { childEnv, HOST_GIT_PASS } from "./child-env";
 import { withLockSync, type LockBounds } from "./lock";
 import { withoutCredential } from "./remotes";
 
@@ -51,6 +52,7 @@ export function repositoryIdentity(dir: string): string | undefined {
       stdio: ["ignore", "pipe", "ignore"],
       encoding: "utf8",
       timeout: STARTUP_GIT_TIMEOUT_MS,
+      env: childEnv({ pass: HOST_GIT_PASS }),
     }).trim();
     return identityFromCommonDir(dir, out);
   } catch {
@@ -65,6 +67,7 @@ export function resolvesToCommit(repo: string, ref: string): boolean {
       cwd: repo,
       stdio: ["ignore", "ignore", "ignore"],
       timeout: STARTUP_GIT_TIMEOUT_MS,
+      env: childEnv({ pass: HOST_GIT_PASS }),
     });
     return true;
   } catch {
@@ -113,6 +116,7 @@ export function readFetchPins(repo: string): FetchPins {
         stdio: ["ignore", "pipe", "ignore"],
         encoding: "utf8",
         timeout: STARTUP_GIT_TIMEOUT_MS,
+        env: childEnv({ pass: HOST_GIT_PASS }),
       });
     } catch {
       return "";

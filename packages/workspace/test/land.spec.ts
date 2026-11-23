@@ -91,6 +91,26 @@ describe("accepting a run by opening a pull request", () => {
     expect(landed).toEqual({ kind: "pull-request", url: PR_URL, number: 42, branch: "fsd/run-1", base: "main", remote: upstream.url });
   });
 
+  it("still pushes and opens with the host's GitHub credentials, and hands gh no other secret", async () => {
+    vi.stubEnv("GH_TOKEN", "gh_intended");
+    vi.stubEnv("GITHUB_TOKEN", "ghp_intended");
+    vi.stubEnv("SOME_SECRET", "x");
+    const seen = `${ghLog}.env`;
+    writeFileSync(
+      gh,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nprintf '%s|%s|%s\\n' "$GH_TOKEN" "$GITHUB_TOKEN" "$SOME_SECRET" >> '${seen}'\nif [ "$2" = "list" ]; then echo '[]'; else echo '${PR_URL}'; fi\n`,
+    );
+    const { h, place, commit } = await runWithCommit();
+
+    const landed = await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    expect(upstream.rev("refs/heads/fsd/run-1")).toBe(commit);
+    expect(landed).toMatchObject({ kind: "pull-request", url: PR_URL });
+    const calls = readFileSync(seen, "utf8").trim().split("\n");
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) expect(call).toBe("gh_intended|ghp_intended|");
+  });
+
   it("runs gh outside every checkout the run can configure, so it can't push again through the run's config", async () => {
     const { h, place } = await runWithCommit();
 

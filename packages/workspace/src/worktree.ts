@@ -35,6 +35,7 @@
  */
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { HOST_GIT_PASS } from "./child-env";
 import { CHECKOUT_CLEANUP_TIMEOUT_MS, run } from "./exec";
 import { WorkspaceRefusedError } from "./refused";
 import { identityFromCommonDir } from "./repository";
@@ -86,7 +87,7 @@ export interface WorktreeRequest {
   root: string;
   /** The run's own branch. */
   branch: string;
-  /** Git's environment, laid over the process's own. */
+  /** Variables to set for git, over the host's git settings (`HOST_GIT_PASS`). */
   env?: Record<string, string>;
   /** When the whole provision must be finished by, on `now`'s clock. */
   deadline: number;
@@ -266,6 +267,7 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
       cwd,
       timeoutMs,
       ...(request.env !== undefined ? { env: request.env } : {}),
+      pass: HOST_GIT_PASS,
     });
     return stdout.trim();
   };
