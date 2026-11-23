@@ -54,6 +54,20 @@ describe("a send the server never answers", () => {
     expect(signals[0]?.aborted).toBe(true);
   });
 
+  it("fails with the time limit, not the abort, when the fetcher rejects on abort as fetch does", async () => {
+    // The platform fetch rejects with an AbortError the moment its signal aborts.
+    const fetcher: ClientFetch = (_input, init) =>
+      new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    const sent = track(createClient({ userId: "u", fetcher }).flow("demo").send("run", {}));
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(sent.error).toBeInstanceOf(ClientHttpError);
+    expect((sent.error as Error).message).toBe("The server didn't answer the send within 30 seconds.");
+  });
+
   it("takes its limit from sendTimeoutMs, for a streamed send too", async () => {
     const { fetcher } = silent();
     const sent = track(

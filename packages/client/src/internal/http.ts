@@ -126,8 +126,9 @@ async function fetchWithin(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      controller.abort();
+      // Refuse before aborting: a fetcher that rejects on abort (the platform fetch does) must not win the race.
       reject(new ClientHttpError(limit.message, { status: 0, body: { error: limit.message } }));
+      controller.abort();
     }, limit.ms);
   });
   try {

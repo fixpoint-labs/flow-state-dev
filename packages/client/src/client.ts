@@ -631,10 +631,10 @@ export function createClient(options: CreateClientOptions): Client {
   const userId = requireValue(options.userId, "userId");
   const t = createTransport(options);
   const sendTimeoutMs = options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
-  const sendLimit: AnswerLimit = {
-    ms: sendTimeoutMs,
-    message: `The server didn't answer the send within ${formatSeconds(sendTimeoutMs)}.`
-  };
+  const sendLimit: AnswerLimit | undefined =
+    sendTimeoutMs > 0
+      ? { ms: sendTimeoutMs, message: `The server didn't answer the send within ${formatSeconds(sendTimeoutMs)}.` }
+      : undefined;
 
   const sessions: SessionsApi = {
     list: async (listOptions = {}) => {
@@ -898,7 +898,7 @@ function flowHandle<TFlow extends TypedFlow>(
   t: Transport,
   userId: string,
   address: string,
-  sendLimit: AnswerLimit
+  sendLimit: AnswerLimit | undefined
 ): FlowHandle<TFlow> {
   const flow = requireValue(address, "flow address");
 
