@@ -13,8 +13,8 @@ public release, when a fix breaks the fewest people.
 | | |
 |---|---|
 | **Winning when** | A builder can take every FSD doc, type and default at its word: nothing declared is silently dropped, no job makes them choose between two primitives, a reachable host is not open by default, and a common job such as keeping a flow alive has one published path. Nothing a builder can do today is cut to get there |
-| **The read** | Open issues labelled **Bug** in this project. Almost every one is a statement the runtime contradicts. **31 today; zero is done.** It rises when a bug is found as well as falls when one is fixed, so read it beside what was filed that week |
-| **Now** | 4 epics done · 7 in flight · 4 filed, not started. 117 open issues, **76 under no epic**. No finish date: the Linear target, May 22, passed with the original pass ([Decisions](DECISIONS.md) → Open) |
+| **The read** | Open issues labelled **Bug** in this project. Almost every one is a statement the runtime contradicts. **32 today; zero is done.** It rises when a bug is found as well as falls when one is fixed, so read it beside what was filed that week |
+| **Now** | 4 epics done · 7 in flight · 4 filed, not started. 124 open issues, **82 under no epic**. No finish date: the Linear target, May 22, passed with the original pass ([Decisions](DECISIONS.md) → Open) |
 | **Kill line** | If a surface cut here keeps coming back within a release because builders needed it, the project is aimed at the wrong thing. What changes is layering, hiding power behind progressive disclosure, not the remaining cut list |
 
 ![The territory: four things this project owns (declared equals real, one of each, honest defaults, one published path); the substrate it touches but others own (Public Launch hard gates, Workforce channels and boards, orchestration dispatch and schedules, the core block kinds); and what it never does (collapse block kinds or state scopes, remove capabilities, ship login, mint a product noun).](figures/territory.svg)
@@ -23,7 +23,7 @@ Above the fence is what this project changes; below it is what its epics touch b
 own. The fence is one test: does the change make an existing statement true, or remove a second of
 something? A change that adds a capability belongs to another project.
 
-## The epics — derived live 2026-11-22 23:27 UTC
+## The epics — derived live 2026-11-23 14:43 UTC
 
 | Epic | Outcome it owns | State | Surface |
 |---|---|---|---|
@@ -41,19 +41,18 @@ something? A change that adds a capability belongs to another project.
 | [FIX-2696](https://linear.app/fixpoint-labs/issue/FIX-2696) · **docs revamp** | The user docs rebuilt around apps, kits and a short book of concepts; also carries clean SDK's docs leftovers ([FIX-2739](https://linear.app/fixpoint-labs/issue/FIX-2739)) | **in flight** · 3/9 | [`specs/epics/FIX-2696/`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-2696), merged Nov 12 |
 | [FIX-2813](https://linear.app/fixpoint-labs/issue/FIX-2813) · **showcase kits** | Memory, a second-opinion check and deep research, each installable with one config object and a goal check | *filed, not started* · 0/4 | No epic spec, by design; three children's implementation PRs open |
 | [FIX-2874](https://linear.app/fixpoint-labs/issue/FIX-2874) · **kit system evolution** | One direction for kits: a foundation event bus, and GitHub as its own kit | *filed, not started* · no children · open thinking, parked until the release ships | No epic spec |
-| [FIX-2876](https://linear.app/fixpoint-labs/issue/FIX-2876) · **coder selection** | One coding flow, run settings on the task, and a structured "Code with" pick per request or session | *in setup* · 0/4, closure [FIX-2883](https://linear.app/fixpoint-labs/issue/FIX-2883) filed | Epic spec being authored; no PR yet |
+| [FIX-2876](https://linear.app/fixpoint-labs/issue/FIX-2876) · **coder selection** | One coding flow, run settings on the task, and a structured "Code with" pick per request or session | **in flight** · 0/5 · closure [FIX-2883](https://linear.app/fixpoint-labs/issue/FIX-2883) · issue specs next, as one spec-set PR | [`specs/epics/FIX-2876/`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-2876), merged Nov 23 |
 
 4 done · 7 in flight · 4 filed, not started. Every state above is re-derived from Linear and the
-child implementation PRs each refresh; *in flight* counts FIX-2876 from setup.
+child implementation PRs each refresh.
 
-**Six states disagree with their surface.** FIX-1503's direction merged on Sep 22, but Linear
+**Five states disagree with their surface.** FIX-1503's direction merged on Sep 22, but Linear
 still reads *In Spec Review* nine weeks later and its one child is in Backlog: counted in flight
 because Linear says *started*, with nothing under it begun. FIX-2036 and FIX-2171 read *Backlog*
 while five of their children are done, so work is landing under epics no lifecycle is running.
 FIX-2447's wrap note counts 34 children done; Linear lists 32 Done and 1 Canceled under it, and
 the table carries Linear's count. FIX-2813's four children all read *Backlog*, while three of
-them have implementation PRs open. FIX-2876 reads *Backlog* and its description says it is parked
-until the release ships, while its epic spec is being authored: counted in flight from setup.
+them have implementation PRs open.
 
 ```mermaid
 flowchart LR
