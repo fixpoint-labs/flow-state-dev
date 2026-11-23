@@ -41,21 +41,25 @@ export const codingTaskInputSchema = z // NEW (FIX-2878); its type is CodingTask
 export type CodingTaskInput = z.infer<typeof codingTaskInputSchema>;
 
 /**
- * NEW (FIX-2878): a legacy row's marker, read as implement (BP-030); nothing writes it again.
+ * NEW (FIX-2878): a legacy row's marker, read by the run-key table (BP-030); nothing writes it again.
  * Only on rows already stored with the key: at claim and in readers of stored input, before the
  * default, `requires` and lock steps. The write path refuses the key (`refuseLegacyMarker`).
- * A marker whose `phase` is absent or "implement" reads as implement; any other `phase` is refused
- * by name, never converted. One with no valid `issue` is refused, and so is a row with an explicit `mode` too.
+ * The marker's `phase` (absent: the manager's own phase) becomes the registered mode whose old
+ * phase value it is, by FIX-2877's table (implement → implement, code → default), compared with
+ * `sameSegment` as `assertFeatureRowIdentity` does today. A phase no registered mode had is refused
+ * by name before any checkout opens. No valid `issue`, or a row with an explicit `mode` too: refused.
  */
-const readLegacy = (raw: Record<string, unknown>): Record<string, unknown> => {
+const readLegacy = (raw: Record<string, unknown>, ownPhase: string): Record<string, unknown> => {
   if (!("harnessFeature" in raw)) return raw;
   const { harnessFeature, ...rest } = raw;
   if (rest.mode !== undefined) throw new Error("this task has both a mode and a feature marker; the marker never overrides a mode. Nothing ran.");
   const marker = harnessFeatureSchema.safeParse(harnessFeature); // { issue, phase? }
   if (!marker.success) throw new Error("this task's feature marker is malformed. Nothing ran."); // never run as an answer
-  const { issue, phase } = marker.data;
-  if (phase !== undefined && phase !== "implement") throw new Error(`legacy task names phase "${phase}", which no registered mode keeps. Nothing ran.`);
-  return { ...rest, mode: "implement", issue };
+  const { issue, phase = ownPhase } = marker.data; // ownPhase: "implement" for Shift Manager's implement manager, "code" for the kit
+  // oldPhaseOf: FIX-2877's table, the mode's old phase value (implement → "implement", default → "code").
+  const mode = Object.keys(modes).find((name) => sameSegment(oldPhaseOf(name), phase));
+  if (mode === undefined) throw new Error(`legacy task names phase "${phase}", which no registered mode keeps. Nothing ran.`); // no checkout opened
+  return { ...rest, mode, issue };
 };
 
 /** NEW (FIX-2878): the write path. A sent marker could pick implement past the lock, so it is refused. */
@@ -287,7 +291,7 @@ a run in flight.
 const resolveRun = async (ctx: BlockContext, task: { input?: unknown } | undefined) => { // NEW (FIX-2878)
   const worker = await installation.resolveWorker(ctx, CODER_FLOW);
   const own = worker.config.harness as string | undefined;
-  const asked = codingTaskInputSchema.parse(readLegacy({ ...((task?.input ?? {}) as Record<string, unknown>) }));
+  const asked = codingTaskInputSchema.parse(readLegacy({ ...((task?.input ?? {}) as Record<string, unknown>) }, managerPhase)); // the stored row
   const id = asked.harness ?? own ?? options.defaultHarness;
   const found = id === undefined ? undefined : built[id];
   if (found === undefined) throw new Error(`no harness "${id ?? "(none)"}" here; one of ${ids.join(", ")}. Nothing ran.`);
@@ -534,7 +538,8 @@ const checkMode = (input: CodingTaskInput, worker: { id: string; config: { lock?
 
 /** At filing, and again at claim. */
 const checkRequires = (name: string, input: CodingTaskInput) => {
-  const mode = modes[name];
+  // An own-key lookup, so `constructor` or `toString` is an unknown mode, never Object.prototype's.
+  const mode = Object.hasOwn(modes, name) ? modes[name] : undefined;
   // The refusal texts are FIX-2878's (its SPEC Examples). `quoted` renders `"implement" and "answer"`.
   if (mode === undefined) throw new TaskWriteRefusedError("unknown_mode", `this app has no mode "${name}". Its modes are ${quoted(Object.keys(modes))}. Nothing was filed.`);
   for (const need of mode.requires ?? []) {
@@ -553,9 +558,11 @@ Task filings, as the board stores them, in Shift Manager:
 { "goal": "Why does the nightly build skip the docs job?", "input": { "mode": "answer" } }
 // A change: implement, with its issue.
 { "goal": "Make the docs job run nightly", "input": { "mode": "implement", "issue": "ENG-142" } }
-// An unknown mode: refused.
+// An unknown mode: refused. A prototype key is unknown too (own-key lookup).
 { "goal": "Review ENG-142", "input": { "mode": "review" } }
 //   → refused: this app has no mode "review". Its modes are "implement" and "answer". Nothing was filed.
+{ "goal": "Review ENG-142", "input": { "mode": "constructor" } }
+//   → refused: this app has no mode "constructor". Its modes are "implement" and "answer". Nothing was filed.
 // Implement with no issue: refused, never run as an answer instead.
 { "goal": "Make the docs job run nightly", "input": { "mode": "implement" } }
 //   → refused: mode "implement" needs "issue", and this filing has none. Nothing was filed.
@@ -580,20 +587,24 @@ lock:
 //   → refused: worker "devteam.researcher" always runs with mode answer; this task asked for implement. Nothing was filed.
 ```
 
-A legacy row filed before FIX-2878 still carries the marker. Only that stored row is read as
-`implement` with its issue (BP-030), at claim and in readers of stored input; a filing or
-`updateTask` that sends the key is refused, because it could pick `implement` past the lock. A
-marker whose `phase` is absent or `implement` reads as `implement`; any other `phase` is refused
-by name and never converted; one with no valid `issue`, or beside an explicit `mode`, is refused,
-never run as an answer:
+A legacy row filed before FIX-2878 still carries the marker. Only that stored row is read (BP-030),
+at claim and in readers of stored input; a filing or `updateTask` that sends the key is refused,
+because it could pick `implement` past the lock. The marker's `phase`, absent meaning the
+manager's own, becomes the registered mode whose old phase value it is, by FIX-2877's run-key
+table (`implement` → `implement`, `code` → `default`), compared with `sameSegment`. A phase no
+registered mode had is refused by name and opens no checkout; one with no valid `issue`, or
+beside an explicit `mode`, is refused, never run as an answer:
 
 ```jsonc
-// stored:  { "harnessFeature": { "issue": "ENG-142" } }
-// read as: { "mode": "implement", "issue": "ENG-142" }
-// stored:  { "harnessFeature": { "issue": "ENG-142", "phase": "implement" } }
-// read as: { "mode": "implement", "issue": "ENG-142" }
-// stored:  { "harnessFeature": { "issue": "ENG-142", "phase": "code" } }
-//   → refused: legacy task names phase "code", which no registered mode keeps. Nothing ran.
+// Shift Manager, on its implement manager (own phase "implement"):
+// stored:  { "harnessFeature": { "issue": "ENG-142" } }                      read as: { "mode": "implement", "issue": "ENG-142" }
+// stored:  { "harnessFeature": { "issue": "ENG-142", "phase": "implement" } } read as: { "mode": "implement", "issue": "ENG-142" }
+// The kit with no modes (own phase "code"):
+// stored:  { "harnessFeature": { "issue": "ENG-142" } }                      read as: { "mode": "default", "issue": "ENG-142" }
+// stored:  { "harnessFeature": { "issue": "ENG-142", "phase": "code" } }      read as: { "mode": "default", "issue": "ENG-142" }
+// Either app:
+// stored:  { "harnessFeature": { "issue": "ENG-142", "phase": "review" } }
+//   → refused: legacy task names phase "review", which no registered mode keeps. Nothing ran. (no checkout opened)
 // stored:  { "harnessFeature": { "phase": "implement" } }   → refused: this task's feature marker is malformed. Nothing ran.
 // stored:  { "mode": "answer", "harnessFeature": { "issue": "ENG-142" } }
 //   → refused at claim: this task has both a mode and a feature marker; the marker never overrides a mode. Nothing ran.
