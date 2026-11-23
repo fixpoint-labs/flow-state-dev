@@ -60,7 +60,8 @@ interface InboundRequestEnvelope {
   flowKind: string;
   action: string;
   input: unknown;
-  sessionId?: string;
+  /** Required: every run names its session. A transport with no conversation makes a one-off id (`oneOffSessionId()`). */
+  sessionId: string;
   requestId?: string;
   orgId?: string;
   principal: ResolvedPrincipal;

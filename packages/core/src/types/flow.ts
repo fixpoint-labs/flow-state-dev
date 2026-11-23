@@ -143,12 +143,12 @@ export interface ActionMcpConfig {
   // BP-031.
   /**
    * How the MCP adapter derives the dispatch `sessionId` for this action.
-   * MCP is sessionless — by default every `tools/call` mints a fresh
-   * ephemeral session. This directive lets a specific action reuse or hand
+   * MCP is sessionless — by default every `tools/call` runs in a fresh
+   * one-off session the adapter makes (`oneOffSessionId()`). This directive lets a specific action reuse or hand
    * out a session id, so a client can group related calls together.
    *
-   * - Omitted (default): stateless — every `tools/call` mints a fresh
-   *   ephemeral session (v1 behavior).
+   * - Omitted (default): stateless — every `tools/call` runs in a fresh
+   *   one-off session.
    * - `string`: a template for a freshly minted id. Only the FIRST `*` is
    *   replaced by a random token (`"conv_*"` → `"conv_1784…_a1b2"`; extra `*`
    *   stay literal); with no `*` the token is appended. Use to hand the caller

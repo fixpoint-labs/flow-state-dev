@@ -22,6 +22,7 @@ import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
 import { handleContinueRequest } from "../src/routes/recovery-routes";
 import type { InboundTransportHost } from "../src/transports/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** Real executions of the side-effecting step, counted outside every store. */
 const runs: string[] = [];
@@ -97,6 +98,7 @@ async function driveTwoAnswers() {
   const registry = createFlowRegistry();
   registry.register(flow as never);
   const started = (await runAction({
+    sessionId: oneOffSessionId(),
     flow,
     actionName: "run",
     input: {},
@@ -210,6 +212,7 @@ describe("resume replay with trace observability off", () => {
     registry.register(flow as never);
 
     const started = await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -381,6 +384,7 @@ describe("resume replay with trace observability off", () => {
       })({ id: "replay-traces-off-index" });
       const stores = createInMemoryStores();
       const started = await runAction({
+        sessionId: oneOffSessionId(),
         flow,
         actionName: "run",
         input: {},
@@ -436,6 +440,7 @@ describe("resume replay with trace observability off", () => {
       const registry = createFlowRegistry();
       registry.register(flow as never);
       const started = await runAction({
+        sessionId: oneOffSessionId(),
         flow,
         actionName: "run",
         input: {},

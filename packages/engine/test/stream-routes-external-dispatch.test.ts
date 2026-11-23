@@ -31,6 +31,7 @@ import type { FlowRegistry } from "../src/registry/flow-registry";
 import type { ParsedFlowRoute } from "../src/routes/parseFlowRoute";
 import type { RequestRecord } from "../src/stores/types";
 import type { SuspensionRecord } from "@flow-state-dev/core/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const FLOW_KIND = "external-dispatch-test";
 
@@ -246,7 +247,7 @@ describe("external dispatch — enqueue failure at the route boundary (FIX-828)"
       new Request(`http://localhost/api/flows/${FLOW_KIND}/actions/run`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: "u_1", requestId, input: { value: "x" } })
+        body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u_1", requestId, input: { value: "x" } })
       }),
       { params: { path: [FLOW_KIND, "actions", "run"] } }
     );
@@ -278,6 +279,7 @@ describe("external dispatch — enqueue failure at the route boundary (FIX-828)"
       actionName: "run",
       userId: "u_1",
       source: "http",
+      sessionId: "s1",
       status: "suspended",
       startedAtMs: 1,
       state: {},

@@ -23,6 +23,7 @@
  */
 import { isValidOrgId } from "@flow-state-dev/core";
 import {
+  LegacySessionlessRequestError,
   OrgRequiredError,
   holdLeasePlace,
   planDeferWait,
@@ -322,6 +323,24 @@ export function createFlowJobProcessor(deps: JobProcessorDeps) {
 
   return async (job: Job<FlowJobData>, token?: string) => {
     const data = job.data;
+    // A job enqueued before every request named its session never started,
+    // so it has no gates. It is settled by name and failed as not retryable,
+    // never run in a session made up here. First of all, so a job whose flow
+    // is gone since it was queued is settled by name too.
+    if (typeof data.sessionId !== "string" || data.sessionId.length === 0) {
+      const refused = new LegacySessionlessRequestError("this queued job");
+      if (data.requestId !== undefined) await settleUnstartedRequest(stores, data.requestId, { status: "failed", cause: refused });
+      if (bridge) {
+        const publisher = bridge.createPublisher(data.requestId ?? job.id ?? "unknown");
+        await publisher.publishTerminal({ error: { message: refused.message } } as any).catch(() => {});
+        await publisher.close().catch(() => {});
+      }
+      // A custom key could still give such a job a place; it never runs, so
+      // the place goes back here instead of lapsing with its lease.
+      await giveBack(data.leasePlace ?? undefined);
+      throw new UnrecoverableError(refused.message);
+    }
+    const jobSessionId = data.sessionId;
     // `flowKind` on the job is the instance's address — its exact id — so the
     // worker resolves the same copy the enqueuing process did.
     const flow = registry.get(data.flowKind);
@@ -395,7 +414,7 @@ export function createFlowJobProcessor(deps: JobProcessorDeps) {
         actionName: data.actionName as keyof typeof flow.actions & string,
         input: data.input,
         userId: data.userId,
-        sessionId: data.sessionId,
+        sessionId: jobSessionId,
         requestId: data.requestId,
         orgId: jobOrgId,
         tenantId: data.tenantId,

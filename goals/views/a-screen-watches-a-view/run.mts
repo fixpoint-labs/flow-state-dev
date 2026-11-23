@@ -31,6 +31,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, defineView, handler, sequencer } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 import { createClient, readEveryCollectionPage, viewRef, type Client } from "@flow-state-dev/client";
 import { watchView } from "@flow-state-dev/client/internal";
 import { taskListViewRef } from "@flow-state-dev/orchestration/inbox";
@@ -232,7 +233,7 @@ await runGoal(async (failures, tell) => {
       lat["filed task"] = filed === undefined ? undefined : filed - fileFrom;
       // A probe write, from another client.
       const writeFrom = Date.now();
-      await (await writer.flow("probe").send("write", { label: "first" })).wait();
+      await (await writer.flow("probe").send("write", { label: "first" }, { sessionId: oneOffSessionId() })).wait();
       const wrote = await firstAt(probe, (v) => v.count > 0, writeFrom, 3_000);
       lat["probe write"] = wrote === undefined ? undefined : wrote - writeFrom;
 

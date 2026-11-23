@@ -87,7 +87,7 @@ describe("useDraftSend", () => {
       const { result } = renderHook(() => useDraftSend(NS, "s1"));
       act(() => result.current.setText("hello"));
 
-      act(() => void result.current.submit((line) => client.flow("demo").send("chat", { line })));
+      act(() => void result.current.submit((line) => client.flow("demo").send("chat", { line }, { sessionId: "s1" })));
       expect(result.current.sending).toBe(true);
       await act(() => vi.advanceTimersByTimeAsync(30_000));
 

@@ -9,6 +9,7 @@ import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createServerApp } from "../src/app";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function runFlow(kind: string) {
   return defineFlow({
@@ -40,7 +41,7 @@ describe("createServerApp — a flow kind that carries percent escapes", () => {
         new Request(`http://localhost/api/flows/${encodeURIComponent(kind)}/actions/run`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ userId: "u1", input: {} }),
+          body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u1", input: {} }),
         }),
       );
       expect(res.status, await res.clone().text()).toBeLessThan(300);

@@ -21,6 +21,7 @@ import type { FlowInstance, ResourceCollectionRef } from "@flow-state-dev/core/t
 import { createFlowState } from "../../flowstate/createFlowState";
 import { runAction } from "../../execution/runAction";
 import type { StoreRegistry } from "../types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** Options for {@link createFindByConformanceTests}. */
 export type CreateFindByConformanceTestsOptions = {
@@ -109,6 +110,7 @@ async function boot(raw: StoreRegistry, flow: FlowInstance) {
   const runtime = await state.getRuntime();
   const act = async (actionName: "file" | "find", input: unknown, userId = "alice") => {
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName,
       input,
@@ -227,6 +229,7 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
         await runtime.stores.resourceState.set("org", ORG, `notes/${ownerSegment("bob")}/b`, { topic: "x" }, "any");
         const as = async (userId: string) =>
           (await runAction({
+              sessionId: oneOffSessionId(),
               flow,
               actionName: "find",
               input: {},
@@ -424,6 +427,7 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
           const runtime = await state.getRuntime();
           const run = async (flow: FlowInstance) => {
             const result = await runAction({
+              sessionId: oneOffSessionId(),
               flow,
               actionName: "file",
               input: { tag: "Red" },

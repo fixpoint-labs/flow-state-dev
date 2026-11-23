@@ -164,6 +164,7 @@ describeWithRedis("the job processor's wait for its turn", () => {
     const { job, calls } = fakeJob(
       {
         flowKind: "chat",
+        sessionId: "s_1",
         actionName: "respond",
         input: {},
         userId: "u_1",
@@ -197,6 +198,7 @@ describeWithRedis("the job processor's wait for its turn", () => {
     const { job, calls } = fakeJob(
       {
         flowKind: "chat",
+        sessionId: "s_1",
         actionName: "respond",
         input: {},
         userId: "u_1",
@@ -253,6 +255,7 @@ describeWithRedis("the job processor's wait for its turn", () => {
     const { job, calls } = fakeJob(
       {
         flowKind: "chat",
+        sessionId: "s_1",
         actionName: "respond",
         input: {},
         userId: "u_1",
@@ -298,6 +301,7 @@ describeWithRedis("the job processor's wait for its turn", () => {
     const { job } = fakeJob(
       {
         flowKind: "chat",
+        sessionId: "s_1",
         actionName: "respond",
         input: {},
         userId: "u_1",
@@ -321,6 +325,7 @@ describeWithRedis("the job processor's wait for a free key (defer, FIX-1836)", (
     fakeJob(
       {
         flowKind: "chat",
+        sessionId: "s_1",
         actionName: "notify",
         input: {},
         userId: "u_1",
@@ -423,6 +428,7 @@ describeWithRedis("the job processor's wait for a free key (defer, FIX-1836)", (
     const { job, calls } = fakeJob(
       {
         flowKind: "chat",
+        sessionId: "s_1",
         actionName: "notify",
         input: {},
         userId: "u_1",
@@ -464,6 +470,7 @@ describeWithRedis("the job processor's wait for a free key (defer, FIX-1836)", (
     const { job, calls } = fakeJob(
       {
         flowKind: "chat",
+        sessionId: "s_1",
         actionName: "reply",
         input: {},
         userId: "u_1",
@@ -501,6 +508,7 @@ describeWithRedis("the job processor gives back a place it could not record on t
     const { job } = fakeJob(
       {
         flowKind: "chat",
+        sessionId: "s_1",
         actionName: "notify",
         input: {},
         userId: "u_1",
@@ -527,6 +535,7 @@ describeWithRedis("the job processor gives back a place it could not record on t
     const { job } = fakeJob(
       {
         flowKind: "chat",
+        sessionId: "s_1",
         actionName: "notify",
         input: {},
         userId: "u_1",
@@ -556,6 +565,7 @@ describeWithRedis("the job processor gives back a place it could not record on t
     const { job } = fakeJob(
       {
         flowKind: "chat",
+        sessionId: "s_1",
         actionName: "respond",
         input: {},
         userId: "u_1",

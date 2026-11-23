@@ -367,6 +367,30 @@ export const ENTRIES = [
     retires: [],
   },
   {
+    term: "oneOffSessionId",
+    means: "The one maker of a one-off session id (`oneOffSessionId()`, from `@flow-state-dev/core/helpers`): a fresh `ephemeral_…` id for a run that is a session of its own. A one-shot send passes it; the webhook route, the scheduled endpoint (`per-fire`) and the MCP adapter call it for a run with no session. The prefix is display-only: the navigator folds those sessions under \"One-off runs\" (`isOneOffSessionId`).",
+    decision: "FIX-2907 D3",
+    retires: [],
+  },
+  {
+    term: "session-required",
+    means: "The HTTP action route's refusal of a send that names no session: `400 { error: \"session-required\" }`, before the flow is looked up, the caller resolved or anything written. Every request names its session; the server never makes one up for a caller that could have named it.",
+    decision: "FIX-2907 D1",
+    retires: [],
+  },
+  {
+    term: "SessionRequiredError",
+    means: "What `runAction`, `createExecutionContext` and `host.dispatch` throw for a run with no session id (code `session-required`), before anything is registered or written. Exported from `@flow-state-dev/engine/host`.",
+    decision: "FIX-2907 D1",
+    retires: [],
+  },
+  {
+    term: "legacy-sessionless-request",
+    means: "The refusal of running again a request recorded before every request named its session (`LegacySessionlessRequestError`, a `409` over HTTP): a resume, a continuation, a recovery retry, a wake or a queued job. Such a record is still read and stopped; a stop settles a parked one `aborted` without running it.",
+    decision: "FIX-2907",
+    retires: [],
+  },
+  {
     term: "Flow runner",
     means: "What decides where a flow action runs (`FlowRunner`).",
     decision: "FIX-2245",

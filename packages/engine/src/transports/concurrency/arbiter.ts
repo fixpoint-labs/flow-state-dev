@@ -191,11 +191,8 @@ function normalizeConfig(
  *  "no arbitration" (the action runs as `allow`). */
 function resolveKey(key: ConcurrencyKey, envelope: DispatchEnvelope): string | undefined {
   if (key === "none") return undefined;
-  if (key === "session") {
-    return envelope.sessionId === undefined
-      ? undefined
-      : namespaced(envelope.tenantId, envelope.sessionId);
-  }
+  // Every dispatch names its session, a one-off run's included.
+  if (key === "session") return namespaced(envelope.tenantId, envelope.sessionId);
   if (key === "user") {
     return namespaced(envelope.tenantId, envelope.userId);
   }

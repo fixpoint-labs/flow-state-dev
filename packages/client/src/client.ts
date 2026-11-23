@@ -229,7 +229,12 @@ export type UploadRequest = {
 
 /** How a send is addressed and labelled. */
 export type SendOptions = {
-  sessionId?: string;
+  /**
+   * The session the action runs in. **Required**: every send names its
+   * session. One from `createSession()`, or, for a one-shot send that belongs
+   * to no conversation, `oneOffSessionId()` from `@flow-state-dev/core/helpers`.
+   */
+  sessionId: string;
   requestId?: string;
   metadata?: Record<string, unknown>;
   /**
@@ -454,7 +459,7 @@ export interface FlowHandle<TFlow extends TypedFlow = UntypedFlow> {
   send<TAction extends ActionNameOf<TFlow>>(
     action: TAction,
     input: ActionInputOf<TFlow, TAction>,
-    options?: SendOptions
+    options: SendOptions
   ): Promise<SentRequest>;
   send<TAction extends ActionNameOf<TFlow>>(
     action: TAction,
@@ -905,25 +910,26 @@ function flowHandle<TFlow extends TypedFlow>(
   async function send(
     action: string,
     input: unknown,
-    sendOptions?: SendOptions & Partial<StreamOption>
+    sendOptions: SendOptions & Partial<StreamOption>
   ): Promise<SentRequest | Response> {
     const actionName = requireValue(action, "action");
+    // Refused before anything is sent, as the server would refuse it. The id
+    // itself is sent as given.
+    requireValue(sendOptions?.sessionId, "sessionId");
+    const sessionId = sendOptions.sessionId;
     const body: ExecuteActionRequestBody = {
       input,
       userId,
-      sessionId: sendOptions?.sessionId,
-      requestId: sendOptions?.requestId,
-      metadata: sendOptions?.metadata,
-      ...(sendOptions?.attachments !== undefined && sendOptions.attachments.length > 0
+      sessionId,
+      requestId: sendOptions.requestId,
+      metadata: sendOptions.metadata,
+      ...(sendOptions.attachments !== undefined && sendOptions.attachments.length > 0
         ? { attachments: sendOptions.attachments }
         : {})
     };
-    const path =
-      sendOptions?.sessionId === undefined
-        ? `/api/flows/${seg(flow)}/actions/${seg(actionName)}`
-        : `/api/flows/${seg(flow)}/${seg(sendOptions.sessionId)}/actions/${seg(actionName)}`;
+    const path = `/api/flows/${seg(flow)}/${seg(sessionId)}/actions/${seg(actionName)}`;
     const init: RequestInit = { method: "POST", body: JSON.stringify(body) };
-    if (sendOptions?.stream === true) {
+    if (sendOptions.stream === true) {
       return t.raw(path, { ...init, headers: { ...JSON_HEADERS, ...SSE_HEADERS } }, undefined, sendLimit);
     }
     const response = await t.json<ExecuteActionResponse>(path, { ...init, headers: JSON_HEADERS }, undefined, sendLimit);
@@ -931,7 +937,7 @@ function flowHandle<TFlow extends TypedFlow>(
       t,
       response.request.flowId ?? flow,
       response.request.id,
-      response.session?.id ?? sendOptions?.sessionId ?? null
+      response.session?.id ?? sessionId
     );
     return Object.assign(handle, { response });
   }

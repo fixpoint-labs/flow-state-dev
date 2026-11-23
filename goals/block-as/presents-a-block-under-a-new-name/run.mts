@@ -57,6 +57,7 @@ import {
   installWorkers,
   workforceTree,
 } from "../../lib/index.mts";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 type Fixture = { note: string; user: string; org: string; worker: string; hire: string };
 
@@ -164,6 +165,7 @@ async function legAOnce(resolver: ModelResolver): Promise<LegAObservation> {
 
   const { stores, provider, runtimeConfig } = durableStores();
   const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow: flow as never,
     actionName: "run",

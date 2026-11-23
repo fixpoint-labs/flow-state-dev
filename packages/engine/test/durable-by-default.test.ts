@@ -8,6 +8,7 @@ import { z } from "zod";
 import { afterEach, describe, expect, it } from "vitest";
 import { createFlowState, filesystemStores, inMemoryStores, runAction } from "../src";
 import type { CreateFlowStateOptions as FlowStateOptions } from "../src/flowstate/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const dirs: string[] = [];
 function dataDir(): string {
@@ -105,6 +106,7 @@ describe("a host without durable execution refuses at the stop", () => {
     try {
       const runtime = await state.getRuntime();
       const result = await runAction({
+        sessionId: oneOffSessionId(),
         flow,
         actionName: "go",
         input: { n: 1 },

@@ -30,6 +30,7 @@ import { recordRequestStop } from "../src/execution/record-request-stop";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
 import { claimRequestRecord } from "../src/context/request-principal";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 // ---------------------------------------------------------------------------
 // Abort registry unit tests
@@ -824,6 +825,7 @@ describe("runAction — abort path", () => {
 
     const requestId = "req_endpoint_abort";
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -880,6 +882,7 @@ describe("runAction — abort path", () => {
 
     const requestId = "req_emit_abort";
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -944,6 +947,7 @@ describe("runAction — abort path", () => {
 
     const requestId = "req_double_abort";
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1013,7 +1017,7 @@ describe("runAction — abort path", () => {
           "content-type": "application/json",
           "accept": "text/event-stream"
         },
-        body: JSON.stringify({ userId: "user_sse", requestId, input: {} })
+        body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "user_sse", requestId, input: {} })
       }
     );
     const sseResponse = await router.POST(sseRequest, {
@@ -1179,6 +1183,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1212,6 +1217,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1253,6 +1259,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1287,6 +1294,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1329,6 +1337,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1379,6 +1388,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1424,6 +1434,7 @@ describe("runAction — cross-process abort delivery", () => {
     await recordAbortIntent(stores, requestId);
 
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1561,6 +1572,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1593,6 +1605,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1739,6 +1752,7 @@ describe("runAction — cross-process abort delivery", () => {
 
     let caught: unknown;
     await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1831,6 +1845,7 @@ describe("runAction — cross-process abort delivery", () => {
     await recordAbortIntent(base, requestId);
 
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2040,6 +2055,7 @@ describe("cross-process abort accepted in the teardown window", () => {
     const hookedStores = { ...stores, request };
 
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2141,6 +2157,7 @@ describe("a stop accepted in the window before the turn is written parked (FIX-1
     runtimeConfig.requestHost = { parkedStop };
 
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2248,6 +2265,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2332,6 +2350,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2442,6 +2461,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2504,6 +2524,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2592,6 +2613,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -2693,6 +2715,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -3291,6 +3314,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     };
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3376,6 +3400,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     };
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3435,6 +3460,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     })({ id: "poll-fence" });
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3521,6 +3547,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     };
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3594,6 +3621,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     };
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3684,6 +3712,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     };
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3762,6 +3791,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     };
 
     await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "run",
       input: {},
@@ -3888,6 +3918,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
 
         try {
           await runAction({
+            sessionId: oneOffSessionId(),
             flow,
             actionName: "run",
             input: {},

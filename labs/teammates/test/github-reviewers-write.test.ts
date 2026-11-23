@@ -30,6 +30,7 @@ import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { GITHUB_REVIEWERS_DOC, githubLoginsListed, githubReviewersDocument } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { openTeammates } from "../host.mts";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const ORG = "teammates-lab";
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -111,7 +112,7 @@ async function openHost(options: { offered?: Offered; calls?: Calls; results?: s
     const sent = await loopback(`/api/flows/${flow}/actions/${action}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ userId: "alice", input })
+      body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "alice", input })
     });
     const id = ((await sent.json()) as { request?: { id?: string } }).request?.id;
     for (let i = 0; id !== undefined && i < 200; i += 1) {

@@ -24,6 +24,7 @@ import type { ChangeNotice } from "../src/bus/types";
 import { hearsNotice, type ViewHearing } from "@flow-state-dev/contracts/types/view-hearing";
 import type { WireNotice } from "@flow-state-dev/contracts/types/push-delivery";
 import type { RequestRecord, SessionRecord } from "../src/stores/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const verified = {
   resolvePrincipal: (context: { request?: Request }) => {
@@ -292,6 +293,7 @@ describe("the suspension notice", () => {
       }
     })();
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: "acme",
       flow,
       actionName: "run",
@@ -327,6 +329,7 @@ describe("the suspension notice", () => {
       })();
     for (const reason of ["wait", "external_event"]) {
       const result = await runAction({
+        sessionId: oneOffSessionId(),
         orgId: "acme",
         flow: gated(reason),
         actionName: "run",

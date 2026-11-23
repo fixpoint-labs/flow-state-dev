@@ -111,7 +111,7 @@ import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
-import { cloneValue, getTransientKeys, getReadonlyStateKeys, ONE_OFF_SESSION_PREFIX } from "@flow-state-dev/core/helpers";
+import { cloneValue, getTransientKeys, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
 import {
@@ -215,6 +215,7 @@ import { PAST_TURN_STATUSES } from "../execution/past-turns";
 import { readSettledTurns, type SettledTurns } from "./settled-turns";
 import { cancelledWithTask } from "../durability/cancel-user-suspension";
 import { NoSessionError, noSessionHandle, noSessionRecord } from "./no-session";
+import { SessionRequiredError } from "../transports/errors";
 import { createViewDependencies, guardViewRequestHost, recordSessionReads, refusingModelResolver, sessionReadObserver, ViewModelCallError } from "./view-reads";
 import { isScheduleSessionId } from "../transports/scheduled/schedule-session-id";
 
@@ -669,9 +670,8 @@ export async function createExecutionContext<
 
   // The request-host seam (FIX-999) is built further down, once the session
   // and org bindings have been RESOLVED — see "the request-host seam" below.
-  // It cannot be built here: `options.sessionId` may be absent (an ephemeral
-  // session is generated below) and `options.orgId` may be absent on a request
-  // against an org-bound session, so both would be read before the authoritative
+  // It cannot be built here: `options.orgId` may be absent on a request
+  // against an org-bound session, so it would be read before the authoritative
   // value exists.
   const transientStateChanges = !shouldPersistScopeChange(flow);
   // Per-mutation budget for in-memory state writes (target / sequencer /
@@ -741,7 +741,14 @@ export async function createExecutionContext<
   }
 
   const userId = options.userId;
-  const sessionId = options.sessionId ?? `${ONE_OFF_SESSION_PREFIX}${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  // Every run names its session; nothing here makes one up. Asserted for an
+  // untyped caller, before any read or write. A view (`noSession`) has none:
+  // it loads, makes and stores no session, so the empty id below names
+  // nothing and reaches no session read.
+  if (!noSession && (typeof options.sessionId !== "string" || options.sessionId.length === 0)) {
+    throw new SessionRequiredError(flow.kind, "createExecutionContext");
+  }
+  const sessionId: string = noSession ? "" : options.sessionId;
   // FIX-2886: a fire in its schedule's own session never parks
   // (SUSPEND_IN_SCHEDULE_SESSION), so it gets no waits either: a wait refuses
   // `wait_unavailable` before it starts any work.
@@ -1185,13 +1192,8 @@ export async function createExecutionContext<
   // and inherits the parent's org, so the seam has to close over the values
   // execution actually ran with:
   //
-  //  - `sessionId` is the EFFECTIVE session. An HTTP action may omit it, in
-  //    which case an ephemeral session is generated and persisted above. Such a
-  //    request has a perfectly valid `ctx.session`, so gating the seam on
-  //    `options.sessionId` withheld it from a request that had lineage to
-  //    reason about. The approved decision — no seam without a session — is
-  //    unchanged and now checks the thing it meant: every context has a session
-  //    by this point, so the seam is present whenever the host wired it.
+  //  - `sessionId` is the session the run named (required for every run), so
+  //    the seam is present whenever the host wired it.
   //  - `resolvedOrgId` is the session's authoritative org. A dispatch against an
   //    org-bound session may omit `orgId` (only a *differing* value is
   //    rejected, above), so capturing `options.orgId` left the host unbound and

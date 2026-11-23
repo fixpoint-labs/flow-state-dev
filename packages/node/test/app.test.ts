@@ -9,6 +9,7 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createServerApp } from "../src/app";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const noopFlow = defineFlow({
   kind: "noop-flow",
@@ -211,7 +212,7 @@ describe("createServerApp — translation", () => {
       new Request(url("/api/flows/noop-flow/actions/ping"), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: "u", input: {} }),
+        body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u", input: {} }),
       }),
     );
     expect(inPrefix.status).toBe(202);

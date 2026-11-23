@@ -45,7 +45,8 @@ export {
   ConcurrencyQueueTimeoutError,
   ConcurrencyRejectedError,
   OrgRequiredError,
-  PrincipalResolutionError
+  PrincipalResolutionError,
+  SessionRequiredError
 } from "./errors";
 
 export {

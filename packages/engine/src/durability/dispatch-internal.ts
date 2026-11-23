@@ -24,8 +24,8 @@ export interface InternalDispatch {
   readonly entry: string;
   readonly input: unknown;
   readonly as: InternalPrincipal;
-  /** The session to run in: absent starts a new one. */
-  readonly sessionId?: string;
+  /** The session to run in. Required: every run names its session. */
+  readonly sessionId: string;
   readonly metadata: Record<string, unknown>;
   readonly signal?: AbortSignal;
 }
@@ -38,7 +38,7 @@ export function dispatchInternalAs(host: Pick<InboundTransportHost, "dispatch">,
     flowKind: run.flowKind,
     action: run.entry,
     input: run.input,
-    ...(run.sessionId !== undefined ? { sessionId: run.sessionId } : {}),
+    sessionId: run.sessionId,
     principal: { userId, orgId },
     orgId,
     ...(tenantId !== undefined ? { tenantId } : {}),

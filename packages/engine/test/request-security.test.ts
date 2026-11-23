@@ -21,7 +21,7 @@ function makeRouter() {
 }
 
 function actionRequest(body?: string, contentType?: string) {
-  const request = new Request("http://localhost/api/flows/security/actions/run", {
+  const request = new Request("http://localhost/api/flows/security/s1/actions/run", {
     method: "POST", body,
     headers: contentType === undefined ? {} : { "content-type": contentType }
   });
@@ -29,7 +29,7 @@ function actionRequest(body?: string, contentType?: string) {
   return request;
 }
 
-const actionContext = { params: { path: ["security", "actions", "run"] } };
+const actionContext = { params: { path: ["security", "s1", "actions", "run"] } };
 
 describe("JSON request media type", () => {
   it.each([undefined, "text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x"])(
@@ -49,7 +49,7 @@ describe("JSON request media type", () => {
 
 describe("browser fetch metadata", () => {
   it.each(["POST", "PUT", "PATCH", "DELETE"])("refuses cross-site %s before dispatch", async (method) => {
-    const request = new Request("http://localhost/api/flows/security/actions/run", {
+    const request = new Request("http://localhost/api/flows/security/s1/actions/run", {
       method, headers: { "sec-fetch-site": "cross-site" }
     });
     expect((await makeRouter().POST(request, actionContext)).status).toBe(403);

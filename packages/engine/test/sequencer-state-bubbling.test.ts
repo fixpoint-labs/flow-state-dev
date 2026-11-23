@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function run(flow: FlowInstance, input: unknown = {}) {
   return runAction({
@@ -433,6 +434,7 @@ describe("a checkpoint written before a field bubbled in still restores", () => 
     );
 
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow: v1,
       actionName: "run",
