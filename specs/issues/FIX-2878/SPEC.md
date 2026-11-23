@@ -2,15 +2,6 @@
 
 **Spec** · [Decisions](DECISIONS.md)
 
-> **Amendment, 2026-11-23: modes replace the feature marker.** This spec was approved and merged
-> on [#5604](https://github.com/fixpoint-labs/flow-state-dev/pull/5604). The owner has since
-> settled how a task picks its kind of work: a task names a **mode** (`mode?: string`) that the
-> app registered, and `mode: "implement"` with `issue` replaces the `feature` field (the old
-> `harnessFeature`) this spec renamed. What changed: the typed input, the frozen settings (they
-> gain the mode), the lock (it can pin a mode), the legacy rule (an old `harnessFeature` row now
-> runs as implement instead of being refused), three new goal signals, and the
-> [Examples](#examples). D2 is unchanged. Needs renewed owner approval before implementation.
-
 ## Nine people, before and after
 
 | Someone who… | Today | After |
@@ -22,12 +13,21 @@
 | **runs a plan-mode coder** | A plan run that writes a file or a branch still ends as a quiet success | It fails, naming the file in its own worktree or the ref it made. Another task's branch never fails it, and a filer can't switch plan mode off |
 | **files a task whose model the harness doesn't list, or whose list failed** | No model reaches a coding run at all | The run uses the harness default and says which model it refused and why. A retry keeps that model even if the app's default changes |
 | **has a task stored before this change with `harness` or `model` in its input** | Inert: the manager reads neither | Still inert: only values the server's filler wrote count |
-| **files a task in a mode the app doesn't have, or `implement` with no issue** | There are no modes: a task is feature work if it carries the feature marker, an answer if not | Refused at filing, naming the mode and the modes the app has, or the input the mode needs. Nothing runs in another mode. A task that names no mode runs in the app's default mode, frozen at its first claim |
+| **files a task in a mode the app doesn't have, or `implement` with no issue** | There are no modes: a task is feature work if it carries the feature marker, an answer if not | Refused at filing, naming the mode and the modes the app has, or the input the mode needs. Nothing runs in another mode. A task that names no mode gets the app's default mode written in at filing, so a later change to the default doesn't move it |
 | **has a task stored before this change with `harnessFeature`** | Shift Manager runs it as feature work on that issue | Still feature work: it reads as `mode: "implement"` with that issue. Nothing writes `harnessFeature` again, and a malformed one is refused, never run as an answer |
 
 Nothing a person types changes yet: the *Code with* pick arrives with
 [FIX-2879](https://linear.app/fixpoint-labs/issue/FIX-2879). This issue builds the order that
 pick lands in, the freeze, the lock and the model feed.
+
+> **Amendment, 2026-11-23: modes replace the feature marker.** This spec was approved and merged
+> on [#5604](https://github.com/fixpoint-labs/flow-state-dev/pull/5604). The owner has since
+> settled how a task picks its kind of work: a task names a **mode** (`mode?: string`) that the
+> app registered, and `mode: "implement"` with `issue` replaces the `feature` field (the old
+> `harnessFeature`) this spec renamed. What changed: the typed input, the frozen settings (they
+> gain the mode), the lock (it can pin a mode), the legacy rule (an old `harnessFeature` row now
+> runs as implement instead of being refused), three new goal signals, and the
+> [Examples](#examples). D2 is unchanged. Needs renewed owner approval before implementation.
 
 **Tracks the epic as amended.** [#5605](https://github.com/fixpoint-labs/flow-state-dev/pull/5605)
 merged (at `a6302bc`): it makes `plan` server-owned, freezes the effective model, widens the lock,
@@ -39,7 +39,7 @@ when it merges. The modes themselves are registered by FIX-2877 on [#5606](https
 ## The goal, and how we'll know it's met
 
 **A coding run uses exactly the harness, model, plan setting and mode its task carries, decided once at
-its first claim (the harness's default model and the app's default mode included) and kept for its
+its first claim (the harness's default model included, and the mode the app's default gave it at filing) and kept for its
 whole life, and anything it would not run is refused by name instead of swapped.**
 
 | Is it the right goal? | |
@@ -64,10 +64,10 @@ filing tool's reply.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/harness-manager/a-task-runs-on-its-own-coder/` · scripted harnesses, no model · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | **Inherit:** the child's run record and report name worker B, the assignee the filer chose, with harness `a` and its frozen model and plan, though B's `harness:` says `b` and the filing named `b`. **Freeze:** after worker B's file changes to `c`, a steer, a message and a door talk each report `a`. **Default:** a retry after `a`'s default model changed runs the frozen model. **Review:** a retry after the worker's `review` flipped runs the frozen review. **Order:** a task with nothing on it, to a worker with no `harness:`, runs on the kit's `defaultHarness`. **Legacy:** a task in today's shape, unmarked, with `input.harness` naming `b`, claimed by a worker on `a`, runs on `a`. **Plan:** a filer who clears or flips `plan`, at filing or on `updateTask`, still runs in plan mode; `plan: true` on an unmarked harness fails the claim by name; the read-only harness with `plan: false` runs as a plan run. **Lock:** a filing that would put `a` on a worker locked to `b` is refused at filing, naming both and telling the filer what to do, and a stored task that reaches it is refused at claim; a lock on a model with params refuses the same id with other params. **Postcheck:** a read-only run that writes a file in its worktree, or creates or moves a ref, fails, naming which; one during which another task creates a branch, or a `fetch` and `gc` run, passes. **Resume:** a row with a session and no frozen settings starts a fresh session, and a door talk on it is refused by name. **No-pick:** a filing with no pick, from outside any coding run, to a role-specific coder worker whose `harness:` is not the default lands on that worker and runs the kit's default harness, its default model and plan setting; the same filing to a worker locked to other values is refused at filing. **Mode:** a filing naming a mode the app doesn't register is refused at filing, naming it and the registered modes; `mode: "implement"` with no `issue` is refused at filing, naming `issue`; a task with no mode, claimed while the app's default is `answer`, retried after the default changes to `implement`, runs as `answer` on both attempts, and a child it files with no mode runs in the app's default, not its parent's mode. **Mode lock:** a filing naming `implement` to a worker locked to `answer` is refused at filing, naming both, and a stored task that reaches it is refused at claim; a stored row with `harnessFeature: { issue }` that reaches a worker locked to `answer` is refused at claim by name, because the legacy read makes it `implement` before the lock compares. **Legacy feature:** a stored row in today's shape with `harnessFeature: { issue }` runs as implement on that issue, and its run record freezes `mode: "implement"` with that issue; a row with a malformed `harnessFeature` is refused at claim |
+| **Signal** | **Inherit:** the child's run record and report name worker B, the assignee the filer chose, with harness `a` and its frozen model and plan, though B's `harness:` says `b` and the filing named `b`. **Freeze:** after worker B's file changes to `c`, a steer, a message and a door talk each report `a`. **Default:** a retry after `a`'s default model changed runs the frozen model. **Review:** a retry after the worker's `review` flipped runs the frozen review. **Order:** a task with nothing on it, to a worker with no `harness:`, runs on the kit's `defaultHarness`. **Legacy:** a task in today's shape, unmarked, with `input.harness` naming `b`, claimed by a worker on `a`, runs on `a`. **Plan:** a filer who clears or flips `plan`, at filing or on `updateTask`, still runs in plan mode; `plan: true` on an unmarked harness fails the claim by name; the read-only harness with `plan: false` runs as a plan run. **Lock:** a filing that would put `a` on a worker locked to `b` is refused at filing, naming both and telling the filer what to do, and a stored task that reaches it is refused at claim; a lock on a model with params refuses the same id with other params. **Postcheck:** a read-only run that writes a file in its worktree, or creates or moves a ref, fails, naming which; one during which another task creates a branch, or a `fetch` and `gc` run, passes. **Resume:** a row with a session and no frozen settings starts a fresh session, and a door talk on it is refused by name. **No-pick:** a filing with no pick, from outside any coding run, to a role-specific coder worker whose `harness:` is not the default lands on that worker and runs the kit's default harness, its default model and plan setting; the same filing to a worker locked to other values is refused at filing. **Mode:** a filing naming a mode the app doesn't register is refused at filing, naming it and the registered modes; `mode: "implement"` with no `issue` is refused at filing, naming `issue`; a task with no mode, claimed while the app's default is `answer`, retried after the default changes to `implement`, runs as `answer` on both attempts; a task filed with no mode while the default is `answer`, the default changed to `implement` before its first claim, keeps its stored `answer` and runs; a task stored in `implement` whose mode's `requires` gains a field it lacks before its first claim is refused at claim, naming the field; and a child it files with no mode runs in the app's default, not its parent's mode. **Mode lock:** a filing naming `implement` to a worker locked to `answer` is refused at filing, naming both, and a stored task that reaches it is refused at claim; a stored row with `harnessFeature: { issue }` that reaches a worker locked to `answer` is refused at claim by name, because the legacy read makes it `implement` before the lock compares. **Legacy feature:** a stored row in today's shape with `harnessFeature: { issue }` runs as implement on that issue, and its run record freezes `mode: "implement"` with that issue; a row with a malformed `harnessFeature` is refused at claim |
 | **Input** | Two scripted harnesses under different ids that report one `source` (`harness-manager/stub`), plus one read-only; one whose default model changes between attempts; a worker whose `review` flips; a second task that creates a branch during a plan run; a row in today's shape. An app that registers `implement` (needs `issue`) and `answer`, whose default mode changes between attempts; a worker locked to `answer`; a row carrying `harnessFeature`, and one with a malformed one. Another pair of ids, or route order, must pass too |
 | **Anti-game** | Read the run record and the report the scripted harness writes. Never the task's stored `input`, the `coder-harness` action's answer, or a stubbed board |
-| **Control that must fail** | `GOAL_CONTROL=worker-only` fails **Inherit**; `re-resolve` fails **Freeze**; `null-default` fails **Default**; `live-review` fails **Review**; `trust-stored` fails **Legacy**; `filer-plan` fails **Plan**; `no-lock` and `lock-by-reference` fail **Lock**; `no-postcheck` and `unscoped-postcheck` fail **Postcheck**; `match-by-source` fails **Resume**; `server-assignee` (FIX-2877's no-pick worker rewrite kept) and `no-lock` fail **No-pick**; `unchecked-mode` (no validation at filing), `live-mode` (each attempt reads the app's current default) and `inherit-mode` fail **Mode**; `no-mode-lock` fails **Mode lock**; `drop-feature` (an old `harnessFeature` row read as no mode) fails **Legacy feature**; `lock-before-legacy` (the lock compared before the legacy read) fails **Mode lock**. **Order** has no control: the straight run checks it. Today's `main` fails twelve of the fourteen signals; Order and Legacy describe what it already does. Legacy feature fails on `main` because no run record there carries a frozen mode. The PR shows each FAIL before the PASS |
+| **Control that must fail** | `GOAL_CONTROL=worker-only` fails **Inherit**; `re-resolve` fails **Freeze**; `null-default` fails **Default**; `live-review` fails **Review**; `trust-stored` fails **Legacy**; `filer-plan` fails **Plan**; `no-lock` and `lock-by-reference` fail **Lock**; `no-postcheck` and `unscoped-postcheck` fail **Postcheck**; `match-by-source` fails **Resume**; `server-assignee` (FIX-2877's no-pick worker rewrite kept) and `no-lock` fail **No-pick**; `unchecked-mode` (no validation at filing), `live-mode` (each attempt reads the app's current default), `claim-default` (the default read at claim, not written at filing), `no-claim-requires` (no re-check at claim) and `inherit-mode` fail **Mode**; `no-mode-lock` fails **Mode lock**; `drop-feature` (an old `harnessFeature` row read as no mode) fails **Legacy feature**; `lock-before-legacy` (the lock compared before the legacy read) fails **Mode lock**. **Order** has no control: the straight run checks it. Today's `main` fails twelve of the fourteen signals; Order and Legacy describe what it already does. Legacy feature fails on `main` because no run record there carries a frozen mode. The PR shows each FAIL before the PASS |
 
 ## What changes
 
@@ -100,16 +100,18 @@ also pin `mode`, which the filer writes ([an example](#a-worker-locked-to-a-mode
 + //  and the harness kit's filler writes them, with a server-owned marker that says it did.
 + //  A stored task without the marker has none of the three: worker, then kit.
 + //  mode is the filer's: checked at filing against the app's registered modes and the
-+ //  mode's required input, never inherited by a child filing. No mode: the app's default.
++ //  mode's required input, never inherited by a child filing. No mode: the server writes the
++ //  app's defaultMode in at filing, before the required-input check.
 + //  doneWhen and workspace are not task fields: a filer's are dropped.
 ```
 
 The modes themselves are registered by the app on the harness kit, as
 [FIX-2877](https://github.com/fixpoint-labs/flow-state-dev/pull/5606) specifies: `modes` (each a `ModeSpec` with its
 instructions, done check, workspace and `requires`, the task input it needs) and `defaultMode`, which is `default` when absent. Shift
-Manager registers `implement` and `answer` and sets `defaultMode: "answer"`. A task with no
-`mode` runs in the app's `defaultMode`. This issue reads the registered set: it validates a filing against it
-and against the mode's `requires`, refusing a missing field by name,
+Manager registers `implement` and `answer` and sets `defaultMode: "answer"`. A task filed with no
+`mode` gets the app's `defaultMode` written in at filing. This issue reads the registered set: it validates a filing against it
+and against the mode's `requires`, refusing a missing field by name, re-checks the stored mode and its
+`requires` at the first claim,
 freezes the task's mode at the first claim, and makes every route read the frozen mode.
 
 **A harness value says two more things:** its `defaultModel`, so the first claim freezes the
@@ -188,7 +190,7 @@ Refusal wording is the implementer's; what each one names is not.
 
 ### Filing a task
 
-A task that names no mode runs in the app's `defaultMode`, here `answer`.
+A task that names no mode gets the app's `defaultMode`, here `answer`, written in by the server at filing.
 
 ```json
 { "title": "Why does the nightly export skip archived rows?", "assignee": "coder" }

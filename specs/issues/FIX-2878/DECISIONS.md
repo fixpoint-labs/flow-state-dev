@@ -2,16 +2,16 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-> **Amendment, 2026-11-23: modes replace the feature marker** (the owner's modes design, registered by FIX-2877 on [#5606](https://github.com/fixpoint-labs/flow-state-dev/pull/5606); see the
-> [SPEC's note](SPEC.md)). D1's frozen value gains the task's mode, D3's lock can pin it, and
-> *Decided, not asked* gains the mode rules and replaces "`harnessFeature` is refused" with a
-> legacy read as implement. D2 is unchanged.
-
 The epic decided most of this issue: the order, the freeze, server-owned harness, model and
 plan, the lock, the model catalog rule and the plan-run postcheck
 ([FIX-2876 rules](../../epics/FIX-2876/DECISIONS.md#who-owns-what), as amended on
 [#5605](https://github.com/fixpoint-labs/flow-state-dev/pull/5605), merged, including
 its amendment on the no-pick filing; and the epic's modes amendment, [#5612](https://github.com/fixpoint-labs/flow-state-dev/pull/5612), changes Q-A's `feature?` to `mode?` and `issue?`; this spec is re-checked against it when it merges). Three calls were left to this spec. Everything else is under *Decided, not asked*.
+
+> **Amendment, 2026-11-23: modes replace the feature marker** (the owner's modes design, registered by FIX-2877 on [#5606](https://github.com/fixpoint-labs/flow-state-dev/pull/5606); see the
+> [SPEC's note](SPEC.md)). D1's frozen value gains the task's mode, D3's lock can pin it, and
+> *Decided, not asked* gains the mode rules and replaces "`harnessFeature` is refused" with a
+> legacy read as implement. D2 is unchanged.
 
 ## The tree
 
@@ -34,8 +34,8 @@ Solid edges are what you sign. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Running the order again at each attempt's claim: a retry, a re-claim after a held question, a claim after a crash |
-| **Because** | The person (or the run that filed the task) asked for a coder once. The claim freezes one value, the frozen settings: the three run settings (the harness, the effective model, which is the harness's `defaultModel` when the task names none, and the plan setting) plus the worker's review mode and the task's mode (the one it names, or the app's default mode when it names none). Only the three run settings are carried to a task the run files; review is never inherited, it stays the assignee's, and the mode is never inherited, it is the filer's. Review and PR policy is moving into the coder flow's options under [FIX-2583](https://linear.app/fixpoint-labs/issue/FIX-2583), which changes where the frozen review mode is read from, not that it is frozen. A retry that re-reads the worker's file or the app's default can land on another vendor, lose its session, or switch between a reviewed and an unreviewed run, or between an answer and an implement run, and the task card changes under the person. The epic says "once per run, at the first claim"; this reads *run* as the task's life |
-| **Locks in** | A change to a worker's `harness:` or `review`, the kit's `defaultHarness`, a harness's default model or the app's default mode reaches only tasks not yet claimed. Moving a claimed task means cancelling and refiling it. A harness removed from the app fails its claimed tasks by name at their next attempt |
+| **Because** | The person (or the run that filed the task) asked for a coder once. The claim freezes one value, the frozen settings: the three run settings (the harness, the effective model, which is the harness's `defaultModel` when the task names none, and the plan setting) plus the worker's review mode and the task's mode (the one it names, or the app's default mode the server wrote in at filing). Only the three run settings are carried to a task the run files; review is never inherited, it stays the assignee's, and the mode is never inherited, it is the filer's. Review and PR policy is moving into the coder flow's options under [FIX-2583](https://linear.app/fixpoint-labs/issue/FIX-2583), which changes where the frozen review mode is read from, not that it is frozen. A retry that re-reads the worker's file or the app's default can land on another vendor, lose its session, or switch between a reviewed and an unreviewed run, or between an answer and an implement run, and the task card changes under the person. The epic says "once per run, at the first claim"; this reads *run* as the task's life |
+| **Locks in** | A change to a worker's `harness:` or `review`, the kit's `defaultHarness`, or a harness's default model reaches only tasks not yet claimed; a change to the app's `defaultMode` reaches only tasks not yet filed. Moving a claimed task means cancelling and refiling it. A harness removed from the app fails its claimed tasks by name at their next attempt |
 
 **What would change my mind:** tasks that sit claimed for days while an app's default is fixed
 for a reason the person would want applied, such as a harness that was down. Then a retry
@@ -124,7 +124,7 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
   not permission: harness, model and plan stay server-written, so no text picks the coder or its
   sandbox ([architect review](https://github.com/fixpoint-labs/flow-state-dev/pull/5606#issuecomment-7105860295)).
 - **The mode is the filer's, bounded twice** (owner's modes design, registered by FIX-2877 on [#5606](https://github.com/fixpoint-labs/flow-state-dev/pull/5606)). `codingTaskInput.mode?:
-  string`, absent meaning the app's default mode. It is filer-written, not server-owned: Lead
+  string`. It is filer-written, not server-owned: Lead
   legitimately picks answer or implement, as it picks the feature marker today. It is bounded by
   the app's registered modes, checked at filing (an unknown mode is refused by name, naming the
   registered ones), and by a worker's lock, checked at filing and at claim.
@@ -133,11 +133,18 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
   `ModeSpec.requires`, which FIX-2877 owns on [#5606](https://github.com/fixpoint-labs/flow-state-dev/pull/5606) (Shift Manager's implement:
   `requires: ["issue"]`), and refuses each missing field by name. This spec adds no
   required-input declaration of its own; a later mode's requirements are its own `requires`.
+- **The default mode is resolved at filing** (coordinator decision). A filing with no `mode`
+  gets the app's `defaultMode` written in by the server before the `requires` check, so a
+  change to `defaultMode` reaches only tasks not yet filed. The first claim re-checks the stored
+  mode against the registered set and its `requires`, refusing by name: that covers a legacy
+  row read at claim, an app whose modes or `requires` changed between filing and claim, and a
+  row stored before this change with no mode, which is the one case that takes `defaultMode`
+  at claim.
 - **The mode is frozen at the first claim**, with the rest of the frozen settings ([D1](#d1)),
   and every route (claim, steer, message, door, next attempt, the coding board row) reads the
   frozen mode. A mode removed from the app fails its claimed tasks by name at their next attempt.
 - **The mode is not inherited.** A child filing from a coding run names its own mode or gets the
-  app's default, never its parent's: a mode says what kind of work, like a role, and an implement
+  app's `defaultMode` at filing, never its parent's: a mode says what kind of work, like a role, and an implement
   run's follow-up is often a question. Only the three run settings are inherited.
 - **`doneWhen` and `workspace` are not task fields** (BP-031). A filer choosing them would widen
   what a run may do: a done check that always passes, a workspace outside the mode's. A filer's
@@ -245,4 +252,5 @@ facts:* four `byHarness` routes and the `harness` action, by `grep` on `coder-fl
   on the run record, so it is red on `main` (twelve of fourteen fail); the legacy read runs
   before validation and the lock, so a worker locked to `answer` refuses an old feature row;
   required input is FIX-2877's `ModeSpec.requires` (#5606); figures list the mode; the epic's
-  modes amendment is #5612.
+  modes amendment is #5612; the default mode is written in at filing and the claim re-checks
+  `requires`; the amendment notes sit below the opening problem.
