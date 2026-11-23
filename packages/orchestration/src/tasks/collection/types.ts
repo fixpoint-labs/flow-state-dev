@@ -934,6 +934,12 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
        * and owes the turn again.
        */
       owesTurn?: boolean;
+      // FIX-2795.
+      /**
+       * With `owesTurn`: the request whose turn is given back. The steers it
+       * took on this attempt are untaken again, for the turn that takes its place.
+       */
+      untakeSteersOf?: string;
     }
   ): Promise<TaskWriteOutcome>;
   // FIX-2133; BP-030.

@@ -68,6 +68,7 @@ import {
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskKeptOpenBy,
+  type TaskWriteOutcome,
 } from "../tasks";
 import { DEFAULT_LEASE_DURATION_MS } from "../tasks/collection/internal";
 import { MAX_QUESTION_PROMPT, type ExternalWait } from "../tasks/schema/hold";
@@ -499,13 +500,20 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
     // keeps the output it had.
     // A turn the row owed and this request's admission took is owed again,
     // so the row's next claim can take it even if no wake starts it.
+    // The steers the stopped turn took go back with it: it never answered
+    // them, and the turn that takes its place must read them.
     if (!record.own) {
+      const untake = record.tookOwedTurn === true ? { untakeSteersOf: requestKey(record.ctx) } : {};
+      let parked: TaskWriteOutcome | undefined;
       if (record.prior !== undefined) {
-        await waitOn(record, row, record.prior, undefined, undefined, record.tookOwedTurn === true);
+        parked = await waitOn(record, row, record.prior, undefined, undefined, record.tookOwedTurn === true, untake.untakeSteersOf);
       } else if (record.tookOwedTurn === true && ref.setKeptOpenBy !== undefined) {
         // An owed turn with no wait beside it (the last question answered):
         // the row owes it again, with no lease, as the answer left it.
-        await ref.setKeptOpenBy(row.id, null, { claim: ticket, owesTurn: true });
+        parked = await ref.setKeptOpenBy(row.id, null, { claim: ticket, owesTurn: true, ...untake });
+      }
+      if (parked?.outcome === "declined") {
+        console.warn(`[task-board] task "${row.id}": a stopped later request couldn't park the task again (${parked.reason}); the next claim takes it`);
       }
       return undefined;
     }
@@ -725,7 +733,8 @@ async function waitOn(
   on: TaskKeptOpenBy,
   answer: { output: unknown } | undefined,
   hold?: SuspensionHold,
-  owesTurn?: boolean
+  owesTurn?: boolean,
+  untakeSteersOf?: string
 ): Promise<Awaited<ReturnType<NonNullable<TaskCollectionRef["setKeptOpenBy"]>>> | undefined> {
   if (record.ref.setKeptOpenBy === undefined) return undefined;
   return record.ref.setKeptOpenBy(row.id, on, {
@@ -733,6 +742,7 @@ async function waitOn(
     ...(answer !== undefined ? { answer } : {}),
     ...(hold !== undefined ? { hold: hold } : {}),
     ...(owesTurn === true ? { owesTurn: true } : {}),
+    ...(untakeSteersOf !== undefined ? { untakeSteersOf } : {}),
   });
 }
 

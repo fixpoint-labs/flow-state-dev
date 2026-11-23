@@ -1107,6 +1107,26 @@ describe("a stopped request settles its task when it ends, never at its lease's 
     expect(claimed).toMatchObject({ id: "t1", attempts: 1, turn: 3 });
   });
 
+  it("a person's stop of a steer's turn gives back the steers it took, and the turn that takes its place reads them", async () => {
+    const h = await harness({ steerTurn: true });
+    h.setBehaviour(async (_ctx, ledger) => {
+      await ledger.steer!("t1", { message: "Use the North America numbers", from: "filer" });
+      return "first answer";
+    });
+    await h.run();
+    // The steer's turn reads the steer, then is stopped before it answers.
+    h.setSteerTurn(async (_steers, ctx) => stopSelf(ctx));
+    await h.runLater("steerTurn");
+    expect(h.steerTurns).toEqual([["Use the North America numbers"]]);
+    const task = (await h.row())!;
+    expect(task.steers?.map((steer) => steer.takenBy)).toEqual([undefined]);
+    // The owed turn again: it reads the steer the stopped turn never answered, and settles the task on it.
+    h.setSteerTurn(async (steers) => `answered: ${steers.map((s) => s.message).join(", ")}`);
+    await h.runLater("steerTurn");
+    expect(h.steerTurns).toEqual([["Use the North America numbers"], ["Use the North America numbers"]]);
+    expect(await h.row()).toMatchObject({ status: "completed", output: "answered: Use the North America numbers", attempts: 1 });
+  });
+
   it("a person's stop of a later request that took the turn an answered question owed gives that turn back", async () => {
     const h = await harness();
     h.setBehaviour(async (ctx, ledger) => {

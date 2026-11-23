@@ -1263,16 +1263,29 @@ export function requireClaimTicket(
  * was stopped, and gives the turn back. The row drops its lease and owes the
  * turn again, as the answer left it, so the claim may take it.
  *
+ * With `untakeSteersOf` (a request id), a turn given back gives back the
+ * steers that request took on this attempt too: they are untaken again, so
+ * the turn that takes their place reads them. Its read never ran to an
+ * answer, so the steers were never acted on.
+ *
  * @throws when clearing without a finite `leaseUntil`, other than to give a
  *   turn back: a programming error.
  */
 export function waitingOnPatch(
   task: Task,
   keptOpenBy: Task["keptOpenBy"],
-  options: { leaseUntil?: number; answer?: { output: unknown }; hold?: SuspensionHold; resume?: boolean; owesTurn?: boolean }
+  options: {
+    leaseUntil?: number;
+    answer?: { output: unknown };
+    hold?: SuspensionHold;
+    resume?: boolean;
+    owesTurn?: boolean;
+    untakeSteersOf?: string;
+  }
 ): Partial<Task> {
+  const untaken = options.owesTurn === true && options.untakeSteersOf !== undefined ? untakeSteersPatch(task, options.untakeSteersOf) : {};
   if (keptOpenBy == null && options.owesTurn === true && options.leaseUntil === undefined) {
-    return { keptOpenBy: undefined, leaseUntil: undefined, turnOwed: true };
+    return { keptOpenBy: undefined, leaseUntil: undefined, turnOwed: true, ...untaken };
   }
   if (keptOpenBy == null) {
     assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
@@ -1302,8 +1315,23 @@ export function waitingOnPatch(
     leaseUntil: options.leaseUntil,
     ...kept,
     ...(typeof mirrored === "object" && "patch" in mirrored ? mirrored.patch : {}),
-    ...(options.owesTurn === true ? { turnOwed: true as const } : {}),
+    ...(options.owesTurn === true ? { turnOwed: true as const, ...untaken } : {}),
   };
+}
+
+// FIX-2795.
+/** The steers `requestId` took on `task`'s current attempt, untaken again; nothing when it took none. */
+function untakeSteersPatch(task: Task, requestId: string): Partial<Task> {
+  const steers = task.steers ?? [];
+  const took = (steer: (typeof steers)[number]) => steer.takenBy === task.attempts && steer.takenIn?.includes(requestId) === true;
+  if (!steers.some(took)) return {};
+  return { steers: steers.map((steer) => (took(steer) ? withoutTake(steer) : steer)) };
+}
+
+/** A steer with no take on it. */
+function withoutTake<T extends { takenBy?: unknown; takenIn?: unknown }>(steer: T): Omit<T, "takenBy" | "takenIn"> {
+  const { takenBy: _by, takenIn: _in, ...rest } = steer;
+  return rest;
 }
 
 /** Whether a progress report names anything to write. */
