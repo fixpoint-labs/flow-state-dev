@@ -110,6 +110,17 @@ It comes down to what a model does with a field it reads: it writes it.
   `takesConversationTasks` reads the entry's mark today, and the board takes one internal option,
   `taskInputOf(flowKind)`, in place of `needsProject(flowKind)`. No app sets it. It is read per
   call, so a roster change counts.
+- **Implementer notes from the Cursor review** (optional, folded):
+  - The `listDelegates` JSON Schema is generated once, at flow build, with the
+    `zod-to-json-schema` core already uses. Workforce gets no converter of its own and imports
+    nothing from MCP.
+  - The declaration is read through the installation registry, the same path
+    `takesConversationTasks` reads, with a per-request memo inside `createTasks`. "Per call"
+    means per request, not a rebuild of the flow for each row.
+  - `fileRouted` goes through the same check as every other writer (it is in the writer list
+    above and in the debt table).
+  - FIX-2878's claim-time mode and lock checks belong to the coder flow's own resolver, separate
+    from the board's `check`, which runs only at filing.
 - **`serverOwned` names may lie outside the schema.** Such a name is only dropped. That is how
   FIX-2878 drops `doneWhen` and `workspace`, so the sketch's separate `dropped` list folds in.
 - **`fill` returns only server-owned fields;** anything else it returns is ignored. `check` may

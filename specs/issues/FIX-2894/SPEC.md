@@ -485,7 +485,7 @@ workerTaskEntry({ name: "triage-work", turn, input: taskInput(z.object({ due: z.
 
 | The debt | |
 |---|---|
-| **Removes** | `needsProject` in three places and `assertProjectFor` · each declared flow's own late parse of `input` |
+| **Removes** | `needsProject` in three places and `assertProjectFor` · each declared flow's own late parse of `input` · the routed filing's (`fileRouted`) skip of the filing check: it goes through the same check |
 | **Adds** | One public declaration and its six options, permanent by design. A board option that looks up a flow's declaration (internal). The `filledFor` row stamp, the bounded retry and the runtime round trip (internal, permanent by design) |
 | **Leaves** | Fixed boards' top-level payload (FIX-2878 keeps it) · Layer-1 typing under strict TypeScript, FIX-2732 |
 
