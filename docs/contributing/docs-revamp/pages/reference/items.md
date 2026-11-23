@@ -489,6 +489,21 @@ The trace types are `block_trace`, `router_decision`, `state_snapshot` and `gene
 | The model call | The generator's trace update is an `item.updated` patch on the `block_trace` with `generator { model, tools, prompt, user?, history? }`. The last capture wins across a tool loop. |
 | A reactive block | Traces under `__reactive__/<resourcePath>/<reactiveKind>#<n>`. `<n>` numbers the dispatches within one server process. The block nests under the block that made the mutation, and cascades form a tree. |
 
+### Resource load records
+
+Each entry in `resourceLoads` records one read of a resource's stored data, never the content that came back.
+
+| Field | Meaning |
+| --- | --- |
+| `source` | `flow-eager`, `action-eager`, `block-eager` or `lazy`. See [Load modes](./resources.md#load-modes). |
+| `storageKey` | The key a single resource or entry is stored under, or the prefix for a collection `list` or `count`. |
+| `accessor?` | The call that read it: `get`, `getOptional`, `list` or `count`. Absent for a load that fired before any block ran. |
+| `cacheHit` | `true` when memory the request had already loaded served the read, `false` for a store fetch. |
+| `durationMs` | Time taken. A cache hit carries none. |
+| `count` | How many identical cache hits collapsed into this record. Any run of identical hits collapses, not a fixed number. |
+
+A block's record covers its own loads. Loads before any block runs, and flow-eager and action-eager loads, are recorded on the request's top block, the action's block. Blocks beneath record cache hits when they read the same collection. Reads of a single resource record no load. The DevTool's Resource Load Summary totals a block and everything under it: loads, store fetches, fetch time, cache-hit rate and the slowest fetch.
+
 ### Getting trace events
 
 | Where | Behavior |
