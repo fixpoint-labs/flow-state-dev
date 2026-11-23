@@ -19,15 +19,30 @@ export type TransportOptions = {
   fetcher?: ClientFetch;
 };
 
+/**
+ * How long a call may wait for the server's answer to start, and what its
+ * refusal says when none comes. Only the wait for the response headers is
+ * timed: a stream that has started is never cut off.
+ */
+export type AnswerLimit = { ms: number; message: string };
+
 /** The one transport: route URLs, a JSON call, and a raw call. */
 export type Transport = {
   readonly fetcher: ClientFetch;
   /** The URL of a route, written against `/api/flows`, with its query. */
   url(path: string, query?: Record<string, QueryValue>): string;
   /** Call a route expecting JSON; a non-2xx answer throws `ClientHttpError`. */
-  json<TValue>(path: string, init?: RequestInit, query?: Record<string, QueryValue>): Promise<TValue>;
-  /** Call a route and return its `Response`; a non-2xx answer throws `ClientHttpError`. */
-  raw(path: string, init?: RequestInit, query?: Record<string, QueryValue>): Promise<Response>;
+  json<TValue>(
+    path: string,
+    init?: RequestInit,
+    query?: Record<string, QueryValue>,
+    limit?: AnswerLimit
+  ): Promise<TValue>;
+  /**
+   * Call a route and return its `Response`; a non-2xx answer throws
+   * `ClientHttpError`. With `limit`, no answer in time throws one with status 0.
+   */
+  raw(path: string, init?: RequestInit, query?: Record<string, QueryValue>, limit?: AnswerLimit): Promise<Response>;
 };
 
 /**
@@ -52,9 +67,13 @@ export function createTransport(options: TransportOptions): Transport {
   const raw = async (
     path: string,
     init?: RequestInit,
-    query?: Record<string, QueryValue>
+    query?: Record<string, QueryValue>,
+    limit?: AnswerLimit
   ): Promise<Response> => {
-    const response = await fetcher(url(path, query), init);
+    const response =
+      limit === undefined || limit.ms <= 0
+        ? await fetcher(url(path, query), init)
+        : await fetchWithin(fetcher, url(path, query), init, limit);
     if (!response.ok) {
       throw new ClientHttpError(
         `Request failed (${response.status}) ${response.statusText || ""}`.trim(),
@@ -68,18 +87,55 @@ export function createTransport(options: TransportOptions): Transport {
   const json = async <TValue>(
     path: string,
     init?: RequestInit,
-    query?: Record<string, QueryValue>
+    query?: Record<string, QueryValue>,
+    limit?: AnswerLimit
   ): Promise<TValue> => {
     const response = await raw(
       path,
       { ...init, headers: { accept: "application/json", ...(init?.headers ?? {}) } },
-      query
+      query,
+      limit
     );
     // A body that fails to arrive rejects: read as empty, it would pass for an absent record.
     return parseBody(await response.text()) as TValue;
   };
 
   return { fetcher, url, json, raw };
+}
+
+/**
+ * One fetch that must answer within `limit.ms`. Past it, the request is
+ * aborted and the call rejects with status 0, even when the fetcher ignores
+ * the abort (a half-open connection, a dying proxy, an in-process fetcher).
+ * The timer stops once the headers arrive, so the body reads as long as it
+ * takes.
+ */
+async function fetchWithin(
+  fetcher: ClientFetch,
+  url: string,
+  init: RequestInit | undefined,
+  limit: AnswerLimit
+): Promise<Response> {
+  const controller = new AbortController();
+  // The caller's own signal still cancels the request.
+  const own = init?.signal;
+  if (own) {
+    if (own.aborted) controller.abort(own.reason);
+    else own.addEventListener("abort", () => controller.abort(own.reason), { once: true });
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      // Refuse before aborting: a fetcher that rejects on abort (the platform fetch does) must not win the race.
+      reject(new ClientHttpError(limit.message, { status: 0, body: { error: limit.message } }));
+      controller.abort();
+    }, limit.ms);
+  });
+  try {
+    return await Promise.race([fetcher(url, { ...init, signal: controller.signal }), late]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
