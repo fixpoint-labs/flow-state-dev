@@ -23,7 +23,7 @@ import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder
 import { deliveredByWait, droppedHeldNotices, recordEnding as recordNoticeOwed, releasedHeldNotices, takenNoticePatch, withoutNoticeMarkers, type TaskNotice } from "../notice/task-notice";
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
-import { steersForAttempt, untakenSteers } from "../steers";
+import { steersForAttempt, untakenBy, untakenSteers } from "../steers";
 import type { SuspensionHold } from "../schema/hold";
 import { answerOf, askedOnTicket, droppedMirror, hasOpenHold, holdWrite, isOwnHold, keptOnEnding, newOwnHolds, openOwnHolds, owesTurn } from "./holds";
 import type { TaskChangeKind } from "./change-event";
@@ -1283,7 +1283,7 @@ export function waitingOnPatch(
     untakeSteersOf?: string;
   }
 ): Partial<Task> {
-  const untaken = options.untakeSteersOf !== undefined ? untakeSteersPatch(task, options.untakeSteersOf) : {};
+  const untaken = options.untakeSteersOf === undefined ? {} : untakeSteersPatch(task, options.untakeSteersOf);
   if (keptOpenBy == null && options.owesTurn === true && options.leaseUntil === undefined) {
     return { keptOpenBy: undefined, leaseUntil: undefined, turnOwed: true, ...untaken };
   }
@@ -1323,16 +1323,8 @@ export function waitingOnPatch(
 // FIX-2795.
 /** The steers `requestId` took on `task`'s current attempt, untaken again; nothing when it took none. */
 function untakeSteersPatch(task: Task, requestId: string): Partial<Task> {
-  const steers = task.steers ?? [];
-  const took = (steer: (typeof steers)[number]) => steer.takenBy === task.attempts && steer.takenIn?.includes(requestId) === true;
-  if (!steers.some(took)) return {};
-  return { steers: steers.map((steer) => (took(steer) ? withoutTake(steer) : steer)) };
-}
-
-/** A steer with no take on it. */
-function withoutTake<T extends { takenBy?: unknown; takenIn?: unknown }>(steer: T): Omit<T, "takenBy" | "takenIn"> {
-  const { takenBy: _by, takenIn: _in, ...rest } = steer;
-  return rest;
+  const next = untakenBy(task, requestId);
+  return next === task ? {} : { steers: next.steers };
 }
 
 /** Whether a progress report names anything to write. */

@@ -1146,18 +1146,42 @@ describe("a stopped request settles its task when it ends, never at its lease's 
     });
     const { requestId } = await h.runLater("notice");
     expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    // The steer is untaken again, and, as at any check, a steer left untaken owes its turn first.
     const task = (await h.row())!;
-    expect(task).toMatchObject({ status: "in_progress", keptOpenBy: "filed", attempts: 1 });
+    expect(task).toMatchObject({ status: "in_progress", keptOpenBy: "steer", turnOwed: true, attempts: 1 });
     expect(task.steers?.map((steer) => [steer.message, steer.takenBy])).toEqual([["Use the v2 API.", undefined]]);
-    // The piece ends: the request its end wakes finds the steer untaken and owes it a turn, which reads it.
+    // That turn reads it; the work it filed still holds the task, until the piece ends.
+    await h.runLater("steerTurn");
+    expect(h.steerTurns).toEqual([["Use the v2 API."]]);
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "filed", output: "answered: Use the v2 API." });
     expect((await h.reclaim())?.id).toBe("piece");
     await (await h.ledger()).complete("piece", "piece done");
     h.setLaterTurn(async () => "a later answer");
     await h.runLater("notice");
-    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "steer", attempts: 1 });
-    await h.runLater("steerTurn");
-    expect(h.steerTurns).toEqual([["Use the v2 API."]]);
-    expect(await h.row()).toMatchObject({ status: "completed", output: "answered: Use the v2 API." });
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 1 });
+  });
+
+  it("a person's stop of a later request after the task's filed work ended settles the task on its own answer, never back on that work", async () => {
+    const h = await harness();
+    h.setBehaviour(async (ctx, ledger) => {
+      await ledger.createTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
+      return "first answer";
+    });
+    await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "filed", output: "first answer" });
+    expect((await h.reclaim())?.id).toBe("piece");
+    // The notice turn the piece's ending wakes: the piece ends while it runs, and a person stops it.
+    h.setLaterTurn(async (ctx, ledger) => {
+      await ledger.complete("piece", "piece done");
+      return stopSelf(ctx);
+    });
+    const { requestId } = await h.runLater("notice");
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    // Nothing holds it now, so it is not parked on work that is over: it settles on the answer its
+    // own request kept, not the stopped turn's.
+    const task = (await h.row())!;
+    expect(task).toMatchObject({ status: "completed", output: "first answer", attempts: 1 });
+    expect(task.keptOpenBy).toBeUndefined();
   });
 
   it("a person's stop of a later request that took the turn an answered question owed gives that turn back", async () => {
