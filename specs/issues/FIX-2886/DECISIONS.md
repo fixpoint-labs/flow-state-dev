@@ -66,12 +66,18 @@ service-flow sessions earns its place here.
   runs its overlapping fires in one session under the flow's concurrency policy, as two tabs on one
   conversation do; an author who needs order there declares `concurrency` keyed on the session. No
   new check.
-- **The id names the org and user the fire runs as, the flow instance, and the schedule id**,
-  spelled like the engine's other derived ids (`owner-run:`, `service-route:`: a prefix, then the
-  parts URL-encoded and joined by `:`), so two flows with the same static schedule id, or two
-  principals firing one static schedule, never share a session (the session binds its flow and its
-  user, and refuses a mismatch). The prefix word is the implementer's. Tenants are already kept
-  apart by the session storage key.
+- **The id names the org and user the fire runs as, the flow instance, and the schedule id**, so
+  two flows with the same static schedule id, or two principals firing one static schedule, never
+  share a session (the session binds its flow and its user, and refuses a mismatch). **It is
+  spelled with no `:`**, like a write session id (`fsd-write.` + base64url): a colon-free prefix
+  word, then the parts encoded as base64url. Not like `owner-run:` / `service-route:`. The session
+  storage key is `${tenant}:${sessionId}` and the tenant comes from a request header, so a
+  colon-joined id can be pre-claimed by splitting it: its first segment in `x-tenant-id`, the rest
+  as `sessionId`, on any flow the caller can create on. That lands on the key a single-tenant fire
+  uses, and a prefix check on `sessionId` never sees the prefix. A colon-free id can't be split
+  that way, because a tenant header can't contain `:`. The checks keep `isWriteSessionId`'s shape
+  (bare, or after `:`), which refuses the `tenant:<id>` form. The prefix word is the
+  implementer's. The two existing colon-joined ids have the same split hole: added to FIX-2889.
 - **The reserved prefix, and its convergence point.** Every dispatch passes the inbound host's
   `refuseReservedAddress` (webhooks included, before they create a session); a schedule id is
   admitted there only from the scheduled source (`source` is set by the transport, never the
@@ -149,7 +155,7 @@ routes already refuse a reserved prefix (`write-session-id.ts`, `createInboundTr
 
 From the Cursor review on #5579 (2026-11-23), for the implementer:
 - `session` on a schedule (where fires run) vs `session: { retention }` on the flow is easy to mis-wire. Consider a distinct name, or give both distinct `glossary.mjs` entries and a docs callout.
-- Put the id derivation in one helper (e.g. in `core` beside `formatScheduleId`), sharing the colon-joined format with `owner-runs.ts`, so engine, workforce and goals don't each spell it.
+- Put the id derivation in one helper (e.g. in `core` beside `formatScheduleId`), so engine, workforce and goals don't each spell it. (Superseded in part: the id is colon-free, see *Decided, not asked*.)
 - Consider one reserved-id check (`id`, `source`) or a small registry, so FIX-2889 adds its two prefixes there instead of copying three call sites.
 - A poll session holds about 288 fires a day; check that the DevTool's request listing for one session pages or limits, so the Trace tab stays fast.
 - Retention runs only after a completed fire; a poll that keeps failing still grows its session. A test or goal note may cover it.
@@ -159,7 +165,7 @@ From the second-look comment on #5579 (2026-11-23), for the implementer:
 - Handle the bare and the tenant-namespaced id (`tenant:<prefix>…`) at all four points, as `isWriteSessionId` does, and test the namespaced form in (n).
 - In `refuseReservedAddress`, put the schedule check after the `isServerResourceSend` early return, with its own source test, so a resource send can't reach a schedule session.
 - Make the `service-route:` retention confirmation a grep-backed line in the implementation PR.
-- Build the schedule id beside `owner-run:` / `service-route:` in `owner-runs.ts` with one small shared id builder; don't widen past that (the reserved-prefix family is FIX-2889).
+- Build the schedule id beside `owner-run:` / `service-route:` in `owner-runs.ts` with one small shared id builder; don't widen past that (the reserved-prefix family is FIX-2889). (Superseded in part: the id is colon-free, so it shares the place, not the format.)
 - A poll that fails every fire grows its session (retention evicts completed fires only). Consider a named goal signal, or a follow-up for retention on failed requests.
 
 ## How it got here
@@ -169,4 +175,6 @@ From the second-look comment on #5579 (2026-11-23), for the implementer:
   a day of retention; builds on the write-session prefix guard, `onOverlap` and session retention.
 - **Review round 1** — Greptile and Codex found two paths that skip the three entry checks: public
   re-entry (now refused in a schedule's session) and a dispatcher's session birth inside a run (now
-  checked before the birth). Both fold into *Decided, not asked*; the direction is unchanged.
+  checked before the birth). Cursor's security review found the tenant-header split of a
+  colon-joined id, so the id is now colon-free. All fold into *Decided, not asked*; the direction
+  is unchanged.
