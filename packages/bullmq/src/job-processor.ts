@@ -335,6 +335,9 @@ export function createFlowJobProcessor(deps: JobProcessorDeps) {
         await publisher.publishTerminal({ error: { message: refused.message } } as any).catch(() => {});
         await publisher.close().catch(() => {});
       }
+      // A custom key could still give such a job a place; it never runs, so
+      // the place goes back here instead of lapsing with its lease.
+      await giveBack(data.leasePlace ?? undefined);
       throw new UnrecoverableError(refused.message);
     }
     const jobSessionId = data.sessionId;

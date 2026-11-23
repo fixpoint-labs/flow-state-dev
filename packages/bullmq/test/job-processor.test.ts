@@ -390,6 +390,20 @@ describe("createFlowJobProcessor — a job that holds a place on a concurrency k
     expect(backend.giveBack).toHaveBeenCalledWith(place);
   });
 
+  it("gives the place back when it refuses a job queued with no session", async () => {
+    // A job queued before every request named its session could still hold a
+    // place through a custom key. Refused, it never runs, so nothing else
+    // would give the place back before its lease lapses.
+    const { bridge } = makeBridge();
+    const backend = backendThat();
+    const processor = createFlowJobProcessor(makeDeps(bridge, { leaseBackend: backend, stores: stores() }));
+
+    await expect(processor(placeJob({ data: { ...placeJob().data, sessionId: undefined } }))).rejects.toThrow(UnrecoverableError);
+
+    expect(runActionMock).not.toHaveBeenCalled();
+    expect(backend.giveBack).toHaveBeenCalledWith(place);
+  });
+
   it("publishes a terminal for a turn cancelled while it waited, so its dispatcher stops waiting", async () => {
     // The run never starts, so no result terminal will follow. Without one
     // the dispatching process keeps its subscriber and the dispatch's

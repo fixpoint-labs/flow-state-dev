@@ -15,6 +15,7 @@
  */
 import { requireAttributedOrg } from "../context/org-attribution";
 import type { FlowInstance, ResumeContext } from "@flow-state-dev/core/types";
+import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import type { RuntimeConfig } from "../runtime-config";
@@ -252,13 +253,24 @@ async function settleLegacyStop(stores: StoreRegistry, record: RequestRecord): P
   const now = Date.now();
   // Fenced on the record still parked under the incarnation read: a request
   // that moved on, or another under the id, is left as it is.
-  await stores.request.setFieldsIfStatus(
+  const settled = await stores.request.setFieldsIfStatus(
     record.id,
     { ...settledRecordFields({ status: "aborted" }), finalizedAtMs: now },
     PARKED,
     now,
     resolveRequestIncarnation(record)
   );
+  if (settled.applied) {
+    // No run writes this ending, and the log already ends on
+    // `request.suspended`, which a replay reads as the ending. So the stop
+    // writes `request.aborted` itself, past the log's last event.
+    const log = await stores.request.getEvents(record.id);
+    const last = log.reduce((max, event) => Math.max(max, event.sequence_number ?? 0), 0);
+    stores.request.persistEvents(record.id, [
+      { stream: "request", type: "request.aborted", requestId: record.id, sequence_number: last + 1, status: "aborted", ts: now } as RequestStreamEvent
+    ]);
+    await stores.request.flushEvents(record.id);
+  }
   try {
     const lease = await stores.leases.get(record.id);
     if (lease !== null) await stores.leases.release(record.id, lease.leaseId);

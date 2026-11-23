@@ -118,6 +118,12 @@ describe("a request recorded with no session", () => {
     expect((await h.provider.loadSuspension(requestId, gate!.suspensionId))?.status).toBe("stopped");
     expect(seen).toEqual(["ran"]);
     expect(await sessionIds(h)).toEqual(before);
+    // Its log already ends on `request.suspended`, which a replay reads as the
+    // ending, so the stop writes the ending a reconnecting client sees.
+    const events = await h.stores.request.getEvents(requestId);
+    const last = events.at(-1)!;
+    expect(last.type).toBe("request.aborted");
+    expect(last.sequence_number).toBe(events.at(-2)!.sequence_number! + 1);
   });
 
   it("refuses a resume by name, and its gate stays pending", async () => {
