@@ -193,13 +193,20 @@ export function githubReviewersTool(options: GitHubReviewersToolOptions) {
     outputSchema: reviewersAnswerSchema,
     resources,
     execute: async (edit: z.infer<typeof judgedSchema>, ctx: BlockContext) => {
-      // The approved change, onto the list as it is now: an edit made while this one waited
-      // (a removal by the operator, say) stands. Only the logins approved are added or removed.
       const reviewers = reviewersDocumentOf(ctx);
-      const current = await reviewers.read();
-      const logins = [...current.filter((login) => !edit.removed.includes(login)), ...edit.added.filter((login) => !current.includes(login))];
-      await reviewers.write(logins);
-      return { logins, saved: true };
+      const done = await reviewers.edit((current, saved) => {
+        // A pin saves exactly the list the operator approved, and only while it is still the unsaved default.
+        if (edit.pin === true) {
+          if (saved) return { refused: "The list was saved while this waited for approval, so nothing changed." };
+          const same = current.length === edit.logins.length && current.every((login) => edit.logins.includes(login));
+          return same ? edit.logins : { refused: "The GITHUB_REVIEWERS default changed while this waited for approval, so nothing was saved. Ask again." };
+        }
+        // The approved change, onto the list as it is now: an edit made while this one waited
+        // (a removal by the operator, say) stands. Only the logins approved are added or removed.
+        return [...current.filter((login) => !edit.removed.includes(login)), ...edit.added.filter((login) => !current.includes(login))];
+      });
+      if ("refused" in done) return { logins: await reviewers.read(), saved: false, reason: done.refused };
+      return { logins: [...done.logins], saved: true };
     }
   });
   const approved = sequencer({ name: "github-reviewers-edit-approved", inputSchema: judgedSchema, outputSchema: reviewersAnswerSchema }).tap(approve).step(write);

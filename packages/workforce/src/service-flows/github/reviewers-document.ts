@@ -5,7 +5,9 @@
  * with {@link githubLoginsListed}, and the tool writes it with
  * {@link githubReviewersDocument}, so the two can't disagree.
  */
+import { readCommitted, updateStateWith, type UpdateStateRunner } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
+import { retryOnConflict } from "../../projects/cas-retry";
 import { githubLoginId } from "./normalize";
 
 /** The document's ref and accessor: the org's one list. **Pinned**: a saved list reads under it. */
@@ -50,6 +52,14 @@ export function githubReviewersDocument(logins: readonly string[], options: { re
   ].join("\n");
 }
 
+/** The document's state: the list as the last edit committed it, under compare-and-swap. Absent until the tool first saves. */
+type ReviewersState = { readonly logins?: readonly string[] };
+
+/** What an edit makes of the list as it stands: the next list, or why it won't change. */
+export type ReviewersChange = (current: readonly string[], saved: boolean) => readonly string[] | { readonly refused: string };
+
+const sameList = (a: readonly string[] | undefined, b: readonly string[] | undefined) => a !== undefined && b !== undefined && a.length === b.length && a.every((login, i) => login === b[i]);
+
 /** The document as the running block declares it, or a throw naming it when it doesn't. */
 export function reviewersDocumentOf(ctx: BlockContext) {
   const ref = (ctx.resources as Record<string, { readContent?: () => Promise<string | null>; writeContent?: (content: string) => Promise<void> }> | undefined)?.[
@@ -65,9 +75,33 @@ export function reviewersDocumentOf(ctx: BlockContext) {
       const content = await doc.readContent();
       return content !== null && !content.split("\n").includes(UNSAVED_LINE);
     },
-    write: (logins: readonly string[]) => {
+    /**
+     * Apply `change` to the list as committed, so two approved edits that run at once both land.
+     * The list is decided under compare-and-swap on the document's state (`logins`), which a
+     * content write has none of; the body is then written from it, and written again from the
+     * committed list until the two agree, so a writer that lost the race to write the body
+     * last can't leave an older list in it.
+     */
+    edit: async (change: ReviewersChange): Promise<{ readonly logins: readonly string[] } | { readonly refused: string }> => {
       if (typeof doc.writeContent !== "function") throw new Error(`the "${GITHUB_REVIEWERS_DOC}" document can't be written here`);
-      return doc.writeContent(githubReviewersDocument(logins));
+      const runner = ref as unknown as UpdateStateRunner<ReviewersState>;
+      const content = await doc.readContent();
+      // Before the tool's first save the state is empty: the body (stored or the default) is the list.
+      const body = { logins: githubLoginsListed(content), saved: content !== null && !content.split("\n").includes(UNSAVED_LINE) };
+      const decided = await retryOnConflict(() =>
+        updateStateWith<ReviewersState, { readonly logins: readonly string[] } | { readonly refused: string }>(runner, (state) => {
+          const current = state.logins ?? body.logins;
+          const next = change(current, state.logins !== undefined || body.saved);
+          return "refused" in next ? { state, result: next } : { state: { ...state, logins: [...next] }, result: { logins: [...next] } };
+        })
+      );
+      if (decided === undefined || "refused" in decided) return decided ?? { refused: "The list couldn't be read, so nothing changed." };
+      let written: readonly string[] | undefined;
+      for (let latest: readonly string[] | undefined = decided.logins; !sameList(latest, written); latest = await readCommitted(runner, (state) => state.logins)) {
+        written = latest ?? decided.logins;
+        await doc.writeContent(githubReviewersDocument(written));
+      }
+      return decided;
     }
   };
 }

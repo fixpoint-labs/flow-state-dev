@@ -62,9 +62,9 @@ export const defaultStore = () => fileURLToPath(new URL("./.fsdev/teammates.sqli
 export async function openTeammates(options: TeammatesOptions) {
   const workdir = workingFolder(options.workdir);
   const tree = options.tree ?? fileURLToPath(new URL("./workforce", import.meta.url));
-  // Who each worker hands work to, for the first run's lines: a read of the tree the kit installs, claiming nothing.
-  const declared = (await readWorkforceFolder({ path: tree, claim: () => undefined })).workers.map((w) => [w.id, w.declared.delegates] as const);
-  const delegates = Object.fromEntries(declared.filter(([, d]) => d === "all" || Array.isArray(d))) as Record<string, "all" | string[]>;
+  // Who each worker hands work to, and who picks the reviewers' tool: a read of the tree the kit installs, claiming nothing.
+  const declared = (await readWorkforceFolder({ path: tree, claim: () => undefined })).workers.map((w) => [w.id, w.declared.delegates, w.declared.capabilities] as const);
+  const delegates = Object.fromEntries(declared.filter(([, d]) => d === "all" || Array.isArray(d)).map(([id, d]) => [id, d])) as Record<string, "all" | string[]>;
   const mem = system({ model: options.model, working: { capacity: 7 }, episodic: true, semantic: true });
   const workspace = localWorkspaceHost({ root: options.runsRoot, remotes: { allow: [] }, localRepositories: [workdir], source: () => ({ kind: "repo", repo: workdir }), ...(options.setup === undefined ? {} : { setup: options.setup }) });
   const runTimeoutMs = options.runTimeoutMs ?? 20 * 60_000;
@@ -78,7 +78,7 @@ export async function openTeammates(options: TeammatesOptions) {
   const scripted = options.scriptedHarnessStepMs;
   const stub = (id: string, label: string): Harness => ({ id, label, agent: scriptedHarness({ stepEveryMs: scripted! }).slot, readiness: async () => ({ ready: true }), pass: [] });
   const beside = (index: string) => options.store.replace(/(\.[^./\\]+)?$/, `-${index}$1`);
-  const reviewers = githubTrustedReviewers({ operator: options.userId, judgeModel: GOAL_JUDGE_MODEL, holders: declared.filter(([, d]) => d === "all").map(([id]) => id) });
+  const reviewers = githubTrustedReviewers({ operator: options.userId, judgeModel: GOAL_JUDGE_MODEL, holders: declared.filter(([, , c]) => Object.hasOwn((c ?? {}) as object, "githubReviewers")).map(([id]) => id) });
   const github = operatorGitHub({ operator: options.userId, token: options.githubToken, reviewers, ...(options.githubApiUrl === undefined ? {} : { apiUrl: options.githubApiUrl }) });
   return createFlowState({
     kits: [

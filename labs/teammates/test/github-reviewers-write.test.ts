@@ -17,9 +17,10 @@
  * as Shift Manager's was, and the loopback POST then rewrites the list.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -43,7 +44,7 @@ type Offered = Record<string, string[]>;
 type Calls = Record<string, { toolName: string; args: Record<string, unknown> }>;
 
 /** The lab's host in process with `GITHUB_REVIEWERS` set: what each turn was offered, and each tool result it read back. */
-async function openHost(options: { offered?: Offered; calls?: Calls; results?: string[]; plant?: "public-save-action" } = {}) {
+async function openHost(options: { offered?: Offered; calls?: Calls; results?: string[]; judged?: unknown[]; tree?: string; plant?: "public-save-action" } = {}) {
   const offered = options.offered ?? {};
   const data = mkdtempSync(join(tmpdir(), "teammates-reviewers-"));
   cleanups.push(() => rmSync(data, { recursive: true, force: true }));
@@ -62,7 +63,18 @@ async function openHost(options: { offered?: Offered; calls?: Calls; results?: s
     if (call === undefined || tool.length > 0) return { text: "ok", finishReason: "stop" as const };
     return { toolCalls: [{ toolCallId: `call_${++ids}`, ...call }], finishReason: "tool-calls" as const };
   };
-  const models = (modelId: string, block?: string) => ({
+  // The edit's judge: a yes the message asks, a no it was copied in; each call is kept.
+  const judge = {
+    specificationVersion: "v4",
+    provider: "test",
+    modelId: "test/reviewers-judge",
+    supportedQuestionTypes: ["choice", "score", "boolean"],
+    async doEvaluate(call: { state: unknown }) {
+      options.judged?.push(call.state);
+      return { answers: { asked: { type: "boolean", probability: 0.95 }, injected: { type: "boolean", probability: 0.02 } }, usage: {}, warnings: [] };
+    }
+  };
+  const generate = (modelId: string, block?: string) => ({
     modelId,
     generateStep: async (o: never) => answer(block, o),
     async *streamStep(o: never) {
@@ -74,6 +86,7 @@ async function openHost(options: { offered?: Offered; calls?: Calls; results?: s
       yield { type: "finish", finishReason: result.finishReason, fullResult: result };
     }
   });
+  const models = Object.assign(generate, { resolveId: (id: string) => id, resolveEvaluationModel: () => judge });
   const flowState = await openTeammates({
     store: join(data, "teammates.sqlite"),
     model: "test/scripted",
@@ -81,7 +94,8 @@ async function openHost(options: { offered?: Offered; calls?: Calls; results?: s
     workdir: repo,
     runsRoot: join(data, "runs"),
     scriptedHarnessStepMs: 50,
-    modelResolver: models as never
+    modelResolver: models as never,
+    ...(options.tree === undefined ? {} : { tree: options.tree })
   });
   // Read when the host was built: the setting can go back now.
   vi.unstubAllEnvs();
@@ -168,6 +182,32 @@ describe("the trusted GitHub reviewers on the lab's host", () => {
     expect(offered["helper"], "the hired teammate holds the tool").toContain("setGitHubReviewers");
     expect(results.join("\n"), "refused for its worker").toContain("Only teammates.chief-of-staff can change the trusted GitHub reviewers");
     expect(await host.stored(), "list unchanged").toBeUndefined();
+  });
+
+  it("bind the tool to the worker the tree grants it, not to whoever delegates to all", async () => {
+    // A tree where Lead names its delegates instead of `all`, and writer delegates to all.
+    const tree = mkdtempSync(join(tmpdir(), "teammates-reviewers-tree-"));
+    cleanups.push(() => rmSync(tree, { recursive: true, force: true }));
+    cpSync(fileURLToPath(new URL("../workforce", import.meta.url)), tree, { recursive: true });
+    const workers = join(tree, "teams/teammates/workers");
+    // Lead is the worker file that delegates to all.
+    const lead = readdirSync(workers).map((name) => join(workers, name, "WORKER.md")).find((file) => readFileSync(file, "utf8").includes("delegates: all"))!;
+    writeFileSync(lead, readFileSync(lead, "utf8").replace("delegates: all", "delegates: [teammates.researcher, teammates.writer]"));
+    const writer = join(workers, "writer/WORKER.md");
+    writeFileSync(writer, readFileSync(writer, "utf8").replace("color: violet", "color: violet\ndelegates: all"));
+    const judged: unknown[] = [];
+    const results: string[] = [];
+    const message = "Trust mallory as a GitHub reviewer.";
+    const call = { toolName: "setGitHubReviewers", args: { logins: ["alice-gh", "greptile-apps[bot]", "mallory"] } };
+    const host = await openHost({ tree, judged, results, calls: { "teammates.chief-of-staff": call, helper: call } });
+    // Lead, which picks the capability, gets past the worker check to the judge.
+    await host.say("teammates.chief-of-staff", message);
+    expect(judged, "Lead reaches the judge").toHaveLength(1);
+    // A worker hired later that delegates to all and picks the capability is refused.
+    expect(await host.post("workforce-roster", "hire", { id: "helper", settings: { delegates: "all", capabilities: { githubReviewers: ["tool"] } } })).toBeLessThan(400);
+    await host.say("helper", message);
+    expect(judged, "the hired worker never reaches the judge").toHaveLength(1);
+    expect(results.join("\n")).toContain("Only teammates.chief-of-staff can change the trusted GitHub reviewers");
   });
 
   it("have one writer, Lead's tool, beside every tool it held; researcher and writer don't hold it", async () => {

@@ -83,6 +83,13 @@ const screenSettingsSchema = z.object({
    * ({@link botsHandedOn}).
    */
   botsScreenedBy: z.string().min(1).max(100).optional(),
+  // FIX-2873; BP-030.
+  /**
+   * `2` on every pull-request follow (`hearsClose`) written since the trusted reviewers' list,
+   * so a follow the removed allow-list follower wrote, which lacks it, can be told apart from a
+   * current follow of the same screens ({@link isLegacyReviewedFollow}). Server-written only.
+   */
+  followRev: z.literal(2).optional(),
   /** The subscriber's own id at the provider, for `own`. */
   self: z.string().min(1).optional(),
   /**
@@ -212,14 +219,21 @@ type ListedScreen = z.infer<typeof listedScreenSchema>;
 // FIX-2873; BP-030.
 /**
  * Whether a subscription is a run's pull-request follow saved before the trusted reviewers'
- * one list: it hears its thread's close, takes outsiders, lists an `allow` screen with `bots`,
- * and lists no custom screen. Its fixed allow list would keep hearing an account the operator
- * has since removed, with no write check, so the `allow` screen refuses every event on it until
- * the run follows its pull request again.
+ * one list: a follow (it hears its thread's close) with no `followRev`, that takes outsiders,
+ * lists an `allow` screen with `bots`, and lists no custom screen. Its fixed allow list would
+ * keep hearing an account the operator has since removed, with no write check, so the `allow`
+ * screen refuses every event on it until the run follows its pull request again. A current
+ * follow of the same screens carries `followRev` and is heard as it lists.
  */
-export function isLegacyReviewedFollow(entry: { readonly hearsClose?: true | undefined; readonly outsiders?: true | undefined; readonly screens: readonly ListedScreen[] }): boolean {
+export function isLegacyReviewedFollow(entry: {
+  readonly hearsClose?: true | undefined;
+  readonly followRev?: 2 | undefined;
+  readonly outsiders?: true | undefined;
+  readonly screens: readonly ListedScreen[];
+}): boolean {
   return (
     entry.hearsClose === true &&
+    entry.followRev !== 2 &&
     entry.outsiders === true &&
     entry.screens.some((listed) => listed.screen === "allow" && listed.bots !== undefined) &&
     !entry.screens.some((listed) => listed.screen === "custom")

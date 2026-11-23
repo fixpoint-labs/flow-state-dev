@@ -31,6 +31,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { followPullRequest, GITHUB_REVIEWERS_DOC, githubLoginsListed, githubReviewersDocument, githubTrustedReviewers, operatorGitHub, type GitHubTrustedReviewers } from "../src";
 import { bootSubscriptionsHost, event, github } from "./subscriptions-harness";
 import { ORG } from "./conversation-board-harness";
+import { SUBSCRIPTION_INDEX_PATTERN, SUBSCRIPTIONS_PATTERN } from "../src/subscriptions";
 
 /** A planted regression a control runs the wiring with. */
 type Plant = "empty-falls-back" | "provider-wide-bots";
@@ -208,13 +209,14 @@ describe("controls: each planted regression breaks its signal", () => {
 
 // BP-030: Teammates' follows saved before the one list carry a fixed `allow` screen of their own and
 // no list screen, so the list never runs on them. A follow of that shape must not keep hearing a
-// user the operator has since removed from the list, nor skip the write check.
-describe("a run's follow saved before the one list", () => {
-  it("hears no one, at routing and at delivery, rather than its old fixed allow list", async () => {
+// user the operator has since removed from the list, nor skip the write check. A follow a host makes
+// today with the same screens is a supported shape, and must still be heard as it lists.
+describe("a run's follow of a fixed allow list", () => {
+  /** A host whose run follows #412 with the screens the removed allow-list follower wrote, and `alice` comments after `save []`. */
+  async function aliceHeard(asSaved: (host: Host) => Promise<void>) {
     const reviewers = reviewersOf(SETTING);
     const operator = operatorGitHub({ operator: "alice", token: "operator-token", apiUrl, reviewers });
     const provider = { ...github, screens: operator.screens! };
-    // The follow exactly as the removed allow-list follower wrote it.
     const host = bootSubscriptionsHost({
       screens: operator.screens!,
       follower: (installation) =>
@@ -223,15 +225,42 @@ describe("a run's follow saved before the one list", () => {
     try {
       const run = await host.follower("alice");
       await host.act("alice", run, "respond", { message: "opened it [follow-pr:412]" }, "follower");
+      await asSaved(host);
       await save(host, []);
       const said = comment("alice", "member");
       const routed = await host.route(said.event);
-      expect((await host.heard(run)).some((m) => m.includes(said.text)), "legacy follow, save []: alice refused").toBe(false);
-      const verdicts = (routed.output as { verdicts: Array<{ pass: boolean; reason: string }> }).verdicts;
-      expect(verdicts.map((v) => v.reason)).toEqual([expect.stringMatching(/^allow: .*follows its pull request again/)]);
+      const reasons = (routed.output as { verdicts: Array<{ reason: string }> }).verdicts.map((v) => v.reason);
+      return { heard: (await host.heard(run)).some((m) => m.includes(said.text)), reasons };
     } finally {
       await host.dispose();
     }
+  }
+
+  /** Take `followRev` off the follow and its index entry, as the removed follower saved them. */
+  async function asLegacy(host: Host) {
+    const runtime = await host.state.getRuntime();
+    const strip = ({ followRev: _rev, ...kept }: Record<string, unknown>) => kept;
+    for (const [scope, scopeId, prefix] of [
+      ["user", `alice:~org:${ORG}`, SUBSCRIPTIONS_PATTERN.replace("*", "")],
+      ["org", ORG, SUBSCRIPTION_INDEX_PATTERN.replace("*", "")]
+    ] as const) {
+      for (const [key, stored] of Object.entries(await runtime.stores.resourceState.getByPrefix(scope, scopeId, prefix))) {
+        const state = stored.state as Record<string, any>;
+        const next = scope === "user" ? strip(state) : { subscriptions: Object.fromEntries(Object.entries(state.subscriptions as Record<string, Record<string, unknown>>).map(([slot, entry]) => [slot, strip(entry)])) };
+        await runtime.stores.resourceState.set(scope, scopeId, key, next as never, "any" as never);
+      }
+    }
+  }
+
+  it("made today, is heard as it lists, whatever the shared list says", async () => {
+    const { heard } = await aliceHeard(async () => undefined);
+    expect(heard, "current follow: alice heard").toBe(true);
+  });
+
+  it("saved before the one list (no followRev), hears no one, at routing and at delivery", async () => {
+    const { heard, reasons } = await aliceHeard(asLegacy);
+    expect(heard, "legacy follow, save []: alice refused").toBe(false);
+    expect(reasons).toEqual([expect.stringMatching(/^allow: .*follows its pull request again/)]);
   });
 });
 

@@ -234,7 +234,9 @@ function nextEntry(current: SubscriptionResourceState | undefined, asked: Subscr
         ...asked,
         hearsClose: true as const,
         ...(asked.taskId === undefined && current.taskId !== undefined ? { taskId: current.taskId } : {}),
-        ...(keptBots === undefined ? {} : { botsScreenedBy: keptBots })
+        ...(keptBots === undefined ? {} : { botsScreenedBy: keptBots }),
+        // A follow stays as current or as legacy as it was: only the server's follow write marks one.
+        ...(current.followRev === 2 ? { followRev: 2 as const } : {})
       }
     : asked;
   if (life === "fresh") return wanted;
@@ -282,6 +284,7 @@ export const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
   screens: row.screens,
   ...(row.outsiders === true ? { outsiders: true as const } : {}),
   ...(row.botsScreenedBy === undefined ? {} : { botsScreenedBy: row.botsScreenedBy }),
+  ...(row.followRev === undefined ? {} : { followRev: row.followRev }),
   ...(row.self === undefined ? {} : { self: row.self }),
   ...(row.unmatched === true ? { unmatched: true as const } : {}),
   ...(row.hearsClose === true ? { hearsClose: true as const } : {}),
@@ -457,7 +460,7 @@ async function writeSubscription(
     flow: flowKind ?? "",
     worker: hears.worker,
     ...((write.taskId ?? hears.taskId) === undefined ? {} : { taskId: write.taskId ?? hears.taskId }),
-    ...(write.hearsClose === true ? { hearsClose: true as const } : {}),
+    ...(write.hearsClose === true ? { hearsClose: true as const, followRev: 2 as const } : {}),
     userId: identity.userId,
     orgId: identity.orgId,
     // The tenant its session runs under, so its deliveries reach that session.

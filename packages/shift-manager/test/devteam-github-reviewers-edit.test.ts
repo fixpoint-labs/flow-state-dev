@@ -104,11 +104,11 @@ function scripted(calls: ToolCall[], judged: Judged, shown: unknown[]): ModelRes
   ) as unknown as ModelResolver;
 }
 
-async function open(model: ModelResolver): Promise<Lab> {
+async function open(model: ModelResolver, stores = inMemoryStores()): Promise<Lab> {
   const remote = createBareRemote("github-reviewers-edit", { seed: { "README.md": "storefront\n" } });
   opened = await openLab({
     modelResolver: model,
-    stores: inMemoryStores(),
+    stores,
     harness: harnessStub({ finalMessage: "done" }).slot,
     runTimeoutMs: 30_000,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-github-reviewers-")), remotes: { allow: ["file"] } },
@@ -158,8 +158,8 @@ async function pendingApproval(lab: Lab): Promise<Approval> {
 }
 
 /** Answer the approval through the resume route, as Inbox does, and wait for the request to finish. */
-async function answer(lab: Lab, requestId: string, action: "approve" | "reject") {
-  const { suspensionId } = await pendingApproval(lab);
+async function answer(lab: Lab, requestId: string, action: "approve" | "reject", suspensionId?: string) {
+  suspensionId ??= (await pendingApproval(lab)).suspensionId;
   const sent = await lab.door("POST", `coordinator/requests/${requestId}/resume`, { body: { suspensionId, action } });
   expect(sent.status).toBe(202);
   const runtime = await lab.state.getRuntime();
@@ -303,6 +303,33 @@ describe("the Shift Coordinator changes the trusted GitHub reviewers", () => {
     expect(await pendingApproval(lab)).toMatchObject({ message: "Change the trusted GitHub reviewers: save the list as it reads now, jhoffner?" });
     expect(await answer(lab, requestId, "approve")).toBe("completed");
     expect(await stored(), "a stored row now decides the list").toContain("- jhoffner");
+  }, 120_000);
+
+  it("lands two approved edits answered at once: neither drops the other", async () => {
+    const lab = await open(scripted([set(["jhoffner", "maintainer"]), set(["jhoffner", "reviewer2"])], { asked: 0.95, injected: 0.02 }, []));
+    const first = await say(lab, "Please trust maintainer as a GitHub reviewer.");
+    const second = await say(lab, "Please trust reviewer2 as a GitHub reviewer.");
+    const pending = (await pendingApprovals(lab)) as Array<Approval & { requestId?: string }>;
+    expect(pending).toHaveLength(2);
+    const byRequest = (id: string) => pending.find((approval) => approval.requestId === id)?.suspensionId;
+    expect(await Promise.all([answer(lab, first, "approve", byRequest(first)), answer(lab, second, "approve", byRequest(second))])).toEqual(["completed", "completed"]);
+    expect((await listed(lab)).sort()).toEqual(["jhoffner", "maintainer", "reviewer2"]);
+  }, 120_000);
+
+  it("saves nothing on a pin whose default changed while it waited: the operator approved the old list", async () => {
+    const stores = inMemoryStores();
+    const first = await open(scripted([set(["jhoffner"])], { asked: 0.95, injected: 0.02 }, []), stores);
+    const requestId = await say(first, "Save jhoffner as the trusted GitHub reviewers, as the list reads now.");
+    const { suspensionId } = await pendingApproval(first);
+    await first.dispose();
+    opened = undefined;
+    // The Lab starts again with a different setting, and the approval is answered there.
+    vi.stubEnv("GITHUB_REVIEWERS", "mallory");
+    const again = await open(scripted([], { asked: 0.95, injected: 0.02 }, []), stores);
+    vi.stubEnv("GITHUB_REVIEWERS", "jhoffner");
+    expect(await answer(again, requestId, "approve", suspensionId)).toBe("completed");
+    const runtime = await again.state.getRuntime();
+    expect(await (runtime.stores as any).content.get("org", LAB_ORG_ID, GITHUB_REVIEWERS_DOC), "nothing saved").toBeUndefined();
   }, 120_000);
 
   it("refuses the same list again once it is saved", async () => {
