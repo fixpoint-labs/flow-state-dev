@@ -3,7 +3,7 @@
  *
  * Two halves, and the split is the whole claim:
  *
- * - **`buildPrompt` leads with the task the manager hands over** (`run.task`,
+ * - **`instructions` lead with the task the manager hands over** (`run.task`,
  *   the work a user approved or posted), **then is composed out of the worker's
  *   own configuration**: the worker the run's session names, loaded through
  *   the block context the manager hands it.
@@ -34,7 +34,7 @@ import { ASK_MARKER_DIR, assertBaseRefExists, codingBrief, HARNESS_FEATURE_KEY, 
 import type {
   CodingBriefParts,
   CompletionRunContext,
-  PhaseSpec,
+  ModeSpec,
   PromptRunContext,
   WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
@@ -267,57 +267,59 @@ export interface ImplementPhaseOptions {
  *   the brief's condition to the done-condition. See {@link ImplementPhaseOptions}.
  * @returns The phase spec to hand the coder worker flow.
  */
-export function defineImplementPhase(options: ImplementPhaseOptions): PhaseSpec {
+export function defineImplementPhase(options: ImplementPhaseOptions): ModeSpec {
   return {
-    phase: PHASE,
-    buildPrompt: (run: PromptRunContext) => buildWorkerPrompt(run, options),
-    isDone: async (context: CompletionRunContext) => {
-      // **The run itself says it ran out of road, so a commit is not the job.**
-      // Checked before the probe: "a commit the base ref lacks" is the weakest
-      // completion signal this repo ships, and a budget-stopped run is precisely
-      // the case where committing something and finishing the work come apart.
-      if (context.stopReport === "stopped-at-limit") return false;
+    name: PHASE,
+    instructions: (run: PromptRunContext) => buildWorkerPrompt(run, options),
+    doneWhen: {
+      check: async (context: CompletionRunContext) => {
+        // **The run itself says it ran out of road, so a commit is not the job.**
+        // Checked before the probe: "a commit the base ref lacks" is the weakest
+        // completion signal this repo ships, and a budget-stopped run is precisely
+        // the case where committing something and finishing the work come apart.
+        if (context.stopReport === "stopped-at-limit") return false;
 
-      const validated = context.validated as ValidatedWorkspace | undefined;
-      if (validated === undefined) {
-        throw new Error(
-          "the implement phase was constructed without its `validate` hook, so it does not " +
-            "know which ref to compare against.",
-        );
-      }
-      if ("host" in validated) {
-        // A host names the places it makes: `workspace/` for a run with no
-        // repository, a checkout of the project's remote otherwise.
-        if (basename(context.workspacePath) === "workspace") {
-          // Files the run changed, not files an earlier run saved.
-          if (!leftFiles(context.workspacePath)) return false;
-          const before = startingFiles.get(context.workspacePath);
-          if (before !== undefined && before === filesFingerprint(context.workspacePath)) return false;
-        } else if (!(await hasUnpushedCommit(context.workspacePath))) {
+        const validated = context.validated as ValidatedWorkspace | undefined;
+        if (validated === undefined) {
+          throw new Error(
+            "the implement phase was constructed without its `validate` hook, so it does not " +
+              "know which ref to compare against.",
+          );
+        }
+        if ("host" in validated) {
+          // A host names the places it makes: `workspace/` for a run with no
+          // repository, a checkout of the project's remote otherwise.
+          if (basename(context.workspacePath) === "workspace") {
+            // Files the run changed, not files an earlier run saved.
+            if (!leftFiles(context.workspacePath)) return false;
+            const before = startingFiles.get(context.workspacePath);
+            if (before !== undefined && before === filesFingerprint(context.workspacePath)) return false;
+          } else if (!(await hasUnpushedCommit(context.workspacePath))) {
+            return false;
+          }
+        } else if (!(await hasNewCommit(context.workspacePath, validated.baseRef))) {
           return false;
         }
-      } else if (!(await hasNewCommit(context.workspacePath, validated.baseRef))) {
-        return false;
-      }
-      if (options.requireAcceptance !== true) return true;
+        if (options.requireAcceptance !== true) return true;
 
-      // The requester's condition, run against the tree this attempt produced.
-      // A rejection re-pends the row with the reason, exactly as any other
-      // unfinished attempt does, so the retry budget still applies.
-      return runAcceptance(context.workspacePath).accepted;
-    },
-    validate: (workspace: WorkspaceConfig | WorkspaceHost): ValidatedWorkspace => {
-      // A workspace host has no one repository to check: each run's source
-      // names its own, and the host refuses one it cannot reach before the
-      // harness runs.
-      if ("provision" in workspace) return { host: true };
-      // Refused here, before any row is claimed: a base ref the repository does
-      // not have fails the done-condition on EVERY attempt, each time after the
-      // run has already been paid for. This is the exact shape `validate` exists
-      // for — a precondition only the phase knows about, over a workspace only
-      // the host holds.
-      assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
-      return { baseRef: workspace.baseRef };
+        // The requester's condition, run against the tree this attempt produced.
+        // A rejection re-pends the row with the reason, exactly as any other
+        // unfinished attempt does, so the retry budget still applies.
+        return runAcceptance(context.workspacePath).accepted;
+      },
+      validate: (workspace: WorkspaceConfig | WorkspaceHost): ValidatedWorkspace => {
+        // A workspace host has no one repository to check: each run's source
+        // names its own, and the host refuses one it cannot reach before the
+        // harness runs.
+        if ("provision" in workspace) return { host: true };
+        // Refused here, before any row is claimed: a base ref the repository does
+        // not have fails the done-condition on EVERY attempt, each time after the
+        // run has already been paid for. This is the exact shape `validate` exists
+        // for — a precondition only the phase knows about, over a workspace only
+        // the host holds.
+        assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
+        return { baseRef: workspace.baseRef };
+      },
     },
   };
 }
@@ -368,11 +370,13 @@ export async function buildAnswerPrompt(run: PromptRunContext, options: AnswerPh
  * @param options How the run's worker is loaded.
  * @returns The phase spec for the answer manager.
  */
-export function defineAnswerPhase(options: AnswerPhaseOptions): PhaseSpec {
+export function defineAnswerPhase(options: AnswerPhaseOptions): ModeSpec {
   return {
-    phase: ANSWER_PHASE,
-    buildPrompt: (run: PromptRunContext) => buildAnswerPrompt(run, options),
-    isDone: (context: CompletionRunContext) =>
-      context.stopReport !== "stopped-at-limit" && (context.answer ?? "").trim().length > 0,
+    name: ANSWER_PHASE,
+    instructions: (run: PromptRunContext) => buildAnswerPrompt(run, options),
+    doneWhen: {
+      check: (context: CompletionRunContext) =>
+        context.stopReport !== "stopped-at-limit" && (context.answer ?? "").trim().length > 0,
+    },
   };
 }

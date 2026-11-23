@@ -69,10 +69,10 @@ function fakeHarness(seen: { feeds?: HarnessFeeds }) {
   };
 }
 
-const phase = {
-  phase: "implement",
-  buildPrompt: () => "go",
-  isDone: () => true,
+const mode = {
+  name: "implement",
+  instructions: () => "go",
+  doneWhen: { check: () => true },
 };
 
 function build(extra: Record<string, unknown> = {}) {
@@ -81,7 +81,7 @@ function build(extra: Record<string, unknown> = {}) {
     boardCollectionId: BOARD_ID,
     boardCollection: tasks,
     tenant: undefined,
-    phase,
+    mode,
     workspace,
     runTimeoutMs: 30_000,
     harness: fakeHarness(seen),
@@ -145,11 +145,14 @@ describe("a phase's own preconditions, at the manager's door", () => {
     // AFTER a paid agent run, once per retry, until the budget is gone.
     let seen: unknown = "never ran";
     build({
-      phase: {
-        ...phase,
-        validate: (ws: unknown) => {
-          seen = ws;
-          return "the-validated-value";
+      mode: {
+        ...mode,
+        doneWhen: {
+          ...mode.doneWhen,
+          validate: (ws: unknown) => {
+            seen = ws;
+            return "the-validated-value";
+          },
         },
       },
     });
@@ -163,25 +166,28 @@ describe("a phase's own preconditions, at the manager's door", () => {
     // once per claimed attempt.
     expect(() =>
       build({
-        phase: {
-          ...phase,
-          validate: () => {
-            throw new Error("this phase needs an origin remote");
+        mode: {
+          ...mode,
+          doneWhen: {
+            ...mode.doneWhen,
+            validate: () => {
+              throw new Error("this mode needs an origin remote");
+            },
           },
         },
       }),
     ).toThrow(/needs an origin remote/);
   });
 
-  it("gives two managers from one PhaseSpec their own validated value", () => {
+  it("gives two managers from one ModeSpec their own validated value", () => {
     // What `validate` learns belongs to THIS manager. A phase that stored it on
     // itself would hand it to the next one, and a construction that then failed
     // would leave the pin behind for a corrected retry to trip over.
     let calls = 0;
-    const shared = { ...phase, validate: () => `run-${++calls}` };
+    const shared = { ...mode, doneWhen: { ...mode.doneWhen, validate: () => `run-${++calls}` } };
 
-    build({ phase: shared });
-    build({ phase: shared });
+    build({ mode: shared });
+    build({ mode: shared });
 
     expect(calls).toBe(2);
   });
@@ -227,7 +233,7 @@ describe("a phase's collections ride `uses`", () => {
     // The bespoke record is gone, replaced by the framework's standard channel.
     // Asserted because a leftover would be a second way to say one thing, and
     // the reserved guard now watches only the one that remains.
-    expect(() => build({ phase: { ...phase, readable: {} } })).not.toThrow();
+    expect(() => build({ mode: { ...mode, readable: {} } })).not.toThrow();
     expect(readFileSync(join(SRC, "manager.ts"), "utf8")).not.toMatch(
       /readable: Record<string, DeclaredResourceEntry>/,
     );

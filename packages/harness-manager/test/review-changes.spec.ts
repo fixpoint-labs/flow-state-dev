@@ -170,7 +170,7 @@ function host(options: {
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: { phase: PHASE, buildPrompt: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.`, isDone: async () => true },
+    mode: { name: PHASE, instructions: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.`, doneWhen: { check: async () => true } },
     // The bare `origin` stands for a GitHub repository, as an operator's mirror would.
     workspace:
       options.clone === true
@@ -238,7 +238,7 @@ function host(options: {
         collectionId: BOARD_ID,
         collection: resolveResourceCollection(ctx, BOARD_ID)!,
       }),
-      runOf: () => ({ issue: ISSUE, phase: PHASE }),
+      runOf: () => ({ issue: ISSUE, mode: { name: PHASE } }),
     }),
   });
   const flow = defineFlow({

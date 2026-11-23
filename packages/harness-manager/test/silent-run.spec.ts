@@ -53,7 +53,7 @@ function host(options: { harness: (feeds: HarnessFeeds) => HarnessBlock; idleTim
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: { phase: PHASE, buildPrompt: async (run) => `Work on ${run.issue}.`, isDone: async () => true },
+    mode: { name: PHASE, instructions: async (run) => `Work on ${run.issue}.`, doneWhen: { check: async () => true } },
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
     ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
     ...(options.runTimeoutMs === undefined ? {} : { runTimeoutMs: options.runTimeoutMs }),

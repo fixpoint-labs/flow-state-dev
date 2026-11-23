@@ -267,13 +267,13 @@ function defineCoderFlow(installation: WorkerInstallation, repo: string, checkou
   const manager = harnessManager({
     ledgers: conversationLedgers,
     tenant: undefined,
-    phase: { phase: "answer", buildPrompt: async (run: { issue: string }) => `Work on task ${run.issue}.`, isDone: () => true },
+    mode: { name: "answer", instructions: async (run: { issue: string }) => `Work on task ${run.issue}.`, doneWhen: { check: () => true } },
     workspace: { root: checkouts, sourceRepo: repo, baseRef: "main", provisionTimeoutMs: 20_000 },
     runTimeoutMs: 60_000,
     stopsOnAbort: true,
     harness: fakeHarness
   } as never) as TaskWorker;
-  const runOf = (row: Task) => ({ issue: taskIssueSegment(row.id), phase: "answer" });
+  const runOf = (row: Task) => ({ issue: taskIssueSegment(row.id), mode: { name: "answer" } });
   const message = harnessSessionDoor({
     name: "steer-goal-coder",
     harness: fakeHarness,

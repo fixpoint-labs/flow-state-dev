@@ -100,7 +100,7 @@ function host(outcome: "completed" | "throws", onPullRequestRecorded?: PullReque
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: { phase: PHASE, buildPrompt: () => "go", isDone: () => true },
+    mode: { name: PHASE, instructions: () => "go", doneWhen: { check: () => true } },
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },

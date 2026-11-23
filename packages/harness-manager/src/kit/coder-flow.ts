@@ -56,7 +56,7 @@ import { codingBrief } from "../coding-brief";
 import { commandCheck, type CommandCheckCommands } from "../command-check";
 import { goalJudge } from "../goal-judge";
 import type { Harness } from "../harness";
-import { harnessDrainBudgetMs, harnessManager, resolveOwnership, type CompletionRunContext, type PhaseSpec } from "../manager";
+import { harnessDrainBudgetMs, harnessManager, resolveOwnership, type CompletionRunContext, type ModeSpec } from "../manager";
 import { DEFAULT_IDLE_TIMEOUT_MS } from "../run-stops";
 import { harnessSessionDoor, harnessTalkTurn } from "../session-door";
 import { taskIssueSegment } from "../workspace";
@@ -137,10 +137,17 @@ async function runChangedFiles(run: CompletionRunContext): Promise<boolean> {
   }
 }
 
-/** A run's brief: harness-manager's coding brief with the worker's own instructions, and a question answered or a change committed. */
-const PHASE: PhaseSpec = {
-  phase: "code",
-  buildPrompt: (run) =>
+// BP-030.
+/**
+ * The kit's one mode, `default`: harness-manager's coding brief with the
+ * worker's own instructions, and a question answered or a change committed.
+ * Its runs were keyed `code` before modes had names, so a run stored there is
+ * still found there.
+ */
+const DEFAULT_MODE: ModeSpec = {
+  name: "default",
+  formerName: "code",
+  instructions: (run) =>
     codingBrief(run, {
       instructions: workerConfigOf(run.ctx).instructions as string | undefined,
       terms: [
@@ -148,24 +155,24 @@ const PHASE: PhaseSpec = {
           "If it asks for a change, commit what you change with git.",
       ],
     }),
-  isDone: (run) => run.stopReport === "finished",
-} as PhaseSpec;
+  doneWhen: { check: (run) => run.stopReport === "finished" },
+};
 
 /**
- * The phase a coding run runs: done when the harness says it finished and, on
+ * The mode a coding run runs: done when the harness says it finished and, on
  * a run that changed files, the checks pass. The brief names the checks too,
  * from the same list: before the run there is no base to compare, so a
  * question's brief names them as a change's does.
  *
  * @throws When `checks.timeoutMs` isn't a positive whole number.
  */
-export function codingPhase(options: Pick<CoderFlowOptions, "checks" | "project">): PhaseSpec {
+export function codingMode(options: Pick<CoderFlowOptions, "checks" | "project">): ModeSpec {
   const commands: CommandCheckCommands<CompletionRunContext> | undefined =
     options.project === true ? projectChecks() : options.checks?.commands.length ? [...options.checks.commands] : undefined;
-  if (commands === undefined) return PHASE;
+  if (commands === undefined) return DEFAULT_MODE;
   const onChange: CommandCheckCommands<CompletionRunContext> = async (run) =>
     !(await runChangedFiles(run)) ? [] : typeof commands === "function" ? commands(run) : commands;
-  return commandCheck(PHASE, { commands: onChange, timeoutMs: options.checks?.timeoutMs ?? CHECKS_TIMEOUT_MS, inBrief: true });
+  return commandCheck(DEFAULT_MODE, { commands: onChange, timeoutMs: options.checks?.timeoutMs ?? CHECKS_TIMEOUT_MS, inBrief: true });
 }
 
 /**
@@ -177,7 +184,7 @@ export function codingPhase(options: Pick<CoderFlowOptions, "checks" | "project"
 export function codingDrainBudgetMs(
   options: Pick<CoderFlowOptions, "checks" | "project" | "judge" | "runTimeoutMs" | "idleTimeoutMs">,
 ): number {
-  const { doneTimeoutMs } = codingPhase(options);
+  const doneTimeoutMs = codingMode(options).doneWhen.timeoutMs;
   return harnessDrainBudgetMs({
     // A cap the host named is waited out; the default cap, or none, is not.
     runTimeoutMs: options.runTimeoutMs === undefined || options.runTimeoutMs === 0 ? SHUTDOWN_RUN_WAIT_MS : options.runTimeoutMs,
@@ -206,7 +213,7 @@ export function coderWorkerFlow(
   if (options.defaultHarness !== undefined && !ids.includes(options.defaultHarness)) {
     throw new Error(`${CODER_FLOW}: the default harness "${options.defaultHarness}" is not one of ${ids.join(", ")}.`);
   }
-  const phase = codingPhase(options);
+  const mode = codingMode(options);
 
   return workerFlow(
     (installation: WorkerInstallation) => {
@@ -215,7 +222,7 @@ export function coderWorkerFlow(
         const filed = await filingConversationBoard(ctx);
         return filed === undefined
           ? undefined
-          : { tasks: filed.tasks, runOf: (task: Task) => ({ issue: taskIssueSegment(task.id), phase: phase.phase }) };
+          : { tasks: filed.tasks, runOf: (task: Task) => ({ issue: taskIssueSegment(task.id), mode }) };
       };
       /** A manager for one harness; `reviewChanges` makes a run that committed wait for your review. */
       const manager = (id: string, harness: Harness, reviewChanges: boolean) => {
@@ -224,7 +231,7 @@ export function coderWorkerFlow(
           name,
           ledgers: conversationLedgers,
           tenant: undefined,
-          phase,
+          mode,
           workspace: options.workspace,
           ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
           ...(options.runTimeoutMs === undefined ? {} : { runTimeoutMs: options.runTimeoutMs }),

@@ -24,7 +24,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { cancelAndResume } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type CompletionRunContext, type HarnessFeeds, type PhaseSpec } from "../src";
+import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type CompletionRunContext, type HarnessFeeds, type ModeSpec } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { reviewDetail } from "../src/browser";
 import { seedRepo } from "./fixtures";
@@ -122,15 +122,17 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
   );
   execFileSync("git", ["add", "."], { cwd: sourceRepo });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "checks"], { cwd: sourceRepo });
-  const basePhase: PhaseSpec = {
-    phase: PHASE,
-    buildPrompt: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.${run.feedback === undefined ? "" : `\nWhy the last attempt stopped: ${run.feedback}`}`,
-    isDone: async (run) => {
-      options.onDone?.(run);
-      if (options.slowBase !== undefined) await new Promise((resolve) => setTimeout(resolve, options.slowBase!.delayMs));
-      return run.stopReport === "finished";
+  const basePhase: ModeSpec = {
+    name: PHASE,
+    instructions: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.${run.feedback === undefined ? "" : `\nWhy the last attempt stopped: ${run.feedback}`}`,
+    doneWhen: {
+      ...(options.slowBase !== undefined ? { timeoutMs: options.slowBase.doneTimeoutMs } : {}),
+      check: async (run) => {
+        options.onDone?.(run);
+        if (options.slowBase !== undefined) await new Promise((resolve) => setTimeout(resolve, options.slowBase!.delayMs));
+        return run.stopReport === "finished";
+      },
     },
-    ...(options.slowBase !== undefined ? { doneTimeoutMs: options.slowBase.doneTimeoutMs } : {}),
   };
 
   const ledger = defineTaskCollection({ id: BOARD_ID, scope: "org" as const, stateSchema: harnessTaskInputSchema });
@@ -139,7 +141,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: commandCheck(basePhase, { commands: options.checks ?? ["node check.mjs"], timeoutMs: options.timeoutMs ?? 20_000 }),
+    mode: commandCheck(basePhase, { commands: options.checks ?? ["node check.mjs"], timeoutMs: options.timeoutMs ?? 20_000 }),
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
@@ -480,11 +482,11 @@ describe("a run is done only when its checks pass", () => {
 });
 
 describe("the time a check gets", () => {
-  it("covers the phase's own check and the commands, and the shutdown budget reserves it", () => {
-    const phase = commandCheck({ phase: "p", buildPrompt: () => "", isDone: () => true }, { commands: [], timeoutMs: 600_000 });
-    expect(phase.doneTimeoutMs).toBe(60_000 + 600_000);
+  it("covers the mode's own check and the commands, and the shutdown budget reserves it", () => {
+    const mode = commandCheck({ name: "p", instructions: () => "", doneWhen: { check: () => true } }, { commands: [], timeoutMs: 600_000 });
+    expect(mode.doneWhen.timeoutMs).toBe(60_000 + 600_000);
     const base = { runTimeoutMs: 60_000, ownershipWaitMs: 1_000 };
-    expect(harnessDrainBudgetMs({ ...base, doneTimeoutMs: phase.doneTimeoutMs }) - harnessDrainBudgetMs(base)).toBe(Math.ceil((600_000 * 4) / 3));
+    expect(harnessDrainBudgetMs({ ...base, doneTimeoutMs: mode.doneWhen.timeoutMs }) - harnessDrainBudgetMs(base)).toBe(Math.ceil((600_000 * 4) / 3));
   });
 
   it("keeps the checkout's lock from going stale while a long check holds it", () => {
@@ -499,16 +501,16 @@ describe("the time a check gets", () => {
   });
 
   it("refuses a budget that isn't a positive whole number at construction", () => {
-    expect(() => commandCheck({ phase: "p", buildPrompt: () => "", isDone: () => true }, { commands: [], timeoutMs: -1 })).toThrow(/timeoutMs/);
+    expect(() => commandCheck({ name: "p", instructions: () => "", doneWhen: { check: () => true } }, { commands: [], timeoutMs: -1 })).toThrow(/timeoutMs/);
   });
 });
 
 describe("the checks in the run's brief", () => {
-  const phase = { phase: "p", buildPrompt: () => "Fix the build.", isDone: () => true } satisfies PhaseSpec;
+  const mode = { name: "p", instructions: () => "Fix the build.", doneWhen: { check: () => true } } satisfies ModeSpec;
   const run = { ctx: { tag: "the run's ctx" }, task: { goal: "Fix the build." }, answers: [] } as never;
 
   it("names every command that will decide done, in the prompt the run starts from", async () => {
-    const prompt = await commandCheck(phase, { commands: ["pnpm typecheck", "node check.mjs"], timeoutMs: 20_000, inBrief: true }).buildPrompt(run);
+    const prompt = await commandCheck(mode, { commands: ["pnpm typecheck", "node check.mjs"], timeoutMs: 20_000, inBrief: true }).instructions(run);
     expect(prompt.startsWith("Fix the build.")).toBe(true);
     const section = prompt.slice(prompt.indexOf("# The checks"));
     expect(section).toContain("- `pnpm typecheck`\n- `node check.mjs`");
@@ -518,20 +520,20 @@ describe("the checks in the run's brief", () => {
 
   it("reads the list from the same resolver the check runs, handed the run's context", async () => {
     const seen: unknown[] = [];
-    const prompt = await commandCheck(phase, {
+    const prompt = await commandCheck(mode, {
       commands: (context) => {
         seen.push((context as { ctx: unknown }).ctx);
         return ["pnpm lint"];
       },
       timeoutMs: 20_000,
       inBrief: true,
-    }).buildPrompt(run);
+    }).instructions(run);
     expect(prompt).toContain("- `pnpm lint`");
     expect(seen).toEqual([{ tag: "the run's ctx" }]);
   });
 
-  it("leaves the prompt as the phase built it when the option is off, or no command will run", async () => {
-    expect(await commandCheck(phase, { commands: ["pnpm lint"], timeoutMs: 20_000 }).buildPrompt(run)).toBe("Fix the build.");
-    expect(await commandCheck(phase, { commands: [], timeoutMs: 20_000, inBrief: true }).buildPrompt(run)).toBe("Fix the build.");
+  it("leaves the prompt as the mode built it when the option is off, or no command will run", async () => {
+    expect(await commandCheck(mode, { commands: ["pnpm lint"], timeoutMs: 20_000 }).instructions(run)).toBe("Fix the build.");
+    expect(await commandCheck(mode, { commands: [], timeoutMs: 20_000, inBrief: true }).instructions(run)).toBe("Fix the build.");
   });
 });

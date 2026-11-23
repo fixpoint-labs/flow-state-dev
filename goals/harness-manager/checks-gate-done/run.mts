@@ -55,7 +55,7 @@ import {
   runTopic,
   type HarnessFeeds,
   type HarnessSessionState,
-  type PhaseSpec,
+  type ModeSpec,
 } from "@flow-state-dev/harness-manager";
 import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
@@ -79,7 +79,7 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; must: string[]; legs: s
   "no-checks": {
     must: ["a:not-done"],
     legs: "a",
-    patches: [{ module: COMMAND_CHECK, from: String.raw`  const own = phase\.doneTimeoutMs \?\? NETWORK_CALL_TIMEOUT_MS;`, to: "  return phase;\n  const own = 0;" }],
+    patches: [{ module: COMMAND_CHECK, from: String.raw`  const own = mode\.doneWhen\.timeoutMs \?\? NETWORK_CALL_TIMEOUT_MS;`, to: "  return mode;\n  const own = 0;" }],
   },
   "drop-reason": {
     must: ["b:brief-has-tail"],
@@ -184,18 +184,18 @@ const TASK = harnessTaskId(ISSUE, PHASE);
 async function open(options: { label: string; script: Step[]; commands: string[]; timeoutMs: number; reviewChanges?: boolean }) {
   const repo = scratchRepo(options.label);
   const prompts: string[] = [];
-  const base: PhaseSpec = {
-    phase: PHASE,
-    buildPrompt: (run) =>
+  const base: ModeSpec = {
+    name: PHASE,
+    instructions: (run) =>
       [`Work on ${run.issue}.`, ...(run.feedback === undefined ? [] : ["# Why the last attempt stopped", run.feedback])].join("\n\n"),
-    isDone: (run) => run.stopReport === "finished",
+    doneWhen: { check: (run) => run.stopReport === "finished" },
   };
   const ledger = defineTaskCollection({ id: BOARD, scope: "org" as const, stateSchema: harnessTaskInputSchema });
   const manager = harnessManager({
     boardCollectionId: BOARD,
     boardCollection: ledger,
     tenant: undefined,
-    phase: commandCheck(base, { commands: options.commands, timeoutMs: options.timeoutMs }),
+    mode: commandCheck(base, { commands: options.commands, timeoutMs: options.timeoutMs }),
     workspace: { root: join(repo, "..", "checkouts"), sourceRepo: repo, baseRef: "main", provisionTimeoutMs: 20_000 },
     runTimeoutMs: 30_000,
     ownership: { pollMs: 25 },

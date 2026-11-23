@@ -665,7 +665,7 @@ export async function writeRunRecord(
  * for previous-attempt data.** That was not true when the claim was first
  * written: the implement prompt read `sessionId` off the row to name the last
  * attempt's harness session, and the clear meant it always saw `null`. The
- * carry-forward a phase needs now arrives on `PhaseRunContext` — the failure
+ * carry-forward a mode needs now arrives on `ModeRunContext` — the failure
  * reason from the board's own `feedback`, the previous session captured by the
  * manager before this write. A phase reading this row for anything the clear
  * touches is the same defect returning.
@@ -707,6 +707,29 @@ export async function readRunRecord(
 ): Promise<RunRecordState | undefined> {
   const ref = await collectionRef(ctx, RUNS).getOptional(topic);
   return ref?.state as RunRecordState | undefined;
+}
+
+// BP-030.
+/**
+ * Find one issue's run of a mode: under `<epic>/<issue>/<name>` first, then,
+ * when that key is absent and the mode names a `formerName`, under the former
+ * key. The segment it was found under is the run's from then on; nothing is
+ * copied to the new key. Found under neither, it is a new run, keyed by `name`.
+ */
+export async function readModeRunRecord(
+  ctx: CollectionHoldingContext,
+  epic: string,
+  issue: string,
+  mode: { readonly name: string; readonly formerName?: string },
+): Promise<{ segment: string; topic: string; record: RunRecordState | undefined }> {
+  const topic = runTopic(epic, issue, mode.name);
+  const record = await readRunRecord(ctx, topic);
+  if (record !== undefined || mode.formerName === undefined || mode.formerName === mode.name) {
+    return { segment: mode.name, topic, record };
+  }
+  const formerTopic = runTopic(epic, issue, mode.formerName);
+  const former = await readRunRecord(ctx, formerTopic);
+  return former === undefined ? { segment: mode.name, topic, record } : { segment: mode.formerName, topic: formerTopic, record: former };
 }
 
 /**

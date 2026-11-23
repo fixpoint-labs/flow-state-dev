@@ -14,7 +14,7 @@
  *
  * ```ts
  * const phase = commandCheck(
- *   { phase: "code", buildPrompt: (run) => codingBrief(run, { instructions }), isDone },
+ *   { name: "default", instructions: (run) => codingBrief(run, { instructions }), doneWhen: { check } },
  *   { commands: projectChecks(), timeoutMs, inBrief: true },
  * );
  * ```
@@ -91,7 +91,7 @@ export function codingBrief(run: PromptRunContext, parts: CodingBriefParts): str
     ...section("Your team's conventions", parts.conventions ?? DEFAULT_CONVENTIONS),
     `# Where and how to work`,
     ``,
-    `Task ${run.issue}, phase ${run.phase}, attempt ${run.attempt}.`,
+    `Task ${run.issue}, mode ${run.mode}, attempt ${run.attempt}.`,
     ...(issue !== undefined && issue !== run.issue ? [`Issue ${issue}.`] : []),
     run.branch === "" ? `Work in ${run.workspacePath}.` : `Work in ${run.workspacePath}, on branch ${run.branch}.`,
     ...(parts.terms ?? []),
