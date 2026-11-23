@@ -42,6 +42,9 @@ Written by `docs-writer` (sonnet), 621 words. Scenario: One flow `support` with 
 - After the loop (review): the page's form clears its text only once `sendAction` resolves and shows `session.error`, since a refused send rejects and records the error (`packages/react/src/hooks/useSession.ts:441-445` and its catch, which calls `setError` and rethrows). It type-checks.
 - After the loop (review): the Node path now starts the server with `tsx --env-file=.env.local`, since `serve` and `createFlowState` load no env file and provider detection reads `process.env` (`packages/node/src/serve.ts`; `packages/core/src/models/providerDetection.ts`).
 - After the loop (review): drift fix: the sentence after the Node sample no longer says `serve` does not check who is calling; on a non-loopback host it refuses to start while a flow has no `authentication.resolvePrincipal`, and the sample's `127.0.0.1` is exempt (packages/node/src/serve.ts:192-196, packages/node/src/bind-guard.ts:84). The Next sample is untouched. 660 words. Page sha256 8788b33c0f8a.
+- After the loop (review): network auth check: the Next route passes `allowUnauthenticated: process.env.NODE_ENV !== "production"` with the same one-sentence reason and link; the "Every call says who is calling" paragraph adds that only loopback `serve()` and `fsdev dev` serve a no-resolver flow without an override, and the Next.js, Vercel and Lambda handlers refuse unless given `allowUnauthenticated: true`. Type-check in apps/kitchen-sink/zz-auth-qs (package sources by path, deleted afterwards): only the planted error and the missing react, next/server and testing modules the folder could not resolve; a misspelt option probe failed on `createNextHandler` and `createLambdaHandler`, so the check reached the handler types. 719 words. Page sha256 dea2fa856f72.
+
+- After the loop (review): the owner's security decision on the Architect's review: the route sample's `allowUnauthenticated` is now an explicit local-only opt-in, `process.env.ALLOW_UNAUTHENTICATED === "true"`, set in `.env.local`, instead of `NODE_ENV !== "production"`, which put the default resolver on the network under `next dev` (packages/engine/src/routes/network-auth.ts:61-66). The paragraph after it says the variable is the app's own, that while it is set anyone who can reach the dev server can call the flow as any user, and never to set it in a deployment. The route sample type-checks against packages/next (`allowUnauthenticated` is `boolean`, createNextHandler.ts:45). 775 words. Page sha256 459559305f96.
 
 ## 5 · Fact check
 
@@ -49,6 +52,9 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 932
 
 No untrue claim found.
 - Re-run after the review edit: loopback hosts are `localhost`, 127.0.0.0/8 and `::1` (packages/node/src/bind-guard.ts:31-36); the guard returns early for them (:84); default host `0.0.0.0` (packages/node/src/serve.ts:145).
+- Re-run after the review edit: packages/next/src/createNextHandler.ts:43-53; every request gets 500 `{"error":"Internal server error"}` while any flow resolves to the default body-userId resolver, independent of NODE_ENV, unless `allowUnauthenticated` (packages/engine/src/routes/network-auth.ts:72-86, :44-60); `serve` skips the guard on a loopback host and refuses a non-loopback bind (packages/node/src/serve.ts:193-198, packages/node/src/bind-guard.ts:84); `fsdev dev` binds 127.0.0.1 by default (packages/fsdev/src/commands/dev.ts:130, :173-174).
+
+- Re-run after the review edit: the changed sample and paragraph were read against the guard and handler code; no untrue claim remains open.
 
 ## 6 · Depth pass
 
