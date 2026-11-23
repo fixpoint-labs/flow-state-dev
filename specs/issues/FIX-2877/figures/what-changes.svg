@@ -1,0 +1,102 @@
+<svg viewBox="0 0 940 430" role="img" aria-label="Two rows, Shift Manager and Teammates, today and after. Today Shift Manager runs its own coding flow, picks the default from an env var, and keeps one harness list for its coder and another for the readiness view, with the kit's coder switched off. After, the env var feeds the harness kit's defaultHarness, the coder is the shared coder flow with three options, and one harness list serves the coder and readiness. Today Teammates has four default-coder knobs: TEAMMATES_HARNESS, Lead's prompt fallback to teammates.cursor, the client constant LEAD_FALLBACK_HARNESS, and a per-teammate setting the server never reads. After, one: the kit's defaultHarness, read by the coder flow, by Lead through the kit's context, and by the composer through app context."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg   { fill:var(--surface); }
+    .lane { fill:var(--surface-2); }
+    .gone { fill:var(--surface); stroke:var(--gone); stroke-width:1.3; stroke-dasharray:5 4; }
+    .keep { fill:var(--code-soft); stroke:var(--code); stroke-width:1.5; }
+    .env  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .read { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .sep  { stroke:var(--rule); stroke-width:1; }
+    .head { fill:var(--ink-3); }
+    .arr  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="430"/>
+  <text class="t-lbl" x="140" y="22">TODAY</text>
+  <text class="t-lbl" x="560" y="22">AFTER</text>
+  <line class="sep" x1="540" y1="30" x2="540" y2="420"/>
+
+  <g id="shift-manager">
+    <rect class="lane" x="10" y="32" width="920" height="180" rx="6"/>
+    <text class="t-lbl" x="20" y="50">SHIFT MANAGER</text>
+    <rect class="env" x="20" y="60" width="170" height="40" rx="4"/>
+    <text class="t-b" x="30" y="78">DEVFORCE_LAB_HARNESS</text>
+    <text class="t-s" x="30" y="92">its own default</text>
+    <rect class="gone" x="200" y="60" width="320" height="40" rx="4"/>
+    <text class="t-x" x="210" y="78">coder.mts · its own coding flow</text>
+    <text class="t-s" x="210" y="92">438 lines · named extras per worker</text>
+    <rect class="gone" x="20" y="116" width="240" height="40" rx="4"/>
+    <text class="t-x" x="30" y="134">list 1 · harnesses the coder runs</text>
+    <text class="t-s" x="30" y="148">workerHarnesses()</text>
+    <rect class="gone" x="280" y="116" width="240" height="40" rx="4"/>
+    <text class="t-x" x="290" y="134">list 2 · harnessValues</text>
+    <text class="t-s" x="290" y="148">readiness only · Claude Code</text>
+    <rect class="gone" x="20" y="166" width="500" height="34" rx="4"/>
+    <text class="t-x" x="30" y="187">the kit's coder · switched off with .without(…, "coder")</text>
+
+    <rect class="env" x="560" y="60" width="176" height="40" rx="4"/>
+    <text class="t-b" x="570" y="78">DEVFORCE_LAB_HARNESS</text>
+    <text class="t-s" x="570" y="92">feeds the one value</text>
+    <path class="arr" d="M736,80 L757,80"/>
+    <rect class="keep" x="764" y="60" width="156" height="40" rx="4"/>
+    <text class="t-b" x="774" y="78">defaultHarness</text>
+    <text class="t-s" x="774" y="92">the harness kit's</text>
+    <rect class="keep" x="560" y="116" width="360" height="40" rx="4"/>
+    <text class="t-b" x="570" y="134">the shared coder flow · three options</text>
+    <text class="t-s" x="570" y="148">phases · approveTools · the lab's own settings</text>
+    <rect class="keep" x="560" y="166" width="360" height="34" rx="4"/>
+    <text class="t-b" x="570" y="187">one harness list · the coder and readiness</text>
+  </g>
+
+  <g id="teammates">
+    <rect class="lane" x="10" y="224" width="920" height="196" rx="6"/>
+    <text class="t-lbl" x="20" y="242">TEAMMATES</text>
+    <rect class="env" x="20" y="252" width="240" height="40" rx="4"/>
+    <text class="t-b" x="30" y="270">TEAMMATES_HARNESS</text>
+    <text class="t-s" x="30" y="284">feeds the kit · Lead ignores it</text>
+    <rect class="gone" x="280" y="252" width="240" height="40" rx="4"/>
+    <text class="t-x" x="290" y="270">Lead's prompt fallback</text>
+    <text class="t-s" x="290" y="284">assign it to teammates.cursor</text>
+    <rect class="gone" x="20" y="306" width="240" height="40" rx="4"/>
+    <text class="t-x" x="30" y="324">LEAD_FALLBACK_HARNESS</text>
+    <text class="t-s" x="30" y="338">"cursor" in the client</text>
+    <rect class="gone" x="280" y="306" width="240" height="40" rx="4"/>
+    <text class="t-x" x="290" y="324">per-teammate harness setting</text>
+    <text class="t-s" x="290" y="338">unread by the server</text>
+    <text class="t-s" x="20" y="372">four knobs that agree by convention</text>
+
+    <rect class="env" x="560" y="252" width="176" height="40" rx="4"/>
+    <text class="t-b" x="570" y="270">TEAMMATES_HARNESS</text>
+    <text class="t-s" x="570" y="284">feeds the one value</text>
+    <path class="arr" d="M736,272 L757,272"/>
+    <rect class="keep" x="764" y="252" width="156" height="40" rx="4"/>
+    <text class="t-b" x="774" y="270">defaultHarness</text>
+    <text class="t-s" x="774" y="284">the harness kit's</text>
+    <path class="arr" d="M842,292 L842,318 L660,318 L660,327"/>
+    <path class="arr" d="M842,318 L842,327"/>
+    <rect class="read" x="560" y="334" width="200" height="40" rx="4"/>
+    <text class="t-b" x="570" y="352">Lead · the kit's context</text>
+    <text class="t-s" x="570" y="366">beside readiness</text>
+    <rect class="read" x="770" y="334" width="150" height="40" rx="4"/>
+    <text class="t-b" x="780" y="352">the composer</text>
+    <text class="t-s" x="780" y="366">app context · no copy</text>
+    <text class="t-s" x="560" y="400">the coder flow reads it too, for a worker with no harness line</text>
+  </g>
+  <g id="arrowheads">
+    <path class="head" d="M763,80 l-7,-4 l0,8 z"/>
+    <path class="head" d="M763,272 l-7,-4 l0,8 z"/>
+    <path class="head" d="M660,333 l-4,-7 l8,0 z"/>
+    <path class="head" d="M842,333 l-4,-7 l8,0 z"/>
+  </g>
+</svg>
