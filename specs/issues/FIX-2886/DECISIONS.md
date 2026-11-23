@@ -29,7 +29,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | A `sessionId` on the schedule, a value or a function of the fire's context, the way a webhook binding has `sessionId(event)`, with the poll passing a function of its schedule id |
-| **Because** | A poll's session id is computable by anyone who knows the user and the thread. If an author writes the id, another signed-in user can create a session at it first, and the engine then refuses every fire (`UserBindingMismatchError`), so the poll stops. FIX-1739 found this hole for channels. A preset lets the framework own the id and reserve its prefix at the two points that already guard write sessions, once for every schedule. A free id would also be a second way to send into an existing conversation, which FIX-1233 tried as its own design and canceled. Tenet 2: the smallest option that does the job |
+| **Because** | A poll's session id is computable by anyone who knows the user and the thread. If an author writes the id, another signed-in user can create a session at it first, and the engine then refuses every fire (`UserBindingMismatchError`), so the poll stops. FIX-1739 found this hole for channels. A preset lets the framework own the id and reserve its prefix at three of the points that already guard write sessions (the inbound host, the create route, the action route; see *Decided, not asked*), once for every schedule. A free id would also be a second way to send into an existing conversation, which FIX-1233 tried as its own design and canceled. Tenet 2: the smallest option that does the job |
 | **Locks in** | `session?: "per-fire" \| "per-schedule"` on a schedule (`ScheduleConfig`) and on `createResourceCollectionScheduleResolver`; default `"per-fire"`. A reserved session-id prefix for schedule sessions (the implementer names it, beside `fsd-write.`): only a scheduled dispatch may create a session at it or run in it; reads stay open to the owner. Both names go through `docs/contributing/glossary.mjs` in the implementation PR, which adds no retired word |
 
 ![D1, how a schedule says where its fires run. Chosen: a two-value preset, per-fire or per-schedule, with the id derived by the framework and its prefix reserved. Instead of: a sessionId value or function, like a webhook binding. It comes down to who can hold the session first: with a reserved derived id nobody else can create it; with a written id another user can create it first and stop the poll. Price: a schedule can't fire into a session of the author's choosing. Tie: the poll's case works either way. Locks in the option and a reserved prefix. Flips if a schedule must fire into a session the author names](figures/d1-preset-not-id.svg)
@@ -132,7 +132,12 @@ routes already refuse a reserved prefix (`write-session-id.ts`, `createInboundTr
 
 ## Notes from review
 
-None yet.
+From the Cursor review on #5579 (2026-11-23), for the implementer:
+- `session` on a schedule (where fires run) vs `session: { retention }` on the flow is easy to mis-wire. Consider a distinct name, or give both distinct `glossary.mjs` entries and a docs callout.
+- Put the id derivation in one helper (e.g. in `core` beside `formatScheduleId`), sharing the colon-joined format with `owner-runs.ts`, so engine, workforce and goals don't each spell it.
+- Consider one reserved-id check (`id`, `source`) or a small registry, so FIX-2889 adds its two prefixes there instead of copying three call sites.
+- A poll session holds about 288 fires a day; check that the DevTool's request listing for one session pages or limits, so the Trace tab stays fast.
+- Retention runs only after a completed fire; a poll that keeps failing still grows its session. A test or goal note may cover it.
 
 ## How it got here
 
