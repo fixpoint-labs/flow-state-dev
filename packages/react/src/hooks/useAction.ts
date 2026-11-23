@@ -29,7 +29,12 @@ export type UseActionOptions = {
  * send's acceptance, or with `result: true` the request's result.
  */
 export type UseActionResult<TResolved = ExecuteActionResponse> = {
-  execute: (input: unknown, sessionId?: string) => Promise<TResolved>;
+  /**
+   * Send the action in `sessionId`. Required: every send names its session.
+   * For a one-shot send, pass `oneOffSessionId()` from
+   * `@flow-state-dev/core/helpers`.
+   */
+  execute: (input: unknown, sessionId: string) => Promise<TResolved>;
   readonly loading: boolean;
   readonly error?: Error;
 };
@@ -79,7 +84,7 @@ export function useAction(
   }, []);
 
   const execute = useCallback(
-    async (input: unknown, sessionId?: string): Promise<ExecuteActionResponse | RequestResult> => {
+    async (input: unknown, sessionId: string): Promise<ExecuteActionResponse | RequestResult> => {
       const controller = new AbortController();
       running.current.add(controller);
       setLoading(true);

@@ -42,7 +42,7 @@ afterEach(() => {
 describe("a send the server never answers", () => {
   it("fails after 30 seconds by default, with status 0 and a plain message, and aborts the request", async () => {
     const { fetcher, signals } = silent();
-    const sent = track(createClient({ userId: "u", fetcher }).flow("demo").send("run", {}));
+    const sent = track(createClient({ userId: "u", fetcher }).flow("demo").send("run", {}, { sessionId: "s1" }));
 
     await vi.advanceTimersByTimeAsync(29_999);
     expect(sent.settled).toBe(false);
@@ -60,7 +60,7 @@ describe("a send the server never answers", () => {
       new Promise<Response>((_, reject) => {
         init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
       });
-    const sent = track(createClient({ userId: "u", fetcher }).flow("demo").send("run", {}));
+    const sent = track(createClient({ userId: "u", fetcher }).flow("demo").send("run", {}, { sessionId: "s1" }));
 
     await vi.advanceTimersByTimeAsync(30_000);
 
@@ -71,7 +71,7 @@ describe("a send the server never answers", () => {
   it("takes its limit from sendTimeoutMs, for a streamed send too", async () => {
     const { fetcher } = silent();
     const sent = track(
-      createClient({ userId: "u", fetcher, sendTimeoutMs: 5_000 }).flow("demo").send("run", {}, { stream: true })
+      createClient({ userId: "u", fetcher, sendTimeoutMs: 5_000 }).flow("demo").send("run", {}, { sessionId: "s1", stream: true })
     );
 
     await vi.advanceTimersByTimeAsync(5_000);
@@ -81,7 +81,7 @@ describe("a send the server never answers", () => {
 
   it("waits for ever with sendTimeoutMs 0", async () => {
     const { fetcher } = silent();
-    const sent = track(createClient({ userId: "u", fetcher, sendTimeoutMs: 0 }).flow("demo").send("run", {}));
+    const sent = track(createClient({ userId: "u", fetcher, sendTimeoutMs: 0 }).flow("demo").send("run", {}, { sessionId: "s1" }));
 
     await vi.advanceTimersByTimeAsync(10 * 60_000);
 
@@ -96,7 +96,7 @@ describe("a send the server never answers", () => {
       return new Response(new ReadableStream(), { status: 200, headers: { "content-type": "text/event-stream" } });
     };
     const sent = track(
-      createClient({ userId: "u", fetcher, sendTimeoutMs: 1_000 }).flow("demo").send("run", {}, { stream: true })
+      createClient({ userId: "u", fetcher, sendTimeoutMs: 1_000 }).flow("demo").send("run", {}, { sessionId: "s1", stream: true })
     );
 
     await vi.advanceTimersByTimeAsync(60_000);
