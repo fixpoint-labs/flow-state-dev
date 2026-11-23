@@ -28,9 +28,12 @@ import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-de
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { GITHUB_REVIEWERS_DOC, githubReviewersDocument, githubTrustedReviewers } from "@flow-state-dev/workforce";
-import { GITHUB_REVIEWERS_JUDGE, GITHUB_REVIEWERS_TOOL } from "@flow-state-dev/workforce/internal";
 import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
+
+/** The tool's name, as the Shift Coordinator's `tools:` line spells it, and its judge's: both pinned in workforce. */
+const GITHUB_REVIEWERS_TOOL = "setGitHubReviewers";
+const GITHUB_REVIEWERS_JUDGE = "github-reviewers-edit-judge";
 
 // The list's default, read when the Lab opens.
 beforeAll(() => {
