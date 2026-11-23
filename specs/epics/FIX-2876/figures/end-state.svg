@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 470" role="img" aria-label="What&#x27;s in the box. In the box, in orchestration, the harness kit and workforce: one coding flow, the harness kit&#x27;s coder, which Shift Manager runs on; a typed task input that filing and claim check, with harness and model as its run settings, server-owned fields the flow&#x27;s filler writes, never the filer; one order, task then worker then kit default, run at the first claim and frozen on the run record, which work, steer, message, door and resume alike read, with a worker able to lock its harness, a refused harness failing the task and a refused model falling to the harness default by name; a model feed into every harness; Code with as a turn-written session field, codeWith, which the harness kit&#x27;s filler writes into the task at filing. A fence under it: what ran is read from the run, never from the pick. Composed in by the app: its default coder in one place, and its picker. Replaced in one line: Teammates&#x27; Coding harness text line (the lab&#x27;s Coder: line goes with its workers, in FIX-2598), Lead&#x27;s fallback and the client constant, the unread agent-flow harness setting, Shift Manager&#x27;s second harness list. Not built here: harness sessions&#x27; own model pick, the lab&#x27;s model picker (FIX-2598), run settings beyond harness and model, and PR policy as coder-flow options (FIX-2583)."
+<svg viewBox="0 0 940 470" role="img" aria-label="What&#x27;s in the box. In the box, in orchestration, the harness kit and workforce: one coding flow, the harness kit&#x27;s coder, which Shift Manager runs on; a typed task input that filing and claim check, with harness, model and plan as its run settings, server-owned fields the flow&#x27;s filler writes, never the filer; one order, task then worker then kit default, run at the first claim and frozen on the run record, which work, steer, message, door and resume alike read, with a worker able to lock its harness, a refused harness failing the task and a refused model falling to the harness default by name; a model feed into every harness; Code with as a turn-written session field, codeWith, which the harness kit&#x27;s filler writes into the task at filing. A fence under it: what ran is read from the run, never from the pick. Composed in by the app: its default coder in one place, and its picker. Replaced in one line: Teammates&#x27; Coding harness text line (the lab&#x27;s Coder: line goes with its workers, in FIX-2598), Lead&#x27;s fallback and the client constant, the unread agent-flow harness setting, Shift Manager&#x27;s second harness list. Not built here: harness sessions&#x27; own model pick, the lab&#x27;s model picker (FIX-2598), run settings beyond harness, model and plan, and PR policy as coder-flow options (FIX-2583)."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -44,7 +44,7 @@
     <text class="t-b" x="32" y="60">One coding flow, the harness kit&#x27;s coder</text>
     <text class="t-s" x="32" y="75">Shift Manager runs on it; coder.mts is deleted (FIX-2877)</text>
     <text class="t-b" x="32" y="96">Typed task input; run settings are its fields</text>
-    <text class="t-s" x="32" y="111">harness, model: server-owned, the flow&#x27;s filler writes them (FIX-2894, 2878)</text>
+    <text class="t-s" x="32" y="111">harness, model, plan: server-owned; the flow&#x27;s filler writes them (FIX-2894, 2878)</text>
     <text class="t-b" x="32" y="132">One order: task, worker, kit default; workers can lock</text>
     <text class="t-s" x="32" y="147">frozen per run at first claim; a refused model runs the default</text>
     <text class="t-b" x="32" y="168">A model feed into every harness&#x27;s model resolver</text>
@@ -83,7 +83,7 @@
     <text class="t-s" x="32" y="391">Kitchen Sink&#x27;s harness mode: a session, not a task</text>
     <text class="t-b" x="32" y="414">The lab&#x27;s model picker</text>
     <text class="t-s" x="32" y="429">FIX-2598, which consumes this carrier (D3)</text>
-    <text class="t-b" x="482" y="376">Run settings beyond harness and model</text>
+    <text class="t-b" x="482" y="376">Run settings beyond harness, model and plan</text>
     <text class="t-s" x="482" y="391">the schema has room; nothing else is added</text>
     <text class="t-b" x="482" y="414">PR policy as coder-flow options</text>
     <text class="t-s" x="482" y="429">FIX-2583, beside this set</text>

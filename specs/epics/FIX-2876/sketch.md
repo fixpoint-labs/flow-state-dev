@@ -30,6 +30,9 @@ export const codingTaskInput = z // NEW (FIX-2878)
   .object({
     harness: z.string().min(1).optional(), // server-owned (ER-10): the filler writes it
     model: modelSelection.optional(), // server-owned (ER-10): the filler writes it
+    // server-owned (ER-10): it narrows what a run may do, so clearing it widens it. Until FIX-2599
+    // moves plan mode onto it, `claude-code-plan` stays a harness id; the field's name is FIX-2878's spec's.
+    plan: z.boolean().optional(),
     feature: harnessFeatureSchema.optional(), // was input.harnessFeature; the namespacing goes
     project: projectAddressSchema.optional(), // was input.project
   })
@@ -41,7 +44,7 @@ task: {
       name: `${CODER_FLOW}-work`,
       // NEW (FIX-2894): the declaration; FIX-2894's spec picks `taskInput`'s final shape.
       input: taskInput(codingTaskInput, {
-        serverOwned: ["harness", "model"],
+        serverOwned: ["harness", "model", "plan"], // every run setting that widens a run when changed
         fill: fillRunSettings, // NEW (FIX-2878): the harness kit's filler (step 3)
         project: options.project === true ? "required" : "optional", // was the hire's `needsProject`
       }),
@@ -111,7 +114,7 @@ The browser sends the pick beside the message. No `Coding harness:` line is adde
 // labs/teammates/src/app/conversations.ts
 await workforce.send(sessionId, text, {
   attachments: [...attachments],
-  fields: { codeWith: { harness: picked.harness, model: picked.model } }, // NEW (FIX-2879)
+  fields: { codeWith: { harness: picked.harness, model: picked.model, plan: picked.plan } }, // NEW (FIX-2879)
 });
 ```
 
@@ -120,7 +123,7 @@ a keyed slot that another kit can fill.
 
 ```ts
 // packages/harness-manager/src/kit/harnesses-kit.ts, in contributes
-const codeWithSchema = z.object({ harness: z.string().min(1), model: modelSelection.optional() }).strict();
+const codeWithSchema = z.object({ harness: z.string().min(1), model: modelSelection.optional(), plan: z.boolean().optional() }).strict();
 [workforce.slots.sessionFields]: { codeWith: { schema: codeWithSchema, written: "turn" } }, // NEW (FIX-2879)
 ```
 
@@ -153,16 +156,17 @@ async function writeTurnFields(declared: SessionFields, fields: Record<string, u
 }
 ```
 
-## 3 · Filing: the harness kit's filler writes harness and model (ER-10)
+## 3 · Filing: the harness kit's filler writes harness, model and plan (ER-10)
 
-The board has already dropped whatever the filer sent for `harness` and `model` (step 1), because
-the coder flow's declaration marks them server-owned. The harness kit's filler writes them back
-in, so workforce reads no harness-kit field. From a person's turn, the pick is the session's last
-`codeWith`. From a filing no person started, it is the frozen pair on the filing run's own record
-(step 4), never the task session's carried copy (`carriedSessionFields`), which was taken at
-hand-over and can be stale. The filler runs before the parse.
+The board has already dropped whatever the filer sent for `harness`, `model` and `plan` (step 1),
+because the coder flow's declaration marks them server-owned: each one, changed by a filer, could
+widen what the run may do. The harness kit's filler writes them back in, so workforce reads no
+harness-kit field. From a person's turn, the pick is the session's last `codeWith`. From a filing
+no person started, it is the frozen triple on the filing run's own record (step 4), never the task
+session's carried copy (`carriedSessionFields`), which was taken at hand-over and can be stale.
+The filler runs before the parse, and `updateTask` keeps the stored values.
 
-The filler fills only harness and model. It never picks the assignee: with one coder worker that
+The filler fills only the server-owned run settings. It never picks the assignee: with one coder worker that
 takes its harness per task, the pick has nothing to route. A model-written assignee is held at the
 claim instead (step 4, ER-11): whichever worker claims the task, it runs the task's harness or
 refuses it by name.
@@ -172,8 +176,8 @@ refuses it by name.
 const fillRunSettings = async (ctx: BlockContext): Promise<Partial<CodingTaskInput>> => {
   const run = await activeRunOf(ctx); // the filing session's own run record, if it is a coding run
   if (run !== undefined) {
-    // A filing no person started: the filing run's frozen pair, kept exactly. Never the kit default, never wider.
-    return { harness: run.harnessId!, ...(run.model == null ? {} : { model: run.model }) };
+    // A filing no person started: the filing run's frozen triple, kept exactly. Never the kit default, never wider.
+    return { harness: run.harnessId!, ...(run.model == null ? {} : { model: run.model }), ...(run.plan == null ? {} : { plan: run.plan }) };
   }
   // NEW (FIX-2879): a person's turn, or a conversation turn no user started (Q-C). Until FIX-2879
   // lands there is no `codeWith`: the task carries none, and the worker's harness is used.
@@ -209,7 +213,17 @@ it("a task a worker's run files inherits that run's frozen pick", async () => {
   const parent = await claimed(board, { assignee: "teammates.coder", input: {} }, { codeWith: { harness: "claude-code-plan" } });
   await conversation.respond({ message: "now use codex", fields: { codeWith: { harness: "codex" } } }); // a later pick
   const child = await asRunOf(parent).createTask({ assignee: "teammates.coder", goal: "split the fix", input: { harness: "codex" } });
-  expect(child.input).toEqual({ harness: "claude-code-plan" }); // the filing run's pair: not the later pick, not the kit default
+  expect(child.input).toEqual({ harness: "claude-code-plan" }); // the filing run's triple: not the later pick, not the kit default
+});
+
+it("a filer cannot clear or flip plan mode", async () => {
+  await conversation.respond({ message: "Look into the flaky test", fields: { codeWith: { harness: "claude-code-plan", plan: true } } });
+  // A prompt-injected model files, then rewrites, with plan mode off.
+  const task = await board.createTask({ assignee: "teammates.coder", goal: "Fix the flaky test", input: { plan: false } });
+  expect(task.input).toEqual({ harness: "claude-code-plan", plan: true }); // the turn's pick, not the filer's
+  const rewritten = await board.updateTask(task.id, { input: { harness: "claude-code", plan: undefined } });
+  expect(rewritten.input).toEqual({ harness: "claude-code-plan", plan: true }); // updateTask keeps the stored values
+  expect((await runOf(task)).plan).toBe(true); // read from the run: still a plan run
 });
 ```
 
@@ -217,8 +231,9 @@ it("a task a worker's run files inherits that run's frozen pick", async () => {
 
 `harnessOf` resolves from the worker alone today. It is replaced by one resolver over the task.
 For a harness the order is the task, then the worker, then the kit; for a model, the task, then the
-harness value's own default. Only a fresh work claim runs it, and it freezes what it resolved on the
-run record. Steer, message, door and resume read that frozen pair, never the session's current
+harness value's own default; for plan, the task's. Only a fresh work claim runs it, and it freezes
+the harness, model and plan it resolved on the run record as one triple. Steer, message, door and
+resume read that frozen triple, never the session's current
 `codeWith`, so a pick made after the claim changes nothing in flight.
 
 ```ts
@@ -240,10 +255,11 @@ const resolveRun = async (ctx: BlockContext, task: { input?: unknown } | undefin
   const review = (worker.config.review as boolean | undefined) ?? options.review === true;
   // Model: the task's, checked (step 5), else the harness value's own default (cursorHarness({ model })).
   // There is no worker-config model and no kit-default model (ER-2).
-  return { ...found, id, manager: review ? found.reviewed : found.manager, model: await checkModel(harnesses[id]!, asked.model) };
+  // Plan: the task's, as the filler wrote it. Until FIX-2599, a plan run is also the `claude-code-plan` id.
+  return { ...found, id, manager: review ? found.reviewed : found.manager, model: await checkModel(harnesses[id]!, asked.model), plan: asked.plan ?? null };
 };
 
-/** NEW (FIX-2878): the pair a fresh work claim froze, for every other route. */
+/** NEW (FIX-2878): the triple a fresh work claim froze, for every other route. */
 const frozenRunOf = async (ctx: BlockContext) => {
   const filed = await board(ctx);
   const task = filed === undefined ? undefined : sessionTask(filed.tasks, ctx.session.identity.id);
@@ -251,17 +267,17 @@ const frozenRunOf = async (ctx: BlockContext) => {
   if (run?.harnessId == null) throw new Error("this session's task has not been claimed; nothing to steer. Nothing ran.");
   const found = built[run.harnessId];
   if (found === undefined) throw new Error(`the run's harness "${run.harnessId}" is not here any more. Nothing ran.`);
-  return { ...found, id: run.harnessId, model: { model: run.model ?? undefined } };
+  return { ...found, id: run.harnessId, model: { model: run.model ?? undefined }, plan: run.plan };
 };
 
-// In byHarness: only the work entry's fresh claim resolves; steer, message and door read the frozen pair.
+// In byHarness: only the work entry's fresh claim resolves; steer, message and door read the frozen triple.
 execute: async (input: { input?: unknown } & Record<string, unknown>, ctx: never) => {
   // A task's own input carries `goal`; a steer, a message or a door line doesn't (the door's `taskId` is a label only).
   const freshClaim = "goal" in input && route === "work"; // `route`: byHarness's own argument, one per entry
   const chosen = freshClaim ? await resolveRun(ctx, input) : await frozenRunOf(ctx);
   if (freshClaim) {
-    // NEW (FIX-2878): frozen beside `sessionId`; both fields `.nullable().default(null)` (BP-030).
-    await writeRunRecord(ctx, { harnessId: chosen.id, model: chosen.model.model ?? null });
+    // NEW (FIX-2878): frozen beside `sessionId`; all three fields `.nullable().default(null)` (BP-030).
+    await writeRunRecord(ctx, { harnessId: chosen.id, model: chosen.model.model ?? null, plan: chosen.plan });
   }
   if (ready) {
     const missing = await refusal(chosen.id);
