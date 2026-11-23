@@ -159,8 +159,8 @@ async function writeTurnFields(declared: SessionFields, fields: Record<string, u
 ## 3 · Filing: the harness kit's filler writes harness, model and plan (ER-10)
 
 The board has already dropped whatever the filer sent for `harness`, `model` and `plan` (step 1),
-because the coder flow's declaration marks them server-owned: each one, changed by a filer, could
-widen what the run may do. The harness kit's filler writes them back in, so workforce reads no
+because the coder flow's declaration marks them server-owned: `harness` and `plan`, changed by a
+filer, could widen what the run may do, and `model` is the filer-trust rule's (BP-031). The harness kit's filler writes them back in, so workforce reads no
 harness-kit field. From a person's turn, the pick is the session's last `codeWith`. From a filing
 no person started, it is the frozen triple on the filing run's own record (step 4), never the task
 session's carried copy (`carriedSessionFields`), which was taken at hand-over and can be stale.
@@ -206,14 +206,15 @@ it("a filer cannot route around the pick by naming another worker", async () => 
   await conversation.respond({ message: "Fix the flaky test", fields: { codeWith: { harness: "claude-code-plan" } } });
   const task = await board.createTask({ assignee: "teammates.builder", goal: "Fix the flaky test" });
   expect(task.input).toEqual({ harness: "claude-code-plan" }); // the assignee changes nothing the filler writes
-  await expect(claimed(task)).rejects.toThrow(/always codes with claude-code; this task asked for claude-code-plan/);
+  await expect(claimed(task)).rejects.toThrow(/always runs with harnessId claude-code; this task asked for claude-code-plan/);
 });
 
 it("a task a worker's run files inherits that run's frozen pick", async () => {
   const parent = await claimed(board, { assignee: "teammates.coder", input: {} }, { codeWith: { harness: "claude-code-plan" } });
   await conversation.respond({ message: "now use codex", fields: { codeWith: { harness: "codex" } } }); // a later pick
   const child = await asRunOf(parent).createTask({ assignee: "teammates.coder", goal: "split the fix", input: { harness: "codex" } });
-  expect(child.input).toEqual({ harness: "claude-code-plan" }); // the filing run's triple: not the later pick, not the kit default
+  const frozen = await runOf(parent); // { harnessId: "claude-code-plan", model: its effective default, plan: true }
+  expect(child.input).toEqual({ harness: frozen.harnessId, model: frozen.model, plan: true }); // the filing run's whole triple: not the later pick, not the kit default
 });
 
 it("a filer cannot clear or flip plan mode", async () => {
@@ -221,8 +222,11 @@ it("a filer cannot clear or flip plan mode", async () => {
   // A prompt-injected model files, then rewrites, with plan mode off.
   const task = await board.createTask({ assignee: "teammates.coder", goal: "Fix the flaky test", input: { plan: false } });
   expect(task.input).toEqual({ harness: "claude-code-plan", plan: true }); // the turn's pick, not the filer's
-  const rewritten = await board.updateTask(task.id, { input: { harness: "claude-code", plan: undefined } });
-  expect(rewritten.input).toEqual({ harness: "claude-code-plan", plan: true }); // updateTask keeps the stored values
+  for (const plan of [false, null]) { // a flip, then an explicit clear: both reach the board, unlike `undefined`
+    const rewritten = await board.updateTask(task.id, { input: { harness: "claude-code", plan } });
+    expect(rewritten.input).toEqual({ harness: "claude-code-plan", plan: true }); // updateTask keeps the stored values
+  }
+  await claimed(task); // the run record holds the triple only once the task is claimed
   expect((await runOf(task)).plan).toBe(true); // read from the run: still a plan run
 });
 ```
@@ -231,8 +235,12 @@ it("a filer cannot clear or flip plan mode", async () => {
 
 `harnessOf` resolves from the worker alone today. It is replaced by one resolver over the task.
 For a harness the order is the task, then the worker, then the kit; for a model, the task, then the
-harness value's own default; for plan, the task's. Only a fresh work claim runs it, and it freezes
-the harness, model and plan it resolved on the run record as one triple. Steer, message, door and
+harness value's own default; for plan, the task's. Until FIX-2599, `plan` never loosens the harness
+id: `plan: true` on a harness that is not a plan harness fails the claim, and a plan harness is a
+plan run whatever `plan` says. Only a fresh work claim runs it, and it freezes the harness, the
+**effective** model (the harness default included, never a null that reads the option later) and
+the plan setting on the run record as one triple. A worker's lock is then checked against that
+triple, on every field the lock names. Steer, message, door and
 resume read that frozen triple, never the session's current
 `codeWith`, so a pick made after the claim changes nothing in flight.
 
@@ -242,21 +250,31 @@ const resolveRun = async (ctx: BlockContext, task: { input?: unknown } | undefin
   const worker = await installation.resolveWorker(ctx, CODER_FLOW);
   const own = worker.config.harness as string | undefined;
   const asked = codingTaskInput.parse(task?.input ?? {});
-  // ER-11: a locked worker refuses a different pick by name. It never runs it, and never ignores it.
-  // This runs for every worker that claims a coding task, not only the one the turn meant: an
-  // unlocked worker runs the task's harness, a locked one runs it or refuses. So a model-written
-  // assignee can't move a task onto another coder, and the assignee needs no stamp.
-  if (worker.config.harnessLocked === true && asked.harness !== undefined && asked.harness !== own) { // NEW (FIX-2878): name is its spec's
-    throw new Error(`worker "${worker.id}" always codes with ${own}; this task asked for ${asked.harness}. Nothing ran.`);
-  }
   const id = asked.harness ?? own ?? options.defaultHarness;
   const found = id === undefined ? undefined : built[id];
   if (found === undefined) throw new Error(`no harness "${id ?? "(none)"}" here; one of ${ids.join(", ")}. Nothing ran.`);
+  // Plan: the task's, as the filler wrote it. Until FIX-2599 the harness id is the boundary, and the
+  // claim reconciles the two before freezing: with no `plan`, a plan run iff the id is
+  // `claude-code-plan`; `plan: true` on a non-plan harness fails; a plan harness is a plan run anyway.
+  const planHarness = PLAN_HARNESS_IDS.has(id); // today { "claude-code-plan" }
+  if (asked.plan === true && !planHarness) throw new Error(`${id} has no plan mode; this task asked for one. Nothing ran.`);
+  const plan = planHarness || asked.plan === true;
+  // Model: the task's, checked (step 5), else the harness value's own default (cursorHarness({ model })),
+  // read now and frozen, so a later change to that option never reaches a retry (ER-2).
+  // There is no worker-config model and no kit-default model.
+  const checked = await checkModel(harnesses[id]!, asked.model);
+  const triple = { harnessId: id, model: checked.model ?? harnesses[id]!.defaultModel ?? null, plan };
+  // ER-11: a lock is the worker's fixed values for server-owned run settings, checked against the
+  // triple. This runs for every worker that claims a coding task, not only the one the turn meant:
+  // an unlocked worker runs the triple, a locked one runs it or refuses by name. So a model-written
+  // assignee can't move a task onto another coder or out of plan mode, and needs no stamp.
+  const lock = (worker.config.lock ?? {}) as Partial<typeof triple>; // NEW (FIX-2878): name is its spec's
+  for (const [field, fixed] of Object.entries(lock)) {
+    const got = triple[field as keyof typeof triple];
+    if (got !== fixed) throw new Error(`worker "${worker.id}" always runs with ${field} ${fixed}; this task asked for ${got}. Nothing ran.`);
+  }
   const review = (worker.config.review as boolean | undefined) ?? options.review === true;
-  // Model: the task's, checked (step 5), else the harness value's own default (cursorHarness({ model })).
-  // There is no worker-config model and no kit-default model (ER-2).
-  // Plan: the task's, as the filler wrote it. Until FIX-2599, a plan run is also the `claude-code-plan` id.
-  return { ...found, id, manager: review ? found.reviewed : found.manager, model: await checkModel(harnesses[id]!, asked.model), plan: asked.plan ?? null };
+  return { ...found, id, manager: review ? found.reviewed : found.manager, model: { ...checked, model: triple.model ?? undefined }, plan, triple };
 };
 
 /** NEW (FIX-2878): the triple a fresh work claim froze, for every other route. */
@@ -277,7 +295,7 @@ execute: async (input: { input?: unknown } & Record<string, unknown>, ctx: never
   const chosen = freshClaim ? await resolveRun(ctx, input) : await frozenRunOf(ctx);
   if (freshClaim) {
     // NEW (FIX-2878): frozen beside `sessionId`; all three fields `.nullable().default(null)` (BP-030).
-    await writeRunRecord(ctx, { harnessId: chosen.id, model: chosen.model.model ?? null, plan: chosen.plan });
+    await writeRunRecord(ctx, chosen.triple); // the effective model, never a null that reads the option later
   }
   if (ready) {
     const missing = await refusal(chosen.id);
@@ -287,7 +305,7 @@ execute: async (input: { input?: unknown } & Record<string, unknown>, ctx: never
 },
 ```
 
-## 5 · The model is checked against the catalog, and resume checks the harness (ER-2, ER-8)
+## 5 · The model is checked against the catalog, and resume checks the harness and plan (ER-2, ER-8)
 
 A named model runs only when the harness's `models()` answered and lists that exact selection.
 Anything else is refused by name, and the run uses the harness default. The refusal is recorded
@@ -318,11 +336,18 @@ export interface HarnessFeeds {
   // …cwd, resume, onSession, onUsage as today
   model: HarnessResolver<ModelSelection | undefined>; // NEW (FIX-2878): the same name HarnessSessionFeeds has
 }
+
+// packages/harness-manager/src/harness.ts
+export interface Harness {
+  // …id, agent, readiness, pass, usage, models as today
+  readonly defaultModel?: ModelSelection; // NEW (FIX-2878): what runs when a task names none (cursorHarness: options.model ?? "default"), so a claim can freeze it
+}
 ```
 
-A session is resumed only by the harness that started it, matched by the `id` frozen on the run
-record. `source` cannot tell `claude-code` from `claude-code-plan`, because both report
-`claude-code/sdk`. The door takes no pick, so on its path the frozen harness is also the one
+A session is resumed only by the harness and plan setting that started it, matched by the `id`
+and `plan` frozen on the run record, never the id alone: after FIX-2599 a plan session and an edit
+session can share `claude-code`, and one is never resumed as the other. `source` cannot tell
+`claude-code` from `claude-code-plan`, because both report `claude-code/sdk`. The door takes no pick, so on its path the frozen harness is also the one
 dispatched; the check matters when a fresh work claim resolved differently from the session on
 record.
 
@@ -330,12 +355,13 @@ record.
 // manager.ts, the harness block's resume feed (each manager is built for one harness id)
 resume: (ctx) => {
   const state = harnessCtxState(ctx);
-  // NEW (FIX-2878): the run row's frozen `harnessId`, beside the session it names.
-  return state?.harnessId === harnessId ? (state.previousSessionId ?? null) : null; // another coder: a fresh session
+  // NEW (FIX-2878): the run row's frozen `harnessId` and `plan`, beside the session they name.
+  const same = state?.harnessId === harnessId && state.plan === plan; // `plan`: this dispatch's frozen setting
+  return same ? (state.previousSessionId ?? null) : null; // another coder, or plan flipped: a fresh session
 },
 
 // session-door.ts, the talk: the same check on the door's path
-if (record.harnessId !== dispatched) throw new SessionDoorRefused("coder-changed"); // NEW (FIX-2878): its spec picks fresh or refuse
+if (record.harnessId !== dispatched.id || record.plan !== dispatched.plan) throw new SessionDoorRefused("coder-changed"); // NEW (FIX-2878): its spec picks fresh or refuse
 ```
 
 ## 6 · The apps after FIX-2877: one coder flow, one default
@@ -375,6 +401,9 @@ harness: codex
 ---
 flow: coder
 harness: claude-code-plan
-harnessLocked: true   # NEW (FIX-2878): a pick naming another harness is refused by name
+lock:                 # NEW (FIX-2878): fixed values for server-owned run settings; the name is its spec's
+  harnessId: claude-code-plan
+  plan: true          # after FIX-2599 this alone holds plan mode, even on claude-code
+
 ---
 ```
