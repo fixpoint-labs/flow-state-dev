@@ -4,8 +4,10 @@
 
 The calls above any single issue, and what each locks in for the three children and the closure.
 D1 stands: it is the owner's rule ER-10, approved when #4873 merged, written here as a card because
-it amends an approved rule, FIX-2152 ER-9. Its *what would change my mind* line is the only new text.
-This epic has no open question of its own.
+it amends an approved rule, FIX-2152 ER-9. **Amended 2026-11-23:** ER-2's placement question is
+answered by the sibling epic's [FIX-2876 D3](../FIX-2876/DECISIONS.md#d3), so the choice's carrier is FIX-2876's, not FIX-2598's call
+([Decided in review](#decided-in-review-recorded-so-no-child-reopens-them)). This epic has no open
+question of its own.
 
 ## The tree
 
@@ -22,13 +24,13 @@ flowchart TD
 |---|---|
 | **Instead of** | The harness chosen in config, per worker (FIX-2152 ER-9, FIX-2157 D5) · or a `Coder: X` line in the message text, relayed by the main session (today) |
 | **Because** | The person knows which harness and model this change wants; a worker's config is fixed before the request. A message line has no path to a harness block's model resolver, so a chosen model never reached a run. Stored once and read by the slot, one choice has one reader |
-| **Locks in** | Worker config stays the *default*; the person's pick overrides it for a run. The message text is not the carrier, and `Coder:` goes or is demoted. Where the choice lives (task input, session state or a harness-manager feed) is FIX-2598's call, and a package change is a child that blocks it. **Amends FIX-2152 ER-9 and FIX-2157 D5** |
+| **Locks in** | Worker config stays the *default*; the person's pick overrides it for a run. The message text is not the carrier, and `Coder:` goes. Where the choice lives is answered by [FIX-2876 D3](../FIX-2876/DECISIONS.md#d3): FIX-2876's carrier, as [ER-2](#who-owns-what) records. **Amends FIX-2152 ER-9 and FIX-2157 D5** |
 
-**What would change my mind:** the path from the task to the harness slot needing more package
-change than one child. Then the choice stays a worker default for now and a per-run choice is its
-own epic.
+**What would change my mind:** the lab needing its model picker before FIX-2876's release
+window. Then FIX-2598 goes first with the smallest carrier it can, and FIX-2879 adopts it, which is
+FIX-2876 D3's own flip.
 
-![D1: a per-run choice stored once, chosen, beside config per worker or a line in the message. Decides it: who knows which harness this change wants. Price: possibly a package change that blocks FIX-2598. Flips if the path to the slot needs more than one package child](figures/d1-per-run-choice.svg)
+![D1: a per-run choice stored once, chosen, beside config per worker or a line in the message. Decides it: who knows which harness this change wants. Price: FIX-2598 waits for FIX-2876's carrier, FIX-2879's package half. Flips if the lab needs its picker before FIX-2876's release](figures/d1-per-run-choice.svg)
 
 It comes down to who knows: the person asking, at the moment of asking, not a worker's config.
 
@@ -41,7 +43,7 @@ Every rule has one owner. Read a row to see where it is decided and where it is 
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
 | ER-1 | What a harness offers is asked of its package, never a list the lab keeps. Models are FIX-2458's. Plan mode and the model-choice shape lifted from Kitchen Sink are FIX-2597's, reconciled with FIX-2369 ER-1 | FIX-2597 | FIX-2598's and FIX-2599's spec review; the closure's legs a and b |
-| ER-2 | The person's harness, model and plan choice is stored once and read by the harness slot, as [D1](#d1) locks in. The message text is not the carrier, and `Coder:` goes or is demoted. Where it lives (task input, session state or a harness-manager feed) is FIX-2598's call, and a package change is a child that blocks it. Amends FIX-2152 ER-9 and FIX-2157 D5 | FIX-2598 | FIX-2599's spec review; the closure's legs a and b |
+| ER-2 | The person's harness, model and plan choice is stored once and read by the harness slot, as [D1](#d1) locks in. **The carrier is FIX-2876's** ([FIX-2876 D3](../FIX-2876/DECISIONS.md#d3), [ER-5, ER-9 and ER-10](../FIX-2876/DECISIONS.md#who-owns-what)): the *Code with* field, workforce's `sessionFields` slot in its `written: "turn"` mode, stamped by the server into the coder flow's typed task input through server-owned fields (FIX-2894). FIX-2598 writes the person's harness and model through it and adds no second store. It waits only for FIX-2879's package half (the turn state and the server-side filing), not its Teammates worker collapse. FIX-2598 removes the lab's `Coder:` line in the same PR as the lab's eight per-harness workers. FIX-2599 reads the same carrier and moves `claude-code-plan` onto it as a plan-mode run setting; what plan mode a harness offers stays FIX-2597's (ER-1). Amends FIX-2152 ER-9 and FIX-2157 D5 | FIX-2598 | FIX-2599's spec review; the closure's legs a and b |
 | ER-3 | Consumed issues keep their parents: FIX-2585 under FIX-2369, FIX-2458 under FIX-2447. FIX-2152 and FIX-2523 are `relates-to` only, and so is the sibling epic FIX-2592 | The coordinator | Each refresh |
 
 Rules this epic's lab children obey and do not own: [FIX-2592 ER-5](../FIX-2592/DECISIONS.md#who-owns-what)
@@ -57,7 +59,7 @@ Seams between this epic's own issues. The seams with the sibling epic's issues a
 |---|---|---|
 | `Composer.tsx`, the harness flow, coder workers, `picks-the-coder` | FIX-2598 and FIX-2599 (and FIX-2523, outside) | FIX-2598 first; FIX-2599 rebases. FIX-2523 rebases whichever lands second |
 | Kitchen Sink's model picker | FIX-2597 and FIX-2458 (outside, Done) | FIX-2458 moved the model lists to the packages; FIX-2597 lifts the choice shape the lab would otherwise copy, and deletes Kitchen Sink's copy in its PR (FIX-2369 ER-3) |
-| The choice's carrier (ER-2) | FIX-2598 and FIX-2599 | FIX-2598 settles where it lives; FIX-2599 reads the same choice for plan mode and adds no second store |
+| The choice's carrier (ER-2) | FIX-2598 and FIX-2599, with FIX-2876's FIX-2879 (package half) and FIX-2894 outside | FIX-2879's package half lands first; FIX-2598 writes through it, and FIX-2599 reads the same carrier for plan mode. Neither adds a second store ([FIX-2876 D3](../FIX-2876/DECISIONS.md#d3)) |
 
 **Pairs that share files:** FIX-2598 with FIX-2599 (composer, flow, workers, goal scripts).
 FIX-2597 starts first; FIX-2598 waits for it.
@@ -89,8 +91,14 @@ Linear.** The full table is in
 
 ## Decided in review, recorded so no child reopens them
 
-- **Model lists** are FIX-2458's. FIX-2598 settles per-session or not, the default and the worker
-  ids, inside [ER-2](#who-owns-what).
+- **Model lists** are FIX-2458's. FIX-2598 settles the default and the worker ids, inside
+  [ER-2](#who-owns-what). Per turn or per session is the carrier's: `written: "turn"`.
+- **ER-2's placement is answered by [FIX-2876 D3](../FIX-2876/DECISIONS.md#d3)** (amended 2026-11-23, after FIX-2876's spec
+  merged in #5571). The carrier is FIX-2876's; FIX-2598 builds no store of its own and waits only
+  for FIX-2879's package half. The Linear block from that half to FIX-2598 is written once
+  FIX-2876's spec set splits FIX-2879. FIX-2598 owns the `Coder:` line's removal, with the lab's
+  eight per-harness workers; FIX-2599 moves `claude-code-plan` onto the carrier as a plan-mode run
+  setting. This replaces "FIX-2598's call, and a package change is a child that blocks it".
 - **Plan mode starts from a reproduction**, from FIX-2585, and files package support as a child
   that blocks it. Claude Code and Cursor have a plan mode; Codex has none. The sign-off composes an
   existing hold: the tool-approval hold on `ExitPlanMode`, or the review stop.
@@ -137,5 +145,6 @@ coder reports no model; the started-in seed and the shared files and scripts are
 - **Analysis (Nov 6)** — FIX-2597 shrank behind FIX-2458; the choice's carrier became ER-10 (now ER-2).
 - **Review (Nov 6)** — the closure reports each leg by itself; FIX-2597's graph edge and figure no longer carry model lists.
 - **Split (Nov 8)** — the owner split the set; this epic took the harness half; FIX-2458 found Done; D1 written as the card ER-10 never got.
+- **Amended (Nov 23)** — FIX-2876 D3 answered ER-2's placement: its carrier; FIX-2598 waits on FIX-2879's package half and removes `Coder:` with the per-harness workers; FIX-2599 moves plan mode onto it.
 
 **Open: none here.**

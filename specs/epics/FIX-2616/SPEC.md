@@ -8,6 +8,11 @@
 > epic takes the harness choice, the model choice and plan mode (FIX-2597, FIX-2598, FIX-2599)
 > and has its own closure ([FIX-2617](https://linear.app/fixpoint-labs/issue/FIX-2617)). Where each
 > part went: [FIX-2592 → The split](../FIX-2592/DECISIONS.md#the-split).
+>
+> **Amended on 2026-11-23.** The sibling epic's [FIX-2876 D3](../FIX-2876/DECISIONS.md#d3) answers where the choice
+> lives: its *Code with* carrier. FIX-2598 waits for FIX-2879's package half and builds no store
+> of its own; FIX-2599 moves plan mode onto the same carrier
+> ([DECISIONS → ER-2](DECISIONS.md#who-owns-what)).
 
 ## Three teams, before and after
 
@@ -76,14 +81,14 @@ The reviewed snapshot; live state is in Linear.
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
 | [FIX-2597](https://linear.app/fixpoint-labs/issue/FIX-2597) · package | Each harness package says whether it has a plan mode; the model-choice shape (default, reason) lifts out of Kitchen Sink | Plan mode cannot be offered per harness without it, and the lab would copy Kitchen Sink's picker shape | Backlog |
-| [FIX-2598](https://linear.app/fixpoint-labs/issue/FIX-2598) · lab | *Coder* becomes *Harness*, with that harness's models; the choice is stored once and read by the harness slot, not carried in the message | The model half of the goal | Backlog · blocked by FIX-2597 and FIX-2458 (Done) |
-| [FIX-2599](https://linear.app/fixpoint-labs/issue/FIX-2599) · lab | Plan mode as a harness option, signed off before work; reproduces the failure first (FIX-2585 is the filed symptom) | The plan half of the goal | Backlog · blocked by FIX-2598 |
+| [FIX-2598](https://linear.app/fixpoint-labs/issue/FIX-2598) · lab | *Coder* becomes *Harness*, with that harness's models, written through FIX-2876's *Code with* carrier; the `Coder:` line goes with the lab's eight per-harness workers | The model half of the goal | Backlog · blocked by FIX-2597 and FIX-2458 (Done) · waits for FIX-2879's package half ([FIX-2876 D3](../FIX-2876/DECISIONS.md#d3)) |
+| [FIX-2599](https://linear.app/fixpoint-labs/issue/FIX-2599) · lab | Plan mode as a harness option, signed off before work, read from the same carrier: `claude-code-plan` becomes a plan-mode run setting; reproduces the failure first (FIX-2585 is the filed symptom) | The plan half of the goal | Backlog · blocked by FIX-2598 |
 | [FIX-2617](https://linear.app/fixpoint-labs/issue/FIX-2617) · closure · **required** | The QA run on one `main` commit | Finds what falls between the others | Backlog · blocked by the three above |
 
 All three children take the spec route; none is a bug. Three issues and a closure. Whether three
 is two: no cut is clean. FIX-2597 already shrank when FIX-2458 took the model lists, and the
-other two are the goal's two halves. FIX-2598 and FIX-2599 may each grow a package child that
-blocks them. If FIX-2599's reproduction stalls, leg a can still pass and is reported alone.
+other two are the goal's two halves. FIX-2598's package need is FIX-2879's half, in FIX-2876;
+FIX-2599 may still grow a package child that blocks it. If FIX-2599's reproduction stalls, leg a can still pass and is reported alone.
 
 ## How the issues flow into each other
 
@@ -93,6 +98,7 @@ flowchart LR
   D -->|"the selector and the capability read"| E["FIX-2599 · plan mode with sign-off"]
   M["FIX-2458 · model lists · consumed · done"] -.->|"the model lists, Cursor's too"| D
   R["FIX-2585 · plan-first failure · consumed"] -.->|"the filed symptom"| E
+  C2["FIX-2879 · package half · epic FIX-2876"] ==>|"the Code with carrier, stamped into task input"| D
   S["FIX-2592 · sibling epic: repositories, sidebar"] -.->|"merge order only · the dialog, the README"| D
   S -.->|"merge order only · the thread's feed"| E
   P --> Z["FIX-2617 · closure · required"]
@@ -106,13 +112,15 @@ An edge is what one issue hands the next. A dashed input is consumed, not owned,
 parent; the heavy border is done. The dashed edges from FIX-2592 are not blocks: its lab issues
 land first on the files they share, as
 [DECISIONS → Between the two epics](DECISIONS.md#between-the-two-epics) says. FIX-2597 starts
-now; FIX-2458's build is merged, so FIX-2598 waits only for FIX-2597. The closure waits on all
+now; FIX-2458's build is merged. FIX-2598 waits for FIX-2597 and for FIX-2879's package half,
+the heavy edge from the sibling epic FIX-2876 ([FIX-2876 D3](../FIX-2876/DECISIONS.md#d3)): not its Teammates worker collapse.
+That Linear block is written once FIX-2876's spec set splits FIX-2879. The closure waits on all
 three. Which issues share files, and how their merges order, is in
 [DECISIONS](DECISIONS.md#coordination-seams).
 
 ## What stays as it is
 
-- **Workforce.** No package change.
+- **Workforce.** No package change here. The carrier's workforce change is FIX-2876's.
 - **Repositories, the sidebar, Settings and the working line** are
   [FIX-2592](https://linear.app/fixpoint-labs/issue/FIX-2592)'s.
 - **FIX-2152 ER-9 and FIX-2157 D5** stay as written and are read as amended by
@@ -128,6 +136,7 @@ three. Which issues share files, and how their merges order, is in
 |---|---|
 | [FIX-2152 ER-9](../FIX-2152/DECISIONS.md#who-owns-what) and `specs/issues/FIX-2157/DECISIONS.md#d5`: a harness is chosen in config, per worker | **Amended** by [D1](DECISIONS.md#d1) and [ER-2](DECISIONS.md#who-owns-what): it is the person's per-run choice. Worker config stays the default |
 | FIX-2458: `HarnessModelList` on `core/harness`, each package's model-list function (`listCursorModels` and its siblings), Kitchen Sink's hand-kept Cursor list removed | **Builds on.** Done as of 2026-11-08. FIX-2458 owns the model lists; this set consumes them |
+| FIX-2876's carrier ([FIX-2876 D3](../FIX-2876/DECISIONS.md#d3), [ER-5, ER-9, ER-10](../FIX-2876/DECISIONS.md#who-owns-what)): the *Code with* `sessionFields` slot (`written: "turn"`), stamped server-side into the coder flow's typed task input through server-owned fields (FIX-2894) | **Builds on.** Approved in #5571, not built yet; it answers [ER-2](DECISIONS.md#who-owns-what)'s placement. FIX-2598 writes through it and FIX-2599 reads it |
 | [FIX-2585](https://linear.app/fixpoint-labs/issue/FIX-2585), a Linear bug with no spec: a plan-first task cannot exit plan mode | **Consumed** as FIX-2599's filed symptom; it keeps its parent |
 | The lab's *Plan first* worker and plan manager | **Replaces** with plan as a harness option (FIX-2599) |
 | The review stop (*Resolve*, *Request changes*) and harness-manager's tool-approval hold | **Considered** as the sign-off; FIX-2599's spec picks one, with no new kind of hold |
@@ -135,14 +144,14 @@ three. Which issues share files, and how their merges order, is in
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | Plan mode asked of each harness package; the model-choice shape lifted from Kitchen Sink (FIX-2597) | FIX-2458's lists, `harnessReadiness`, `apps/kitchen-sink/lib/harness-models.ts` | Extends the same ask-with-no-run shape. Models are FIX-2458's; only the plan question and the shape lift are new |
-| A harness and model selector (FIX-2598) | The *Coder* chip; the block-level `model` resolver on all three harness blocks | Extends the chip. The choice is stored once and read by the harness slot, which feeds the resolver; no structured path does today |
+| A harness and model selector (FIX-2598) | The *Coder* chip; the block-level `model` resolver on all three harness blocks; FIX-2876's *Code with* carrier | Extends the chip and composes FIX-2876's carrier, which feeds the resolver through the coder flow's task input. No second store |
 | A plan sign-off (FIX-2599) | The review stop, the tool-approval hold | Composes one; the spec picks |
 
 | The debt | |
 |---|---|
-| **Removes** | The *Plan first* worker · the `Coder:` line as the carrier of the choice, or demotes it · Kitchen Sink's copy of the model-choice shape |
+| **Removes** | The *Plan first* worker · the `Coder:` line, with the lab's eight per-harness workers (FIX-2598) · Kitchen Sink's copy of the model-choice shape |
 | **Adds** | A plan-mode question on the three harness packages and the shared model-choice shape, on published packages. Permanent by design |
-| **Leaves** | The worker ids (`desk.coder` and its siblings), which FIX-2598's spec may keep. Codex has no plan mode and the lab builds none |
+| **Leaves** | The worker ids FIX-2598's spec keeps once the per-harness workers go. Codex has no plan mode and the lab builds none |
 
 **Net: slightly up.** The lab sheds a worker, a text carrier and Kitchen Sink's copy of a shape;
 the packages gain a published question on three harnesses and one shared shape. A public entry is
@@ -163,7 +172,8 @@ finish line (`goal:all` green, wave 1.n) except by the closure's check becoming 
 goal.
 
 **Decided before and standing:** [D1](DECISIONS.md#d1), the person's per-run choice, is the owner's
-rule ER-10, approved when #4873 merged. The split is the owner's call, recorded in
+rule ER-10, approved when #4873 merged. Its carrier is answered by [FIX-2876 D3](../FIX-2876/DECISIONS.md#d3), recorded by the
+2026-11-23 amendment, which needs the owner's approval again. The split is the owner's call, recorded in
 [FIX-2592 → The split](../FIX-2592/DECISIONS.md#the-split), not asked. Nothing is open for sign-off
 here beyond the goal and the debt.
 
