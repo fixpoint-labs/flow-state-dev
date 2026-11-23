@@ -100,37 +100,38 @@ export function normalizeError(
 }
 
 /**
- * The FlowErrors that `normalizeError` built around a raw throw, kept out of
- * band so nothing on the error itself (fields, `details`, symbols) changes.
- * Keyed by the wrapper object, so each error's membership is its own.
+ * The FlowErrors that `normalizeError` built around a raw throw, each with the
+ * message it gave them. Kept out of band, so nothing on the error itself
+ * (fields, `details`, symbols) changes. Keyed by the wrapper object, so each
+ * error's entry is its own.
  *
- * A path that rebuilds the error without adding the rebuild here (see
- * {@link copyWrapperMarker}) makes it look like an author's error, so its
- * cause is shown rather than unwrapped. That fails safe: more information,
- * never less.
+ * An error counts as the engine's wrapper only while it still carries that
+ * message. One that was rebuilt without an entry here (see
+ * {@link copyWrapperMarker}), or whose message was changed in place or by a
+ * rebuild, says something its cause may not, so it is treated as an author's
+ * error and its cause is shown. That fails safe: more information, never less.
  */
-const NORMALIZED_WRAPPERS = new WeakSet<FlowError>();
+const NORMALIZED_WRAPPERS = new WeakMap<FlowError, string>();
 
 function markWrapper(error: FlowError): FlowError {
-  NORMALIZED_WRAPPERS.add(error);
+  NORMALIZED_WRAPPERS.set(error, error.message);
   return error;
 }
 
 function isNormalizedWrapper(error: FlowError): boolean {
-  return NORMALIZED_WRAPPERS.has(error);
+  return NORMALIZED_WRAPPERS.get(error) === error.message;
 }
 
 /**
- * Count `to` as an engine wrapper too, when `from` is one and `to` is a
- * rebuild of the same failure: the same cause and the same message, so the
- * layer `displayCause` drops still only repeats the cause. A rebuild with a
- * new message says something the cause does not, so it is treated as an
- * author's error and its cause is shown. The engine's normalized-error seam
- * calls this on the error its interceptor returns.
+ * Give `to` the entry `from` has, when `to` is a rebuild of the same failure
+ * (it keeps `from`'s cause). The message recorded is `from`'s, so a rebuild
+ * with a new message does not count as the engine's wrapper. The engine's
+ * normalized-error seam calls this on the error its interceptor returns.
  */
 export function copyWrapperMarker(from: FlowError, to: FlowError): FlowError {
-  if (isNormalizedWrapper(from) && to.cause === from.cause && to.message === from.message) {
-    markWrapper(to);
+  const message = NORMALIZED_WRAPPERS.get(from);
+  if (message !== undefined && to !== from && to.cause === from.cause) {
+    NORMALIZED_WRAPPERS.set(to, message);
   }
   return to;
 }

@@ -131,6 +131,63 @@ describe("a failed turn's reason has no terminal colour codes", () => {
     expect(displayCause(unchanged)).toBeUndefined();
   });
 
+  it("shows the raw cause when the seam changes the wrapper's message in place", async () => {
+    const thrown = Object.assign(new Error("raw"), { code: "ECONNRESET" });
+    // Unmutated, the engine's wrapper still unwraps.
+    expect(displayCause(normalizeError(thrown))).toBeUndefined();
+    // Mutated and returned, or mutated with nothing returned.
+    for (const returns of [true, false]) {
+      const wrapper = normalizeError(thrown);
+      const out = applyNormalizedErrorSeam(
+        {
+          interceptNormalizedError: (error) => {
+            error.message = "friendly";
+            return returns ? error : undefined;
+          }
+        },
+        wrapper,
+        {} as ExecutionMetadata
+      );
+      expect(out).toBe(wrapper);
+      expect(displayCause(out)).toBe(thrown);
+    }
+
+    const flow = defineFlow({
+      kind: "mutated-item",
+      actions: {
+        run: handler({
+          name: "fails",
+          inputSchema: z.object({}),
+          outputSchema: z.string(),
+          execute: () => {
+            throw Object.assign(new Error("raw"), { code: "ECONNRESET" });
+          }
+        })
+      }
+    })();
+    const result = await runActionInternal({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      requestId: "req_mutated_item",
+      sessionId: "sess_mutated_item",
+      userId: "user_mutated_item",
+      stores: createInMemoryStores(),
+      runtimeConfig: {},
+      internalSeams: {
+        interceptNormalizedError: (error) => {
+          error.message = "friendly";
+        }
+      }
+    });
+    const errorItem = result.items.find((item) => item.type === "error") as
+      | { message?: string; details?: { cause?: unknown } }
+      | undefined;
+    expect(errorItem?.message).toBe("friendly");
+    expect(errorItem?.details?.cause).toMatchObject({ name: "Error", code: "ECONNRESET", message: "raw" });
+  });
+
   it("keeps the raw cause's name, code and message when the seam rewrites the message", async () => {
     const friendlySeam = {
       interceptNormalizedError: (error: FlowError) => new FlowError("friendly", { cause: error.cause })
