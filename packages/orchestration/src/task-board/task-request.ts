@@ -566,7 +566,7 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
  * reason holds, and no turn owed. A declined write is logged: the row is then
  * another claim's or ended, or its lease lapsed first.
  */
-async function checkStopped(record: Admitted, row: Task): Promise<Error | undefined> {
+async function checkStopped(record: Admitted, row: Task, rechecked = false): Promise<Error | undefined> {
   const { ref, ticket } = record;
   record.answer = undefined;
   record.stoppedBy = requestKey(record.ctx);
@@ -592,13 +592,7 @@ async function checkStopped(record: Admitted, row: Task): Promise<Error | undefi
     parked(await waitOn(record, row, "filed", undefined));
     return undefined;
   }
-  return settleAtRequestEnd({
-    ctx: record.ctx,
-    collection: ref,
-    claim: ticket,
-    recorder: "complete",
-    settle: (write) => advisoryComplete(ref, row.id, row.output, { ...guardsOf(ticket), write }),
-  });
+  return completeFenced(record, row, row.output, !rechecked, (fresh) => checkStopped(record, fresh, true));
 }
 
 /**
@@ -727,10 +721,28 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
   // Done. The latest checkpoint stays the output (the collection's rule);
   // otherwise this request's answer, or the one the task kept while it waited.
   const output = record.answer !== undefined ? record.answer.output : row.output;
-  // A steer that lands after the read above, while held work was checked,
-  // would be settled over: the complete itself declines on an untaken steer,
-  // where a turn can be owed for it, and the check runs once more.
-  const fenceSteers = !noProgress && !rechecked && record.rules.steerTurn !== undefined && ref.setKeptOpenBy !== undefined;
+  return completeFenced(record, row, output, !noProgress && !rechecked, (fresh) => checkAnswered(record, fresh, true));
+}
+
+// FIX-2086 D2; FIX-2795.
+/**
+ * The check's completion, the one way the task settles done at a request's
+ * end. A steer that lands after the check read the row, while held work was
+ * checked, would be settled over: with `fence`, the complete itself declines
+ * on an untaken steer, and `recheck` runs on the row as stored, where a turn
+ * can be owed for it. Once only (a recheck passes no fence), and only while
+ * this request's claim still holds the row: a steer for an attempt that took
+ * the row over is that attempt's to take.
+ */
+async function completeFenced(
+  record: Admitted,
+  task: Task,
+  output: unknown,
+  fence: boolean,
+  recheck: (fresh: Task) => Promise<Error | undefined>
+): Promise<Error | undefined> {
+  const { ref, ticket } = record;
+  const fenceSteers = fence && record.rules.steerTurn !== undefined && ref.setKeptOpenBy !== undefined;
   let lateSteer = false;
   const settled = await settleAtRequestEnd({
     ctx: record.ctx,
@@ -738,7 +750,7 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
     claim: ticket,
     recorder: "complete",
     settle: async (write) => {
-      const outcome = await advisoryComplete(ref, row.id, output, {
+      const outcome = await advisoryComplete(ref, task.id, output, {
         ...guardsOf(ticket),
         ...(fenceSteers ? { refuseUntakenSteers: true } : {}),
         write,
@@ -748,11 +760,9 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
     },
   });
   if (!lateSteer) return settled;
-  // Checked again only while this request's claim still holds the row: a
-  // steer for an attempt that took the row over is that attempt's to take.
-  const fresh = await readCommittedTask(ref, row.id);
+  const fresh = await readCommittedTask(ref, task.id);
   if (!claimHolds(ref, ticket, fresh)) return undefined;
-  return checkAnswered(record, fresh, true);
+  return recheck(fresh);
 }
 
 /** What else holds the task open: work it filed, or nothing. */

@@ -1184,6 +1184,36 @@ describe("a stopped request settles its task when it ends, never at its lease's 
     expect(task.keptOpenBy).toBeUndefined();
   });
 
+  it("a steer that lands while a stopped later request's check looks at held work owes a turn: the task doesn't complete over it", async () => {
+    // Armed for the stopped notice's check only: after its read of the row, before its complete.
+    let armed = false;
+    const h = await harness({
+      steerTurn: true,
+      whileHoldsAreChecked: async (ledger) => {
+        if (!armed) return;
+        armed = false;
+        await ledger.steer!("t1", { message: "Use the v2 API.", from: "filer" });
+      },
+    });
+    h.setBehaviour(async (ctx, ledger) => {
+      await ledger.createTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
+      return "first answer";
+    });
+    await h.run();
+    expect((await h.reclaim())?.id).toBe("piece");
+    h.setLaterTurn(async (ctx, ledger) => {
+      await ledger.complete("piece", "piece done");
+      armed = true;
+      return stopSelf(ctx);
+    });
+    await h.runLater("notice");
+    // Nothing holds it but the late steer: it owes that steer its turn instead of completing.
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "steer", turnOwed: true, attempts: 1 });
+    await h.runLater("steerTurn");
+    expect(h.steerTurns).toEqual([["Use the v2 API."]]);
+    expect(await h.row()).toMatchObject({ status: "completed", output: "answered: Use the v2 API." });
+  });
+
   it("a person's stop of a later request that took the turn an answered question owed gives that turn back", async () => {
     const h = await harness();
     h.setBehaviour(async (ctx, ledger) => {
