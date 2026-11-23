@@ -226,12 +226,19 @@ function nextEntry(current: SubscriptionResourceState | undefined, asked: Subscr
   // request it follows lands on the same subscription): its close stays heard and, when the write names no
   // task, its run's task stays, so that task's failure or cancel still ends it. Only the server sets either.
   const keepsFollow = current?.hearsClose === true && current.thread === asked.thread && asked.hearsClose !== true;
-  // FIX-2873: its bots stay handed on to its screen only while the new write still lists that screen.
+  // FIX-2873: a rewrite of a follow keeps every screen the follow lists (the host's, such as the trusted
+  // reviewers' list screen) and adds the new write's; it never takes outsiders the follow didn't. So a
+  // session can narrow what its follow hears, never widen it past the host's screens.
+  const keptScreens = keepsFollow ? [...current.screens, ...asked.screens.filter((listed) => !current.screens.some((had) => JSON.stringify(had) === JSON.stringify(listed)))] : asked.screens;
+  // Its bots stay handed on to its screen only while the write still lists that screen.
   // Pinned by test/subscriptions-bot-admission.test.ts (a rewrite without the screen, a stale index entry, a restored row).
-  const keptBots = keepsFollow && asked.botsScreenedBy === undefined ? botsHandedOn({ botsScreenedBy: current.botsScreenedBy, screens: asked.screens }) : undefined;
+  const keptBots = keepsFollow && asked.botsScreenedBy === undefined ? botsHandedOn({ botsScreenedBy: current.botsScreenedBy, screens: keptScreens }) : undefined;
+  const { outsiders: _asked, ...narrowed } = asked;
   const wanted = keepsFollow
     ? {
-        ...asked,
+        ...narrowed,
+        screens: keptScreens,
+        ...(asked.outsiders === true && current.outsiders === true ? { outsiders: true as const } : {}),
         hearsClose: true as const,
         ...(asked.taskId === undefined && current.taskId !== undefined ? { taskId: current.taskId } : {}),
         ...(keptBots === undefined ? {} : { botsScreenedBy: keptBots }),

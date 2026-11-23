@@ -8,10 +8,10 @@
  * - **A model can't set it.** A model's `subscribe` (the `saveRoutine` tool)
  *   has no such field: it is refused, and nothing hears the bot.
  * - **It needs its screen, at the write, at routing and at delivery.** A
- *   model's rewrite of the follow that drops the list screen drops it too,
- *   and a row or index entry that carries it without the screen (restored,
- *   or stale) hands no bot on, so a listed bot never reaches a subscription
- *   that has no list screen.
+ *   model's rewrite of the follow keeps the host's list screen, which still
+ *   decides; a row or index entry that carries the setting without the
+ *   screen (restored, or stale) hands no bot on, so a listed bot never
+ *   reaches a subscription that has no list screen.
  *
  * Controls, each an `it` that plants its regression and shows the claim breaks:
  * - the setting honoured whether or not the subscription lists its screen
@@ -108,8 +108,10 @@ const rewrittenWithoutScreen = () =>
     expect(await botHeard(h, run), "the follow hears the listed bot").toBe(true);
     expect(await h.subscribe("alice", run, { thread: PR })).toHaveProperty("id");
     const [follow] = await h.subscriptionRows("alice");
-    expect({ hearsClose: follow!.hearsClose, screens: follow!.screens }).toEqual({ hearsClose: true, screens: [] });
-    return botHeard(h, run);
+    // An unlisted collaborator on the project comments: the list screen, kept from the host's follow, decides.
+    await h.route(event({ kind: "comment", text: "unlisted comment after the rewrite", sender: { id: "octocat", name: "octocat", role: "collaborator" } }));
+    const unlistedHeard = (await h.heard(run)).some((m) => m.includes("unlisted comment after the rewrite"));
+    return { screens: follow!.screens, botHeard: await botHeard(h, run), unlistedHeard };
   });
 
 /** The thread's index entry loses its screens: whether routing still hands the bot on. */
@@ -144,8 +146,11 @@ describe("a subscription's bot admission", () => {
     }
   });
 
-  it("is dropped when a model rewrites the follow without its list screen", async () => {
-    expect(await rewrittenWithoutScreen(), "rewritten without its screen: not heard").toBe(false);
+  it("survives a model's rewrite of the follow without its list screen: the host's screen is kept, and still decides", async () => {
+    const after = await rewrittenWithoutScreen();
+    expect(after.screens, "the host's list screen is kept").toEqual([{ screen: "custom", name: "github-reviewers" }]);
+    expect(after.unlistedHeard, "rewritten without its screen: an unlisted collaborator refused").toBe(false);
+    expect(after.botHeard, "the listed bot still heard").toBe(true);
   });
 
   it("is kept when a model's rewrite still lists the list screen", async () => {
@@ -186,10 +191,9 @@ describe("a subscription's bot admission", () => {
 
 describe("control: the setting honoured without its screen", () => {
   // The plant reaches the write, routing and delivery alike: each claim above breaks under it.
-  it("lets the listed bot through a rewrite, a stale index entry and a restored row", async () => {
+  it("lets the listed bot through a stale index entry and a restored row", async () => {
     plant.flagWithoutScreen = true;
     try {
-      expect(await rewrittenWithoutScreen(), "rewritten without its screen: heard under the plant").toBe(true);
       expect(await staleIndexEntry(), "stale index entry: heard under the plant").toBe(true);
       expect(await restoredSubscription(), "restored row: heard under the plant").toBe(true);
     } finally {

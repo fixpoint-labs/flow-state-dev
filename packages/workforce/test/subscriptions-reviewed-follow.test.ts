@@ -211,6 +211,27 @@ describe("controls: each planted regression breaks its signal", () => {
 // no list screen, so the list never runs on them. A follow of that shape must not keep hearing a
 // user the operator has since removed from the list, nor skip the write check. A follow a host makes
 // today with the same screens is a supported shape, and must still be heard as it lists.
+describe("the list's one source", () => {
+  // The tool commits the list to the document's state, then writes the body as a copy. A crash
+  // between the two must not leave the screen on the older body.
+  it("screens with the committed state when the body write after it never landed", async () => {
+    const host = teammatesHost(reviewersOf(SETTING));
+    try {
+      const run = await host.follower("alice");
+      await host.act("alice", run, "respond", { message: "opened it [follow-pr:412]" }, "follower");
+      await save(host, []);
+      // The edit's compare-and-swap committed bob; the body still reads the empty list.
+      const runtime = await host.state.getRuntime();
+      await runtime.stores.resourceState.set("org", ORG, GITHUB_REVIEWERS_DOC, { logins: ["bob"] } as never, "any" as never);
+      const said = comment("bob", "member");
+      await host.route(said.event);
+      expect((await host.heard(run)).some((m) => m.includes(said.text)), "the committed list decides: bob heard").toBe(true);
+    } finally {
+      await host.dispose();
+    }
+  });
+});
+
 describe("a run's follow of a fixed allow list", () => {
   /** A host whose run follows #412 with the screens the removed allow-list follower wrote, and `alice` comments after `save []`. */
   async function aliceHeard(asSaved: (host: Host) => Promise<void>) {
