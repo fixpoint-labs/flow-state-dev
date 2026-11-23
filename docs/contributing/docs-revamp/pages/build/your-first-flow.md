@@ -191,9 +191,19 @@ export default createFlowState({ flows: [helloChat] });
 import { createNextHandler } from "@flow-state-dev/next";
 import flowstate from "@/fsdev.config";
 
-export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
+export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate, {
+  allowUnauthenticated: process.env.ALLOW_UNAUTHENTICATED === "true",
+});
 export const dynamic = "force-dynamic";
 ```
+
+The flow has no sign-in yet, so the handler refuses every request until the flow checks who is calling: [Auth and tenancy](../concepts/auth-and-tenancy.md). To try it on your own machine, set the variable the route reads. `ALLOW_UNAUTHENTICATED` is this app's own name, not a Flow State setting.
+
+```text title=".env.local"
+ALLOW_UNAUTHENTICATED=true
+```
+
+`next dev` listens on every network interface, so while the variable is set, anyone who can reach the dev server can call the flow as any user. Set it only on a machine nobody else can reach, and never in a deployment.
 
 In this layout `@/` is the project root. Write the folder name with double brackets; the [HTTP API reference](../reference/http-api.md) says why. [Add to an existing app](../start/add-to-an-existing-app.md) covers the route in full.
 

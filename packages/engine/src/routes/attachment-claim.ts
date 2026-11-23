@@ -55,7 +55,7 @@ export async function claimRequestAttachments(
   field: unknown,
   options: {
     stores: StoreRegistry;
-    sessionId: string | undefined;
+    sessionId: string;
     tenantId: string | undefined;
     uploader: BlobUploader;
     /** Whether the action writes a user line (`userMessage`), the only place files go. */
@@ -121,14 +121,6 @@ export async function claimRequestAttachments(
     };
   }
   const { sessionId, tenantId, uploader } = options;
-  if (sessionId === undefined) {
-    return {
-      refused: jsonResponse(400, {
-        error: "attachments_need_session",
-        message: "Files belong to a conversation: send them with a session id."
-      })
-    };
-  }
   const existing = await loadTenantSession(options.stores.session, sessionId, tenantId);
   if (existing !== undefined && (existing.userId !== uploader.userId || existing.orgId !== uploader.orgId)) {
     return { refused: unknownSessionResponse(sessionId) };

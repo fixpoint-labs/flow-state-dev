@@ -28,6 +28,7 @@ import { ConcurrencyRejectedError, PrincipalResolutionError } from "../errors";
 import type { InboundRequestEnvelope, InboundTransportHost } from "../types";
 import { findScheduledRequest } from "./findScheduledRequest";
 import { scheduleSessionId } from "./schedule-session-id";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 import { claimScheduledTime, firedRecordAddress, scheduledTimeOf } from "./scheduledTime";
 
 // Wider than the static-id pattern in core. A dynamic id is
@@ -279,19 +280,19 @@ export async function handleDispatch(
     // dynamic schedules carry the core and do not recover (documented non-goal).
     ...(origin === "dynamic" ? { resolvedActionCore: schedule } : {}),
     // FIX-2886: a per-schedule fire runs in the schedule's own session,
-    // created by its first fire. The overlap check above has already run, so
-    // a skipped fire never touches it. Per-fire (the default) names none and
-    // runs as a one-off.
-    ...(schedule.session === "per-schedule"
-      ? {
-          sessionId: scheduleSessionId({
+    // created by its first fire. Per-fire (the default) runs as a one-off, in
+    // a session of its own made here, so its request record names it from the
+    // first write. Both after the overlap check and the claim above, so a
+    // skipped or duplicate fire touches no session and makes no id.
+    sessionId:
+      schedule.session === "per-schedule"
+        ? scheduleSessionId({
             orgId: effectivePrincipal.orgId,
             userId: effectivePrincipal.userId,
             flowId: flow.id,
             scheduleId
           })
-        }
-      : {}),
+        : oneOffSessionId(),
     responseEmitter: null
   };
 

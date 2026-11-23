@@ -24,6 +24,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createSQLiteStores } from "../src/host";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function providerFor(stores: StoreRegistry): DurabilityProvider {
   return createCheckpointDurabilityProvider({
@@ -94,6 +95,7 @@ describe("completed block traces persist on a suspended request (FIX-839)", () =
     const stores = createSQLiteStores({ filename });
     const provider = providerFor(stores);
     const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",

@@ -8,7 +8,7 @@ description: "Run a Flow State app on AWS Lambda behind a Function URL, with res
 
 Run a Flow State app on AWS Lambda behind a Function URL, with response streaming so SSE events arrive as they happen.
 
-Lambda is a serverless target: functions spin up on demand and stop when idle. That suits short-to-medium flows and bursty traffic. The tradeoffs are cold starts and a per-invocation time limit, both covered below. For long-running agents that stream for minutes, a long-lived host (see [Deploy to Railway](./railway.md)) is a better fit.
+Lambda suits short-to-medium flows and bursty traffic. The costs are cold starts and a time limit on each invocation. For agents that stream for minutes, a long-lived host such as [Railway](./railway.md) is a better fit.
 
 ---
 
@@ -17,7 +17,7 @@ Lambda is a serverless target: functions spin up on demand and stop when idle. T
 - A Node.js 22+ project with flow-state-dev
 - An AWS account and the [AWS CLI](https://docs.aws.amazon.com/cli/) configured
 - `@flow-state-dev/node` and `@flow-state-dev/store-postgres` installed
-- A Postgres database the function can reach over the network (see step 4)
+- A Postgres database the function can reach over the network (see step 5)
 - At least one LLM provider API key
 
 ---
@@ -49,9 +49,43 @@ export const handler = createLambdaHandler(flowstate);
 
 ---
 
-## 2. Enable response streaming
+## 2. Require a credential
 
-For SSE to work, the function has to stream its response. `createLambdaHandler` uses Lambda's streaming runtime, and the **Function URL** needs `InvokeMode: RESPONSE_STREAM`:
+The handler answers every request, `/healthz` included, with a 500 while a flow takes its `userId` from the request body. Give the flow a `resolvePrincipal` that checks a credential. A shared secret is enough to start:
+
+```ts title="src/flows/hello-chat/flow.ts"
+import { defineFlow } from "@flow-state-dev/core";
+import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
+import { z } from "zod";
+import { chatPipeline } from "./blocks/chat-pipeline";
+
+const helloChat = defineFlow({
+  kind: "hello-chat",
+  authentication: {
+    resolvePrincipal: createBearerSecretPrincipalResolver({
+      secret: process.env.FLOW_API_SECRET ?? "",
+      principal: { userId: "smoke-test", orgId: "my-org" },
+    }),
+  },
+  actions: {
+    chat: { block: chatPipeline, userMessage: (input) => input.message },
+  },
+  session: {
+    stateSchema: z.object({ messageCount: z.number().default(0) }),
+    client: { expose: ["messageCount"] },
+  },
+});
+
+export default helloChat();
+```
+
+Runs and session reads need the secret; `/healthz`, the flow list and `/api/flows/capabilities` answer without it. An empty secret throws when the module loads. For signed-in users, write `resolvePrincipal` around your own session, as [Auth and tenancy](../../concepts/auth-and-tenancy.md) shows.
+
+---
+
+## 3. Enable response streaming
+
+For SSE to work, the function has to stream its response, so the **Function URL** needs `InvokeMode: RESPONSE_STREAM`:
 
 ```bash
 aws lambda create-function-url-config \
@@ -60,7 +94,7 @@ aws lambda create-function-url-config \
   --invoke-mode RESPONSE_STREAM
 ```
 
-A Function URL made through the CLI comes with no access policy, and every request gets a 403, even with `--auth-type NONE`. Grant public access with two statements, one per command. The second limits `lambda:InvokeFunction` to calls made through the Function URL.
+A Function URL made through the CLI comes with no access policy, and every request gets a 403, even with `--auth-type NONE`. Grant access with two statements, one per command. The second limits `lambda:InvokeFunction` to calls made through the Function URL.
 
 ```bash
 aws lambda add-permission \
@@ -82,26 +116,26 @@ The console and AWS SAM add this policy for you when they create a Function URL 
 
 Without `RESPONSE_STREAM`, Lambda buffers the whole response and SSE events arrive only after the flow finishes.
 
-`--auth-type NONE` is for the smoke test only. A public URL lets any caller act as any user and run billed model calls. For production, switch the Function URL to IAM auth, or give `createFlowState` a `resolvePrincipal` so the app verifies the caller itself. See [Auth and tenancy](../../concepts/auth-and-tenancy.md).
+With `--auth-type NONE` anyone can reach the URL, and the step 2 secret decides who reaches a flow and its billed model calls. To close the function itself, switch the Function URL to IAM auth.
 
 ---
 
-## 3. Configure memory and timeout
+## 4. Configure memory and timeout
 
 - **Memory:** 256 MB is a reasonable floor; raise it if your flows hold large context. Memory also scales CPU, which shortens cold starts.
 - **Timeout:** set it to your longest expected flow plus headroom (for example 60s). The function bills until the flow completes or the timeout fires.
 
-Keep timeouts conservative so an abandoned stream doesn't bill for minutes. What a client disconnect does is in the [runtime reference](../../reference/runtime.md).
+What a client disconnect does is in the [runtime reference](../../reference/runtime.md).
 
 ---
 
-## 4. Choose a store
+## 5. Choose a store
 
-The filesystem and SQLite stores don't survive between invocations. Use a database the function reaches over the network, such as a managed Postgres. Create the store at module scope, as step 1 does with `postgresStores()`, so warm invocations reuse its connection. Which stores persist is in [Persistence](../../concepts/persistence.md). Starting the store on a cold start has a cost you can remove; see [Cold starts](#cold-starts-the-first-request-after-idle).
+The filesystem and SQLite stores don't survive between invocations, so use a database the function reaches over the network. Create the store at module scope, as step 1 does with `postgresStores()`, so warm invocations reuse its connection. Which stores persist is in [Persistence](../../concepts/persistence.md). Starting the store on a cold start has a cost you can remove; see [Cold starts](#cold-starts-the-first-request-after-idle).
 
 ---
 
-## 5. Deploy
+## 6. Deploy
 
 Bundle `src/handler.ts` and its dependencies with your bundler (esbuild, for example), zip it, and create the function:
 
@@ -115,14 +149,14 @@ aws lambda create-function \
   --role arn:aws:iam::ACCOUNT_ID:role/my-lambda-role \
   --timeout 60 \
   --memory-size 256 \
-  --environment "Variables={OPENAI_API_KEY=sk-...,DATABASE_URL=postgres://...}"
+  --environment "Variables={OPENAI_API_KEY=sk-...,DATABASE_URL=postgres://...,FLOW_API_SECRET=...}"
 ```
 
 Past a first deploy, use SAM, CDK, or Terraform with the same pieces: a Node 22 function, a Function URL in `RESPONSE_STREAM` mode, and your environment variables.
 
 ---
 
-## 6. Verify
+## 7. Verify
 
 ```bash
 # Use your Function URL, then:
@@ -135,9 +169,10 @@ curl https://YOUR_URL.lambda-url.REGION.on.aws/api/flows
 
 # 3. Run an action and stream its events in the same response
 curl -N -X POST https://YOUR_URL.lambda-url.REGION.on.aws/api/flows/hello-chat/actions/chat \
+  -H "Authorization: Bearer $FLOW_API_SECRET" \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
-  -d '{"userId": "test", "input": {"message": "Hello"}}'
+  -d '{"input": {"message": "Hello"}}'
 ```
 
 The `Accept: text/event-stream` header keeps the flow running on the invocation that streams it. Without it the POST answers 202 and returns, and Lambda can freeze the function before the flow finishes.
@@ -150,9 +185,9 @@ Events should arrive one at a time. If they arrive in one burst, see [SSE arrive
 
 ### Cold starts: the first request after idle
 
-The first request after idle is slower, but it does not fail. The API waits for the store to finish starting and then answers. It returns a 500 only if store startup failed for good. `/healthz` behaves differently: it answers 503 `{ "status": "initializing" }` until the store is ready, so don't point a startup probe at it and treat 503 as an outage.
+The first request after idle is slower but does not fail. The API waits for the store to finish starting and then answers. It returns a 500 only if store startup failed for good. `/healthz` behaves differently: it answers 503 `{ "status": "initializing" }` until the store is ready, so don't point a startup probe at it and treat 503 as an outage.
 
-What that first request pays for is loading the bundle and starting the store. With `postgresStores`, starting the store creates the schema by default, with idempotent statements under an advisory lock, on every cold start. To skip that cost, create the schema once as a deploy step, then pass `skipSchemaInit: true` in the handler:
+That first request loads the bundle and starts the store, and by default `postgresStores` creates the schema, idempotently, on every cold start. To skip that cost, create the schema once as a deploy step, then pass `skipSchemaInit: true` in the handler:
 
 ```ts title="scripts/migrate.ts"
 import { createPostgresStores } from "@flow-state-dev/store-postgres/host";
@@ -187,11 +222,11 @@ Run `scripts/migrate.ts` once per deploy, before the first request that uses the
 
 ### SSE arrives all at once
 
-The function is buffering. Confirm the Function URL uses `RESPONSE_STREAM`, and that nothing sits between the client and the Function URL. A gateway or proxy in front can hold the response until it ends, so test against the Function URL directly.
+Confirm the Function URL uses `RESPONSE_STREAM`. A gateway or proxy in front can hold the response until it ends, so test against the Function URL directly.
 
 ### Function times out mid-stream
 
-Raise the timeout, or move long-running flows to a long-lived host.
+Raise the timeout, or move long flows to a long-lived host.
 
 ---
 

@@ -166,10 +166,10 @@ A block hook runs as its own block, on a top-level path beside the action's `roo
 
 When an action is invoked, the framework executes this sequence:
 
-1. Resolve flow instance by exact id (the route's first segment) and action
+1. Resolve flow instance by exact id (the route's first segment) and action. Every request names its session: a run with none is refused before anything is written (`400 session-required` over HTTP, `SessionRequiredError` from `runAction` and `host.dispatch`). An entry point with no conversation to name (a webhook binding with no `sessionId`, a `per-fire` schedule fire, an MCP call with no session directive) makes a one-off id with `oneOffSessionId()` before it dispatches
 2. Validate action input against `inputSchema`
 3. Admit ownership: a named `sessionId` / `requestId` must be owned by the resolved instance (`resolveRecordOwner`), else `FlowInstanceBindingMismatchError` before any write; a record with no owner recorded resolves to the singleton of its kind or, for a collection kind, `migration-required`
-4. Resolve or create session (ephemeral if no `sessionId`), stamping `flowId` (owner) and `flowKind` (definition) on new session and request records and on the active-request entry
+4. Resolve or create the named session, stamping `flowId` (owner) and `flowKind` (definition) on new session and request records and on the active-request entry
 5. Require user context (Phase 1 policy)
 6. Create request scope and state
 7. Emit user message item (if `userMessage` defined)

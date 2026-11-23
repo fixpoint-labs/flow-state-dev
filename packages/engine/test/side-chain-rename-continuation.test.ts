@@ -43,6 +43,7 @@ import { continueRequest, createFlowRegistry, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function createDurableStores() {
   const stores = createInMemoryStores();
@@ -126,6 +127,7 @@ function spellPathsTheOldWay(items: readonly unknown[]): unknown[] {
 /** Run until the gate suspends — the side chain has drained by then. */
 async function runToSuspension(flow: FlowInstance, stores: ReturnType<typeof createDurableStores>["stores"], provider: ReturnType<typeof createDurableStores>["provider"]) {
   const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",

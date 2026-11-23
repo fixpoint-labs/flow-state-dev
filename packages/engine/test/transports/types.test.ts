@@ -10,6 +10,7 @@ import type {
   TransportBindings
 } from "../../src/host";
 import type { ResolvedPrincipal, PrincipalResolutionContext } from "@flow-state-dev/core/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 describe("inbound transport contract types", () => {
   it("a minimal adapter is implementable", () => {
@@ -33,6 +34,7 @@ describe("inbound transport contract types", () => {
   it("envelope and principal types compose", () => {
     const principal: ResolvedPrincipal = { userId: "u1", orgId: "org1" };
     const envelope: InboundRequestEnvelope = {
+      sessionId: oneOffSessionId(),
       source: "test",
       flowKind: "demo",
       action: "run",

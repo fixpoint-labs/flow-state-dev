@@ -20,7 +20,7 @@
 **Added by FIX-2774** (its spec's goal, `specs/issues/FIX-2774/SPEC.md`):
 
 - `task-equals-item`, in legs a and b: for each of the six stops, the asks the task's screen draws (its run's stops, `taskAsks`, and the questions it holds on you, `holdsOnYou`, over the same inbox view answer) are exactly its Inbox item's holds, before and after each answer (`a:task-equals-item`, `b:task-equals-item`).
-- `nc`, *no conversation* (the owner's answer to FIX-2774's Open, recommended: list it): model-free, on a host of its own in the goal's process. A run of a flow the org's inventory names as a worker's, started by the server with no session (`runAction`, `source: "system"`), stops for an approval. Shift Manager's Inbox screen, drawn headless under its provider, lists it once from no named worker (`nc:listed`), with its reply box blocked, saying there is no conversation to reply into (`nc:no-reply`); its Approve answers it and the run completes (`nc:answer-resumes`). The flow is one the host registers itself, not a hired worker flow: a hired worker flow's create check refuses a run with no session (it is checked as a session create, and needs the worker's id), so no ask with no conversation arises on one today. `GOAL_LEGS=nc` runs it alone, with no model or harness.
+- `nc`, *no conversation* (the owner's answer to FIX-2774's Open, recommended: list it): model-free, on a host of its own in the goal's process. A run of a flow the org's inventory names as a worker's, started by the server in a one-off session (`runAction` with `oneOffSessionId()`, `source: "system"`), stops for an approval. Shift Manager's Inbox screen, drawn headless under its provider, lists it once from no named worker (`nc:listed`), with its reply box blocked, saying there is no conversation to reply into (`nc:no-reply`); its Approve answers it and the run completes (`nc:answer-resumes`). The flow is one the host registers itself, not a hired worker flow: a hired worker flow's create check refuses a one-off run (it is checked as a session create, and needs the worker's id), so no ask with no conversation arises on one today. `GOAL_LEGS=nc` runs it alone, with no model or harness.
 
 **Beside the walk** (plan rows 1, 3 and 4):
 
@@ -46,7 +46,7 @@
 - `GOAL_CONTROL=steer-ignores-mark`: steer admission ignores the row's open hold. Must fail **`d:no-request-beside`**.
 - `GOAL_CONTROL=no-question-message` (FIX-2241's): the board's `onMidwayQuestion` hook is gone. Must fail **`j1:filer-hears`** and **`j1b:coder-heard`**.
 - `GOAL_CONTROL=default-deadline` (FIX-2129's): a stop with no deadline gets one anyway. Must fail **`a:no-deadline-waits`**.
-- `GOAL_CONTROL=session-only` (FIX-2774's): the inbox view drops every ask with no session. Must fail **`nc:listed`**.
+- `GOAL_CONTROL=session-only` (FIX-2774's): the inbox view drops every ask with no conversation (no session, or a one-off one). Must fail **`nc:listed`**.
 - `GOAL_CONTROL=wrapper-kill` (FIX-2407's): j3's crash signals only the spawned `tsx` wrapper, and the server under it keeps running on the store. Must fail **`j3:crashed`**.
 
 ## Verdict log

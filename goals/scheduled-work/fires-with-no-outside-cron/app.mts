@@ -33,6 +33,7 @@ import { createSQLiteScheduleIndex, sqliteStores } from "@flow-state-dev/store-s
 import { createPostgresScheduleIndex, postgresStores } from "@flow-state-dev/store-postgres";
 import { createPgPoolTx } from "@flow-state-dev/store-postgres/host";
 import pg from "pg";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 export const ORG = "acme";
 export const USER = "alice";
@@ -182,7 +183,7 @@ export function goalApp(options: GoalAppOptions): { app: FlowState; seed(): Prom
 
   const seed = async () => {
     const { stores: resolved, runtimeConfig } = await app.getRuntime();
-    const run = await runAction({ flow, actionName: "plan", input: {}, userId: USER, orgId: ORG, stores: resolved, runtimeConfig });
+    const run = await runAction({ sessionId: oneOffSessionId(), flow, actionName: "plan", input: {}, userId: USER, orgId: ORG, stores: resolved, runtimeConfig });
     if ((run as { success?: boolean }).success === false) throw new Error(`seed: the plan run failed: ${JSON.stringify(run)}`);
   };
   return { app, seed };

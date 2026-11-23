@@ -71,7 +71,7 @@ interface WebhookEventBinding extends ActionCore {
 ```
 
 **Two ways to route, split by provider.** A binding runs one handler per
-event, in a session it names or a fresh one: Stripe, Slack and custom
+event, in a session it names or a fresh one-off one: Stripe, Slack and custom
 providers. A **service route** brings the event to the sessions that asked for
 it: the transport verifies, parses and reads the delivery id exactly as for a
 binding, then `normalize` maps the delivery to zero or more normalized
@@ -181,8 +181,11 @@ The order in `routes.ts` (`handleWebhook`) is load-bearing:
    `status`.
 10. **Validate dispatch** (`host.validateDispatch`) — enforces org binding. A
     throw → 403.
-11. **Ensure session** (find-or-create) when a `sessionId` was derived, so the
-    action's session exists before dispatch.
+11. **Ensure session** (find-or-create), so the action's session exists
+    before dispatch. A binding that derives no `sessionId` (or an empty one)
+    gets a one-off id from `oneOffSessionId()`, made here, so the envelope and
+    the request record name it from the first write; the session is born with
+    the same `metadata.source: "webhook"` as a named one.
 12. **Dispatch** fire-and-forget. `responseEmitter: null` — there's no outbound
     stream. Await `handle.accepted` (durable request recording) when the
     runner surfaces it, so a crash after the 202 doesn't silently drop the

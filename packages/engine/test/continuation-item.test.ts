@@ -23,6 +23,7 @@ import { retryRequest } from "../src/execution/request-recovery";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { ContinuationItem } from "@flow-state-dev/core/items";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function createDurableStores() {
   const stores = createInMemoryStores();
@@ -70,6 +71,7 @@ function buildCrashFlow(kind: string) {
  *  `interrupted` to simulate a crash mid-flight. */
 async function runToInterrupted(flow: FlowInstance, stores: ReturnType<typeof createInMemoryStores>, provider: ReturnType<typeof createCheckpointDurabilityProvider>) {
   const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
@@ -131,6 +133,7 @@ describe("ContinuationItem — crash-recovery /continue (FIX-865)", () => {
     const flow = buildCrashFlow("fix865-fresh-run");
     const { stores, provider } = createDurableStores();
     const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -172,6 +175,7 @@ describe("ContinuationItem — crash-recovery /continue (FIX-865)", () => {
     const { stores, provider } = createDurableStores();
 
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",

@@ -228,8 +228,10 @@ crash, make it static.
 ## Where a fire runs
 
 `session` on a schedule says where its fires run. `"per-fire"`, the
-default, names no session: each fire is a one-off run in an
-`ephemeral_` session of its own. `"per-schedule"` runs every fire in
+default, makes each fire a one-off run in a session of its own: the
+endpoint makes its `ephemeral_` id with `oneOffSessionId()` after the
+overlap check, so the request record names it from its first write.
+`"per-schedule"` runs every fire in
 one session whose id the endpoint derives after the overlap check
 (step 8), so a skipped fire never touches it: `fsd-schedule.` then
 the base64url of `[orgId, userId, flowId, scheduleId]`, from the

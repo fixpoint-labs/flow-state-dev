@@ -32,6 +32,7 @@ import {
   SUBSCRIPTIONS_RESOURCE
 } from "./keys";
 import { routineMakerSchema } from "../routines/listed-routine";
+import { listsTrustedListScreen } from "../service-flows/github/reviewers-document";
 import { ROSTER_FLOW } from "../workers/keys";
 
 /** The most terms a listed screen carries. */
@@ -74,6 +75,29 @@ const screenSettingsSchema = z.object({
   screens: z.array(listedScreenSchema).default([]),
   /** The subscription takes outsiders' events (epic Q1's per-subscription opt-in). */
   outsiders: z.literal(true).optional(),
+  // FIX-2873.
+  /**
+   * The custom screen a bot sender is handed on to: the sender screen lets any
+   * bot through to it, rather than only the service's `trustedBots`, and that
+   * screen decides. Set only by host code (`SubscribeWrite`), never a model's
+   * input, and honoured only while the subscription lists that custom screen
+   * ({@link botsHandedOn}).
+   */
+  botsScreenedBy: z.string().min(1).max(100).optional(),
+  // FIX-2873; BP-030.
+  /**
+   * `2` on every pull-request follow (`hearsClose`) written since the trusted reviewers' list,
+   * so a follow the removed allow-list follower wrote, which lacks it, can be told apart from a
+   * current follow of the same screens ({@link isLegacyReviewedFollow}). Server-written only.
+   */
+  followRev: z.literal(2).optional(),
+  /**
+   * The screens the host's follow write installed (`followPullRequest`'s), kept apart from any a
+   * session adds later: a rewrite by the session keeps these and takes the new write's, and an
+   * earlier rewrite's own screens drop. Server-written only; absent on a follow from before it,
+   * whose screens are all the host's.
+   */
+  hostScreens: z.array(listedScreenSchema).optional(),
   /** The subscriber's own id at the provider, for `own`. */
   self: z.string().min(1).optional(),
   /**
@@ -182,6 +206,40 @@ export const indexEntrySchema = screenSettingsSchema.extend({
 });
 
 export type IndexEntry = z.infer<typeof indexEntrySchema>;
+
+// FIX-2873.
+/**
+ * The custom screen a subscription hands a bot sender on to, or `undefined`
+ * when it hands none on: its `botsScreenedBy`, only while it lists that
+ * custom screen. A row written or restored without the screen (a model's
+ * rewrite of the same thread, a stale index entry) hands no bot on, so a
+ * listed bot never reaches a subscription that has no list screen. The write
+ * (`subscribe`), routing and delivery all decide through this one function.
+ */
+export function botsHandedOn(entry: { readonly botsScreenedBy?: string | undefined; readonly screens: readonly ListedScreen[] }): string | undefined {
+  const name = entry.botsScreenedBy;
+  if (name === undefined) return undefined;
+  return entry.screens.some((listed) => listed.screen === "custom" && listed.name === name) ? name : undefined;
+}
+
+type ListedScreen = z.infer<typeof listedScreenSchema>;
+
+// FIX-2873; BP-030.
+/**
+ * Whether a subscription is a run's pull-request follow saved before the trusted reviewers' one
+ * list, and so fails closed: a follow (it hears its thread's close) with no `followRev`, unless it
+ * lists the trusted reviewers' list screen, which reads the shared list and the write check as a
+ * current follow does. Whatever else it lists (the removed follower's fixed `allow` list, or
+ * nothing, after an old rewrite dropped its screens), the `allow` screen refuses every event on
+ * it until the run follows its pull request again. A current follow carries `followRev`.
+ */
+export function isLegacyReviewedFollow(entry: { readonly hearsClose?: true | undefined; readonly followRev?: 2 | undefined; readonly screens: readonly ListedScreen[] }): boolean {
+  return (
+    entry.hearsClose === true &&
+    entry.followRev !== 2 &&
+    !listsTrustedListScreen(entry.screens)
+  );
+}
 
 /**
  * One thread's subscriptions, by subscription id. Two users subscribing to one

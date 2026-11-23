@@ -307,7 +307,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
           actionName: string;
           input: unknown;
           userId: string;
-          sessionId?: string;
+          sessionId: string;
           source?: string;
         }) => {
           const target = runtime.registry.get(envelope.flowKind)!;

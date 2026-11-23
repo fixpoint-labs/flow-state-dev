@@ -67,7 +67,8 @@ export class ClientHttpError extends Error {
 export type ExecuteActionRequestBody = {
   input: unknown;
   userId: string;
-  sessionId?: string;
+  /** The session the action runs in: required, as the server refuses a send with none (`session-required`). */
+  sessionId: string;
   requestId?: string;
   metadata?: Record<string, unknown>;
   /** The message's files, as references from an upload, beside the input. */

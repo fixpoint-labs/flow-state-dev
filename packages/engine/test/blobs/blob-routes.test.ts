@@ -271,7 +271,7 @@ describe("claiming and reading", () => {
     expect(await again.json()).toMatchObject({ error: "attachment_already_sent", index: 0 });
   });
 
-  it("refuses data that is not a stored file's reference, and attachments with no session", async () => {
+  it("refuses data that is not a stored file's reference, and a send with no session", async () => {
     const { upload, send } = setup();
     const inline = await send("alice", "s_x", [{ type: "file", mediaType: "image/png", data: "iVBORw0KGgo=" }]);
     expect(inline.status).toBe(400);
@@ -279,7 +279,7 @@ describe("claiming and reading", () => {
     const attachment = await attachmentOf(await upload("alice"));
     const sessionless = await send("alice", undefined, [attachment]);
     expect(sessionless.status).toBe(400);
-    expect(await sessionless.json()).toMatchObject({ error: "attachments_need_session" });
+    expect(await sessionless.json()).toMatchObject({ error: "session-required" });
   });
 
   it("hands the files back when the session check refuses the send", async () => {

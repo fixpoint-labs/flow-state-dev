@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 import {
   INVENTORY_REGISTER_WORKERS,
@@ -158,6 +159,7 @@ async function host(adapter: unknown = inMemoryStores()) {
         input: {},
         userId: USER_ID,
         orgId: ORG_ID,
+        sessionId: oneOffSessionId(),
         stores: runtime.stores,
         runtimeConfig: { ...runtime.runtimeConfig },
         ...opts

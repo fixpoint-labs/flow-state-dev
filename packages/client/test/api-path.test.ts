@@ -33,7 +33,6 @@ async function requestedUrls(transport: { baseUrl?: string; apiPath?: string }):
 
   const client = createClient({ userId: "u1", ...transport, fetcher });
   await client.flows();
-  await client.flow("chat").send("send", {});
   await client.flow("chat").send("send", {}, { sessionId: "s1" });
 
   await client.sessions.state("s1");
@@ -53,7 +52,6 @@ describe("apiPath", () => {
   it("leaves every URL byte-identical when unset", async () => {
     expect(await requestedUrls({ baseUrl: ORIGIN })).toEqual([
       `${ORIGIN}/api/flows`,
-      `${ORIGIN}/api/flows/chat/actions/send`,
       `${ORIGIN}/api/flows/chat/s1/actions/send`,
       `${ORIGIN}/api/flows/sessions/s1/state`,
       `${ORIGIN}/api/flows/users/u1/check-interrupted`,
@@ -68,7 +66,6 @@ describe("apiPath", () => {
   it("sends every route to the mount it names, after baseUrl", async () => {
     expect(await requestedUrls({ baseUrl: ORIGIN, apiPath: "/flows" })).toEqual([
       `${ORIGIN}/flows`,
-      `${ORIGIN}/flows/chat/actions/send`,
       `${ORIGIN}/flows/chat/s1/actions/send`,
       `${ORIGIN}/flows/sessions/s1/state`,
       `${ORIGIN}/flows/users/u1/check-interrupted`,
@@ -83,7 +80,7 @@ describe("apiPath", () => {
   it("works with a same-origin baseUrl and ignores a trailing slash", async () => {
     const fetcher = jsonFetcher({ status: "in_progress", request: { id: "r0" } });
     const client = createClient({ userId: "u1", baseUrl: "", apiPath: "/v2/flows/", fetcher });
-    await client.flow("chat").send("send", {});
-    expect(fetcher.mock.calls[0]?.[0]).toBe("/v2/flows/chat/actions/send");
+    await client.flow("chat").send("send", {}, { sessionId: "s1" });
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/v2/flows/chat/s1/actions/send");
   });
 });

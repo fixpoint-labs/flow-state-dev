@@ -14,6 +14,7 @@ import {
   type FlowState
 } from "../src";
 import { type FlowApiRouter } from "../src/host";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** A router that reflects what it received, for asserting the translation. */
 const echoRouter: FlowApiRouter = {
@@ -170,7 +171,7 @@ describe("createInProcessFetch", () => {
       const sent = await fetcher("http://x.invalid/api/flows/echo/actions/say", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: "u1", input: { text: "hi" } })
+        body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u1", input: { text: "hi" } })
       });
       expect(sent.status).toBeLessThan(300);
       const body = (await sent.json()) as { request?: { id: string }; requestId?: string };

@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createSQLiteStores } from "../src/host";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function providerFor(stores: StoreRegistry): DurabilityProvider {
   return createCheckpointDurabilityProvider({
@@ -76,6 +77,7 @@ describe("continuation item persists and round-trips through SQLite (FIX-865)", 
     const stores = createSQLiteStores({ filename });
     const provider = providerFor(stores);
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",

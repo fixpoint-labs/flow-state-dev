@@ -17,6 +17,7 @@ import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { defineScheduleCollection } from "@flow-state-dev/scheduled";
 import { createSQLiteScheduleIndex } from "../src/schedule-index";
 import { initializeSchema } from "../src/schema";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** Every due row, far in the future so every schedule written here is due. */
 const FAR_FUTURE = Date.UTC(2100, 0, 1);
@@ -106,7 +107,7 @@ function boot(seed?: (db: Database.Database) => void) {
     key = "weekly",
     userId = "alice"
   ) => {
-    const result = await runAction({ flow, actionName, input: { key }, userId, orgId, stores, runtimeConfig: {} });
+    const result = await runAction({ sessionId: oneOffSessionId(), flow, actionName, input: { key }, userId, orgId, stores, runtimeConfig: {} });
     expect(result.error).toBeUndefined();
   };
   const due = () => index.claimDue(FAR_FUTURE, 100);
