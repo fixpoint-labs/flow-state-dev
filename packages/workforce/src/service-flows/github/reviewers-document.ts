@@ -1,12 +1,12 @@
 // FIX-2789; FIX-2873.
 /**
  * The trusted GitHub reviewers' document: its ref, how its body lists
- * accounts, and the body a default or a save stores. Once the tool commits a
- * list, the document's state (`logins`) is the list the screen and the tool
- * read, and the body is a copy written after it. Before that, the stored body
- * (a list saved before state held it), else the `GITHUB_REVIEWERS` default.
+ * accounts, and the body a default stores. Once the tool commits a list, the
+ * document's state (`logins`) is the list the screen and the tool read, and the
+ * readable view renders from it. Before that, the stored body (a list saved
+ * before state held it), else the `GITHUB_REVIEWERS` default.
  */
-import { readCommitted, updateStateWith, type UpdateStateRunner } from "@flow-state-dev/core/helpers";
+import { updateStateWith, type UpdateStateRunner } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { retryOnConflict } from "../../projects/cas-retry";
 import { githubLoginId } from "./normalize";
@@ -53,6 +53,14 @@ export function githubReviewersDocument(logins: readonly string[], options: { re
   ].join("\n");
 }
 
+/**
+ * The document's readable view (its `render`): the committed list once the state holds one, else
+ * the body as stored or the default. A body is never written after the state, so none can lag it.
+ */
+export function reviewersRender(content: string, state: Record<string, unknown>): string {
+  return Array.isArray(state.logins) ? githubReviewersDocument(state.logins as string[]) : content;
+}
+
 /** The document's state: the list as the last edit committed it, under compare-and-swap. Absent until the tool first saves. */
 type ReviewersState = { readonly logins?: readonly string[] };
 
@@ -61,11 +69,11 @@ export type ReviewersChange = (current: readonly string[], saved: boolean) => re
 
 /** The document as the running block declares it, or a throw naming it when it doesn't. */
 export function reviewersDocumentOf(ctx: BlockContext) {
-  const ref = (ctx.resources as Record<string, { readContent?: () => Promise<string | null>; writeContent?: (content: string) => Promise<void> }> | undefined)?.[
+  const ref = (ctx.resources as Record<string, { readContent?: () => Promise<string | null> }> | undefined)?.[
     GITHUB_REVIEWERS_DOC
   ];
   if (typeof ref?.readContent !== "function") throw new Error(`the "${GITHUB_REVIEWERS_DOC}" document isn't installed`);
-  const doc = ref as { readContent: () => Promise<string | null>; writeContent?: (content: string) => Promise<void>; state?: ReviewersState };
+  const doc = ref as { readContent: () => Promise<string | null>; state?: ReviewersState };
   const runner = ref as unknown as UpdateStateRunner<ReviewersState>;
   /** The body as stored, or the default with none: the list only until the tool first commits one to state. */
   const body = async () => {
@@ -84,7 +92,7 @@ export function reviewersDocumentOf(ctx: BlockContext) {
     /**
      * Apply `change` to the list as committed, so two approved edits that run at once both land:
      * decided under compare-and-swap on the document's state, the one source the screen reads.
-     * The body is then written as a copy of the committed list; a failed body write loses nothing.
+     * No body is written: the document's readable view renders from that state (`reviewersRender`).
      */
     edit: async (change: ReviewersChange): Promise<{ readonly logins: readonly string[] } | { readonly refused: string }> => {
       const before = await body();
@@ -95,15 +103,7 @@ export function reviewersDocumentOf(ctx: BlockContext) {
           return "refused" in next ? { state, result: next } : { state: { ...state, logins: [...next] }, result: { logins: [...next] } };
         })
       );
-      if (decided === undefined || "refused" in decided) return decided ?? { refused: "The list couldn't be read, so nothing changed." };
-      try {
-        // The copy a user reads; the latest committed list, so a slower writer doesn't leave an older one.
-        const latest = (await readCommitted(runner, (state) => state.logins)) ?? decided.logins;
-        await doc.writeContent?.(githubReviewersDocument(latest));
-      } catch {
-        // The state holds the list; the copy catches up on the next save.
-      }
-      return decided;
+      return decided ?? { refused: "The list couldn't be read, so nothing changed." };
     }
   };
 }

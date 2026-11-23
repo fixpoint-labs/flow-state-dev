@@ -36,7 +36,7 @@ import type { SubscriptionProvider } from "../../subscriptions/subscribe";
 import type { WorkerInstallation } from "../../workers/installation";
 import { followPullRequest } from "./follow-pull-request";
 import { githubRepositoryOf } from "./provider";
-import { GITHUB_REVIEWERS_DOC, githubLoginsListed, githubReviewersDocument, isListedBot, reviewersDocumentOf } from "./reviewers-document";
+import { GITHUB_REVIEWERS_DOC, githubLoginsListed, githubReviewersDocument, isListedBot, reviewersDocumentOf, reviewersRender } from "./reviewers-document";
 import { githubReviewersTool } from "./reviewers-tool";
 
 /** The custom screen's name on the GitHub provider, as the follow lists it. **Pinned**: saved follows name it. */
@@ -162,6 +162,7 @@ export function githubTrustedReviewers(options: GitHubTrustedReviewersOptions): 
     stateSchema: z.object({}).passthrough(),
     default: {},
     content: githubReviewersDocument(settingLogins(env.GITHUB_REVIEWERS), { unsaved: true }),
+    render: reviewersRender,
     description: "The GitHub accounts trusted to steer a coding run through comments on its pull request. Only the operator changes it.",
     llmReadable: true,
     llmWritable: false,

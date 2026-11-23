@@ -226,10 +226,12 @@ function nextEntry(current: SubscriptionResourceState | undefined, asked: Subscr
   // request it follows lands on the same subscription): its close stays heard and, when the write names no
   // task, its run's task stays, so that task's failure or cancel still ends it. Only the server sets either.
   const keepsFollow = current?.hearsClose === true && current.thread === asked.thread && asked.hearsClose !== true;
-  // FIX-2873: a rewrite of a follow keeps every screen the follow lists (the host's, such as the trusted
-  // reviewers' list screen) and adds the new write's; it never takes outsiders the follow didn't. So a
-  // session can narrow what its follow hears, never widen it past the host's screens.
-  const keptScreens = keepsFollow ? [...current.screens, ...asked.screens.filter((listed) => !current.screens.some((had) => JSON.stringify(had) === JSON.stringify(listed)))] : asked.screens;
+  // FIX-2873: a rewrite of a follow keeps the screens the host installed (`hostScreens`, such as the
+  // trusted reviewers' list screen) and takes the new write's; an earlier rewrite's own screens drop. It
+  // never takes outsiders the follow didn't. So a session can narrow what its follow hears, never widen
+  // it past the host's screens.
+  const hostScreens = keepsFollow ? (current.hostScreens ?? current.screens) : [];
+  const keptScreens = keepsFollow ? [...hostScreens, ...asked.screens.filter((listed) => !hostScreens.some((had) => JSON.stringify(had) === JSON.stringify(listed)))] : asked.screens;
   // Its bots stay handed on to its screen only while the write still lists that screen.
   // Pinned by test/subscriptions-bot-admission.test.ts (a rewrite without the screen, a stale index entry, a restored row).
   const keptBots = keepsFollow && asked.botsScreenedBy === undefined ? botsHandedOn({ botsScreenedBy: current.botsScreenedBy, screens: keptScreens }) : undefined;
@@ -243,7 +245,8 @@ function nextEntry(current: SubscriptionResourceState | undefined, asked: Subscr
         ...(asked.taskId === undefined && current.taskId !== undefined ? { taskId: current.taskId } : {}),
         ...(keptBots === undefined ? {} : { botsScreenedBy: keptBots }),
         // A follow stays as current or as legacy as it was: only the server's follow write marks one.
-        ...(current.followRev === 2 ? { followRev: 2 as const } : {})
+        ...(current.followRev === 2 ? { followRev: 2 as const } : {}),
+        hostScreens
       }
     : asked;
   if (life === "fresh") return wanted;
@@ -467,7 +470,7 @@ async function writeSubscription(
     flow: flowKind ?? "",
     worker: hears.worker,
     ...((write.taskId ?? hears.taskId) === undefined ? {} : { taskId: write.taskId ?? hears.taskId }),
-    ...(write.hearsClose === true ? { hearsClose: true as const, followRev: 2 as const } : {}),
+    ...(write.hearsClose === true ? { hearsClose: true as const, followRev: 2 as const, hostScreens: input.screens ?? [] } : {}),
     userId: identity.userId,
     orgId: identity.orgId,
     // The tenant its session runs under, so its deliveries reach that session.

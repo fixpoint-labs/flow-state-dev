@@ -153,6 +153,23 @@ describe("a subscription's bot admission", () => {
     expect(after.botHeard, "the listed bot still heard").toBe(true);
   });
 
+  it("keeps only the host's screens and the latest rewrite's: an earlier rewrite's screens drop", async () => {
+    const h = host();
+    try {
+      const run = await h.follower("alice");
+      await h.act("alice", run, "respond", { message: "opened it [follow-pr:412]" }, "follower");
+      expect(await h.subscribe("alice", run, { thread: PR, screens: [{ screen: "words", any: ["foo"] }] })).toHaveProperty("id");
+      expect(await h.subscribe("alice", run, { thread: PR, screens: [{ screen: "words", any: ["bar"] }] })).toHaveProperty("id");
+      const [follow] = await h.subscriptionRows("alice");
+      expect(follow!.screens).toEqual([
+        { screen: "custom", name: "github-reviewers" },
+        { screen: "words", any: ["bar"] }
+      ]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("is kept when a model's rewrite still lists the list screen", async () => {
     const h = host();
     try {

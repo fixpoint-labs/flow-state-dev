@@ -171,13 +171,22 @@ async function answer(lab: Lab, requestId: string, action: "approve" | "reject",
   throw new Error("the answered request never finished");
 }
 
-/** The logins the stored document lists; the default (`GITHUB_REVIEWERS`) until something writes it. */
+/** The logins the document's readable view lists, as the app reads it over HTTP: the default (`GITHUB_REVIEWERS`) until something saves. */
 async function listed(lab: Lab): Promise<string[]> {
-  const runtime = await lab.state.getRuntime();
-  const content = await (runtime.stores as any).content.get("org", LAB_ORG_ID, GITHUB_REVIEWERS_DOC);
-  if (content === undefined) return ["jhoffner"];
-  return [...String(content).matchAll(/^- (\S+)$/gm)].map((m) => m[1]!);
+  return [...(await readableView(lab)).matchAll(/^- (\S+)$/gm)].map((m) => m[1]!);
 }
+
+/** The document's readable view, whole, as the app reads it over HTTP. */
+async function readableView(lab: Lab): Promise<string> {
+  const sessionId = `s-reader-${globalThis.crypto.randomUUID()}`;
+  expect((await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USERS.owner.userId, sessionId, state: { workerId: "shift-coordinator" } } })).status).toBe(201);
+  const read = await lab.door("GET", `sessions/${sessionId}/resources/${GITHUB_REVIEWERS_DOC}/content`);
+  expect(read.status, JSON.stringify(read.body)).toBe(200);
+  return String(read.body.content);
+}
+
+/** The line only the unsaved default's view carries. */
+const UNSAVED = "Nobody has saved this list yet";
 
 const set = (logins: string[]): ToolCall => ({ toolName: GITHUB_REVIEWERS_TOOL, args: { logins } });
 
@@ -296,13 +305,13 @@ describe("the Shift Coordinator changes the trusted GitHub reviewers", () => {
 
   it("saves the default as the operator's own when they ask for the list as it reads: GITHUB_REVIEWERS stops deciding it", async () => {
     const lab = await open(scripted([set(["jhoffner"])], { asked: 0.95, injected: 0.02 }, []));
-    const runtime = await lab.state.getRuntime();
-    const stored = () => (runtime.stores as any).content.get("org", LAB_ORG_ID, GITHUB_REVIEWERS_DOC) as Promise<string | undefined>;
-    expect(await stored(), "nothing saved yet").toBeUndefined();
+    expect(await readableView(lab), "nothing saved yet").toContain(UNSAVED);
     const requestId = await say(lab, "Save jhoffner as the trusted GitHub reviewers, as the list reads now.");
     expect(await pendingApproval(lab)).toMatchObject({ message: "Change the trusted GitHub reviewers: save the list as it reads now, jhoffner?" });
     expect(await answer(lab, requestId, "approve")).toBe("completed");
-    expect(await stored(), "a stored row now decides the list").toContain("- jhoffner");
+    const view = await readableView(lab);
+    expect(view, "the saved list now decides").not.toContain(UNSAVED);
+    expect(view).toContain("- jhoffner");
   }, 120_000);
 
   it("lands two approved edits answered at once: neither drops the other", async () => {
@@ -328,8 +337,9 @@ describe("the Shift Coordinator changes the trusted GitHub reviewers", () => {
     const again = await open(scripted([], { asked: 0.95, injected: 0.02 }, []), stores);
     vi.stubEnv("GITHUB_REVIEWERS", "jhoffner");
     expect(await answer(again, requestId, "approve", suspensionId)).toBe("completed");
-    const runtime = await again.state.getRuntime();
-    expect(await (runtime.stores as any).content.get("org", LAB_ORG_ID, GITHUB_REVIEWERS_DOC), "nothing saved").toBeUndefined();
+    const view = await readableView(again);
+    expect(view, "nothing saved: still the default").toContain(UNSAVED);
+    expect(await listed(again)).toEqual(["mallory"]);
   }, 120_000);
 
   it("refuses the same list again once it is saved", async () => {

@@ -90,6 +90,13 @@ const screenSettingsSchema = z.object({
    * current follow of the same screens ({@link isLegacyReviewedFollow}). Server-written only.
    */
   followRev: z.literal(2).optional(),
+  /**
+   * The screens the host's follow write installed (`followPullRequest`'s), kept apart from any a
+   * session adds later: a rewrite by the session keeps these and takes the new write's, and an
+   * earlier rewrite's own screens drop. Server-written only; absent on a follow from before it,
+   * whose screens are all the host's.
+   */
+  hostScreens: z.array(listedScreenSchema).optional(),
   /** The subscriber's own id at the provider, for `own`. */
   self: z.string().min(1).optional(),
   /**
