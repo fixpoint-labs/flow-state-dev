@@ -69,7 +69,7 @@ function harness(flow: FlowInstance) {
 }
 
 /** Run `action` in a session, then strip the session off its record and gates: the shape an old row has. */
-async function legacyRow(h: ReturnType<typeof harness>, flow: FlowInstance, action: "approve" | "fail") {
+async function seedLegacyRequest(h: ReturnType<typeof harness>, flow: FlowInstance, action: "approve" | "fail") {
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
     flow,
@@ -101,7 +101,7 @@ describe("a request recorded with no session", () => {
     const seen: string[] = [];
     const flow = legacyFlow(seen);
     const h = harness(flow);
-    const { requestId, gate } = await legacyRow(h, flow, "approve");
+    const { requestId, gate } = await seedLegacyRequest(h, flow, "approve");
     expect(gate?.sessionId).toBeUndefined();
     const before = await sessionIds(h);
 
@@ -123,7 +123,7 @@ describe("a request recorded with no session", () => {
     const seen: string[] = [];
     const flow = legacyFlow(seen);
     const h = harness(flow);
-    const { requestId, gate } = await legacyRow(h, flow, "approve");
+    const { requestId, gate } = await seedLegacyRequest(h, flow, "approve");
 
     const response = await handleResumeSuspension(
       new Request(`https://x/api/flows/legacy/requests/${requestId}/resume`, {
@@ -152,7 +152,7 @@ describe("a request recorded with no session", () => {
     const seen: string[] = [];
     const flow = legacyFlow(seen);
     const h = harness(flow);
-    const { requestId, gate } = await legacyRow(h, flow, "approve");
+    const { requestId, gate } = await seedLegacyRequest(h, flow, "approve");
 
     await expect(
       h.cont({
@@ -172,7 +172,7 @@ describe("a request recorded with no session", () => {
     const seen: string[] = [];
     const flow = legacyFlow(seen);
     const h = harness(flow);
-    const { requestId } = await legacyRow(h, flow, "fail");
+    const { requestId } = await seedLegacyRequest(h, flow, "fail");
     expect((await h.stores.request.get(requestId))?.status).toBe("failed");
     const requestsBefore = (await h.stores.request.list()).length;
 
