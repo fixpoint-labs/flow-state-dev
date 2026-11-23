@@ -258,10 +258,13 @@ pre-claimed. The prefix is reserved beside the write session's
   (`isRequestPublicReentryAllowed`), and request listings mark it
   `retryable: false`: a re-run would skip the overlap check, and the
   next fire catches up instead.
-- the answer route refuses an answer to a user's stop in it: a
-  suspended fire has left the active registry, so the next fire may
-  already be running there. A schedule whose fires wait for a person
-  keeps `"per-fire"`.
+- a fire in it never parks: `ctx.suspend()` refuses there before any
+  gate is written, and the fire's request host has no `waits`, so a
+  wait answers `wait_unavailable` before it starts its work. A parked
+  fire leaves the active registry, so the next fire may already run
+  there, and whatever continued the parked one (an answer, a stop, a
+  waited-on child ending, the sweep's re-drive) would run it beside
+  that fire. A schedule whose fires stop or wait keeps `"per-fire"`.
 
 Unlike a write session, its owner still lists and reads it: the
 listing, the read routes and change notices don't hide it.

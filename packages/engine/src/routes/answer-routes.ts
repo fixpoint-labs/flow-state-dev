@@ -23,7 +23,6 @@
  * deadline or a stop resume it once: the one that loses is told
  * `already-resolved` (409).
  */
-import { isScheduleSessionId } from "../transports/scheduled/schedule-session-id";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord } from "../context/record-owner";
 import type { StoreRegistry } from "../stores/types";
@@ -97,11 +96,6 @@ export async function handleAnswerSuspension(
   ) {
     return unknownStop(suspensionId);
   }
-  // FIX-2886: a stop in a schedule's session is not answered. A suspended fire
-  // has left the active registry, so the schedule's next fire may already be
-  // running there; answering would run this one beside it. Like retry,
-  // continue and resume, it answers as a stop that doesn't exist.
-  if (owner.sessionId != null && isScheduleSessionId(owner.sessionId)) return unknownStop(suspensionId);
 
   const provider = ctx.durabilityProvider;
   if (provider === undefined) {

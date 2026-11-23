@@ -216,6 +216,7 @@ import { readSettledTurns, type SettledTurns } from "./settled-turns";
 import { cancelledWithTask } from "../durability/cancel-user-suspension";
 import { NoSessionError, noSessionHandle, noSessionRecord } from "./no-session";
 import { createViewDependencies, guardViewRequestHost, recordSessionReads, refusingModelResolver, sessionReadObserver, ViewModelCallError } from "./view-reads";
+import { isScheduleSessionId } from "../transports/scheduled/schedule-session-id";
 
 // FIX-2063.
 /**
@@ -227,6 +228,17 @@ const SUSPEND_NEEDS_DURABILITY =
   "This host has none: it sets `durable: false`, runs on in-memory stores, or is a router given no " +
   "durability provider. Remove `durable: false`, or set `durable: true` to hold stops in memory " +
   "(tests only: they are lost when the process ends). Nothing was held.";
+
+// FIX-2886.
+/**
+ * Why `ctx.suspend()` refused in a schedule's session. A parked fire leaves
+ * the active registry, so the schedule's next fire may already run there,
+ * and anything that continued the parked one (an answer, a stop, a waited-on
+ * child ending, the sweep) would run it beside that fire.
+ */
+const SUSPEND_IN_SCHEDULE_SESSION =
+  "a fire in its schedule's own session can't stop or wait: the schedule's next fire may run there while it " +
+  "waits. Leave the schedule's `session` at \"per-fire\" (the default) for fires that stop or wait. Nothing was held.";
 
 /** A block's model usage as its lean trace records it: the counts, without provider metadata. */
 function leanModelUsageOf(usage: BlockTraceItem["modelUsage"]): BlockTraceItem["modelUsage"] {
@@ -730,6 +742,10 @@ export async function createExecutionContext<
 
   const userId = options.userId;
   const sessionId = options.sessionId ?? `${ONE_OFF_SESSION_PREFIX}${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  // FIX-2886: a fire in its schedule's own session never parks
+  // (SUSPEND_IN_SCHEDULE_SESSION), so it gets no waits either: a wait refuses
+  // `wait_unavailable` before it starts any work.
+  const inScheduleSession = isScheduleSessionId(sessionId);
   // FIX-2623: a view's dependencies, recorded as its blocks read. Absent
   // outside a view. The only use of the raw recorder: every read path below
   // goes through this surface, which holds the topic rules (`view-reads.ts`).
@@ -1226,7 +1242,7 @@ export async function createExecutionContext<
                 }
               }
             : {}),
-          ...(options.requestHost.waits !== undefined
+          ...(options.requestHost.waits !== undefined && !inScheduleSession
             ? {
                 waits: {
                   provider: options.requestHost.waits.provider,
@@ -4465,6 +4481,9 @@ export async function createExecutionContext<
         // itself. Worded beside the wait refusal, so either teaches the setting.
         if (!options.durabilityEnabled) {
           throw new Error(SUSPEND_NEEDS_DURABILITY);
+        }
+        if (inScheduleSession) {
+          throw new Error(SUSPEND_IN_SCHEDULE_SESSION);
         }
         const suspensionId = suspendOpts.suspensionId ?? generateId("susp");
         throw new SuspensionError({ ...suspendOpts, suspensionId });
