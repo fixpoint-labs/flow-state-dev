@@ -11,7 +11,9 @@
 >
 > **Amended on 2026-11-23.** The sibling epic's [FIX-2876 D3](../FIX-2876/DECISIONS.md#d3) answers where the choice
 > lives: its *Code with* carrier. FIX-2598 waits for FIX-2879's package half and builds no store
-> of its own; FIX-2599 moves plan mode onto the same carrier
+> of its own; FIX-2599 reads the same carrier. Plan mode moves off the `claude-code-plan` harness
+> id onto a plan run setting only once FIX-2876 ER-10 lists that setting as server-owned, beside
+> `harness` and `model`; until then it stays a harness id
 > ([DECISIONS → ER-2](DECISIONS.md#who-owns-what)).
 
 ## Three teams, before and after
@@ -38,7 +40,7 @@ change, and where that harness has a plan mode, signs the plan off before work s
 | **The real need** | An app we can ask for a code change in without writing `Coder:` lines, which FIX-2369 asks of the labs. Today it cannot pick a model, and plan mode is broken |
 | **Smaller, and rejected** | "A model dropdown." It meets the look and leaves the *Plan first* worker and the broken plan mode (FIX-2585) where they are |
 | **Bigger, and not this epic's** | Repositories, the sidebar and Settings: the sibling epic [FIX-2592](https://linear.app/fixpoint-labs/issue/FIX-2592) · attachments in the composer (FIX-2523) · a plan mode the lab builds for a harness that has none (Codex has none) · any workforce package change |
-| **Not done if** | The closure check has not run · the lab keeps a model list a package could give · plan mode is offered on a harness without one, or work starts before sign-off · the choice still travels as message text · a closure bug is open |
+| **Not done if** | The closure check has not run · the lab keeps a model list a package could give · plan mode is offered on a harness without one, or work starts before sign-off · a filer can turn a plan run into an edit run · the choice still travels as message text · a closure bug is open |
 
 ```mermaid
 flowchart LR
@@ -56,10 +58,10 @@ repository's own git, never from the chip.
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue, [FIX-2617](https://linear.app/fixpoint-labs/issue/FIX-2617), on one `main` commit after every other child merges, in the browser. The scripted coder reports no model today, so leg a needs a real signed-in harness unless FIX-2598 adds the model id to the scripted report; leg b needs a real signed-in Claude Code. **Each leg is reported by itself**, so a leg b that cannot run names its environment and does not hide a pass of leg a. The goal is met only when both pass |
-| **Signal** | **a:** a harness change swaps the model list, and the run's tag shows what was chosen. **b:** a plan shows, a request for changes revises it, sign-off starts work; a harness without plan mode does not offer it |
+| **Signal** | **a:** a harness change swaps the model list, and the run's tag shows what was chosen. **b:** a plan shows, a request for changes revises it, sign-off starts work; a harness without plan mode does not offer it; a filer who clears or flips the plan field still runs in plan mode |
 | **Input** | The repository the lab already offers (the environment variable's, or the one the lab is started in; [FIX-2592 ER-1](../FIX-2592/DECISIONS.md#who-owns-what) keeps both as seeds), so this epic needs no Settings; a held-out prompt; models read from the list at run time |
 | **Anti-game** | Read the repository's git and the run's own report. Never the chip, the adapter or a stubbed package call |
-| **Control that must fail** | Today's `main`: both legs. A plan that does not wait for sign-off: leg b |
+| **Control that must fail** | Today's `main`: both legs. A plan that does not wait for sign-off: leg b. A task filed or updated with the plan field cleared or set to edit, after the person's turn picked plan, that runs with edits: leg b |
 
 **Lead measure:** legs passing on `main`, of 2. **0 today.**
 
@@ -82,7 +84,7 @@ The reviewed snapshot; live state is in Linear.
 |---|---|---|---|
 | [FIX-2597](https://linear.app/fixpoint-labs/issue/FIX-2597) · package | Each harness package says whether it has a plan mode; the model-choice shape (default, reason) lifts out of Kitchen Sink | Plan mode cannot be offered per harness without it, and the lab would copy Kitchen Sink's picker shape | Backlog |
 | [FIX-2598](https://linear.app/fixpoint-labs/issue/FIX-2598) · lab | *Coder* becomes *Harness*, with that harness's models, written through FIX-2876's *Code with* carrier; the `Coder:` line goes with the lab's eight per-harness workers | The model half of the goal | Backlog · blocked by FIX-2597 and FIX-2458 (Done) · waits for FIX-2879's package half ([FIX-2876 D3](../FIX-2876/DECISIONS.md#d3)) |
-| [FIX-2599](https://linear.app/fixpoint-labs/issue/FIX-2599) · lab | Plan mode as a harness option, signed off before work, read from the same carrier: `claude-code-plan` becomes a plan-mode run setting; reproduces the failure first (FIX-2585 is the filed symptom) | The plan half of the goal | Backlog · blocked by FIX-2598 |
+| [FIX-2599](https://linear.app/fixpoint-labs/issue/FIX-2599) · lab | Plan mode as a harness option, signed off before work, read from the same carrier. `claude-code-plan` becomes a plan run setting only once FIX-2876 ER-10 lists that setting as server-owned; until then it stays a harness id. Reproduces the failure first (FIX-2585 is the filed symptom) | The plan half of the goal | Backlog · blocked by FIX-2598 |
 | [FIX-2617](https://linear.app/fixpoint-labs/issue/FIX-2617) · closure · **required** | The QA run on one `main` commit | Finds what falls between the others | Backlog · blocked by the three above |
 
 All three children take the spec route; none is a bug. Three issues and a closure. Whether three
@@ -114,7 +116,9 @@ land first on the files they share, as
 [DECISIONS → Between the two epics](DECISIONS.md#between-the-two-epics) says. FIX-2597 starts
 now; FIX-2458's build is merged. FIX-2598 waits for FIX-2597 and for FIX-2879's package half,
 the heavy edge from the sibling epic FIX-2876 ([FIX-2876 D3](../FIX-2876/DECISIONS.md#d3)): not its Teammates worker collapse.
-That Linear block is written once FIX-2876's spec set splits FIX-2879. The closure waits on all
+That Linear block is written once FIX-2876's spec set splits FIX-2879. FIX-2599 is not blocked
+on FIX-2876: it builds plan mode either way, and only its move off the `claude-code-plan` harness id
+waits for FIX-2876 ER-10 to list the plan setting as server-owned. The closure waits on all
 three. Which issues share files, and how their merges order, is in
 [DECISIONS](DECISIONS.md#coordination-seams).
 
@@ -136,7 +140,7 @@ three. Which issues share files, and how their merges order, is in
 |---|---|
 | [FIX-2152 ER-9](../FIX-2152/DECISIONS.md#who-owns-what) and `specs/issues/FIX-2157/DECISIONS.md#d5`: a harness is chosen in config, per worker | **Amended** by [D1](DECISIONS.md#d1) and [ER-2](DECISIONS.md#who-owns-what): it is the person's per-run choice. Worker config stays the default |
 | FIX-2458: `HarnessModelList` on `core/harness`, each package's model-list function (`listCursorModels` and its siblings), Kitchen Sink's hand-kept Cursor list removed | **Builds on.** Done as of 2026-11-08. FIX-2458 owns the model lists; this set consumes them |
-| FIX-2876's carrier ([FIX-2876 D3](../FIX-2876/DECISIONS.md#d3), [ER-5, ER-9, ER-10](../FIX-2876/DECISIONS.md#who-owns-what)): the *Code with* `sessionFields` slot (`written: "turn"`), stamped server-side into the coder flow's typed task input through server-owned fields (FIX-2894) | **Builds on.** Approved in #5571, not built yet; it answers [ER-2](DECISIONS.md#who-owns-what)'s placement. FIX-2598 writes through it and FIX-2599 reads it |
+| FIX-2876's carrier ([FIX-2876 D3](../FIX-2876/DECISIONS.md#d3), [ER-5, ER-9, ER-10](../FIX-2876/DECISIONS.md#who-owns-what)): the *Code with* `sessionFields` slot (`written: "turn"`), stamped server-side into the coder flow's typed task input through server-owned fields (FIX-2894) | **Builds on.** Approved in #5571, not built yet; it answers [ER-2](DECISIONS.md#who-owns-what)'s placement. FIX-2598 writes through it and FIX-2599 reads it. Its server-owned set is `harness` and `model` today; FIX-2599's plan run setting joins it through a FIX-2876 ER-10 amendment, or plan mode stays the `claude-code-plan` harness id |
 | [FIX-2585](https://linear.app/fixpoint-labs/issue/FIX-2585), a Linear bug with no spec: a plan-first task cannot exit plan mode | **Consumed** as FIX-2599's filed symptom; it keeps its parent |
 | The lab's *Plan first* worker and plan manager | **Replaces** with plan as a harness option (FIX-2599) |
 | The review stop (*Resolve*, *Request changes*) and harness-manager's tool-approval hold | **Considered** as the sign-off; FIX-2599's spec picks one, with no new kind of hold |
