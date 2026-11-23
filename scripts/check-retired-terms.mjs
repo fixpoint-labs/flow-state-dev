@@ -23,10 +23,12 @@
  * names the terms it may strip and the rule behind it. An exception that strips
  * nothing fails the run: an exception nobody needs is a hole waiting for a
  * live use. Never widen an exception to go green: rename the line. The one
- * exception to that is an exception whose path names only pending changesets:
- * `changeset version` deletes the note in the commit the release job pushes,
- * so there it strips nothing by design. The run prints it as released and
- * passes; remove it once that release ships.
+ * exception to that is one the glossary flags `releaseNote`, whose path names
+ * only pending changesets (the run refuses a flag on a path that names any
+ * other file): `changeset version` deletes the note in the commit the release job pushes,
+ * so there it strips nothing by design. While no file it names is left, the
+ * run prints it as released and passes; remove it once that release ships. A
+ * note still pending that it strips nothing from is stale, as any other.
  *
  * ## Ground is a surface, not a folder
  *
@@ -78,8 +80,8 @@
  *                  read; exits 1 otherwise
  *   --added-since  the added reach only, from <base> to --head (default HEAD);
  *                  a ref that does not resolve exits 1
- * Exits 1 on any counted line, unclassified file, stale exception or glossary
- * row out of place. Needs `pnpm install` (the parser).
+ * Exits 1 on any counted line, unclassified file, stale exception (now, or on
+ * the commit `changeset version` makes) or glossary row out of place. Needs `pnpm install` (the parser).
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -92,6 +94,7 @@ import {
   GUARD_TERMS as TERMS,
   PERSON_PINS,
   PUBLISHED_TERMS,
+  sharedGuardExemption,
   TREE_EXEMPTIONS,
   TREE_RULES,
 } from "../docs/contributing/glossary.mjs";
@@ -465,14 +468,22 @@ export function census({ files, paths }, { extraExceptions = [], reads = NAME_RE
     for (const hit of scanTreeRules(path, text, stripped, { reads })) hits.push({ path, area: area.id, ...hit });
   }
   // An exception for a pending release note keeps nothing once `changeset version` deletes the
-  // note, which the release job's own push does; it is reported, not failed (FIX-2885).
+  // note, which the release job's own push does; it is reported, not failed (FIX-2885). Only
+  // while no file it names is left: a note still here that it strips nothing from is stale.
   const unused = [...exceptions, ...TREE_EXEMPTIONS].filter((e) => !stripped[e.id]);
-  const stale = unused.filter((e) => !e.releaseNote).map((e) => e.id);
-  const released = unused.filter((e) => e.releaseNote).map((e) => e.id);
+  const noteGone = (e) => e.releaseNote === true && !paths.some((path) => e.where(path, files.get(path) ?? ""));
+  const stale = unused.filter((e) => !noteGone(e)).map((e) => e.id);
+  const released = unused.filter(noteGone).map((e) => e.id);
+  // The flag is the author's word that the path names release notes only. Hold it to that: one
+  // that names any file outside `.changeset/` would hide a stale exception there.
+  const misflagged = exceptions
+    .filter((e) => e.releaseNote === true)
+    .flatMap((e) => paths.filter((path) => !path.startsWith(".changeset/") && e.where(path, files.get(path) ?? "")).map((path) => `${e.id} (${path})`));
   const glossaryText = files.get(GLOSSARY);
   const glossary = glossaryText === undefined ? { missing: [...GLOSSARY_TERMS], repeated: [] } : checkGlossary(glossaryText);
-  const ok = unscoped.length === 0 && hits.length === 0 && stale.length === 0 && glossary.missing.length === 0 && glossary.repeated.length === 0;
-  return { files: paths.length, unscoped, areaCounts, stripped, hits, stale, released, glossary, ok };
+  const ok =
+    unscoped.length === 0 && hits.length === 0 && stale.length === 0 && misflagged.length === 0 && glossary.missing.length === 0 && glossary.repeated.length === 0;
+  return { files: paths.length, unscoped, areaCounts, stripped, hits, stale, released, misflagged, glossary, ok };
 }
 
 /** Every tracked path under `root`, and the text of each one that is text. */
@@ -581,11 +592,28 @@ export const ADDED_PLANTS = [
 /** An exception that matches nothing, which the run must report stale. */
 export const STALE_PLANT = { id: "zz-planted-stale", terms: ["seat"], strip: /zz-never-matches/g, why: "planted" };
 
-/** An exception for a release note `changeset version` has deleted: it matches nothing, and the run must not fail on it. */
-export const RELEASED_PLANT = { ...STALE_PLANT, id: "zz-planted-released-note", releaseNote: true };
+/**
+ * Release-note plants, each a sweep-shaped exemption flagged `releaseNote` and built by the
+ * glossary's own `sharedGuardExemption`, the way the real flagged exemptions are. None keeps
+ * anything; `stale` and `misflagged` say what the run must refuse.
+ */
+const notePlant = (id, path) => sharedGuardExemption({ path, rules: ["buildItemRenderStream"], why: "planted", releaseNote: true }, id);
+export const NOTE_PLANTS = [
+  // Its note is gone, as after `changeset version`: released, and the run passes.
+  { exception: notePlant("zz-planted-released-note", /^\.changeset\/zz-planted-released\.md$/), stale: false, misflagged: false },
+  // Its note is still pending and keeps nothing: stale, as any other.
+  { exception: notePlant("zz-planted-pending-note", /^\.changeset\/zz-planted-pending\.md$/), stale: true, misflagged: false, file: ".changeset/zz-planted-pending.md" },
+  // Flagged, but its path names a real file too: the flag is refused, and it stays stale.
+  {
+    exception: notePlant("zz-planted-mixed-note", /^\.changeset\/zz-planted-mixed\.md$|zz-planted-mixed\.ts$/),
+    stale: true,
+    misflagged: true,
+    file: "packages/workforce/src/zz-planted-mixed.ts",
+  },
+];
 
 /**
- * Plant {@link PLANTS}, {@link STALE_PLANT} and {@link RELEASED_PLANT} into a tree and report, for
+ * Plant {@link PLANTS}, {@link STALE_PLANT} and {@link NOTE_PLANTS} into a tree and report, for
  * each, whether the census refused it.
  * @param {{ files: Map<string, string>; paths: string[] }} tree
  */
@@ -600,7 +628,13 @@ export function control(tree, { reads = NAME_READS } = {}) {
     files.set(plant.path, `${text}\n`);
     lineOf.set(plant, text.split("\n").length);
   }
-  const r = census({ files, paths }, { extraExceptions: [STALE_PLANT, RELEASED_PLANT], reads });
+  for (const { file } of NOTE_PLANTS) {
+    if (file === undefined) continue;
+    files.set(file, "Nothing retired.\n");
+    paths.push(file);
+  }
+  const extraExceptions = [STALE_PLANT, ...NOTE_PLANTS.map((p) => p.exception)];
+  const r = census({ files, paths }, { extraExceptions, reads });
   const results = PLANTS.filter((p) => p.term !== null).map((p) => {
     const line = lineOf.get(p);
     const hit = r.hits.some((h) => h.path === p.path && h.line === line && h.term === p.term);
@@ -618,8 +652,11 @@ export function control(tree, { reads = NAME_READS } = {}) {
   for (const r of NAME_READS) results.push({ what: `the ${r.read} read has a plant`, refused: planted.has(r.read), passes: true });
   results.push({ what: "a second glossary row for Worker", refused: r.glossary.repeated.includes("Worker") });
   results.push({ what: "an exception that strips nothing", refused: r.stale.includes(STALE_PLANT.id) });
-  const releasedHeld = !r.stale.includes(RELEASED_PLANT.id) && r.released.includes(RELEASED_PLANT.id);
-  results.push({ what: "an exception for a released note, which strips nothing (must pass)", refused: releasedHeld, passes: true });
+  for (const { exception, stale, misflagged } of NOTE_PLANTS) {
+    if (misflagged) results.push({ what: `release-note exception ${exception.id}, whose path names a file outside .changeset/`, refused: r.misflagged.some((m) => m.startsWith(`${exception.id} `)) });
+    if (stale) results.push({ what: `release-note exception ${exception.id}, which keeps nothing`, refused: r.stale.includes(exception.id) });
+    else results.push({ what: `release-note exception ${exception.id}, its note gone (must pass)`, refused: !r.stale.includes(exception.id) && r.released.includes(exception.id), passes: true });
+  }
   results.push({ what: "a folder no area names", refused: r.unscoped.includes("zz-planted-folder/notes.md") });
   return { results, ok: results.every((x) => x.refused) };
 }
@@ -636,6 +673,7 @@ function print(r) {
   for (const rule of TREE_RULES) if (byTerm[rule.id]) console.log(`  ${rule.id}: ${byTerm[rule.id]} counted, a word the ${rule.term} entry retires (say ${rule.say}: ${rule.anchor.join(", ")})`);
   if (r.unscoped.length > 0) console.error(`UNSCOPED (no area): ${r.unscoped.join(", ")}`);
   if (r.stale.length > 0) console.error(`STALE EXCEPTIONS (remove them): ${r.stale.join(", ")}`);
+  if (r.misflagged.length > 0) console.error(`RELEASE-NOTE EXCEPTIONS THAT NAME OTHER FILES (drop releaseNote or narrow the path): ${r.misflagged.join(", ")}`);
   if (r.released.length > 0) console.log(`released notes: ${r.released.join(", ")} keep a changeset that is no longer pending; remove them once the release ships`);
   if (r.glossary.missing.length > 0) console.error(`GLOSSARY: no row for ${r.glossary.missing.join(", ")}`);
   if (r.glossary.repeated.length > 0) console.error(`GLOSSARY: more than one row for ${r.glossary.repeated.join(", ")}`);
@@ -697,7 +735,29 @@ function main() {
     for (const h of r.hits) if (which === undefined || which.startsWith("--") || h.term === which) console.log(`${h.path}:${h.line}  [${h.term}]  ${h.text}`);
   }
   print(r);
-  process.exitCode = r.ok ? 0 : 1;
+  const onVersion = staleOnVersionCommit(tree);
+  if (onVersion.length > 0) {
+    console.error(
+      `STALE ON THE VERSION COMMIT: ${onVersion.join(", ")} keep text only in pending changesets, which changeset version deletes, ` +
+        "so the release push would stop here. Flag the glossary exemption releaseNote: true.",
+    );
+  }
+  process.exitCode = r.ok && onVersion.length === 0 ? 0 : 1;
+}
+
+/**
+ * The exceptions that go stale on the commit `changeset version` makes, which deletes every
+ * pending changeset, and are not stale now. The release job's push runs this check on that
+ * commit, so one unflagged exemption kept for a note alone stops the release (FIX-2829, FIX-2885);
+ * read here, it fails the PR that adds it instead.
+ * @param {{ files: Map<string, string>; paths: string[] }} tree
+ * @param {{ extraExceptions?: object[] }} [options]
+ */
+export function staleOnVersionCommit(tree, { extraExceptions = [] } = {}) {
+  const pending = (path) => /^\.changeset\/[^/]+\.md$/.test(path) && path !== ".changeset/README.md";
+  const now = new Set(census(tree, { extraExceptions }).stale);
+  const after = census({ files: tree.files, paths: tree.paths.filter((path) => !pending(path)) }, { extraExceptions });
+  return after.stale.filter((id) => !now.has(id));
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) main();

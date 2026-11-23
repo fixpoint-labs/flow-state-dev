@@ -62,7 +62,7 @@ describe("packages held out of the publish set", () => {
   });
 });
 
-type Unversionable = { path: string; name: string; reason: string };
+type Unversionable = { path: string; name: string | null; reason: string };
 
 const unversionable = (fragments: Record<string, string>): Unversionable[] =>
   (findUnversionable as (f: { path: string; source: string }[], p: Map<string, boolean>) => Unversionable[])(
@@ -101,9 +101,35 @@ describe("pending changesets name published packages only", () => {
     ]);
   });
 
+  // changeset version reads the frontmatter as YAML, so every way YAML can spell an entry must be
+  // read: a quoted bump or a trailing comment must not let a private name through.
+  it("reads a private name in every YAML shape: quoted bump, single quotes, a trailing comment", () => {
+    const offenders = unversionable({
+      ".changeset/a.md": '---\n"@flow-state-dev/ui": "patch"\n---\n\nNote.\n',
+      ".changeset/b.md": "---\n'@flow-state-dev/ui': 'minor' # the registry\n---\n\nNote.\n",
+      ".changeset/c.md": '---\n"@flow-state-dev/ui": patch   # trailing\n"@flow-state-dev/workforce": "patch"\n---\n\nNote.\n',
+    });
+    expect(offenders.map((o) => `${o.path} ${o.name}`)).toEqual([
+      ".changeset/a.md @flow-state-dev/ui",
+      ".changeset/b.md @flow-state-dev/ui",
+      ".changeset/c.md @flow-state-dev/ui",
+    ]);
+  });
+
+  it("refuses an entry shape it can't read, rather than skipping a name it might hide", () => {
+    const offenders = unversionable({
+      ".changeset/flow.md": '---\n{ "@flow-state-dev/ui": patch }\n---\n\nNote.\n',
+      ".changeset/none.md": "No frontmatter at all.\n",
+    });
+    expect(offenders).toEqual([
+      { path: ".changeset/flow.md", name: '{ "@flow-state-dev/ui": patch }', reason: "is not a package and bump this check can read" },
+      { path: ".changeset/none.md", name: null, reason: "has no frontmatter" },
+    ]);
+  });
+
   it("passes published packages and an empty fragment that carries docs intent only", () => {
     const offenders = unversionable({
-      ".changeset/ok.md": '---\n"@flow-state-dev/orchestration": patch\n"@flow-state-dev/workforce": minor\n---\n\nNote.\n',
+      ".changeset/ok.md": '---\n"@flow-state-dev/orchestration": patch\n# a comment line\n"@flow-state-dev/workforce": "minor" # comment\n---\n\nNote.\n',
       ".changeset/docs-only.md": "---\n---\n\nThe registry is private (FIX-1). Mentions \"@flow-state-dev/ui\": patch in prose.\n",
     });
     expect(offenders).toEqual([]);

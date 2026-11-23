@@ -19,7 +19,9 @@ import {
   GLOSSARY_TERMS,
   PERSON_PINS,
   PLANTS,
+  NOTE_PLANTS,
   STALE_PLANT,
+  staleOnVersionCommit,
   census,
   checkGlossary,
   control,
@@ -75,10 +77,12 @@ describe("the guard refuses a retired word wherever it isn't kept on purpose", (
     expect(results.filter((x) => !x.refused)).toEqual([]);
     expect(ok).toBe(true);
     // One result per plant with a term, plus the duplicate row, the stale
-    // exception and the unscoped folder, then one per added-names plant and
-    // one per parser read (each must have a plant).
+    // exception and the unscoped folder, one per release-note plant (and one more
+    // for each misflagged one), then one per added-names plant and one per
+    // parser read (each must have a plant).
+    const notes = NOTE_PLANTS as Array<{ misflagged: boolean }>;
     expect(results).toHaveLength(
-      (PLANTS as Array<{ term: string | null }>).filter((p) => p.term !== null).length + 3 + (ADDED_PLANTS as unknown[]).length + (NAME_READS as unknown[]).length,
+      (PLANTS as Array<{ term: string | null }>).filter((p) => p.term !== null).length + 3 + notes.length + notes.filter((p) => p.misflagged).length + (ADDED_PLANTS as unknown[]).length + (NAME_READS as unknown[]).length,
     );
   });
 
@@ -215,6 +219,58 @@ describe("totality: every file has an area, every exception earns its place", ()
     expect(r.stale).toContain((STALE_PLANT as { id: string }).id);
     expect(r.ok).toBe(false);
   });
+
+  // `changeset version` deletes a pending note in the commit the release job pushes, so an
+  // exception kept for that note alone strips nothing there; failing it stopped the release push.
+  // Only that case is excused: a pending note it keeps nothing in, or a path that names a real
+  // file too, is an exception nobody needs, the same hole as any other stale one.
+  type NotePlant = { exception: { id: string }; stale: boolean; misflagged: boolean; file?: string };
+  const notePlants = NOTE_PLANTS as NotePlant[];
+  const noteTree: Record<string, string> = { "packages/workforce/src/zz.ts": "// nothing to strip\n" };
+  for (const p of notePlants) if (p.file) noteTree[p.file] = "Nothing retired.\n";
+
+  it("passes a release-note exception whose note changeset version has deleted, and says so", () => {
+    const released = notePlants.filter((p) => !p.stale);
+    expect(released).toHaveLength(1);
+    const r = run(noteTree, released.map((p) => p.exception)) as Census & { released: string[] };
+    expect(r.stale).not.toContain(released[0].exception.id);
+    expect(r.released).toContain(released[0].exception.id);
+  });
+
+  it("still refuses a pending note it keeps nothing in, and a path that also names a real file", () => {
+    const strict = notePlants.filter((p) => p.stale);
+    expect(strict.map((p) => p.exception.id)).toEqual(["zz-planted-pending-note", "zz-planted-mixed-note"]);
+    const r = run(noteTree, strict.map((p) => p.exception));
+    for (const p of strict) expect(r.stale).toContain(p.exception.id);
+    expect(r.ok).toBe(false);
+  });
+
+  // The release job's push runs this check on the commit that deletes every pending note, so an
+  // exemption kept for a note alone must carry the flag, or fail the PR that adds it, not the release.
+  it("names a note-only exception without the flag, which the version commit would leave stale", () => {
+    // The retired name is joined at run time, so the vocabulary sweep doesn't count this file.
+    const retired = ["build", "ItemRenderStream"].join("");
+    const note = { ".changeset/zz-planted-note.md": `---\n---\n\nUse \`conversationLines\`, not \`${retired}\`.\n` };
+    const keeps = (releaseNote: boolean) => ({
+      ...(notePlants[0].exception as object),
+      id: "zz-planted-note-keeper",
+      releaseNote,
+      where: (path: string) => path === ".changeset/zz-planted-note.md",
+    });
+    const onVersion = staleOnVersionCommit as (t: Tree, o: { extraExceptions: object[] }) => string[];
+    expect(run(note, [keeps(false)]).stale).not.toContain("zz-planted-note-keeper");
+    expect(onVersion(tree(note), { extraExceptions: [keeps(false)] })).toEqual(["zz-planted-note-keeper"]);
+    expect(onVersion(tree(note), { extraExceptions: [keeps(true)] })).toEqual([]);
+  });
+
+  // The flag is the author's word, so a path that also names a real file must not ride on it.
+  it("refuses the releaseNote flag on a path that names a file outside .changeset/", () => {
+    const flagged = notePlants.filter((p) => p.misflagged);
+    const r = run(noteTree, flagged.map((p) => p.exception)) as Census & { misflagged: string[] };
+    expect(r.misflagged).toEqual(["zz-planted-mixed-note (packages/workforce/src/zz-planted-mixed.ts)"]);
+    expect(r.ok).toBe(false);
+  });
+
 
   it("lets every exception strip only the terms it names", () => {
     // An exception that could strip any term would hide a second word on its line.

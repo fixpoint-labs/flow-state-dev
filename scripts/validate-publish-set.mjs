@@ -27,9 +27,10 @@
  * so CI runs it without an install.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { workspaceManifests } from "./workspace-members.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 
@@ -81,8 +82,14 @@ export function findPublishable(dirs, read) {
   return offenders;
 }
 
-/** A frontmatter line naming a package and a bump — `"@scope/pkg": patch`. */
-const PACKAGE_BUMP = /^\s*['"]([^'"]+)['"]\s*:\s*(patch|minor|major)\s*$/gm;
+/**
+ * A frontmatter line naming a package and a bump, in each shape YAML allows for one: the name
+ * single- or double-quoted, or bare when it doesn't start with `@`; the bump quoted or bare;
+ * a trailing `# comment`. `changeset version` reads the frontmatter as YAML, so a shape this
+ * doesn't know is refused rather than skipped: skipping it is how a private name would slip by.
+ */
+const ENTRY =
+  /^\s*(?:"(?<dq>[^"]+)"|'(?<sq>[^']+)'|(?<bare>[^\s"'@#:][^\s:#]*))\s*:\s*(?<q>["']?)(?:patch|minor|major|none)\k<q>\s*(?:#.*)?$/;
 
 /**
  * The pending fragments that `changeset version` would refuse, as `{ path, name, reason }`.
@@ -95,8 +102,19 @@ const PACKAGE_BUMP = /^\s*['"]([^'"]+)['"]\s*:\s*(patch|minor|major)\s*$/gm;
 export function findUnversionable(fragments, packages) {
   const offenders = [];
   for (const { path, source } of fragments) {
-    const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n?---/)?.[1] ?? "";
-    for (const [, name] of frontmatter.matchAll(PACKAGE_BUMP)) {
+    const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
+    if (!frontmatter) {
+      offenders.push({ path, name: null, reason: "has no frontmatter" });
+      continue;
+    }
+    for (const line of frontmatter[1].split(/\r?\n/)) {
+      if (/^\s*(#.*)?$/.test(line)) continue;
+      const entry = ENTRY.exec(line)?.groups;
+      if (!entry) {
+        offenders.push({ path, name: line.trim(), reason: "is not a package and bump this check can read" });
+        continue;
+      }
+      const name = entry.dq ?? entry.sq ?? entry.bare;
       if (!packages.has(name)) offenders.push({ path, name, reason: "is not a workspace package" });
       else if (packages.get(name)) offenders.push({ path, name, reason: "is private, so changeset version skips it" });
     }
@@ -104,26 +122,11 @@ export function findUnversionable(fragments, packages) {
   return offenders;
 }
 
-/**
- * Each workspace package's name and whether it is private, from the
- * `packages:` globs in `pnpm-workspace.yaml` (`dir/*` or a bare `dir`).
- */
+/** Each workspace package's name and whether it is private, from the shared workspace parser. */
 function readWorkspace() {
-  const yaml = readFileSync(join(ROOT, "pnpm-workspace.yaml"), "utf8");
-  const globs = [...(yaml.match(/^packages:\n((?:\s+(?:-.*|#.*)\n)+)/m)?.[1] ?? "").matchAll(/^\s+-\s+(\S+)/gm)].map((m) => m[1]);
-  const dirs = globs.flatMap((glob) => {
-    if (!glob.endsWith("/*")) return [glob];
-    const parent = glob.slice(0, -2);
-    if (!existsSync(join(ROOT, parent))) return [];
-    return readdirSync(join(ROOT, parent), { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => `${parent}/${d.name}`);
-  });
   const packages = new Map();
-  for (const dir of dirs) {
-    const file = join(ROOT, dir, "package.json");
-    if (!existsSync(file)) continue;
-    const manifest = JSON.parse(readFileSync(file, "utf8"));
+  for (const file of workspaceManifests(ROOT)) {
+    const manifest = JSON.parse(readFileSync(join(ROOT, file), "utf8"));
     if (manifest.name) packages.set(manifest.name, manifest.private === true);
   }
   return packages;
@@ -143,8 +146,8 @@ function main() {
   const unversionable = findUnversionable(fragments, readWorkspace());
 
   if (unversionable.length > 0) {
-    console.error(`\n✗ ${unversionable.length} package name(s) in pending changesets that changeset version would refuse:\n`);
-    for (const { path, name, reason } of unversionable) console.error(`    ${path}  →  ${name} ${reason}`);
+    console.error(`\n✗ ${unversionable.length} entr(ies) in pending changesets that changeset version would refuse, or this check can't read:\n`);
+    for (const { path, name, reason } of unversionable) console.error(`    ${path}  →  ${name ?? "the fragment"} ${reason}`);
     console.error(
       `\n  A changeset names published packages only (BP-022). Drop the private package's` +
         `\n  line, and its part of the note; a note with no published package left needs no` +
