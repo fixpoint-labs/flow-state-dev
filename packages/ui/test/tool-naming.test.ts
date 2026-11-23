@@ -41,6 +41,19 @@ describe("toolSubject", () => {
     expect(toolSubject("shell", { command: "cd /a/b\ngit log -3" })).toEqual({ text: "git log -3", code: true });
   });
 
+  it("says what a here-document does, not the line that opens it", () => {
+    // An inline script: its first line is only the interpreter and the marker.
+    expect(toolSubject("Bash", { command: "python3 - <<'EOF'\nimport re\nEOF" })).toEqual({ text: "Run a python3 script", code: false });
+    expect(toolSubject("Bash", { command: "cd /repo && node <<EOF\nconsole.log(1)\nEOF" })).toEqual({ text: "Run a node script", code: false });
+    // Writing a file through one.
+    expect(toolSubject("Bash", { command: "cat > /repo/src/a.ts <<'EOF'\nexport {}\nEOF" })).toEqual({ text: "Write /repo/src/a.ts", code: false });
+    expect(toolSubject("Bash", { command: 'tee notes.md << "EOF"\nhi\nEOF' })).toEqual({ text: "Write notes.md", code: false });
+    // Any other command shows as code, without the marker.
+    expect(toolSubject("Bash", { command: "git commit -q -F - <<'EOF'\nfix: x\nEOF" })).toEqual({ text: "git commit -q -F -", code: true });
+    // A `<<` that is no here-document's start is left as it is.
+    expect(toolSubject("Bash", { command: "echo $((1 << 2))" })).toEqual({ text: "echo $((1 << 2))", code: true });
+  });
+
   it("keeps a command that is only a cd", () => {
     expect(toolSubject("shell", { command: "cd /a/b" })).toEqual({ text: "cd /a/b", code: true });
   });
