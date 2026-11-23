@@ -44,12 +44,12 @@ It comes down to run settings: on the shared flow they arrive once; a fork needs
 |---|---|
 | **Instead of** | Lead choosing the worker: today its prompt names `teammates.cursor` and the client keeps a copy; the first draft had Lead read the default from the kit's context and map it to a worker by the roster's `harness`. Also weighed: a fourth coding worker with no `harness:`, which would run on the default |
 | **Because** | A model's assignee follows any text the model reads. With `TEAMMATES_HARNESS=codex`, a README, an issue or another worker's message that says `Coding harness: Cursor` files the task on Cursor, whose sandbox is off (`sandboxOptions: { enabled: false }`), and nothing after it checks: `checkAssignee` accepts any roster id, `harnessOf` honours a pinned worker's `harness:`, and the work entry refuses only a harness that is not ready. The server already holds the default (`defaultHarness`), so writing the assignee from it is one rule, not a model's guess a goal check can only sample. A fourth worker would bound it too, but adds a roster row FIX-2879 removes ([epic D2](../../epics/FIX-2876/DECISIONS.md#d2)) |
-| **Locks in** | In every app on the kit, a coding task filed with no pick gets its assignee from the server: the roster's coder worker whose `harness` is the default, else one with no `harness:` line (which `harnessOf` runs on the default). With neither, the filing is refused, saying why. The model's assignee is ignored there. A pick is structured or it is not one: the composer's *Code with* pick, sent beside the message, or a person's own assignment from the board. A `Coding harness:` line, or a coder named in words, in the message, a goal or anything Lead reads, is not a pick. The kit's context still names the default beside readiness, so Lead says which coder took it ([epic ER-3](../../epics/FIX-2876/DECISIONS.md#who-owns-what)) |
+| **Locks in** | In every app on the kit, a coding task filed with no pick gets its assignee from the server: the roster's coder worker whose `harness` is the default, else one with no `harness:` line (which `harnessOf` runs on the default). With neither, the filing is refused, saying why. The model's assignee is ignored there. A pick is structured or it is not one. In this issue the only pick is a person's own assignment from the board; FIX-2879's *Code with* pick joins it there. Until then every Lead filing is the no-pick path, and the *Code with* picker has no effect, an accepted cost that ends when FIX-2879 ships. A `Coding harness:` line, or a coder named in words, in the message, a goal or anything Lead reads, is not a pick. The kit's context still names the default beside readiness, so Lead says which coder took it ([epic ER-3](../../epics/FIX-2876/DECISIONS.md#who-owns-what)) |
 
 **What would change my mind:** people needing to pick a coder in words often enough that
-*Code with* doesn't cover it. Then FIX-2879's pick comes sooner; the rule stays.
+FIX-2879's *Code with* won't cover it. Then the rule stays and a structured pick grows; text never counts.
 
-![D2 · With no coder picked, who chooses the worker? Chosen: the server, the default's worker. Instead of: Lead, told the default by the kit's context. Decides it: text Lead reads that names another coder still lands on the default, where Lead would file it there. Price: a coder named in words no longer moves it; Code with does. Tie: a Code with pick wins either way. Locks in a server-written assignee on the no-pick path in every app on the kit; flips if people need to pick in words](figures/d2-context.svg)
+![D2 · With no coder picked, who chooses the worker? Chosen: the server, the default's worker. Instead of: Lead, told the default by the kit's context. Decides it: text Lead reads that names another coder still lands on the default, where Lead would file it there. Price: a coder named in words no longer moves it, and until FIX-2879 Code with has no effect. Tie: a person's board assignment wins either way. Locks in a server-written assignee on the no-pick path in every app on the kit; flips if people need to pick in words](figures/d2-context.svg)
 
 It comes down to who can steer it: the server's rule reads only the default; Lead reads everything.
 
@@ -60,7 +60,7 @@ It comes down to who can steer it: the server's rule reads only the default; Lea
 |---|---|
 | **Instead of** | Renaming it for what it is (a starting pick for *Code with*) and keeping the composer reading it |
 | **Because** | The server never reads it; agent-flow settings only ride to the roster row. A renamed copy is still a second default ([epic ER-3, ER-4](../../epics/FIX-2876/DECISIONS.md#who-owns-what)), and FIX-2879's *Code with*, a pick per conversation that survives a reload, does its job |
-| **Locks in** | The hire and edit dialogs lose the field, and no agent-flow worker carries `harness`. A stored worker that set it reads without it. Until FIX-2879, a pick lasts while the conversation is open, and a new one starts at the app's default |
+| **Locks in** | The hire and edit dialogs lose the field, and no agent-flow worker carries `harness`. A stored worker that set it reads without it. Until FIX-2879, the picker has no effect and every filing starts at the app's default ([D2](#d2)) |
 
 **What would change my mind:** people who rely on a per-teammate default. FIX-2879 then keeps it
 as the conversation's pick, not as a teammate setting.
@@ -88,10 +88,10 @@ It comes down to one default: a renamed setting is still the second one.
 - **Stop-on-steer is the harness block's.** A check that needs it declares `stopsOnAbort` on its
   harness block, which the manager already reads. Per-harness run budgets go: one `runTimeoutMs`.
 - **Old rows (BP-030).** A stored agent-flow worker with `settings.harness` is read without it, never refused.
-- **The pick rides beside the message.** The composer sends *Code with* as a field the server reads,
-  not a line in the text, so the no-pick rule can tell a pick from words. FIX-2879 still keeps it
-  per conversation, puts it on the task's declared input, and collapses the workers; the epic says
-  the pick reaches the task without text there, and this is the turn-level half of that.
+- **Hand-off to FIX-2879.** The structured pick is FIX-2879's: respond `fields`, the `codeWith`
+  session field and the composer sending it. That is where *Code with* enters D2 as a pick, and
+  where its goal check (a pick of Cursor lands on Cursor) lives. This issue adds no field and no
+  composer send.
 - **Coordination.** [#5585](https://github.com/fixpoint-labs/flow-state-dev/pull/5585) (FIX-2873,
   trusted reviewers) touches both hosts and Lead's `WORKER.md`; FIX-2583 touches `coder-flow.ts`. The second to merge rebases.
 
@@ -150,3 +150,5 @@ For the implementer; none changes the approach.
   model's, since a model's choice can be steered by text it reads (Cursor and Codex). The goal check
   requires every run on the default and plants a `Coding harness: Cursor` line. The readers of
   removed symbols, the judge goal's migration and the 7-to-3 count are named (Gitar, Cursor).
+  The structured pick stays FIX-2879's; until it lands, the *Code with* picker has no effect,
+  stated as an accepted interim cost.
