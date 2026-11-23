@@ -13,7 +13,7 @@
  * in Inbox; a denial leaves the list as it was.
  *
  * The tool is the list's only writer (FIX-2873): no HTTP action writes it, so
- * a request to a save action, with the member's bearer or the owner's, leaves
+ * a request to a save action, with any Lab user's bearer, the owner's included, leaves
  * it as it was. The list is workforce's, defaulted from `GITHUB_REVIEWERS`
  * (`jhoffner` here) until it is first saved.
  *
@@ -292,21 +292,21 @@ describe("the Shift Coordinator changes the trusted GitHub reviewers", () => {
     expect(shown).toEqual([]);
   }, 120_000);
 
-  it("not over HTTP: a save action, with the member's bearer or the owner's, changes nothing", async () => {
+  it("not over HTTP: a save action, with any Lab user's bearer, the owner's included, changes nothing", async () => {
     const lab = await open(scripted([], { asked: 0.95, injected: 0.02 }, []));
     // The save action the Lab once served, and the same name on the flows it serves: none writes the list.
     const answered: string[] = [];
     for (const flow of ["github-reviewers", "coordinator", "agent"]) {
-      for (const as of ["member", "owner"] as const) {
+      for (const as of Object.keys(LAB_USERS) as (keyof typeof LAB_USERS)[]) {
         const sent = await lab.door("POST", `${flow}/actions/setGitHubReviewers`, { body: { userId: LAB_USERS[as].userId, input: { logins: ["mallory"] } }, as });
         answered.push(String(sent.body?.message ?? sent.body?.error));
       }
     }
     // No such flow, and no such action on a flow the Lab serves.
+    const users = Object.keys(LAB_USERS).length;
     expect(answered).toEqual([
-      'Unknown flow "github-reviewers"',
-      'Unknown flow "github-reviewers"',
-      ...["coordinator", "agent"].flatMap((flow) => Array(2).fill(`Flow "${flow}" does not define action "setGitHubReviewers"`)),
+      ...Array(users).fill('Unknown flow "github-reviewers"'),
+      ...["coordinator", "agent"].flatMap((flow) => Array(users).fill(`Flow "${flow}" does not define action "setGitHubReviewers"`)),
     ]);
     expect(await listed(lab)).toEqual(["jhoffner"]);
   }, 120_000);

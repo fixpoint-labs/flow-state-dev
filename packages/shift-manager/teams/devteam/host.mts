@@ -1074,7 +1074,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
     ...(options.approveTools === true ? { approveTools: true } : {}),
     // A run's session follows the pull request it opens, polled: a Lab on a laptop has no public URL for GitHub to push to.
-    // Only a trusted reviewer is heard (workforce's one stored list: a listed bot, or a listed person who can write):
+    // Only a trusted reviewer is heard (workforce's one stored list: a listed bot, or a listed user who can write):
     // what a run hears it acts on, with Bash and a push.
     onPullRequestRecorded: reviewers.follow(github)(installation),
     harness: labSlot(options.harness),

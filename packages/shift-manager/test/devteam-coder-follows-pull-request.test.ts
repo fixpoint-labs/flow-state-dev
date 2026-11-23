@@ -16,7 +16,7 @@
  *    thread is polled, because a Lab on a laptop has no public URL to push to.
  *    Nothing subscribes the coordinator's conversation.
  * 2. Only a trusted reviewer reaches the run (FIX-2789, FIX-2873): an
- *    account on workforce's one stored list, a listed bot, or a listed person
+ *    account on workforce's one stored list, a listed bot, or a listed user
  *    who can write to the repository, asked of GitHub when the comment
  *    arrives. `GITHUB_REVIEWERS` is the list's default until it is first
  *    saved; a save, an empty one included, applies to the next comment with no
@@ -364,7 +364,7 @@ async function save(lab: Lab, logins: string[]) {
 }
 
 describe("who can steer the coder through its pull request", () => {
-  it("a listed bot, or a listed person who can write: GITHUB_REVIEWERS until saved, then the saved list, an empty one included", async () => {
+  it("a listed bot, or a listed user who can write: GITHUB_REVIEWERS until saved, then the saved list, an empty one included", async () => {
     const lab = await openFollowingLab("coder-trusted-reviewers");
     await coderOpensPullRequest(lab);
     // An ordinary GitHub routine of the Shift Coordinator's, on another pull request, with no list screen.
@@ -378,7 +378,7 @@ describe("who can steer the coder through its pull request", () => {
     // Nothing saved: the setting is the list.
     permissionAsks.length = 0;
     expect(await heard("alice"), "nothing saved: alice (a writer) heard").toBe(true);
-    expect(permissionAsks.length > 0 && permissionAsks.every((ask) => ask === "alice Bearer operator-token"), "a listed person is asked of GitHub, with the operator's token").toBe(true);
+    expect(permissionAsks.length > 0 && permissionAsks.every((ask) => ask === "alice Bearer operator-token"), "a listed user is asked of GitHub, with the operator's token").toBe(true);
     expect(await heard("greptile-apps", "bot"), "nothing saved: the listed bot heard").toBe(true);
     expect(await heard("bob"), "nothing saved: bob refused").toBe(false);
     expect(await heard("greptile-apps", "outsider"), "a user named like the listed bot refused").toBe(false);

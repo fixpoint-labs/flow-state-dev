@@ -8,14 +8,14 @@
  *
  * Why it matters: a run acts on what it hears with a push, and anyone can
  * comment on a public repository. So a run hears a listed bot, or a listed
- * person who can push, and nobody else. `GITHUB_REVIEWERS` is the list's
+ * user who can push, and nobody else. `GITHUB_REVIEWERS` is the list's
  * default only until it is first saved: emptying the list must stop all
  * steering, never bring the setting back. A listed bot is heard on the run's
  * own follow, never on another subscription: the service's `trustedBots`
  * stays service-wide and is never fed from the list.
  *
  * GitHub's permission endpoint is a local stub; it counts each ask, because
- * a listed person costs one permission call per comment, and a bot or a
+ * a listed user costs one permission call per comment, and a bot or a
  * stranger none.
  *
  * Controls (each must FAIL, on the named signal):
@@ -121,7 +121,7 @@ describe("one stored list, on Teammates' wiring", () => {
       asked.length = 0;
       expect(await hears(comment("alice", "member")), "nothing saved: alice (a writer) heard").toBe(true);
       // Asked at routing, and again at delivery, where the screens run on the subscription's own row.
-      expect(asked, "a listed person's comment asks GitHub").toEqual(["alice", "alice"]);
+      expect(asked, "a listed user's comment asks GitHub").toEqual(["alice", "alice"]);
       expect(await hears(comment("greptile-apps", "bot")), "nothing saved: the listed bot heard").toBe(true);
       expect(await hears(comment("bob", "member")), "nothing saved: bob refused").toBe(false);
       expect(await hears(comment("greptile-apps", "outsider")), "a user named like the listed bot refused").toBe(false);

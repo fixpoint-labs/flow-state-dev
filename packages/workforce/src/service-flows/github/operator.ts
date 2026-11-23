@@ -65,7 +65,7 @@ export function operatorGitHub(options: OperatorGitHubOptions): GitHubSubscripti
     reviewers === undefined
       ? undefined
       : {
-          // Who may steer a run through its pull request, read from the list for each event. A person is asked
+          // Who may steer a run through its pull request, read from the list for each event. A user is asked
           // of GitHub with the operator's token, lent only to the operator's own subscriptions: decided on the
           // subscription's owner, since routing runs as the service. Declared first: a later screen goes after it.
           [GITHUB_REVIEWERS_SCREEN]: githubTrustedReviewersScreen({

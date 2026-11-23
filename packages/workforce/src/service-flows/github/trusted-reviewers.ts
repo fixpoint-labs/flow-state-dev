@@ -11,7 +11,7 @@
  *   writes it.
  * - **The screen** passes an event only when its sender is on the list, read
  *   for each event so an edit applies to the next comment with no restart. A
- *   listed bot passes as it is. A listed person must also be able to write to
+ *   listed bot passes as it is. A listed user must also be able to write to
  *   the repository, asked of GitHub when the event arrives
  *   (`GET /repos/{owner}/{repo}/collaborators/{login}/permission`): `admin`,
  *   `maintain` and `write` pass, and anything else, a sender GitHub doesn't
@@ -77,7 +77,7 @@ function settingLogins(value: string | undefined): string[] {
 export function githubTrustedReviewersScreen(options: GitHubTrustedReviewersScreenOptions): CustomScreen {
   const api = (options.apiUrl ?? "https://api.github.com").replace(/\/+$/, "");
   return {
-    describe: "the sender is a listed bot, or a listed person who can write to the repository",
+    describe: "the sender is a listed bot, or a listed user who can write to the repository",
     ...(options.resources === undefined ? {} : { resources: options.resources }),
     async screen(event, entry, ctx) {
       // As GitHub sends a sender's id: lower-cased, a bot keeping its `[bot]` here to tell it apart.

@@ -18,7 +18,7 @@
  *
  * A run that calls its host app over HTTP as the operator can still forge the
  * tool's turn and its Approve: an accepted residual until caller identity is
- * proven. Until then a forged person entry is bounded by write
+ * proven. Until then a forged user entry is bounded by write
  * access, and a forged bot entry by the apps installed on the repository.
  */
 import { boolean, evaluator, handler, sequencer } from "@flow-state-dev/core";

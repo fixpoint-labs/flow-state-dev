@@ -33,7 +33,7 @@ export function githubReviewersDocument(logins: readonly string[]): string {
   return [
     "# Trusted GitHub reviewers",
     "",
-    "A review or comment on a coding run's pull request reaches the run only from an account listed here: a bot, listed as `name[bot]`, or a person who can also write to the repository.",
+    "A review or comment on a coding run's pull request reaches the run only from an account listed here: a bot, listed as `name[bot]`, or a user who can also write to the repository.",
     "",
     ...logins.map((login) => `- ${login}`),
     ""
