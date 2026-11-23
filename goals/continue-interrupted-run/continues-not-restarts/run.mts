@@ -48,6 +48,7 @@ import {
   runGoal,
   stripIntentOverrides,
 } from "../../lib/index.mts";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const fixture = loadFixture<{ note: string }>(import.meta.url, "note.json");
 
@@ -120,6 +121,7 @@ await runGoal(async (failures) => {
 
   // 1. Run to the first suspension.
   const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow: flow as never,
     actionName: "run",
