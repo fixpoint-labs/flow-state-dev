@@ -77,8 +77,9 @@ at it. Shift Manager's own flow folds into the shared one ([D1](DECISIONS.md#d1)
 With no pick, on a filing made outside any coding run (a person's turn, or a linked non-coding
 session), the server writes a coding task's assignee from the kit's `defaultHarness` and ignores
 the model's ([D2](DECISIONS.md#d2)). A filing made inside or below a coding run keeps the model's
-assignee. The rule is permanent: a model's assignee on that path stays unread, before and after
-FIX-2878. The harness kit's context names the default beside the
+assignee. The rule is **interim**: FIX-2878 retires it once its filler, on the no-pick path,
+writes `defaultHarness`, that harness's default model and the plan setting it implies, with the marker, whatever worker the model names; from then the model's assignee is honoured and
+FIX-2878's lock checks it. The harness kit's context names the default beside the
 readiness rows, so Lead can say which coder took it. `LEAD_FALLBACK_HARNESS` and the `Coding
 harness:` line go, and the composer sends nothing in their place. The per-teammate field goes
 ([D3](DECISIONS.md#d3)).
@@ -114,7 +115,7 @@ lists every coder). `/release-docs` updates `shift-manager/from-a-checkout.md`, 
 ```mermaid
 flowchart LR
   E["DEVFORCE_LAB_HARNESS or TEAMMATES_HARNESS"] --> K["harness kit · defaultHarness"]
-  K --> W["no pick, outside a coding run · the server writes the assignee"]
+  K --> W["no pick, outside a coding run · the server writes the assignee (interim)"]
   W --> F["the shared coder flow · worker harness, else default"]
   K --> X["the kit's context · readiness and the default"]
   X --> L["Lead and the Shift Coordinator · told, not routing"]
@@ -147,7 +148,7 @@ client read it; none keeps a copy, and no model chooses from it.
 | `harnessReadinessCapability` and `READINESS_GUIDANCE`, already steering Lead (`goals/teammates-lab/routes-only-to-ready-harnesses`) | **Extends** with the default coder |
 | [FIX-2627 → What stays as it is](../FIX-2627/SPEC.md#what-stays-as-it-is): Shift Manager's flow "stays its own" | **Superseded**, as [epic ER-1](../../epics/FIX-2876/DECISIONS.md#who-owns-what) says. [D1](../FIX-2627/DECISIONS.md#d1)'s escape hatch stays for apps outside this repo |
 | FIX-2486: a Shift Manager coder names a harness | **Kept**, on the kit's `harness:` setting |
-| FIX-2878's run settings, filler and lock | **Builds before it.** FIX-2877 merges first: FIX-2878 imports and renames `harnessFeature`. Its filler writes only inside a coding run, so the no-pick assignee outside one stays this issue's |
+| FIX-2878's run settings, filler and lock | **Builds before it.** FIX-2877 merges first: FIX-2878 imports and renames `harnessFeature`. **Hands off** the no-pick assignee: FIX-2878 retires it once its filler, on the no-pick path, writes `defaultHarness`, that harness's default model and the plan setting it implies, with the marker, whatever worker the model names |
 | FIX-2879's *Code with* pick | **Hands off**: FIX-2879 brings the structured pick (respond `fields`, the `codeWith` session field, the composer sending it), and that is where it enters D2 as a pick. This issue adds no field and no composer send |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
@@ -155,16 +156,16 @@ client read it; none keeps a copy, and no model chooses from it.
 | `phases`: a feature phase with its workspace, and the answer phase | `codingPhase` and `commandCheck` | **Extends**: the kit's checks wrap whichever phase runs; the default is today's one phase |
 | `approveTools` | `harnessManager({ approveTools })` | **Extends**: forwarded, like `review` |
 | The app's worker settings, documents and actions on `coder` | The agent flow's `settings` option | **Extends** in the same shape; the flow never reads them. `resources` is the fork's file-declared documents (`resourcesFromDocs`), installed at flow level beside the installation's |
-| The server's no-pick assignee | `checkAssignee`, `harnessOf` | **Extends** the kit's filing of a coding task made outside any coding run: `checkAssignee` accepts any roster id, so the default is written before it |
+| The server's no-pick assignee, **interim** | `checkAssignee`, `harnessOf` | **Extends** the kit's filing of a coding task made outside any coding run: `checkAssignee` accepts any roster id, so the default is written before it. Retired by FIX-2878 |
 | The default coder in the kit's context | `harnessReadinessCapability` | **Extends** the same capability |
 
 | The debt | |
 |---|---|
 | **Removes** | `coder.mts`, `coderHarnessNames`, `HARNESS_SETTING`, `workerHarnesses` and Shift Manager's second list · `LEAD_FALLBACK_HARNESS` and the `Coding harness:` line · Lead's `teammates.cursor` fallback and its rule to follow a coder named in words · the agent-flow `harness` setting and its form field · Shift Manager's judge wrapper (`judge.mts`). Their readers are [listed](#what-changes) |
-| **Adds** | Three harness-kit options, one context line, and the server's no-pick assignee outside a coding run. Public and permanent by design |
+| **Adds** | Three harness-kit options and one context line, public and permanent by design. The server's no-pick assignee, interim: FIX-2878 retires it |
 | **Leaves** | Teammates' three per-harness workers (FIX-2879). Until then the server maps the default to the worker whose `harness:` matches |
 
-**Net: down.** A 438-line fork, a second list and three knobs go; the kit gains three options, a line and one filing rule.
+**Net: down.** A 438-line fork, a second list and three knobs go; the kit gains three options, a line and one interim filing rule.
 
 ## Sign off
 
@@ -179,8 +180,8 @@ kit options and a line come. If wrong: options only Shift Manager uses.
    is dropped, and the flow gains three options for the rest.** If wrong: three public options
    carrying one app's habits.
 2. **[D2](DECISIONS.md#d2) · With no coder picked, outside any coding run, the server puts a coding
-   task on the default coder, whatever Lead wrote; text naming a coder is not a pick; a
-   filing inside a coding run keeps the model's assignee.** If wrong: someone who names a
+   task on the default coder, whatever Lead wrote; text naming a coder is not a pick. Interim:
+   FIX-2878 retires it; a filing inside a coding run keeps the model's assignee.** If wrong: someone who names a
    coder in words gets the default. Until FIX-2879, so does someone who uses *Code with*: the
    picker has no effect in that gap, an accepted cost that ends when FIX-2879 ships.
 3. **[D3](DECISIONS.md#d3) · The per-teammate "default coding harness" goes, not renamed.** If

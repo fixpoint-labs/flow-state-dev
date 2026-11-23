@@ -13,7 +13,7 @@ flowchart TD
   I["FIX-2877"] --> D1["D1 · Shift Manager on the shared flow · three options for the rest"]
   D1 -.->|"rejected · run settings built twice"| X1["keep Shift Manager's own flow"]
   D1 -.->|"rejected · still a fork"| X1b["rebuild it from harness-manager's blocks"]
-  I --> D2["D2 · no pick, outside a coding run · the server writes the default's worker"]
+  I --> D2["D2 · no pick, outside a coding run · the server writes the default's worker (interim)"]
   D2 -.->|"rejected · any text Lead reads can steer it"| X2["Lead maps the default to a worker, from its prompt or context"]
   I --> D3["D3 · the per-teammate default goes"]
   D3 -.->|"rejected · a second default"| X3["rename it and keep reading it"]
@@ -44,12 +44,12 @@ It comes down to run settings: on the shared flow they arrive once; a fork needs
 |---|---|
 | **Instead of** | Lead choosing the worker: today its prompt names `teammates.cursor` and the client keeps a copy; the first draft had Lead read the default from the kit's context and map it to a worker by the roster's `harness`. Also weighed: a fourth coding worker with no `harness:`, which would run on the default |
 | **Because** | A model's assignee follows any text the model reads. With `TEAMMATES_HARNESS=codex`, a README, an issue or another worker's message that says `Coding harness: Cursor` files the task on Cursor, whose sandbox is off (`sandboxOptions: { enabled: false }`), and nothing after it checks: `checkAssignee` accepts any roster id, `harnessOf` honours a pinned worker's `harness:`, and the work entry refuses only a harness that is not ready. The server already holds the default (`defaultHarness`), so writing the assignee from it is one rule, not a model's guess a goal check can only sample. A fourth worker would bound it too, but adds a roster row FIX-2879 removes ([epic D2](../../epics/FIX-2876/DECISIONS.md#d2)) |
-| **Locks in** | In every app on the kit, a coding task filed with no pick **outside any coding run** (a person's turn, or a linked non-coding session) gets its assignee from the server: the roster's coder worker whose `harness` is the default, else one with no `harness:` line (which `harnessOf` runs on the default). With neither, the filing is refused, saying why. The model's assignee is ignored there. A filing made inside or below a coding run keeps the model's assignee: the frozen or carried run settings win on an unlocked worker, and FIX-2878's lock refuses a mismatch. The rule is permanent: honouring a model's assignee there, even with a lock, would let text Lead reads steer it onto an unlocked worker. A pick is structured or it is not one. In this issue the only pick is a person's own assignment from the board; FIX-2879's *Code with* pick joins it there. Until then every Lead filing is the no-pick path, and the *Code with* picker has no effect, an accepted cost that ends when FIX-2879 ships. A `Coding harness:` line, or a coder named in words, in the message, a goal or anything Lead reads, is not a pick. The kit's context still names the default beside readiness, so Lead says which coder took it ([epic ER-3](../../epics/FIX-2876/DECISIONS.md#who-owns-what)) |
+| **Locks in** | In every app on the kit, a coding task filed with no pick **outside any coding run** (a person's turn, or a linked non-coding session) gets its assignee from the server: the roster's coder worker whose `harness` is the default, else one with no `harness:` line (which `harnessOf` runs on the default). With neither, the filing is refused, saying why. The model's assignee is ignored there. A filing made inside or below a coding run keeps the model's assignee: the frozen or carried run settings win on an unlocked worker, and FIX-2878's lock refuses a mismatch. **Interim:** FIX-2878 retires the server-written assignee once its filler, on the no-pick path, writes `defaultHarness`, that harness's default model and the plan setting it implies, with the marker, whatever worker the model names; from then the model's assignee is honoured and the lock checks it. A pick is structured or it is not one. In this issue the only pick is a person's own assignment from the board; FIX-2879's *Code with* pick joins it there. Until then every Lead filing is the no-pick path, and the *Code with* picker has no effect, an accepted cost that ends when FIX-2879 ships. A `Coding harness:` line, or a coder named in words, in the message, a goal or anything Lead reads, is not a pick. The kit's context still names the default beside readiness, so Lead says which coder took it ([epic ER-3](../../epics/FIX-2876/DECISIONS.md#who-owns-what)) |
 
 **What would change my mind:** people needing to pick a coder in words often enough that
 FIX-2879's *Code with* won't cover it. Then the rule stays and a structured pick grows; text never counts.
 
-![D2 · With no coder picked, who chooses the worker? Chosen: the server, the default's worker. Instead of: Lead, told the default by the kit's context. Decides it: text Lead reads that names another coder still lands on the default, where Lead would file it there. Price: a coder named in words no longer moves it, and until FIX-2879 Code with has no effect. Tie: a person's board assignment wins either way. Locks in a server-written assignee on the no-pick path outside a coding run; flips if people need to pick in words](figures/d2-context.svg)
+![D2 · With no coder picked, who chooses the worker? Chosen: the server, the default's worker. Instead of: Lead, told the default by the kit's context. Decides it: text Lead reads that names another coder still lands on the default, where Lead would file it there. Price: a coder named in words no longer moves it, and until FIX-2879 Code with has no effect. Tie: a person's board assignment wins either way. Locks in a server-written assignee on the no-pick path outside a coding run, interim until FIX-2878; flips if people need to pick in words](figures/d2-context.svg)
 
 It comes down to who can steer it: the server's rule reads only the default; Lead reads everything.
 
@@ -92,9 +92,9 @@ It comes down to one default: a renamed setting is still the second one.
   session field and the composer sending it. That is where *Code with* enters D2 as a pick, and
   where its goal check (a pick of Cursor lands on Cursor) lives. This issue adds no field and no
   composer send.
-- **Merge order.** FIX-2877 lands before FIX-2878: FIX-2878 imports and renames `harnessFeature`.
-  FIX-2878's filler writes only inside a coding run, so D2's server-written assignee outside one
-  stays as it is.
+- **Hand-off to FIX-2878, and merge order.** FIX-2877 lands first: FIX-2878 imports and renames
+  `harnessFeature`. FIX-2878's filler, which on the no-pick path writes `defaultHarness`, that harness's default model and the plan setting it implies, with the marker, whatever worker the model names,
+  retires D2's server-written assignee; its lock then checks the model's.
 - **Coordination.** [#5585](https://github.com/fixpoint-labs/flow-state-dev/pull/5585) (FIX-2873,
   trusted reviewers) touches both hosts and Lead's `WORKER.md`; FIX-2583 touches `coder-flow.ts`. The second to merge rebases.
 
@@ -156,5 +156,5 @@ For the implementer; none changes the approach.
   The structured pick stays FIX-2879's; until it lands, the *Code with* picker has no effect,
   stated as an accepted interim cost.
 - **Cross-spec review** — D2 narrowed to a no-pick filing outside any coding run; an in-run filing
-  keeps the model's assignee. FIX-2877 merges before FIX-2878. A first fold marked the
-  server-written assignee interim; the architect found FIX-2878 never retires it, so it is permanent.
+  keeps the model's assignee. The server-written assignee is marked interim, retired by FIX-2878,
+  and FIX-2877 merges before FIX-2878.
