@@ -144,9 +144,9 @@ export async function claimRequestRecord<T extends RequestRecord>(
  * the execution context, after `runAction` or a transport host already wrote
  * the record, so the stored record names no session until this writes it.
  *
- * A full-record write by the run that holds the record, like the hand-off in
- * {@link claimRequestRecord} and the run's request-state writes: `sessionId`
- * is an indexed column, which `setFieldsIfStatus` does not write. It leaves
+ * A full-record write by the run that holds the record, like the same-owner
+ * reclaim in {@link claimRequestRecord} and the run's request-state writes:
+ * `sessionId` is an indexed column, which `setFieldsIfStatus` does not write. It leaves
  * `items` off, so the stored ones are kept, and `set` never touches
  * `abortRequested`, so a cancel recorded since the record was read survives.
  *
