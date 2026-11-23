@@ -997,16 +997,19 @@ const EXEMPTIONS = [
   },
   {
     path: /^\.changeset\/one-conversation-model\.md$/,
+    releaseNote: true,
     rules: ["buildItemRenderStream", "ItemRenderSegment", "BuildItemRenderStreamOptions"],
     why: "FIX-2848: the release note that tells consumers which renamed React exports to replace",
   },
   {
     path: /^\.changeset\/user-suspension-reasons\.md$/,
+    releaseNote: true,
     rules: ["human-reasons"],
     why: "FIX-2151: the release note that tells consumers which old reasons to replace",
   },
   {
     path: /^\.changeset\/(retired-names-(contracts|react)|no-compat-engine)\.md$/,
+    releaseNote: true,
     rules: ["human-reasons"],
     why: "FIX-2454: the release notes that say a new human_* reason throws and a stored one reads as a user's",
   },
@@ -1310,6 +1313,7 @@ const EXEMPTIONS = [
   },
   {
     path: /^\.changeset\/no-compat-[\w-]+\.md$/,
+    releaseNote: true,
     rules: ["question-hold-names", "task-tool-names", "handoff-symbol-in-docs", "message-budget"],
     why: "FIX-2454: the release notes that list what was removed, by its old name, so a consumer can find the uses to delete",
   },
@@ -1649,25 +1653,39 @@ const byCheck = (check) => {
 };
 export const SWEEP_EXEMPTIONS = byCheck("sweep");
 
+/**
+ * Every exemption its author flagged `releaseNote: true`, of any check: the path names pending
+ * changesets and nothing else. The guard holds each to that against the tracked tree.
+ */
+export const RELEASE_NOTE_EXEMPTIONS = EXEMPTIONS.filter((e) => e.releaseNote === true);
+
 /** The bare retirements: they name no check, so the sweep and the guard both read them. */
 const BARE = new Set(RETIREMENTS.filter((r) => r.check === undefined).map((r) => r.id));
 
 /**
  * A sweep-shaped exemption that keeps a bare retirement keeps it for the guard too, so one
  * exemption gives both checks one answer (D2): in the files it names, on the lines it keeps,
- * the guard strips the retired name.
+ * the guard strips the retired name. Exported so the guard's control builds its plants the
+ * same way the glossary's own exemptions are built.
+ * @param {{ path: RegExp, rules: string[], why: string, line?: RegExp, releaseNote?: boolean }} e
+ * @param {string} id
  */
-const SHARED_GUARD_EXEMPTIONS = SWEEP_EXEMPTIONS.filter((e) => e.rules.some((id) => BARE.has(id))).map((e, i) => {
-  const terms = e.rules.filter((id) => BARE.has(id));
+export function sharedGuardExemption(e, id) {
+  const terms = e.rules.filter((rule) => BARE.has(rule));
   const res = GUARD_TERMS.filter((t) => terms.includes(t.id)).map((t) => t.re);
   return {
-    id: `shared-${i}-${terms.join("+")}`,
+    id,
     terms,
     why: e.why,
+    releaseNote: e.releaseNote === true,
     where: (path) => e.path.test(path),
     strip: (_path, line) => (e.line && !e.line.test(line.trim()) ? line : res.reduce((l, re) => l.replace(re, " "), line)),
   };
-});
+}
+
+const SHARED_GUARD_EXEMPTIONS = SWEEP_EXEMPTIONS.filter((e) => e.rules.some((id) => BARE.has(id))).map((e, i) =>
+  sharedGuardExemption(e, `shared-${i}-${e.rules.filter((id) => BARE.has(id)).join("+")}`),
+);
 export const GUARD_EXEMPTIONS = [...byCheck("guard"), ...SHARED_GUARD_EXEMPTIONS];
 export const SIDE_CHAIN_EXEMPT_FILES = byCheck("side-chain").flatMap((e) => e.files);
 export const TREE_EXEMPTIONS = byCheck("tree");

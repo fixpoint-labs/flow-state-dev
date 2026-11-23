@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 414" role="img" aria-label="D1, who chooses the harness, model and plan mode. Chosen: the person's choice per run, stored once and read by the harness slot. Instead of: the harness chosen in config per worker, or a Coder line in the message text relayed by the main session, as today. It comes down to the first row: the person knows which harness and model this change wants and a worker's config is fixed before the request. The cost is the third row: a possible package change, filed as a child that blocks FIX-2598. A message line has no path to a harness block's model resolver, so a chosen model never reached a run. Locks in worker config as the default with the person's pick overriding it for a run. Flips if the path from the task to the slot needs more than one package child."
+<svg viewBox="0 0 940 414" role="img" aria-label="D1, who chooses the harness, model and plan mode. Chosen: the person's choice per run, stored once and read by the harness slot. Instead of: the harness chosen in config per worker, or a Coder line in the message text relayed by the main session, as today. It comes down to the first row: the person knows which harness and model this change wants and a worker's config is fixed before the request. The cost is the third row: FIX-2598 waits for the sibling epic FIX-2876's carrier, the package half of FIX-2879. A message line has no path to a harness block's model resolver, so a chosen model never reached a run. Locks in worker config as the default with the person's pick overriding it for a run. Flips if the lab needs its model picker before FIX-2876's release window."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -78,8 +78,8 @@
   <g id="row-3">
     <text class="t-lbl" x="32" y="278">WHAT IT COSTS</text>
     <text class="mark minus" x="228" y="283">−</text>
-    <text class="t-b" x="248" y="282">Maybe a package change</text>
-    <text class="t-s" x="248" y="300">a child that blocks FIX-2598</text>
+    <text class="t-b" x="248" y="282">Wait for FIX-2876's carrier</text>
+    <text class="t-s" x="248" y="300">FIX-2879's package half, before FIX-2598</text>
     <text class="mark plus" x="592" y="283">+</text>
     <text class="t-b" x="612" y="282">Nothing to build</text>
     <text class="t-s" x="612" y="300">it is what exists today</text>
@@ -90,13 +90,13 @@
     <rect class="foot" x="16" y="324" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="345">LOCKS IN</text>
     <text class="t-b" x="32" y="365">Config is the default; a pick overrides it</text>
-    <text class="t-s" x="32" y="383">ER-2; amends FIX-2152 ER-9 and FIX-2157 D5</text>
+    <text class="t-s" x="32" y="383">ER-2; carrier per FIX-2876 D3; amends FIX-2152 ER-9</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="324" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="345">FLIPS IF</text>
-    <text class="t-b" x="494" y="365">The path needs more than one package child</text>
-    <text class="t-s" x="494" y="383">then per-run choice is its own epic</text>
+    <text class="t-b" x="494" y="365">The lab needs its picker before FIX-2876</text>
+    <text class="t-s" x="494" y="383">then FIX-2598 builds a small carrier first</text>
   </g>
 </svg>
