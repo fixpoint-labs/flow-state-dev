@@ -186,6 +186,17 @@ cost; a named 4xx for a legacy retry, and that refusing it is deliberate; `Inter
 required. In `SPEC.md`: the principal-resolution envelope stays optional; Kitchen Sink's artifact
 dialog, a sessionless sender the draft missed, is counted under D1.
 
+## Notes from review
+
+Recorded verbatim for the implementer. None changes the approach.
+
+- cursor[bot], `DECISIONS.md` (Considered and dropped): "Inbound-host mint rejection is right; optional one-liner contrasting optional envelope vs edge mint + required types would help future readers."
+- cursor[bot], `DECISIONS.md` (Decided, not asked): "Add debt visibility: always-defined `sessionId` enables admission I/O and retention `listAll()` on retention-bearing flows, not only arbiter leases."
+- cursor[bot], `SPEC.md` (What changes): "Scope question for implementer: is the five-layer required `sessionId` the minimum cost of this goal, or could runtime gates at `runAction`/host ship first? I lean full types for custom transports, but this block drives issue size **M**."
+- cursor[bot], `DECISIONS.md` (old null-session rows): "Consider surfacing in the people table that failed one-off retry is refused under the one-rule-for-null-rows policy — deliberate, but easy to miss."
+- cursor[bot], `SPEC.md` (the diff): "For one-shot HTTP, lead with `oneOffSessionId()` below rather than `createSession()` so D1 migration cost reads correctly."
+- cursor[bot], review summary: "Note extra admission session I/O and retention `listAll()` on flows with retention; optional arbiter skip for `isOneOffSessionId` on queue hosts if profiling warrants it."
+
 ## How it got here
 
 - **Draft** — Jake ruled there are no sessionless requests and closed FIX-2888's stamp; this
