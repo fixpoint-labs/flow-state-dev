@@ -18,7 +18,7 @@ flowchart TD
   D2 -.->|"rejected: a second writer of a task's coder"| X2["the re-run carries its own coder"]
   I --> D3["D3 · a filing from a session no person writes to uses the person's current pick"]
   D3 -.->|"rejected: a researcher's task can't ask for code"| X3["refuse coding filings from those sessions"]
-  D3 -.->|"rejected: a later pick reaches work in flight"| X4["follow the conversation's current pick"]
+  D3 -.->|"rejected: a stale or empty copy can be wider than the person's pick"| X4["the pick the session opened with"]
 ```
 
 Solid edges are what you sign. Dashed edges lost, and the label says why.
