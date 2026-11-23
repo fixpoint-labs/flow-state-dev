@@ -5,7 +5,7 @@
  * answer route as a screen sends them. Only the harness is a stub, and it
  * records what each step was handed.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { heard } from "./heard";
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -22,7 +22,7 @@ import {
 } from "@flow-state-dev/core/harness";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, runAction, type StoreAdapter } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
@@ -30,6 +30,7 @@ import {
   resolveResourceCollection,
   type SuspensionHold,
   type Task,
+  type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
 import { cancelAndResume, openOwnHolds } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
@@ -730,6 +731,208 @@ describe("a judged run on a board read from the claim, with review on", () => {
     expect(prompt).not.toContain("a teammate's change");
   }, 60_000);
 
+  // FIX-2847.
+  it("ends the run that reaches its review after its task was cancelled, so no stopped run is left counted", async () => {
+    // The judge reads after the harness step, where no poll of the row stops the run: a cancel
+    // pressed while it reads lands before the run stops for its review, which nothing mirrors.
+    let cancel: () => Promise<unknown> = async () => {};
+    const judge = {
+      floor: 0.7,
+      block: handler({
+        name: "cancelling-judge",
+        inputSchema: z.unknown(),
+        outputSchema: z.unknown(),
+        execute: async () => {
+          await cancel();
+          return verdict("done", 0.9, "the line is in");
+        },
+      }),
+    };
+    const lab = claimHost({ mode: "claim", durable: true, script: [{ answer: "added the line", commits: 1 }], manager: { judge, reviewChanges: true } });
+    cancel = () => lab.act("cancel", { ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1" });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect((await lab.row(CONVERSATIONS, "t1", "conv-a")).status).toBe("cancelled");
+    // The run's request, in the task's own session: a stop nobody can answer leaves it `suspended`
+    // for good, and a session's runs count it as background work still running.
+    const sessionId = "s_task_tasks_conv-a_t1";
+    const store = (await (lab.stores as StoreAdapter).resolve(["primary"])).request!;
+    const requests = () => store.list({ sessionId });
+    await vi.waitFor(async () => {
+      const statuses = (await requests()).map((r) => r.status);
+      expect(statuses.length).toBeGreaterThan(0);
+      expect(statuses.filter((s) => s === "suspended" || s === "in_progress")).toEqual([]);
+    }, { timeout: 10_000, interval: 50 });
+  }, 60_000);
+
+  // FIX-2847. The cases below force what lands between the check's read of the row and its write
+  // that mirrors the run's stop: the write is refused, and no mirror holds the stop.
+  /** A host whose claim gate runs `meanwhile` once, just before its write that mirrors the review stop. */
+  type SetKeptOpenBy = NonNullable<TaskCollectionRef["setKeptOpenBy"]>;
+  const hostWithGap = (
+    meanwhile: (ref: TaskCollectionRef, id: string, claim: Parameters<SetKeptOpenBy>[2]["claim"]) => Promise<void>,
+    ran: { done: boolean },
+    /** Stand in for another of the gate ledger's verbs, once the gap has run. */
+    after?: (target: TaskCollectionRef, key: string | symbol) => unknown,
+  ) =>
+    claimHost({
+      mode: "claim",
+      durable: true,
+      script: [{ answer: "added the line", commits: 1 }],
+      manager: { reviewChanges: true },
+      gateLedger: (ref) =>
+        new Proxy(ref, {
+          get(target, key, receiver) {
+            const stand = ran.done ? after?.(target, key) : undefined;
+            if (stand !== undefined) return stand;
+            if (key !== "setKeptOpenBy") return Reflect.get(target, key, receiver);
+            return async (...args: Parameters<SetKeptOpenBy>) => {
+              const [id, , options] = args;
+              if (options?.hold === undefined || ran.done) return target.setKeptOpenBy!(...args);
+              ran.done = true;
+              await meanwhile(target, id, options.claim);
+              return target.setKeptOpenBy!(...args);
+            };
+          },
+        }),
+    });
+  /** No request of the first attempt is left `suspended` (or running): the stop was ended. */
+  const firstAttemptEnds = async (lab: ReturnType<typeof claimHost>) => {
+    const store = (await (lab.stores as StoreAdapter).resolve(["primary"])).request!;
+    await vi.waitFor(async () => {
+      const statuses = (await store.list({ sessionId: "s_task_tasks_conv-a_t1" })).map((r) => r.status);
+      expect(statuses.length).toBeGreaterThan(0);
+      expect(statuses.filter((s) => s === "suspended" || s === "in_progress")).toEqual([]);
+    }, { timeout: 10_000, interval: 50 });
+  };
+  const LATER = 10 * 60_000;
+
+  it("ends the run's review stop when its task is cancelled after the check read the row and before it mirrored the stop", async () => {
+    const ran = { done: false };
+    const lab = hostWithGap(async (ref, id) => void (await ref.cancel(id, "cancelled by the test, between the read and the write")), ran);
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(ran.done).toBe(true);
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(task.status).toBe("cancelled");
+    expect(task.holds?.some((h) => h.source.kind === "suspension") ?? false).toBe(false);
+    await firstAttemptEnds(lab);
+  }, 60_000);
+
+  it("ends the old attempt's review stop when a later attempt takes the row in that gap, and leaves the later attempt's row alone", async () => {
+    const ran = { done: false };
+    let taken: Task | undefined;
+    const lab = hostWithGap(async (ref, id) => {
+      // The lease lapses, a sweep reclaims the row, and the next claim takes it: a second attempt.
+      await ref.reclaim(Date.now() + LATER);
+      taken = JSON.parse(JSON.stringify(await ref.claim("other-drain", { leaseDurationMs: LATER, eligibility: (t) => t.id === id }))) as Task;
+    }, ran);
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(taken).toMatchObject({ status: "in_progress", attempts: 2 });
+    await firstAttemptEnds(lab);
+    // The second attempt's row, as its claim left it: not cancelled, no mirror, its lease its own.
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(task).toMatchObject({ status: "in_progress", attempts: 2, leaseUntil: taken!.leaseUntil });
+    expect(task.holds?.some((h) => h.source.kind === "suspension") ?? false).toBe(false);
+  }, 60_000);
+
+  it("takes the row back and mirrors the review stop when only its claim's lease lapsed in that gap", async () => {
+    // No reclaim moved the row: it is still this attempt's and turn's. Cancelling the stop here would
+    // let the run's resume, admitted on the same attempt, complete the task on a review nobody gave.
+    const ran = { done: false };
+    const lab = hostWithGap(async (ref, id, claim) => {
+      // The claim's lease ends in the past: the write that follows finds it lapsed.
+      const renewed = await ref.renewLease(id, Date.now() - 1, { claim });
+      expect(renewed.outcome).toBe("recorded");
+    }, ran);
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(ran.done).toBe(true);
+    // The review waits for its person, on the row, as it does with no lapse: no lease, nothing settled.
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(task).toMatchObject({ status: "in_progress", attempts: 1, keptOpenBy: "suspended" });
+    expect(task.leaseUntil).toBeUndefined();
+    expect(task.holds?.find((h) => h.source.kind === "suspension")?.ask).toMatchObject({ kind: "review" });
+  }, 60_000);
+
+  /** The claim's lease ends in the past: the hold write that follows finds it lapsed. */
+  const lapse = async (ref: TaskCollectionRef, id: string, claim: Parameters<SetKeptOpenBy>[2]["claim"]) => {
+    expect((await ref.renewLease(id, Date.now() - 1, { claim })).outcome).toBe("recorded");
+  };
+
+  it("ends the review stop as superseded when the lease lapsed and the takeover's renewal gives no verdict", async () => {
+    const ran = { done: false };
+    const lab = hostWithGap(lapse, ran, (_target, key) => (key === "renewLease" ? async () => undefined : undefined));
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(ran.done).toBe(true);
+    await firstAttemptEnds(lab);
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(task.holds?.some((h) => h.source.kind === "suspension") ?? false).toBe(false);
+    // Not cancelled, nothing settled: the row is left on its lapsed lease for the sweep to reclaim.
+    expect(task).toMatchObject({ status: "in_progress", attempts: 1 });
+    expect(task.leaseUntil).toBeLessThan(Date.now());
+  }, 60_000);
+
+  it("ends the review stop as superseded when the lease lapsed on a row with no lease span to take it back for", async () => {
+    // A row claimed before the span was stored: no `leaseDurationMs`, and a deadline no later than its last write.
+    const ran = { done: false };
+    const legacy = (stored: Task | undefined): Task | undefined => {
+      if (stored === undefined) return undefined;
+      const { leaseDurationMs: _span, ...row } = JSON.parse(JSON.stringify(stored)) as Task;
+      return { ...row, updatedAt: row.leaseUntil ?? row.updatedAt };
+    };
+    // Every read of the gate's ledger sees the legacy row from the gap on, as a stored one would read.
+    const lab = hostWithGap(lapse, ran, (target, key) =>
+      key === "getCommitted"
+        ? async (id: string) => legacy(await target.getCommitted!(id))
+        : key === "get"
+          ? (id: string) => legacy(target.get(id) as Task | undefined)
+          : undefined,
+    );
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(ran.done).toBe(true);
+    await firstAttemptEnds(lab);
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(task.holds?.some((h) => h.source.kind === "suspension") ?? false).toBe(false);
+    // Not cancelled, nothing settled: the row is left on its lapsed lease for the sweep to reclaim.
+    expect(task).toMatchObject({ status: "in_progress", attempts: 1 });
+    expect(task.leaseUntil).toBeLessThan(Date.now());
+  }, 60_000);
+
+  it("keeps the review stop when the lease lapsed and the takeover's renewal fails, and says why", async () => {
+    // Not a refusal: the store failed, and the attempt may still own the row. Ending the stop as
+    // superseded here could let the task finish with no review, so the stop stays for the person.
+    const ran = { done: false };
+    const warned: string[] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => void warned.push(args.map(String).join(" ")));
+    const errored = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => void warned.push(args.map(String).join(" ")));
+    try {
+      const lab = hostWithGap(lapse, ran, (_target, key) =>
+        key === "renewLease"
+          ? async () => {
+              throw new Error("the store is down");
+            }
+          : undefined,
+      );
+      await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+      await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+      expect(ran.done).toBe(true);
+      // Past every try the superseded cancel would make: the stop is still there to answer.
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      const store = (await (lab.stores as StoreAdapter).resolve(["primary"])).request!;
+      const statuses = (await store.list({ sessionId: "s_task_tasks_conv-a_t1" })).map((r) => r.status);
+      expect(statuses).toContain("suspended");
+      expect((await lab.row(CONVERSATIONS, "t1", "conv-a")).status).toBe("in_progress");
+      expect(warned.some((line) => line.includes("the store is down"))).toBe(true);
+    } finally {
+      spy.mockRestore();
+      errored.mockRestore();
+    }
+  }, 60_000);
+
   it("holds a judge's ask on a question, with no review", async () => {
     const lab = claimHost({
       mode: "claim",
@@ -739,10 +942,10 @@ describe("a judged run on a board read from the claim, with review on", () => {
     });
     await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "look at our repo", input: {} });
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
-    const row = await lab.row(CONVERSATIONS, "t1", "conv-a");
-    expect(row.status).toBe("in_progress");
-    expect(openOwnHolds(row).map((h) => h.ask.prompt)).toEqual(["which repository did you mean?"]);
-    expect(row.holds?.some((h) => h.source.kind === "suspension")).toBe(false);
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(task.status).toBe("in_progress");
+    expect(openOwnHolds(task).map((h) => h.ask.prompt)).toEqual(["which repository did you mean?"]);
+    expect(task.holds?.some((h) => h.source.kind === "suspension")).toBe(false);
   }, 60_000);
 });
 
