@@ -38,7 +38,7 @@ import { scratchDir } from "./held-work";
 import { WorkspaceRefusedError } from "./refused";
 import { checkRemoteShape, redactRemote, withoutCredential, type AllowedRemote } from "./remotes";
 import type { KeptFetchPins } from "./repository";
-import { firstLine, NO_HOOKS } from "./worktree";
+import { firstLine, NO_HOOKS, remoteCallConfig } from "./worktree";
 
 /** How long one landing may take, by default: every command in it shares this one deadline. */
 const LAND_TIMEOUT_MS = 2 * 60_000;
@@ -770,16 +770,7 @@ async function pushAndOpen(
 /** Push the branch's tip to the pinned remote, never forced. */
 /** The `-c` settings every remote call runs under: no hooks, no askpass, only the judged protocol, the host's pinned credentials. */
 function remoteConfig(host: LandHost, judged: AllowedRemote): string[] {
-  return [
-    "-c", "core.sshCommand=ssh",
-    "-c", "core.askPass=",
-    ...NO_HOOKS,
-    "-c", "core.fsmonitor=false",
-    "-c", "protocol.allow=never",
-    "-c", `protocol.${judged.scheme}.allow=always`,
-    "-c", "credential.helper=",
-    ...(host.pins?.credentialHelpers ?? []).flatMap(([key, value]) => ["-c", `${key}=${value}`]),
-  ];
+  return remoteCallConfig(judged.scheme, host.pins?.credentialHelpers ?? []);
 }
 
 /**

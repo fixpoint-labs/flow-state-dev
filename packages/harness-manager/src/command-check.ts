@@ -60,7 +60,7 @@ export interface CommandCheckOptions<TContext = CompletionRunContext> {
   commands: CommandCheckCommands<TContext>;
   /** The wall clock for all of them together, in milliseconds. */
   timeoutMs: number;
-  /** Variables to set for the commands. They never inherit the host's whole environment, only `WORKSPACE_BASE_PASS` from `@flow-state-dev/workspace`. */
+  /** Variables to set for the commands. They never inherit the host's whole environment: only `PATH`, `HOME`, locale, proxy and CA settings are passed. */
   env?: Record<string, string>;
   /**
    * Name the commands in the brief too: `commandCheck` adds a section to the

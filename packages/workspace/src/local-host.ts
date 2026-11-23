@@ -112,7 +112,7 @@ import {
   type SourceReadResult,
 } from "./source-read";
 import type { FlushReport, Place } from "./types";
-import { pinFetchSettings } from "./repository";
+import { pinFetchSettings, readCredentialHelpers } from "./repository";
 import { checkedOutBranch, worktreeLockPath } from "./occupancy";
 import {
   attachToWorktree,
@@ -128,7 +128,7 @@ import {
 } from "./worktrees";
 import { WorkspaceRefusedError } from "./refused";
 import { setUpCheckout, type PlaceSetup, type WorkspaceSetup } from "./setup";
-import { firstLine, gitAnsweredNo, ignoredProblem, isAncestor, isStrictlyInside, NO_HOOKS, provisionWorktree, remainingBudget, type IgnoredDirectory, type MovedBack, type OffBranch } from "./worktree";
+import { firstLine, gitAnsweredNo, ignoredProblem, isAncestor, isStrictlyInside, NO_HOOKS, provisionWorktree, remainingBudget, remoteCallConfig, type IgnoredDirectory, type MovedBack, type OffBranch } from "./worktree";
 
 /** The directory names inside a place. People and agents read them. */
 const CHECKOUT_DIR = "checkout";
@@ -689,6 +689,12 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     // nobody will answer.
     GIT_TERMINAL_PROMPT: "0",
   };
+  /**
+   * The person's own credential helpers, read once at start from outside any
+   * clone: what a remote's fetch replays, never a helper a run wrote into the
+   * clone's shared config.
+   */
+  const ownCredentialHelpers = readCredentialHelpers(tmpdir());
 
   /** Live kept-files projections, by the directory they fill. */
   const live = new Map<string, Promise<Projection>>();
@@ -705,12 +711,6 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
    */
   async function git(cwd: string, args: string[], timeoutMs: number): Promise<string> {
     const { stdout } = await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs, env, pass: HOST_GIT_PASS });
-    return stdout.trim();
-  }
-
-  /** {@link git} for a call that reaches the remote, and so is handed the host's credentials. */
-  async function remoteGit(cwd: string, args: string[], timeoutMs: number): Promise<string> {
-    const { stdout } = await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs, env, pass: HOST_REMOTE_PASS, gitCredentials: true });
     return stdout.trim();
   }
 
@@ -904,18 +904,67 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
    * The default branch is read from the remote every time rather than kept,
    * so a remote that renamed `main` to `trunk` is followed on the next new
    * branch instead of cut from a ref that no longer moves.
+   *
+   * The remote is asked from an empty repository of its own over the clone's
+   * objects, as `fetchPinned` asks: every run's worktree shares the clone's
+   * config and can rewrite it, so a `url.insteadOf`, credential helper or ssh
+   * command written there is never read by a call that holds the host's
+   * credentials. The clone's tracking refs are then set to what was fetched,
+   * the ones gone from the remote deleted, by a local call.
    */
   async function refresh(clone: string, remote: AllowedRemote, left: () => number, stamp = true): Promise<string> {
     let defaultBranch: string;
+    let scratch: string | undefined;
     try {
-      const head = await remoteGit(clone, ["ls-remote", "--symref", "--", remote.url, "HEAD"], left());
+      scratch = scratchDir();
+      const isolated = { ...env, GIT_DIR: scratch, GIT_OBJECT_DIRECTORY: join(clone, "objects") };
+      const inScratch = async (args: string[], remoteCall: boolean) =>
+        (
+          await run("git", remoteCall ? [...remoteCallConfig(remote.scheme, ownCredentialHelpers), ...args] : [...NO_HOOKS, ...args], {
+            cwd: scratch!,
+            timeoutMs: left(),
+            env: remoteCall ? { ...isolated, GIT_ALLOW_PROTOCOL: remote.scheme, GIT_SSH_COMMAND: "ssh" } : isolated,
+            ...(remoteCall ? { pass: HOST_REMOTE_PASS, gitCredentials: true } : { pass: HOST_GIT_PASS }),
+          })
+        ).stdout;
+      await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env, pass: HOST_GIT_PASS });
+      const head = await inScratch(["ls-remote", "--symref", "--upload-pack=git-upload-pack", "--", remote.url, "HEAD"], true);
       const match = /^ref: refs\/heads\/(\S+)\s+HEAD$/m.exec(head);
       if (match === null) throw new Error("the remote reports no default branch");
       defaultBranch = match[1]!;
-      await remoteGit(clone, ["fetch", "--quiet", "--prune", "--", remote.url, "+refs/heads/*:refs/remotes/origin/*"], left());
+      // The clone's tracking refs, as the fetch's starting point, so only what is new crosses the wire.
+      const listRefs = async (where: (args: string[]) => Promise<string>) =>
+        new Map(
+          (await where(["for-each-ref", "--format=%(objectname) %(refname)", "refs/remotes/origin/"]))
+            .split("\n")
+            .filter((line) => line !== "" && !line.endsWith(" refs/remotes/origin/HEAD"))
+            .map((line) => [line.slice(line.indexOf(" ") + 1), line.slice(0, line.indexOf(" "))] as const),
+        );
+      const before = await listRefs((args) => git(clone, args, left()));
+      const seed = [...before].map(([ref, commit]) => `update ${ref} ${commit}\n`).join("");
+      if (seed !== "") await run("git", [...NO_HOOKS, "update-ref", "--stdin"], { cwd: scratch, timeoutMs: left(), env: isolated, pass: HOST_GIT_PASS, input: seed });
+      await inScratch(
+        [
+          "fetch", "--upload-pack=git-upload-pack", "--quiet", "--prune", "--no-tags", "--no-write-fetch-head",
+          "--no-auto-maintenance", "--no-recurse-submodules", "--", remote.url, "+refs/heads/*:refs/remotes/origin/*",
+        ],
+        true,
+      );
+      const after = await listRefs((args) => inScratch(args, false));
+      const moves = [
+        ...[...after].filter(([ref, commit]) => before.get(ref) !== commit).map(([ref, commit]) => `update ${ref} ${commit}\n`),
+        ...[...before.keys()].filter((ref) => !after.has(ref)).map((ref) => `delete ${ref}\n`),
+      ].join("");
+      if (moves !== "") {
+        await run("git", [...NO_HOOKS, "update-ref", "--no-deref", "--stdin"], { cwd: clone, timeoutMs: left(), env, pass: HOST_GIT_PASS, input: moves });
+      }
       await git(clone, ["symbolic-ref", "refs/remotes/origin/HEAD", `refs/remotes/origin/${defaultBranch}`], left());
     } catch (error) {
       throw unreadable(remote, error);
+    } finally {
+      try {
+        if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
+      } catch {}
     }
     if (stamp) stampFetched(clone, defaultBranch, await fetchedTip(clone, remote, defaultBranch, left));
     return defaultBranch;
@@ -1295,17 +1344,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           await run(
             "git",
             [
-              // Nothing in config that runs a program is obeyed here.
-              "-c", "core.sshCommand=ssh",
-              "-c", "core.askPass=",
-              ...NO_HOOKS,
-              "-c", "core.fsmonitor=false",
-              "-c", "protocol.allow=never",
-              "-c", `protocol.${judged.scheme}.allow=always`,
-              // An empty helper clears every one before it; the person's own,
-              // read at start, are put back.
-              "-c", "credential.helper=",
-              ...(pins?.credentialHelpers ?? []).flatMap(([key, value]) => ["-c", `${key}=${value}`]),
+              // Nothing in config that runs a program is obeyed here; the person's own helpers are put back.
+              ...remoteCallConfig(judged.scheme, pins?.credentialHelpers ?? []),
               "fetch",
               "--upload-pack=git-upload-pack",
               "--quiet",

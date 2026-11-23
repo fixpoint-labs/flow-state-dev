@@ -73,6 +73,27 @@ export interface IgnoredDirectory {
  */
 export const NO_HOOKS: readonly string[] = ["-c", "core.hooksPath=/dev/null"];
 
+/**
+ * The `-c` settings every call that reaches a remote runs under, in an empty
+ * repository of its own: no hooks, no askpass, no fsmonitor, ssh as itself,
+ * only the judged `scheme`, and only the person's own credential `helpers`
+ * (read at start, from outside any repository) after an empty one clears the
+ * rest. These calls hold the host's credentials, so nothing in config that
+ * starts a program is obeyed.
+ */
+export function remoteCallConfig(scheme: string, helpers: ReadonlyArray<readonly [string, string]>): string[] {
+  return [
+    "-c", "core.sshCommand=ssh",
+    "-c", "core.askPass=",
+    ...NO_HOOKS,
+    "-c", "core.fsmonitor=false",
+    "-c", "protocol.allow=never",
+    "-c", `protocol.${scheme}.allow=always`,
+    "-c", "credential.helper=",
+    ...helpers.flatMap(([key, value]) => ["-c", `${key}=${value}`]),
+  ];
+}
+
 /** One worktree to provision. */
 export interface WorktreeRequest {
   /** The repository worktrees are cut from, and where branches live. */

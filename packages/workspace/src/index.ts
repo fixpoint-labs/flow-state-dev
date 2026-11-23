@@ -50,7 +50,6 @@ export type { IgnoredDirectory, MovedBack, OffBranch } from "./worktree";
 export type { PlaceSetup, WorkspaceSetup } from "./setup";
 export { isStrictlyInside } from "./worktree";
 export { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run, runToEnd } from "./exec";
-export { HOST_GIT_PASS, HOST_REMOTE_PASS, WORKSPACE_BASE_PASS } from "./child-env";
 export type { RunToEndResult } from "./exec";
 export {
   CHECK_OUTPUT_TAIL_CHARS,

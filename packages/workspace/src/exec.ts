@@ -50,7 +50,7 @@ export interface RunOptions {
   pass?: readonly string[];
   /**
    * Pass the host's `GIT_CONFIG_KEY_<n>` pairs that can carry a credential
-   * (`http.*`, `credential.*`, `url.*`). Set only on the host's remote calls,
+   * (`http.*`, `credential.*`, `url.*`, `remote.*`). Set only on the host's remote calls,
    * beside `HOST_REMOTE_PASS`; without it those pairs are dropped.
    */
   gitCredentials?: boolean;

@@ -109,6 +109,19 @@ describe("a child the workspace starts", () => {
     expect(remote).toMatchObject({ GIT_CONFIG_COUNT: "3", GIT_CONFIG_VALUE_0: "Authorization: Bearer tok_in_config", GIT_CONFIG_KEY_2: "url.https://tok@example.com/.insteadOf" });
   });
 
+  it("keeps a remote URL with a token in it off local git, where status, checkout and add never need one", async () => {
+    vi.stubEnv("GIT_CONFIG_COUNT", "2");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "remote.origin.url");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", "https://tok_in_remote@github.com/acme/widgets.git");
+    vi.stubEnv("GIT_CONFIG_KEY_1", "safe.directory");
+    vi.stubEnv("GIT_CONFIG_VALUE_1", "*");
+    const local = JSON.parse((await run("node", PRINT_ENV, { cwd: dir, timeoutMs: 30_000, pass: HOST_GIT_PASS })).stdout) as Record<string, string>;
+
+    expect(JSON.stringify(local)).not.toContain("tok_in_remote");
+    // A setting from another section stays, renumbered.
+    expect(local).toMatchObject({ GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "safe.directory", GIT_CONFIG_VALUE_0: "*" });
+  });
+
   it("keeps the operator's corporate CA on the remote calls, and never a switch that turns certificate checks off", async () => {
     vi.stubEnv("GIT_SSL_CAINFO", "/etc/corp/ca.pem");
     vi.stubEnv("GIT_SSL_CAPATH", "/etc/corp/certs");

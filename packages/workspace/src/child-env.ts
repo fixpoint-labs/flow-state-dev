@@ -128,14 +128,15 @@ export interface ChildEnvOptions {
 /**
  * Whether a git config key is in a section that can carry a credential:
  * `http.*` (an `extraHeader`, a proxy URL with a password), `credential.*`
- * (helpers, usernames) or `url.*` (a rewrite to a URL with a token in it).
- * All three matter only when git talks to a remote, so a local call loses
- * nothing without them.
+ * (helpers, usernames), `url.*` (a rewrite to a URL with a token in it) or
+ * `remote.*` (a remote's URL with a token in it). All four matter only when
+ * git talks to a remote, so a local status, checkout or add loses nothing
+ * without them.
  */
-export function carriesCredential(key: string): boolean {
+function carriesCredential(key: string): boolean {
   const dot = key.indexOf(".");
   const section = (dot < 0 ? key : key.slice(0, dot)).toLowerCase();
-  return section === "http" || section === "credential" || section === "url";
+  return section === "http" || section === "credential" || section === "url" || section === "remote";
 }
 
 /**
