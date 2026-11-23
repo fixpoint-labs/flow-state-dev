@@ -252,7 +252,21 @@ Workforce apps list `@flow-state-dev/workforce` in their `dependencies` as the g
 - Comparison ignores CRLF against LF. Writes are always LF. A symlink at the generated file's path exits 3, for a write and for `--check`.
 - Exit codes: 0 written, unchanged or current; 1 when `--check` finds the file stale, or when the generator refuses the tree; 3 for any other failure.
 - In CI, run `--check` as its own step. Inside a build script that already ran `fsdev gen` it always passes.
-- The contract a package implements to supply a generator is in [The workforce folder](./workforce-folder.md).
+
+A package supplies a generator by exporting `generator` on `./fsdev-gen`:
+
+| Member | Meaning |
+| --- | --- |
+| `defaultRoot: string` | The root, relative to the working directory, when `--root` is not given. |
+| `generate(root: string)` | Reads `root` (absolute) and returns the module below. Must not write. |
+| `generate` returns `file` | The file to write, relative to the root. |
+| `content` | The module's full text. |
+| `searched` | The folders looked in, printed as `Looked in:`. |
+| `entries` | One line per registration, printed as found. |
+| `paths` | Every discovered path, listed when `--check` finds the file stale. |
+| `summary` | A one-line count of what was found, printed in parentheses. |
+
+A refusal of what the root holds is thrown as an error carrying `problems: string[]`; the command exits 1. Any other throw exits 3.
 
 ## `fsdev ui`
 
