@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { readRunCommits } from "../src/commits";
+import { effectiveCut, readRunCommits } from "../src/commits";
 
 const dirs: string[] = [];
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -119,6 +119,47 @@ describe("readRunCommits", () => {
     expect(await readRunCommits(dir, "main", cut)).toEqual({ count: 1, subjects: ["the run's change"], verified: true });
   });
 
+  it("counts none of the base's later commits after the run merged them in, read against the effective cut", async () => {
+    // What a judge reads: the subjects a pull request into the base would carry.
+    const dir = repo("local");
+    git(dir, "checkout", "-q", "-b", "run", "main");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    commit(dir, "the run's change");
+    git(dir, "checkout", "-q", "main");
+    commit(dir, "a teammate's change");
+    const tip = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "run");
+    git(dir, "merge", "-q", "--no-edit", "-m", "merge main", "main");
+    expect((await readRunCommits(dir, "main", cut)).subjects).toContain("a teammate's change");
+    expect(await readRunCommits(dir, "main", await effectiveCut(dir, cut, tip))).toEqual({
+      count: 2,
+      subjects: ["merge main", "the run's change"],
+      verified: true,
+    });
+  });
+
+  it("counts a round's own commits only: none the base had, none an earlier round made, with or without a recorded cut", async () => {
+    // A round's review names what this round did. The base's commits it merged
+    // in are not its work, and neither are the commits before it began.
+    const dir = repo("local");
+    git(dir, "checkout", "-q", "-b", "run", "main");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    commit(dir, "an earlier round's change");
+    const roundStart = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "main");
+    commit(dir, "a teammate's change");
+    const tip = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "run");
+    git(dir, "merge", "-q", "--no-edit", "-m", "merge main", "main");
+    commit(dir, "the round's change");
+    const own = { count: 2, subjects: ["the round's change", "merge main"], verified: true };
+    expect(await readRunCommits(dir, "main", await effectiveCut(dir, cut, tip), { since: roundStart })).toEqual(own);
+    // A record with no cut reads the base's named copy beside the round's start.
+    expect(await readRunCommits(dir, "main", null, { since: roundStart })).toEqual(own);
+    // Without the round's start, the earlier round's change is counted too.
+    expect((await readRunCommits(dir, "main", await effectiveCut(dir, cut, tip))).subjects).toContain("an earlier round's change");
+  });
+
   it("answers none for a base the checkout doesn't have, and says it couldn't tell", async () => {
     const dir = repo("local");
     expect(await readRunCommits(dir, "no-such-branch")).toEqual({ count: 0, subjects: [], verified: false });
@@ -161,5 +202,92 @@ describe("readRunCommits", () => {
       subjects: ["the run's change"],
       verified: true,
     });
+  });
+});
+
+describe("a run that rewrites history in its own checkout", () => {
+  // A run shares its checkout's object store and refs: a replace ref, a graft
+  // or a commit-graph it planted would make the base look as if it had the
+  // run's work in it, so its work counts none and its review is skipped.
+  function planted(how: "replace" | "graft") {
+    const dir = repo("local");
+    git(dir, "checkout", "-q", "-b", "run", "main");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "main");
+    commit(dir, "a teammate's change");
+    const tip = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "run");
+    commit(dir, "the run's change");
+    const head = git(dir, "rev-parse", "HEAD").trim();
+    if (how === "replace") {
+      // The base's tip, as the run would have git read it: a commit on top of its own work.
+      const forged = git(dir, "commit-tree", `${head}^{tree}`, "-p", head, "-m", "forged").trim();
+      git(dir, "replace", tip, forged);
+    } else writeFileSync(join(dir, ".git", "info", "grafts"), `${tip} ${head}\n`);
+    return { dir, cut, tip };
+  }
+
+  for (const how of ["replace", "graft"] as const) {
+    it(`still counts the run's commit after it planted a ${how} that makes the base's tip its child`, async () => {
+      const { dir, cut, tip } = planted(how);
+      const base = await effectiveCut(dir, cut, tip);
+      expect(await readRunCommits(dir, "main", base)).toEqual({ count: 1, subjects: ["the run's change"], verified: true });
+    });
+  }
+
+  it("still counts every one of the run's commits after it planted a shallow file that cuts its history at its HEAD", async () => {
+    const dir = repo("local");
+    git(dir, "checkout", "-q", "-b", "run", "main");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    commit(dir, "the run's first change");
+    commit(dir, "the run's second change");
+    // Git would read HEAD as having no parents: one commit, and no meeting point with the base.
+    writeFileSync(join(dir, ".git", "shallow"), `${git(dir, "rev-parse", "HEAD").trim()}\n`);
+    expect(await readRunCommits(dir, "main", cut)).toEqual({
+      count: 2,
+      subjects: ["the run's second change", "the run's first change"],
+      verified: true,
+    });
+  });
+});
+
+describe("effectiveCut", () => {
+  // The base a run is read against: the base branch's tip when it has the cut
+  // in its history, so a run that merged the moved-on base owns none of it, and
+  // the cut otherwise, so a tip can only ever take the base's own commits out.
+  it("takes the base's tip in the cut's place when the tip has the cut in its history", async () => {
+    const dir = repo("local");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "branch", "-q", "run");
+    commit(dir, "a teammate's change");
+    const tip = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "run");
+    commit(dir, "the run's change");
+    expect(await effectiveCut(dir, cut, tip)).toBe(tip);
+  });
+
+  it("keeps the cut for a tip that doesn't descend from it, one git can't read, or none", async () => {
+    const dir = repo("local");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    git(dir, "checkout", "-q", "--orphan", "rewritten");
+    commit(dir, "unrelated");
+    const unrelated = git(dir, "rev-parse", "HEAD").trim();
+    for (const tip of [unrelated, "0".repeat(40), "not a commit", null]) expect(await effectiveCut(dir, cut, tip)).toBe(cut);
+  });
+
+  it("keeps the cut for a tip that already has the run's HEAD in its history", async () => {
+    // A run that pushed its own branch to the base: read against that tip, its work would count none and skip review.
+    const dir = repo("local");
+    git(dir, "checkout", "-q", "-b", "run", "main");
+    const cut = git(dir, "rev-parse", "HEAD").trim();
+    commit(dir, "the run's change");
+    const head = git(dir, "rev-parse", "HEAD").trim();
+    const above = git(dir, "commit-tree", `${head}^{tree}`, "-p", head, "-m", "on top").trim();
+    for (const tip of [head, above]) expect(await effectiveCut(dir, cut, tip)).toBe(cut);
+  });
+
+  it("answers no cut for a record with none, whatever the tip", async () => {
+    const dir = repo("local");
+    expect(await effectiveCut(dir, null, git(dir, "rev-parse", "HEAD").trim())).toBeNull();
   });
 });

@@ -667,7 +667,9 @@ describe("the socket session · ids on notices, per scope", () => {
     await flush();
     await flush();
     const wakes = ws.notices();
-    expect(wakes.length).toBe(3);
+    // The session write and the request write. The write session's write wakes nothing on the
+    // user topic at all, since no listing shows a write session (FIX-2864).
+    expect(wakes.length).toBe(2);
     expect(wakes).toEqual(wakes.map(() => ({ type: "notice", topic: topic.user(), kind: "run" })));
     expect(JSON.stringify(wakes)).not.toContain("acme");
     expect(JSON.stringify(wakes)).not.toContain("fsd-write");

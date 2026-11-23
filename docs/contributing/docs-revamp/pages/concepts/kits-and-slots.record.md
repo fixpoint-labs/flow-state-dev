@@ -46,6 +46,8 @@ Written by `docs-writer` (sonnet), 751 words. Scenario: A help-desk app that ins
 
 - Post-review edit (docs build): the chain figure's caption is cut to 55 characters for the brand lint's 60-character cap; the figure description, unchanged, still names who fills which slot. Re-ran lint-brand.mjs and check-docs-page.mjs: ok.
 
+- After the loop (review): at the owner's request the page opens with an Experimental caution: kits, `defineKit`, slots and kit options can change between releases. No other line changed. 784 words. Page sha256 81e2f61bcda5.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 6030ce3e30d6, and the 8 Reference row(s) pass 6 moved.
@@ -53,6 +55,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 603
 - Reference row 2: Every entry in a kit's folder must be used; a stray file stops the app from starting (page line 54, and row 2's 'every entry must be used' rule). Untrue: Almost every entry. Names that never mean anything, such as `.DS_Store`, are exempt from the unclaimed-entry refusal. Anything else unclaimed is refused at start-up (installKits, not at createFlowState construction), each file named in the message. (packages/core/src/kit/define-kit.ts:69-75; packages/engine/src/folder/claim.ts:104-114; packages/engine/src/flowstate/kits.ts:278-289) The row is recorded corrected.
 
 - Post-loop edit: both sentences are the pass-2 answer key's facts: missing required kit → `FlowStateConfigError` naming the gap (kp:59-69, et:289-303); stray folder entries → `ready()` rejects naming them (dk:70-75, et:348-364).
+
+- Re-run after the review edit: the caution states product status, not behaviour; no claim about behaviour changed. No untrue claim remains open.
 
 ## 6 · Depth pass
 

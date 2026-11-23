@@ -71,8 +71,10 @@ import { readCommittedTask } from "../tasks/collection/read-committed";
 import { untakenSteers } from "../tasks/steers";
 import { ticketStillRunsTask } from "../tasks/collection/internal";
 import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
+import { isTerminalStatus } from "../tasks/schema/task-status";
 import { advisoryCancel, advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
+import { StaleTaskClaimError, adoptLapsedLease } from "./stale-claim";
 import { startLeaseRenewal, startTicker, type LeaseRenewalDriver, type Ticker } from "../tasks/lease-renewal";
 import { stampLeaseRenewal, withLeaseRenewalScope } from "../tasks/lease-renewal-scope";
 import { currentWorkerClaim, openWorkerClaimScope, stampCurrentClaim } from "./flow-policy-wiring";
@@ -449,7 +451,10 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
   }
   // Settled, retried, taken back or claimed for a later
   // turn meanwhile: not this request's to write.
-  if (!claimHolds(ref, ticket, row)) return undefined;
+  if (!claimHolds(ref, ticket, row)) {
+    await endOrphanedStop(record, ending);
+    return undefined;
+  }
   // A later request (a notice, a steer's turn) while the task's own request is
   // suspended settles nothing and fails nothing: the task still waits on that
   // request, and keeps an answer this one gave that counts.
@@ -460,12 +465,42 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
   if (ending.status === "suspended") {
     const stop = stopOf(record, ending);
     const mirror = stop.forPerson ? mirrorOf(record.ctx, ending) : undefined;
-    const outcome = await waitOn(record, row, stop.on, undefined, mirror);
+    let outcome = await waitOn(record, row, stop.on, undefined, mirror);
+    // Only the lease lapsed: the row is still this attempt's and turn's, and
+    // no reclaim moved it. The claim takes it back, by the start gate's own
+    // takeover (the span the claim committed to, a renewal that must say it
+    // landed), and mirrors the stop, so the person can still answer it.
+    // Cancelling the stop instead would let the resume, admitted on this
+    // same attempt, settle the task on a review nobody gave (FIX-2847). Only
+    // a definite refusal (`StaleTaskClaimError`: a reclaim won, no verdict,
+    // no span to take it back for) leaves the write refused, and the stop is
+    // ended below as superseded. Any other failure is thrown: the attempt may
+    // still own the row, so the stop stays suspended, still needing its
+    // review, for the request's recovery.
+    if (mirror !== undefined && outcome?.outcome === "declined" && outcome.reason === "lost-claim") {
+      const stored = await readCommittedTask(ref, row.id);
+      if (claimHolds(ref, ticket, stored)) {
+        const adopted = await adoptLapsedLease(ref, stored).catch((error: unknown) => {
+          if (error instanceof StaleTaskClaimError) return undefined;
+          // Said here: an engine with no logger says nothing of a hook that throws.
+          console.warn(
+            `[task-board] task "${row.id}": its lease lapsed before its stop for a person was mirrored, and taking the row back failed; the stop stays for its person: ${(error as Error).message}`
+          );
+          throw error;
+        });
+        if (adopted !== undefined) outcome = await waitOn(record, adopted, stop.on, undefined, mirror);
+      }
+    }
     // Defence in depth (FIX-2133): a turn that asked never reaches here (the
     // first branch), and the collection still refuses a mirror on a row a
     // question holds, one source at a time. Cancelled if it does.
     if (mirror !== undefined && outcome?.outcome === "declined" && outcome.reason === "open-question") {
       cancelRefusedStop(record.ctx, row.id, mirror.source);
+    } else if (outcome?.outcome === "declined") {
+      // The row moved on between the read above and this write (a cancel, a
+      // later claim, a lapsed lease): no mirror holds the stop, so nothing
+      // could answer it (FIX-2847).
+      await endOrphanedStop(record, ending);
     }
     return undefined;
   }
@@ -545,6 +580,39 @@ function mirrorOf(ctx: BlockContext, ending: TaskEnding): SuspensionHold | undef
 /** How long the cancel of a refused stop keeps trying while its request finishes parking. */
 const REFUSED_STOP_RETRY_MS = [50, 100, 250, 500, 1_000, 2_000, 5_000];
 
+// FIX-2847.
+/**
+ * End a stop for a person that this request's claim can no longer mirror: the
+ * row moved on before the check wrote its hold. Nothing else can answer the
+ * stop (a later claim's run can't address it, and a cancel that landed first
+ * found no mirror to resume), so its request would stay `suspended` for good,
+ * counted as a run still going. Decided by ownership, read from the committed
+ * row:
+ *
+ * - **the row ended** (a cancel pressed while the run worked on past its
+ *   harness, before it stopped for its review), or is gone: the stop is
+ *   cancelled as the task's cancel would have, `taskCancelled`, so the run
+ *   asks nobody again.
+ * - **the row runs on for another claim** (a later attempt or turn took it),
+ *   or this claim's lease lapsed and the row couldn't be taken back (see the
+ *   suspended branch of the check): the stop is cancelled as superseded. The
+ *   task is not marked cancelled, and its row is not written: it is the newer
+ *   claim's.
+ *
+ * Called only where this request's claim no longer holds the row: the check
+ * found it moved on, or the hold write was refused for a reason other than an
+ * open question.
+ */
+async function endOrphanedStop(record: Admitted, ending: TaskEnding): Promise<void> {
+  const suspension = ending.status === "suspended" ? ending.suspension : undefined;
+  if (suspension === undefined || !isUserSuspension(suspension)) return;
+  const stop = mirrorOf(record.ctx, ending);
+  if (stop === undefined) return;
+  const stored = await readCommittedTask(record.ref, record.ticket.taskId);
+  const ended = stored === undefined || isTerminalStatus(stored.status);
+  cancelRefusedStop(record.ctx, record.ticket.taskId, stop.source, ended ? { taskCancelled: true } : undefined);
+}
+
 // FIX-2133.
 /**
  * Cancel a stop a held row refused to mirror (one wait per turn),
@@ -552,8 +620,10 @@ const REFUSED_STOP_RETRY_MS = [50, 100, 250, 500, 1_000, 2_000, 5_000];
  * Inbox item survives for it. Called while the request is still parking, so
  * the cancel is tried again until the engine has recorded it parked. Not the
  * task's cancel: the row and its questions stand. Never fails the caller.
+ * With `taskCancelled`, the stop ends as a cancelled task's does: the run asks
+ * nobody again ({@link endOrphanedStop}).
  */
-function cancelRefusedStop(ctx: BlockContext, taskId: string, address: SuspensionAddress): void {
+function cancelRefusedStop(ctx: BlockContext, taskId: string, address: SuspensionAddress, options?: { taskCancelled: true }): void {
   const resumeWait = requestHostOf(ctx)?.resumeWait;
   if (resumeWait === undefined) return;
   const suspension = { requestId: address.requestId, suspensionId: address.suspensionId };
@@ -561,7 +631,7 @@ function cancelRefusedStop(ctx: BlockContext, taskId: string, address: Suspensio
     for (const wait of [0, ...REFUSED_STOP_RETRY_MS]) {
       if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
       try {
-        const result = await resumeWait({ suspension, outcome: { cancelled: true } });
+        const result = await resumeWait({ suspension, outcome: { cancelled: true }, ...options });
         if (result.ok || result.refused !== "busy") return;
       } catch (error) {
         console.warn(`[task-board] task "${taskId}": the stop its questions refused couldn't be cancelled: ${(error as Error).message}`);

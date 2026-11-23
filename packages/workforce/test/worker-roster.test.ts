@@ -30,6 +30,20 @@ describe("hiring a worker", () => {
     expect((await second.turn("alice", session.id)).output).toMatchObject({ worker: "scribe", tone: "terse" });
   });
 
+  // A host whose flow no longer declares a setting a stored row carries: the run refuses it in one sentence.
+  it("refuses to run a stored worker whose setting the flow no longer declares, ending on one full stop", async () => {
+    const h = host();
+    expect((await h.rosterAction("alice", "hire", { id: "scribe", flow: FIXTURE, settings: { tone: "terse" } })).error).toBeUndefined();
+
+    const older = bootHost(h.stores, { withoutTone: true });
+    const session = await older.client("alice").ensureWorkerSession({ worker: "scribe" });
+    const turn = await older.turn("alice", session.id);
+    const message = messageOf(turn.error);
+    expect(message).toMatch(/"tone" is not a declared setting/);
+    expect(message).not.toMatch(/\.\./);
+    expect(message).toMatch(/[^.]\.$/);
+  });
+
   // BR-3.
   it("refuses a hire, fork or fire onto a standard worker, naming it and suggesting a fork", async () => {
     const h = host();
@@ -79,6 +93,7 @@ describe("hiring a worker", () => {
     expect(messageOf(unknownFlow.error)).toContain('names flow "nope", which isn\'t a worker flow here');
     const badSetting = await h.rosterAction("alice", "hire", { id: "b", flow: FIXTURE, settings: { colour: "red" } });
     expect(messageOf(badSetting.error)).toContain("colour");
+    expect(messageOf(badSetting.error)).toMatch(/"colour" is not a declared setting\. Nothing was written\.$/);
     expect((await h.client("alice").roster()).filter((entry) => !entry.standard)).toEqual([]);
   });
 
@@ -195,6 +210,17 @@ describe("what a worker runs with", () => {
     expect((await second.turn("alice", session.id)).output).toMatchObject({ tone: "terse" });
     await h.rosterAction("alice", "edit", { id: "scribe", settings: { tone: "warm" } });
     expect((await second.turn("alice", session.id)).output).toMatchObject({ tone: "warm" });
+  });
+
+  it("an edit's settingsPatch changes the settings it names and keeps the rest, which the app may not even see", async () => {
+    // An app shows a worker only its `showSettings`; changing one of those (a reply model, say) by
+    // replacing the settings whole would drop the ones it can't see, like a grant of a document.
+    const h = host();
+    await h.rosterAction("alice", "hire", { id: "scribe", flow: FIXTURE, settings: { tone: "terse", resources: ["handbook"] } });
+    const session = await h.client("alice").ensureWorkerSession({ worker: "scribe" });
+    await h.client("alice").edit({ id: "scribe", settingsPatch: { tone: "warm" } });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ tone: "warm", handbook: true, ledger: false });
+    await expect(h.client("alice").edit({ id: "scribe", settings: {}, settingsPatch: { tone: "x" } })).rejects.toThrow();
   });
 
   it("BR-22 · a configuration naming a skill this host doesn't register refuses that turn, naming it, and leaves the row", async () => {

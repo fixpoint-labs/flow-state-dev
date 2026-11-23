@@ -34,6 +34,8 @@ Written by `docs-writer` (sonnet), 1014 words. Scenario: Asking Chief of Staff "
 - After revise round 2, page sha256 24ebbb81d715: exit 0.
 - After the loop (review): the `host.mts` example registers the workers' tools in `agent.catalog` (`projectSourceTools(workspace)`, `search()`, `fetch()`), as `labs/teammates/host.mts:371-375` does; without them the workers' `tools:` lines are refused at start (`packages/workforce/src/agent-worker-flow.ts:489-505`). It type-checks.
 
+- After the loop (R-15 depth pass): one sentence now says the app reads its variables in its `fsdev.config.mts` and that the Environment reference lists the model and search keys, since that page no longer lists this app's own variables. `node scripts/check-docs-page.mjs` on the page: exit 0, 1244 words. Page sha256 f11b4b79a8f4.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 1eed80dbf747, and the 11 Reference row(s) pass 6 moved.
@@ -42,6 +44,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 1ee
 - In researcher's conversation the message reads **From** Chief of Staff. Untrue: The visible header of a received message is an arrow and the sender's name (`← Chief of Staff`, with ` · reply` or ` · no answer` appended where it applies). `From <name>` is only the section's aria-label, not text on screen. (/home/user/flow-state-dev/labs/teammates/src/components/Entry.tsx:107-116)
 - Reference row 1: Conversation length: a talk-to worker folds turns older than the last 50 into a summary Untrue: The history window is 50 turns (the engine default). The summary fold runs before a turn leaves the window, not after: once the oldest unfolded turn reaches the oldest quarter of the window, up to a quarter of the window is folded into the running summary. The summary then replaces those folded turns in what the worker reads, so the worker reads the summary plus the turns still in the window word for word. It applies to the three talk-to workers (Chief of Staff, researcher, writer) because the app wires it on the agent flow with `uses` and `beforeAnswer`. The coding workers run on `coder`, which does not get it. (/home/user/flow-state-dev/packages/core/src/utility/history-summary.ts:12-17; /home/user/flow-state-dev/packages/engine/src/context/createExecutionContext.ts:803; /home/user/flow-state-dev/labs/teammates/host.mts:376-377) The row is recorded corrected.
 - Re-run after the review edit: no wrong claim. The catalog and imports match `labs/teammates/host.mts:69-70,350-361`; an uncatalogued `tools:` name is refused when the worker is hired (`packages/workforce/src/agent-worker-flow.ts:485-506`).
+
+- Re-run after the review edit: the app reads its variables in labs/teammates/fsdev.config.mts; the Environment reference (reference/environment.md) lists the provider and search keys. True.
 
 ## 6 · Depth pass
 

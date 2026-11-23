@@ -177,7 +177,8 @@ export function FlowRail({ sessionRefreshKey = 0, onRefreshActiveSession }: Flow
 /**
  * What hangs off the end of a row.
  *
- * A collection member gets a copy button. A singleton's row label IS its whole
+ * A session gets a copy button: its line reads its title or its flow's label,
+ * and the id is here and in the tooltip. A collection member gets one too. A singleton's row label IS its whole
  * id, so there is nothing a copy button could recover that is not already on
  * screen; an instance id is opaque, often long, and truncated to fit the rail,
  * and retyping what a truncation shows is how the wrong copy gets addressed.
@@ -188,18 +189,22 @@ export function FlowRail({ sessionRefreshKey = 0, onRefreshActiveSession }: Flow
  * tool's own vocabulary and the tool's own selection.
  */
 function RowTrailing({ row }: { row: FlowNavigatorRow }) {
-  if (row.type === "instance") return <CopyInstanceId flowId={row.instance.id} />;
-  if (row.type === "session" && row.dispatchRun !== undefined) {
-    return (
+  if (row.type === "instance") return <CopyId id={row.instance.id} what="instance" />;
+  if (row.type !== "session") return null;
+  // A session line reads its label, so its id lives here and in the tooltip.
+  const copy = <CopyId id={row.session.id} what="session" />;
+  if (row.dispatchRun === undefined) return copy;
+  return (
+    <>
       <DispatchRunProvenance
         topic={row.session.topic}
         parentSessionId={row.dispatchRun.parentSessionId}
         parentInView={row.dispatchRun.parentInView}
         leafAddress={row.leaf.address}
       />
-    );
-  }
-  return null;
+      {copy}
+    </>
+  );
 }
 
 /**
@@ -299,8 +304,8 @@ function DispatchRunProvenance({
   );
 }
 
-/** Copies the instance's full id. */
-function CopyInstanceId({ flowId }: { flowId: string }) {
+/** Copies an instance's or a session's full id. */
+function CopyId({ id, what }: { id: string; what: "instance" | "session" }) {
   const [copied, setCopied] = useState(false);
 
   return (
@@ -308,10 +313,10 @@ function CopyInstanceId({ flowId }: { flowId: string }) {
       variant="ghost"
       size="sm"
       className="h-5 w-5 p-0"
-      title={`Copy instance ID: ${flowId}`}
-      aria-label={`Copy instance ID ${flowId}`}
+      title={`Copy ${what} ID: ${id}`}
+      aria-label={`Copy ${what} ID ${id}`}
       onClick={() => {
-        void navigator.clipboard?.writeText(flowId);
+        void navigator.clipboard?.writeText(id);
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1200);
       }}

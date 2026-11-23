@@ -10,6 +10,7 @@ import { PopupView, type FollowUp, type Popup } from "./Popups";
 import { Switcher } from "./Switcher";
 import { TeammatePanel } from "./TeammatePanel";
 import { WorkersList } from "./WorkersList";
+import { SIDEBAR_WIDTH, useSidebar } from "../lib/sidebar";
 import { ConnectionScreen, type ConnectionFailure } from "./flow-state/connection-screen";
 import type { HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { readAddress, writeAddress, type Address, type AddressWrite } from "../lib/address";
@@ -274,6 +275,10 @@ export function App() {
   }, [calls, unopened]);
   // No teammate open, no panel column held for one.
   const panelShown = worker !== undefined && sessionId !== undefined;
+  const sidebar = useSidebar();
+  // On a narrow window an opened sidebar lies over the conversation, so its column keeps the rail's width.
+  const sidebarColumn = sidebar.collapsed || sidebar.narrow ? SIDEBAR_WIDTH.rail : SIDEBAR_WIDTH.open;
+  const columns = [sidebarColumn, "minmax(0,1fr)", ...(panelShown ? ["22rem"] : [])].join(" ");
   useAppKeys({
     palette: () => setSwitching((open) => !open),
     step: (by) => {
@@ -295,7 +300,7 @@ export function App() {
   return (
     <div
       className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
-      style={{ gridTemplateColumns: panelShown ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
+      style={{ gridTemplateColumns: columns }}
     >
       {/* One follower per conversation: every screen on it reads what it read. */}
       {Object.values(sessions).map((id) => (
@@ -312,6 +317,13 @@ export function App() {
         onHire={hire}
         hiring={hiring}
         onHiring={setHiring}
+        workspace={context === undefined ? undefined : { name: context.folder.split(/[\\/]/).filter(Boolean).at(-1) ?? context.folder, path: context.folder }}
+        choices={{ models: context?.models, harnesses }}
+        defaults={{ model: context?.model, harness: context?.harness }}
+        collapsed={sidebar.collapsed}
+        overlay={sidebar.narrow && !sidebar.collapsed}
+        onToggle={sidebar.toggle}
+        onClose={sidebar.collapse}
       />
       {worker && sessionId ? (
         <Conversation
@@ -344,9 +356,13 @@ export function App() {
           sessionId={sessionId}
           openTask={popup?.kind === "task" ? popup.taskId : undefined}
           nameOf={nameOf}
-          lookOf={lookOf}
           isCoding={isCoding}
           onOpen={openPopup}
+          // Routines are asked for in words: *New routine* starts the sentence in this teammate's composer.
+          onNewRoutine={() => {
+            followUps.current += 1;
+            setPrefill({ sessionId, text: "Set up a routine: ", n: followUps.current });
+          }}
         />
       ) : null}
       <Switcher

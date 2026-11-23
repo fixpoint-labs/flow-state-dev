@@ -1684,8 +1684,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       })
       .passthrough(),
     outputSchema: z.union([
-      // A cancel names the dependents it took along (FIX-2078 D2).
-      z.object({ ok: z.literal(true), cancelled: z.array(z.string()).optional() }),
+      // A cancel names the dependents it took along (FIX-2078 D2); a kept message says what didn't follow it (`note`).
+      z.object({ ok: z.literal(true), cancelled: z.array(z.string()).optional(), note: z.string().optional() }),
       z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
     ]),
     execute: async (input, ctx) => {
@@ -1852,6 +1852,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           if (steered.reason === "terminal") return lockedError(now, ["message"]);
           return declinedWriteToolError(input.id, steered, "The message was not kept.");
         }
+        if (steered?.outcome === "recorded" && steered.note !== undefined) return { ok: true as const, note: steered.note };
       }
       return { ok: true as const };
     },

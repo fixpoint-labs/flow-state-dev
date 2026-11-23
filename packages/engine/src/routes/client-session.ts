@@ -15,7 +15,9 @@
  * Server-side code that needs the whole record reads the session store; there
  * is no request flag that widens this view.
  */
-import type { JsonObject } from "@flow-state-dev/core/types";
+import type { JsonObject, SessionLabel } from "@flow-state-dev/core/types";
+import { toError } from "@flow-state-dev/core/helpers";
+import { warnOnce } from "@flow-state-dev/core/internal";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { clientVisibleStateKeys } from "../context/client-visible-state";
 import type { SessionRecord } from "../stores/types";
@@ -24,9 +26,10 @@ import { applyScopeStateDefaults, scopeStateSchema } from "../context/scope-stat
 
 /**
  * The session record minus what never leaves the server: its `journal` and its
- * stored `resources`. `state` holds only the visible fields.
+ * stored `resources`. `state` holds only the visible fields, and `label` is
+ * what the owning flow's `session.label` names the session, when it names it.
  */
-export type ClientSessionRecord = Omit<SessionRecord, "journal" | "resources">;
+export type ClientSessionRecord = Omit<SessionRecord, "journal" | "resources"> & { label?: string };
 
 /**
  * Project a stored session for a client.
@@ -50,7 +53,29 @@ export function toClientSession(
   const visible = owner.ok ? clientVisibleStateKeys(owner.flow) : [];
   // The fields read as a run reads them: with the schema's defaults.
   const read = owner.ok ? applyScopeStateDefaults(scopeStateSchema(owner.flow, "session"), state) : state;
-  return { ...envelope, id: bareId, state: visibleState(read, visible) };
+  const shown = visibleState(read, visible);
+  const label = owner.ok ? labelOf(owner.flow.session?.label, owner.flow.kind, bareId, shown) : undefined;
+  return { ...envelope, id: bareId, state: shown, ...(label === undefined ? {} : { label }) };
+}
+
+/**
+ * The flow's name for the session, from what a client may see of it. A label
+ * that throws or names nothing leaves the session unlabelled: a display hint
+ * never costs a read. A throw is said once per flow kind, so a broken label is
+ * not silent.
+ */
+function labelOf(label: SessionLabel | undefined, flowKind: string, id: string, state: JsonObject): string | undefined {
+  if (label === undefined) return undefined;
+  try {
+    const named = label({ id, state });
+    return typeof named === "string" && named.trim() !== "" ? named : undefined;
+  } catch (error) {
+    warnOnce(
+      `engine/session-label/${flowKind}`,
+      `flow "${flowKind}": session.label threw, so its sessions go out unlabelled: ${toError(error).message}`
+    );
+    return undefined;
+  }
 }
 
 // BP-030.

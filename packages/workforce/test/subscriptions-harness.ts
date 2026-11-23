@@ -32,6 +32,7 @@ import {
   type SubscriptionProvider,
   type SubscriptionScreens
 } from "../src/subscriptions";
+import type { PullRequestFollower } from "@flow-state-dev/core/harness";
 import { defineSubscriptionServiceFlow, followPullRequest, internalServiceFlow, type InternalServiceFlow, type InternalTopics, type SubscriptionServiceOptions } from "../src/service-flows";
 import { createRoutinesCapability } from "../src/routines";
 import { workerRoutineVerbs } from "../src/routines/routines";
@@ -120,7 +121,7 @@ type Relay = {
   readonly tried: Array<{ sessionId: string; outcome: unknown }>;
 };
 
-function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, isolated: boolean, internal: InternalServiceFlow | undefined, relay: Relay | undefined) {
+function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, isolated: boolean, internal: InternalServiceFlow | undefined, relay: Relay | undefined, followerOf?: (installation: WorkerInstallation) => PullRequestFollower) {
   const tools = workerRoutineVerbs(installation);
   // A block in any flow publishing: the test's way onto `publishEvent` with no model. Its input is passed on as given.
   const publish =
@@ -155,7 +156,7 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
   const chat = generator({ name: "follower-chat", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, uses: [createRoutinesCapability(installation), ...(internal === undefined ? [] : [internal.capability])], user: (input) => input.message, itemVisibility: { client: true, history: true } });
   const chatPlain = generator({ name: "follower-chat-plain", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, user: (input) => input.message, itemVisibility: { client: true, history: true } });
   // A coding session's follower, as a host hands harness-manager one (FIX-2535 D2).
-  const follower = followPullRequest({ providers: [github], installation });
+  const follower = followerOf?.(installation) ?? followPullRequest({ providers: [github], installation });
   // A task's turn: `[subscribe:<thread>]` subscribes the task's session to it, `[follow-pr:<n>]` follows
   // acme/api's PR #n as a coding session that opened it does, `[hold]` waits on the host's hold, then
   // `[fail]` fails the task.
@@ -212,6 +213,8 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
   poll?: { everyMinutes?: number };
   /** The app's own screens on the GitHub provider: its custom functions and its interest model. */
   screens?: SubscriptionScreens;
+  /** The coding session's pull-request follower, built on the installation; default `followPullRequest({ providers: [github], installation })`. */
+  follower?: (installation: WorkerInstallation) => PullRequestFollower;
   /** The follower flow isolates its users' state (`isolateUserState`). */
   isolatedFollower?: boolean;
   /** The service flow itself, in place of the one built from `service` (GitHub's own flow); its kind must be `github-service`. */
@@ -259,7 +262,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     standard,
     // A coordinator's conversation keeps event routines too (its routine actions).
     coordinatorRoutines: options.coordinatorRoutines ?? true,
-    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold, options.isolatedFollower === true, internalOf(installation), relay), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
+    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold, options.isolatedFollower === true, internalOf(installation), relay, options.follower), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
     plainFlowsOf: (installation): Record<string, FlowInstance> => ({
       ...(internalOf(installation) === undefined ? {} : { "internal-service": internalOf(installation)!.flow }),
       "github-service":

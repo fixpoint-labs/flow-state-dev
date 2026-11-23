@@ -70,14 +70,17 @@ function openTask(server: ReturnType<typeof onBoard>, taskId = "t1") {
 const buttons = (popup: HTMLElement) => [...popup.querySelectorAll<HTMLElement>('[data-testid="task-action-row"] button')].map((b) => b.textContent ?? "");
 
 describe("a coding task's popup has its buttons", () => {
-  it("while it runs: Cancel and Steer; once cancelled: Retry and a Re-run on each other harness, never its own", async () => {
+  it("while it runs: Cancel, and the Steer compose at the popup's foot; once cancelled: Retry and a Re-run on each other harness, never its own", async () => {
     const server = onBoard([coding("t1", "cursor")]);
     const popup = await openTask(server);
-    await waitFor(() => expect(buttons(popup)).toEqual(["Cancel", "Steer"]), { timeout: 2000 });
+    await waitFor(() => expect(buttons(popup)).toEqual(["Cancel"]), { timeout: 2000 });
 
-    // Steer: the words go to the board's updateTask on the conversation that filed it.
-    fireEvent.change(within(popup).getByLabelText("Steer this task"), { target: { value: "Keep the old wording." } });
-    fireEvent.click(within(popup).getByRole("button", { name: "Steer" }));
+    // Steer: a compose at the foot, below the feed, not in the row at the top.
+    const steer = within(popup).getByRole("region", { name: "Steer" });
+    expect(steer.closest("footer")).not.toBeNull();
+    // The words go to the board's updateTask on the conversation that filed it; Enter sends.
+    fireEvent.change(within(steer).getByLabelText("Steer this task"), { target: { value: "Keep the old wording." } });
+    fireEvent.keyDown(within(steer).getByLabelText("Steer this task"), { key: "Enter" });
     expect((await within(popup).findByTestId("task-action-outcome")).textContent).toBe("Sent to the task.");
     expect(server.posts.map(actionOf)).toContainEqual({ action: "updateTask_tasks", input: { id: "t1", message: "Keep the old wording." } });
     expect(server.posts.every((posted) => posted.path.startsWith(`/api/flows/agent/${encodeURIComponent(BOARD)}/actions/`))).toBe(true);
@@ -87,6 +90,8 @@ describe("a coding task's popup has its buttons", () => {
     fireEvent.click(within(popup).getByRole("button", { name: "Yes" }));
     await waitFor(() => expect(popup.querySelector("[data-overlay-status]")?.textContent).toBe("cancelled"));
     expect(buttons(popup)).toEqual(["Retry", "Re-run on Claude Code", "Re-run on Codex"]);
+    // An ended task can't be steered: the compose is gone.
+    expect(within(popup).queryByRole("region", { name: "Steer" })).toBeNull();
   });
 
   it("starts the row afresh when the popup moves to another task, so a draft never carries to it", async () => {
@@ -94,7 +99,7 @@ describe("a coding task's popup has its buttons", () => {
     window.history.replaceState(null, "", `/?worker=${LEAD}&session=${BOARD}&task=t2`);
     render(<TestProvider server={scriptedServer({ speed: 0.05 })} client={server.client}><App /></TestProvider>);
     const popup = await screen.findByRole("dialog", { name: "Coding task: Bump the version" }, POPUP_READ);
-    await waitFor(() => expect(buttons(popup)).toEqual(["Cancel", "Steer"]), { timeout: 2000 });
+    await waitFor(() => expect(buttons(popup)).toEqual(["Cancel"]), { timeout: 2000 });
     fireEvent.change(within(popup).getByLabelText("Steer this task"), { target: { value: "Meant for Codex." } });
 
     // The conversation's other task opens in the same popup, which keeps no draft of the first.

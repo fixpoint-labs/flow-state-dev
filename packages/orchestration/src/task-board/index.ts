@@ -228,8 +228,8 @@ export type {
   TaskAssigneeRegistry,
 } from "./dispatch-assignee";
 export type { TaskBoardMode } from "./board-mode";
+export { StaleTaskClaimError } from "./stale-claim";
 export {
-  StaleTaskClaimError,
   UnknownTaskLedgerError,
   taskDispatchInputSchema,
   taskLedgers,

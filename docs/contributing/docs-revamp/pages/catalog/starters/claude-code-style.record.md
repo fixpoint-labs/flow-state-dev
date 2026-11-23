@@ -45,6 +45,8 @@ Written by `docs-writer` (sonnet), 1050 words. Scenario: The reader's own reposi
 
 - After the loop (review): the coder-worker change now presents `desk.coder-codex` as the lab's own file (it ships with `main`'s `delegates` already listing it, fact sheet flag 3), and the steps apply to a coder for a harness you add.
 
+- After the loop (R-15 depth pass): one sentence now says the app reads its variables in its `fsdev.config.mts` and that the Environment reference lists the model and search keys, since that page no longer lists this app's own variables. `node scripts/check-docs-page.mjs` on the page: exit 0, 1080 words. Page sha256 993366f583a5.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 753c97766cba, and the 12 Reference row(s) pass 6 moved.
@@ -52,6 +54,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 753
 - Everything is stored in one SQLite file under the data folder. Untrue: The store is lab.db, but the routines' schedule indexes are two more SQLite files of their own in the same data folder: clock.db and poll.db. Coding runs' worktrees or clones live under the data folder's runs/ directory. (/home/user/flow-state-dev/labs/claude-code-style/host.mts:423-425 (clock.db, poll.db), :459 (lab.db); /home/user/flow-state-dev/labs/claude-code-style/README.md:134)
 - The Claude Code coders also need ANTHROPIC_API_KEY. Untrue: ANTHROPIC_API_KEY is one of several ways to give Claude Code a credential. The harness also accepts a `claude` sign-in or CLAUDE_CODE_OAUTH_TOKEN, and its own remedy text reads "Sign in with `claude`, or set ANTHROPIC_API_KEY". The key is not required. (/home/user/flow-state-dev/packages/claude-code/src/sdk/account-probe.ts:111; /home/user/flow-state-dev/packages/claude-code/src/sdk/env-pass.ts:24)
 - Reference row 3: Row 3: the variable each provider and coder needs, as written (ANTHROPIC_API_KEY listed as what the Claude Code coder needs). Untrue: The model runs through the AI Gateway and reads AI_GATEWAY_API_KEY (core's model resolver). The Claude Code coder needs a credential, which is either a `claude` sign-in, ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN. The Codex coder needs `codex login` or CODEX_API_KEY. The Cursor coder needs CURSOR_API_KEY or a stored Cursor sign-in. A coding run is passed only its own harness's variables. (/home/user/flow-state-dev/packages/core/src/models/providerDetection.ts:16; /home/user/flow-state-dev/packages/claude-code/src/sdk/env-pass.ts:24; /home/user/flow-state-dev/packages/codex/src/account-probe.ts:65,118; /home/user/flow-state-dev/packages/cursor/src/sign-in.ts:24,36) The row is recorded corrected.
+
+- Re-run after the review edit: the app reads its variables in labs/claude-code-style/fsdev.config.mts; the Environment reference (reference/environment.md) lists the provider and search keys. True.
 
 ## 6 · Depth pass
 

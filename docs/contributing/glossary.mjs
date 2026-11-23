@@ -961,11 +961,25 @@ const EXEMPTIONS = [
     why: "the Teammates lab's own worker is called Chief of Staff; the Shift Coordinator decision (FIX-2244) retires that name for Shift Manager's coordinator, not for this lab",
   },
   {
+    // The Harness runs and Workforce reference pages quote names and messages the code still spells with ask.
+    path: /^docs\/contributing\/docs-revamp\/pages\/reference\/(?:harness-runs|workforce)(?:\.facts)?\.md$/,
+    line: /\brun\.askMarkerPath\b|Asks are read from worker sessions|it wasn't set at hire to change its own/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: Reference pages quoting the harness manager's `run.askMarkerPath` field and two workforce error messages verbatim; the pages must name what the code returns",
+  },
+  {
     // The Messaging record quotes Shift Manager's own line text for a send that asks for a reply.
     path: /^docs\/contributing\/docs-revamp\/pages\/catalog\/workforce\/messaging\.record\.md$/,
     line: /"Asked <id>"/,
     rules: ["ask-symbol-in-docs"],
     why: "FIX-2703: a pass-5 fact check quoting Shift Manager's UI string \"Asked <id>\" verbatim; the rule's backtick pattern spans the prose between two code spans",
+  },
+  {
+    // The UI components reference quotes the registry's own button and header text.
+    path: /^docs\/contributing\/docs-revamp\/pages\/reference\/ui-components(?:\.facts)?\.md$/,
+    line: /Ask for changes|"Asking ada…", "Asked ada"/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: ReviewHold's \"Ask for changes\" button and the workforce lines' \"Asking ada…\" / \"Asked ada\" headers, quoted as the registry renders them (packages/ui/registry/components/review-hold.tsx:410); the rule's backtick pattern spans the prose between two code spans",
   },
   {
     // The docs-revamp pages that describe the Teammates lab name its worker as the lab does.
@@ -1074,6 +1088,13 @@ const EXEMPTIONS = [
     line: /\b(turnAsked|askMidway)\b|\.ask(\.(kind|prompt)\b|\)\.toMatchObject)/,
     rules: ["ask-symbol", "ask-symbol-in-docs", "ask-mark"],
     why: "FIX-2131: the worker's question, which holds its task for the user, and the turn-asked fact it is refused on",
+  },
+  {
+    // The Task board reference names the midway question helper as orchestration exports it.
+    path: /^docs\/contributing\/docs-revamp\/pages\/reference\/task-(?:board|collections)(?:\.facts|\.record)?\.md$/,
+    line: /\baskMidway\b/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: `askMidway(ctx, board, …)`, the exported helper that opens a question midway (packages/orchestration/src/task-board/task-request.ts), named on the Task board and Task collections Reference pages (and their fact sheets and records) as the published task-board page already does",
   },
   {
     path: /^packages\/devtool\/(src\/react\/lib\/task-collection-state\.ts|test\/(task-collections-reason\.test\.tsx|task-collection-state\.test\.ts))$/,

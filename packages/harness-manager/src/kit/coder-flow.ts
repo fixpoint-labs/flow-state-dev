@@ -29,6 +29,7 @@
  * door), and a delivered message wakes it the same way.
  */
 import { defineFlow, handler, router, sequencer } from "@flow-state-dev/core";
+import type { PullRequestFollower } from "@flow-state-dev/core/harness";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
@@ -102,6 +103,14 @@ export interface CoderFlowOptions {
   runTimeoutMs?: number;
   /** What each run's branch starts with: the app's own name, such as `teammates/`. Default `fsd/`. */
   branchPrefix?: string;
+  /**
+   * Builds the follower each pull request a run records is handed to, on the
+   * installation the coding flow is built on (workforce's
+   * `(installation) => followPullRequest({ providers, installation })`), so the
+   * run's session hears that pull request's reviews, comments and CI. Absent:
+   * nothing follows a pull request a run opens.
+   */
+  onPullRequestRecorded?: (installation: WorkerInstallation) => PullRequestFollower;
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -201,6 +210,7 @@ export function coderWorkerFlow(
 
   return workerFlow(
     (installation: WorkerInstallation) => {
+      const follower = options.onPullRequestRecorded?.(installation);
       const board = async (ctx: Parameters<typeof filingConversationBoard>[0]) => {
         const filed = await filingConversationBoard(ctx);
         return filed === undefined
@@ -224,6 +234,7 @@ export function coderWorkerFlow(
           reviewChanges,
           ...(options.judge === false ? {} : { judge: goalJudge({ name: `${name}-judge` }) }),
           awaitPullRequests: options.pullRequests !== false,
+          ...(follower === undefined ? {} : { onPullRequestRecorded: follower }),
           ...(options.project === true ? { uses: [projectWorkspaceCapability] } : {}),
         } as never) as unknown as BlockDefinition<any, any>;
       };
@@ -271,6 +282,7 @@ export function coderWorkerFlow(
 
       return defineFlow({
         kind: CODER_FLOW,
+        description: "The coding worker flow: a worker that codes runs each task here, in a coding harness.",
         cardinality: "collection",
         // Optional only so the shared copy, which carries no worker's settings, can be built.
         configSchema: workerConfigSchema().extend({

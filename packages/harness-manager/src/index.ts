@@ -128,6 +128,7 @@ export {
 
 // ── A coding run's brief: the task, the app's parts, the report it owes ─────
 export { codingBrief, type CodingBriefParts } from "./coding-brief";
+export { RUN_REPORT_HEADINGS, runReport, type RunReport, type RunReportCheck, type RunReportCheckStatus } from "./run-report";
 
 // ── Checks: the project's commands, before a run is done ────────────────────
 export {

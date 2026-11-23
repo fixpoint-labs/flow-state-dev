@@ -45,7 +45,7 @@ describe("a verdict's line in a task popup's feed", () => {
     const { client } = stubServer({ board: { [SESSION]: [task("t1", true), task("t2")] }, items: { run_t1: said("run_t1", 3), run_t2: said("run_t2", 2) } });
     const { rerender, getByRole } = render(view(client, "t1"));
     const popup = getByRole("dialog");
-    const card = await within(popup).findByRole("region", { name: "Ready for review" });
+    const card = await within(popup).findByRole("region", { name: "Your review" });
     fireEvent.click(within(card).getByRole("button", { name: "Accept" }));
     await waitFor(() => expect(decisions(popup)).toContain("Accepted"));
 

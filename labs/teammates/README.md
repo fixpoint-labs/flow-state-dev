@@ -47,17 +47,16 @@ theme so it reads as the app it copies.
   a click outside it, and the conversation under it keeps its place. While a task runs, its feed
   ends in a live line: the command or file it is on, else its plan step, else its last progress
   note, else "Working...", with how long it has been running.
-- **Right:** the open teammate's panel. At the top, its name and role, and *Edit instructions*.
-  Under that, the tasks its conversation started, coding tasks and teammates' jobs alike, with
-  their count, newest first in each group. Running tasks come first; one waiting on you leads, in
-  the attention colour, and every running task shows, however many there are. Failed tasks follow,
-  open, each with the first line of its reason: the newest five, with *Show all* and *Show fewer*
-  for the rest. *Clear* hides the failed tasks from the panel in this browser; it deletes nothing,
-  the heading still counts them, a task that fails again shows again, and *Show N cleared* brings
-  them back. *Done* and *Cancelled* each fold into one line with a count, and a click opens
-  the rows; *Done* opens to its newest five and a *Show all* button. A task that ends moves into
-  its group as it ends. Each row opens the task in a popup, and a task's line in the conversation
-  uses the same word and colour as its row. A *Routines* section sits at the foot, empty for now.
+- **Right:** the open teammate's panel. At the top, *Tasks* and their count: the tasks its
+  conversation started, coding tasks and teammates' jobs alike. Under it, three count tiles,
+  *Running*, *Failed* and *Done*, which are the panel's tabs; the selected one lists its tasks
+  as cards, newest first. A running task waiting on you leads, and every running task shows,
+  however many there are. *Failed* gives each task the first line of its reason. *Failed* and
+  *Done* show their newest five, with *Show all* and *Show fewer*. *Clear* moves the failed tasks
+  to *Done* in this browser; it deletes nothing, and a task that fails again shows again. *Done*
+  holds completed and cancelled tasks too, a cancelled one marked so. A task that ends moves to
+  its tile as it ends. Each card opens the task in a popup, and a task's line in the conversation
+  uses the same word and colour as its card. A *Routines* section sits at the foot, empty for now.
 - **Keys:** ⌘K (Ctrl+K) finds a teammate by its name or role, or opens *Hire a teammate*. Alt+↑
   and Alt+↓ move to the previous or next teammate. `/` puts the cursor in the composer, and `?`
   lists every key. Opening a teammate puts the cursor in its composer. Firing a teammate you hired
@@ -172,10 +171,11 @@ name another one.
 ### Your own teammates
 
 You can hire teammates of your own (*Hire a teammate*, under the list): a name, one line on what it
-does, and its instructions. It joins the list at once, you can talk to it, and Lead can
-hand it tasks. Your own teammates' panels have *Edit instructions*, which replaces their instructions
-from the next turn on, and their header has *Fire*, which takes them off the list; their conversation stays readable.
-The three teammates from the files can't be edited or fired.
+does, its instructions, and optionally its model and default coding harness. It joins the list at once, you can talk to it, and Lead can
+hand it tasks. *Edit teammate* in a conversation's header opens a dialog to rename a teammate, replace its
+instructions, or change its model (what its replies run on, from the next reply) and default coding harness
+(where the composer's *Code with* starts). A teammate from the files can be edited too, and *Reset to default*
+puts its file back. Your own teammates' header has *Fire*, which takes them off the list; their conversation stays readable.
 
 ### Routines
 
@@ -206,8 +206,9 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | Variable | What it sets | Default |
 |---|---|---|
 | `TEAMMATES_MODEL` | the model Lead, researcher and writer answer on | `openai/gpt-6-luna` |
+| `TEAMMATES_MODELS` | the models a teammate may reply with, comma-separated, for the *Model* field of *Edit teammate* and *Hire a teammate*; each shows where its calls go (a provider's key, Vercel AI Gateway or OpenRouter) or why it can't run, and a pick is saved to that teammate | `TEAMMATES_MODEL` alone |
 | `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | the root of this repository |
-| `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on: `claude-code`, `codex` or `cursor` | `cursor` |
+| `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on, and where *Code with* starts for a teammate with no default harness of its own: `claude-code`, `codex` or `cursor` | `cursor` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
@@ -215,6 +216,7 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | `TEAMMATES_RUN_TIMEOUT_MS` | the wall-clock budget for one coding run, in milliseconds | `1200000` (20 minutes) |
 | `TEAMMATES_SETUP` | a command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`; no shell | none |
 | `GITHUB_TOKEN` | the token a routine that follows a GitHub pull request reads GitHub with, for the lab's own user alone | what `gh auth token` answers at start; none, and GitHub routines are refused |
+| `TEAMMATES_GITHUB_REVIEWERS` | the GitHub logins, comma-separated, a coding run hears on the pull request it opens: their reviews and comments reach the run's session, which answers them in the pull request. List a bot by its login, such as `greptile-apps[bot]`: the lab trusts it on the GitHub service too, which a bot needs to be heard. The repository is public and a run acts on what it hears, so no one else is heard | none, and a run follows no pull request |
 | `TEAMMATES_CHECKS` | the commands a coding run's worktree must pass before its task is done, `;`-separated, such as `pnpm typecheck; pnpm test`; no shell, so a `;` inside one command, even quoted, isn't supported. A red one sends the run back with the command's output | none |
 
 The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`). Each coding agent needs its

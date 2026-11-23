@@ -523,6 +523,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           flows: visible.map((flow) => ({
             id: flow.id,
             kind: flow.kind,
+            ...(flow.description === undefined ? {} : { description: flow.description }),
             cardinality: flow.cardinality,
             requireUser: flow.requireUser,
             actions: Object.keys(flow.actions),

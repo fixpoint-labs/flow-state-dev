@@ -25,7 +25,11 @@ lab may cut worktrees from (`CLAUDE_CODE_STYLE_REPOSITORIES`).
   nothing.
 
 The Codex legs grade where the change was filed and how it is tagged, not how the run ends, so
-they need no Codex sign-in. *Plan first* runs Claude Code for real.
+they need no working Codex sign-in. They do need Codex to read as ready: the harness kit tells
+every worker to file coding work only on a ready harness, and to tell the user instead when the
+one they picked isn't. So the lab is started with a placeholder `CODEX_API_KEY`, which Codex's
+readiness check accepts without a call; the Codex run then fails, which no signal grades.
+*Plan first* runs Claude Code for real.
 
 **Anti-game:** every signal reads the rendered page or the board's own records and git history.
 Nothing asserts on the lab's hooks or React state. The chip is picked and the
@@ -58,3 +62,7 @@ controls plant those.
 | 2026-10-31 | 1971676+wip (local) | openai/gpt-5.4, Claude Code | PASS (control `no-route`, since replaced) | The routing text isn't what routes: the `Coder:` line and the coders' own descriptions do. Replaced by `no-delegates` |
 | 2026-10-31 | d4e72dd (local) | openai/gpt-5.4, Claude Code | PASS | Attempt 1 of 3: filed to `desk.coder-codex`; `desk.coder-plan` answered a 1,933-character plan and nothing was committed; `desk.thread-coder-codex`, card and row tagged Codex |
 | 2026-10-31 | d4e72dd (local) | openai/gpt-5.4 | FAIL (control `no-delegates`) | Signal 1 went to `desk.coder`; signal 2 filed no coding task; signal 3 went to `desk.thread-coder`, untagged Codex |
+| 2026-11-21 | b36b369e (main) | openai/gpt-5.4 | FAIL | FIX-2764 reproduction; stopped on attempt 3 by a full disk. Attempts 1 and 2 filed no task: the start table logged `✗ Codex … Not logged in`, and `desk.main` answered that Codex isn't set up and it won't switch coders, as the harness kit's readiness guidance tells it to |
+| 2026-11-21 | b36b369e + placeholder key | openai/gpt-5.4, Claude Code | PASS | Attempt 1 of 3: filed to `desk.coder-codex`; `desk.coder-plan` answered a 1,936-character plan; `desk.thread-coder-codex`, tagged Codex |
+| 2026-11-21 | b36b369e + placeholder key | openai/gpt-5.4 | FAIL (control `no-delegates`) | Signal 1 went to `desk.coder`; signal 2 filed no coding task; signal 3 went to `desk.thread-coder` |
+| 2026-11-21 | b36b369e + placeholder key | openai/gpt-5.4, Claude Code | FAIL (control `no-hint`) | Signals 1, 2 and 3: every change went to `desk.coder` / `desk.thread-coder`, and Plan first's line was committed |
