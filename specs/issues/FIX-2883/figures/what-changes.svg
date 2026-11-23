@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 410" role="img" aria-label="The closure, as a picture. On the left, what the children promise: FIX-2894 through epic rule ER-9 until its spec merges, FIX-2877's three goal signals, FIX-2878's sixteen and FIX-2879's seven. In the middle, four legs on one main commit: a, a person's pick reaches the run, six rows; b, a run keeps its coder, nine rows; c, Shift Manager on the shared flow, three rows; d, only the server picks and refusals have names, ten rows. Eight rows also rest on a promise the epic makes and no child goal covers in full. On the right, each control fails its row first, then the 28 rows pass, the child goals are re-run, and the sweep prints nothing. A finding is a bug under the epic."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .kid   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .kid-p { fill:var(--surface); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:5 4; }
+    .leg   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .own   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .ctl   { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .pass  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .bug   { fill:var(--surface-2); stroke:var(--gone); stroke-width:1.2; }
+    .wire  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="410"/>
+
+  <g id="heads">
+    <text class="t-lbl" x="16" y="30">WHAT THE CHILDREN PROMISE</text>
+    <text class="t-lbl" x="320" y="30">FOUR LEGS · ONE MAIN COMMIT</text>
+    <text class="t-lbl" x="676" y="30">THE VERDICT</text>
+  </g>
+
+  <g id="children">
+    <rect class="kid-p" x="16" y="44" width="256" height="56" rx="5"/>
+    <text class="t-b" x="30" y="67">FIX-2894 · a typed task input</text>
+    <text class="t-s" x="30" y="85">through epic ER-9 until its spec merges</text>
+    <rect class="kid" x="16" y="114" width="256" height="56" rx="5"/>
+    <text class="t-b" x="30" y="137">FIX-2877 · one flow, one default</text>
+    <text class="t-s" x="30" y="155">3 goal signals · 2 superseded later</text>
+    <rect class="kid" x="16" y="184" width="256" height="56" rx="5"/>
+    <text class="t-b" x="30" y="207">FIX-2878 · run settings, frozen</text>
+    <text class="t-s" x="30" y="225">16 goal signals</text>
+    <rect class="kid" x="16" y="254" width="256" height="56" rx="5"/>
+    <text class="t-b" x="30" y="277">FIX-2879 · Code with</text>
+    <text class="t-s" x="30" y="295">7 goal signals</text>
+  </g>
+
+  <g id="wires-in">
+    <path class="wire" d="M272 177 H296"/>
+    <path class="wire" d="M296 72 V282 M272 72 H296 M272 142 H296 M272 212 H296 M272 282 H296"/>
+    <path class="wire" d="M296 177 H320"/>
+  </g>
+
+  <g id="legs">
+    <rect class="leg" x="320" y="44" width="320" height="56" rx="5"/>
+    <text class="t-b" x="334" y="67">a · a person's pick reaches the run</text>
+    <text class="t-s" x="334" y="85">Teammates, public client, a model for Lead · 6 rows</text>
+    <rect class="leg" x="320" y="114" width="320" height="56" rx="5"/>
+    <text class="t-b" x="334" y="137">b · a run keeps its coder</text>
+    <text class="t-s" x="334" y="155">a goal host, scripted coders, no model · 9 rows</text>
+    <rect class="leg" x="320" y="184" width="320" height="56" rx="5"/>
+    <text class="t-b" x="334" y="207">c · Shift Manager on the shared flow</text>
+    <text class="t-s" x="334" y="225">its two modes, on its one default · 3 rows</text>
+    <rect class="leg" x="320" y="254" width="320" height="56" rx="5"/>
+    <text class="t-b" x="334" y="277">d · only the server picks</text>
+    <text class="t-s" x="334" y="295">and every refusal has a name · 10 rows</text>
+    <rect class="own" x="320" y="324" width="320" height="56" rx="5"/>
+    <text class="t-b" x="334" y="347">8 rows: epic promises no child covers</text>
+    <text class="t-s" x="334" y="365">proved by the closure, each cited · D3</text>
+  </g>
+
+  <g id="wires-out">
+    <path class="wire" d="M640 72 H658 M640 142 H658 M640 212 H658 M640 282 H658 M640 352 H658 M658 72 V352"/>
+    <path class="wire" d="M658 212 H676"/>
+  </g>
+
+  <g id="verdict">
+    <rect class="ctl" x="676" y="44" width="248" height="76" rx="5"/>
+    <text class="t-g" x="690" y="67">First, each control FAILs</text>
+    <text class="t-s" x="690" y="85">its named row: 10 the closure owns,</text>
+    <text class="t-s" x="690" y="101">the children's own, today's main</text>
+    <rect class="pass" x="676" y="136" width="248" height="96" rx="5"/>
+    <text class="t-b" x="690" y="159">Then PASS · 28 rows</text>
+    <text class="t-s" x="690" y="177">every child goal re-run, same commit</text>
+    <text class="t-s" x="690" y="193">the sweep prints nothing</text>
+    <text class="t-s" x="690" y="209">read: stored task, run record,</text>
+    <text class="t-s" x="690" y="223">and the harness's own report</text>
+    <rect class="bug" x="676" y="254" width="248" height="56" rx="5"/>
+    <text class="t-b" x="690" y="277">A finding is a bug under the epic</text>
+    <text class="t-s" x="690" y="295">fixed in its own PR, then re-run · D1</text>
+  </g>
+</svg>
