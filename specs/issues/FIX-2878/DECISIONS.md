@@ -2,19 +2,19 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-The epic already decided most of this issue: the order, the freeze, server-owned harness,
-model and plan, the lock, the model catalog rule and the plan-run postcheck
-([FIX-2876 rules](../../epics/FIX-2876/DECISIONS.md#who-owns-what), with the amendment on
-[#5605](https://github.com/fixpoint-labs/flow-state-dev/pull/5605), not yet approved; this file
-is re-checked when it merges). Three calls were left to this spec. They are below; everything else is under *Decided, not asked*.
+The epic decided most of this issue: the order, the freeze, server-owned harness, model and
+plan, the lock, the model catalog rule and the plan-run postcheck
+([FIX-2876 rules](../../epics/FIX-2876/DECISIONS.md#who-owns-what), as amended on
+[#5605](https://github.com/fixpoint-labs/flow-state-dev/pull/5605), not yet approved; re-checked
+when it merges). Three calls were left to this spec. Everything else is under *Decided, not asked*.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-2878"] --> D1["D1 · the first claim decides · every later attempt keeps it"]
+  I["FIX-2878"] --> D1["D1 · the first claim decides harness, model, plan and review · every later attempt keeps them"]
   D1 -.->|"rejected: a retry can switch vendor"| X1["re-run the order at each attempt's claim"]
-  I --> D2["D2 · a session of another harness or plan setting, or of none, is never resumed"]
+  I --> D2["D2 · a session from before the freeze is never resumed"]
   D2 -.->|"rejected: resumes a foreign session"| X2["match by the handle's source"]
   D2 -.->|"rejected: no context for a door talk"| X3["the door also starts fresh"]
   I --> D3["D3 · a lock refuses a differing locked field at filing too"]
@@ -29,31 +29,31 @@ Solid edges are what you sign. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Running the order again at each attempt's claim: a retry, a re-claim after a held question, a claim after a crash |
-| **Because** | The person (or the run that filed the task) asked for a coder once. What the claim freezes is what runs: the harness, the plan setting, and the effective model, read from the harness's `defaultModel` when the task names none, never a null that reads the option again later. A retry that re-reads a worker's file or the app's default can land on another vendor, which then can't resume the session, and the task card changes coder under the person. The epic says "once per run, at the first claim"; this reads *run* as the task's life, so ER-8's mismatch becomes a backstop, not a path |
-| **Locks in** | Changing a worker's `harness:`, the kit's `defaultHarness` or a harness's default model moves only tasks not yet claimed. Moving a claimed task to another coder means cancelling it and filing a new one. A harness removed from the app fails its claimed tasks by name at their next attempt; it never moves them |
+| **Because** | The person (or the run that filed the task) asked for a coder once. The claim freezes one value, the frozen settings: the harness, the effective model (the harness's `defaultModel` when the task names none), the plan setting, and the worker's `review` choice. A retry that re-reads the worker's file or the app's default can land on another vendor, lose its session, or switch between a reviewed and an unreviewed run, and the task card changes under the person. The epic says "once per run, at the first claim"; this reads *run* as the task's life |
+| **Locks in** | A change to a worker's `harness:` or `review`, the kit's `defaultHarness` or a harness's default model reaches only tasks not yet claimed. Moving a claimed task means cancelling and refiling it. A harness removed from the app fails its claimed tasks by name at their next attempt |
 
 **What would change my mind:** tasks that sit claimed for days while an app's default is fixed
 for a reason the person would want applied, such as a harness that was down. Then a retry
-re-runs the order, and D2's fresh session is the cost.
+re-runs the order, and a fresh session is the cost.
 
 ![D1: the first claim decides, chosen, beside re-running the order per attempt. Decides it: whether a retry can switch vendor. Price: a stuck task can't pick up a changed default without refiling. Locks in: config changes reach only unclaimed tasks. Flips if a fixed default should apply to tasks already claimed](figures/d1-first-claim.svg)
 
 It comes down to a retry: re-running the order lets a retry switch vendor without anyone asking.
 
 <a name="d2"></a>
-## D2 · A session recorded under another harness or plan setting, or under none, is never resumed
+## D2 · A session from before the freeze is never resumed
 
 | | |
 |---|---|
-| **Instead of** | Matching by the handle's `source`, the field the run row already has; or starting a fresh session on the door too |
-| **Because** | `source` cannot tell harnesses apart: `claude-code` and `claude-code-plan` both report `claude-code/sdk`, and every scripted harness reports `harness-manager/stub` (epic ER-8). The id alone is not enough either: after FIX-2599 a plan session and an edit session can both be `claude-code`, and one must never continue as the other (ER-8 as #5605 amends it). So the harness id and plan setting are written in the same write as the session id, the moment the harness names it, never after, or an interrupted run leaves a session with no harness. A session plan of null is read as its harness id's plan-ness: a plan session if that harness carries the read-only mark. A manager attempt that finds another harness or plan setting, or none, starts fresh: the same self-heal a dead session already gets. A door talk refuses by name instead, because a fresh session there would answer with no memory of the work the person is asking about |
-| **Locks in** | At upgrade, every task in flight resumes from scratch once, and a door talk on a task finished before the upgrade is refused with a line saying to file a new task. After that, a session is only ever continued by the harness and plan setting that made it |
+| **Instead of** | Matching by the handle's `source`; starting a fresh session on the door too; or a per-session harness and plan field beside `sessionId` |
+| **Because** | `source` cannot tell harnesses apart: `claude-code` and `claude-code-plan` both report `claude-code/sdk`, and every scripted harness reports `harness-manager/stub` (epic ER-8). Under D1 the frozen settings are written at the first claim, before any session exists, and never change, so every session made after this change belongs to them; ER-8's match on harness id and plan holds by construction, and resume compares nothing extra. Only a row from before this change, with a `sessionId` and no frozen settings, can hold a foreign session. Its first claim writes the frozen settings and clears `sessionId`, so it starts fresh once. A door talk on a row with no frozen settings is refused by name, because a fresh session there would answer with no memory of the work the person asks about |
+| **Locks in** | At upgrade, every task in flight starts one fresh session, and a door talk on a task finished before the upgrade is refused with a line saying to file a new task. After that, a session is only ever continued under the settings that made it |
 
 **What would change my mind:** a large number of long-running tasks in flight at upgrade. Then
-a record with no harness is resumed when the task's frozen harness reports the record's
-`source`, for one release only, with an issue filed to remove it.
+a pre-change session is resumed when the task's frozen harness reports the record's `source`,
+for one release only, with an issue filed to remove it.
 
-![D2: never resume another harness's session, chosen, beside matching by source. Decides it: plan and edit Claude Code share one source. Price: one fresh session per task in flight at upgrade, and refused door talks on older tasks. Locks in: a session is only continued by its own harness and plan setting. Flips if many long tasks are in flight at upgrade](figures/d2-same-harness.svg)
+![D2: never resume a session from before the freeze, chosen, beside matching by source. Decides it: plan and edit Claude Code share one source. Price: one fresh session per task in flight at upgrade, and refused door talks on older tasks. Locks in: a session continues only under the settings that made it. Flips if many long tasks are in flight at upgrade](figures/d2-same-harness.svg)
 
 It comes down to one source for two harnesses: matching by source resumes a plan session as an edit run.
 
@@ -63,8 +63,9 @@ It comes down to one source for two harnesses: matching by source resumes a plan
 | | |
 |---|---|
 | **Instead of** | Refusing only at claim, which the epic requires and allows to be the only check (ER-11) |
-| **Because** | At filing the refusal reaches the filer while the person is still in the conversation, and nothing is filed. At claim it arrives as a failed task, later and elsewhere. The harness kit's filler already runs on every filing to the coder flow and knows the assignee, so the check is one read of that worker's file. The claim check stays: it covers tasks filed before the lock was set and any task that reaches a locked worker another way |
-| **Locks in** | The public name `lock:` on a worker's file: its fixed values for any server-owned run setting (today `harness`, `plan`, and `model` if it wants one), checked against the triple the filing or claim resolved and compared with deep equality, so a Cursor model with other params differs (ER-11 as #5605 amends it). A coding filing reads the assignee's worker file once. The refusal reads the same in both places, naming the field, the worker's value and the one asked for |
+| **Because** | At filing the refusal reaches the filer while the person is still in the conversation, and nothing is filed. At claim it arrives as a failed task, later and elsewhere. The filler already runs on every coding filing and knows the assignee, so the check is one read of that worker's file. The claim check stays for tasks filed before the lock was set |
+| **Accepted** | **A filing that inherits its parent run's settings and meets a lock with other fixed values is refused.** It is never widened and never silently swapped to the worker's values (ER-10: an inherited pick is kept, never widened). So a worker locked to the plan harness takes filings only from runs already on it. The refusal returned to the filer names the conflict and says to file to an unlocked worker or tell the person, so the filing model can recover |
+| **Locks in** | The public name `lock:` on a worker's file: fixed values for any server-owned run setting (`harness`, `plan`, `model`), compared with deep equality, so a Cursor model with other params differs. The refusal reads the same in both places, naming the field, the worker's value and the one asked for |
 
 **What would change my mind:** FIX-2894's filler not being handed the assignee. Then the lock
 is checked at claim only, as the epic allows, and this card goes.
@@ -75,70 +76,72 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
 
 ## Decided, not asked
 
-- **The convergence point for a task's coder.** One resolver at the first claim writes the
-  frozen triple: the harness id, the effective model, the plan setting. Every other reader goes
-  through it: the steer turn, a delivered message, the door, the manager's next attempt, the
-  `coder-harness` action and the coding board row. The only writer of `harness`, `model` and
-  `plan` on a task is the harness kit's filler: FIX-2894 drops a filer's values on `createTask`
-  and keeps the stored, marked ones on `updateTask`.
-- **Only what the filler wrote counts (security; epic ER-9 and ER-10 at issue level, BP-030).**
-  Today `createTask` copies a filer's whole `input` onto the task, and a stored `input.harness`
-  or `input.model` is inert. Read as run settings, one would choose a coder at its first claim:
-  a held or pending task with `input.harness: "claude-code"` on a `claude-code-plan` worker would
-  run the edit harness, and the postcheck, keyed on the harness that ran, would not run. So the
-  filler writes a server-owned marker with the values it fills. A stored task without it has no
-  `harness`, `model` or `plan`: the claim falls to the worker, then the kit, and freezes none of
-  the stored values. `updateTask` strips an unmarked value instead of keeping it, as a leftover
+- **One resolver, one reader.** The first claim writes the frozen settings and returns them
+  whole. The steer turn, a delivered message, the door, the manager's next attempt, the
+  `coder-harness` action and the coding board row all read them; none re-reads
+  `worker.config.review` or `harness:`. The only writer of `harness`, `model` and `plan` on a
+  task is the harness kit's filler.
+- **Only what the filler wrote counts** (security; epic ER-9 and ER-10 at issue level, BP-030).
+  Today `createTask` copies a filer's whole `input`, and a stored `input.harness` is inert. Read
+  as a run setting, a held task with `input.harness: "claude-code"` on a `claude-code-plan`
+  worker would run the edit harness, with no postcheck. So the filler writes a server-owned
+  marker with the values it fills. Without it, `harness`, `model` and `plan` are absent: worker,
+  then kit, nothing of them frozen. `updateTask` strips an unmarked value, as a leftover
   `harnessFeature` is refused. The marker's name is the implementer's.
-- **Where the triple lives.** Three fields on the run row, kept across attempts (not in the
-  attempt-scoped clear), written only by the first claim. The session's harness id and plan
-  setting are two more, attempt-scoped like `sessionId` and written in the same `onSession` write.
-- **A row written before this change** has no triple. Every route reads it as today, by the
-  worker's harness and the harness default model (BP-030). Its session is not resumed ([D2](#d2)).
-- **Plan, until FIX-2599.** The task's `plan`, as the filler wrote it. A harness with the
-  read-only mark is a plan run whatever `plan` says, and is frozen as one; `plan: true` on a
-  harness without the mark fails the claim by name. `plan` never loosens the harness id (epic
-  ER-2 as #5605 amends it).
-- **The model is checked once, at the first claim** (implementer note, round 2 of the epic):
-  `models()` must answer `status: "models"` and list the whole selection, Cursor's params
-  included. Otherwise the run uses the harness default, and the refusal is written on the run
-  row and shown on the coding board row. Either way the model frozen is the one that runs,
-  the harness's `defaultModel` included.
-- **The model feed** is `HarnessFeeds.model`, the name `HarnessSessionFeeds` already uses, typed
-  as a harness's own value: an id, or an id with params. Each harness value hands it to its
-  agent's `model` resolver. The feed always carries the frozen model, so no route falls back to
-  the option as it is later.
-- **The filler, until FIX-2879.** It writes the filing run's frozen triple, with the marker,
-  when the filing session is a coding run, and nothing otherwise. FIX-2879 adds the turn's
-  `codeWith`.
+- **The run row.** Four fields for the frozen settings, `.nullable().default(null)`, kept across
+  attempts and written only by the first claim. `source` goes: never written, tolerated on old
+  rows when read (BP-030). The `run-record.ts` comments that leave the harness check "to the
+  issue that introduces the choice" and hand the id down "only when the source matches" go too.
+- **A row written before this change** reads as today until its first claim (BP-030); see
+  [D2](#d2) for its session.
+- **Plan, until FIX-2599.** A harness with the read-only mark is a plan run whatever `plan`
+  says; `plan: true` on one without it fails the claim by name. `plan` never loosens the id.
+- **The model is checked once, at the first claim:** `models()` must answer `status: "models"`
+  and list the whole selection, Cursor's params included. Otherwise the run uses the harness
+  default, and the refusal is written on the run row and shown on the coding board row.
+- **The model feed** is `HarnessFeeds.model`, the name `HarnessSessionFeeds` already uses, an id
+  or an id with params, always the frozen model.
+- **The filler, until FIX-2879,** writes the filing run's frozen harness, model and plan, with the
+  marker, when the filing session is a coding run, and nothing otherwise.
 - **`harnessFeature` goes with no alias.** A stored task that still carries it is refused at
-  claim by name (BP-030: reject removed keys loudly). The issue's acceptance said so too.
-- **Fixed boards stay.** Their rows carry `harnessTaskInputSchema` at the top of `input` and
-  don't run the coder flow. The issue text folded them into `feature`; that would change rows
-  this epic doesn't own.
-- **Read-only is a mark on the `Harness` value,** set by Claude Code's plan harness. The
-  postcheck reads the mark, never an id string. FIX-2599 maps its plan setting onto the same
-  check.
-- **The postcheck sees only its own run** (epic ER-12 as #5605 amends it). It fails a plan run
-  whose own worktree is dirty, or that created or moved a ref or branch. Concurrent tasks share
-  the common git dir and refs, so another task's branch never fails it.
-- **Merge order: FIX-2877 first.** Shift Manager's `coder.mts` imports `harnessFeatureOf`, and
-  this issue removes it but never edits that file (epic seam). Written in Linear as a block.
-- **Glossary.** The implementation PR adds *Run settings* (a coding task's `harness`, `model`
-  and `plan`) and the lock, and amends *Harness* to say a task's run settings name one too.
+  claim by name (BP-030).
+- **Fixed boards stay.** Their rows keep `harnessTaskInputSchema` at the top of `input` and don't
+  run the coder flow; folding them into `feature` would change rows this epic doesn't own.
+- **Read-only is a mark on the `Harness` value,** set by Claude Code's plan harness, never an id
+  string. FIX-2599 maps its plan setting onto the same check.
+- **The postcheck sees only its own run,** deterministically: it snapshots the run's own
+  worktree status and the refs at the start, and after the run fails it if that worktree is
+  dirty or a ref the run's worktree created or moved appears. It never reads the common git dir,
+  so a concurrent task's branch, a `fetch` or a `gc` never fails it.
+- **Merge order: FIX-2877 first.** Shift Manager's `coder.mts` imports `harnessFeatureOf`, which
+  this issue removes without editing that file. Written in Linear as a block.
+- **Glossary.** *Run settings* (a coding task's `harness`, `model` and `plan`) and the lock are
+  added; *Harness* is amended to say a task's run settings name one.
 
 ## Considered and dropped
 
 | Option | Why it lost |
 |---|---|
-| A worker-file `model:` layer (the issue's text) | Epic ER-2: no worker or kit model. A model belongs to a harness, and a worker's harness can be overridden by the task |
-| The filer writes `harness` and `model` (the issue's text) | Epic ER-10 reverses it: a prompt-injected filing would choose its own coder (BP-031) |
+| A worker-file `model:` layer, or the filer writing `harness` and `model` (the issue's text) | Epic ER-2 and ER-10: a model belongs to a harness, and a prompt-injected filing would choose its own coder (BP-031) |
 | Honouring a stored `harness` or `model` no filler wrote | A task filed before this change would pick its own coder at first claim ([security review](https://github.com/fixpoint-labs/flow-state-dev/pull/5604#discussion_r4667660416)) |
-| Freezing a null model and reading the harness option at each attempt | A retry or an inherited child runs whatever the option says later |
+| Freezing a null model and reading the option at each attempt | A retry or an inherited child runs whatever the option says later |
+| Leaving `review` live | A retry could switch between a reviewed and an unreviewed run: the drift D1 removes, one field over |
+| A lock that wins over an inherited pick | It would widen or swap a pick nobody made (ER-10) |
 | An isolated read-only repository per plan run | The epic chose scoping: one checkout model, no new store |
-| Re-running the order at each attempt | [D1](#d1) |
-| Matching a resume by `source`, or by harness id alone | [D2](#d2) |
-| Checking plan mode by the id `claude-code-plan` | Puts one vendor's id string in harness-manager; the mark on the value is one field and vendor-neutral |
+| Matching a resume by `source`; a per-session harness field | [D2](#d2) |
+| Checking plan mode by the id `claude-code-plan` | Puts one vendor's id string in harness-manager |
+
+## Notes from review
+
+From the [second look](https://github.com/fixpoint-labs/flow-state-dev/pull/5604#issuecomment-7104788120), for the implementer:
+
+> **Postcheck is detection, not prevention.** A plan-mode run that writes has already written. Fine given FIX-2599 owns enforcement, but "common git dir" change detection needs a cheap, deterministic definition (e.g. snapshot of `refs` + `config`), or it becomes a flaky signal. The goal check's `no-postcheck` control only proves the check runs, not that it avoids false positives on benign git activity (fetch, gc).
+
+Taken: the definition is under *Decided, not asked*, and the Postcheck signal has a false-positive case.
+
+> **"Today's main fails all six"** but only five controls are named; **Order** has none.
+
+Taken: Order is checked by the straight run, and the count is corrected in the SPEC.
 
 ## Open
 
@@ -146,27 +149,25 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
 
 ## Analysis
 
-2026-11-23 · watermark 2026-11-23 (the epic merged at `26e76736b`). **Inline, by the author:**
-this dispatch could not start a separate analyst, so this pass is not independent. The
-coordinator can run `analysis` on the PR before the gate.
+2026-11-23 · watermark 2026-11-23 (the epic merged at `26e76736b`). **Inline, by the author,**
+so not independent; the coordinator can run `analysis` before the gate.
 
-**Verdict: right approach.** *Reuse:* every Adds row extends an existing piece; `codingTaskInput`
-is a declaration on FIX-2894's mechanism, not a second one. *Prior art:* the epic's pass
-(OpenAI Agents SDK `RunConfig.model`, LangGraph `configurable`) holds; nothing new. *Other
-shapes:* the epic's `adhd` pass already ran on this design. *New factors:* none since the epic
-merged. *Necessity:* this is the issue the rest of the set needs. *Concern, recorded:* until
-FIX-2879 nothing writes a named model, so this issue's goal check proves the model path's
-refusals and freeze only through the harness default; the named-model leg is the closure's.
-*Counted facts:* the only one is the route list (four `byHarness` routes and the `harness`
-action, by `grep` on `coder-flow.ts` at `26e76736b`); no checker needed.
+**Verdict: right approach.** *Reuse:* every Adds row extends an existing piece. *Prior art:* the
+epic's pass (OpenAI Agents SDK `RunConfig.model`, LangGraph `configurable`) holds. *Other
+shapes:* the epic's `adhd` pass covered them. *New factors:* the #5605 amendment, folded.
+*Concern, recorded:* until FIX-2879 nothing writes a named model, so the goal check proves the
+model path only through the harness default; the named-model leg is the closure's. *Counted
+facts:* four `byHarness` routes and the `harness` action, by `grep` on `coder-flow.ts` at
+`26e76736b`.
 
 ## How it got here
 
-- **Draft** — framed as the run side of the epic's goal: one resolver at the first claim, a
-  frozen pair every route reads, server-written run settings, a lock, a model feed and a plan
-  postcheck, built on FIX-2894's declared input and the run row.
-- **Round 1** — folded the security review (a stored `harness` or `model` no filler wrote is
-  absent, never frozen), and aligned to the epic amendment on #5605: `plan` server-owned, a
-  frozen triple with the effective model, a lock on any server-owned field by deep equality,
-  resume by harness id and plan, `plan: true` on a non-plan harness fails, and a postcheck
-  scoped to its own run. Re-checked when #5605 merges.
+- **Draft** — the run side of the epic's goal: one resolver at the first claim, a frozen pair
+  every route reads, server-written run settings, a lock, a model feed and a plan postcheck.
+- **Round 1** — folded the security review (unmarked stored values are absent), and aligned to
+  #5605: `plan` server-owned, the effective model frozen, a lock on any server-owned field by
+  deep equality, `plan: true` on a non-plan harness fails, a postcheck scoped to its own run.
+- **Round 2** — folded the second look: `review` frozen with the rest; an inherited filing that
+  meets a different lock is refused; D2 takes the smaller shape (clear a pre-change session at
+  first claim, no per-session field); `source` leaves the run row; the postcheck's detection
+  defined; Order's check and the control count corrected.
