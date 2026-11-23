@@ -46,6 +46,7 @@ Written by `docs-writer` (sonnet), 1054 words. Scenario: none: a catalog page ca
 
 - After the loop (review): the reference links now go to `../../reference/`, the depth the sibling starter pages use, and the Next line no longer implies Settings holds more than MCP keys (flag 10).
 - After the loop (review): the hire and fire line no longer says a fire waits for approval; the stock `fire` tool deletes the worker at once (`packages/workforce/src/workers/hire-blocks.ts:249-258`), and only an app-added wrapper makes it wait.
+- After the loop (review): drift fix: the Inbox also lists asks from the user's workers' runs with no conversation, answered on the card only, with the reply box disabled (packages/shift-manager/src/surfaces/Inbox.tsx:1-24, :54-55, :473; packages/shift-manager/src/gaps.ts:86). An ask from a run with no conversation keeps the reply box, disabled with a reason (packages/shift-manager/src/surfaces/Inbox.tsx:503,536-542), not absent (Greptile review). 937 words. Page sha256 786937e13313.
 
 ## 5 · Fact check
 
@@ -56,6 +57,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 b3d
 - Reference row 4: Inventory: "An open inventory ... TEAMS, Roster and Inbox read it to find them. Without it, TEAMS says there is none and the other screens load." Untrue: Without the inventory, TEAMS shows a failure section carrying a "No inventory to read ..." message, not a statement that there is none. The other screens do not simply load. The Shift Coordinator view shows a failure in place of the conversation. Inbox's asks fail with "Asks are read from worker sessions, and the worker inventory did not load", and an ask's reply is blocked. Roster shows an inventory failure, and only a roster of the user's own workers can still be drawn. (/home/user/flow-state-dev/packages/shift-manager/src/lib/reads.ts:808-827,934-936; src/surfaces/Sidebar.tsx:553-554; src/surfaces/ShiftCoordinator.tsx:208-215; src/surfaces/Inbox.tsx:491; src/surfaces/Roster.tsx:176-179,238-240; page line 36) The row is recorded corrected.
 - Reference row 8: Which conversation with the Shift Coordinator opens: "newest of yours", and what starts a new one. Untrue: The conversation is a single session per user and worker at a derived address, not the newest of several. The first line opens it, and nothing in Shift Manager starts a second one. (/home/user/flow-state-dev/packages/shift-manager/src/lib/conversation.ts:43-47,119-123) The row is recorded corrected.
 - Re-run after the review edit: no wrong claim. The stock `fire` handler deletes the roster entry with no approval step (`packages/workforce/src/workers/hire-blocks.ts:249-260`); a wait comes only from an app-added wrapper (`packages/workforce/README.md:1402-1422`).
+- Re-run after the review edit: a run with no conversation has no session to read or reply into, and its box is disabled (packages/shift-manager/src/surfaces/Inbox.tsx:20-24, :55, :473).
 
 ## 6 · Depth pass
 

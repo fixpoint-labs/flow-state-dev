@@ -5,9 +5,12 @@
  * answer send. Functions over the view's row, read with `?.` and `== null`:
  * the screen keeps no row type of its own.
  */
-import { taskView, type InboxAnswer, type RefileOverrides, type TaskView } from "@flow-state-dev/orchestration/inbox";
+import type { InboxAnswer, RefileOverrides } from "@flow-state-dev/orchestration/inbox";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { leaseLapsed } from "@flow-state-dev/orchestration/tasks";
 import type { ReviewAnswer } from "../components/flow-state/review-hold";
+import { durationText } from "../components/flow-state/spend";
+import type { TaskSignalRun, TaskSignalView } from "../components/flow-state/task-signals";
 import { harnessName } from "./harness";
 
 /** A task's status in the screen's words: `cancelled` is its own ending, since a task someone withdrew did not fail. */
@@ -15,11 +18,29 @@ export function taskStatus(task: Pick<CodingBoardTask, "status">): "running" | "
   return task.status === "completed" ? "done" : task.status === "errored" ? "failed" : task.status === "cancelled" ? "cancelled" : "running";
 }
 
+/**
+ * Its run opened pull requests and waits on them to merge or close: the
+ * board's `pullRequests`, filled only while that wait is open and unanswered.
+ * The panel, the card and the popup all read *PR open* from this one fact.
+ */
+export const waitsOnPullRequest = (task: Pick<CodingBoardTask, "status" | "pullRequests">): boolean =>
+  task.status === "in_progress" && task.pullRequests.length > 0;
+
+/**
+ * Open, but doing nothing until its pull request merges or closes. Waiting on
+ * you is not idle, even with a pull request open: the next move is yours.
+ */
+export const isIdle = (task: Pick<CodingBoardTask, "status" | "asks" | "pullRequests">): boolean => waitsOnPullRequest(task) && task.asks.length === 0;
+
+/** Still open and not {@link isIdle}: working, queued, or waiting on you. What *Running* counts. */
+export const isActive = (task: Pick<CodingBoardTask, "status" | "asks" | "pullRequests">): boolean => taskStatus(task) === "running" && !isIdle(task);
+
+/** The active coding tasks among `tasks`: what the sidebar's working dot and its *Running N tasks* line count. */
+export const activeCoding = (tasks: readonly CodingBoardTask[], isCoding: (id: string) => boolean): CodingBoardTask[] =>
+  tasks.filter((t) => isActive(t) && isCoding(workerOf(t)));
+
 /** The worker it was filed for; none for a task filed to nobody. */
 export const workerOf = (task: Pick<CodingBoardTask, "assignee">): string => task.assignee ?? "";
-
-/** Its line's words: its title, else its goal. */
-export const titleOf = (task: Pick<CodingBoardTask, "title" | "goal">): string => task.title ?? task.goal;
 
 /** What it waits on you for while something does: its oldest open hold, as the view read it. */
 export const holdOf = (task: Pick<CodingBoardTask, "asks">) => task.asks[0];
@@ -36,17 +57,56 @@ export const harnessOf = (task: Pick<CodingBoardTask, "harness">): string | unde
 /** The model its run reported, when it reported one; never guessed. */
 export const modelOf = (task: Pick<CodingBoardTask, "spend">): string | undefined => task.spend?.model ?? undefined;
 
-/** The row as orchestration's `taskView` reads it, with the view's own holds: its state and times, for its time signal and the counts. */
-export const viewOf = (task: CodingBoardTask, board = ""): TaskView => taskView({ ...task, board } as Parameters<typeof taskView>[0], task.asks);
-
 /** When this attempt's run started: its run link's start, else the task's own (a retry keeps its first start). */
 export const attemptStartedAt = (task: Pick<CodingBoardTask, "run" | "startedAt">): number | undefined => task.run?.startedAt ?? task.startedAt;
 
-/** Its run's start and lease deadline, for the time signal; each absent until the row has it. */
-export const runTimesOf = (task: Pick<CodingBoardTask, "run" | "leaseUntil">) => ({
-  ...(typeof task.run?.startedAt === "number" ? { startedAt: task.run.startedAt } : {}),
-  ...(typeof task.leaseUntil === "number" ? { leaseUntil: task.leaseUntil } : {}),
-});
+/**
+ * Whether a run is on it now: it is running and holds a lease that hasn't
+ * lapsed (the board's rule, `leaseLapsed`: lapsed at its deadline). A task kept
+ * open, owing a turn or waiting on its pull request holds none.
+ */
+export const runsNow = (task: Pick<CodingBoardTask, "status" | "leaseUntil">, now: number): boolean =>
+  taskStatus(task) === "running" &&
+  task.leaseUntil != null &&
+  !leaseLapsed({ status: "in_progress", leaseUntil: task.leaseUntil } as Parameters<typeof leaseLapsed>[0], now);
+
+/**
+ * How long a still-active task may run before its card calls it
+ * *Long-running*: a day. Elapsed time only, from this attempt's start: a task
+ * open that long has almost always stalled or been forgotten, and the tag is
+ * there to make someone look.
+ */
+export const LONG_RUNNING_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * A task card's elapsed time: the registry's `durationText` ("42s", "2m 23s",
+ * "1h 3m") under a day, and days and hours past it ("2d 23h"), so a stalled
+ * task never reads as a plausible "71h 24m". The conversation's task card uses
+ * the coarser `sinceShort` (TaskCard.tsx) on purpose: a glance, not a clock.
+ */
+export function elapsedText(ms: number): string {
+  const hours = Math.floor(Math.max(0, ms) / 3_600_000);
+  return hours < 24 ? durationText(ms) : `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
+/** It is still active and this attempt started more than {@link LONG_RUNNING_MS} before `now`. Active is `taskStatus`'s "running", which folds in queued and waiting-on-you, so a review left waiting a day is tagged too; an {@link isIdle} task is not active, so a pull request left open a day is not. */
+export function isLongRunning(task: Pick<CodingBoardTask, "status" | "asks" | "pullRequests" | "run" | "startedAt">, now: number): boolean {
+  const start = attemptStartedAt(task);
+  return isActive(task) && start !== undefined && now - start > LONG_RUNNING_MS;
+}
+
+/**
+ * A coding board row as the registry's `TaskTime` reads it: the view's
+ * `state` and the row's times, and this attempt's run start and lease
+ * deadline. The registry item takes orchestration's `TaskView` shape, which
+ * the row doesn't carry whole.
+ */
+export function timeSignalOf(task: Pick<CodingBoardTask, "state" | "updatedAt" | "completedAt" | "run" | "leaseUntil">): { view: TaskSignalView; run: TaskSignalRun } {
+  return {
+    view: { state: task.state, times: { updatedAt: task.updatedAt ?? null, completedAt: task.completedAt ?? null } },
+    run: { startedAt: task.run?.startedAt ?? null, leaseUntil: task.leaseUntil ?? null },
+  };
+}
 
 /**
  * How long this attempt ran: from its start (the run link's, so a retry times
@@ -65,10 +125,10 @@ export function attemptDurationMs(task: Pick<CodingBoardTask, "status" | "run" |
  * its brief (read whole, `context`) with one line added naming the task it
  * re-runs, by title, so the old brief is kept and the link shows.
  */
-export function rerunOverrides(task: Pick<CodingBoardTask, "status" | "title" | "goal" | "harness">, context: string | undefined, worker: string): RefileOverrides {
+export function rerunOverrides(task: Pick<CodingBoardTask, "status" | "title" | "harness">, context: string | undefined, worker: string): RefileOverrides {
   const ended = task.status === "cancelled" ? "was cancelled" : "failed";
   const on = harnessOf(task);
-  const line = `This re-runs the task "${titleOf(task)}", which ${ended}${on === undefined ? "" : ` on ${on}`}.`;
+  const line = `This re-runs the task "${task.title}", which ${ended}${on === undefined ? "" : ` on ${on}`}.`;
   return { assignee: worker, context: context === undefined || context === "" ? line : `${context}\n\n${line}` };
 }
 

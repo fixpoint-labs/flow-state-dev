@@ -45,7 +45,7 @@ import {
 import { harnessTaskId } from "../src/workspace";
 import { reviewDetail } from "../src/browser";
 import { seedRepo } from "./fixtures";
-import { CONVERSATIONS, claimHost, cleanUpHosts } from "./claim-host";
+import { CONVERSATIONS, claimHost, cleanUpHosts, mergeTeammateWork } from "./claim-host";
 
 const BOARD_ID = "eng.feature.work";
 const FLOW = "review-host";
@@ -62,7 +62,7 @@ afterAll(() => {
 });
 
 /** What one harness step does: commit a file, commit nothing, commit without confirming a session, or fail. */
-type Step = "commits" | "no-commit" | "commits-no-session" | "throws" | "commits-renames";
+type Step = "commits" | "no-commit" | "commits-no-session" | "throws" | "commits-renames" | "merges-base";
 
 interface SeenStep {
   prompt: string;
@@ -71,7 +71,10 @@ interface SeenStep {
   cwd: string;
 }
 
-function stubHarness(script: Step[], seen: SeenStep[]) {
+/** The line a teammate puts first in `tracked.txt` on the upstream, while a `merges-base` run adds one last. */
+const TEAMMATE_LINE = "a teammate's line";
+
+function stubHarness(script: Step[], seen: SeenStep[], upstream: string) {
   return (feeds: HarnessFeeds): HarnessBlock =>
     handler({
       name: "stub-harness",
@@ -90,6 +93,22 @@ function stubHarness(script: Step[], seen: SeenStep[]) {
           writeFileSync(join(cwd, `change-${n}.txt`), `change ${n}\n`);
           execFileSync("git", ["add", "."], { cwd });
           execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", `Change ${n}`], { cwd });
+        }
+        // The run adds a line to a file, then merges the base a teammate moved on, with a line in the same file.
+        if (step === "merges-base") {
+          const git = (at: string, ...args: string[]) =>
+            execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: at, encoding: "utf8" });
+          writeFileSync(join(cwd, "tracked.txt"), `${readFileSync(join(cwd, "tracked.txt"), "utf8")}the run's line\n`);
+          git(cwd, "commit", "-q", "-am", `Change ${n}`);
+          const mate = mkdtempSync(join(tmpdir(), "harness-manager-mate-"));
+          dirs.push(mate);
+          git(mate, "clone", "-q", upstream, "work");
+          const work = join(mate, "work");
+          writeFileSync(join(work, "tracked.txt"), `${TEAMMATE_LINE}\n${readFileSync(join(work, "tracked.txt"), "utf8")}`);
+          git(work, "commit", "-q", "-am", "a teammate's change");
+          git(work, "push", "-q", "origin", "HEAD:main");
+          git(cwd, "fetch", "-q", upstream, "main");
+          git(cwd, "merge", "-q", "--no-edit", "-m", "merge main", "FETCH_HEAD");
         }
         // The run moves its work to a branch it names itself, as a coder did to get past a refused push.
         if (step === "commits-renames") execFileSync("git", ["branch", "-m", "teammates/tidy-task-list"], { cwd });
@@ -125,6 +144,8 @@ function host(options: {
   clone?: boolean;
   landAttempts?: number;
   awaitPullRequests?: boolean;
+  /** `origin` is a bare repository on disk that `main` tracks, so a teammate can move the base on. */
+  upstream?: boolean;
 }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-review-"));
   dirs.push(dir);
@@ -133,9 +154,13 @@ function host(options: {
   seedRepo(sourceRepo);
   // A bare repository on disk as `origin`, set before the host pins it, for an accept that pushes.
   const remote = join(dir, "origin.git");
-  if (options.remote === true || options.clone === true) {
+  if (options.remote === true || options.clone === true || options.upstream === true) {
     execFileSync("git", ["clone", "-q", "--bare", sourceRepo, remote]);
     execFileSync("git", ["remote", "set-url", "origin", remote], { cwd: sourceRepo });
+  }
+  if (options.upstream === true) {
+    execFileSync("git", ["fetch", "-q", "origin"], { cwd: sourceRepo });
+    execFileSync("git", ["branch", "-q", "--set-upstream-to=origin/main", "main"], { cwd: sourceRepo });
   }
 
   const ledger = defineTaskCollection({ id: BOARD_ID, scope: "org" as const, stateSchema: harnessTaskInputSchema });
@@ -159,7 +184,7 @@ function host(options: {
         : { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000, pullRequestRepo: () => "github.com/acme/widgets" },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
-    harness: stubHarness(options.script, seen),
+    harness: stubHarness(options.script, seen, remote),
     ...(options.reviewChanges === false ? {} : { reviewChanges: true }),
     ...(options.landAttempts === undefined ? {} : { landAttempts: options.landAttempts }),
     ...(options.awaitPullRequests === true ? { awaitPullRequests: true } : {}),
@@ -398,6 +423,23 @@ describe("a coding run that made changes waits for a person's review", () => {
       expect(held.attempts).toBe(1);
       expect(h.seen).toHaveLength(1);
       expect(existsSync(`${h.seen[0]!.cwd}.lock`)).toBe(false);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("opens a file the run and the merged-in base both changed with only the run's lines, as its pull request shows it", async () => {
+    // The patch a person opens is the pull request's: the base's lines the run merged in are not the run's.
+    const h = host({ script: ["merges-base"], upstream: true });
+    try {
+      await h.start();
+      const held = await h.until(h.waiting, "the review");
+      expect(await h.reviewData(held)).toMatchObject({ files: [{ path: "tracked.txt", added: 1, removed: 0 }], fileCount: 1 });
+      const opened = await h.readChanges({ path: "tracked.txt" });
+      expect(opened.status).toBe(200);
+      expect(opened.body.output.patch.patch).toContain("+the run's line");
+      // The teammate's line is context the run's hunk sits beside, never a line the run added.
+      expect(opened.body.output.patch.patch).not.toContain(`+${TEAMMATE_LINE}`);
     } finally {
       await h.dispose();
     }
@@ -670,6 +712,24 @@ describe("a judged run on a board read from the claim, with review on", () => {
     expect(hold?.ask.prompt).toContain("- call1 commit 0");
   }, 60_000);
 
+  it("shows the reviewer only the run's own work after the run merged the moved-on base in", async () => {
+    // What the person accepts is the pull request: the base's commits the run merged in are not in it.
+    const lab = claimHost({
+      mode: "claim",
+      durable: true,
+      upstream: true,
+      script: [{ answer: "added the line", commits: 1, during: async () => mergeTeammateWork(lab.upstream, lab.seen.at(-1)!.cwd) }],
+      manager: { reviewChanges: true },
+    });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    const prompt = task.holds?.find((h) => h.source.kind === "suspension")?.ask.prompt;
+    expect(prompt).toContain("2 commits on");
+    expect(prompt).toContain("1 file changed (+1 −0).");
+    expect(prompt).not.toContain("a teammate's change");
+  }, 60_000);
+
   it("holds a judge's ask on a question, with no review", async () => {
     const lab = claimHost({
       mode: "claim",
@@ -690,6 +750,8 @@ describe("an accepted run's work lands where the person chose (FIX-2543)", () =>
   const PR_URL = "https://github.com/acme/widgets/pull/42";
   const PATH = process.env.PATH;
   let ghLog: string;
+  /** While this file exists, `gh pr create` fails the way GitHub refuses a pull request into a deleted base. */
+  let failCreate: string;
   const ghCalls = () => (existsSync(ghLog) ? readFileSync(ghLog, "utf8").trim().split("\n") : []);
   const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
   const isAncestor = (cwd: string, commit: string, ref: string) => {
@@ -706,11 +768,16 @@ describe("an accepted run's work lands where the person chose (FIX-2543)", () =>
     const bin = mkdtempSync(join(tmpdir(), "harness-manager-land-gh-"));
     dirs.push(bin);
     ghLog = join(bin, "calls.log");
+    failCreate = join(bin, "fail-create");
     writeFileSync(
       join(bin, "gh"),
       `#!/usr/bin/env node
 const args = process.argv.slice(2);
 require("node:fs").appendFileSync(${JSON.stringify(ghLog)}, args.join(" ") + "\\n");
+if (args[1] === "create" && require("node:fs").existsSync(${JSON.stringify(failCreate)})) {
+  process.stderr.write("pull request create failed: GraphQL: Base sha can't be blank, Base ref must be a branch (createPullRequest)\\n");
+  process.exit(1);
+}
 process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify(PR_URL)} + "\\n" : "[]");
 `,
     );
@@ -838,7 +905,9 @@ process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify
       expect(h.review(again)!.ask.prompt).toContain("Opening the pull request failed");
       expect(existsSync(h.seen[0]!.cwd)).toBe(true);
 
+      // Back as it was: with its main, which the pull request goes into.
       execFileSync("git", ["init", "-q", "--bare", h.remote]);
+      git(h.seen[0]!.cwd, "push", "-q", h.remote, "HEAD~1:refs/heads/main");
       await h.answer({ verdict: "accepted", land: "pull-request" });
       const done = await h.until((t) => t.status === "completed", "the retry to land");
       expect(done.output).toMatchObject({ landed: { kind: "pull-request", url: PR_URL } });
@@ -922,6 +991,29 @@ process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify
       await h.dispose();
     }
   }, 90_000);
+
+  // FIX-2858: GitHub refused the pull request, the failure was handed to the
+  // coding session, and the coder opened one itself with gh, outside the landing.
+  it("asks the person again when GitHub refuses the pull request, and hands the coding session nothing", async () => {
+    const h = host({ script: ["commits", "no-commit"], remote: true });
+    try {
+      await h.start();
+      const first = await h.until(h.waiting, "the review");
+      writeFileSync(failCreate, "");
+      await h.answer({ verdict: "accepted", land: "pull-request" });
+      const again = await h.until((t) => h.waiting(t) && h.review(t)!.id !== h.review(first)!.id, "the review asked again");
+
+      // No step of the coding session: only landing opens the pull request.
+      expect(h.seen).toHaveLength(1);
+      const detail = reviewDetail((await h.stop(h.review(again)!))?.data);
+      expect(detail?.landAttempts).toHaveLength(1);
+      expect(detail?.landFailed).toMatchObject({ land: "pull-request" });
+      expect(h.review(again)!.ask.prompt).toContain("Opening the pull request failed");
+    } finally {
+      rmSync(failCreate, { force: true });
+      await h.dispose();
+    }
+  }, 60_000);
 });
 
 // FIX-2781.

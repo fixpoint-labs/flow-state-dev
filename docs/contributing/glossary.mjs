@@ -158,8 +158,9 @@ export const ENTRIES = [
   },
   {
     term: "State",
-    means: "Scope state or resource state, and nothing else.",
-    decision: "Owner, 2026-11-06",
+    means:
+      "Scope state or resource state, and one other sense: a task's display state, what the user sees it as (orchestration's `TaskView.state`, `TaskViewStatus`, and harness-manager's coding board row's `state`, the same value). Nothing else.",
+    decision: "Owner, 2026-11-06; FIX-2766 D1 (the task's display state, kept under the name `TaskView` already gave it)",
     retires: [],
   },
   {
@@ -967,6 +968,13 @@ const EXEMPTIONS = [
     why: "FIX-2703: a pass-5 fact check quoting Shift Manager's UI string \"Asked <id>\" verbatim; the rule's backtick pattern spans the prose between two code spans",
   },
   {
+    // The UI components reference quotes the registry's own button and header text.
+    path: /^docs\/contributing\/docs-revamp\/pages\/reference\/ui-components(?:\.facts)?\.md$/,
+    line: /Ask for changes|"Asking ada…", "Asked ada"/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: ReviewHold's \"Ask for changes\" button and the workforce lines' \"Asking ada…\" / \"Asked ada\" headers, quoted as the registry renders them (packages/ui/registry/components/review-hold.tsx:410); the rule's backtick pattern spans the prose between two code spans",
+  },
+  {
     // The docs-revamp pages that describe the Teammates lab name its worker as the lab does.
     path: /^docs\/contributing\/docs-revamp\/pages\/(?:start\/(?:run-a-starter|what-flow-state-is)|catalog\/starters\/teammates|catalog\/workforce\/messaging)(?:\.facts|\.record)?\.md$/,
     rules: ["shift-coordinator-names", "shift-coordinator-prose"],
@@ -1073,6 +1081,13 @@ const EXEMPTIONS = [
     line: /\b(turnAsked|askMidway)\b|\.ask(\.(kind|prompt)\b|\)\.toMatchObject)/,
     rules: ["ask-symbol", "ask-symbol-in-docs", "ask-mark"],
     why: "FIX-2131: the worker's question, which holds its task for the user, and the turn-asked fact it is refused on",
+  },
+  {
+    // The Task board reference names the midway question helper as orchestration exports it.
+    path: /^docs\/contributing\/docs-revamp\/pages\/reference\/task-(?:board|collections)(?:\.facts|\.record)?\.md$/,
+    line: /\baskMidway\b/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: `askMidway(ctx, board, …)`, the exported helper that opens a question midway (packages/orchestration/src/task-board/task-request.ts), named on the Task board and Task collections Reference pages (and their fact sheets and records) as the published task-board page already does",
   },
   {
     path: /^packages\/devtool\/(src\/react\/lib\/task-collection-state\.ts|test\/(task-collections-reason\.test\.tsx|task-collection-state\.test\.ts))$/,

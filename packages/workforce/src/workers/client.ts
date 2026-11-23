@@ -121,6 +121,11 @@ export type EditWorkerInput = {
   skills?: string[];
   /** Replaces the stored settings whole. */
   settings?: Record<string, unknown>;
+  /**
+   * Sets the settings it names over the stored ones and keeps the rest: what an
+   * app that sees only its `showSettings` sends to change one. Not with `settings`.
+   */
+  settingsPatch?: Record<string, unknown>;
 };
 
 /** A user's roster, and their sessions with each worker. */

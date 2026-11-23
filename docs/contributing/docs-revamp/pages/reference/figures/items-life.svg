@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 389">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="220" height="120"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="350" y="24" width="220" height="120"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="672" y="24" width="220" height="120"/>
+<rect class="hl" fill="#e8f551" x="680" y="52" width="204" height="24"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">EVENT</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="69">item.added</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="42" y="92">in_progress</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="108">draftReply starts empty</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="364" y="46">EVENT</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="364" y="69">content.delta</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="364" y="92">in_progress</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="364" y="108">draftReply gains text</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="686" y="46">EVENT</text>
+<text class="nm on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="686" y="69">item.done</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="686" y="92">completed</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="686" y="108">or incomplete, or failed</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="686" y="124">carries the whole item</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="248" y1="84" x2="348" y2="84" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="570" y1="84" x2="670" y2="84" marker-end="url(#ah)"/>
+<path class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" d="M138,144 V190 H782 V146" marker-end="url(#ah)"/>
+<path class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" d="M842,144 V236 H98 V146" marker-end="url(#ah)"/>
+<rect class="ground" fill="#f0ece1" x="447.7" y="182.5" width="24.6" height="15"/>
+<text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" text-anchor="middle" x="460" y="194">01</text>
+<rect class="ground" fill="#f0ece1" x="457.7" y="228.5" width="24.6" height="15"/>
+<text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" text-anchor="middle" x="470" y="240">02</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="266" x2="920" y2="266"/>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="290">01</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="56" y="290">A message, data or status item a block emits skips the middle: item.added and item.done arrive together.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="315">02</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="56" y="315">A keyed data item emitted again keeps its id and goes back to in_progress, then item.done again.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="340">03</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="56" y="340">item.updated can arrive at any point, even after item.done, and replaces the top-level keys it names.</text>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="367" x2="54" y2="367" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="371">MOVES TO</text>
+<line class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" x1="154" y1="367" x2="180" y2="367" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="188" y="371">ONLY IN ONE CASE</text>
+<rect class="hl" fill="#e8f551" x="340" y="361" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="374" y="371">THE WHOLE ITEM</text>
+</g>
+</svg>

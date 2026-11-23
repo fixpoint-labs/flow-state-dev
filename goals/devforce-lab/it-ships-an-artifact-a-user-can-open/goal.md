@@ -28,7 +28,7 @@ convention file and in none of the lab's own code, before the run starts.
    that board, for the coder, naming the feature's issue and the implement phase.
 2. The board's dispatch record names the coder seat and never the reviewer seat, by the worker each child session names (`workerId`).
 3. The prompt the manager handed the agent carries all four held-out tokens.
-4. Exactly one branch under `conductor/` resolves at the published address **after** the store is
+4. Exactly one branch under `shift-manager/` resolves at the published address **after** the store is
    closed and the temporary repository and every checkout have been deleted, and it is at least one
    commit ahead of `main`.
 5. The requester's acceptance check **passes** against the produced tree and **fails** against the

@@ -27,7 +27,7 @@ A *Coder* chip beside Send picks who makes a code change: Auto (Claude Code), Pl
 pnpm --filter @flow-state-dev/claude-code-style dev
 ```
 
-Open the address it prints as `App:`. The model runs through the AI Gateway, so the host needs `AI_GATEWAY_API_KEY`, and each coder needs its own sign-in. State is stored in SQLite files under the data folder, and the app serves one user with no sign-in. Every `CLAUDE_CODE_STYLE_*` setting is optional; the [Environment reference](../../reference/environment.md) lists the five with their defaults and which credential each coder reads.
+Open the address it prints as `App:`. The model runs through the AI Gateway, so the host needs `AI_GATEWAY_API_KEY`, and each coder needs its own sign-in. State is stored in SQLite files under the data folder, and the app serves one user with no sign-in. Every `CLAUDE_CODE_STYLE_*` setting is optional and is read in the app's `fsdev.config.mts`; the [Environment reference](../../reference/environment.md) lists the keys the model and each coder read.
 
 ## Where a coding run makes its changes
 

@@ -117,6 +117,9 @@ import {
 /** The flow name the working `WORKER.md` names. **Pinned** — the basename must match. */
 export const CODER_FLOW = "coder";
 
+/** What each coding run's branch starts with, so a branch says Shift Manager cut it. */
+export const CODER_BRANCH_PREFIX = "shift-manager/";
+
 /** The answer manager's name: its blocks are named apart from the implement manager's. */
 const ANSWER_MANAGER = "harness-manager-answer";
 
@@ -284,6 +287,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
       runTimeoutMs,
       ...(stopsOnAbort === undefined ? {} : { stopsOnAbort }),
       harness: harness.slot,
+      branchPrefix: CODER_BRANCH_PREFIX,
       // The collections a project's run source reads, on the blocks that ask it.
       ...("provision" in options.workspace ? { uses: [projectWorkspaceCapability] } : {}),
     } as never) as TaskWorker;
@@ -299,6 +303,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
       runTimeoutMs,
       ...(stopsOnAbort === undefined ? {} : { stopsOnAbort }),
       harness: harness.slot,
+      branchPrefix: CODER_BRANCH_PREFIX,
       uses: [projectWorkspaceCapability],
     } as never) as TaskWorker;
 

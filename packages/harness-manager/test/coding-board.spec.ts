@@ -227,6 +227,29 @@ describe("the coding board view, for one open task", () => {
     expect((await read({ taskId: entry.id }))[0]!.detail).toEqual({ answer: "The second attempt's answer.", answerCut: false });
   });
 
+  it("gives each task its title and the state the user sees it in, from one taskView of the row with its asks", async () => {
+    const { entries, write, read } = await filed(["Fix the build"]);
+    const [{ key, entry }] = entries as [(typeof entries)[number]];
+    type Seen = { title: string; state: string; asks: unknown[] };
+    const seen = async () => (await read())[0] as unknown as Seen;
+    // Filed with no title: the screen's words are its goal. Filed held: it isn't queued.
+    expect(await seen()).toMatchObject({ title: "Fix the build", state: "held" });
+    // Its own title wins over the goal.
+    await write(key, { ...entry, title: "Build fix", status: "pending" });
+    expect(await seen()).toMatchObject({ title: "Build fix", state: "queued" });
+    // A question for you on a running task: it waits on you, and its ask says so.
+    const question = { id: "q1", actor: "user", openedAt: 1, source: { kind: "task", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "EU or US?" } };
+    await write(key, { ...entry, status: "in_progress", holds: [question] });
+    const waiting = await seen();
+    expect(waiting.state).toBe("waiting");
+    expect(waiting.asks).toHaveLength(1);
+    // Nothing waits on you: running. Ended: done, whatever hold it kept.
+    await write(key, { ...entry, status: "in_progress", holds: [] });
+    expect((await seen()).state).toBe("running");
+    await write(key, { ...entry, status: "completed", holds: [question] });
+    expect((await seen()).state).toBe("done");
+  });
+
   it("names the reason a cancelled task was cancelled with, as it names why a failed one failed", async () => {
     const { entries, write, read } = await filed(["Fix the build"]);
     const [{ key, entry }] = entries as [(typeof entries)[number]];

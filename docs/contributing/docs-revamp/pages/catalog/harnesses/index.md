@@ -61,7 +61,7 @@ export default createFlowState({
 
 `workspace` is the one required key. Its `root` is the directory every checkout is made under, and its `source` says where each run's files come from. Here every run is cut from `/work/acme-shop`.
 
-`codingDrainBudgetMs` takes the same `checks`, `project`, `judge` and `runTimeoutMs` you give `harnesses`, so a shutdown waits long enough for a full run. [Harness runs](../../reference/harness-runs.md) has the default.
+`codingDrainBudgetMs` takes the same `checks`, `project`, `judge`, `idleTimeoutMs` and `runTimeoutMs` you give `harnesses`, so a shutdown waits long enough for a full run. [Harness runs](../../reference/harness-runs.md) has the default.
 
 A worker becomes a coding worker with two lines in its file:
 
@@ -81,7 +81,7 @@ The body is the worker's instructions in the run's brief. [Harness runs](../../r
 
 ### Where a run works
 
-<Figure svg={OneRun} caption="One run, with the kit's config keys" description={"Three boxes from left to right. The task fix-cart-test, with goal cart.test.ts passes, worker engineering.coder and harness claude-code, is on the board and has a hatched top because it outlives the request. An arrow leads to the run, claude-code in its own checkout, cut from workspace, on its own git branch and limited by runTimeoutMs. An arrow leads to the verdict: checks pnpm test, judge reads the goal, and review off unless set. The last row, then the task completes, is highlighted. A dashed arrow runs from the verdict back to the task, labelled not done. Three notes say the run starts in a checkout made from workspace, that checks, judge and review decide in that order, and that not done sends the task back to the board with the reason."} />
+<Figure svg={OneRun} caption="One run, with the kit's config keys" description={"Three boxes from left to right. The task fix-cart-test, with goal cart.test.ts passes, worker engineering.coder and harness claude-code, is on the board and has a hatched top because it outlives the request. An arrow leads to the run, claude-code in its own checkout, cut from workspace, on its own git branch and stopped by idleTimeoutMs when it goes quiet. An arrow leads to the verdict: checks pnpm test, judge reads the goal, and review off unless set. The last row, then the task completes, is highlighted. A dashed arrow runs from the verdict back to the task, labelled not done. Three notes say the run starts in a checkout made from workspace, that checks, judge and review decide in that order, and that not done sends the task back to the board with the reason."} />
 
 Each task gets a git worktree on its own branch, such as `conductor/fix-cart-test-3fa9c1`, in a folder under `root`. A retry lands in the same directory. The checkout is where the agent is pointed, not a jail: Claude Code as installed above can run shell commands as the server's user. [Harness runs](../../reference/harness-runs.md) has the checkout layout, setup commands, sandboxes and the run timeout.
 
@@ -190,7 +190,7 @@ The `harnesses` flow serves one view, `readiness`: a row per agent filled, reada
 
 ## Change it
 
-Besides `workspace`, the kit takes `defaultHarness`, `review`, `pullRequests`, `judge` (on by default), `checks`, `project`, `runTimeoutMs` and `logReadiness`. An unknown key is refused. [Harness runs](../../reference/harness-runs.md) has each key's default, which option wins when a worker's file and the kit disagree, and how to replace the `coder` flow with your own.
+Besides `workspace`, the kit takes `defaultHarness`, `review`, `pullRequests`, `judge` (on by default), `checks`, `project`, `idleTimeoutMs`, `runTimeoutMs` and `logReadiness`. An unknown key is refused. `idleTimeoutMs` stops a run after 20 minutes with no output from its agent. `runTimeoutMs` is an optional cap on a run's total time, 4 hours by default; `0` turns it off. [Harness runs](../../reference/harness-runs.md) has each key's default, which option wins when a worker's file and the kit disagree, and how to replace the `coder` flow with your own.
 
 ## Next
 

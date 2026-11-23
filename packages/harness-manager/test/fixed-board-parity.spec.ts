@@ -9,9 +9,11 @@
  * rather than re-deriving, which would only prove the code agrees with itself.
  * It was rewritten once, deliberately, when the organization became part of a
  * run's checkout and branch, and again when a run's branch and folder became
- * its short name; a run recorded before either keeps its older place
- * (`org-place.spec.ts`). A field added to the record (`landedPullRequests`)
- * adds a line, and changes none of the keys.
+ * its short name, and once more when the branch's prefix became the app's
+ * (`fsd/` by default, no longer `conductor/`); a run recorded before any of
+ * these keeps its older place and branch (`org-place.spec.ts`,
+ * `workspace.spec.ts`). A field added to the record (`landedPullRequests`)
+ * adds a line, and changes none of the keys; so did `effectiveCut`.
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { relative } from "node:path";
@@ -31,7 +33,7 @@ function normalized(record: Record<string, unknown>, dir: string): Record<string
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, value]) => {
         if (key === "updatedAt") return [key, typeof value];
-        if (key === "childSessionId" || key === "requestId" || key === "runKey" || key === "incarnationId" || key === "baseCommit") return [key, typeof value];
+        if (key === "childSessionId" || key === "requestId" || key === "runKey" || key === "incarnationId" || key === "baseCommit" || key === "effectiveCut") return [key, typeof value];
         if ((key === "workspacePath" || key === "remote") && typeof value === "string") return [key, relative(dir, value)];
         return [key, value];
       }),

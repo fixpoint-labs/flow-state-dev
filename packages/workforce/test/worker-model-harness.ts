@@ -105,13 +105,15 @@ export type HostOptions = {
   skills?: InitialSkill[];
   /** The settings of `fixture-worker` a user may see on the roster. */
   showSettings?: string[];
+  /** `fixture-worker` declares no `tone`: a host older (or newer) than the rows it reads. */
+  withoutTone?: boolean;
 };
 
 export type Host = ReturnType<typeof bootHost>;
 
 const doorInput = z.object({ message: z.string() }).strict();
 
-function workerFlow(flow: string, installation: WorkerInstallation) {
+function workerFlow(flow: string, installation: WorkerInstallation, withoutTone = false) {
   const door = handler({
     name: `${flow}-run`,
     inputSchema: doorInput,
@@ -163,7 +165,9 @@ function workerFlow(flow: string, installation: WorkerInstallation) {
   });
   return defineFlow({
     kind: flow,
-    configSchema: workerConfigSchema().extend({ tone: z.string().default("plain"), apiToken: z.string().optional() }),
+    configSchema: withoutTone
+      ? workerConfigSchema().extend({ apiToken: z.string().optional() })
+      : workerConfigSchema().extend({ tone: z.string().default("plain"), apiToken: z.string().optional() }),
     session: installation.session(),
     resources: { ...installation.resources, handbook, ledger, teamNotes },
     actions: {
@@ -208,7 +212,7 @@ export function bootHost(stores: StoreRegistry, options: HostOptions = {}) {
     documents: { handbook, ledger },
     ...(options.skills !== undefined ? { skills: options.skills } : {})
   });
-  const fixture = workerFlow(FIXTURE, installation);
+  const fixture = workerFlow(FIXTURE, installation, options.withoutTone === true);
   const other = workerFlow(OTHER, installation);
   flows = {
     [FIXTURE]:

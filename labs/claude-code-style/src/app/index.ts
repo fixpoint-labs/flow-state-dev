@@ -17,9 +17,9 @@
  * `AppProvider` (`provider.ts`) holds the one client the hooks call through
  * (`main.tsx` builds it; a test builds one over the in-process host).
  */
-export type { ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+export type { CodingBoardTask, ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 export { AppProvider, useApp } from "./provider";
 export { useSessions, useThread, type AppSession, type ThreadView } from "./sessions";
-export { appTaskOf, usePullRequestLinks, useTaskWork, useTasks, withPullRequestLinks, type AppTask, type TaskStatus, type TaskWork } from "./tasks";
+export { pullRequestLinks, readsRecordedWork, usePullRequestLinks, useTaskWork, useTasks, type TaskStatus, type TaskWork } from "./tasks";
 export { useDismissed, usePins } from "./marks";
 export { appCalls, type AppCalls, type AppHarness, type AppProject, type RepositoryCheck } from "./calls";

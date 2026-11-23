@@ -7,16 +7,16 @@
  * at all, and an age.
  */
 import { createRoot } from "react-dom/client";
-import { taskView } from "@flow-state-dev/orchestration/inbox";
-import type { AppTask } from "../../src/app";
+import type { CodingBoardTask } from "../../src/app";
+import { codingBoardTask } from "../coding-board-task";
 import { TasksPane } from "../../src/components/TasksPane";
 import "../../src/styles.css";
 
 const width = Number(new URLSearchParams(location.search).get("width") ?? "304");
 const ended = Date.now() - 12 * 60_000;
 
-function done(id: string, title: string, assignee: string, spend: { model: string; costUsd: number | null } | null): AppTask {
-  return {
+function done(id: string, title: string, assignee: string, spend: { model: string; costUsd: number | null } | null): CodingBoardTask {
+  return codingBoardTask({
     id,
     title,
     goal: title,
@@ -24,8 +24,7 @@ function done(id: string, title: string, assignee: string, spend: { model: strin
     assignee,
     updatedAt: ended,
     ...(spend === null ? {} : { spend: { harness: "claude-code", model: spend.model, inputTokens: 184_200, outputTokens: 9_400, costUsd: spend.costUsd, unreported: false, live: false } }),
-    view: taskView({ id, title, goal: title, status: "completed", board: "s1", updatedAt: ended }),
-  };
+  });
 }
 
 const tasks = [

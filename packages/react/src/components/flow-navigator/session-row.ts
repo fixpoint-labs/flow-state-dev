@@ -8,16 +8,18 @@
 import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { SessionSummary } from "@flow-state-dev/client";
 
-const ENGINE_ID = /^([a-z]+)_\d{13}_([0-9a-f]{6,})$/;
+/** A minted id (`sess_<time>_<hex>`) or a derived one (`dsx_<hex>`, `wks_<hex>`). */
+const ENGINE_ID = /^([a-z]+)_(?:\d{13}_)?([0-9a-f]{6,})$/;
 
 /**
- * What a session row reads: its title, else an engine-minted id shortened to
- * its prefix and its last six characters (`sess_…3df102`), else the id whole.
- * The tail is kept rather than the head because ids minted months apart share
- * their first digits.
+ * What a session line reads: its title, else the label its flow gave it, else
+ * an engine-minted or derived id shortened to its prefix and its last six
+ * characters (`sess_…3df102`), else the id whole. The tail is kept rather
+ * than the head because ids minted months apart share their first digits.
  */
-export function sessionLabel(session: Pick<SessionSummary, "id" | "title">): string {
+export function sessionLabel(session: Pick<SessionSummary, "id" | "title" | "label">): string {
   if (session.title != null && session.title.trim() !== "") return session.title;
+  if (session.label != null && session.label.trim() !== "") return session.label;
   const match = ENGINE_ID.exec(session.id);
   return match === null ? session.id : `${match[1]}_…${match[2]!.slice(-6)}`;
 }

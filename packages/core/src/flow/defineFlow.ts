@@ -1592,6 +1592,7 @@ function normalizeFlowConfig(
 
   return {
     kind,
+    ...(definition.description !== undefined ? { description: definition.description } : {}),
     cardinality,
     requireUser,
     requiredFlowConfig,

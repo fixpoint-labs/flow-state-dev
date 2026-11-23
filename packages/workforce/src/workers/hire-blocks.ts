@@ -18,7 +18,7 @@ import type { BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow
 import { z } from "zod";
 import { AGENT_FLOW } from "../agent-worker-flow";
 import type { WorkerManifest } from "../manifest";
-import type { WorkerInstallation } from "./installation";
+import { problemsClause, type WorkerInstallation } from "./installation";
 import { WORKERS_RESOURCE } from "./keys";
 import { standardWorkerFlow, workerDisplayName } from "./standard-workers";
 import { parseWorkerResourceState, workerResourceStateSchema, type WorkerResourceState } from "./worker-row";
@@ -62,9 +62,14 @@ const editInput = z
     instructions: z.string().nullable().optional(),
     skills: z.array(z.string().min(1)).optional(),
     /** Replaces the stored settings whole. */
-    settings: z.record(z.unknown()).optional()
+    settings: z.record(z.unknown()).optional(),
+    /** Sets the settings it names over the stored ones, keeping the rest. Not with `settings`. */
+    settingsPatch: z.record(z.unknown()).optional()
   })
-  .strict();
+  .strict()
+  .refine((input) => input.settings === undefined || input.settingsPatch === undefined, {
+    message: "Give settings (replace them whole) or settingsPatch (change the ones named), not both."
+  });
 
 const fireInput = z.object({ id: z.string().min(1) }).strict();
 
@@ -146,7 +151,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
   const check = (id: string, row: WorkerResourceState): void => {
     const problems = installation.configurationProblems(id, row);
     if (problems.length > 0) {
-      throw new Error(`Worker "${id}" ${problems.join("; ")}. Nothing was written.`);
+      throw new Error(`Worker "${id}" ${problemsClause(problems)}. Nothing was written.`);
     }
   };
 
@@ -236,7 +241,8 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.instructions !== undefined ? { instructions: textOrNull(input.instructions) } : {}),
         ...(input.skills !== undefined ? { skills: input.skills } : {}),
-        ...(input.settings !== undefined ? { settings: input.settings } : {})
+        ...(input.settings !== undefined ? { settings: input.settings } : {}),
+        ...(input.settingsPatch !== undefined ? { settings: { ...current.settings, ...input.settingsPatch } } : {})
       };
       check(input.id, next);
       await roster(ctx).create(input.id, next as unknown as JsonObject, {
