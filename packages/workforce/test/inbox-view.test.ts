@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import { hearsNotice, type ViewHearing } from "@flow-state-dev/contracts/types/view-hearing";
 import type { WireNotice } from "@flow-state-dev/contracts/types/push-delivery";
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 import { encodeUserSegment, type FlowInstance } from "@flow-state-dev/core/types";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
@@ -207,6 +208,21 @@ describe("which asks the inbox view lists, and whose they are", () => {
       const { output } = await inboxOf(h, "alice");
       expect(listed(output.items)).toEqual([["s_r_alone", null, null]]);
       expect(output.items[0]).toMatchObject({ task: null, answerable: true, holds: [{ due, source: { kind: "suspension", flowId: "agent", requestId: "r_alone" } }] });
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("lists a suspension in a one-off session as one with no conversation: from no worker, with nothing to reply into", async () => {
+    const h = bootBoardHost({ agentAnswer: quiet });
+    try {
+      await seedInventory(h, INVENTORY);
+      // A server run, a webhook delivery or a per-fire schedule fire runs in a one-off session,
+      // born before its record like any other; nobody converses in it, so no worker and no reply.
+      const once = (await h.create("alice", "agent", { sessionId: oneOffSessionId(), state: { workerId: "otto" } })).body.session!.id;
+      await seedSuspension(h, { id: "r_once", flowKind: "agent", sessionId: once });
+      const { output } = await inboxOf(h, "alice");
+      expect(listed(output.items)).toEqual([["s_r_once", null, null]]);
     } finally {
       await h.dispose();
     }
