@@ -60,7 +60,7 @@ at it. Shift Manager's own flow folds into the shared one ([D1](DECISIONS.md#d1)
 + harnesses({ workspace, defaultHarness: process.env.DEVFORCE_LAB_HARNESS ?? "stub",
 +   review: options.reviewChanges === true, branchPrefix: "shift-manager/", approveTools, onPullRequestRecorded,
 +   modes: {
-+     implement: { instructions: implementBrief, doneWhen: commitTheBaseLacks, workspace },          // needs `issue`
++     implement: { instructions: implementBrief, doneWhen: commitTheBaseLacks, workspace, requires: ["issue"] },
 +     answer:    { instructions: answerBrief, doneWhen: nonEmptyAnswer, workspace: answerHost },     // keeps nothing
 +   },
 +   defaultMode: "answer",
@@ -176,8 +176,9 @@ harnesses({
   modes: {
     implement: {
       instructions: implementBrief,       // today's defineImplementPhase prompt
-      doneWhen: commitTheBaseLacks,       // a commit the base branch lacks; needs `issue`
+      doneWhen: commitTheBaseLacks,       // a commit the base branch lacks
       workspace,                          // the lab's repository checkout, on a branch
+      requires: ["issue"],                // the task input fields this mode needs
     },
     answer: {
       instructions: answerBrief,          // today's defineAnswerPhase prompt
@@ -187,6 +188,19 @@ harnesses({
   },
   defaultMode: "answer",
 })
+```
+
+A mode names the task-input fields it needs in `requires`. FIX-2878's filing check reads it and
+refuses a task in that mode that lacks any of them, by name; nothing runs in another mode
+([FIX-2878's examples](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-2878-amend-modes/specs/issues/FIX-2878/SPEC.md#examples), on #5611).
+
+```ts
+modes: { implement: { instructions: implementBrief, doneWhen: commitTheBaseLacks, workspace, requires: ["issue"] } }
+```
+
+```text
+filing:  { mode: "implement", description: "Add a line to the README" }
+Refused: mode "implement" needs "issue", and this filing has none.
 ```
 
 A task's own text is appended to its mode's instructions, so per-task wording lives in the task
@@ -240,7 +254,7 @@ modes: {
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| `modes`: name → `{ instructions, doneWhen, workspace }`, and the default mode (`defaultMode` names it; absent, `default`) | `PhaseSpec`, `codingPhase` and `commandCheck` | **Extends and renames**: `PhaseSpec` becomes `ModeSpec`; the kit's checks wrap whichever mode runs; with no `modes`, the one `default` mode is today's single phase, and an app may override its parts |
+| `modes`: name → `{ instructions, doneWhen, workspace, requires? }`, and the default mode (`defaultMode` names it; absent, `default`) | `PhaseSpec`, `codingPhase` and `commandCheck` | **Extends and renames**: `PhaseSpec` becomes `ModeSpec`; the kit's checks wrap whichever mode runs; with no `modes`, the one `default` mode is today's single phase, and an app may override its parts. `requires` lists the task-input fields a mode needs (`readonly (keyof CodingTaskInput)[]`); FIX-2878's filing check enforces it |
 | `approveTools` | `harnessManager({ approveTools })` | **Extends**: forwarded, like `review` |
 | The app's worker settings, documents and actions on `coder` | The agent flow's `settings` option | **Extends** in the same shape; the flow never reads them. `resources` is the fork's file-declared documents (`resourcesFromDocs`), installed at flow level beside the installation's |
 | The server's no-pick assignee, **interim** | `checkAssignee`, `harnessOf` | **Extends** the kit's filing of a coding task made outside any coding run: `checkAssignee` accepts any roster id, so the default is written before it. Retired by FIX-2878 |
