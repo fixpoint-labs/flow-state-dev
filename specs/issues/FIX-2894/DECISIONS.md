@@ -96,8 +96,12 @@ It comes down to what a model does with a field it reads: it writes it.
   values are trusted, at claim and on `updateTask`, only when the stamp names the assignee's
   current flow and declaration. Otherwise the claim drops them and runs the filler again, before
   the parse and before anything freezes them, and `updateTask` treats the edit as a filing. A row
-  stored before this change has no stamp, so its first claim re-fills. For a coding task that is
-  FIX-2878's filler at claim, in the task's own session.
+  stored before this change has no stamp, so its first claim re-fills. **A claim-time re-fill
+  has no filing turn,** so the board calls `fill` with `at: "claim"`, and a filler must then
+  read nothing a later turn can change: never the conversation's current pick, or a pick made
+  after filing would re-target a task already filed. For a coding row that is FIX-2878's rule
+  for rows stored before it: the worker's `harness:`, then the kit's `defaultHarness`, with
+  their default model and plan setting (coordinator, review round 2).
 - **One row version** (coordinator, review round 2). Whether a write is an edit or a move, the
   `stored` read, the hooks, and the input and assignee they produce are all computed from the
   revision the write read, and written with a compare-and-set on it. On a conflict the board
