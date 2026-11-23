@@ -13,6 +13,7 @@
  * different module realm (a common bundler/monorepo hazard).
  */
 import { FlowError } from "@flow-state-dev/core";
+import { stripAnsi } from "@flow-state-dev/core/helpers";
 import {
   ContextLengthError,
   ProviderUnavailableError,
@@ -51,7 +52,8 @@ function getStatusCode(error: Error): number | undefined {
  * Maps an AI SDK error to a typed framework error, preserving the original on
  * the `cause` chain. Returns `undefined` when the error is not an AI SDK error
  * or doesn't match a known classification (callers fall back to the generic
- * `FlowError` path).
+ * `FlowError` path). The classified error's message has terminal colour codes
+ * removed, as `normalizeError` does for every other path.
  */
 export function classifyProviderError(
   error: Error,
@@ -68,7 +70,7 @@ export function classifyProviderError(
   };
 
   const statusCode = getStatusCode(error);
-  const message = error.message;
+  const message = stripAnsi(error.message);
 
   if (statusCode === 429) {
     return new RateLimitError(message, options);
