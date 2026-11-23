@@ -33,6 +33,13 @@ vi.mock("@flow-state-dev/engine/host", () => ({
       super(`${seam} requires an organization for flow "${flowKind}".`);
       this.name = "OrgRequiredError";
     }
+  },
+  LegacySessionlessRequestError: class LegacySessionlessRequestError extends Error {
+    readonly reason = "legacy-sessionless-request";
+    constructor(seam: string) {
+      super(`legacy-sessionless-request: ${seam} cannot run it again.`);
+      this.name = "LegacySessionlessRequestError";
+    }
   }
 }));
 
@@ -77,6 +84,7 @@ function makeJob(overrides: Record<string, unknown> = {}): Job<FlowJobData> {
       input: {},
       userId: "u1",
       orgId: DEFAULT_ORG_ID,
+      sessionId: "s_1",
       requestId: "req_1"
     },
     attemptsMade: 0,
@@ -276,6 +284,7 @@ describe("createFlowJobProcessor — a job enqueued before organizations were re
         actionName: "send",
         input: {},
         userId: "u1",
+        sessionId: "s_1",
         requestId: "req_1"
       }
     });
@@ -285,6 +294,29 @@ describe("createFlowJobProcessor — a job enqueued before organizations were re
     );
 
     expect(runActionMock).not.toHaveBeenCalled();
+    expect(publisher.publishTerminal).toHaveBeenCalledTimes(1);
+    expect(publisher.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("createFlowJobProcessor — a job enqueued before every request named its session", () => {
+  // It never started, so it has no gates: the worker settles it by name and
+  // fails the job as not retryable. It is never run in a session made up here,
+  // which would be a second way to create one.
+  it("settles it by name and fails it without retrying or running it", async () => {
+    const { bridge, publisher } = makeBridge();
+    const job = makeJob({
+      data: { flowKind: "chat", actionName: "send", input: {}, userId: "u1", orgId: DEFAULT_ORG_ID, requestId: "req_1" }
+    });
+
+    await expect(createFlowJobProcessor(makeDeps(bridge))(job)).rejects.toThrow(UnrecoverableError);
+
+    expect(runActionMock).not.toHaveBeenCalled();
+    expect(settleMock).toHaveBeenCalledTimes(1);
+    const [, requestId, ending] = settleMock.mock.calls[0]!;
+    expect(requestId).toBe("req_1");
+    expect(ending).toMatchObject({ status: "failed" });
+    expect(((ending as { cause: Error }).cause).name).toBe("LegacySessionlessRequestError");
     expect(publisher.publishTerminal).toHaveBeenCalledTimes(1);
     expect(publisher.close).toHaveBeenCalledTimes(1);
   });
@@ -300,6 +332,7 @@ describe("createFlowJobProcessor — a job that holds a place on a concurrency k
         input: {},
         userId: "u1",
         orgId: DEFAULT_ORG_ID,
+        sessionId: "s_1",
         requestId: "req_1",
         leasePlace: place
       },

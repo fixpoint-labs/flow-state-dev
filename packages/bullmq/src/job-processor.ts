@@ -23,6 +23,7 @@
  */
 import { isValidOrgId } from "@flow-state-dev/core";
 import {
+  LegacySessionlessRequestError,
   OrgRequiredError,
   holdLeasePlace,
   planDeferWait,
@@ -359,6 +360,14 @@ export function createFlowJobProcessor(deps: JobProcessorDeps) {
 
     let terminalPublished = false;
     try {
+      // A job enqueued before every request named its session never
+      // started, so it has no gates. It is settled by name and failed as not
+      // retryable (the catch below), never run in a session made up here.
+      // Ahead of the turn: a job that cannot run waits for nothing.
+      if (typeof data.sessionId !== "string" || data.sessionId.length === 0) {
+        throw new LegacySessionlessRequestError("this queued job");
+      }
+      const jobSessionId = data.sessionId;
       // Inside the `try`, like the organization check below: a turn check
       // that fails on the last attempt still settles the request and gives
       // its place back.
@@ -395,7 +404,7 @@ export function createFlowJobProcessor(deps: JobProcessorDeps) {
         actionName: data.actionName as keyof typeof flow.actions & string,
         input: data.input,
         userId: data.userId,
-        sessionId: data.sessionId,
+        sessionId: jobSessionId,
         requestId: data.requestId,
         orgId: jobOrgId,
         tenantId: data.tenantId,
@@ -458,9 +467,11 @@ export function createFlowJobProcessor(deps: JobProcessorDeps) {
       // reason `UnrecoverableError` is below.
       // `OrgRequiredError` joins it: no attempt of this job can supply the
       // organization it is missing, so retrying only delays the same failure.
+      // So does `LegacySessionlessRequestError`, for the session.
       const terminalByName =
         (caught as Error | undefined)?.name === "FlowInstanceBindingMismatchError" ||
-        (caught as Error | undefined)?.name === "OrgRequiredError";
+        (caught as Error | undefined)?.name === "OrgRequiredError" ||
+        (caught as Error | undefined)?.name === "LegacySessionlessRequestError";
       const err = terminalByName
         ? new UnrecoverableError((caught as Error).message)
         : caught;
