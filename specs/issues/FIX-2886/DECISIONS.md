@@ -139,6 +139,14 @@ From the Cursor review on #5579 (2026-11-23), for the implementer:
 - A poll session holds about 288 fires a day; check that the DevTool's request listing for one session pages or limits, so the Trace tab stays fast.
 - Retention runs only after a completed fire; a poll that keeps failing still grows its session. A test or goal note may cover it.
 
+From the second-look comment on #5579 (2026-11-23), for the implementer:
+- The admitted-source check reads the existing `SCHEDULED_SOURCE` constant (`execution/transport-sources.ts`), with no new flag.
+- Handle the bare and the tenant-namespaced id (`tenant:<prefix>…`) at all three points, as `isWriteSessionId` does, and test the namespaced form in (n).
+- In `refuseReservedAddress`, put the schedule check after the `isServerResourceSend` early return, with its own source test, so a resource send can't reach a schedule session.
+- Make the `service-route:` retention confirmation a grep-backed line in the implementation PR.
+- Build the schedule id beside `owner-run:` / `service-route:` in `owner-runs.ts` with one small shared id builder; don't widen past that (the reserved-prefix family is FIX-2889).
+- A poll that fails every fire grows its session (retention evicts completed fires only). Consider a named goal signal, or a follow-up for retention on failed requests.
+
 ## How it got here
 
 - **Draft** — the mailbox's Approach A (a stable session per schedule, approved by Jake) as a
