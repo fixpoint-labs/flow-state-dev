@@ -2097,6 +2097,7 @@ async function runActionAttempt<
       source,
       metadata: options.metadata,
       resumeContext,
+      continuesRequest: isReplayMode,
       input: options.input,
       requestTaskId,
       signal: composedSignal,

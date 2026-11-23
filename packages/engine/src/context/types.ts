@@ -127,6 +127,14 @@ export type CreateExecutionContextOptions<
    * only; never read from `metadata`, which callers control.
    */
   resumeContext?: ResumeContext;
+  /**
+   * Whether this run continues an earlier run of the same request (a
+   * suspension resume or a crash's continuation), set by `runAction`. Its
+   * record already says which session it ran in, or names none because it
+   * was written before records named one-off sessions; either way the record
+   * keeps it, so its gates stay findable by that session.
+   */
+  continuesRequest?: boolean;
   input?: unknown;
   /**
    * The task the request is for, from the action's `taskOf`. Every scope

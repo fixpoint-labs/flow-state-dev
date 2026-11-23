@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { isOneOffSessionId } from "@flow-state-dev/core/helpers";
-import { runAction } from "../src";
+import { createExecutionContext, runAction } from "../src";
 import { createInMemoryStores, createResponseEmitter } from "../src/host";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
 import { stampAdoptedRequestSession } from "../src/context/request-principal";
@@ -99,6 +99,35 @@ describe("a run with no session id records the session it ran in", () => {
     expect(record?.sessionId).toBe(seen.sessionId);
     // Adopted, not replaced: the request keeps the incarnation the stub minted.
     expect(record?.incarnation).toBe(stub.incarnation);
+  });
+
+  it("leaves a continued request's record as it was, so its old gates stay findable", async () => {
+    // A request parked before records named one-off sessions: its record and
+    // its gate both name none. A continuation mints a new one-off session;
+    // stamping that on the record would hide the gate from a stop, which
+    // looks gates up by the record's session.
+    const stores = createInMemoryStores();
+    const flow = makeFlow({});
+    const legacy = {
+      ...createInitialRequestRecord(
+        { requestId: "req_parked", flowKind: flow.kind, flowId: flow.id, actionName: "run", userId: "u", orgId: DEFAULT_ORG_ID, input: {} },
+        Date.now()
+      ),
+      status: "suspended" as const
+    };
+    await stores.request.set(legacy.id, legacy, "absent");
+
+    await createExecutionContext({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      requestId: "req_parked",
+      userId: "u",
+      stores,
+      continuesRequest: true
+    });
+
+    expect((await stores.request.get("req_parked"))?.sessionId).toBeUndefined();
   });
 
   it("keeps a cancel recorded after the record was read", async () => {
