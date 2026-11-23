@@ -17,7 +17,7 @@
  */
 
 /** Every schedule session id starts with this; only a scheduled dispatch may name one. */
-export const SCHEDULE_SESSION_PREFIX = "fsd-schedule.";
+const SCHEDULE_SESSION_PREFIX = "fsd-schedule.";
 
 /** What a schedule session is for: who its fires run as, on which flow instance, for which schedule. */
 export interface ScheduleSessionParts {
