@@ -122,7 +122,7 @@ const staleIndexEntry = () =>
   });
 
 /** The subscription's own row loses its screens: whether delivery still hands the bot on. */
-const restoredRow = () =>
+const restoredSubscription = () =>
   withFollow(async (h, run) => {
     await rewrite(h, "user", SUBSCRIPTIONS_PATTERN.replace("*", ""), dropScreens);
     return botHeard(h, run);
@@ -167,7 +167,7 @@ describe("a subscription's bot admission", () => {
   });
 
   it("hands no bot on at delivery from a row that lost its screen, though routing's entry still lists it", async () => {
-    expect(await restoredRow(), "restored row: not heard").toBe(false);
+    expect(await restoredSubscription(), "restored row: not heard").toBe(false);
   });
 
   it("is refused on a host's write that doesn't list its screen", async () => {
@@ -191,7 +191,7 @@ describe("control: the setting honoured without its screen", () => {
     try {
       expect(await rewrittenWithoutScreen(), "rewritten without its screen: heard under the plant").toBe(true);
       expect(await staleIndexEntry(), "stale index entry: heard under the plant").toBe(true);
-      expect(await restoredRow(), "restored row: heard under the plant").toBe(true);
+      expect(await restoredSubscription(), "restored row: heard under the plant").toBe(true);
     } finally {
       plant.flagWithoutScreen = false;
     }
