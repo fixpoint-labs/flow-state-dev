@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import { workerMessagesResources } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { z } from "zod";
 import type { Harness } from "../src/harness";
@@ -149,9 +150,15 @@ describe("an app that registers its modes", () => {
     expect((answer.mode as ModeSpec).name).toBe("answer");
     expect((answer.mode as ModeSpec).doneWhen.timeoutMs).toBe(5_000);
     expect(answer.workspace).toBe(answers);
-    // Its own workspace host may read a run's project.
-    expect(answer.uses).toBeDefined();
+    // A mode's own workspace carries the project collections by the kit's rule: only with `project`.
+    expect(answer.uses).toBeUndefined();
     expect(implement.uses).toBeUndefined();
+  });
+
+  it("gives every mode's manager the project collections when the kit's `project` is on, its own workspace or not", async () => {
+    expect(await start({ ...shiftManager, project: true })).toBe("started");
+    expect(managerConfigs.length).toBe(4);
+    for (const config of managerConfigs) expect(config.uses).toBeDefined();
   });
 
   it("keeps each mode's requires for the filing check", () => {
@@ -235,6 +242,13 @@ describe("modes are refused at start, naming the mode", () => {
     expect(await start({ modes: { default: {}, Review: { instructions: brief("x"), doneWhen: committed } } })).toContain('write it as "review"');
   });
 
+  it("refuses a mode workspace that isn't a workspace host", async () => {
+    const fixedRepository = { root: tmpdir(), sourceRepo: tmpdir(), baseRef: "main" };
+    // @ts-expect-error a mode works in a workspace host, as the kit's own `workspace` is; a fixed repository's config is not one.
+    const typed: Partial<Parameters<typeof harnesses>[0]> = { modes: { default: { workspace: fixedRepository } } };
+    expect(await start(typed)).toContain('mode "default" names a workspace that isn\'t a workspace host');
+  });
+
   it("refuses an inherited key as a default mode", () => {
     expect(() => resolveCoderModes({ defaultMode: "constructor" }, kitMode, "coder")).toThrow('the default mode is "constructor"');
   });
@@ -249,6 +263,13 @@ describe("the app's own part of the coding flow", () => {
 
   it("refuses an app setting the flow already declares", async () => {
     expect(await start({ worker: { settings: { harness: z.string() } } })).toContain('`worker.settings` declares "harness"');
+  });
+
+  it("refuses an app document under an accessor the flow declares for another resource, and shares the same one", async () => {
+    const [messages, chains] = Object.keys(workerMessagesResources) as Array<keyof typeof workerMessagesResources>;
+    const refused = await start({ worker: { resources: { [messages!]: workerMessagesResources[chains!] } } });
+    expect(refused).toContain(`Resource conflict: "${messages}"`);
+    expect(await start({ worker: { resources: { [messages!]: workerMessagesResources[messages!] } } })).toBe("started");
   });
 
   it("builds the app's actions on the installation, and refuses one the flow already serves", async () => {

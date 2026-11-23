@@ -13,7 +13,7 @@
  */
 import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import { harnessFeatureOf, namesHarnessFeature, type ModeDone, type ModeSpec } from "../manager";
-import { assertSafeSegment, type WorkspaceConfig } from "../workspace";
+import { assertSafeSegment } from "../workspace";
 
 /** The kit's own mode's name: what a task runs when the app registers no modes. */
 export const KIT_MODE = "default";
@@ -40,8 +40,8 @@ export interface CoderMode {
    * take and what it needs from the workspace, or the check alone.
    */
   doneWhen: ModeDone | ModeDone["check"];
-  /** Where the run works. Absent: the kit's `workspace`. */
-  workspace?: WorkspaceConfig | WorkspaceHost;
+  /** Where the run works: a workspace host, as the kit's own `workspace` is. Absent: the kit's. */
+  workspace?: WorkspaceHost;
   /**
    * The task-input fields a task in this mode needs, such as `["issue"]`. Read
    * by the filing check; nothing here refuses a task for them. Absent: none.
@@ -53,7 +53,7 @@ export interface CoderMode {
 export interface ResolvedMode {
   spec: ModeSpec;
   /** Absent: the kit's workspace. */
-  workspace?: WorkspaceConfig | WorkspaceHost;
+  workspace?: WorkspaceHost;
   requires: readonly CodingTaskInputField[];
 }
 
@@ -70,7 +70,8 @@ const listed = (names: readonly string[]) => names.map((name) => `"${name}"`).jo
  *
  * @param kitMode The kit's own mode, which a `default` entry is completed from.
  * @throws When a mode's name can't key a run, a mode other than `default` lacks
- *   `instructions` or `doneWhen`, `requires` names a field a task doesn't
+ *   `instructions` or `doneWhen`, a mode's `workspace` isn't a workspace host,
+ *   `requires` names a field a task doesn't
  *   carry, or `defaultMode` names a mode that isn't registered.
  */
 export function resolveCoderModes(
@@ -96,6 +97,9 @@ export function resolveCoderModes(
     const doneWhen = mode.doneWhen === undefined ? base?.doneWhen : typeof mode.doneWhen === "function" ? { check: mode.doneWhen } : mode.doneWhen;
     if (instructions === undefined || doneWhen === undefined) {
       throw new Error(`${who}: mode "${name}" needs ${[instructions === undefined ? "`instructions`" : "", doneWhen === undefined ? "`doneWhen`" : ""].filter(Boolean).join(" and ")}.`);
+    }
+    if (mode.workspace !== undefined && typeof (mode.workspace as Partial<WorkspaceHost>).provision !== "function") {
+      throw new Error(`${who}: mode "${name}" names a workspace that isn't a workspace host; pass one (\`localWorkspaceHost(…)\`), as the kit's \`workspace\` is.`);
     }
     const requires = mode.requires ?? [];
     const unknown = requires.filter((field) => !(TASK_INPUT_FIELDS as readonly string[]).includes(field));

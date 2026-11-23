@@ -38,6 +38,7 @@
  */
 import { defineFlow, handler, router, sequencer, type DeclaredResources } from "@flow-state-dev/core";
 import type { PullRequestFollower } from "@flow-state-dev/core/harness";
+import { mergeDeclaredResources } from "@flow-state-dev/core/internal";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
@@ -318,8 +319,6 @@ export function coderWorkerFlow(
         const name = `${CODER_FLOW}-${id}${modeName === KIT_MODE ? "" : `-${modeName}`}${reviewChanges ? "-reviewed" : ""}`;
         const mode = resolved.modes[modeName]!;
         const workspace = mode.workspace ?? options.workspace;
-        // A mode's own workspace host may read its runs' project, so its blocks carry the project collections.
-        const projectUses = options.project === true || (mode.workspace !== undefined && "provision" in mode.workspace);
         return harnessManager({
           name,
           ledgers: conversationLedgers,
@@ -336,7 +335,7 @@ export function coderWorkerFlow(
           awaitPullRequests: options.pullRequests !== false,
           ...(follower === undefined ? {} : { onPullRequestRecorded: follower }),
           ...(options.approveTools === true ? { approveTools: true } : {}),
-          ...(projectUses ? { uses: [projectWorkspaceCapability] } : {}),
+          ...(options.project === true ? { uses: [projectWorkspaceCapability] } : {}),
         } as never) as unknown as BlockDefinition<any, any>;
       };
       const modeNames = Object.keys(resolved.modes);
@@ -396,6 +395,8 @@ export function coderWorkerFlow(
           },
         } as never) as BlockDefinition<any, any>;
       const anyDoor = Object.values(built)[0]!.door;
+      // The app's documents meet the installation's by the flow-build rule: a shared accessor must be the same resource.
+      const flowResources = mergeDeclaredResources(options.worker?.resources, { ...installation.resources, ...workerMessagesResources });
       const appActions = options.worker?.actions?.(installation) ?? {};
       const taken = Object.keys(appActions).filter((name) => name === "respond" || name === "harness");
       if (taken.length > 0) {
@@ -411,7 +412,7 @@ export function coderWorkerFlow(
         session: installation.session(),
         // FIX-2725: a run's plan and pull requests, read in its own session.
         views: { [RECORDED_WORK_VIEW]: recordedWorkView() },
-        resources: { ...options.worker?.resources, ...installation.resources, ...workerMessagesResources },
+        resources: flowResources,
         actions: {
           ...appActions,
           respond: { ...anyDoor, block: byHarness(`${CODER_FLOW}-door`, anyDoor.inputSchema, (b) => b.door.block, false) },

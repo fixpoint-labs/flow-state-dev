@@ -211,3 +211,11 @@ export { PUSH_CLOSE_CODES, PUSH_MINT_MAX_TOPICS, isManifestDomain, wireTopicKey 
 // FIX-2625: the one cap and union rule for a notice's ids, shared by the engine's fold and the client's merge.
 export { NOTICE_MAX_IDS, noticeIdsOf, noticePartitionOf, unionNoticeIds } from "@flow-state-dev/contracts/types/push-delivery";
 export type { ChangeKind, PushCapability, PushMintAnswer, PushServerFrame, TopicScope } from "@flow-state-dev/contracts";
+
+/**
+ * Merge two flat resource maps by the flow-build rule: the same accessor with
+ * the same `defineResource()` reference dedupes; the same accessor with a
+ * different one throws. For a package that assembles a flow's `resources` from
+ * more than one source before `defineFlow` sees them.
+ */
+export { mergeDeclaredResources } from "../blocks/internal/build-block";
