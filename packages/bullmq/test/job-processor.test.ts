@@ -320,6 +320,25 @@ describe("createFlowJobProcessor — a job enqueued before every request named i
     expect(publisher.publishTerminal).toHaveBeenCalledTimes(1);
     expect(publisher.close).toHaveBeenCalledTimes(1);
   });
+
+  it("settles it by name even when its flow is gone since it was queued", async () => {
+    // An upgrade can rename or remove the flow a queued job names; the old
+    // job is still settled by name, never left as an unsettled stub.
+    const { bridge, publisher } = makeBridge();
+    const job = makeJob({
+      data: { flowKind: "renamed-away", actionName: "send", input: {}, userId: "u1", orgId: DEFAULT_ORG_ID, requestId: "req_1" }
+    });
+    const deps = makeDeps(bridge, { registry: { get: vi.fn(() => undefined) } });
+
+    await expect(createFlowJobProcessor(deps)(job)).rejects.toThrow(UnrecoverableError);
+
+    expect(runActionMock).not.toHaveBeenCalled();
+    expect(settleMock).toHaveBeenCalledTimes(1);
+    const [, requestId, ending] = settleMock.mock.calls[0]!;
+    expect(requestId).toBe("req_1");
+    expect(((ending as { cause: Error }).cause).name).toBe("LegacySessionlessRequestError");
+    expect(publisher.publishTerminal).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("createFlowJobProcessor — a job that holds a place on a concurrency key", () => {

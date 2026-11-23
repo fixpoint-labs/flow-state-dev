@@ -234,6 +234,10 @@ export async function handleContinueRequest(
     });
   }
 
+  // A request recorded with no session is history, never run again: a named
+  // 409, ahead of the session comparison its missing session would fail.
+  if (!namesSession(originalRecord)) return legacySessionlessResponse("continuing this request");
+
   // The route is session-scoped; continuing mutates an existing record's
   // lifecycle, so the path's sessionId must match the record's — otherwise the
   // scoping is cosmetic and a caller could continue any request by id under any

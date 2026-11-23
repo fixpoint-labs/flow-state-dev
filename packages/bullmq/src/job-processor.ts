@@ -323,6 +323,21 @@ export function createFlowJobProcessor(deps: JobProcessorDeps) {
 
   return async (job: Job<FlowJobData>, token?: string) => {
     const data = job.data;
+    // A job enqueued before every request named its session never started,
+    // so it has no gates. It is settled by name and failed as not retryable,
+    // never run in a session made up here. First of all, so a job whose flow
+    // is gone since it was queued is settled by name too.
+    if (typeof data.sessionId !== "string" || data.sessionId.length === 0) {
+      const refused = new LegacySessionlessRequestError("this queued job");
+      if (data.requestId !== undefined) await settleUnstartedRequest(stores, data.requestId, { status: "failed", cause: refused });
+      if (bridge) {
+        const publisher = bridge.createPublisher(data.requestId ?? job.id ?? "unknown");
+        await publisher.publishTerminal({ error: { message: refused.message } } as any).catch(() => {});
+        await publisher.close().catch(() => {});
+      }
+      throw new UnrecoverableError(refused.message);
+    }
+    const jobSessionId = data.sessionId;
     // `flowKind` on the job is the instance's address — its exact id — so the
     // worker resolves the same copy the enqueuing process did.
     const flow = registry.get(data.flowKind);
@@ -360,14 +375,6 @@ export function createFlowJobProcessor(deps: JobProcessorDeps) {
 
     let terminalPublished = false;
     try {
-      // A job enqueued before every request named its session never
-      // started, so it has no gates. It is settled by name and failed as not
-      // retryable (the catch below), never run in a session made up here.
-      // Ahead of the turn: a job that cannot run waits for nothing.
-      if (typeof data.sessionId !== "string" || data.sessionId.length === 0) {
-        throw new LegacySessionlessRequestError("this queued job");
-      }
-      const jobSessionId = data.sessionId;
       // Inside the `try`, like the organization check below: a turn check
       // that fails on the last attempt still settles the request and gives
       // its place back.
@@ -467,11 +474,9 @@ export function createFlowJobProcessor(deps: JobProcessorDeps) {
       // reason `UnrecoverableError` is below.
       // `OrgRequiredError` joins it: no attempt of this job can supply the
       // organization it is missing, so retrying only delays the same failure.
-      // So does `LegacySessionlessRequestError`, for the session.
       const terminalByName =
         (caught as Error | undefined)?.name === "FlowInstanceBindingMismatchError" ||
-        (caught as Error | undefined)?.name === "OrgRequiredError" ||
-        (caught as Error | undefined)?.name === "LegacySessionlessRequestError";
+        (caught as Error | undefined)?.name === "OrgRequiredError";
       const err = terminalByName
         ? new UnrecoverableError((caught as Error).message)
         : caught;

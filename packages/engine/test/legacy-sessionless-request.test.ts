@@ -1,7 +1,7 @@
 /**
  * A request recorded before every request named its session is history. It
  * can still be read and stopped (its gate is still found), and it is never
- * run again: a resume, a continuation or a retry is refused by name,
+ * run again: a resume, an answer, a continuation or a retry is refused by name,
  * `legacy-sessionless-request`, and never runs it in a new session. A stop
  * settles it `aborted` without running anything, since a run needs a session.
  */
@@ -15,7 +15,8 @@ import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint
 import { retryRequest } from "../src/execution/request-recovery";
 import { handleAbortRequest } from "../src/routes/abort-routes";
 import { handleResumeSuspension } from "../src/routes/resume-routes";
-import { handleRetryRequest } from "../src/routes/recovery-routes";
+import { handleContinueRequest, handleRetryRequest } from "../src/routes/recovery-routes";
+import { handleAnswerSuspension } from "../src/routes/answer-routes";
 import type { RuntimeConfig } from "../src/runtime-config";
 import type { ExecutionResult } from "../src/execution/types";
 
@@ -145,6 +146,51 @@ describe("a request recorded with no session", () => {
     expect(await response.json()).toMatchObject({ error: "legacy-sessionless-request" });
     expect((await h.provider.loadSuspension(requestId, gate!.suspensionId))?.status).toBe("pending");
     expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+    expect(seen).toEqual(["ran"]);
+  });
+
+  it("refuses an answer by name, as the resume route does, and its gate stays pending", async () => {
+    const seen: string[] = [];
+    const flow = legacyFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await seedLegacyRequest(h, flow, "approve");
+
+    const response = await handleAnswerSuspension(
+      new Request(`https://x/api/flows/legacy/requests/${requestId}/answer`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ suspensionId: gate!.suspensionId, action: "approve" })
+      }),
+      { kind: "answer_suspension", flowKind: "legacy", requestId },
+      { host: { continueRequest: h.cont } as never, registry: h.registry, stores: h.stores, durabilityProvider: h.provider }
+    );
+    // A named 409, never the route's 500 for a continuation that throws.
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: "legacy-sessionless-request" });
+    expect((await h.provider.loadSuspension(requestId, gate!.suspensionId))?.status).toBe("pending");
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+    expect(seen).toEqual(["ran"]);
+  });
+
+  it("refuses a crash continuation over HTTP by name, not as a session mismatch", async () => {
+    const seen: string[] = [];
+    const flow = legacyFlow(seen);
+    const h = harness(flow);
+    const { requestId } = await seedLegacyRequest(h, flow, "approve");
+    // The shape a crash leaves: interrupted, with no session on the record.
+    const record = (await h.stores.request.get(requestId))!;
+    await h.stores.request.set(requestId, { ...record, status: "interrupted" }, "any");
+
+    // The route's path always names a session; an old row has none to match it.
+    const response = await handleContinueRequest(
+      new Request(`https://x/api/flows/legacy/sessions/s-before/requests/${requestId}/continue`, { method: "POST" }),
+      { kind: "continue_request", flowKind: "legacy", sessionId: "s-before", requestId },
+      { host: { continueRequest: h.cont } as never, registry: h.registry, stores: h.stores, runtimeConfig: h.runtimeConfig }
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: "legacy-sessionless-request" });
+    expect((await h.stores.request.get(requestId))?.status).toBe("interrupted");
+    expect(await h.stores.activeRequests.get(requestId)).toBeUndefined();
     expect(seen).toEqual(["ran"]);
   });
 

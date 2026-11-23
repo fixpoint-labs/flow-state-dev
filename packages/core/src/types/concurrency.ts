@@ -52,8 +52,8 @@ export type ConcurrencyPolicyName =
  * function returns a custom key (or `undefined` to opt this dispatch out of
  * arbitration entirely).
  *
- * - `"session"` (default): the tenant-namespaced session id; resolves to
- *   `undefined` (no arbitration) when the dispatch has no session.
+ * - `"session"` (default): the tenant-namespaced session id. Every dispatch
+ *   names one, so a one-off run arbitrates on its own one-off session.
  * - `"user"`: the tenant-namespaced user id.
  * - `"none"`: disable arbitration for this action.
  * - a function: returns a custom key string, or `undefined` for no arbitration
