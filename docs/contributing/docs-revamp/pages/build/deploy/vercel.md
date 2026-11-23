@@ -115,10 +115,10 @@ In your Vercel project, open Settings, Environment Variables, and add:
 AI_GATEWAY_API_KEY=...
 FSD_DB_URL=postgresql://...
 FSD_ENV=prod
-FLOW_API_SECRET=a-long-random-string
+FLOW_API_SECRET=...
 ```
 
-Use `FSD_DB_URL` if another service already owns `DATABASE_URL`. Add any provider keys your flows use. Values in `.env.local` are not synced to Vercel, so set each one for the environments you deploy to (Production, Preview, Development). Make `FSD_DB_URL` available to builds as well as at runtime: the migration in step 6 reads it during the build. See the [environment reference](../../reference/environment.md).
+Use `FSD_DB_URL` if another service already owns `DATABASE_URL`. Make `FLOW_API_SECRET` a long random value. Add any provider keys your flows use. Values in `.env.local` are not synced to Vercel, so set each one for the environments you deploy to (Production, Preview, Development). Make `FSD_DB_URL` available to builds as well as at runtime: the migration in step 6 reads it during the build. See the [environment reference](../../reference/environment.md).
 
 ## 6. Create the schema at build time
 

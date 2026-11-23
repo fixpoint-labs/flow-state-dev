@@ -75,11 +75,19 @@ import flowstate from "../../../../../fsdev.config";
 export const dynamic = "force-dynamic";
 
 export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate, {
-  allowUnauthenticated: process.env.NODE_ENV !== "production",
+  allowUnauthenticated: process.env.ALLOW_UNAUTHENTICATED === "true",
 });
 ```
 
-The flow has no sign-in yet, so `allowUnauthenticated` lets the handler serve it outside production, and in production it refuses every request until the flow checks who is calling: [Auth and tenancy](../concepts/auth-and-tenancy.md). One route file serves every flow under `/api/flows`. A second flow is one more entry in `flows`.
+The flow has no sign-in yet, so the handler refuses every request until the flow checks who is calling: [Auth and tenancy](../concepts/auth-and-tenancy.md). To try it on your own machine, set the variable the route reads. `ALLOW_UNAUTHENTICATED` is this app's own name, not a Flow State setting.
+
+```text title=".env.local"
+ALLOW_UNAUTHENTICATED=true
+```
+
+`next dev` listens on every network interface, so while the variable is set, anyone who can reach the dev server can call the flow as any user. Set it only on a machine nobody else can reach, and never in a deployment.
+
+One route file serves every flow under `/api/flows`. A second flow is one more entry in `flows`.
 
 **No Next.js app?** Run `pnpm add @flow-state-dev/node`. It starts a long-lived HTTP server for the same config.
 
