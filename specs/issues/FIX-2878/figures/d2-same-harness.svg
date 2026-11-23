@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, which recorded session a coding run may resume. Chosen: only one made by the same harness, matched by the harness id written with the session. Instead of: any session whose source matches. It comes down to the first row: plan-mode and edit Claude Code report one source, so source matching resumes a plan session as an edit run, while the id never mixes them. The price is the next two rows: tasks in flight at upgrade start fresh once, and a door talk on a task finished before the upgrade is refused by name, where source matching would resume both. Locks in: a session is continued only by its own harness. Flips if: many long tasks are in flight at upgrade."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, which recorded session a coding run may resume. Chosen: only one made by the same harness and plan setting, matched by the harness id and plan written with the session. Instead of: any session whose source matches. It comes down to the first row: plan-mode and edit Claude Code report one source, so source matching resumes a plan session as an edit run, while the id and plan never mix them. The price is the next two rows: tasks in flight at upgrade start fresh once, and a door talk on a task finished before the upgrade is refused by name, where source matching would resume both. Locks in: a session is continued only by its own harness and plan setting. Flips if: many long tasks are in flight at upgrade."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Only its own harness’s, by id</text>
+    <text class="t-h c-code" x="228" y="112">Its own harness’s, by id and plan</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Any whose source matches</text>
@@ -56,7 +56,7 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">Never mixed</text>
-    <text class="t-s" x="248" y="179">the harness id tells them apart</text>
+    <text class="t-s" x="248" y="179">the id and plan tell them apart</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Plan session resumed as edit</text>
     <text class="t-s" x="612" y="179">claude-code/sdk is both</text>
@@ -88,8 +88,8 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">A session is continued only by its own harness</text>
-    <text class="t-s" x="32" y="389">the id is written with the session, never later</text>
+    <text class="t-b" x="32" y="371">A session continues only on its own harness and plan</text>
+    <text class="t-s" x="32" y="389">both are written with the session, never later</text>
   </g>
 
   <g id="flips-if">
