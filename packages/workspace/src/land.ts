@@ -667,7 +667,7 @@ async function openPullRequestOf(
       "pr", "list", ...gh.where, "--head", branch, "--state", "open",
       "--json", "number,url,baseRefName,isCrossRepository", "--limit", String(OPEN_PULL_REQUESTS_READ),
     ],
-    { cwd: gh.ghDir, timeoutMs, env: gh.ghEnv, pass: HOST_REMOTE_PASS },
+    { cwd: gh.ghDir, timeoutMs, env: gh.ghEnv, pass: HOST_REMOTE_PASS, gitCredentials: true },
   );
   const parsed = JSON.parse(stdout || "[]") as unknown;
   const listed = (Array.isArray(parsed) ? parsed : []) as Array<{ url?: unknown; baseRefName?: unknown; isCrossRepository?: unknown }>;
@@ -756,7 +756,7 @@ async function pushAndOpen(
       const { stdout } = await run(
         gh.gh,
         ["pr", "create", ...gh.where, "--head", head, "--base", remote.base, "--title", request.title, "--body", request.body],
-        { cwd: gh.ghDir, timeoutMs: left(), env: gh.ghEnv, pass: HOST_REMOTE_PASS },
+        { cwd: gh.ghDir, timeoutMs: left(), env: gh.ghEnv, pass: HOST_REMOTE_PASS, gitCredentials: true },
       );
       url = stdout.trim().split("\n").reverse().find((line) => pullRequestRefFromUrl(line.trim()) !== null)?.trim();
     } catch (error) {
@@ -812,7 +812,7 @@ async function lsRemote(host: LandHost, judged: AllowedRemote, refs: string[], l
     const { stdout } = await run(
       "git",
       [...remoteConfig(host, judged), "ls-remote", "--symref", "--", judged.url, ...refs],
-      { cwd: scratch, timeoutMs: left(), env: { ...host.env, GIT_DIR: scratch, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" }, pass: HOST_REMOTE_PASS },
+      { cwd: scratch, timeoutMs: left(), env: { ...host.env, GIT_DIR: scratch, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" }, pass: HOST_REMOTE_PASS, gitCredentials: true },
     );
     return stdout;
   } finally {
@@ -897,7 +897,7 @@ async function remoteBranchHolds(
     await run(
       "git",
       [...remoteConfig(host, judged), "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--", judged.url, `+refs/heads/${branch}:refs/default`],
-      { cwd: scratch, timeoutMs: left(), env, pass: HOST_REMOTE_PASS },
+      { cwd: scratch, timeoutMs: left(), env, pass: HOST_REMOTE_PASS, gitCredentials: true },
     );
     return await run("git", [...NO_HOOKS, "merge-base", "--is-ancestor", cutAt.commit, "refs/default"], { cwd: scratch, timeoutMs: left(), env, pass: HOST_GIT_PASS }).then(
       () => true,
@@ -941,7 +941,7 @@ async function push(
         judged.url,
         `${commit}:refs/heads/${target.branch}`,
       ],
-      { cwd: scratch, timeoutMs: left(), env: { ...isolated, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" }, pass: HOST_REMOTE_PASS },
+      { cwd: scratch, timeoutMs: left(), env: { ...isolated, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" }, pass: HOST_REMOTE_PASS, gitCredentials: true },
     );
   } catch (error) {
     throw new WorkspaceRefusedError(

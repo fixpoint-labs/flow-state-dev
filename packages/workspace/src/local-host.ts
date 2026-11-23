@@ -710,7 +710,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
 
   /** {@link git} for a call that reaches the remote, and so is handed the host's credentials. */
   async function remoteGit(cwd: string, args: string[], timeoutMs: number): Promise<string> {
-    const { stdout } = await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs, env, pass: HOST_REMOTE_PASS });
+    const { stdout } = await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs, env, pass: HOST_REMOTE_PASS, gitCredentials: true });
     return stdout.trim();
   }
 
@@ -1324,6 +1324,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
               timeoutMs: Math.max(1, Math.floor(left() * FETCH_BUDGET_SHARE)),
               env: { ...isolated, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" },
               pass: HOST_REMOTE_PASS,
+              gitCredentials: true,
             },
           );
           const fetched = (await run("git", ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], { cwd: scratch, timeoutMs: left(), env: isolated, pass: HOST_GIT_PASS })).stdout.trim();

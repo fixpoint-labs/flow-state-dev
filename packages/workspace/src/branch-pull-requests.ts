@@ -171,7 +171,7 @@ export async function recordBranchPullRequests(
           gh,
           // `gh` fills `{owner}` and `{repo}` from the checkout's remote.
           ["api", `repos/{owner}/{repo}/pulls?head={owner}:${encodeURIComponent(branch)}&state=all&per_page=20`],
-          { cwd: options.cwd, timeoutMs: left(), env: { GH_PROMPT_DISABLED: "1" }, pass: HOST_REMOTE_PASS },
+          { cwd: options.cwd, timeoutMs: left(), env: { GH_PROMPT_DISABLED: "1" }, pass: HOST_REMOTE_PASS, gitCredentials: true },
         );
         return { branch, listed: JSON.parse(stdout) as unknown };
       } catch (err) {
@@ -280,7 +280,7 @@ async function fetchPullRequest(options: ReadPullRequestOptions): Promise<Fetche
       cwd: options.cwd,
       timeoutMs: options.timeoutMs ?? BRANCH_PULL_REQUESTS_TIMEOUT_MS,
       env: { GH_PROMPT_DISABLED: "1" },
-      pass: HOST_REMOTE_PASS,
+      pass: HOST_REMOTE_PASS, gitCredentials: true,
     });
     answer = JSON.parse(stdout) as typeof answer;
   } catch (err) {

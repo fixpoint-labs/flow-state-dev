@@ -88,6 +88,53 @@ describe("a child the workspace starts", () => {
     expect(plain.GIT_CONFIG_KEY_0).toBeUndefined();
   });
 
+  it("keeps a credential set through the host's git config pairs off local git, renumbering the rest", async () => {
+    // A host can hand git an auth header as a config pair; a local call runs programs the run can configure.
+    vi.stubEnv("GIT_CONFIG_COUNT", "3");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "http.https://github.com/.extraHeader");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", "Authorization: Bearer tok_in_config");
+    vi.stubEnv("GIT_CONFIG_KEY_1", "user.name");
+    vi.stubEnv("GIT_CONFIG_VALUE_1", "The Host");
+    vi.stubEnv("GIT_CONFIG_KEY_2", "url.https://tok@example.com/.insteadOf");
+    vi.stubEnv("GIT_CONFIG_VALUE_2", "https://example.com/");
+    const local = JSON.parse((await run("node", PRINT_ENV, { cwd: dir, timeoutMs: 30_000, pass: HOST_GIT_PASS })).stdout) as Record<string, string>;
+    const remote = JSON.parse(
+      (await run("node", PRINT_ENV, { cwd: dir, timeoutMs: 30_000, pass: HOST_REMOTE_PASS, gitCredentials: true })).stdout,
+    ) as Record<string, string>;
+
+    expect(JSON.stringify(local)).not.toContain("tok");
+    expect(local).toMatchObject({ GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "user.name", GIT_CONFIG_VALUE_0: "The Host" });
+    expect(local.GIT_CONFIG_KEY_1).toBeUndefined();
+    // The remote calls still get every pair, as the host set them.
+    expect(remote).toMatchObject({ GIT_CONFIG_COUNT: "3", GIT_CONFIG_VALUE_0: "Authorization: Bearer tok_in_config", GIT_CONFIG_KEY_2: "url.https://tok@example.com/.insteadOf" });
+  });
+
+  it("keeps the operator's corporate CA on the remote calls, and never a switch that turns certificate checks off", async () => {
+    vi.stubEnv("GIT_SSL_CAINFO", "/etc/corp/ca.pem");
+    vi.stubEnv("GIT_SSL_CAPATH", "/etc/corp/certs");
+    vi.stubEnv("GIT_SSL_NO_VERIFY", "1");
+    const seen = JSON.parse((await run("node", PRINT_ENV, { cwd: dir, timeoutMs: 30_000, pass: HOST_REMOTE_PASS, gitCredentials: true })).stdout) as Record<string, string>;
+
+    expect(seen).toMatchObject({ GIT_SSL_CAINFO: "/etc/corp/ca.pem", GIT_SSL_CAPATH: "/etc/corp/certs" });
+    expect(seen.GIT_SSL_NO_VERIFY).toBeUndefined();
+  });
+
+  it("keeps the cache directory credential-cache's socket lives in, on the remote calls", async () => {
+    vi.stubEnv("XDG_CACHE_HOME", "/home/op/.cache-elsewhere");
+    const seen = JSON.parse((await run("node", PRINT_ENV, { cwd: dir, timeoutMs: 30_000, pass: HOST_REMOTE_PASS, gitCredentials: true })).stdout) as Record<string, string>;
+
+    expect(seen.XDG_CACHE_HOME).toBe("/home/op/.cache-elsewhere");
+  });
+
+  it("keeps git's EMAIL identity fallback on local git, where a merge commits", async () => {
+    vi.stubEnv("EMAIL", "operator@example.com");
+    const seen = JSON.parse((await run("node", PRINT_ENV, { cwd: dir, timeoutMs: 30_000, pass: HOST_GIT_PASS })).stdout) as Record<string, string>;
+    const plain = JSON.parse((await run("node", PRINT_ENV, { cwd: dir, timeoutMs: 30_000 })).stdout) as Record<string, string>;
+
+    expect(seen.EMAIL).toBe("operator@example.com");
+    expect(plain.EMAIL).toBeUndefined();
+  });
+
   it("passes the host's credentials on the remote list, and still no other secret", async () => {
     vi.stubEnv("SSH_AUTH_SOCK", "/tmp/agent.sock");
     const seen = JSON.parse((await run("node", PRINT_ENV, { cwd: dir, timeoutMs: 30_000, pass: HOST_REMOTE_PASS })).stdout) as Record<string, string>;

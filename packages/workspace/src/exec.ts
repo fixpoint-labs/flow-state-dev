@@ -49,6 +49,12 @@ export interface RunOptions {
    */
   pass?: readonly string[];
   /**
+   * Pass the host's `GIT_CONFIG_KEY_<n>` pairs that can carry a credential
+   * (`http.*`, `credential.*`, `url.*`). Set only on the host's remote calls,
+   * beside `HOST_REMOTE_PASS`; without it those pairs are dropped.
+   */
+  gitCredentials?: boolean;
+  /**
    * Cancellation, where interrupting is safe. Never passed on a call that
    * makes a worktree: a `worktree add` killed halfway leaves a tree the next
    * provision has to disentangle. A listing that writes nothing has no such
@@ -204,7 +210,7 @@ export interface RunToEndResult {
 export async function runToEnd(
   file: string,
   args: string[],
-  options: { cwd: string; timeoutMs: number; keepChars: number; env?: Record<string, string>; pass?: readonly string[]; signal?: AbortSignal },
+  options: { cwd: string; timeoutMs: number; keepChars: number; env?: Record<string, string>; pass?: readonly string[]; gitCredentials?: boolean; signal?: AbortSignal },
 ): Promise<RunToEndResult> {
   let output = "";
   const keep = (chunk: string) => {

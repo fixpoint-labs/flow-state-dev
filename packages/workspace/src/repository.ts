@@ -116,7 +116,9 @@ export function readFetchPins(repo: string): FetchPins {
         stdio: ["ignore", "pipe", "ignore"],
         encoding: "utf8",
         timeout: STARTUP_GIT_TIMEOUT_MS,
-        env: childEnv({ pass: HOST_GIT_PASS }),
+        // Every config pair the host set, a credential helper's included: these are the
+        // helpers the remote calls replay. Config and remote reads start no program.
+        env: childEnv({ pass: HOST_GIT_PASS, gitCredentials: true }),
       });
     } catch {
       return "";

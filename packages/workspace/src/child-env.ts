@@ -50,8 +50,10 @@ export const WORKSPACE_BASE_PASS = [
 
 /**
  * What the host's own git reads its settings from, beyond the base: where its
- * config lives, its identity, and `GIT_CONFIG_COUNT` with each numbered
- * `GIT_CONFIG_KEY_<n>` / `GIT_CONFIG_VALUE_<n>` pair it counts. No credential.
+ * config lives, its identity (git's `GIT_AUTHOR_*` / `GIT_COMMITTER_*` and
+ * its `EMAIL` fallback), and `GIT_CONFIG_COUNT` with the numbered
+ * `GIT_CONFIG_KEY_<n>` / `GIT_CONFIG_VALUE_<n>` pairs it counts, less any
+ * that can carry a credential (see {@link childEnv}). No credential.
  */
 export const HOST_GIT_PASS = [
   "GIT_CONFIG_GLOBAL",
@@ -61,16 +63,22 @@ export const HOST_GIT_PASS = [
   "XDG_CONFIG_HOME",
   "GIT_AUTHOR_NAME",
   "GIT_AUTHOR_EMAIL",
+  "GIT_AUTHOR_DATE",
   "GIT_COMMITTER_NAME",
   "GIT_COMMITTER_EMAIL",
+  "GIT_COMMITTER_DATE",
+  "EMAIL",
 ] as const;
 
 /**
- * What the host's remote calls read their credentials from, beyond
- * {@link HOST_GIT_PASS}: gh's tokens and config, and the ssh agent. The
- * person's credential helpers come from their git config, which
- * {@link HOST_GIT_PASS} already points at. No password prompt program is
- * passed: the remote calls turn those off.
+ * What the host's remote calls read their credentials and transport settings
+ * from, beyond {@link HOST_GIT_PASS}: gh's tokens and config, the ssh agent,
+ * the cache directory `credential-cache` keeps its socket in, and git's own
+ * TLS and HTTP variables (a corporate CA, a client certificate, a proxy's).
+ * The person's credential helpers come from their git config, which
+ * {@link HOST_GIT_PASS} already points at. Not passed: a password prompt
+ * program, which the remote calls turn off, and `GIT_SSL_NO_VERIFY`, which
+ * would turn certificate checks off for every remote the host reaches.
  */
 export const HOST_REMOTE_PASS = [
   ...HOST_GIT_PASS,
@@ -81,12 +89,34 @@ export const HOST_REMOTE_PASS = [
   "GH_HOST",
   "GH_CONFIG_DIR",
   "SSH_AUTH_SOCK",
+  "XDG_CACHE_HOME",
+  "GIT_SSL_CAINFO",
+  "GIT_SSL_CAPATH",
+  "GIT_SSL_CERT",
+  "GIT_SSL_KEY",
+  "GIT_SSL_CERT_PASSWORD_PROTECTED",
+  "GIT_SSL_VERSION",
+  "GIT_SSL_CIPHER_LIST",
+  "GIT_HTTP_PROXY_AUTHMETHOD",
+  "GIT_PROXY_SSL_CERT",
+  "GIT_PROXY_SSL_KEY",
+  "GIT_PROXY_SSL_CERT_PASSWORD_PROTECTED",
+  "GIT_PROXY_SSL_CAINFO",
+  "GIT_HTTP_USER_AGENT",
+  "GIT_HTTP_LOW_SPEED_LIMIT",
+  "GIT_HTTP_LOW_SPEED_TIME",
 ] as const;
 
 /** Options for {@link childEnv}. */
 export interface ChildEnvOptions {
   /** Names to pass from the host's environment beyond {@link WORKSPACE_BASE_PASS}, when set there. */
   pass?: readonly string[];
+  /**
+   * Pass the host's `GIT_CONFIG_KEY_<n>` pairs whose settings can carry a
+   * credential ({@link carriesCredential}). Only the host's remote calls set
+   * it; without it those pairs are dropped and the rest renumbered.
+   */
+  gitCredentials?: boolean;
   /**
    * Variables to set on the child, over anything passed. These are not
    * filtered: a name set here reaches the child whatever lane `pass` names,
@@ -96,15 +126,41 @@ export interface ChildEnvOptions {
 }
 
 /**
+ * Whether a git config key is in a section that can carry a credential:
+ * `http.*` (an `extraHeader`, a proxy URL with a password), `credential.*`
+ * (helpers, usernames) or `url.*` (a rewrite to a URL with a token in it).
+ * All three matter only when git talks to a remote, so a local call loses
+ * nothing without them.
+ */
+export function carriesCredential(key: string): boolean {
+  const dot = key.indexOf(".");
+  const section = (dot < 0 ? key : key.slice(0, dot)).toLowerCase();
+  return section === "http" || section === "credential" || section === "url";
+}
+
+/**
  * A child's whole environment: {@link WORKSPACE_BASE_PASS} and `pass`, read
  * from this process's environment when called, then `env` over them. Passing
- * `GIT_CONFIG_COUNT` passes the numbered pairs it counts too.
+ * `GIT_CONFIG_COUNT` passes the numbered pairs it counts too: every one with
+ * `gitCredentials`, else only those {@link carriesCredential} doesn't flag,
+ * renumbered from 0 with the count to match.
  */
 export function childEnv(options: ChildEnvOptions = {}): Record<string, string> {
-  const pass: string[] = [...WORKSPACE_BASE_PASS, ...(options.pass ?? [])];
+  const pass = [...WORKSPACE_BASE_PASS, ...(options.pass ?? [])];
+  const env = harnessEnv({ pass: pass.filter((name) => name !== "GIT_CONFIG_COUNT") });
   const count = Number.parseInt(process.env.GIT_CONFIG_COUNT ?? "", 10);
-  if (pass.includes("GIT_CONFIG_COUNT") && Number.isInteger(count) && count > 0) {
-    for (let i = 0; i < count; i++) pass.push(`GIT_CONFIG_KEY_${i}`, `GIT_CONFIG_VALUE_${i}`);
+  if (pass.includes("GIT_CONFIG_COUNT") && Number.isInteger(count) && count >= 0) {
+    let kept = 0;
+    for (let i = 0; i < count; i++) {
+      const key = process.env[`GIT_CONFIG_KEY_${i}`];
+      const value = process.env[`GIT_CONFIG_VALUE_${i}`];
+      if (key !== undefined && options.gitCredentials !== true && carriesCredential(key)) continue;
+      // A missing half stays missing, so git refuses the count as it would have.
+      if (key !== undefined) env[`GIT_CONFIG_KEY_${kept}`] = key;
+      if (value !== undefined) env[`GIT_CONFIG_VALUE_${kept}`] = value;
+      kept++;
+    }
+    env.GIT_CONFIG_COUNT = String(kept);
   }
-  return { ...harnessEnv({ pass }), ...options.env };
+  return { ...env, ...options.env };
 }
