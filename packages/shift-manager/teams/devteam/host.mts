@@ -83,7 +83,6 @@ import {
   createRoutinesCapability,
   createWorkforceCapability,
   defineAgentWorkerFlow,
-  followPullRequest,
   githubTrustedReviewers,
   operatorGitHub,
   defineWorkerInventoryCollection,

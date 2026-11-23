@@ -41,6 +41,7 @@ const githubLoginSchema = z.string().regex(/^@?[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})
 const githubReviewersInputSchema = z.object({ logins: z.array(githubLoginSchema).max(100) }).strict();
 
 /** Logins as the document keeps them, each once: read back through the parser the screen reads with, so the two can't disagree. */
+// Keep this going through `githubLoginsListed`: a normalizer of its own would let the tool save what the screen reads differently.
 const reviewerLogins = (logins: readonly string[]) => [...new Set(githubLoginsListed(logins.map((login) => `- ${login}`).join("\n")))];
 
 /** The text of the message the user typed to start this request, or `undefined` when no user's message started it. */

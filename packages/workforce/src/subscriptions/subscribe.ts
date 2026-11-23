@@ -227,6 +227,7 @@ function nextEntry(current: SubscriptionResourceState | undefined, asked: Subscr
   // task, its run's task stays, so that task's failure or cancel still ends it. Only the server sets either.
   const keepsFollow = current?.hearsClose === true && current.thread === asked.thread && asked.hearsClose !== true;
   // FIX-2873: its bots stay handed on to its screen only while the new write still lists that screen.
+  // Pinned by test/subscriptions-bot-admission.test.ts (a rewrite without the screen, a stale index entry, a restored row).
   const keptBots = keepsFollow && asked.botsScreenedBy === undefined ? botsHandedOn({ botsScreenedBy: current.botsScreenedBy, screens: asked.screens }) : undefined;
   const wanted = keepsFollow
     ? {
