@@ -262,6 +262,11 @@ pre-claimed. The prefix is reserved beside the write session's
 Unlike a write session, its owner still lists and reads it: the
 listing, the read routes and change notices don't hide it.
 
+Only the scheduled dispatch runs in it, so a child dispatched from a
+fire can't reply into it with `{ from: true }`: the inbound host
+refuses that delivery, since its source is not `scheduled`. A schedule
+that needs a reply loop keeps `"per-fire"`.
+
 ## Listing
 
 `GET /api/flows/:flowKind/schedules` returns the static schedules as
