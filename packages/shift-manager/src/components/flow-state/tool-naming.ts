@@ -54,6 +54,60 @@ function mcpParts(toolName: string): [string, string] | undefined {
 
 const SUBJECT_MAX = 80;
 
+/** A here-document's start at a given point, `<<'EOF'`, `<<-EOF` or `<< "EOF"`: the lines after it are the command's input, not more commands. */
+const HEREDOC_AT = /<<-?\s*(["']?)[A-Za-z_]\w*\1/y;
+
+/**
+ * Where `line` opens a here-document, and how long the marker is; undefined
+ * when it opens none. Only a `<<` the shell reads as one counts: never inside
+ * quotes (`grep '<<EOF'`), never a here-string (`<<<`), never a shift inside
+ * `((...))` or `$((...))`.
+ */
+function heredocAt(line: string): { index: number; length: number } | undefined {
+  let quote: string | null = null;
+  let arithmetic = 0;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]!;
+    if (quote !== null) {
+      if (c === "\\" && quote === '"') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "\\") i++;
+    else if (c === "'" || c === '"') quote = c;
+    else if (line.startsWith("((", i)) (arithmetic++, i++);
+    else if (arithmetic > 0 && line.startsWith("))", i)) (arithmetic--, i++);
+    else if (arithmetic === 0 && line.startsWith("<<", i) && line[i - 1] !== "<" && line[i + 2] !== "<") {
+      HEREDOC_AT.lastIndex = i;
+      const marker = HEREDOC_AT.exec(line);
+      if (marker !== null) return { index: i, length: marker[0].length };
+    }
+  }
+  return undefined;
+}
+
+/** Programs that run a here-document as a script. */
+const INTERPRETERS = /^(?:python\d*(?:\.\d+)?|node|bun|deno|bash|sh|zsh|ruby|perl)$/;
+
+/**
+ * A command line that opens a here-document, in words: an interpreter fed one
+ * as its script (no file argument, only flags or `-`) runs a script ("Run a
+ * python3 script"); `cat > file` or `tee file` writes the file, an unquoted
+ * path or one quoted without spaces; any other command, a compound one
+ * included, shows without the marker. Undefined when it opens none.
+ */
+function heredocSubject(line: string): ToolSubject | undefined {
+  const at = heredocAt(line);
+  if (at === undefined) return undefined;
+  const rest = `${line.slice(0, at.index)} ${line.slice(at.index + at.length)}`.trim().replace(/\s+/g, " ");
+  const [program = "", ...args] = rest.split(" ");
+  // `python3 build.py <<EOF` runs build.py with the document as its input: that's a command, not an inline script.
+  if (INTERPRETERS.test(program) && args.every((arg) => arg.startsWith("-"))) return { text: `Run a ${program} script`, code: false };
+  const written = /^(?:cat\s*>>?\s*|tee\s+(?:-a\s+)?)(\S+)$/.exec(rest);
+  if (written !== null) return { text: clip(`Write ${shortPath(written[1]!.replace(/^["']|["']$/g, ""))}`), code: false };
+  return rest === "" ? undefined : { text: clip(rest), code: true };
+}
+
 /** One or more `cd <dir> &&` (or `;`) at the front of a command line. */
 const LEADING_CD = /^(?:cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;|$)\s*)+/;
 
@@ -237,7 +291,9 @@ export function toolSubject(toolName: string, args: unknown, output?: unknown): 
     // Agents prefix `cd <dir> &&` to every command; the work is what follows.
     const worked = lines.map((l) => l.replace(LEADING_CD, "")).filter((l) => l !== "");
     const line = (worked[0] ?? lines[0])?.replace(/\s+/g, " ");
-    return line === undefined ? undefined : { text: clip(line), code: true };
+    if (line === undefined) return undefined;
+    // A here-document's first line names only the program it feeds (`python3 - <<'EOF'`): say what it does.
+    return heredocSubject(line) ?? { text: clip(line), code: true };
   }
 
   // Codex reports a file change as the list of files it touched: an edit, as the other harnesses name theirs.
