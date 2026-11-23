@@ -63,7 +63,7 @@ export { cancelAndResume } from "./tasks/helpers/user-stop";
 export { checkWaitable, toolCallOf, type WaitableOptions, type WaitableRefusal } from "./tasks/helpers/wait-on-task";
 
 // A delegated row's ending: its delivery, its notice, and the pass a filer runs itself.
-export { TASK_SETTLED_ENTRY, filerResolver } from "./tasks/notice/delivery";
+export { TASK_SETTLED_ENTRY, filerResolver, undeliverableRecord } from "./tasks/notice/delivery";
 export {
   owedNotices,
   owesAnyNotice,
