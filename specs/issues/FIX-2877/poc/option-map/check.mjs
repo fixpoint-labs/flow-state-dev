@@ -61,9 +61,9 @@ const MAP = {
   harnessName: ["HAS", "defaultHarness"],
   harnesses: ["HAS", "the harnesses slot: one list for the coder and readiness"],
   workspace: ["HAS", "workspace; a fixed repository becomes a workspace host on it"],
-  answerWorkspace: ["GAINS", "phases: the phase for tasks that name no feature work, with its workspace"],
-  phase: ["GAINS", "phases: the phase for tasks that name feature work"],
-  answerPhase: ["GAINS", "phases: the phase for tasks that name no feature work"],
+  answerWorkspace: ["GAINS", "modes: the answer mode's workspace"],
+  phase: ["GAINS", "modes: the implement mode"],
+  answerPhase: ["GAINS", "modes: the answer mode"],
   judge: ["DROP", "the kit's judge is goalJudge on the same model and floor (0.7); only the block name differs"],
   onPullRequestRecorded: ["HAS", "onPullRequestRecorded, built on the installation"],
   reviewChanges: ["HAS", "review"],
@@ -107,7 +107,7 @@ const has = { defaultHarness: 1, workspace: 1, review: 1, runTimeoutMs: 1, onPul
 for (const k of Object.keys(has)) if (!kitKeys.includes(k)) problems.push(`KIT LACKS: ${k}`);
 if (!kitConfig.includes("slots: { harnesses: slot.keyed(")) problems.push("KIT LACKS: the harnesses slot");
 // And every GAINS names something it lacks today.
-for (const k of ["approveTools", "phases"]) if (kitKeys.includes(k)) problems.push(`KIT ALREADY HAS: ${k}`);
+for (const k of ["approveTools", "modes"]) if (kitKeys.includes(k)) problems.push(`KIT ALREADY HAS: ${k}`);
 
 // Teammates' four knobs, and the two harness lists, where the issue says.
 const tm = {

@@ -62,7 +62,7 @@
   <text class="t-lbl" x="32" y="222">THE HARNESS KIT</text>
   <text class="mark minus" x="228" y="224">−</text>
   <text class="t-b" x="248" y="223">Three public options</text>
-  <text class="t-s" x="248" y="241">phases · approveTools · the app&#x27;s settings</text>
+  <text class="t-s" x="248" y="241">modes · approveTools · the app&#x27;s settings</text>
   <text class="mark plus" x="592" y="224">+</text>
   <text class="t-b" x="612" y="223">Nothing added</text>
   <text class="t-s" x="612" y="241">the kit stays as it is</text>
@@ -73,7 +73,7 @@
   <text class="t-lbl" x="32" y="293">TASKS</text>
   <text class="mark tie" x="228" y="282">=</text>
   <text class="t-b" x="248" y="281">Behave the same</text>
-  <text class="t-s" x="248" y="299">same phases, checks and judge</text>
+  <text class="t-s" x="248" y="299">same modes, checks and judge</text>
   <text class="mark tie" x="592" y="282">=</text>
   <text class="t-b" x="612" y="281">Behave the same</text>
   <text class="t-s" x="612" y="299">today&#x27;s flow</text>

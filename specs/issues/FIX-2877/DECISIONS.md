@@ -10,9 +10,10 @@ sign-off surface. The epic's rules ER-1, ER-3 and ER-4 are this issue's to build
 
 ```mermaid
 flowchart TD
-  I["FIX-2877"] --> D1["D1 · Shift Manager on the shared flow · three options for the rest"]
+  I["FIX-2877"] --> D1["D1 · Shift Manager on the shared flow · three options, modes among them"]
   D1 -.->|"rejected · run settings built twice"| X1["keep Shift Manager's own flow"]
   D1 -.->|"rejected · still a fork"| X1b["rebuild it from harness-manager's blocks"]
+  D1 -.->|"rejected · two fixed slots, and phase is wanted elsewhere"| X1c["a phases option with feature and answer"]
   I --> D2["D2 · no pick, outside a coding run · the server writes the default's worker (interim)"]
   D2 -.->|"rejected · any text Lead reads can steer it"| X2["Lead maps the default to a worker, from its prompt or context"]
   I --> D3["D3 · the per-teammate default goes"]
@@ -22,18 +23,20 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · Shift Manager moves onto the shared flow; the flow gains three options for the rest
+## D1 · Shift Manager moves onto the shared flow; the flow gains three options for the rest, `modes` among them
 
 | | |
 |---|---|
-| **Instead of** | Keeping `coder.mts` ([FIX-2627 → What stays as it is](../FIX-2627/SPEC.md#what-stays-as-it-is)), or rebuilding it from harness-manager's blocks ([FIX-2627 D1](../FIX-2627/DECISIONS.md#d1)'s escape hatch) |
+| **Instead of** | Keeping `coder.mts` ([FIX-2627 → What stays as it is](../FIX-2627/SPEC.md#what-stays-as-it-is)), or rebuilding it from harness-manager's blocks ([FIX-2627 D1](../FIX-2627/DECISIONS.md#d1)'s escape hatch). For the split itself, the first draft's `phases: { feature, answer }`: two fixed slots, one chosen by the feature marker, under a word the task board will want for its stages |
 | **Because** | Run settings (FIX-2878) and PR policy (FIX-2583) land in the shared flow. A fork gets them by a second build or never ([epic ER-1](../../epics/FIX-2876/DECISIONS.md#who-owns-what)). Of the fork's 25 pieces, 14 the kit already has and 4 need nothing; 7 need an option ([option map](poc/option-map/README.md)). Tenet 2: refine the shared flow, don't keep a copy beside it |
-| **Locks in** | Three public harness-kit options, permanent: **phases** (a task naming feature work runs the app's feature phase in its own workspace; any other task runs the app's answer phase, else today's one phase), **`approveTools`**, and the app's own worker settings, documents and actions on `coder`, which the flow carries and never reads. Shift Manager's runs are `coder` flow runs: block names and run records name the shared flow, so a check that reads `harness-manager-answer` or `devteam-coder-judge` moves with it. One run budget per app |
+| **Locks in** | Three public harness-kit options, permanent: **`modes`**, **`approveTools`**, and the app's own worker settings. `modes` maps a name to `{ instructions, doneWhen, workspace }`: how the run's prompt is built, the server-side done check (today's `isDone`, `validate` and `doneTimeoutMs`), and where it works. `defaultMode` names the one a task with no mode runs. With no `modes`, the kit has one mode, `default`, which is today's single phase; an app may override part of it (`modes: { default: { instructions } }`) and keep the kit's `doneWhen` and workspace. Shift Manager registers `implement` (its checkout on a branch; done is a commit the base lacks; needs `issue`) and `answer` (the `answers` scratch host, which keeps nothing; done is a non-empty answer, not stopped-at-limit), default `answer`. A task's own text is appended to its mode's instructions; `doneWhen` and `workspace` are never set per task (BP-031). How a task names its mode, and its filing checks, lock and legacy reads, are FIX-2878's. The public name is **mode**, never phase: `PhaseSpec` becomes `ModeSpec`, the record's `phase` segment `mode`, with no alias (BP-034). The third option: the app's own worker settings, documents and actions on `coder`, which the flow carries and never reads. Shift Manager's runs are `coder` flow runs: block names and run records name the shared flow, so a check that reads `harness-manager-answer` or `devteam-coder-judge` moves with it. One run budget per app |
 
 **What would change my mind:** a Shift Manager need no option carries without the flow reading
 app knowledge. Then FIX-2627 D1's escape hatch, and a comment on the epic, as its *decided* line asks.
+For `modes` alone: an app needing a run's done check or workspace chosen per task. That would widen
+what a filer controls, so it would come back as its own decision, not a mode field.
 
-![D1 · How does Shift Manager's coder get what the shared flow lacks? Chosen: three options on the shared flow. Instead of: keep its own coding flow. Decides it: run settings and PR policy reach it once, where the fork needs a second build. Price: three public options. Tie: its tasks, checks and judge behave the same. Locks in three permanent options and coder flow runs; flips if a need can't be an option](figures/d1-one-flow.svg)
+![D1 · How does Shift Manager's coder get what the shared flow lacks? Chosen: three options on the shared flow, modes among them. Instead of: keep its own coding flow. Decides it: run settings and PR policy reach it once, where the fork needs a second build. Price: three public options. Tie: its tasks, modes, checks and judge behave the same. Locks in three permanent options and coder flow runs; flips if a need can't be an option](figures/d1-one-flow.svg)
 
 It comes down to run settings: on the shared flow they arrive once; a fork needs them built twice.
 
@@ -81,9 +84,12 @@ It comes down to one default: a renamed setting is still the second one.
   note. The coder's `harness:` enum, the readiness view and the Shift Coordinator's roster line read it. The scripted run reports ready.
 - **A fixed repository is a workspace host on that repository**, as Teammates' is. The kit takes
   no second workspace shape.
-- **The feature split reads the task.** A task whose input names feature work (`harnessFeature`
-  today; FIX-2878 moves it into the declared input) runs the feature phase. One that names it
-  malformed is refused there, never run as an answer, as today.
+- **The mode split reads the task.** In this issue, a task whose input carries the feature marker
+  (`harnessFeature`) runs `implement`, and any other runs the app's default mode. One whose marker is
+  malformed is refused there, never run as an answer, as today. FIX-2878 replaces the marker with the
+  task's `mode` and reads old rows that carry it as `mode: "implement"`.
+- **Stored run records keep resolving.** A record written under the `phase` segment reads as its
+  `mode` (BP-030); nothing writes `phase` again.
 - **Shift Manager's judge is the kit's.** It is `goalJudge` on the same model and floor (0.7); only its block name goes.
 - **Stop-on-steer is the harness block's.** A check that needs it declares `stopsOnAbort` on its
   harness block, which the manager already reads. Per-harness run budgets go: one `runTimeoutMs`.
@@ -139,8 +145,10 @@ For the implementer; none changes the approach.
   agent flow's `settings` shape for the setting and documents, and add only what Shift Manager
   can't say that way, over one catch-all `resources` option. If it can't be narrowed, D1's flip
   applies.
-- **Counting** (Cursor). The POC's 7 `GAINS` are fork keys, not options: three phase keys, one
-  `approveTools`, three app-extension pieces. Now said in the spec's debt table and the POC README.
+- **Counting** (Cursor). The POC's 7 `GAINS` are fork keys, not options: three fork keys that land
+  in `modes`, one `approveTools`, three app-extension pieces. Now said in the spec's debt table and the POC README.
+- **The glossary** (owner decision on modes). `docs/contributing/glossary.mjs` gets a `mode` entry,
+  and "phase" for this concept is retired there, in the implementation PR: a spec PR does not edit it.
 - **Removed-symbol readers** (Gitar). Listed in the spec's [What changes](SPEC.md#what-changes) by
   grep, not by the checker, which confirms only the knob and list sites.
 
@@ -158,3 +166,8 @@ For the implementer; none changes the approach.
 - **Cross-spec review** — D2 narrowed to a no-pick filing outside any coding run; an in-run filing
   keeps the model's assignee. The server-written assignee is marked interim, retired by FIX-2878,
   and FIX-2877 merges before FIX-2878.
+- **Owner decision, after cross-spec review** — D1's `phases: { feature, answer }` became the kit's
+  `modes` registry (name → instructions, done check, workspace) with a default mode; Shift Manager
+  registers `implement` and `answer`, default `answer`. The public word is "mode": "phase" stays free
+  for a later task-board idea. The spec gained an Examples section; the task's own `mode` field and
+  its checks went to FIX-2878's amendment.

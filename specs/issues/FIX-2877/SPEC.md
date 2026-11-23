@@ -11,7 +11,7 @@
 | **edits a teammate in Teammates** | Sees a "Default coding harness" field. The server never reads it; only the composer's starting pick does | Sees no such field. Until FIX-2879, the *Code with* picker has no effect: every filing goes to the app's default |
 | **starts Shift Manager with `DEVFORCE_LAB_HARNESS=codex`** | The coder runs on Codex. The readiness view lists only Claude Code, and a Codex run with no sign-in fails inside the run | The same coder. Readiness lists every harness the coder runs, and a task on one that is not ready is refused at once, saying why |
 | **hires a Shift Manager coder with `harness: cursor`** | Runs on Cursor, through Shift Manager's own coding flow | Runs on Cursor, through the shared `coder` flow, for a task a person assigns it. A coordinator's own filing with no pick goes to the default; a worker's filing inside its run can still go to a role-specific coder worker. Same checks, same judge |
-| **builds an app on the harness kit** | Copies the coding flow to change how a task is phased or checked, as Shift Manager did | Sets an option: a separate phase for feature work, tool approval, and the app's own worker settings |
+| **builds an app on the harness kit** | Copies the coding flow to change how a task is briefed or checked, as Shift Manager did | Registers **modes**: each a name for how a run is told what to do, when it counts as done, and where it works. With none, the kit's one `default` mode runs. Also sets tool approval and the app's own worker settings |
 
 ## The goal, and how we'll know it's met
 
@@ -59,7 +59,11 @@ at it. Shift Manager's own flow folds into the shared one ([D1](DECISIONS.md#d1)
 - harnesses({ workspace, logReadiness: true }).without(workforce.slots.workerFlows, "coder"),
 + harnesses({ workspace, defaultHarness: process.env.DEVFORCE_LAB_HARNESS ?? "stub",
 +   review: options.reviewChanges === true, branchPrefix: "shift-manager/", approveTools, onPullRequestRecorded,
-+   phases: { feature: { phase: implementPhase, workspace }, answer: { phase: answerPhase, workspace: answerHost } },
++   modes: {
++     implement: { instructions: implementBrief, doneWhen: commitTheBaseLacks, workspace },          // needs `issue`
++     answer:    { instructions: answerBrief, doneWhen: nonEmptyAnswer, workspace: answerHost },     // keeps nothing
++   },
++   defaultMode: "answer",
 +   /* the lab's document setting, its documents and its inspect read: D1 */ }),
 - fill: { [harnesses.slots.harnesses]: [...options.harnessValues] }   // readiness only
 + fill: { [harnesses.slots.harnesses]: [stub, claudeCode, codex, cursor] }  // the coder and readiness
@@ -105,8 +109,17 @@ no-pick path and lands on the default. It ends when FIX-2879 ships its pick; bot
   `"coder"`. `one-person-runs-a-labs-projects-and-people/controls/patches.mts` patches a `host.mts`
   line by its text and is re-pointed if that line moves.
 
+**The phase-to-mode rename** (public, BP-034, no alias): `PhaseSpec` → `ModeSpec` with
+`instructions` (today's `buildPrompt`) and `doneWhen` (today's `isDone`, `validate` and
+`doneTimeoutMs`), `PhaseDoneVerdict` → `ModeDoneVerdict`, `codingPhase` → `codingMode`, the
+manager's `phase` option and the run record's `phase` topic segment → `mode`. Readers move in the
+same PR: `harness-manager`'s `manager.ts`, `command-check.ts`, `index.ts`, `kit/coder-flow.ts` and
+four of its tests, Shift Manager's `phase.mts`, and `goals/harness-manager/` (`host.mts` and three
+`run.mts`). A stored run record written under `phase` reads as its `mode` (BP-030). "Phase" stays
+free for a later task-board idea.
+
 **Docs:** the harness kit has no user page yet. Changesets for `@flow-state-dev/harness-manager`
-(the three options, the default in context, and the server's no-pick assignee) and `@flow-state-dev/shift-manager` (readiness
+(the three options, `modes` and the default mode, the phase-to-mode rename as a minor change, the default in context, and the server's no-pick assignee) and `@flow-state-dev/shift-manager` (readiness
 lists every coder). `/release-docs` updates `shift-manager/from-a-checkout.md`, where
 `DEVFORCE_LAB_HARNESS` is described. The epic's harness-kit sentence stays FIX-2878's.
 
@@ -126,24 +139,98 @@ flowchart LR
 One value enters at the kit. The server's assignee, the flow, the coordinators' context and the
 client read it; none keeps a copy, and no model chooses from it.
 
+## Examples
+
+What `modes` looks like to an app ([D1](DECISIONS.md#d1)). Names past the ones D1 locks are
+illustrative; the implementer settles signatures against the code. How a task picks a mode, and
+the filing, lock, legacy-row and refusal examples, are FIX-2878's
+([its spec](https://linear.app/fixpoint-labs/issue/FIX-2878), amended for modes); they are not
+repeated here.
+
+An app that registers no modes gets one, `default`, which is today's single phase: the coding
+brief, done when the harness finished and the checks pass, in the kit's workspace.
+
+```ts
+harnesses({ workspace, defaultHarness: "codex" })
+// modes: { default: { instructions: codingBrief, doneWhen: finishedAndChecksPass, workspace } }
+```
+
+An app can override part of the default mode; what it leaves out stays the kit's.
+
+```ts
+harnesses({
+  workspace,
+  defaultHarness: "codex",
+  modes: { default: { instructions: (run) => `${codingBrief(run)}\nKeep every change under docs/.` } },
+  // doneWhen and workspace: still the kit's
+})
+```
+
+Shift Manager registers two modes, and a task that names none runs `answer`, as a task with no
+feature marker does today.
+
+```ts
+harnesses({
+  workspace,
+  defaultHarness: process.env.DEVFORCE_LAB_HARNESS ?? "stub",
+  modes: {
+    implement: {
+      instructions: implementBrief,       // today's defineImplementPhase prompt
+      doneWhen: commitTheBaseLacks,       // a commit the base branch lacks; needs `issue`
+      workspace,                          // the lab's repository checkout, on a branch
+    },
+    answer: {
+      instructions: answerBrief,          // today's defineAnswerPhase prompt
+      doneWhen: nonEmptyAnswer,           // a non-empty answer, not stopped-at-limit
+      workspace: answerHost,              // the `answers` scratch host, which keeps nothing
+    },
+  },
+  defaultMode: "answer",
+})
+```
+
+A task's own text is appended to its mode's instructions, so per-task wording lives in the task
+and the mode keeps the part every run shares.
+
+```text
+task:  { mode: "answer", description: "Why does the readiness view list only Claude Code?" }
+
+prompt the run gets:
+  You are answering a question about this repository. Read what you need and answer it in full.
+  Change nothing. Your answer is the run's result.          <- the answer mode's instructions
+
+  Why does the readiness view list only Claude Code?        <- the task's text
+```
+
+Later, an app could run a task through board stages by registering one mode per stage. This is an
+illustration only; nothing here builds it, and nothing new would be needed beyond the registration.
+
+```ts
+modes: {
+  plan:      { instructions: planBrief,      doneWhen: planWritten,        workspace: scratch },
+  implement: { instructions: implementBrief, doneWhen: commitTheBaseLacks, workspace },
+  review:    { instructions: reviewBrief,    doneWhen: verdictRecorded,    workspace },
+}
+```
+
 ## What stays as it is
 
 - Teammates' three coding workers. FIX-2879 collapses them
   ([epic D2](../../epics/FIX-2876/DECISIONS.md#d2)).
 - A person's own assignment from the board wins. That is the only pick until FIX-2879.
 - A filing made inside or below a coding run keeps the model's assignee, as today.
-- Shift Manager's tasks, phases, checks, judge, pull-request follow and EM. It gets no picker. A
+- Shift Manager's tasks, its two ways of working (now the modes `implement` and `answer`), checks, judge, pull-request follow and EM. It gets no picker. A
   coordinator's own no-pick filing gets the default; its EM files on `eng.coder`, which has no
   `harness:` line, so its routing stays as it is. A worker's filing inside its run keeps the
   model's assignee, so it can still route to a role-specific coder worker.
-- The task input's `harnessFeature` key, which FIX-2878 moves into the declared input.
+- The task input's `harnessFeature` marker. Here it still selects `implement`. FIX-2878 replaces it with the task's `mode`, and reads old rows that carry it as `mode: "implement"`.
 
 ## What's already here, and the debt
 
 | Already here | What this does with it |
 |---|---|
 | The kit's `coder` flow (`coderWorkerFlow`) | **Extends** with three options; becomes Shift Manager's coder |
-| Shift Manager's `defineCoderWorkerFlow` (438 lines) | **Removes.** Of its 25 pieces, 14 the kit already has, 4 go, and 7 land in the three options: three phase keys in `phases`, `approveTools` in its own, and `resources`, the `document` setting and the inspect action in the app's worker extension ([poc/option-map](poc/option-map/README.md)) |
+| Shift Manager's `defineCoderWorkerFlow` (438 lines) | **Removes.** Of its 25 pieces, 14 the kit already has, 4 go, and 7 land in the three options: three fork keys in `modes` (`phase`, `answerPhase`, `answerWorkspace`), `approveTools` in its own, and `resources`, the `document` setting and the inspect action in the app's worker extension ([poc/option-map](poc/option-map/README.md)) |
 | Other ways to pick a coder: `DEVFORCE_LAB_HARNESS`, `harnessValues`, `TEAMMATES_HARNESS`, the host's `?? "cursor"`, Lead's fallback, `LEAD_FALLBACK_HARNESS`, the agent-flow setting | **Fold into** `defaultHarness`; the env vars feed it. Searched `harness` across `labs/` and `packages/shift-manager` by hand; the checker confirms each of these sites, and the readers of what goes are listed [above](#what-changes) by grep |
 | `harnessReadinessCapability` and `READINESS_GUIDANCE`, already steering Lead (`goals/teammates-lab/routes-only-to-ready-harnesses`) | **Extends** with the default coder |
 | [FIX-2627 → What stays as it is](../FIX-2627/SPEC.md#what-stays-as-it-is): Shift Manager's flow "stays its own" | **Superseded**, as [epic ER-1](../../epics/FIX-2876/DECISIONS.md#who-owns-what) says. [D1](../FIX-2627/DECISIONS.md#d1)'s escape hatch stays for apps outside this repo |
@@ -153,7 +240,7 @@ client read it; none keeps a copy, and no model chooses from it.
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| `phases`: a feature phase with its workspace, and the answer phase | `codingPhase` and `commandCheck` | **Extends**: the kit's checks wrap whichever phase runs; the default is today's one phase |
+| `modes`: name → `{ instructions, doneWhen, workspace }`, and the default mode (`defaultMode` names it; absent, `default`) | `PhaseSpec`, `codingPhase` and `commandCheck` | **Extends and renames**: `PhaseSpec` becomes `ModeSpec`; the kit's checks wrap whichever mode runs; with no `modes`, the one `default` mode is today's single phase, and an app may override its parts |
 | `approveTools` | `harnessManager({ approveTools })` | **Extends**: forwarded, like `review` |
 | The app's worker settings, documents and actions on `coder` | The agent flow's `settings` option | **Extends** in the same shape; the flow never reads them. `resources` is the fork's file-declared documents (`resourcesFromDocs`), installed at flow level beside the installation's |
 | The server's no-pick assignee, **interim** | `checkAssignee`, `harnessOf` | **Extends** the kit's filing of a coding task made outside any coding run: `checkAssignee` accepts any roster id, so the default is written before it. Retired by FIX-2878 |
@@ -161,8 +248,8 @@ client read it; none keeps a copy, and no model chooses from it.
 
 | The debt | |
 |---|---|
-| **Removes** | `coder.mts`, `coderHarnessNames`, `HARNESS_SETTING`, `workerHarnesses` and Shift Manager's second list · `LEAD_FALLBACK_HARNESS` and the `Coding harness:` line · Lead's `teammates.cursor` fallback and its rule to follow a coder named in words · the agent-flow `harness` setting and its form field · Shift Manager's judge wrapper (`judge.mts`). Their readers are [listed](#what-changes) |
-| **Adds** | Three harness-kit options and one context line, public and permanent by design. The server's no-pick assignee, interim: FIX-2878 retires it |
+| **Removes** | `PhaseSpec`, `PhaseDoneVerdict`, `codingPhase` and the `phase` names (renamed, no alias) · `coder.mts`, `coderHarnessNames`, `HARNESS_SETTING`, `workerHarnesses` and Shift Manager's second list · `LEAD_FALLBACK_HARNESS` and the `Coding harness:` line · Lead's `teammates.cursor` fallback and its rule to follow a coder named in words · the agent-flow `harness` setting and its form field · Shift Manager's judge wrapper (`judge.mts`). Their readers are [listed](#what-changes) |
+| **Adds** | Three harness-kit options (`modes` among them) and one context line, public and permanent by design. The phase-to-mode rename, with no alias and a changeset. The server's no-pick assignee, interim: FIX-2878 retires it |
 | **Leaves** | Teammates' three per-harness workers (FIX-2879). Until then the server maps the default to the worker whose `harness:` matches |
 
 **Net: down.** A 438-line fork, a second list and three knobs go; the kit gains three options, a line and one interim filing rule.
@@ -177,8 +264,10 @@ on a second flow, or a default that only one of four readers obeys.
 kit options and a line come. If wrong: options only Shift Manager uses.
 
 1. **[D1](DECISIONS.md#d1) · Shift Manager moves onto the shared flow: what the flow already does
-   is dropped, and the flow gains three options for the rest.** If wrong: three public options
-   carrying one app's habits.
+   is dropped, and the flow gains three options for the rest. One is `modes`: an app names the ways
+   a coding run can work, each with its own brief, done check and workspace; Shift Manager names
+   `implement` and `answer`, and an app that names none gets one `default`.** If wrong: three
+   public options carrying one app's habits.
 2. **[D2](DECISIONS.md#d2) · With no coder picked, outside any coding run, the server puts a coding
    task on the default coder, whatever Lead wrote; text naming a coder is not a pick. Interim:
    FIX-2878 retires it; a filing inside a coding run keeps the model's assignee.** If wrong: someone who names a
