@@ -150,16 +150,33 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
   what a run may do: a done check that always passes, a workspace outside the mode's. A filer's
   are dropped at filing, like a filer's `harness`, and the run uses its mode's. Per-task wording
   is allowed: the task's own text is appended to the mode's instructions.
-- **`harnessFeature` is read once more, then never written** (BP-030 dual-read). Its published
-  names go with no alias. The read is a pre-parse step on the task-input declaration, so
-  filing, `updateTask` and the claim all see `{ mode: "implement", issue }`; the first claim
-  freezes `implement`. A marker's `phase` value is ignored: any well-formed marker reads as
-  implement. A marker with no valid `issue` is refused by name, never run as an answer, as
-  today. Nothing writes the key.
-- **One order for every check** (coordinator decision): the legacy read, then the default
-  mode, then the registered set and `requires`, then the lock ([D3](#d3)). So validation and the
-  lock see the derived mode, never an absent one, and a worker locked to `answer` refuses an old
-  feature row by name; it never runs it as an answer.
+- **`harnessFeature` is read on stored rows only, and never accepted on a write** (BP-030
+  dual-read; coordinator decision after the security review). Its published names go with no
+  alias.
+  - **On `createTask` and `updateTask`,** a caller-sent `harnessFeature` is refused by name, not
+    dropped and not translated: `TaskWriteRefusedError("legacy_marker", 'harnessFeature is no
+    longer accepted; file mode: "implement" with issue instead. Nothing was filed.')`. A silent
+    drop would quietly turn an implement filing into the default mode. `updateTask` replaces
+    `input` whole, so updating a legacy row means sending the new shape; a stored marker does
+    not survive an update.
+  - **On a stored row,** at claim and in any reader of stored input: a marker with `phase`
+    absent or `phase: "implement"` (on `main`, `harnessFeatureSchema` is `{ issue, phase? }`, and
+    Shift Manager's implement phase is `implement`) reads as `mode: "implement"` with that
+    issue, and the first claim freezes `implement`. Any other `phase` is refused by name
+    (`legacy task names phase "review", which no registered mode keeps.`) and no run starts; it is
+    never converted into another mode. A marker with no valid `issue` is refused by name, never
+    run as an answer.
+  - **`harnessFeature` never overrides an explicit `mode`:** a stored row carrying both is
+    refused at claim.
+  - **Cleanup:** [FIX-2903](https://linear.app/fixpoint-labs/issue/FIX-2903) removes this read
+    and the pre-rename run-key read once a one-off query finds no stored `harnessFeature` row and
+    no unfinished run record under a pre-rename key.
+- **One order for every check** (coordinator decision): the legacy read (stored rows only), then
+  the default mode, then the registered set and `requires`, then the lock ([D3](#d3)). `requires`
+  and the lock compare the resolved mode, never the raw `input.mode`: with no `mode` and an app
+  default of `implement`, a filing with no `issue` is refused, and one to a worker locked to
+  `answer` is refused with `mode_locked`. A worker locked to `answer` refuses a stored legacy
+  implement row by name at claim; it never runs it as an answer.
 - **`updateTask` may change the mode before the first claim,** re-checked exactly as at filing
   (registered set, `requires`, lock). After the first claim the mode is frozen.
 - **Fixed boards stay.** Their rows keep `harnessTaskInputSchema` at the top of `input` and don't
@@ -258,5 +275,8 @@ facts:* four `byHarness` routes and the `harness` action, by `grep` on `coder-fl
   required input is FIX-2877's `ModeSpec.requires` (#5606); figures list the mode; the epic's
   modes amendment is #5612; the default mode is written in at filing and the claim re-checks
   `requires`; the amendment notes sit below the opening problem; the `mode_locked` refusal, one
-  check order, the legacy read as a pre-parse step ignoring `phase`, and `updateTask` re-checks
-  before the first claim, all aligned with the epic's #5612.
+  check order, and `updateTask` re-checks before the first claim, all aligned with the epic's #5612.
+- **Codex and security fold** — a legacy `phase` other than `implement` is refused, never
+  converted; `requires` and the lock compare the resolved mode (three default-mode cases); a
+  write that sends `harnessFeature` is refused with `legacy_marker`, the legacy read is for stored
+  rows only, and a stored marker beside an explicit `mode` is refused; cleanup filed as FIX-2903.
