@@ -11,7 +11,7 @@ its amendment on the no-pick filing; and the epic's modes amendment, [#5612](htt
 > **Amendment, 2026-11-23: modes replace the feature marker** (the owner's modes design, registered by FIX-2877 on [#5606](https://github.com/fixpoint-labs/flow-state-dev/pull/5606); see the
 > [SPEC's note](SPEC.md)). D1's frozen value gains the task's mode, D3's lock can pin it, and
 > *Decided, not asked* gains the mode rules and replaces "`harnessFeature` is refused" with a
-> legacy read as implement. D2 is unchanged.
+> legacy read by the old phase. D2 is unchanged.
 
 ## The tree
 
@@ -123,6 +123,9 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
   steer a task onto a worker that reviews differently. Accepted because review mode is process,
   not permission: harness, model and plan stay server-written, so no text picks the coder or its
   sandbox ([architect review](https://github.com/fixpoint-labs/flow-state-dev/pull/5606#issuecomment-7105860295)).
+- **An unknown mode is an own-key miss.** The registry lookup uses `Object.hasOwn`, so
+  `mode: "constructor"` or `mode: "toString"` is refused as unknown, never resolved through
+  the prototype.
 - **The mode is the filer's, bounded twice** (owner's modes design, registered by FIX-2877 on [#5606](https://github.com/fixpoint-labs/flow-state-dev/pull/5606)). `codingTaskInput.mode?:
   string`. It is filer-written, not server-owned: Lead
   legitimately picks answer or implement, as it picks the feature marker today. It is bounded by
@@ -159,13 +162,17 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
     drop would quietly turn an implement filing into the default mode. `updateTask` replaces
     `input` whole, so updating a legacy row means sending the new shape; a stored marker does
     not survive an update.
-  - **On a stored row,** at claim and in any reader of stored input: a marker with `phase`
-    absent or `phase: "implement"` (on `main`, `harnessFeatureSchema` is `{ issue, phase? }`, and
-    Shift Manager's implement phase is `implement`) reads as `mode: "implement"` with that
-    issue, and the first claim freezes `implement`. Any other `phase` is refused by name
-    (`legacy task names phase "review", which no registered mode keeps.`) and no run starts; it is
-    never converted into another mode. A marker with no valid `issue` is refused by name, never
-    run as an answer.
+  - **On a stored row,** at claim and in any reader of stored input, the marker maps by
+    FIX-2877's old-to-new table (coordinator decision, after the epic's security review found
+    the kit's own old phase is `code`). On `main`, `harnessFeatureSchema` is `{ issue, phase? }`.
+    The marker's `phase`, or the manager's own phase when it is absent (`implement` for Shift
+    Manager's implement manager, `code` for the kit), becomes the registered mode whose old
+    phase value it is: `implement` becomes `implement`, `code` becomes `default`. It is compared
+    with `sameSegment`, as `assertFeatureRowIdentity` does today. The first claim freezes that
+    mode, on the marker's issue. A phase that matches no registered mode's old value is refused
+    by name (`legacy task names phase "review", which no registered mode keeps.`), no run starts
+    and no checkout opens; it is never converted into another mode. A marker with no valid
+    `issue` is refused by name, never run as an answer.
   - **`harnessFeature` never overrides an explicit `mode`:** a stored row carrying both is
     refused at claim.
   - **Cleanup:** [FIX-2903](https://linear.app/fixpoint-labs/issue/FIX-2903) removes this read
@@ -267,7 +274,7 @@ facts:* four `byHarness` routes and the `harness` action, by `grep` on `coder-fl
 - **Amendment: modes** (2026-11-23, the owner's modes design, registered by FIX-2877 on [#5606](https://github.com/fixpoint-labs/flow-state-dev/pull/5606)) — `mode` plus `issue` replaces the
   `feature` field: checked at filing against the registered modes and the mode's required input,
   frozen at the first claim, read by every route, not inherited, lockable; `doneWhen` and
-  `workspace` dropped from a task; an old `harnessFeature` row runs as implement. Three goal
+  `workspace` dropped from a task; an old `harnessFeature` row runs in the mode its old phase maps to. Three goal
   signals (Mode, Mode lock, Legacy feature) and an Examples section added.
 - **Amendment review fold** — the Legacy feature signal asserts the frozen `mode: "implement"`
   on the run record, so it is red on `main` (twelve of fourteen fail); the legacy read runs
@@ -280,3 +287,6 @@ facts:* four `byHarness` routes and the `harness` action, by `grep` on `coder-fl
   converted; `requires` and the lock compare the resolved mode (three default-mode cases); a
   write that sends `harnessFeature` is refused with `legacy_marker`, the legacy read is for stored
   rows only, and a stored marker beside an explicit `mode` is refused; cleanup filed as FIX-2903.
+- **Legacy table fold** — a stored marker maps by FIX-2877's old-to-new phase table (the kit's
+  `code` becomes `default`, Shift Manager's `implement` stays `implement`), with a kit case in the
+  Legacy feature signal; the unknown-mode check is an own-key lookup.
