@@ -63,14 +63,24 @@ It comes down to one writer: a re-run with its own coder is a second way to set 
 | | |
 |---|---|
 | **Instead of** | Refusing every coding filing from a session that is neither the person's conversation nor a coding run, or following the conversation's current pick |
-| **Because** | ER-10 gives two sources: the person's turn, and a coding run's frozen pair. A researcher's task is neither, and ER-10 says such a filing never falls back to the kit default. The pick its session carried at hand-over is written by the server at filing, from the turn that filed it, and no turn there can change it ([below](#decided-not-asked)). So it is that filing's pick, kept, in the same sense as a run's frozen pair. Following the current pick would let a later pick reach work in flight, which ER-2 forbids for runs. Refusing would leave a researcher who finds a bug unable to ask for the fix |
-| **Locks in** | The filler reads, in order: a coding run's frozen pair (FIX-2878), else the filing session's `codeWith`. Epic ER-5's "a task session's carried copy is never read for run settings" becomes "never inside a coding run, where the frozen pair is": **a follow-up PR on the epic, opened when this is signed**. A session that holds no pick files a task that carries none, so the order falls to the worker, then the kit, as the person's own turn would |
+| **Because** | ER-10 gives two sources: the person's turn, and a coding run's frozen pair. A researcher's task is neither: it runs outside any coding run, so it has no frozen pair to read, and ER-10's literal text would leave it nothing to file on. The pick its session carried at hand-over is written by the server at filing, from the turn that filed it, and no turn there can change it ([below](#decided-not-asked)). So it is that filing's pick, kept, in the same sense as a run's frozen pair. Following the current pick would let a later pick reach work in flight, which ER-2 forbids for runs. Refusing would leave a researcher who finds a bug unable to ask for the fix |
+| **Locks in** | The server resolves a filing's pick by ancestry, in order. **(1) Inside a coding run** (a coding task's session, or any turn that runs inside a coding run): that run's frozen triple (harness, model, plan), as [ER-10](../../epics/FIX-2876/DECISIONS.md#who-owns-what) says, never the kit default. **(2) Descended from a coding run** (a non-coding task a coding run started, directly or through other non-coding tasks): at hand-over the server carries that run's resolved triple into the task session. It wins over any `codeWith` there, and such a filing never falls back to worker or kit, so an extra delegation cannot widen a plan-only parent ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5607#discussion_r4667755346)). **(3) Otherwise** (a researcher's delegate session a person's turn opened): the session's carried `codeWith`, which the server wrote at open. **(4) With none:** the worker, then the kit. That is safe: the kit default is chosen by the server, and there is no parent pick to escape. The carried triple is server-written and no filer can set it, like `codeWith` (BP-031). **This amends two epic rows.** [ER-5](../../epics/FIX-2876/DECISIONS.md#who-owns-what)'s "a task session's carried copy is never read for run settings" becomes "never inside a coding run or below one, where the frozen or carried triple is". [ER-10](../../epics/FIX-2876/DECISIONS.md#who-owns-what)'s background-filing rule gains the ancestry step: a filing below a coding run reads the triple the server carried at hand-over, and still never falls back to the kit default; its "never falls back" does not apply to a session with no coding run above it, which reads the carried `codeWith`, then worker, then kit. ER-10 is FIX-2878's row, so **the coordinator's follow-up PR on the epic covers both rows, coordinated with FIX-2878's spec**, opened when this is signed |
+
+Which pick the filler writes, by where the filing comes from
+([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5607#discussion_r4667742949)):
+
+| Filing from | Inside an active coding run? | Below one? | The filler writes | With no pick |
+|---|---|---|---|---|
+| A person's turn | No | No | That turn's `codeWith` | None: worker, then kit |
+| A coding task's session, or any other turn running inside a coding run | Yes | n/a | That run's frozen triple (ER-10) | Never the kit default |
+| A non-coding task session a coding run started, directly or through other non-coding tasks | No | Yes | The run's triple, carried by the server at hand-over; wins over any `codeWith` | Never worker or kit |
+| A session no person writes to, with no coding run above it, such as a researcher's delegate session | No | No | The session's carried `codeWith`, server-written at open | None: worker, then kit |
 
 **What would change my mind:** long-lived delegate conversations (opened once, messaged for
 weeks) filing much coding work. Their pick is the one they were opened with, which can be older
 than the person's. Then each message re-carries the sender's pick, which is FIX-1990's to build.
 
-![D3: the pick a session was opened with, chosen, beside refusing those filings and beside following the current pick. Decides it: a researcher's task that needs a code change. Price: a delegate's long-lived conversation keeps an older pick, and epic ER-5's text is amended. Locks in: the filler reads a run's frozen pair, else the session's codeWith. Flips if long-lived delegate conversations file much coding work](figures/d3-carried.svg)
+![D3: the pick a session was opened with, chosen, beside refusing those filings and beside following the current pick. Decides it: a researcher's task that needs a code change. Price: a delegate's long-lived conversation keeps an older pick, and epic ER-5's and ER-10's text is amended. Locks in: inside or below a coding run the filler writes that run's triple; otherwise it reads the session's codeWith. Flips if long-lived delegate conversations file much coding work](figures/d3-carried.svg)
 
 It comes down to a researcher's task: refusing it strands the fix, and following the current
 pick moves work in flight.
@@ -162,3 +172,19 @@ target after the collapse ([D2](#d2)). *Concern, recorded:* D3's price is left t
   session field the respond action writes, the filler's second source, one instruction, a model
   list for the picker, and one coder in Teammates; built on `setSessionFieldsAction`, the
   hand-over carry and FIX-2878's filler.
+- **Review round (Gitar, Cursor)** — D3 now names its divergence from epic ER-10 as well as
+  ER-5: inside a coding run the frozen pick, never the kit default; outside one the carried
+  `codeWith`, then worker, then kit. The epic follow-up covers both rows, with FIX-2878's spec.
+  D3 gained a resolution table, and an ancestry step (security review): a non-coding task a
+  coding run started carries the run's triple, so delegation cannot widen a plan-only parent.
+
+## Notes from review
+
+- "Worth locking that in the package half explicitly: **no second write module** (epic `sketch.md` floated `writeTurnFields` beside respond). One shared parse/refuse/atomic-write helper keeps the convergence point from becoming two trust models." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5607#discussion_r4667742936))
+- "Consider naming **`doorTakesFields`** (or generalizing the inventory flag) in the Adds table so implementation mirrors `door-task-stamp.test.ts` instead of ad hoc respond wiring." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5607#discussion_r4667742942))
+- "If Teammates and FIX-2598 only need “models for one harness id,” implementation can still **reuse readiness’s fetch/cache/dedup** semantics and avoid fan-out over all harnesses on picker open." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5607#discussion_r4667742958))
+- "**Refused fields**: validate/write before persisting the user line (engine echo ordering vs **Refused** signal)." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/5607#pullrequestreview-6024137304))
+- "**Client**: omit `fields` when `codeWith` unchanged (already implied by **Reload** goal)." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/5607#pullrequestreview-6024137304))
+
+These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
+discarding one.
