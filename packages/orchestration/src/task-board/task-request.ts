@@ -74,6 +74,7 @@ import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
 import { isTerminalStatus } from "../tasks/schema/task-status";
 import { advisoryCancel, advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
+import { adoptLapsedLease } from "./stale-claim";
 import { startLeaseRenewal, startTicker, type LeaseRenewalDriver, type Ticker } from "../tasks/lease-renewal";
 import { stampLeaseRenewal, withLeaseRenewalScope } from "../tasks/lease-renewal-scope";
 import { currentWorkerClaim, openWorkerClaimScope, stampCurrentClaim } from "./flow-policy-wiring";
@@ -466,15 +467,18 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
     const mirror = stop.forPerson ? mirrorOf(record.ctx, ending) : undefined;
     let outcome = await waitOn(record, row, stop.on, undefined, mirror);
     // Only the lease lapsed: the row is still this attempt's and turn's, and
-    // no reclaim moved it. The claim takes it back (as a lapsed holder's
-    // renewal may) and mirrors the stop, so the person can still answer it.
+    // no reclaim moved it. The claim takes it back, by the start gate's own
+    // takeover (the span the claim committed to, a renewal that must say it
+    // landed), and mirrors the stop, so the person can still answer it.
     // Cancelling the stop instead would let the resume, admitted on this
-    // same attempt, settle the task on a review nobody gave (FIX-2847).
+    // same attempt, settle the task on a review nobody gave (FIX-2847). A
+    // takeover refused for any reason leaves the write refused, and the stop
+    // is ended below as superseded.
     if (mirror !== undefined && outcome?.outcome === "declined" && outcome.reason === "lost-claim") {
       const stored = await readCommittedTask(ref, row.id);
       if (claimHolds(ref, ticket, stored)) {
-        const taken = await ref.renewLease(row.id, ref.now() + (stored.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS), { ...guardsOf(ticket), adoptLapsedLease: true });
-        if (taken.outcome === "recorded") outcome = await waitOn(record, stored, stop.on, undefined, mirror);
+        const adopted = await adoptLapsedLease(ref, stored).catch(() => undefined);
+        if (adopted !== undefined) outcome = await waitOn(record, adopted, stop.on, undefined, mirror);
       }
     }
     // Defence in depth (FIX-2133): a turn that asked never reaches here (the

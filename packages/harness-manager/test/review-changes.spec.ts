@@ -772,6 +772,8 @@ describe("a judged run on a board read from the claim, with review on", () => {
   const hostWithGap = (
     meanwhile: (ref: TaskCollectionRef, id: string, claim: Parameters<SetKeptOpenBy>[2]["claim"]) => Promise<void>,
     ran: { done: boolean },
+    /** Stand in for another of the gate ledger's verbs, once the gap has run. */
+    after?: (target: TaskCollectionRef, key: string | symbol) => unknown,
   ) =>
     claimHost({
       mode: "claim",
@@ -781,6 +783,8 @@ describe("a judged run on a board read from the claim, with review on", () => {
       gateLedger: (ref) =>
         new Proxy(ref, {
           get(target, key, receiver) {
+            const stand = ran.done ? after?.(target, key) : undefined;
+            if (stand !== undefined) return stand;
             if (key !== "setKeptOpenBy") return Reflect.get(target, key, receiver);
             return async (...args: Parameters<SetKeptOpenBy>) => {
               const [id, , options] = args;
@@ -852,6 +856,52 @@ describe("a judged run on a board read from the claim, with review on", () => {
     expect(task.holds?.find((h) => h.source.kind === "suspension")?.ask).toMatchObject({ kind: "review" });
   }, 60_000);
 
+  /** The claim's lease ends in the past: the hold write that follows finds it lapsed. */
+  const lapse = async (ref: TaskCollectionRef, id: string, claim: Parameters<SetKeptOpenBy>[2]["claim"]) => {
+    expect((await ref.renewLease(id, Date.now() - 1, { claim })).outcome).toBe("recorded");
+  };
+
+  it("ends the review stop as superseded when the lease lapsed and the takeover's renewal gives no verdict", async () => {
+    const ran = { done: false };
+    const lab = hostWithGap(lapse, ran, (_target, key) => (key === "renewLease" ? async () => undefined : undefined));
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(ran.done).toBe(true);
+    await firstAttemptEnds(lab);
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(task.holds?.some((h) => h.source.kind === "suspension") ?? false).toBe(false);
+    // Not cancelled, nothing settled: the row is left on its lapsed lease for the sweep to reclaim.
+    expect(task).toMatchObject({ status: "in_progress", attempts: 1 });
+    expect(task.leaseUntil).toBeLessThan(Date.now());
+  }, 60_000);
+
+  it("ends the review stop as superseded when the lease lapsed on a row with no lease span to take it back for", async () => {
+    // A row claimed before the span was stored: no `leaseDurationMs`, and a deadline no later than its last write.
+    const ran = { done: false };
+    const legacy = (stored: Task | undefined): Task | undefined => {
+      if (stored === undefined) return undefined;
+      const { leaseDurationMs: _span, ...row } = JSON.parse(JSON.stringify(stored)) as Task;
+      return { ...row, updatedAt: row.leaseUntil ?? row.updatedAt };
+    };
+    // Every read of the gate's ledger sees the legacy row from the gap on, as a stored one would read.
+    const lab = hostWithGap(lapse, ran, (target, key) =>
+      key === "getCommitted"
+        ? async (id: string) => legacy(await target.getCommitted!(id))
+        : key === "get"
+          ? (id: string) => legacy(target.get(id) as Task | undefined)
+          : undefined,
+    );
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(ran.done).toBe(true);
+    await firstAttemptEnds(lab);
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(task.holds?.some((h) => h.source.kind === "suspension") ?? false).toBe(false);
+    // Not cancelled, nothing settled: the row is left on its lapsed lease for the sweep to reclaim.
+    expect(task).toMatchObject({ status: "in_progress", attempts: 1 });
+    expect(task.leaseUntil).toBeLessThan(Date.now());
+  }, 60_000);
+
   it("holds a judge's ask on a question, with no review", async () => {
     const lab = claimHost({
       mode: "claim",
@@ -861,10 +911,10 @@ describe("a judged run on a board read from the claim, with review on", () => {
     });
     await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "look at our repo", input: {} });
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
-    const row = await lab.row(CONVERSATIONS, "t1", "conv-a");
-    expect(row.status).toBe("in_progress");
-    expect(openOwnHolds(row).map((h) => h.ask.prompt)).toEqual(["which repository did you mean?"]);
-    expect(row.holds?.some((h) => h.source.kind === "suspension")).toBe(false);
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(task.status).toBe("in_progress");
+    expect(openOwnHolds(task).map((h) => h.ask.prompt)).toEqual(["which repository did you mean?"]);
+    expect(task.holds?.some((h) => h.source.kind === "suspension")).toBe(false);
   }, 60_000);
 });
 
