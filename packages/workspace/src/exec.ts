@@ -37,7 +37,8 @@ export interface RunOptions {
   /**
    * Variables to set on the child. It never inherits this process's whole
    * environment: it starts from `WORKSPACE_BASE_PASS` and `pass` (see
-   * `./child-env`), and these are set over them.
+   * `./child-env`), and these are set over them, unfiltered: a credential
+   * named here reaches the child whatever `pass` says.
    */
   env?: Record<string, string>;
   /**

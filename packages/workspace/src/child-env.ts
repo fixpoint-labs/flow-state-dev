@@ -87,7 +87,11 @@ export const HOST_REMOTE_PASS = [
 export interface ChildEnvOptions {
   /** Names to pass from the host's environment beyond {@link WORKSPACE_BASE_PASS}, when set there. */
   pass?: readonly string[];
-  /** Variables to set on the child, over anything passed. */
+  /**
+   * Variables to set on the child, over anything passed. These are not
+   * filtered: a name set here reaches the child whatever lane `pass` names,
+   * so never copy a credential into it for a local call.
+   */
   env?: Record<string, string>;
 }
 
