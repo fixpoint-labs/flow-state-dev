@@ -161,27 +161,31 @@ async function writeTurnFields(declared: SessionFields, fields: Record<string, u
 The board has already dropped whatever the filer sent for `harness`, `model` and `plan` (step 1),
 because the coder flow's declaration marks them server-owned: `harness` and `plan`, changed by a
 filer, could widen what the run may do, and `model` is the filer-trust rule's (BP-031). The harness kit's filler writes them back in, so workforce reads no
-harness-kit field. From a person's turn, the pick is the session's last `codeWith`. From a filing
-no person started, it is the frozen triple on the filing run's own record (step 4), never the task
-session's carried copy (`carriedSessionFields`), which was taken at hand-over and can be stale.
-The filler runs before the parse, and `updateTask` keeps the stored values.
+harness-kit field. It resolves the pick in ER-10's six steps: inside a coding run, that run's
+frozen triple (step 4); below one, the triple the server carried at hand-over; from another linked
+session, the root conversation's current `codeWith`; from the person's own conversation, its
+`codeWith`; with no pick, the server default; with no root, a refusal. `codeWith` is not carried
+at hand-over, so no stale copy exists to read. The filler runs before the parse, and `updateTask`
+keeps the stored values.
 
-The filler fills only the server-owned run settings. It never picks the assignee: with one coder worker that
-takes its harness per task, the pick has nothing to route. A model-written assignee is held at the
-claim instead (step 4, ER-11): whichever worker claims the task, it runs the task's harness or
-refuses it by name.
+The filler fills only the server-owned run settings, never the assignee. Until it writes the
+default on the no-pick path, FIX-2877 writes that filing's assignee (the default's worker) as an
+interim; once it does, the model's assignee picks the role again, and ER-11's lock checks it at
+claim (step 4). The worker the model names also brings its own `review` mode: process, not permission.
 
 ```ts
 // packages/harness-manager/src/kit/coder-flow.ts: the harness kit's filler (NEW, FIX-2878)
 const fillRunSettings = async (ctx: BlockContext): Promise<Partial<CodingTaskInput>> => {
-  const run = await activeRunOf(ctx); // the filing session's own run record, if it is a coding run
-  if (run !== undefined) {
-    // A filing no person started: the filing run's frozen triple, kept exactly. Never the kit default, never wider.
-    return { harness: run.harnessId!, ...(run.model == null ? {} : { model: run.model }), ...(run.plan == null ? {} : { plan: run.plan }) };
-  }
-  // NEW (FIX-2879): a person's turn, or a conversation turn no user started (Q-C). Until FIX-2879
-  // lands there is no `codeWith`: the task carries none, and the worker's harness is used.
-  return (ctx.session.state as { codeWith?: Partial<CodingTaskInput> }).codeWith ?? {};
+  // (1) inside a coding run, or (2) below one: the run's three run settings, never `review`.
+  // Never a default, never wider. Names of these lookups are FIX-2878's and FIX-2879's specs'.
+  const run = (await activeRunOf(ctx)) ?? (await carriedRunOf(ctx));
+  if (run !== undefined) return { harness: run.harnessId!, model: run.model ?? undefined, plan: run.plan ?? undefined };
+  // (3) another linked session reads the root conversation's current pick; (4) the person's own reads its own.
+  const root = await rootConversationOf(ctx); // NEW (FIX-2879): walks the session links
+  if (root === undefined) throw new TaskWriteRefusedError("no_root", "no conversation this filing belongs to. Nothing was filed."); // (6)
+  const picked = (root.state as { codeWith?: Partial<CodingTaskInput> }).codeWith;
+  // (5) no pick: the server default, the same as the person's own no-pick turn.
+  return picked ?? defaultRunSettings(); // defaultHarness, its defaultModel, the plan setting it implies
 };
 ```
 
@@ -267,14 +271,15 @@ const resolveRun = async (ctx: BlockContext, task: { input?: unknown } | undefin
   // ER-11: a lock is the worker's fixed values for server-owned run settings, checked against the
   // triple. This runs for every worker that claims a coding task, not only the one the turn meant:
   // an unlocked worker runs the triple, a locked one runs it or refuses by name. So a model-written
-  // assignee can't move a task onto another coder or out of plan mode, and needs no stamp.
+  // assignee can't move a task onto another coder or out of plan mode (ER-10's assignee rule).
   const lock = (worker.config.lock ?? {}) as Partial<typeof triple>; // NEW (FIX-2878): name is its spec's
   for (const [field, fixed] of Object.entries(lock)) {
     const got = triple[field as keyof typeof triple];
     if (got !== fixed) throw new Error(`worker "${worker.id}" always runs with ${field} ${fixed}; this task asked for ${got}. Nothing ran.`);
   }
+  // `review` is frozen with the triple, per task (FIX-2878 D1), but never inherited by a child filing.
   const review = (worker.config.review as boolean | undefined) ?? options.review === true;
-  return { ...found, id, manager: review ? found.reviewed : found.manager, model: { ...checked, model: triple.model ?? undefined }, plan, triple };
+  return { ...found, id, manager: review ? found.reviewed : found.manager, model: { ...checked, model: triple.model ?? undefined }, plan, triple, frozen: { ...triple, review } };
 };
 
 /** NEW (FIX-2878): the triple a fresh work claim froze, for every other route. */
@@ -294,8 +299,8 @@ execute: async (input: { input?: unknown } & Record<string, unknown>, ctx: never
   const freshClaim = "goal" in input && route === "work"; // `route`: byHarness's own argument, one per entry
   const chosen = freshClaim ? await resolveRun(ctx, input) : await frozenRunOf(ctx);
   if (freshClaim) {
-    // NEW (FIX-2878): frozen beside `sessionId`; all three fields `.nullable().default(null)` (BP-030).
-    await writeRunRecord(ctx, chosen.triple); // the effective model, never a null that reads the option later
+    // NEW (FIX-2878): frozen beside `sessionId`; all four fields `.nullable().default(null)` (BP-030).
+    await writeRunRecord(ctx, chosen.frozen); // the effective model, never a null that reads the option later
   }
   if (ready) {
     const missing = await refusal(chosen.id);
@@ -347,9 +352,9 @@ export interface Harness {
 A session is resumed only by the harness and plan setting that started it, matched by the `id`
 and `plan` frozen on the run record, never the id alone: after FIX-2599 a plan session and an edit
 session can share `claude-code`, and one is never resumed as the other. `source` cannot tell
-`claude-code` from `claude-code-plan`, because both report `claude-code/sdk`. The door takes no pick, so on its path the frozen harness is also the one
-dispatched; the check matters when a fresh work claim resolved differently from the session on
-record.
+`claude-code` from `claude-code-plan`, because both report `claude-code/sdk`. The door takes no pick, and the first claim freezes the coder for the task's life, so
+the only path to a different coder is a new task; the check matters only for a session recorded
+before the freeze, which FIX-2878's spec never resumes.
 
 ```ts
 // manager.ts, the harness block's resume feed (each manager is built for one harness id)
