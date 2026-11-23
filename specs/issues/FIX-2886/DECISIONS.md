@@ -29,7 +29,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | A `sessionId` on the schedule, a value or a function of the fire's context, the way a webhook binding has `sessionId(event)`, with the poll passing a function of its schedule id |
-| **Because** | A poll's session id is computable by anyone who knows the user and the thread. If an author writes the id, another signed-in user can create a session at it first, and the engine then refuses every fire (`UserBindingMismatchError`), so the poll stops. FIX-1739 found this hole for channels. A preset lets the framework own the id and reserve its prefix at three of the points that already guard write sessions (the inbound host, the create route, the action route; see *Decided, not asked*), once for every schedule. A free id would also be a second way to send into an existing conversation, which FIX-1233 tried as its own design and canceled. Tenet 2: the smallest option that does the job |
+| **Because** | A poll's session id is computable by anyone who knows the user and the thread. If an author writes the id, another signed-in user can create a session at it first, and the engine then refuses every fire (`UserBindingMismatchError`), so the poll stops. FIX-1739 found this hole for channels. A preset lets the framework own the id and reserve its prefix at three of the points that already guard write sessions (the inbound host, the create route, the action route) and at dispatch birth inside a run (see *Decided, not asked*), once for every schedule. A free id would also be a second way to send into an existing conversation, which FIX-1233 tried as its own design and canceled. Tenet 2: the smallest option that does the job |
 | **Locks in** | `session?: "per-fire" \| "per-schedule"` on a schedule (`ScheduleConfig`) and on `createResourceCollectionScheduleResolver`; default `"per-fire"`. A reserved session-id prefix for schedule sessions (the implementer names it, beside `fsd-write.`): only a scheduled dispatch may create a session at it or run in it; reads stay open to the owner. Both names go through `docs/contributing/glossary.mjs` in the implementation PR, which adds no retired word |
 
 ![D1, how a schedule says where its fires run. Chosen: a two-value preset, per-fire or per-schedule, with the id derived by the framework and its prefix reserved. Instead of: a sessionId value or function, like a webhook binding. It comes down to who can hold the session first: with a reserved derived id nobody else can create it; with a written id another user can create it first and stop the poll. Price: a schedule can't fire into a session of the author's choosing. Tie: the poll's case works either way. Locks in the option and a reserved prefix. Flips if a schedule must fire into a session the author names](figures/d1-preset-not-id.svg)
@@ -79,8 +79,14 @@ service-flow sessions earns its place here.
   they check write-session ids. Those are three of the write prefix's six points: the other three
   (`reserved-addresses.ts` on every HTTP route, the listing, change notices) hide a write session,
   and a schedule's session must stay listable and readable to its owner, which the DevTool needs.
-  So it is its own check beside `isWriteSessionId`, not a widening of it. The scheduled endpoint is
-  the only writer of the id.
+  So it is its own check beside `isWriteSessionId`, not a widening of it. A fourth point is
+  dispatch from inside a run: a dispatcher's `{ id, state }` target births its session in
+  `create-request-host.ts` before the operation reaches the host, and the host's refusal then leaves
+  that row behind, under the dispatching user. So the request host refuses a schedule id in the
+  dispatch spec before any birth, for every `{ id }` and `{ id, state }` target. The write prefix
+  has the same gap at that point; closing it there too is the implementer's call, since it is the
+  same line. An engine test at the request host covers it, with `no-reserve` failing it. The
+  scheduled endpoint is the only writer of the id.
 - **No public re-entry in a schedule's session.** Retry, continue and resume (`recovery-routes.ts`,
   `resume-routes.ts`) re-run a request in its recorded session by calling `runAction` directly,
   so they pass none of the checks above or the schedule's overlap check; `scheduled` is on the
@@ -150,7 +156,7 @@ From the Cursor review on #5579 (2026-11-23), for the implementer:
 
 From the second-look comment on #5579 (2026-11-23), for the implementer:
 - The admitted-source check reads the existing `SCHEDULED_SOURCE` constant (`execution/transport-sources.ts`), with no new flag.
-- Handle the bare and the tenant-namespaced id (`tenant:<prefix>…`) at all three points, as `isWriteSessionId` does, and test the namespaced form in (n).
+- Handle the bare and the tenant-namespaced id (`tenant:<prefix>…`) at all four points, as `isWriteSessionId` does, and test the namespaced form in (n).
 - In `refuseReservedAddress`, put the schedule check after the `isServerResourceSend` early return, with its own source test, so a resource send can't reach a schedule session.
 - Make the `service-route:` retention confirmation a grep-backed line in the implementation PR.
 - Build the schedule id beside `owner-run:` / `service-route:` in `owner-runs.ts` with one small shared id builder; don't widen past that (the reserved-prefix family is FIX-2889).
@@ -161,3 +167,6 @@ From the second-look comment on #5579 (2026-11-23), for the implementer:
 - **Draft** — the mailbox's Approach A (a stable session per schedule, approved by Jake) as a
   two-value schedule option with a framework-derived, reserved id, used by the workforce poll with
   a day of retention; builds on the write-session prefix guard, `onOverlap` and session retention.
+- **Review round 1** — Greptile and Codex found two paths that skip the three entry checks: public
+  re-entry (now refused in a schedule's session) and a dispatcher's session birth inside a run (now
+  checked before the birth). Both fold into *Decided, not asked*; the direction is unchanged.

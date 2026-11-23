@@ -133,7 +133,7 @@ sequenceDiagram
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | `session: "per-fire" \| "per-schedule"` on a schedule and on `createResourceCollectionScheduleResolver` | A webhook binding's `sessionId` function, copied onto schedules | A free id can name any session, so every author must defend it against pre-claiming, and it becomes a second way to send into a conversation ([D1](DECISIONS.md#d1)) |
-| A schedule session id, and its reserved prefix | The `owner-run:` / `service-route:` ids; the write-session prefix and its checks | **Composed**: the id is spelled like the derived ids; the prefix is checked at three of the write prefix's six points (host, create route, action route) |
+| A schedule session id, and its reserved prefix | The `owner-run:` / `service-route:` ids; the write-session prefix and its checks | **Composed**: the id is spelled like the derived ids; the prefix is checked at three of the write prefix's six points (host, create route, action route) and before a dispatcher births a session in the request host |
 | `session.retention` on the workforce service flow | None: the flow declares no session config today | Uses the existing retention option |
 
 | The debt | |
