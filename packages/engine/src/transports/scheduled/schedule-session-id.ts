@@ -41,3 +41,11 @@ export function scheduleSessionId(parts: ScheduleSessionParts): string {
 export function isScheduleSessionId(id: string): boolean {
   return id.startsWith(SCHEDULE_SESSION_PREFIX) || id.includes(`:${SCHEDULE_SESSION_PREFIX}`);
 }
+
+/** A dispatch or a client named a schedule session: only the scheduled transport runs in one. */
+export class ScheduleSessionIdError extends Error {
+  constructor(readonly sessionId: string) {
+    super(`Session "${sessionId}" is a schedule session, the scheduled dispatch's to create and run in: nothing else can name one.`);
+    this.name = "ScheduleSessionIdError";
+  }
+}

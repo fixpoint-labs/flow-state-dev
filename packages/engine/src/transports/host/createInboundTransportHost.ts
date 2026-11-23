@@ -19,6 +19,7 @@ import {
   ReservedSessionIdError
 } from "../../resources/default-write-flow";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { isScheduleSessionId, ScheduleSessionIdError } from "../scheduled/schedule-session-id";
 import { SessionCreateRefusedError } from "../../context/session-birth";
 import type { FlowRegistry } from "../../registry/flow-registry";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../../stores/types";
@@ -81,7 +82,7 @@ import {
 import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
 import type { FlowRunner, DispatchEnvelope, LeaseTurn } from "../runner";
 import { refuseRetiredDispatcherOption } from "../runner";
-import { CLI_SOURCE, INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
+import { CLI_SOURCE, INTERNAL_SOURCE, SCHEDULED_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
 import {
   createInProcessRunner,
   isInProcessRunner,
@@ -441,13 +442,20 @@ export async function resolveInProcessPrincipal(
  * `InboundDispatchHandle` lets the adapter consume the live stream synchronously
  * (HTTP+SSE) or await `finished` for a final result (webhook, schedule).
  */
-// FIX-2624.
+// FIX-2624; FIX-2886; BP-031.
 /**
  * Refuse a dispatch, from any transport, that names a write session or the
  * default write flow, unless it is the server's own resource send. The
  * default write flow answers as an address this process does not hold.
+ *
+ * A schedule session is admitted only from the scheduled transport, whose
+ * `source` the transport sets and no caller can. Checked ahead of the
+ * resource-send pass, so a resource send can't reach one either.
  */
 function refuseReservedAddress(envelope: InboundRequestEnvelope): void {
+  if (envelope.sessionId !== undefined && isScheduleSessionId(envelope.sessionId) && envelope.source !== SCHEDULED_SOURCE) {
+    throw new ScheduleSessionIdError(envelope.sessionId);
+  }
   if (isServerResourceSend(envelope)) return;
   if (envelope.flowKind === DEFAULT_WRITE_FLOW) throw new UnknownFlowError(envelope.flowKind);
   if (envelope.sessionId !== undefined && isWriteSessionId(envelope.sessionId)) {
