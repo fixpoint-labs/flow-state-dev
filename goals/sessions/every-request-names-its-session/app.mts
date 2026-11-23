@@ -27,9 +27,9 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { silentLogger } from "../../lib/index.mts";
 
 export const ORG = "acme";
-export const SCHEDULER = "scheduler";
+const SCHEDULER = "scheduler";
 export const CRON_SECRET = "goal-cron-secret";
-export const HOURLY = "0 * * * *";
+const HOURLY = "0 * * * *";
 
 /** Runs that hold wait here until the goal releases them. */
 export const holds = {

@@ -53,7 +53,7 @@ import {
   type ModulePatch
 } from "../../lib/index.mts";
 import { sleep } from "../../lib/time.mts";
-import { CRON_SECRET, HOURLY, ORG, SCHEDULER, goalApp, holds } from "./app.mts";
+import { CRON_SECRET, ORG, goalApp, holds } from "./app.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("every-request-names-its-session");
