@@ -1,0 +1,87 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="Before and after, side by side. Today, on the left: createTask copies input through as a record; updateTask, a batch, a routed filing and a reassign write it unchecked; the only filing check is the project requirement, from the needsProject hire option; the claim parses only the envelope, and each reader parses input on its own, late; listDelegates says only takes tasks. After, on the right: the flow's work entry declares its task input, with server-owned fields, a filler, refuse, check, stored and the project requirement; every write path runs one filing check in order: refuse, drop the server-owned fields, fill or keep the stored values, parse, check, project, store parsed; the claim reads stored rows through stored, parses again and hands the worker block the parsed input; listDelegates shows the filer's fields as JSON Schema; a flow with no declaration keeps an open record."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-gone{ fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-rec { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .ln-g  { stroke:var(--gone); stroke-width:1.2; fill:none; stroke-dasharray:4 3; }
+    .ln-c  { stroke:var(--code); stroke-width:1.4; fill:none; }
+    .ln-a  { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="400" height="438" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY</text>
+    <rect class="n-box" x="32" y="52" width="368" height="44" rx="5"/>
+    <text class="t-b" x="44" y="72">createTask</text>
+    <text class="t-g" x="44" y="88">input copied through: any record</text>
+    <g id="today-writers">
+      <rect class="n-gone" x="32" y="110" width="84" height="36" rx="4"/><text class="t-s" x="44" y="132">updateTask</text>
+      <rect class="n-gone" x="126" y="110" width="84" height="36" rx="4"/><text class="t-s" x="148" y="132">batch</text>
+      <rect class="n-gone" x="220" y="110" width="84" height="36" rx="4"/><text class="t-s" x="240" y="132">routed</text>
+      <rect class="n-gone" x="314" y="110" width="86" height="36" rx="4"/><text class="t-s" x="330" y="132">reassign</text>
+      <text class="t-g" x="32" y="162">each writes input unchecked</text>
+    </g>
+    <rect class="n-box" x="32" y="178" width="368" height="44" rx="5"/>
+    <text class="t-b" x="44" y="198">The one filing check: a project</text>
+    <text class="t-g" x="44" y="214">from needsProject, a hire option beside the flow</text>
+    <rect class="n-box" x="32" y="238" width="368" height="44" rx="5"/>
+    <text class="t-b" x="44" y="258">Claim</text>
+    <text class="t-g" x="44" y="274">parses the envelope; input is unknown</text>
+    <rect class="n-box" x="32" y="298" width="368" height="44" rx="5"/>
+    <text class="t-b" x="44" y="318">Readers</text>
+    <text class="t-g" x="44" y="334">each parses its own keys, late, or never</text>
+    <rect class="n-box" x="32" y="358" width="368" height="44" rx="5"/>
+    <text class="t-b" x="44" y="378">listDelegates</text>
+    <text class="t-g" x="44" y="394">takes: "tasks", and nothing about the input</text>
+    <text class="t-s" x="32" y="430">A filer may write any key, a server's included</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="432" y="16" width="492" height="438" rx="6"/>
+    <text class="t-lbl" x="448" y="38">AFTER</text>
+    <rect class="n-rec" x="448" y="52" width="460" height="44" rx="5"/>
+    <text class="t-b" x="460" y="72">The work entry declares its task input</text>
+    <text class="t-s" x="460" y="88">schema · serverOwned and fill · refuse · check · stored · project</text>
+    <g id="after-writers">
+      <rect class="n-box" x="448" y="110" width="84" height="36" rx="4"/><text class="t-s" x="460" y="132">createTask</text>
+      <rect class="n-box" x="540" y="110" width="84" height="36" rx="4"/><text class="t-s" x="550" y="132">updateTask</text>
+      <rect class="n-box" x="632" y="110" width="84" height="36" rx="4"/><text class="t-s" x="644" y="132">batch · step</text>
+      <rect class="n-box" x="724" y="110" width="84" height="36" rx="4"/><text class="t-s" x="744" y="132">routed</text>
+      <rect class="n-box" x="816" y="110" width="92" height="36" rx="4"/><text class="t-s" x="822" y="132">assign · move</text>
+      <path class="ln-c" d="M490 146 V178 M582 146 V178 M674 146 V178 M766 146 V178 M862 146 V178"/>
+    </g>
+    <rect class="n-new" x="448" y="178" width="460" height="44" rx="5"/>
+    <text class="t-b" x="460" y="198">One filing check, the assignee's flow's declaration</text>
+    <text class="t-c" x="460" y="214">refuse · drop server-owned · fill, or keep stored · parse · check · project</text>
+    <rect class="n-rec" x="448" y="238" width="460" height="44" rx="5"/>
+    <text class="t-b" x="460" y="258">Stored parsed</text>
+    <text class="t-s" x="460" y="274">a misfit refused, naming the field · nothing filed</text>
+    <path class="ln-a" d="M678 222 V238"/>
+    <rect class="n-new" x="448" y="298" width="460" height="44" rx="5"/>
+    <text class="t-b" x="460" y="318">Claim: stored read, then parse again</text>
+    <text class="t-c" x="460" y="334">the worker block is handed parsed input · a misfit fails by name</text>
+    <path class="ln-a" d="M678 282 V298"/>
+    <rect class="n-new" x="448" y="358" width="460" height="44" rx="5"/>
+    <text class="t-b" x="460" y="378">listDelegates shows the input</text>
+    <text class="t-c" x="460" y="394">the filer's fields as JSON Schema · the project requirement</text>
+    <rect class="n-box" x="448" y="414" width="460" height="30" rx="5"/>
+    <text class="t-s" x="460" y="433">No declaration: an open record, as today · needsProject is gone</text>
+  </g>
+</svg>
