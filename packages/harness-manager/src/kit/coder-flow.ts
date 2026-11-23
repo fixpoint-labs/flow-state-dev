@@ -24,11 +24,19 @@
  *   (a question) skips them.
  * - **Projects.** Off unless `project` is set: then a task needs its session's
  *   project, the run works in its checkout, and its checks are the project's.
+ * - **Modes.** How a run is told what to do, when it is done and where it
+ *   works, by name (`modes`, `defaultMode`): the kit's one `default` mode
+ *   unless the app registers its own (`./coder-modes`). The checks wrap
+ *   whichever mode runs.
+ * - **Tool approval.** A run asks the user before its tool calls when
+ *   `approveTools` is on.
+ * - **The app's own worker extension** (`worker`): settings a worker's file
+ *   may set, documents and actions, which the flow carries and never reads.
  *
  * A line typed in a task's session talks to that run's coding session (the
  * door), and a delivered message wakes it the same way.
  */
-import { defineFlow, handler, router, sequencer } from "@flow-state-dev/core";
+import { defineFlow, handler, router, sequencer, type DeclaredResources } from "@flow-state-dev/core";
 import type { PullRequestFollower } from "@flow-state-dev/core/harness";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
@@ -58,8 +66,10 @@ import { goalJudge } from "../goal-judge";
 import type { Harness } from "../harness";
 import { harnessDrainBudgetMs, harnessManager, resolveOwnership, type CompletionRunContext, type ModeSpec } from "../manager";
 import { DEFAULT_IDLE_TIMEOUT_MS } from "../run-stops";
+import { NETWORK_CALL_TIMEOUT_MS } from "../timeouts";
 import { harnessSessionDoor, harnessTalkTurn } from "../session-door";
 import { taskIssueSegment } from "../workspace";
+import { KIT_MODE, modeOfTask, resolveCoderModes, runModeOfTask, type CoderMode, type ResolvedModes } from "./coder-modes";
 
 import { CODER_FLOW } from "../coder-flow-name";
 import { RECORDED_WORK_VIEW } from "../coding-board-ref";
@@ -111,6 +121,52 @@ export interface CoderFlowOptions {
    * nothing follows a pull request a run opens.
    */
   onPullRequestRecorded?: (installation: WorkerInstallation) => PullRequestFollower;
+  /**
+   * The ways a run can work, by name. Absent: the kit's one mode, `default`
+   * (the coding brief; done when the harness finished). A `default` entry is
+   * completed from the kit's, so an app can replace part of it; any other
+   * entry names its `instructions` and `doneWhen`. A mode's `workspace` is
+   * absent for the kit's.
+   */
+  modes?: Readonly<Record<string, Partial<CoderMode>>>;
+  /** The mode a task that names none runs. Default `default`; refused when it isn't registered. */
+  defaultMode?: string;
+  /** A run asks the user before its tool calls (harness-manager's `approveTools`). Default false. */
+  approveTools?: boolean;
+  /**
+   * The app's own extension of the flow: settings a worker's file may set
+   * beside the flow's (a schema shape by key), documents installed on the
+   * flow, and actions built on the installation. The flow never reads them.
+   * A setting or action the flow already declares is refused.
+   */
+  worker?: CoderWorkerExtension;
+}
+
+/** The app's own part of the coding worker flow, which the flow carries and never reads. */
+export interface CoderWorkerExtension {
+  /** Settings a worker's file may set, beside `harness` and `review`. */
+  settings?: z.ZodRawShape;
+  /** Documents installed at flow level, beside the installation's (`resourcesFromDocs`). */
+  resources?: DeclaredResources;
+  /** Actions served beside `respond` and `harness`, built once on the installation. */
+  actions?: (installation: WorkerInstallation) => Readonly<Record<string, unknown>>;
+}
+
+/**
+ * The flow's settings: workforce's, `harness` naming a filled harness, `review`,
+ * and the app's own. An app setting the flow already declares is refused.
+ */
+function coderSettingsSchema(ids: readonly string[], own: z.ZodRawShape | undefined) {
+  const builtIn = workerConfigSchema().extend({
+    harness: z.enum(ids as [string, ...string[]]).optional(),
+    review: z.boolean().optional(),
+  });
+  if (own === undefined) return builtIn;
+  const taken = Object.keys(own).filter((key) => key in builtIn.shape);
+  if (taken.length > 0) {
+    throw new Error(`${CODER_FLOW}: the app's \`worker.settings\` declares ${taken.map((key) => `"${key}"`).join(", ")}, which the flow already declares.`);
+  }
+  return builtIn.extend(own) as unknown as typeof builtIn;
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -158,21 +214,39 @@ const DEFAULT_MODE: ModeSpec = {
   doneWhen: { check: (run) => run.stopReport === "finished" },
 };
 
+/** `mode` with the kit's checks: on a run that changed files, they must pass too, and the brief names them. */
+function withChecks(mode: ModeSpec, options: Pick<CoderFlowOptions, "checks" | "project">): ModeSpec {
+  const commands: CommandCheckCommands<CompletionRunContext> | undefined =
+    options.project === true ? projectChecks() : options.checks?.commands.length ? [...options.checks.commands] : undefined;
+  if (commands === undefined) return mode;
+  const onChange: CommandCheckCommands<CompletionRunContext> = async (run) =>
+    !(await runChangedFiles(run)) ? [] : typeof commands === "function" ? commands(run) : commands;
+  return commandCheck(mode, { commands: onChange, timeoutMs: options.checks?.timeoutMs ?? CHECKS_TIMEOUT_MS, inBrief: true });
+}
+
 /**
- * The mode a coding run runs: done when the harness says it finished and, on
- * a run that changed files, the checks pass. The brief names the checks too,
- * from the same list: before the run there is no base to compare, so a
- * question's brief names them as a change's does.
+ * The kit's own mode as a coding run runs it: done when the harness says it
+ * finished and, on a run that changed files, the checks pass. The brief names
+ * the checks too, from the same list: before the run there is no base to
+ * compare, so a question's brief names them as a change's does.
  *
  * @throws When `checks.timeoutMs` isn't a positive whole number.
  */
 export function codingMode(options: Pick<CoderFlowOptions, "checks" | "project">): ModeSpec {
-  const commands: CommandCheckCommands<CompletionRunContext> | undefined =
-    options.project === true ? projectChecks() : options.checks?.commands.length ? [...options.checks.commands] : undefined;
-  if (commands === undefined) return DEFAULT_MODE;
-  const onChange: CommandCheckCommands<CompletionRunContext> = async (run) =>
-    !(await runChangedFiles(run)) ? [] : typeof commands === "function" ? commands(run) : commands;
-  return commandCheck(DEFAULT_MODE, { commands: onChange, timeoutMs: options.checks?.timeoutMs ?? CHECKS_TIMEOUT_MS, inBrief: true });
+  return withChecks(DEFAULT_MODE, options);
+}
+
+/**
+ * Every mode the flow runs, each wrapped in the kit's checks, and the default.
+ *
+ * @throws As `resolveCoderModes` does, and as {@link codingMode} does.
+ */
+export function codingModes(options: Pick<CoderFlowOptions, "checks" | "project" | "modes" | "defaultMode">): ResolvedModes {
+  const resolved = resolveCoderModes(options, DEFAULT_MODE, CODER_FLOW);
+  return {
+    defaultMode: resolved.defaultMode,
+    modes: Object.fromEntries(Object.entries(resolved.modes).map(([name, mode]) => [name, { ...mode, spec: withChecks(mode.spec, options) }])),
+  };
 }
 
 /**
@@ -182,9 +256,11 @@ export function codingMode(options: Pick<CoderFlowOptions, "checks" | "project">
  * 30 s default, which would cancel the run.
  */
 export function codingDrainBudgetMs(
-  options: Pick<CoderFlowOptions, "checks" | "project" | "judge" | "runTimeoutMs" | "idleTimeoutMs">,
+  options: Pick<CoderFlowOptions, "checks" | "project" | "judge" | "runTimeoutMs" | "idleTimeoutMs" | "modes" | "defaultMode">,
 ): number {
-  const doneTimeoutMs = codingMode(options).doneWhen.timeoutMs;
+  // The longest done check of any mode: a shutdown can't know which one is running.
+  const timeouts = Object.values(codingModes(options).modes).map((mode) => mode.spec.doneWhen.timeoutMs);
+  const doneTimeoutMs = timeouts.some((ms) => ms !== undefined) ? Math.max(...timeouts.map((ms) => ms ?? NETWORK_CALL_TIMEOUT_MS)) : undefined;
   return harnessDrainBudgetMs({
     // A cap the host named is waited out; the default cap, or none, is not.
     runTimeoutMs: options.runTimeoutMs === undefined || options.runTimeoutMs === 0 ? SHUTDOWN_RUN_WAIT_MS : options.runTimeoutMs,
@@ -201,7 +277,9 @@ export function codingDrainBudgetMs(
  *
  * @param harnesses Every harness the app filled, by id.
  * @param refusal Why a harness can't run on this machine, asked before each task starts; `undefined` when it can.
- * @throws When no harness is filled, or `defaultHarness` names one that isn't.
+ * @throws When no harness is filled, `defaultHarness` names one that isn't, the
+ *   modes don't resolve (`codingModes`), or `worker` declares a setting or
+ *   action the flow already has.
  */
 export function coderWorkerFlow(
   options: CoderFlowOptions,
@@ -213,7 +291,8 @@ export function coderWorkerFlow(
   if (options.defaultHarness !== undefined && !ids.includes(options.defaultHarness)) {
     throw new Error(`${CODER_FLOW}: the default harness "${options.defaultHarness}" is not one of ${ids.join(", ")}.`);
   }
-  const mode = codingMode(options);
+  const resolved = codingModes(options);
+  const settingsSchema = coderSettingsSchema(ids, options.worker?.settings);
 
   return workerFlow(
     (installation: WorkerInstallation) => {
@@ -222,17 +301,31 @@ export function coderWorkerFlow(
         const filed = await filingConversationBoard(ctx);
         return filed === undefined
           ? undefined
-          : { tasks: filed.tasks, runOf: (task: Task) => ({ issue: taskIssueSegment(task.id), mode }) };
+          : {
+              tasks: filed.tasks,
+              runOf: (task: Task) => {
+                const mode = runModeOfTask(task.input, resolved);
+                return mode === undefined ? undefined : { issue: taskIssueSegment(task.id), mode };
+              },
+            };
       };
-      /** A manager for one harness; `reviewChanges` makes a run that committed wait for your review. */
-      const manager = (id: string, harness: Harness, reviewChanges: boolean) => {
-        const name = `${CODER_FLOW}-${id}${reviewChanges ? "-reviewed" : ""}`;
+      /**
+       * A manager for one harness and one mode; `reviewChanges` makes a run
+       * that committed wait for your review. The kit's own mode keeps the
+       * names its runs were always recorded under; another mode's carry its name.
+       */
+      const manager = (id: string, harness: Harness, modeName: string, reviewChanges: boolean) => {
+        const name = `${CODER_FLOW}-${id}${modeName === KIT_MODE ? "" : `-${modeName}`}${reviewChanges ? "-reviewed" : ""}`;
+        const mode = resolved.modes[modeName]!;
+        const workspace = mode.workspace ?? options.workspace;
+        // A mode's own workspace host may read its runs' project, so its blocks carry the project collections.
+        const projectUses = options.project === true || (mode.workspace !== undefined && "provision" in mode.workspace);
         return harnessManager({
           name,
           ledgers: conversationLedgers,
           tenant: undefined,
-          mode,
-          workspace: options.workspace,
+          mode: mode.spec,
+          workspace,
           ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
           ...(options.runTimeoutMs === undefined ? {} : { runTimeoutMs: options.runTimeoutMs }),
           harnessLabel: harness.label ?? harness.id,
@@ -242,15 +335,32 @@ export function coderWorkerFlow(
           ...(options.judge === false ? {} : { judge: goalJudge({ name: `${name}-judge` }) }),
           awaitPullRequests: options.pullRequests !== false,
           ...(follower === undefined ? {} : { onPullRequestRecorded: follower }),
-          ...(options.project === true ? { uses: [projectWorkspaceCapability] } : {}),
+          ...(options.approveTools === true ? { approveTools: true } : {}),
+          ...(projectUses ? { uses: [projectWorkspaceCapability] } : {}),
         } as never) as unknown as BlockDefinition<any, any>;
+      };
+      const modeNames = Object.keys(resolved.modes);
+      /**
+       * One harness's managers, by the mode each task runs. With one mode
+       * there is nothing to pick, and its manager is used as it is: the block
+       * tree stays what it was before an app could register modes.
+       */
+      const byMode = (id: string, harness: Harness, reviewChanges: boolean) => {
+        const managers = Object.fromEntries(modeNames.map((modeName) => [modeName, manager(id, harness, modeName, reviewChanges)]));
+        if (modeNames.length === 1) return managers[modeNames[0]!]!;
+        return router({
+          name: `${CODER_FLOW}-${id}-by-mode${reviewChanges ? "-reviewed" : ""}`,
+          inputSchema: taskWorkerInputSchema.passthrough(),
+          routes: Object.values(managers),
+          execute: (task: { input?: unknown }) => managers[modeOfTask(task.input, resolved)]!,
+        } as never) as BlockDefinition<any, any>;
       };
       const built = Object.fromEntries(
         Object.entries(harnesses).map(([id, harness]) => [
           id,
           {
-            manager: manager(id, harness, false),
-            reviewed: manager(id, harness, true),
+            manager: byMode(id, harness, false),
+            reviewed: byMode(id, harness, true),
             door: harnessSessionDoor({ name: `${CODER_FLOW}-${id}`, harness: harness.agent, board, onSteered: startOwedSteerTurn }),
             talk: harnessTalkTurn({ name: `${CODER_FLOW}-${id}-message`, harness: harness.agent, board }),
           },
@@ -286,21 +396,24 @@ export function coderWorkerFlow(
           },
         } as never) as BlockDefinition<any, any>;
       const anyDoor = Object.values(built)[0]!.door;
+      const appActions = options.worker?.actions?.(installation) ?? {};
+      const taken = Object.keys(appActions).filter((name) => name === "respond" || name === "harness");
+      if (taken.length > 0) {
+        throw new Error(`${CODER_FLOW}: the app's \`worker.actions\` declares ${taken.map((name) => `"${name}"`).join(", ")}, which the flow already serves.`);
+      }
 
       return defineFlow({
         kind: CODER_FLOW,
         description: "The coding worker flow: a worker that codes runs each task here, in a coding harness.",
         cardinality: "collection",
         // Optional only so the shared copy, which carries no worker's settings, can be built.
-        configSchema: workerConfigSchema().extend({
-          harness: z.enum(ids as [string, ...string[]]).optional(),
-          review: z.boolean().optional(),
-        }),
+        configSchema: settingsSchema,
         session: installation.session(),
         // FIX-2725: a run's plan and pull requests, read in its own session.
         views: { [RECORDED_WORK_VIEW]: recordedWorkView() },
-        resources: { ...installation.resources, ...workerMessagesResources },
+        resources: { ...options.worker?.resources, ...installation.resources, ...workerMessagesResources },
         actions: {
+          ...appActions,
           respond: { ...anyDoor, block: byHarness(`${CODER_FLOW}-door`, anyDoor.inputSchema, (b) => b.door.block, false) },
           harness: {
             inputSchema: z.object({}),
