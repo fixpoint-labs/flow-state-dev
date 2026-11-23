@@ -49,6 +49,8 @@ Written by `docs-writer` (sonnet), 2291 words. Scenario: The support app that in
 
 - After the loop (review): the Greptile review: each install step takes the first listed kit whose requirements are installed, so two kits that do not require each other can install against the list (for `[a(), b(), c()]` where only `a` requires `c`: `b, c, a`; packages/engine/src/flowstate/kits.ts:75-83). Corrected in the install-order table and the list-slot paragraph, and in the fact sheet. 2315 words. Page sha256 db5e6718fbda.
 
+- After PR review: both config examples pass `process.cwd()` to `localRepositories` and `source` instead of `"."`, which `localWorkspaceHost` refuses as `invalid-remote` because it matches listed repositories by absolute path. No other line changed. 2315 words. Page sha256 c101af59672b.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 b7a1e89ba03a, and the 8 Reference row(s) pass 6 moved.
@@ -67,6 +69,8 @@ Final fact check of the page as it closed, sha256 ed3f296bc6e8: 1 untrue, fixed 
 - Re-run after the review edit: each changed claim was read against the code it cites by the writer; the changed config type-checks. No untrue claim remains open.
 
 - Re-run after the review edit: each changed claim was read against the cited code by a code reader. No untrue claim remains open.
+
+- Re-run after the review edit: checked against `packages/workspace/src/local-host.ts:681,1427-1431`. No untrue claim remains open.
 
 ## 6 · Depth pass
 
