@@ -57,7 +57,7 @@ import {
   type TaskWorkerInput
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
+import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY, TASK_FLOW_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { routedFromStateSchema } from "../workers/routed-from";
 import { DISPATCH_ENTRY, FILED_HOP } from "./board-entries";
 import { hopMarkOf, messageTurnStateSchema, startTurnAtHop } from "../messages/hop";
@@ -67,7 +67,14 @@ import { noteRoutedSession, routedSessionResources } from "./routed-session";
 import { sessionIdOfFiling } from "./filing-session";
 import { conversationEndRules } from "./task-admission";
 import { REPLY_CONCURRENCY } from "./task-settled";
-import { markConversationTaskDoor } from "../worker-task-entry";
+import { markConversationTaskDoor, markTaskInput } from "../worker-task-entry";
+import { isTaskInputDeclaration, unstableMessage, type TaskInputDeclaration, type TaskInputRecord } from "../task-input/declaration";
+import { claimInput } from "../task-input/filing-check";
+import { checkedLedger, noteSourceOfDoor } from "../task-input/checked-ledger";
+import { filingWorkstreamOf } from "./filing-session";
+import { filingProjectStampOf } from "./held-task";
+import { namesProject, SET_THE_FILERS_PROJECT } from "../projects/run-project";
+import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/tasks";
 import { noteRoutedLines } from "../coordinator/routed-brief";
 import { taskMessage } from "./task-message";
 import { taskBriefMetadata } from "./task-brief";
@@ -125,6 +132,14 @@ export type WorkerTaskBlockInput = TaskWorkerInput & { readonly claim: WorkerTas
 export type WorkerTaskEntryOptions = {
   /** Names the entry's blocks. */
   readonly name: string;
+  // FIX-2894.
+  /**
+   * What the flow's tasks take (`taskInput(schema, { ... })`): every write
+   * that files a task for one of its workers is checked against it, the claim
+   * parses the stored row again, and the worker block is handed the parsed
+   * input. Omitted, its tasks take any object, unchecked.
+   */
+  readonly input?: TaskInputDeclaration<any>;
 } & (
   | {
       /** The flow's turn for one message: `{ message }` in, the answer out. The task's answer is its result. */
@@ -170,12 +185,31 @@ export async function conversationLedgers(
   if (ledgerId !== CONVERSATION_LEDGER_ID && ledgerId !== PLAN_LEDGER_ID) return undefined;
   if (partition === undefined) return undefined;
   // A task session works only the conversation it was opened for.
-  if (filingPartitionOf(ctx) === partition) return ledgerId === PLAN_LEDGER_ID ? planLedgerAt(ctx, partition) : conversationLedgerAt(ctx, partition);
+  if (filingPartitionOf(ctx) === partition) {
+    return checkedHandle(ctx, ledgerId === PLAN_LEDGER_ID ? await planLedgerAt(ctx, partition) : await conversationLedgerAt(ctx, partition));
+  }
   // A workstream's session works the routed tasks filed for it, and no other row there.
   if (ledgerId !== CONVERSATION_LEDGER_ID || taskId === undefined) return undefined;
   const ref = await conversationLedgerAt(ctx, partition);
   const row = ref?.get(taskId);
-  return row !== undefined && row.targetSessionId === ctx.session.identity.id ? ref : undefined;
+  return row !== undefined && row.targetSessionId === ctx.session.identity.id ? checkedHandle(ctx, ref) : undefined;
+}
+
+// FIX-2894.
+/**
+ * A ledger handed out of this module, with every write that puts input on a
+ * task or moves it routed through the filing check: what the tool would
+ * refuse, the handle refuses. Its project rule is the filing's, read from
+ * this session's own fields.
+ */
+function checkedHandle(ctx: BlockContext, ref: TaskCollectionRef | undefined): TaskCollectionRef | undefined {
+  if (ref === undefined) return undefined;
+  return checkedLedger(ctx, ref, {
+    has: async (input: TaskInputRecord) =>
+      filingWorkstreamOf(ctx.session.state) !== undefined || (await filingProjectStampOf(ctx)) !== null || namesProject(input),
+    refusal: (assignee: string) =>
+      `"${assignee}" works in a project's files, and this conversation has no project for it to work in. Nothing was filed. ${SET_THE_FILERS_PROJECT}`
+  });
 }
 
 /**
@@ -262,7 +296,7 @@ export async function filingConversationBoard(
   const partition = filingPartitionOf(ctx);
   const filingFlow = filingFlowOf(ctx);
   if (partition === undefined || filingFlow === undefined) return undefined;
-  const tasks = await conversationLedgerAt(ctx, partition);
+  const tasks = checkedHandle(ctx, await conversationLedgerAt(ctx, partition));
   return tasks === undefined
     ? undefined
     : { tasks, runEntry: DISPATCH_ENTRY, filingFlow, filingSession: sessionIdOfFiling(partition) };
@@ -280,6 +314,13 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   if (options.turn === undefined && options.block === undefined) {
     throw new Error(`workerTaskEntry "${name}": give \`turn\` or \`block\`, the block that does the task's work.`);
   }
+  const declaration = options.input;
+  if (declaration !== undefined && !isTaskInputDeclaration(declaration)) {
+    throw new Error(`workerTaskEntry "${name}": \`input\` is built with taskInput(schema, { ... }).`);
+  }
+  if (declaration?.unstable !== undefined) {
+    throw new Error(`workerTaskEntry "${name}": ${unstableMessage(declaration.unstable.step, declaration.unstable.path)}`);
+  }
 
   // Marked, so the delegate check knows this entry takes a conversation's tasks.
   const from = markConversationTaskDoor(taskLedgers({
@@ -293,22 +334,77 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     // Its pieces, and a message for this session not yet acted on, hold it open (FIX-2077).
     endRules: conversationEndRules
   }));
+  if (declaration !== undefined) markTaskInput(from, declaration);
+
+  // FIX-2894.
+  /**
+   * The claim checks the input again: the row as stored, read through the
+   * ledger the gate verified (never the dispatch's payload), mapped by the
+   * flow's `stored`, its server-owned values filled again when its stamp
+   * names another flow or declaration, then parsed. The task is handed on
+   * with the parsed input; a row that doesn't fit fails its attempt by name,
+   * and the block never runs. Every entry notes the installation it runs on
+   * for the session, so the raw handles this request is handed can check what
+   * they file.
+   */
+  const checkAtClaim = async (task: TaskWorkerInput, ctx: BlockContext): Promise<TaskWorkerInput> => {
+    const source = noteSourceOfDoor(ctx.session as object, from);
+    if (declaration === undefined) return task;
+    const claim = currentWorkerClaim(ctx);
+    const ledger = claim === undefined ? undefined : await conversationLedgers(claim.collectionId, ctx, claim.partition, claim.taskId);
+    const stored = ledger?.get(task.taskId);
+    if (stored === undefined) {
+      throw new Error(`input_refused: task "${task.taskId}" isn't on the board its claim names, so its input can't be read. Nothing ran.`);
+    }
+    const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+    const assignee = stored.assignee ?? "";
+    const named = state[TASK_FLOW_STATE_KEY];
+    const flow = typeof named === "string" ? named : (await source?.workerOf(ctx, assignee))?.flow;
+    if (flow === undefined) {
+      throw new Error(`input_refused: the flow task "${task.taskId}" runs on can't be read, so its input can't be checked. Nothing ran.`);
+    }
+    try {
+      const input = await claimInput({
+        ctx,
+        declaration,
+        flow,
+        task: stored,
+        worker: async () => {
+          const worker = source === undefined ? undefined : await source.workerOf(ctx, assignee);
+          if (worker === undefined) {
+            throw new TaskWriteRefusedError(
+              "input_refused",
+              `"${assignee}" can't be read now, so task "${task.taskId}"'s server-owned input can't be filled again. Nothing ran.`
+            );
+          }
+          return { id: assignee, config: worker.config };
+        }
+      });
+      return { ...task, input };
+    } catch (error) {
+      if (error instanceof TaskWriteRefusedError) throw new Error(`${error.code}: ${error.message}`);
+      throw error;
+    }
+  };
 
   // A `block` is handed the task and the claim the gate verified; a `turn`,
   // the task's message. A task that filed pieces stays running when the turn
   // ends, and the turn their endings wake decides it (FIX-2077): the gate's
   // check at the end of each request for it.
+  // The claim's check runs in the connector before the block, never as a step of
+  // its own: a step's output is recorded, and a resumed attempt must read the
+  // task as it is now (its steers), not as the first run saw it.
   const base = sequencer({ name, inputSchema: taskWorkerInputSchema }).tap(noteRoutedFrom).tap(startAtFiledHop);
   const block =
     options.block !== undefined
       ? base.step(
-          (task: TaskWorkerInput, ctx): WorkerTaskBlockInput => ({ ...task, claim: verifiedClaimOf(ctx, name) }),
+          async (task: TaskWorkerInput, ctx): Promise<WorkerTaskBlockInput> => ({ ...(await checkAtClaim(task, ctx)), claim: verifiedClaimOf(ctx, name) }),
           options.block
         )
       : base
           // A routed task's lines, for its model to be shown on this turn only.
           .tap(noteRoutedLines)
-          .step((task: TaskWorkerInput) => ({ message: taskMessage(task) }), options.turn!);
+          .step(async (task: TaskWorkerInput, ctx) => ({ message: taskMessage(await checkAtClaim(task, ctx)) }), options.turn!);
 
   /**
    * The turn's message as the session's user item, so the task as filed (or

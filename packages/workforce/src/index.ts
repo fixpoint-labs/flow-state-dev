@@ -67,6 +67,18 @@ export {
   type WorkerTaskEntryOptions
 } from "./conversation-board/task-entry";
 export { sessionIdOfFiling } from "./conversation-board/filing-session";
+// What a worker flow's tasks take (FIX-2894): the declaration its `work` entry
+// carries, checked at every filing and again at claim. Its hooks refuse with
+// `TaskWriteRefusedError`, from `@flow-state-dev/orchestration/tasks`.
+export {
+  taskInput,
+  type TaskInputCheckContext,
+  type TaskInputDeclaration,
+  type TaskInputFillContext,
+  type TaskInputOptions,
+  type TaskInputRecord,
+  type TaskInputWorker
+} from "./task-input/declaration";
 // A routed task's recent lines (FIX-2083), for a flow of its own whose `work` turn is a generator.
 export { routedTaskHistory } from "./coordinator/routed-brief";
 // Steering a task a worker runs (FIX-2086): the turn a late steer is owed, on

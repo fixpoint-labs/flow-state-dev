@@ -19,7 +19,6 @@ export { createStateBackedTaskCollection, type StateBackedOptions } from "./task
 export { taskLedgerResources, hasFrozenLedgerAssignee } from "./tasks/collection/define-task-collection";
 export { findTaskPartitions } from "./tasks/collection/find-task-partitions";
 export { readCommittedTask } from "./tasks/collection/read-committed";
-export { TaskWriteRefusedError } from "./tasks/collection/refused-write";
 export { resolveTaskCapDefaults, RETRY_BUDGET_NOT_APPLICABLE } from "./tasks/collection/task-caps";
 export { CASCADE_DUE_MS, cascadeEndedAt, DEFAULT_LEASE_DURATION_MS } from "./tasks/collection/internal";
 // `TaskChangeKind` is public on `./tasks` (FIX-2776).

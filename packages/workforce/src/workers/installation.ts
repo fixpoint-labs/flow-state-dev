@@ -85,6 +85,9 @@ import { WORKER_USAGE_RESOURCE, workerSpendHook, workerUsageCollection } from ".
 import { routineResourcesOf, type RoutineResources } from "../routines/routine-resources";
 import { routineSeedOf } from "../routines/routines-options";
 import { withSessionFields, type SessionFields } from "./session-fields";
+import { noteTaskInputSource, registerTaskInputSource, type TaskInputSource } from "../task-input/checked-ledger";
+import { declarationOfFlow } from "../task-input/declaration";
+import { conversationTaskDoorOf } from "../worker-task-entry";
 
 export { verifiedWorkerOf } from "./verified-worker";
 
@@ -469,8 +472,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         flow: entry.build(installation) as never,
         standardOnly: entry.standardOnly,
         ...(entry.roles === undefined ? {} : { roles: entry.roles }),
-        showSettings: entry.showSettings,
-        needsProject: entry.needsProject
+        showSettings: entry.showSettings
       };
       built.set(entry, flow);
     }
@@ -909,6 +911,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       granted.set(accessor, entry.llmWritable === true && entry.writable !== false ? "visible" : "read-only");
     }
     markVerifiedWorker(ctx.session as object, workerId, instance.config as Readonly<Record<string, unknown>>, granted);
+    noteTaskInputSource(ctx.session as object, taskInputSource);
     return {
       id: workerId,
       standard: worker.found === "standard",
@@ -1010,6 +1013,23 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     return typeof taskId === "string" ? `${worker} · ${taskId}` : worker;
   };
 
+  // FIX-2894.
+  /**
+   * What a task's input is checked against, for this installation: each
+   * flow's declaration, and a worker's flow and declared configuration (its
+   * row's settings, or its file's front matter), read now. Registered, so a
+   * raw ledger handle in one of its sessions checks what it files.
+   */
+  const taskInputSource: TaskInputSource = {
+    declarationOf: (flow) => (Object.hasOwn(workerFlows(), flow) ? declarationOfFlow(workerFlows()[flow]!.flow) : undefined),
+    workerOf: async (ctx, id) => {
+      const found = lookupWorker(id, (await workerCollection(ctx as WorkerTurnContext, "taskInput").getOptional(id))?.state);
+      if (found.found === "own") return { flow: found.flow, config: declaredOf(found.row) };
+      if (found.found === "standard") return { flow: found.flow, config: found.manifest.declared };
+      return undefined;
+    },
+    hasTaskDoor: (binding) => Object.values(workerFlows()).some((entry) => conversationTaskDoorOf(entry.flow) === binding)
+  };
   const installation: WorkerInstallation = {
     resources,
     documents,
@@ -1045,5 +1065,6 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     standardWorkerProblems
   };
   Object.assign(resources, routineResourcesOf(installation));
+  registerTaskInputSource(taskInputSource, installation);
   return installation;
 }

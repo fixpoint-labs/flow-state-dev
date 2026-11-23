@@ -202,6 +202,8 @@ export { assertEvaluatorBlock } from "../blocks/evaluator";
 export { createBindingCache } from "../bindings";
 export { errorDetailsWithCause } from "../errors";
 export { isTraceObservabilityEnabled } from "../helpers/trace-observability";
+// FIX-2894: a delegate's task input, as `listDelegates` shows it to a model.
+export { inlinedJsonSchema } from "../helpers/inlined-json-schema";
 
 /**
  * The change-notice and push-delivery wire the engine and the node host serve,

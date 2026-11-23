@@ -41,3 +41,29 @@ export function takesConversationTasks(flow: unknown): boolean {
   const from = (actions[WORKER_TASK_ENTRY] as { from?: unknown } | undefined)?.from;
   return typeof from === "object" && from !== null && (from as Record<symbol, unknown>)[CONVERSATION_TASK_DOOR] === true;
 }
+
+// FIX-2894.
+/** The mark on a `work` entry's `from` holding the flow's task-input declaration. */
+const TASK_INPUT_DECLARATION = Symbol.for("@flow-state-dev/workforce/task-input-declaration");
+
+/** Mark `binding` with the declaration of what its flow's tasks take. Returns it. */
+export function markTaskInput<T extends object>(binding: T, declaration: unknown): T {
+  Object.defineProperty(binding, TASK_INPUT_DECLARATION, { value: declaration });
+  return binding;
+}
+
+/** The `from` of a worker flow's `work` entry, when it takes a conversation's tasks. */
+export function conversationTaskDoorOf(flow: unknown): object | undefined {
+  if (!takesConversationTasks(flow)) return undefined;
+  return (flow as { task: { actions: Record<string, { from: object }> } }).task.actions[WORKER_TASK_ENTRY]!.from;
+}
+
+/**
+ * The declaration of what a worker flow's tasks take, read off its `work`
+ * entry as {@link takesConversationTasks} reads the entry's mark: `undefined`
+ * for a flow that declares none, whose tasks take any object.
+ */
+export function taskInputOf(flow: unknown): unknown {
+  const door = conversationTaskDoorOf(flow);
+  return door === undefined ? undefined : (door as Record<symbol, unknown>)[TASK_INPUT_DECLARATION];
+}
