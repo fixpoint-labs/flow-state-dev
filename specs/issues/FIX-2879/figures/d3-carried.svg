@@ -1,0 +1,106 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="D3, which coder runs a coding task filed from a session no person writes to, such as a researcher&#x27;s task. Chosen: the pick that session was opened with. Instead of: refusing such filings, or following the conversation&#x27;s current pick. It comes down to the first row: refusing leaves the researcher unable to ask for the fix, and following the current pick lets a later pick reach work in flight. The price is the second row: a delegate&#x27;s long-lived conversation keeps an older pick, while refusing has no such cost and following the current pick is always current. The third row: the chosen option amends the text of epic rule ER-5, which refusing does not. Locks in: the filler reads a coding run&#x27;s frozen pair, else the session&#x27;s codeWith. Flips if: long-lived delegate conversations file much coding work."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
+    <text class="t-q" x="32" y="52">A researcher’s task asks for a code change. Which coder runs it?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="227" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">The pick it was opened with</text>
+    <rect class="lost" x="455" y="76" width="227" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="471" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="471" y="112">Refuse the filing</text>
+    <rect class="lost" x="697" y="76" width="227" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="713" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="713" y="112">The current pick</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">THE RESEARCHER</text>
+    <text class="t-lbl" x="32" y="169">WHO FINDS A BUG</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Files the fix</text>
+    <text class="t-s" x="248" y="179">on the filing turn’s pick</text>
+    <text class="mark minus" x="471" y="162">−</text>
+    <text class="t-b" x="491" y="161">Can’t ask for it</text>
+    <text class="t-s" x="491" y="179">Lead has to file it</text>
+    <text class="mark minus" x="713" y="162">−</text>
+    <text class="t-b" x="733" y="161">Files it, but…</text>
+    <text class="t-s" x="733" y="179">a later pick moves it</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="226">A LONG-LIVED</text>
+    <text class="t-lbl" x="32" y="239">DELEGATE CHAT</text>
+    <text class="mark minus" x="228" y="232">−</text>
+    <text class="t-b" x="248" y="231">Keeps an older pick</text>
+    <text class="t-s" x="248" y="249">the one it opened with</text>
+    <text class="mark plus" x="471" y="232">+</text>
+    <text class="t-b" x="491" y="231">No question</text>
+    <text class="t-s" x="491" y="249">it files nothing</text>
+    <text class="mark plus" x="713" y="232">+</text>
+    <text class="t-b" x="733" y="231">Always current</text>
+    <text class="t-s" x="733" y="249">follows the person</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="284">EPIC RULE ER-5</text>
+    <text class="mark minus" x="228" y="290">−</text>
+    <text class="t-b" x="248" y="289">Text amended</text>
+    <text class="t-s" x="248" y="307">“never in a coding run”</text>
+    <text class="mark plus" x="471" y="290">+</text>
+    <text class="t-b" x="491" y="289">As written</text>
+    <text class="t-s" x="491" y="307">no amendment</text>
+    <text class="mark minus" x="713" y="290">−</text>
+    <text class="t-b" x="733" y="289">Contradicted</text>
+    <text class="t-s" x="733" y="307">ER-2 freezes per run</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">Run’s frozen pair, else the session’s codeWith</text>
+    <text class="t-s" x="32" y="387">a follow-up PR amends epic ER-5’s text</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">Long-lived delegate chats file much code</text>
+    <text class="t-s" x="494" y="387">then each message re-carries the pick</text>
+  </g>
+</svg>
