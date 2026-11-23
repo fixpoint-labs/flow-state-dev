@@ -94,10 +94,9 @@ FIX-2879 could for a2 and FIX-2878 for b9. Then that row rolls the child's signa
   is the implementer's call.
 - **Lead runs on the lab's default model** for the rows that need a person's words (a1, a2, a4,
   a5). Every other row is scripted.
-- **FIX-2894 is read from its review PR.** Its spec is on #5614 at `38400d9`, not on `main`, and
-  the checker reads it there with `git show`. When it merges, its entries in `coverage.json` become
-  plain paths. A clause the merged spec rewords fails the check until the rows follow it, and a
-  promise the merged spec drops is a finding.
+- **A child spec amended later.** The checker reads every child spec from the tree. An amendment
+  that rewords a clause fails the check until the rows follow it, and a promise an amendment drops
+  is a finding.
 - **Two children use one control name.** FIX-2878 and FIX-2894 each name a control `trust-stored`,
   and each patches something different. The closure's goal runs them as `FIX-2878:trust-stored`
   and `FIX-2894:trust-stored`, so one `GOAL_CONTROL` value never means two patches.
@@ -126,7 +125,7 @@ FIX-2879 could for a2 and FIX-2878 for b9. Then that row rolls the child's signa
 ## Settled
 
 - **The matrix is total, clause by clause, and every row has a red state.** CONFIRMED by
-  [`poc/coverage/check.mjs`](poc/coverage/check.mjs) on `0a9ac03b4`, with FIX-2894 read at `38400d9`.
+  [`poc/coverage/check.mjs`](poc/coverage/check.mjs) on this branch, with `main` merged in after FIX-2894's spec landed.
   32 rows cover all 95 clauses of the goal signals: the epic 24, FIX-2877 9, FIX-2878 34,
   FIX-2879 13, FIX-2894 15. Eight rows also rest on a promise no child goal covers in full, five
   with no child signal at all. 30 rows name a control and 2 rely on `GOAL_COMMIT`. There are twelve closure controls and three
@@ -156,7 +155,7 @@ is weaker than the skill asks. The reviewer at the gate should read it with that
    and dropped*).
 3. **Other shapes.** Children's goals only, and a browser-first run. Both are recorded above.
 4. **New factors.** The modes amendment (#5612), FIX-2878's modes re-check (#5611) and FIX-2879's
-   merge (#5607) are all folded in, and FIX-2894's spec on its review PR (#5614 at `38400d9`).
+   merge (#5607) are all folded in, and FIX-2894's spec, now merged (#5614).
 5. **Necessity.** Earns its place. Two inter-child disagreements and eight uncovered cases
    showed up at spec time, before any child built.
 6. **Ergonomics.** One command per leg, and one checker that a later spec change re-runs.

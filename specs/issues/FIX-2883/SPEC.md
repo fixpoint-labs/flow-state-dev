@@ -52,7 +52,7 @@ ran and with which model. Each control must fail its named row before any PASS c
 
 ## What changes
 
-![The closure, as a picture. On the left, what the children promise, as goal-signal clauses: FIX-2894's fifteen, read from its review PR, FIX-2877's nine, FIX-2878's thirty-four and FIX-2879's thirteen. In the middle, four legs on one main commit: a with seven rows, b with ten, c with three, d with twelve. Eight rows also rest on a promise no child goal names in full. On the right, each control fails first, then the legs pass, the child goals are re-run and the sweep prints nothing. A finding is a bug under the epic](figures/what-changes.svg)
+![The closure, as a picture. On the left, what the children promise, as goal-signal clauses: FIX-2894's fifteen, FIX-2877's nine, FIX-2878's thirty-four and FIX-2879's thirteen. In the middle, four legs on one main commit: a with seven rows, b with ten, c with three, d with twelve. Eight rows also rest on a promise no child goal names in full. On the right, each control fails first, then the legs pass, the child goals are re-run and the sweep prints nothing. A finding is a bug under the epic](figures/what-changes.svg)
 
 Every clause of every child signal (95 in all) goes into at least one leg. The closure's own rows are the eight cases the
 epic promises and no child's goal covers in full, most of them between two children.
@@ -99,10 +99,8 @@ line, since the pages follow at release.
 | **c** · Shift Manager on the shared flow | c1–c3 | epic *c* · FIX-2877 *b* · FIX-2878 *Legacy feature* | — |
 | **d** · only the server picks, and refusals have names | d1–d12 | epic *d* · FIX-2878 *Plan, Lock, Postcheck, Mode, Mode lock, Legacy feature, Legacy write, Mode update, No-pick, Legacy* · FIX-2894 *Refuse, Own, Stamp, Race, Round trip, Move, Claim, Open, Project* | d1's turn pick, d3 a failed catalog, d6 a filer's `doneWhen`, d8 no root |
 
-FIX-2894's spec is not on `main` yet. The matrix reads it from its review PR,
-[#5614](https://github.com/fixpoint-labs/flow-state-dev/pull/5614) at `38400d9`, through
-`git show` (fetch `spec/FIX-2894` first). When it merges, its entries become plain paths, and a
-clause the merged spec rewords fails the check until the rows follow it.
+Every child spec, FIX-2894's included, is read from `main`. A child spec that is later amended
+and rewords a clause fails the check until the rows follow it.
 
 ## Examples
 
@@ -525,7 +523,7 @@ harness ran.
 | **Whatever already checks this goal end to end:** none. Searched `goals/` for `codeWith`, `runs-on-the-coder`, `coder-selection` and the children's goal paths; the children's goals exist only in their specs. The closest: `goals/closure-smarter-agents/` (FIX-2541), whose coder ask grades a report, not the coder that ran | **Builds on** its shape: one directory, legs as modules, a re-run of child goals. This is not a second check of the same thing |
 | The epic's goal check, signals and controls ([FIX-2876](../../epics/FIX-2876/SPEC.md#the-goal-and-how-well-know-its-met)) | **Builds** them. **Amends in part** the *Goal check* row's "Teammates in the browser": the browser is one reload ([D2](DECISIONS.md#d2)) |
 | The owner's review notes on this issue (epic review rounds 1 and 2): integration-first, one matrix of route by assertion, steer, message and door on a task whose settings differ from its worker's | **Kept**: legs a, b and d over the public client, the matrix above, b3 |
-| FIX-2877 goals *a*, *b*, *c* · FIX-2878's sixteen signals · FIX-2879's seven · FIX-2894's ten, from its review PR #5614 | **Rolled up**, clause by clause, 95 clauses in all. Two FIX-2877 goals are **superseded** on the closure commit, and the implementation PRs of FIX-2878 and FIX-2879 update them ([above](#two-child-goals-the-final-commit-changes)) |
+| FIX-2877 goals *a*, *b*, *c* · FIX-2878's sixteen signals · FIX-2879's seven · FIX-2894's ten | **Rolled up**, clause by clause, 95 clauses in all. Two FIX-2877 goals are **superseded** on the closure commit, and the implementation PRs of FIX-2878 and FIX-2879 update them ([above](#two-child-goals-the-final-commit-changes)) |
 | `goals/lib`: `runGoal`, `tell.over`, `module-patch`, `shift-manager`, `client-actions`, `playwright` | **Builds on**: the verdict format, the controls and the drivers |
 | `goals/harness-manager/host.mts` and `goals/teammates-lab/lab.mts` | **Builds on** where they fit; the implementer decides whether the new host extends the first |
 

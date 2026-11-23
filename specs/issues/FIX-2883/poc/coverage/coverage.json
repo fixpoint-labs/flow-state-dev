@@ -18,12 +18,9 @@
       "specs/issues/FIX-2879/DECISIONS.md"
     ],
     "FIX-2894": [
-      "git:38400d991d007b3e6a58539142ee2437b2ea93bc:specs/issues/FIX-2894/SPEC.md",
-      "git:38400d991d007b3e6a58539142ee2437b2ea93bc:specs/issues/FIX-2894/DECISIONS.md"
+      "specs/issues/FIX-2894/SPEC.md",
+      "specs/issues/FIX-2894/DECISIONS.md"
     ]
-  },
-  "pending": {
-    "FIX-2894": "Read from its review PR #5614 at 38400d9 (spec/FIX-2894), not yet on main. When it merges, its entries become plain paths, and a clause its merged spec changes fails this check until the rows follow it."
   },
   "clauses": {
     "FIX-2876:a#0": "the stored message has no `Coding harness:`",

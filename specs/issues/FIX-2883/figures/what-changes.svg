@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 410" role="img" aria-label="The closure, as a picture. On the left, what the children promise: the clauses of each child's goal signals: FIX-2894's fifteen, read from its review PR, FIX-2877's nine, FIX-2878's thirty-four and FIX-2879's thirteen. In the middle, four legs on one main commit: a, a person's pick reaches the run, seven rows; b, a run keeps its coder, ten rows; c, Shift Manager on the shared flow, three rows; d, only the server picks and refusals have names, twelve rows. Eight rows also rest on a promise the epic makes and no child goal covers in full. On the right, each control fails its row first, then the 32 rows pass, the child goals are re-run, and the sweep prints nothing. A finding is a bug under the epic."
+<svg viewBox="0 0 940 410" role="img" aria-label="The closure, as a picture. On the left, what the children promise: the clauses of each child's goal signals: FIX-2894's fifteen, FIX-2877's nine, FIX-2878's thirty-four and FIX-2879's thirteen. In the middle, four legs on one main commit: a, a person's pick reaches the run, seven rows; b, a run keeps its coder, ten rows; c, Shift Manager on the shared flow, three rows; d, only the server picks and refusals have names, twelve rows. Eight rows also rest on a promise the epic makes and no child goal covers in full. On the right, each control fails its row first, then the 32 rows pass, the child goals are re-run, and the sweep prints nothing. A finding is a bug under the epic."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -33,7 +33,7 @@
   <g id="children">
     <rect class="kid" x="16" y="44" width="256" height="56" rx="5"/>
     <text class="t-b" x="30" y="67">FIX-2894 · a typed task input</text>
-    <text class="t-s" x="30" y="85">15 clauses in 10 signals · from PR #5614</text>
+    <text class="t-s" x="30" y="85">15 clauses in 10 signals</text>
     <rect class="kid" x="16" y="114" width="256" height="56" rx="5"/>
     <text class="t-b" x="30" y="137">FIX-2877 · one flow, one default</text>
     <text class="t-s" x="30" y="155">9 clauses in 3 signals · 2 goals superseded</text>
