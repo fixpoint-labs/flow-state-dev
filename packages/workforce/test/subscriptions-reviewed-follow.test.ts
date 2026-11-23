@@ -14,7 +14,7 @@
  * own follow, never on another subscription: the service's `trustedBots`
  * stays service-wide and is never fed from the list.
  *
- * GitHub's permission endpoint is a local stub; it counts each ask, because
+ * GitHub's permission endpoint is a local stub; it counts each lookup, because
  * a listed user costs one permission call per comment, and a bot or a
  * stranger none.
  *

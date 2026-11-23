@@ -31,7 +31,7 @@ import { GITHUB_REVIEWERS_DOC, githubLoginsListed, reviewersDocumentOf } from ".
 const GITHUB_REVIEWERS_TOOL = "setGitHubReviewers";
 /** The evaluator that judges the operator's message before the tool writes. Pinned: a scripted model resolves it by this. */
 const GITHUB_REVIEWERS_JUDGE = "github-reviewers-edit-judge";
-/** A yes the judge must reach that the message asks for this change, and the most likely it may find that something else wrote the ask. */
+/** A yes the judge must reach that the message asks for this change, and the most likely it may find that something else wrote the request. */
 const ASKED_FLOOR = 0.8;
 const INJECTED_CEILING = 0.2;
 /** The longest message the judge reads, whole; the tool refuses a longer one rather than judge part of it. */

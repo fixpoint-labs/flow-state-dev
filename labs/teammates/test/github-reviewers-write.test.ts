@@ -3,11 +3,11 @@
  * Who writes the trusted GitHub reviewers on the lab's host. The lab takes
  * every HTTP request as its own user, so a run that calls the lab over
  * loopback is the operator. No HTTP action writes the list, then: the only
- * writer is `setGitHubReviewers`, Chief of Staff's tool, which waits on the
+ * writer is `setGitHubReviewers`, Lead's tool, which waits on the
  * operator's own typed word, a judge and Approve. A loopback POST to a save
  * action leaves the list as `GITHUB_REVIEWERS` set it.
  *
- * Chief of Staff holds the tool beside everything it held before; researcher
+ * Lead holds the tool beside everything it held before; researcher
  * and writer, which write their own `tools:` lines, don't.
  *
  * Control (must FAIL, on the named signal): `GOAL_CONTROL=public-save-action`
@@ -133,7 +133,7 @@ describe("the trusted GitHub reviewers on the lab's host", () => {
     expect(statuses.every((status) => status >= 400), `no save action answered: ${statuses.join(", ")}`).toBe(true);
   });
 
-  it("have one writer, Chief of Staff's tool, beside every tool it held; researcher and writer don't hold it", async () => {
+  it("have one writer, Lead's tool, beside every tool it held; researcher and writer don't hold it", async () => {
     const offered: Offered = {};
     const host = await openHost(offered);
     await host.say("teammates.chief-of-staff", "hi");
