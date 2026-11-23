@@ -40,13 +40,18 @@ export const codingTaskInputSchema = z // NEW (FIX-2878); its type is CodingTask
   .strict();
 export type CodingTaskInput = z.infer<typeof codingTaskInputSchema>;
 
-/** NEW (FIX-2878): a legacy row's marker, read as implement (BP-030); nothing writes it again. */
+/**
+ * NEW (FIX-2878): a legacy row's marker, read as implement (BP-030); nothing writes it again.
+ * A pre-parse step on the declaration, so filing, updateTask and claim all see `{ mode, issue }`.
+ * The marker's `phase` is ignored: the old `phases` map only ever had `feature`, so every
+ * well-formed marker is implement, whatever `phase` says. One with no valid `issue` is refused.
+ */
 const readLegacy = (raw: Record<string, unknown>): Record<string, unknown> => {
   if (!("harnessFeature" in raw)) return raw;
   const { harnessFeature, ...rest } = raw;
   const marker = harnessFeatureSchema.safeParse(harnessFeature); // { issue, phase? }
   if (!marker.success) throw new Error("this task's feature marker is malformed. Nothing ran."); // never run as an answer
-  return { ...rest, mode: "implement", issue: marker.data.issue };
+  return { ...rest, mode: "implement", issue: marker.data.issue }; // `phase` dropped
 };
 
 task: {
@@ -57,8 +62,9 @@ task: {
       input: taskInput(codingTaskInputSchema, {
         serverOwned: ["harness", "model", "plan"], // every run setting that widens a run when changed; never `mode`
         dropped: ["doneWhen", "workspace"], // NEW (FIX-2878): a mode's server code, dropped from a filer's input like the above (ER-9)
+        legacy: readLegacy, // NEW (FIX-2878): pre-parse, at filing, updateTask and claim
         fill: fillRunSettings, // NEW (FIX-2878): the harness kit's filler (step 3)
-        check: checkMode, // NEW (FIX-2878): the mode is registered and has its inputs (section 7)
+        check: checkMode, // NEW (FIX-2878): default mode, registered and `requires`, then the lock (section 7)
         project: options.project === true ? "required" : "optional", // was the hire's `needsProject`
       }),
       block: byHarness(`${CODER_FLOW}-by-harness`, taskWorkerInputSchema.passthrough(), (b) => b.manager, true),
@@ -490,10 +496,17 @@ mode name. The stored mode is what the claim runs, so a later change to `default
 tasks not yet filed; the claim re-checks `requires`:
 
 ```ts
-/** NEW (FIX-2878): the declaration's check, run at filing after the parse; returns the input to store. */
-const checkMode = (input: CodingTaskInput): CodingTaskInput => {
+/**
+ * NEW (FIX-2878): the declaration's check, run at filing after the parse; returns the input to store.
+ * Order: legacy read (pre-parse) → default mode → registered and `requires` → the assignee's lock.
+ */
+const checkMode = (input: CodingTaskInput, worker: { id: string; config: { lock?: { mode?: string } } }): CodingTaskInput => {
   const name = input.mode ?? defaultMode; // written in by the server, before the requires check
   checkRequires(name, input);
+  const pinned = worker.config.lock?.mode; // ER-11: refused at filing here, and again at claim in resolveRun
+  if (pinned !== undefined && pinned !== name) {
+    throw new TaskWriteRefusedError("mode_locked", `worker "${worker.id}" always runs with mode ${pinned}; this task asked for ${name}. Nothing was filed.`);
+  }
   return { ...input, mode: name };
 };
 
@@ -545,12 +558,13 @@ lock:
 ```
 
 A legacy row filed before FIX-2878 still carries the marker. It is read as `implement` with its
-issue (BP-030), and nothing writes the marker again; a malformed one is refused, never run as an
-answer:
+issue (BP-030) at filing, `updateTask` and claim, and nothing writes the marker again. The marker's
+`phase` is ignored, so every well-formed marker is `implement`; one with no valid `issue` is
+refused, never run as an answer:
 
 ```jsonc
 // stored:  { "harnessFeature": { "issue": "ENG-142", "phase": "code" } }
-// read as: { "mode": "implement", "issue": "ENG-142" }
+// read as: { "mode": "implement", "issue": "ENG-142" }   (`phase` ignored, whatever it says)
 // stored:  { "harnessFeature": { "phase": "code" } }   → refused: this task's feature marker is malformed. Nothing ran.
 ```
 
