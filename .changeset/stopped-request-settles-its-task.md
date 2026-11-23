@@ -4,7 +4,7 @@
 "@flow-state-dev/orchestration": patch
 ---
 
-A stopped request settles the task it works when it ends, not when the task's lease lapses.
+A stopped request settles the task it works when it ends, not when the task's lease lapses (FIX-2795).
 
 - **orchestration:** when a person stops a task's own request (the abort route, `ctx.session.stopRequest`), the request ends `aborted` and its task is **cancelled**, with the reason "The request working the task was stopped." The cancel is an ending like any other: rows that depend on the task are cancelled too, and the filer hears it. An answer the request gave before the stop is not taken. Before, the task was meant to fail its attempt, so the work the person stopped would run again.
 - **orchestration:** a person's stop of a later request admitted for a task (a steer's turn, a notice) settles nothing and fails nothing. The task waits again on what it waited on, and keeps the output it had.
