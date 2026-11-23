@@ -248,12 +248,19 @@ describe("the teammates screen", () => {
   });
 
   it("holds researcher's reply as pending while Lead answers you, and lands it after that answer", async () => {
-    render(<TestProvider server={fast()}><App /></TestProvider>);
+    const lab = fast();
+    render(<TestProvider server={lab}><App /></TestProvider>);
+    // The script's clock runs on its own, so the order is pinned: researcher answers only after your second
+    // line has started Lead's turn, and that turn holds until the reply is pending.
+    const researcherAnswers = lab.holdNextTurn("teammates.researcher");
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     await within(conversation()).findByRole("button", { name: /^Messaged researcher/ });
 
     // Step 3: a second line before researcher answers. Lead takes it, and the reply arrives mid-turn.
+    const leadAnswers = lab.holdNextTurn("teammates.chief-of-staff");
     await tell("Lead", "Make section 2 about pricing.");
+    await waitFor(() => expect(within(conversation()).getByRole("status", OUTSIDE_COMPOSER).textContent).toMatch(/Lead is answering/));
+    act(() => researcherAnswers());
     await waitFor(() => expect(conversation().querySelector("[data-pending]")?.textContent).toBe("← researcher replied · Lead reads it after this turn"), {
       interval: 5,
       timeout: 2000,
@@ -262,6 +269,7 @@ describe("the teammates screen", () => {
     expect(entries("received")).toHaveLength(2); // only writer's two older replies so far
 
     // The reply lands as its own line after Lead's answer to you, and Lead's next line uses it.
+    act(() => leadAnswers());
     const reply = await within(conversation()).findByRole("region", { name: "From researcher" }, { timeout: 2000 });
     expect(conversation().querySelector("[data-pending]")).toBeNull();
     const answer = within(conversation()).getByText(/Noted: "Make section 2 about pricing\."/);
