@@ -1127,6 +1127,39 @@ describe("a stopped request settles its task when it ends, never at its lease's 
     expect(await h.row()).toMatchObject({ status: "completed", output: "answered: Use the North America numbers", attempts: 1 });
   });
 
+  it("a person's stop of a later request admitted from a filed wait gives back a steer it took, which the next turn reads", async () => {
+    const h = await harness({ steerTurn: true });
+    h.setBehaviour(async (ctx, ledger) => {
+      await ledger.createTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
+      return "first answer";
+    });
+    await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "filed" });
+    expect((await h.row())?.turnOwed).toBeUndefined();
+    // A notice turn, admitted from the filed wait (no turn owed): a steer lands while it runs, it
+    // takes the steer, and a person stops it before it answers.
+    h.setLaterTurn(async (ctx, ledger) => {
+      await ledger.steer!("t1", { message: "Use the v2 API.", from: "filer" });
+      const running = await runningTaskOf(async () => ledger, ctx);
+      expect((await takeRunningSteers(running!, `turn:${ctx.request.identity.id}`)).map((s) => s.message)).toEqual(["Use the v2 API."]);
+      return stopSelf(ctx);
+    });
+    const { requestId } = await h.runLater("notice");
+    expect((await h.requests.get(requestId!))?.status).toBe("aborted");
+    const task = (await h.row())!;
+    expect(task).toMatchObject({ status: "in_progress", keptOpenBy: "filed", attempts: 1 });
+    expect(task.steers?.map((steer) => [steer.message, steer.takenBy])).toEqual([["Use the v2 API.", undefined]]);
+    // The piece ends: the request its end wakes finds the steer untaken and owes it a turn, which reads it.
+    expect((await h.reclaim())?.id).toBe("piece");
+    await (await h.ledger()).complete("piece", "piece done");
+    h.setLaterTurn(async () => "a later answer");
+    await h.runLater("notice");
+    expect(await h.row()).toMatchObject({ status: "in_progress", keptOpenBy: "steer", attempts: 1 });
+    await h.runLater("steerTurn");
+    expect(h.steerTurns).toEqual([["Use the v2 API."]]);
+    expect(await h.row()).toMatchObject({ status: "completed", output: "answered: Use the v2 API." });
+  });
+
   it("a person's stop of a later request that took the turn an answered question owed gives that turn back", async () => {
     const h = await harness();
     h.setBehaviour(async (ctx, ledger) => {

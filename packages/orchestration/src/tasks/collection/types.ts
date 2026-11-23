@@ -936,8 +936,9 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
       owesTurn?: boolean;
       // FIX-2795.
       /**
-       * With `owesTurn`: the request whose turn is given back. The steers it
-       * took on this attempt are untaken again, for the turn that takes its place.
+       * A stopped request: the steers it took on this attempt are untaken
+       * again in the same write, for the turn after it. With a wait set, or a
+       * turn given back.
        */
       untakeSteersOf?: string;
     }

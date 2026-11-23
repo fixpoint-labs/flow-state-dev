@@ -503,7 +503,8 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
     // The steers the stopped turn took go back with it: it never answered
     // them, and the turn that takes its place must read them.
     if (!record.own) {
-      const untake = record.tookOwedTurn === true ? { untakeSteersOf: requestKey(record.ctx) } : {};
+      // Whatever its admission took, owed turn or none: judged by the steers' own record of the read that took them.
+      const untake = { untakeSteersOf: requestKey(record.ctx) };
       let parked: TaskWriteOutcome | undefined;
       if (record.prior !== undefined) {
         parked = await waitOn(record, row, record.prior, undefined, undefined, record.tookOwedTurn === true, untake.untakeSteersOf);
@@ -512,6 +513,7 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
         // the row owes it again, with no lease, as the answer left it.
         parked = await ref.setKeptOpenBy(row.id, null, { claim: ticket, owesTurn: true, ...untake });
       }
+      // No third case: a later request is admitted only from a wait or an owed turn.
       if (parked?.outcome === "declined") {
         console.warn(`[task-board] task "${row.id}": a stopped later request couldn't park the task again (${parked.reason}); the next claim takes it`);
       }

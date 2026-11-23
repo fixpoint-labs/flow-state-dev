@@ -1263,10 +1263,10 @@ export function requireClaimTicket(
  * was stopped, and gives the turn back. The row drops its lease and owes the
  * turn again, as the answer left it, so the claim may take it.
  *
- * With `untakeSteersOf` (a request id), a turn given back gives back the
- * steers that request took on this attempt too: they are untaken again, so
- * the turn that takes their place reads them. Its read never ran to an
- * answer, so the steers were never acted on.
+ * With `untakeSteersOf` (a request id), the steers that request took on
+ * this attempt are untaken again, in the same write: a stopped request never
+ * answered them, so the turn after it must read them. Applies to a wait set
+ * and to a turn given back, owed or not.
  *
  * @throws when clearing without a finite `leaseUntil`, other than to give a
  *   turn back: a programming error.
@@ -1283,7 +1283,7 @@ export function waitingOnPatch(
     untakeSteersOf?: string;
   }
 ): Partial<Task> {
-  const untaken = options.owesTurn === true && options.untakeSteersOf !== undefined ? untakeSteersPatch(task, options.untakeSteersOf) : {};
+  const untaken = options.untakeSteersOf !== undefined ? untakeSteersPatch(task, options.untakeSteersOf) : {};
   if (keptOpenBy == null && options.owesTurn === true && options.leaseUntil === undefined) {
     return { keptOpenBy: undefined, leaseUntil: undefined, turnOwed: true, ...untaken };
   }
@@ -1315,7 +1315,8 @@ export function waitingOnPatch(
     leaseUntil: options.leaseUntil,
     ...kept,
     ...(typeof mirrored === "object" && "patch" in mirrored ? mirrored.patch : {}),
-    ...(options.owesTurn === true ? { turnOwed: true as const, ...untaken } : {}),
+    ...(options.owesTurn === true ? { turnOwed: true as const } : {}),
+    ...untaken,
   };
 }
 
