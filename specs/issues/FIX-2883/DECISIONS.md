@@ -94,8 +94,13 @@ FIX-2879 could for a2 and FIX-2878 for b9. Then that row rolls the child's signa
   is the implementer's call.
 - **Lead runs on the lab's default model** for the rows that need a person's words (a1, a2, a4,
   a5). Every other row is scripted.
-- **FIX-2894's rows are provisional.** d6 cites epic ER-9 until FIX-2894's spec merges. Then the
-  build ties it to that spec's signal names, and a promise the spec drops is a finding.
+- **FIX-2894 is read from its review PR.** Its spec is on #5614 at `38400d9`, not on `main`, and
+  the checker reads it there with `git show`. When it merges, its entries in `coverage.json` become
+  plain paths. A clause the merged spec rewords fails the check until the rows follow it, and a
+  promise the merged spec drops is a finding.
+- **Two children use one control name.** FIX-2878 and FIX-2894 each name a control `trust-stored`,
+  and each patches something different. The closure's goal runs them as `FIX-2878:trust-stored`
+  and `FIX-2894:trust-stored`, so one `GOAL_CONTROL` value never means two patches.
 - **b9 may be unrepresentable.** Until FIX-2599, a plan session runs on `claude-code-plan`, a
   different id from `claude-code`. If the run record as built cannot hold the mismatch b9 seeds,
   the verdict log says so and names the type that rules it out. That is b9's evidence, and
@@ -121,10 +126,10 @@ FIX-2879 could for a2 and FIX-2878 for b9. Then that row rolls the child's signa
 ## Settled
 
 - **The matrix is total, clause by clause, and every row has a red state.** CONFIRMED by
-  [`poc/coverage/check.mjs`](poc/coverage/check.mjs) on `0a9ac03b4`. 28 rows cover all 80
-  clauses of the goal signals: the epic 24, FIX-2877 9, FIX-2878 34, FIX-2879 13. Eight rows
-  also rest on a promise no child goal covers in full, five with no child signal at all. 26 rows
-  name a control and 2 rely on `GOAL_COMMIT`. There are twelve closure controls and three
+  [`poc/coverage/check.mjs`](poc/coverage/check.mjs) on `0a9ac03b4`, with FIX-2894 read at `38400d9`.
+  32 rows cover all 95 clauses of the goal signals: the epic 24, FIX-2877 9, FIX-2878 34,
+  FIX-2879 13, FIX-2894 15. Eight rows also rest on a promise no child goal covers in full, five
+  with no child signal at all. 30 rows name a control and 2 rely on `GOAL_COMMIT`. There are twelve closure controls and three
   superseded child assertions. `--control` plants an uncovered clause, an unknown clause, a b or
   d row with no control, a reused control name and a reworded clause, and it FAILS on all five.
   Run with `node specs/issues/FIX-2883/poc/coverage/check.mjs` from the repo root (`--clauses`
@@ -151,7 +156,7 @@ is weaker than the skill asks. The reviewer at the gate should read it with that
    and dropped*).
 3. **Other shapes.** Children's goals only, and a browser-first run. Both are recorded above.
 4. **New factors.** The modes amendment (#5612), FIX-2878's modes re-check (#5611) and FIX-2879's
-   merge (#5607) are all folded in. FIX-2894 has no spec yet, so its rows are provisional.
+   merge (#5607) are all folded in, and FIX-2894's spec on its review PR (#5614 at `38400d9`).
 5. **Necessity.** Earns its place. Two inter-child disagreements and eight uncovered cases
    showed up at spec time, before any child built.
 6. **Ergonomics.** One command per leg, and one checker that a later spec change re-runs.
@@ -163,10 +168,14 @@ is weaker than the skill asks. The reviewer at the gate should read it with that
   four legs over the public client and a goal host, each row citing the child signal or promise
   it rolls up, with a checker that proves the matrix total. It builds on the epic's legs and
   `closure-smarter-agents`' shape.
-- **Review (Codex, round 1).** The matrix went from whole signals to their 80 clauses, because
+- **Review (Codex, round 1).** The matrix went from whole signals to their clauses (80 then), because
   naming a signal hid scenarios no row ran. Five scenarios were added (a6, d5, d7), and the
   checker found four more (a3, b1, b2, c2). The red state for legs b and d is now a named control
   on every row, because code on the base commit does not run a row. The update of a stale
   FIX-2877 goal belongs to the implementation PR whose code turns it red.
+- **Review (Greptile) and FIX-2894's spec.** b6 split into a retry row and a steer row. The steer
+  now runs after the default changes back to `answer`, because Y's frozen mode equalled the live
+  default, so a steer that read the live default still passed. d6 cites FIX-2894's clauses instead
+  of epic ER-9, which added a7, d11 and d12 and brought the matrix to 32 rows over 95 clauses.
 
 **Open: none.**

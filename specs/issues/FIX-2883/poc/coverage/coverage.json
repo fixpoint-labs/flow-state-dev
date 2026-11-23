@@ -16,10 +16,14 @@
     "FIX-2879": [
       "specs/issues/FIX-2879/SPEC.md",
       "specs/issues/FIX-2879/DECISIONS.md"
+    ],
+    "FIX-2894": [
+      "git:38400d991d007b3e6a58539142ee2437b2ea93bc:specs/issues/FIX-2894/SPEC.md",
+      "git:38400d991d007b3e6a58539142ee2437b2ea93bc:specs/issues/FIX-2894/DECISIONS.md"
     ]
   },
-  "provisional": {
-    "FIX-2894": "No spec on main yet. d6 cites epic ER-9; the build rebinds it to FIX-2894's clauses when its spec merges."
+  "pending": {
+    "FIX-2894": "Read from its review PR #5614 at 38400d9 (spec/FIX-2894), not yet on main. When it merges, its entries become plain paths, and a clause its merged spec changes fails this check until the rows follow it."
   },
   "clauses": {
     "FIX-2876:a#0": "the stored message has no `Coding harness:`",
@@ -101,7 +105,22 @@
     "FIX-2879:Delegated#1": "the new run is a plan run",
     "FIX-2879:Refused#0": "a send whose `fields` name an open-only",
     "FIX-2879:Refused#1": "So is a harness that isn't filled,",
-    "FIX-2879:Refused#2": "A second principal posting `fields` on this"
+    "FIX-2879:Refused#2": "A second principal posting `fields` on this",
+    "FIX-2894:Discover#0": "in 5 runs, a model that has",
+    "FIX-2894:Refuse#0": "a misfit is refused with `input_refused`, naming",
+    "FIX-2894:Own#0": "a filer's server-owned value is replaced by",
+    "FIX-2894:Own#1": "a `check` that returns a different `requestedBy`,",
+    "FIX-2894:Stamp#0": "a row whose declaration changed between filing",
+    "FIX-2894:Stamp#1": "the stored values are not run",
+    "FIX-2894:Stamp#2": "An unstamped coding row whose conversation pick",
+    "FIX-2894:Race#0": "two edits of one row at once",
+    "FIX-2894:Race#1": "no row holds input checked against a",
+    "FIX-2894:Round trip#0": "a `check` that returns a `Date` in",
+    "FIX-2894:Move#0": "assigning an unassigned row, and reassigning to",
+    "FIX-2894:Claim#0": "a stored row that no longer fits",
+    "FIX-2894:Claim#1": "a row the flow's `stored` maps runs",
+    "FIX-2894:Open#0": "a flow with no declaration stores and",
+    "FIX-2894:Project#0": "a declaration with `project: \"required\"` refuses as"
   },
   "rows": [
     {
@@ -208,6 +227,19 @@
       ]
     },
     {
+      "id": "a7",
+      "leg": "a",
+      "covers": [
+        "FIX-2894:Discover#0"
+      ],
+      "controls": [
+        [
+          "hide-shape",
+          "FIX-2894"
+        ]
+      ]
+    },
+    {
       "id": "b1",
       "leg": "b",
       "covers": [
@@ -303,6 +335,19 @@
       "covers": [
         "FIX-2876:b#8",
         "FIX-2878:Mode#2"
+      ],
+      "controls": [
+        [
+          "live-mode",
+          "FIX-2878"
+        ]
+      ]
+    },
+    {
+      "id": "b6s",
+      "leg": "b",
+      "covers": [
+        "FIX-2876:b#8"
       ],
       "promise": [
         [
@@ -427,7 +472,8 @@
       "leg": "d",
       "covers": [
         "FIX-2876:d#0",
-        "FIX-2878:Plan#0"
+        "FIX-2878:Plan#0",
+        "FIX-2894:Own#0"
       ],
       "promise": [
         [
@@ -439,6 +485,10 @@
         [
           "filer-plan",
           "FIX-2878"
+        ],
+        [
+          "trust-filer",
+          "FIX-2894"
         ]
       ]
     },
@@ -528,7 +578,12 @@
       "leg": "d",
       "covers": [
         "FIX-2876:d#6",
-        "FIX-2876:d#7"
+        "FIX-2876:d#7",
+        "FIX-2894:Refuse#0",
+        "FIX-2894:Own#1",
+        "FIX-2894:Round trip#0",
+        "FIX-2894:Open#0",
+        "FIX-2894:Project#0"
       ],
       "promise": [
         [
@@ -536,11 +591,30 @@
           "a filer's `doneWhen` or `workspace` reaches a run"
         ]
       ],
-      "provisional": "FIX-2894",
       "controls": [
         [
           "open-input",
           "closure"
+        ],
+        [
+          "filing-only",
+          "FIX-2894"
+        ],
+        [
+          "raw-handle-bypass",
+          "FIX-2894"
+        ],
+        [
+          "check-rewrites-owned",
+          "FIX-2894"
+        ],
+        [
+          "shallow-baseline",
+          "FIX-2894"
+        ],
+        [
+          "build-time-only",
+          "FIX-2894"
         ]
       ]
     },
@@ -566,7 +640,9 @@
         "FIX-2878:Legacy feature#3",
         "FIX-2878:Legacy write#0",
         "FIX-2878:Mode update#0",
-        "FIX-2878:Mode update#1"
+        "FIX-2878:Mode update#1",
+        "FIX-2894:Claim#0",
+        "FIX-2894:Claim#1"
       ],
       "controls": [
         [
@@ -620,6 +696,10 @@
         [
           "unchecked-update",
           "FIX-2878"
+        ],
+        [
+          "trust-stored",
+          "FIX-2894"
         ]
       ]
     },
@@ -665,12 +745,54 @@
       "id": "d10",
       "leg": "d",
       "covers": [
-        "FIX-2878:Legacy#0"
+        "FIX-2878:Legacy#0",
+        "FIX-2894:Stamp#2"
       ],
       "controls": [
         [
           "trust-stored",
           "FIX-2878"
+        ],
+        [
+          "claim-reads-pick",
+          "FIX-2894"
+        ]
+      ]
+    },
+    {
+      "id": "d11",
+      "leg": "d",
+      "covers": [
+        "FIX-2894:Stamp#0",
+        "FIX-2894:Stamp#1",
+        "FIX-2894:Move#0"
+      ],
+      "controls": [
+        [
+          "trust-stale-declaration",
+          "FIX-2894"
+        ],
+        [
+          "trust-stale-flow",
+          "FIX-2894"
+        ],
+        [
+          "move-unchecked",
+          "FIX-2894"
+        ]
+      ]
+    },
+    {
+      "id": "d12",
+      "leg": "d",
+      "covers": [
+        "FIX-2894:Race#0",
+        "FIX-2894:Race#1"
+      ],
+      "controls": [
+        [
+          "no-cas",
+          "FIX-2894"
         ]
       ]
     }

@@ -20,6 +20,7 @@
  * Print the clause keys:   node specs/issues/FIX-2883/poc/coverage/check.mjs --clauses
  */
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,13 +39,21 @@ if (control) {
 }
 
 const norm = (s) => s.replace(/\s+/g, " ").trim();
+/**
+ * A spec source is a path on disk, or `git:<sha>:<path>` for a spec still on its review branch
+ * (fetch that branch first). Once that spec merges, its entry goes back to a plain path.
+ */
+const readSpec = (src) =>
+  src.startsWith("git:")
+    ? execFileSync("git", ["show", src.slice(4)], { encoding: "utf8" })
+    : readFileSync(src, "utf8");
 const text = Object.fromEntries(
-  Object.entries(cov.specs).map(([id, files]) => [id, files.map((f) => readFileSync(f, "utf8")).join("\n")]),
+  Object.entries(cov.specs).map(([id, files]) => [id, files.map(readSpec).join("\n")]),
 );
 
 /** `<spec>:<signal>#<n>` → clause text, split mechanically from the spec's Signal row. */
-export function clausesOf(id, file) {
-  const row = readFileSync(file, "utf8").split("\n").find((l) => l.startsWith("| **Signal** |"));
+function clausesOf(id, file) {
+  const row = readSpec(file).split("\n").find((l) => l.startsWith("| **Signal** |"));
   if (!row) throw new Error(`${id}: no Signal row`);
   const parts = row.slice("| **Signal** |".length).replace(/\|\s*$/, "").split(/\*\*([A-Za-z][A-Za-z -]*?):\*\*/);
   const out = new Map();
