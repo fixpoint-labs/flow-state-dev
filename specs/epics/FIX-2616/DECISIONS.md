@@ -59,7 +59,7 @@ Seams between this epic's own issues. The seams with the sibling epic's issues a
 |---|---|---|
 | `Composer.tsx`, the harness flow, coder workers, `picks-the-coder` | FIX-2598 and FIX-2599 (and FIX-2523, outside) | FIX-2598 first; FIX-2599 rebases. FIX-2523 rebases whichever lands second |
 | Kitchen Sink's model picker | FIX-2597 and FIX-2458 (outside, Done) | FIX-2458 moved the model lists to the packages; FIX-2597 lifts the choice shape the lab would otherwise copy, and deletes Kitchen Sink's copy in its PR (FIX-2369 ER-3) |
-| The choice's carrier (ER-2) | FIX-2598 and FIX-2599, with FIX-2876's FIX-2879 (package half) and FIX-2894 outside | FIX-2879's package half lands first; FIX-2598 writes through it, and FIX-2599 reads the same carrier for plan mode. Neither adds a second store ([FIX-2876 D3](../FIX-2876/DECISIONS.md#d3)) |
+| The choice's carrier (ER-2) | FIX-2598 and FIX-2599, with FIX-2879's package half (FIX-2876) and FIX-2894 outside | FIX-2879's package half lands first; FIX-2598 writes through it, and FIX-2599 reads the same carrier for plan mode. Neither adds a second store ([FIX-2876 D3](../FIX-2876/DECISIONS.md#d3)) |
 
 **Pairs that share files:** FIX-2598 with FIX-2599 (composer, flow, workers, goal scripts).
 FIX-2597 starts first; FIX-2598 waits for it.
