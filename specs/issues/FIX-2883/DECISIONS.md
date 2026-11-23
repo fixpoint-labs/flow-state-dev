@@ -128,9 +128,10 @@ FIX-2879 could for a2 and FIX-2878 for b9. Then that row rolls the child's signa
   [`poc/coverage/check.mjs`](poc/coverage/check.mjs) on this branch, with `main` merged in after FIX-2894's spec landed.
   32 rows cover all 95 clauses of the goal signals: the epic 24, FIX-2877 9, FIX-2878 34,
   FIX-2879 13, FIX-2894 15. Eight rows also rest on a promise no child goal covers in full, five
-  with no child signal at all. 30 rows name a control and 2 rely on `GOAL_COMMIT`. There are twelve closure controls and three
+  with no child signal at all. 30 rows name a control and 2 rely on `GOAL_COMMIT`. There are fourteen closure controls and three
   superseded child assertions. `--control` plants an uncovered clause, an unknown clause, a b or
-  d row with no control, a reused control name and a reworded clause, and it FAILS on all five.
+  d row with no control, a reused control name, a reworded clause, and `trust-metadata` and
+  `use-filer-workspace` credited to a child that never names them, and it FAILS on all seven.
   Run with `node specs/issues/FIX-2883/poc/coverage/check.mjs` from the repo root (`--clauses`
   lists every clause).
 - **Two child goals disagree with a later child about the final state.** CONFIRMED by reading
@@ -176,5 +177,10 @@ is weaker than the skill asks. The reviewer at the gate should read it with that
   now runs after the default changes back to `answer`, because Y's frozen mode equalled the live
   default, so a steer that read the live default still passed. d6 cites FIX-2894's clauses instead
   of epic ER-9, which added a7, d11 and d12 and brought the matrix to 32 rows over 95 clauses.
+- **Review (Cursor security).** d1 now also sends run settings through `metadata` and a public
+  `respond`, and d6 reads the run's actual workspace path and done check, because a filer could
+  reach the run through either channel without a row noticing. Two closure controls were added,
+  `trust-metadata` and `use-filer-workspace`. ER-10 and the modes decision already promise both,
+  so the direction is unchanged.
 
 **Open: none.**

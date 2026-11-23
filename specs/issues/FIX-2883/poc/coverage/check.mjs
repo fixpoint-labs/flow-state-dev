@@ -31,6 +31,11 @@ if (control) {
   // a clause key no spec has, a d row with no control, a closure control reusing a child's name,
   // and a pinned clause whose spec words changed.
   cov.clauses["FIX-2878:Freeze#0"] = "after worker A's file changes";
+  // The security controls are the closure's own: credited to a child that never names them, each is refused.
+  for (const [row, name, from] of [["d1", "trust-metadata", "FIX-2878"], ["d6", "use-filer-workspace", "FIX-2894"]]) {
+    const r = cov.rows.find((x) => x.id === row);
+    r.controls = r.controls.map(([n, f]) => (n === name ? [n, from] : [n, f]));
+  }
   const a6 = cov.rows.find((r) => r.id === "a6");
   a6.covers = a6.covers.filter((k) => k !== "FIX-2879:Refused#0");
   cov.rows.push({ id: "zz", leg: "d", covers: ["FIX-2878:Teleport#0"], controls: [] });

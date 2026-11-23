@@ -486,6 +486,10 @@
         [
           "trust-filer",
           "FIX-2894"
+        ],
+        [
+          "trust-metadata",
+          "closure"
         ]
       ]
     },
@@ -612,6 +616,10 @@
         [
           "build-time-only",
           "FIX-2894"
+        ],
+        [
+          "use-filer-workspace",
+          "closure"
         ]
       ]
     },

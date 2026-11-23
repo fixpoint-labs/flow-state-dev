@@ -77,7 +77,7 @@
   <g id="verdict">
     <rect class="ctl" x="676" y="44" width="248" height="76" rx="5"/>
     <text class="t-g" x="690" y="67">First, each control FAILs</text>
-    <text class="t-s" x="690" y="85">its named row: 12 the closure owns,</text>
+    <text class="t-s" x="690" y="85">its named row: 14 the closure owns,</text>
     <text class="t-s" x="690" y="101">the children's own, today's main</text>
     <rect class="pass" x="676" y="136" width="248" height="96" rx="5"/>
     <text class="t-b" x="690" y="159">Then PASS · 32 rows</text>
