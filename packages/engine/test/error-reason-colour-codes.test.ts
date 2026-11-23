@@ -10,7 +10,7 @@ import { errorDetailsWithCause } from "@flow-state-dev/core/internal";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { runAction } from "../src";
-import { displayCause, displayDetails, normalizeError } from "../src/errors/normalize-error";
+import { displayCause, normalizeError } from "../src/errors/normalize-error";
 import { runActionInternal } from "../src/execution/runAction";
 import { applyNormalizedErrorSeam } from "../src/execution/internal/seams";
 import type { ExecutionMetadata } from "../src/execution/types";
@@ -95,10 +95,20 @@ describe("a failed turn's reason has no terminal colour codes", () => {
     expect(displayCause(cloned)).toBe(cause);
   });
 
-  it("still unwraps a wrapper's clone, and keeps a wrapped error given later as a different message's cause", () => {
+  it("still unwraps a wrapper's seam clone, and keeps a wrapped error given later as a different message's cause", () => {
     const thrown = new Error(COLOURED, { cause: new Error("socket closed") });
     const wrapper = normalizeError(thrown);
-    expect(displayCause(cloneError(wrapper))).toBe(thrown.cause);
+    expect(displayCause(wrapper)).toBe(thrown.cause);
+    const seamClone = applyNormalizedErrorSeam(
+      { interceptNormalizedError: cloneError },
+      wrapper,
+      {} as ExecutionMetadata
+    );
+    expect(seamClone).not.toBe(wrapper);
+    expect(displayCause(seamClone)).toBe(thrown.cause);
+    // A rebuild outside the seam drops the marker and reads as an author's
+    // error: its cause is shown, which fails safe (more information).
+    expect(displayCause(cloneError(wrapper))).toBe(thrown);
     // The same error, now the cause of an author's error that says something else.
     const rethrown = normalizeError(new FlowError("Could not reach the model", { cause: thrown }));
     expect(displayCause(rethrown)).toBe(thrown);
@@ -155,13 +165,63 @@ describe("a failed turn's reason has no terminal colour codes", () => {
     expect(errorItem?.details?.cause).toMatchObject({ name: "Error", code: "ECONNRESET" });
   });
 
-  it("displayDetails never hands out the marked details object", () => {
-    const wrapper = normalizeError(new Error("boom"), { details: { attempt: 2 } });
-    const shown = displayDetails(wrapper);
-    expect(shown).toEqual({ attempt: 2 });
-    expect(shown).not.toBe(wrapper.details);
-    expect(Object.getOwnPropertySymbols(shown!)).toEqual([]);
-    expect(displayDetails(normalizeError(new Error("boom")))).toBeUndefined();
+  it("leaves a wrapper's details exactly as given, with no marker in them", () => {
+    expect(normalizeError(new Error("boom")).details).toBeUndefined();
+    const given = { attempt: 2 };
+    const wrapper = normalizeError(new Error("boom"), { details: given });
+    expect(wrapper.details).toBe(given);
+    expect(Object.getOwnPropertySymbols(given)).toEqual([]);
+  });
+
+  it("hands public error hooks a plain throw's error with details undefined", async () => {
+    const seen: Array<{ hook: string; details: unknown; hasDetailsKey: boolean }> = [];
+    const record = (hook: string) =>
+      handler({
+        name: `record-${hook}`,
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: (input: { error?: FlowError }) => {
+          if (input?.error !== undefined) {
+            seen.push({ hook, details: input.error.details, hasDetailsKey: input.error.details !== undefined });
+          }
+          return input;
+        }
+      });
+    const flow = defineFlow({
+      kind: "hook-details",
+      actions: {
+        run: {
+          block: handler({
+            name: "fails",
+            inputSchema: z.object({}),
+            outputSchema: z.string(),
+            execute: () => {
+              throw new Error("boom");
+            }
+          }),
+          onErrored: record("action.onErrored")
+        }
+      },
+      request: { onErrored: record("request.onErrored"), onFinished: record("request.onFinished") }
+    })();
+    const captured: unknown[] = [];
+
+    await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      requestId: "req_hook_details",
+      sessionId: "sess_hook_details",
+      userId: "user_hook_details",
+      stores: createInMemoryStores(),
+      runtimeConfig: { errorCapture: (event: { error: FlowError }) => void captured.push(event.error.details) }
+    });
+
+    expect(seen.length).toBeGreaterThan(0);
+    for (const entry of seen) expect(entry.details).toBeUndefined();
+    expect(captured.length).toBeGreaterThan(0);
+    for (const details of captured) expect(details).toBeUndefined();
   });
 
   it("emits no marker on the error item, with and without details of its own", async () => {
@@ -191,7 +251,10 @@ describe("a failed turn's reason has no terminal colour codes", () => {
         runtimeConfig: {},
         // A seam that adds details to the engine's wrapper keeps the marked object.
         internalSeams: withDetails
-          ? { interceptNormalizedError: (error) => (Object.assign(error.details ?? {}, { attempt: 2 }), error) }
+          ? {
+              interceptNormalizedError: (error) =>
+                new FlowError(error.message, { code: error.code, cause: error.cause, details: { attempt: 2 } })
+            }
           : undefined
       });
       return result.items.find((item) => item.type === "error") as { details?: Record<string, unknown> };

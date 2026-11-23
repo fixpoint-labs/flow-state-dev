@@ -64,67 +64,73 @@ export function normalizeError(
       blockName: options.blockName,
       blockInstanceId: options.blockInstanceId,
       scope: options.scope,
-      details: wrapperDetails(options.details)
+      details: options.details
     });
-    if (classified !== undefined) return classified;
+    if (classified !== undefined) return markWrapper(classified);
   }
 
   const code = options.code ?? inferCode(normalized);
   const retryable = options.retryable ?? inferRetryable(normalized, code);
 
   if (normalized instanceof FlowError) {
-    const details = options.details ?? normalized.details;
-    return new FlowError(message, {
+    const renormalized = new FlowError(message, {
       code,
       retryable,
       blockName: options.blockName ?? normalized.blockName,
       blockInstanceId: options.blockInstanceId ?? normalized.blockInstanceId,
       scope: options.scope ?? normalized.scope,
       cause: normalized.cause,
-      // Re-normalizing a wrapper keeps it a wrapper; an author's FlowError never becomes one.
-      details: isNormalizedWrapper(normalized) ? wrapperDetails(details) : details
+      details: options.details ?? normalized.details
     });
+    // Re-normalizing a wrapper keeps it a wrapper; an author's FlowError never becomes one.
+    return isNormalizedWrapper(normalized) ? markWrapper(renormalized) : renormalized;
   }
 
-  return new FlowError(message, {
-    code,
-    retryable,
-    blockName: options.blockName,
-    blockInstanceId: options.blockInstanceId,
-    scope: options.scope,
-    cause: normalized,
-    details: wrapperDetails(options.details)
-  });
+  return markWrapper(
+    new FlowError(message, {
+      code,
+      retryable,
+      blockName: options.blockName,
+      blockInstanceId: options.blockInstanceId,
+      scope: options.scope,
+      cause: normalized,
+      details: options.details
+    })
+  );
 }
 
 /**
- * Marks a FlowError that `normalizeError` built around a raw throw. It sits
- * in `details` as a non-enumerable symbol property, so a seam's clone that
- * copies `details` keeps it, and it never reaches output: JSON and object
- * spread skip it, and `serializeError` does not read `details`.
+ * Marks a FlowError that `normalizeError` built around a raw throw: a
+ * non-enumerable symbol property on the error itself, so `details` and every
+ * other public field stay as they were, and JSON, spread and `serializeError`
+ * never see it.
+ *
+ * A path that rebuilds the error without copying the marker (see
+ * {@link copyWrapperMarker}) makes it look like an author's error, so its
+ * cause is shown rather than unwrapped. That fails safe: more information,
+ * never less.
  */
 const NORMALIZED_WRAPPER = Symbol.for("@flow-state-dev/engine/normalized-wrapper");
 
-function wrapperDetails(details: Record<string, unknown> | undefined): Record<string, unknown> {
-  // A copy, so a details object the caller shares is never marked.
-  return Object.defineProperty({ ...details }, NORMALIZED_WRAPPER, { value: true });
+function markWrapper(error: FlowError): FlowError {
+  Object.defineProperty(error, NORMALIZED_WRAPPER, { value: true });
+  return error;
 }
 
 function isNormalizedWrapper(error: FlowError): boolean {
-  return (error.details as Record<symbol, unknown> | undefined)?.[NORMALIZED_WRAPPER] === true;
+  return (error as unknown as Record<symbol, unknown>)[NORMALIZED_WRAPPER] === true;
 }
 
 /**
- * The `details` to show for a normalized error. A wrapper's details come back
- * as a copy without the marker (spread skips it), so no emitted item, hook or
- * observer ever holds the marked object; nothing at all when the marker was
- * all they held (a plain throw carries none). Any other error's details are
- * returned as they are.
+ * Carry the wrapper marker from `from` to `to`, when `to` is a rebuild of the
+ * same failure (it keeps `from`'s cause). The engine's normalized-error seam
+ * calls this on the error its interceptor returns.
  */
-export function displayDetails(error: FlowError): Record<string, unknown> | undefined {
-  const details = error.details;
-  if (details === undefined || !isNormalizedWrapper(error)) return details;
-  return Object.keys(details).length === 0 ? undefined : { ...details };
+export function copyWrapperMarker(from: FlowError, to: FlowError): FlowError {
+  if (to !== from && isNormalizedWrapper(from) && to.cause === from.cause && !isNormalizedWrapper(to)) {
+    markWrapper(to);
+  }
+  return to;
 }
 
 /**
