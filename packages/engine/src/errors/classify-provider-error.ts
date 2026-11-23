@@ -51,11 +51,14 @@ function getStatusCode(error: Error): number | undefined {
  * Maps an AI SDK error to a typed framework error, preserving the original on
  * the `cause` chain. Returns `undefined` when the error is not an AI SDK error
  * or doesn't match a known classification (callers fall back to the generic
- * `FlowError` path).
+ * `FlowError` path). `message` is the text the classified error carries; it
+ * defaults to the original's, and `normalizeError` passes it already cleaned
+ * of terminal colour codes.
  */
 export function classifyProviderError(
   error: Error,
-  context: ProviderErrorContext = {}
+  context: ProviderErrorContext = {},
+  message: string = error.message
 ): FlowError | undefined {
   if (!isAiSdkError(error)) return undefined;
 
@@ -68,7 +71,6 @@ export function classifyProviderError(
   };
 
   const statusCode = getStatusCode(error);
-  const message = error.message;
 
   if (statusCode === 429) {
     return new RateLimitError(message, options);

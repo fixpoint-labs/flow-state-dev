@@ -17,6 +17,7 @@
  *
  * Every process goes through `./exec`, the package's one door for them.
  */
+import { stripAnsi } from "@flow-state-dev/core/helpers";
 import { runToEnd } from "./exec";
 import type { WorkspaceSetup } from "./setup";
 
@@ -151,9 +152,6 @@ export function parseCheckoutCommand(command: string): { words: [string, ...stri
   return { words: [program!, ...args] };
 }
 
-// eslint-disable-next-line no-control-regex
-const COLOUR_CODES = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
-
 /** Options for {@link runCheckoutCommands}. */
 export interface RunCheckoutCommandsOptions {
   /** The checkout the commands run in. */
@@ -208,7 +206,7 @@ export async function runCheckoutCommands(options: RunCheckoutCommandsOptions): 
       timedOut: ended.timedOut,
       skipped: false,
       durationMs: Date.now() - started,
-      tail: ended.output.replace(COLOUR_CODES, "").slice(-CHECK_OUTPUT_TAIL_CHARS),
+      tail: stripAnsi(ended.output).slice(-CHECK_OUTPUT_TAIL_CHARS),
     });
   }
   return results;

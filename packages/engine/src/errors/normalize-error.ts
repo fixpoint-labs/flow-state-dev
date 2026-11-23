@@ -1,7 +1,7 @@
 /**
  * Normalizes unknown thrown values into a consistent FlowError shape.
  */
-import { toError } from "@flow-state-dev/core/helpers";
+import { stripAnsi, toError } from "@flow-state-dev/core/helpers";
 import type { FlowErrorScope } from "./flow-error";
 import { FlowError } from "./flow-error";
 import { classifyProviderError } from "./classify-provider-error";
@@ -42,12 +42,18 @@ function inferRetryable(error: Error, code: string): boolean {
 
 /**
  * Converts any thrown value into FlowError while preserving useful metadata when present.
+ *
+ * The message is what a failed turn's reason shows a person, so terminal
+ * colour codes some throwers bake in (the AI SDK's AI Gateway errors, CLI
+ * output) are stripped here, once, for every surface. The original error,
+ * kept as `cause`, is left untouched.
  */
 export function normalizeError(
   error: unknown,
   options: NormalizeErrorOptions = {}
 ): FlowError {
   const normalized = toError(error, "Unknown execution error");
+  const message = stripAnsi(normalized.message);
 
   // Classify raw AI SDK provider errors into the typed taxonomy
   // (RateLimitError, TimeoutError, ...) before the generic path. Skipped when
@@ -59,7 +65,7 @@ export function normalizeError(
       blockInstanceId: options.blockInstanceId,
       scope: options.scope,
       details: options.details
-    });
+    }, message);
     if (classified !== undefined) return classified;
   }
 
@@ -67,7 +73,7 @@ export function normalizeError(
   const retryable = options.retryable ?? inferRetryable(normalized, code);
 
   if (normalized instanceof FlowError) {
-    return new FlowError(normalized.message, {
+    return new FlowError(message, {
       code,
       retryable,
       blockName: options.blockName ?? normalized.blockName,
@@ -78,7 +84,7 @@ export function normalizeError(
     });
   }
 
-  return new FlowError(normalized.message, {
+  return new FlowError(message, {
     code,
     retryable,
     blockName: options.blockName,
@@ -93,7 +99,8 @@ export function normalizeError(
  * The cause chain to serialize *below* a normalized error's own message.
  *
  * `normalizeError` wraps a non-`FlowError` throw as `FlowError.cause`, copying
- * its message onto the synthesized `FlowError` (see the branch above).
+ * its message (colour codes stripped) onto the synthesized `FlowError` (see
+ * the branch above).
  * Serializing that layer directly would emit a redundant `details.cause` that
  * just repeats the top-level message — and, when the thrown error had a real
  * cause, an extra wrapper level. Unwrapping the synthetic layer makes the
@@ -105,7 +112,7 @@ export function displayCause(error: FlowError): unknown {
   if (
     cause instanceof Error &&
     !FlowError.isInstance(cause) &&
-    cause.message === error.message
+    stripAnsi(cause.message) === error.message
   ) {
     return (cause as Error & { cause?: unknown }).cause;
   }
