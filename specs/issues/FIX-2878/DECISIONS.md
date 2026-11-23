@@ -5,8 +5,8 @@
 The epic decided most of this issue: the order, the freeze, server-owned harness, model and
 plan, the lock, the model catalog rule and the plan-run postcheck
 ([FIX-2876 rules](../../epics/FIX-2876/DECISIONS.md#who-owns-what), as amended on
-[#5605](https://github.com/fixpoint-labs/flow-state-dev/pull/5605), not yet approved; re-checked
-when it merges). Three calls were left to this spec. Everything else is under *Decided, not asked*.
+[#5605](https://github.com/fixpoint-labs/flow-state-dev/pull/5605), not yet approved, including
+its next amendment on the no-pick filing; this spec tracks #5605 and is re-checked when it merges). Three calls were left to this spec. Everything else is under *Decided, not asked*.
 
 ## The tree
 
@@ -29,7 +29,7 @@ Solid edges are what you sign. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Running the order again at each attempt's claim: a retry, a re-claim after a held question, a claim after a crash |
-| **Because** | The person (or the run that filed the task) asked for a coder once. The claim freezes one value, the frozen settings: the harness, the effective model (the harness's `defaultModel` when the task names none), the plan setting, and the worker's `review` choice. A retry that re-reads the worker's file or the app's default can land on another vendor, lose its session, or switch between a reviewed and an unreviewed run, and the task card changes under the person. The epic says "once per run, at the first claim"; this reads *run* as the task's life |
+| **Because** | The person (or the run that filed the task) asked for a coder once. The claim freezes one value, the frozen settings: the three run settings (the harness, the effective model, which is the harness's `defaultModel` when the task names none, and the plan setting) plus the worker's review mode. Only the three run settings are carried to a task the run files; review is never inherited, it stays the assignee's. Review and PR policy is moving into the coder flow's options under [FIX-2583](https://linear.app/fixpoint-labs/issue/FIX-2583), which changes where the frozen review mode is read from, not that it is frozen. A retry that re-reads the worker's file or the app's default can land on another vendor, lose its session, or switch between a reviewed and an unreviewed run, and the task card changes under the person. The epic says "once per run, at the first claim"; this reads *run* as the task's life |
 | **Locks in** | A change to a worker's `harness:` or `review`, the kit's `defaultHarness` or a harness's default model reaches only tasks not yet claimed. Moving a claimed task means cancelling and refiling it. A harness removed from the app fails its claimed tasks by name at their next attempt |
 
 **What would change my mind:** tasks that sit claimed for days while an app's default is fixed
@@ -64,7 +64,7 @@ It comes down to one source for two harnesses: matching by source resumes a plan
 |---|---|
 | **Instead of** | Refusing only at claim, which the epic requires and allows to be the only check (ER-11) |
 | **Because** | At filing the refusal reaches the filer while the person is still in the conversation, and nothing is filed. At claim it arrives as a failed task, later and elsewhere. The filler already runs on every coding filing and knows the assignee, so the check is one read of that worker's file. The claim check stays for tasks filed before the lock was set |
-| **Accepted** | **A filing that inherits its parent run's settings and meets a lock with other fixed values is refused.** It is never widened and never silently swapped to the worker's values (ER-10: an inherited pick is kept, never widened). So a worker locked to the plan harness takes filings only from runs already on it. The refusal returned to the filer names the conflict and says to file to an unlocked worker or tell the person, so the filing model can recover |
+| **Accepted** | **A filing that inherits its parent run's settings and meets a lock with other fixed values is refused.** It is never widened and never silently swapped to the worker's values (ER-10: an inherited pick is kept, never widened). So a worker locked to the plan harness takes only filings already on it: from a run on it, or a no-pick filing when the plan harness is the kit default. The refusal returned to the filer names the conflict and says to file to an unlocked worker or tell the person, so the filing model can recover |
 | **Locks in** | The public name `lock:` on a worker's file: fixed values for any server-owned run setting (`harness`, `plan`, `model`), compared with deep equality, so a Cursor model with other params differs. The refusal reads the same in both places, naming the field, the worker's value and the one asked for |
 
 **What would change my mind:** FIX-2894's filler not being handed the assignee. Then the lock
@@ -101,8 +101,19 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
   default, and the refusal is written on the run row and shown on the coding board row.
 - **The model feed** is `HarnessFeeds.model`, the name `HarnessSessionFeeds` already uses, an id
   or an id with params, always the frozen model.
-- **The filler, until FIX-2879,** writes the filing run's frozen harness, model and plan, with the
-  marker, when the filing session is a coding run, and nothing otherwise.
+- **The filler, until FIX-2879,** writes, with the marker, the filing run's three run settings
+  when the filing session is a coding run (never its review mode), and otherwise the server's
+  default run settings: the kit's `defaultHarness`, that harness's default model, and the plan
+  setting that harness implies. So every coding filing through the kit carries run settings, and
+  a worker's `harness:` line governs only a task that carries none (stored before this change, or
+  filed outside the kit).
+- **FIX-2877's interim no-pick assignee is retired** (coordinator decision, tracking #5605's next
+  amendment). FIX-2877 rewrote a no-pick coding filing's assignee to the default coder's worker,
+  because the worker then chose the harness, and text the model read could steer it to an
+  unsandboxed one. Here the filler writes the default run settings whatever worker the model
+  names, so the model's assignee picks a role, never a coder. It is honoured again, inside and
+  outside coding runs, and the lock ([D3](#d3)) checks it at filing and at claim. A role-specific
+  coder worker gets its tasks; one locked to other values refuses them by name.
 - **`harnessFeature` goes with no alias.** A stored task that still carries it is refused at
   claim by name (BP-030).
 - **Fixed boards stay.** Their rows keep `harnessTaskInputSchema` at the top of `input` and don't
@@ -113,8 +124,10 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
   worktree status and the refs at the start, and after the run fails it if that worktree is
   dirty or a ref the run's worktree created or moved appears. It never reads the common git dir,
   so a concurrent task's branch, a `fetch` or a `gc` never fails it.
-- **Merge order: FIX-2877 first.** Shift Manager's `coder.mts` imports `harnessFeatureOf`, which
-  this issue removes without editing that file. Written in Linear as a block.
+- **Merge order: FIX-2894 and FIX-2877 first.** Shift Manager's `coder.mts` imports
+  `harnessFeatureOf`, which this issue removes without editing that file, and FIX-2877's
+  `phases.feature` reads the `harnessFeature` key this issue renames to `feature`; the rename
+  updates that read. Written in Linear as blocks.
 - **Glossary.** *Run settings* (a coding task's `harness`, `model` and `plan`) and the lock are
   added; *Harness* is amended to say a task's run settings name one.
 
@@ -126,6 +139,7 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
 | Honouring a stored `harness` or `model` no filler wrote | A task filed before this change would pick its own coder at first claim ([security review](https://github.com/fixpoint-labs/flow-state-dev/pull/5604#discussion_r4667660416)) |
 | Freezing a null model and reading the option at each attempt | A retry or an inherited child runs whatever the option says later |
 | Leaving `review` live | A retry could switch between a reviewed and an unreviewed run: the drift D1 removes, one field over |
+| Keeping FIX-2877's server-written no-pick assignee | It sends every no-pick filing to the default coder's worker, so a role-specific coder never gets one. With the filler writing the default run settings, the worker no longer chooses the coder, so the rewrite guards nothing |
 | A lock that wins over an inherited pick | It would widen or swap a pick nobody made (ER-10) |
 | An isolated read-only repository per plan run | The epic chose scoping: one checkout model, no new store |
 | Matching a resume by `source`; a per-session harness field | [D2](#d2) |
@@ -142,6 +156,10 @@ Taken: the definition is under *Decided, not asked*, and the Postcheck signal ha
 > **"Today's main fails all six"** but only five controls are named; **Order** has none.
 
 Taken: Order is checked by the straight run, and the count is corrected in the SPEC.
+
+From the coordinator, for the implementer (ergonomics, not direction):
+
+> A lock that names fields and reads their values from the worker's own lines, e.g. `lock: [harness, plan]`, avoids repeating `harness: claude-code-plan` under `lock:`. A worker's `harness:` applies only to a task that carries no run settings; the lock is what binds it. The value form in the SPEC's diff stays valid; which form ships is yours.
 
 ## Open
 
@@ -171,3 +189,7 @@ facts:* four `byHarness` routes and the `harness` action, by `grep` on `coder-fl
   meets a different lock is refused; D2 takes the smaller shape (clear a pre-change session at
   first claim, no per-session field); `source` leaves the run row; the postcheck's detection
   defined; Order's check and the control count corrected.
+- **Cross-spec fold** — FIX-2877's interim no-pick assignee retired: the filler writes the default
+  run settings and the model's assignee is checked by the lock (the No-pick signal); the frozen
+  value named as the three run settings plus the review mode, review never inherited (FIX-2583
+  note); FIX-2877's `phases.feature` rename noted; lock ergonomics noted for the implementer.
