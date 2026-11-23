@@ -90,13 +90,18 @@ export async function moveStores(sqliteFile: string, connectionString: string) {
     }
   }
 
+  // The id of each flow that sets flowIsolation: its user and org resources
+  // are stored under the record's id plus `:<flowId>`.
+  const isolatedFlowIds = ["support"];
   for (const user of await from.user.list()) {
     await to.user.set(user.id, user, "absent");
     await copyScope(from, to, "user", user.id);
+    for (const flowId of isolatedFlowIds) await copyScope(from, to, "user", `${user.id}:${flowId}`);
   }
   for (const org of await from.org.list()) {
     await to.org.set(org.id, org, "absent");
     await copyScope(from, to, "org", org.id);
+    for (const flowId of isolatedFlowIds) await copyScope(from, to, "org", `${org.id}:${flowId}`);
   }
 
   await oldAdapter.dispose?.();
@@ -117,7 +122,7 @@ SELECT COUNT(*) FROM sessions;
 SELECT COUNT(*) FROM resource_content;
 ```
 
-A count that differs names the part to look at. If the per-scope counts agree but the `resource_content` totals differ, some content sits under a scope id other than a session, lineage, user or organization. Find that id and add a `copyScope` call for it.
+A count that differs names the part to look at. If the per-scope counts agree but the `resource_content` totals differ, some content sits under a scope id the script doesn't visit, most often a flow left out of `isolatedFlowIds`. Find that id and add a `copyScope` call for it. Resource state has no whole-database count, so check the isolated scopes by key as well.
 
 Last, start a copy of the app against the new store and open one real `acme` session. Read its state and a resource through it.
 

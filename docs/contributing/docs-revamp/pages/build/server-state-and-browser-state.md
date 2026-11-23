@@ -54,7 +54,7 @@ Match what the panel shows to a cause. The common ones:
 - Neither tab has the field: it is in `secret`, or never stored.
 - The label reads `no-client`: the browser gets nothing from this resource.
 - A collection shows `client` but has no `state.read`: the browser gets the collection but none of its items' state.
-- The Client tab reads `client.data threw` over `— no client value —`: your `data` function failed on this note, and the page gets nothing for it. If the message says it `returned a Promise`, the function is `async`. The panel can't run it, but the browser does get its value.
+- The Client tab reads `client.data threw` over `— no client value —`: your `data` function failed on this note. The browser's whole read of the collection fails with it, not only this note. If the message says it `returned a Promise`, the function is `async`. The panel can't run it, but the browser does get its value.
 
 The [resources reference](../reference/resources.md) lists every case, including a single resource with `client` and no projection.
 

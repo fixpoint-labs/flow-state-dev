@@ -45,6 +45,8 @@ Written by `docs-writer` (sonnet), 788 words. Scenario: The support desk's ticke
 
 - After the loop (review): the six open findings are closed: the Session Context sentence names the list to check, the Client tab sentence says what the tab shows rather than how, the tabs-collapse sentence gives its reason (`expose` lists every stored field), and step 3 has a bullet for the `client.data threw` notice, including the `async` `data` case where the browser does get the value. 782 words. Page sha256 26fa13514158.
 
+- After PR review (Greptile): the `client.data threw` bullet says the browser's whole read of the collection fails, since no per-entry catch wraps the projection on the browser's routes. 789 words. Page sha256 f525e6b38b8e.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 fee66653385b, and the 9 Reference row(s) pass 6 moved.
@@ -56,6 +58,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 fee
 - A collection with `client` but no `state.read`: the page gets the item count and nothing else. Untrue: With `prefetchWindow` above 0 the snapshot also carries the first N items' `topic` and `storageKey` (without `clientData`), so it is not only the count. (packages/engine/src/routes/route-utils.ts:481-511)
 
 - Re-run after the review edit: checked against `packages/devtool/src/react/components/detail/resource-state-view.tsx:29-31,124-131`, `packages/contracts/src/helpers/deep-equal.ts:130-141`, `packages/engine/src/routes/debug-snapshot.ts:152-159,586-597`, `packages/engine/src/resources/normalize-resource-state.ts:313-318`, `packages/core/src/helpers/client-projection.ts:113-124`, `packages/engine/src/routes/route-utils.ts:503,528` and `packages/engine/src/routes/resource-routes.ts:483`. The suspected inaccuracy was not one. No untrue claim remains open.
+
+- Re-run after the review edit: checked against `packages/engine/src/routes/route-utils.ts:503,528` and `packages/engine/src/routes/resource-routes.ts:483`. No untrue claim remains open.
 
 ## 6 · Depth pass
 

@@ -46,6 +46,8 @@ Written by `docs-writer` (sonnet), 687 words. Scenario: The support flow in the 
 
 - After the loop (review): the seven open findings are closed: step 4's repeated point said once, the two-organizations sentence cut, "tenant" defined in step 3 and the code comment reduced to what the code does, step 2 says `content.set` overwrites, the page says both stores share the table names, and step 1's history bullet says deleted keys don't copy, resources restart at version 1 and scope records keep theirs. 717 words. Page sha256 1180dbcdd638.
 
+- After PR review (Greptile): the script also copies each user and org scope under `<record id>:<flowId>` for the flows in `isolatedFlowIds`, where flow-isolated resources are stored, and step 4 says resource state has no whole-database count, so isolated scopes are checked by key. 736 words. Page sha256 e65850ad9f74.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 99fecc399ccd, and the 12 Reference row(s) pass 6 moved.
@@ -53,6 +55,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 99f
 - Step 3 copies each session's requests with `from.request.list({ sessionId: session.id, withItems: true })`, so the script moves requests for every session it lists, child sessions included. Untrue: For a tenant-namespaced session, `session.id` is `${tenantId}:${sessionId}` but `RequestRecord.sessionId` is the bare session id (requests are listed by the bare id plus `tenantId`). Filtering by `session.id` matches no requests for those sessions. They would be skipped with no error, and the step 4 request/item counts would not expose the loss. The script is correct only for single-tenant (un-tenanted) sessions. It would need to filter on the bare id, which is `session.id` with the `${tenantId}:` prefix removed. It would also need `tenantId: session.tenantId`, so two tenants that share a bare id do not mix. (/home/user/flow-state-dev/packages/engine/src/stores/types.ts:50-58, 140-157, 536-552; /home/user/flow-state-dev/packages/engine/src/routes/session-routes.ts:646-650; /home/user/flow-state-dev/packages/engine/src/stores/scope-keys.ts:229-250 (page line 78))
 
 - Re-run after the review edit: checked against `packages/store-sqlite/src/schema.ts:14,406`, `packages/store-postgres/src/schema.ts:9,421`, `packages/engine/src/stores/types.ts:1267-1268,1529-1533,1590-1597`, `packages/store-postgres/src/resource-state-store.ts:206-227`, `packages/store-sqlite/src/resource-state-store.ts:95` and `packages/store-postgres/src/pg-store.ts:511-519`. No untrue claim remains open.
+
+- Re-run after the review edit: checked against `packages/engine/src/stores/scope-keys.ts:165-181,421-431`. No untrue claim remains open.
 
 ## 6 · Depth pass
 
