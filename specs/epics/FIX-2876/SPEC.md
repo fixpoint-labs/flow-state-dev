@@ -64,6 +64,8 @@ Everything in the box is framework: an app sets one default and draws a picker. 
 the report honest, because a run that ignored the pick, or fell back from a refused model, must
 be visible ([ER-2](DECISIONS.md#who-owns-what)).
 
+**See it in code:** [sketch.md](sketch.md) follows one request through the set, in illustrative TypeScript on today's APIs.
+
 **Docs:** one sentence in the harness kit's docs says where a coding task's harness and model
 come from. FIX-2878 publishes it with the order and the lock; FIX-2894 adds what a task's input
 is and where a model reads it (`listDelegates`); FIX-2879 adds *Code with*. Each writes a
