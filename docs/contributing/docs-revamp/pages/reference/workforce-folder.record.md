@@ -40,6 +40,8 @@ Written by `docs-writer` (sonnet), 3185 words. Scenario: The `support` team of o
 
 - After the loop (review): the one open finding was a retired word for a worker in the storage cell; it now reads "one per organization per worker" with `flowIsolation: true`. 3256 words. Page sha256 3f12df9b8878.
 
+- After the loop (review): the Greptile review: `flowIsolation: true` keys org-scope storage by worker flow, not worker, so a `resources/` document is one per organization per worker flow and workers on one flow share it (packages/engine/src/stores/scope-keys.ts:430-432; packages/workforce/src/workers/register.ts:99-100). This corrects the earlier review edit, which said per worker; the fact sheet is corrected too. 3265 words. Page sha256 4ec285effdfe.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 12a384d093bd, and the 11 Reference row(s) pass 6 moved.
@@ -53,6 +55,8 @@ Final fact check of the page as it closed, sha256 c3d0597a0131: 3 untrue, fixed 
 - The refusal text for a package named by both the worker's own folder and a library reads `One name is one package - rename one of them.` (hyphen). Untrue: The message uses an em dash: `One name is one package — rename one of them.` (docs/contributing/docs-revamp/pages/reference/workforce-folder.md:288 (true per packages/workforce/src/worker-packages.ts, the `One name is one package — rename one of them.` string in resolveHeldPackages))
 
 - Re-run after the review edit: the changed cell names the same storage split; no claim changed. No untrue claim remains open.
+
+- Re-run after the review edit: each changed claim was read against the cited code by a code reader. No untrue claim remains open.
 
 ## 6 · Depth pass
 

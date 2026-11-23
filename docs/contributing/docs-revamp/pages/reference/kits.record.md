@@ -47,6 +47,8 @@ Written by `docs-writer` (sonnet), 2291 words. Scenario: The support app that in
 
 - After the loop (review): the loop escalated with 5 docs-editor findings and 3 suspected inaccuracies open; docs-writer took them in one round. The kit `path` / app `root` sentence now says only `root` may be a URL (packages/engine/src/flowstate/kits.ts:39-45). A worker flow is refused when its `respond` is missing or doesn't take a user's message (packages/workforce/src/worker-door.ts:7-16). The refusals table gains a row for a folder `read` that throws (kits.ts:275-283), and the unclaimed-entry row says file or directory, topmost named (packages/engine/src/folder/claim.ts:98-115). List-slot entries are in install order whatever order `contributes` ran in (kits.ts:146-165, 204-229). The unused `model` on `cursorHarness` is dropped. At the owner's request the page opens with an Experimental caution: kits, `defineKit`, slots and kit options can change between releases. 2287 words. Page sha256 67d1db3d8ebb.
 
+- After the loop (review): the Greptile review: each install step takes the first listed kit whose requirements are installed, so two kits that do not require each other can install against the list (for `[a(), b(), c()]` where only `a` requires `c`: `b, c, a`; packages/engine/src/flowstate/kits.ts:75-83). Corrected in the install-order table and the list-slot paragraph, and in the fact sheet. 2315 words. Page sha256 db5e6718fbda.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 b7a1e89ba03a, and the 8 Reference row(s) pass 6 moved.
@@ -63,6 +65,8 @@ Final fact check of the page as it closed, sha256 ed3f296bc6e8: 1 untrue, fixed 
 - Entry with no `id` for a keyed slot: message is `slot "<key>" is keyed, but <who> gave it an entry with no string id to key it by.` Untrue: The emitted text puts backticks around the word id: `slot "<key>" is keyed, but <who> gave it an entry with no string \`id\` to key it by.` The page's quoted message leaves the backticks out, so it is not the exact message. (docs/contributing/docs-revamp/pages/reference/kits.md:224 (code: /home/user/flow-state-dev/packages/engine/src/flowstate/kits.ts:177))
 
 - Re-run after the review edit: each changed claim was read against the code it cites by the writer; the changed config type-checks. No untrue claim remains open.
+
+- Re-run after the review edit: each changed claim was read against the cited code by a code reader. No untrue claim remains open.
 
 ## 6 · Depth pass
 

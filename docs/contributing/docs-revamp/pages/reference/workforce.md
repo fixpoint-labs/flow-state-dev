@@ -83,7 +83,7 @@ A `messages` value that is not a whole number of at least 1 throws at start: `hi
 | `budget` | 6 | The most worker messages a chain passes with no user turn between them |
 | `perTurn` | 3 | The most messages one turn sends |
 
-`DEFAULT_MESSAGE_BUDGET` and `DEFAULT_MESSAGES_PER_TURN` are exported from `@flow-state-dev/workforce`. A `taskChainLimit` below 1 or not whole throws `hireWorkforce: taskChainLimit must be a whole number of at least 1; got <value>.`
+`DEFAULT_MESSAGE_BUDGET` and `DEFAULT_MESSAGES_PER_TURN` are exported from `@flow-state-dev/workforce`. A `taskChainLimit` that is not a whole number of at least 1 is refused when the kit is configured: `kit "workforce": its config is invalid: taskChainLimit: <message>`.
 
 ### Slots the kit opens
 

@@ -83,7 +83,7 @@ review: true
 | `workspace` | `WorkspaceHost` | required | The host a run works in, built with `localWorkspaceHost(...)`. |
 | `defaultHarness` | string | none | The harness id a worker whose file names none runs on. With none set, that worker's task fails with a message saying so. A value that is not a filled id throws at start. |
 | `review` | boolean | `false` | A run that committed waits for a user's [review](#review) before its task completes. A worker's own `review:` line overrides it either way. |
-| `pullRequests` | boolean | `true` | A task whose run opened a pull request is done when it merges and cancelled when it closes unmerged. Off: the task settles on the verdict. |
+| `pullRequests` | boolean | `true` | A task whose run opened a pull request is done once none of its pull requests is open and at least one has merged, and cancelled when all have closed unmerged. Off: the task settles on the verdict. |
 | `judge` | boolean | `true` | A judge reads each run against its task's goal. |
 | `checks` | `{ commands: readonly string[]; timeoutMs?: number }` | none | Commands a run that changed files must pass in its checkout. `timeoutMs` is one wall clock for all of them, default `600000` (10 minutes). An empty list runs nothing. |
 | `project` | boolean | `false` | A task works in its session's project: it needs one, the run works in its checkout, and its checks are the project's own, empty when the project names none. The `coder` flow is installed needing a project. |
@@ -150,11 +150,11 @@ A wait is a hold on an `in_progress` task. What an open hold does to the task's 
 | A question (the judge's *ask*, saved work that does not match the record, or a question the run wrote) | `question` | `waiting`, in the Inbox and in the task's open `questions` | Answered, or the task is cancelled |
 | A review of the run's commits (`review` on) | `review`, titled "Review the run's changes" ("The accepted changes didn't land" on a re-ask) | `waiting` | Accepted, changes asked for, host deadline, or cancel |
 | A tool approval, titled `Allow <tool>?` (only when you build `harnessManager` yourself with `approveTools`; the kit does not) | `approval` | `waiting` | Allowed, denied, or cancel |
-| Waiting on the run's pull requests | external, one per pull request | `running`: an external wait is never a user's to answer | A pull request merges, all close, or a message wakes the task to check |
+| Waiting on the run's pull requests | external, one per pull request | `running`: an external wait is never a user's to answer | None is left open and one has merged, all close unmerged, or a message wakes the task to check |
 
 ### Attempts
 
-What `maxAttempts` changes, and what spends an attempt, is on [Task board](./task-board.md#what-does-maxattempts-change). A task in the kit has one attempt unless it sets `maxAttempts`. An answered question, a steer and a review's change request each take another turn on the same attempt.
+What `maxAttempts` changes, and what spends an attempt, is on [Task board](./task-board.md#what-does-maxattempts-change). A task filed through the kit gets two attempts unless it sets `maxAttempts`. A task whose result goes to the conversation, such as one a coordinator routes, gets one. An answered question, a steer and a review's change request each take another turn on the same attempt.
 
 - A harness that is not ready fails the start as a failed attempt (see [Readiness](#readiness)). A workspace that refuses is not an attempt: it ends the task for good, as under [Workspace options](#workspace-options).
 - The run record, one row per run in `runs/**`, has its own `outcome`: `running`, `succeeded` or `failed`. It stays `running` while the task waits on a question. A refused attempt, or one that stopped because another attempt holds its task, writes nothing. A run's place has a state of its own, only where the host holds a run's work: `provisioning`, `ready`, `refused`, `lost` or `restoring`.
@@ -172,7 +172,7 @@ A step that fails fails the attempt, and the reason becomes the next attempt's b
 | 5. Files and held work are saved | They were saved. | The attempt fails, and the next attempt saves them again. |
 | 6. The judge | The judge answers *done*, finds nothing, or reads under its floor. | *Not done* fails the attempt. An *ask* verdict holds the task on a question. |
 | 7. Review, when on | The user accepts. | See [Review](#review). |
-| 8. Pull requests, when on | Every pull request the run opened has merged. | See below. |
+| 8. Pull requests, when on | None of the run's pull requests is open and at least one has merged. | See below. |
 
 Where the table is not enough:
 

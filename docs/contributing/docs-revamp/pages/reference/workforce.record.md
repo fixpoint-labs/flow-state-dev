@@ -47,6 +47,8 @@ Written by `docs-writer` (sonnet), 11062 words. Scenario: A support app with a s
 
 - After the loop (review): the loop escalated with 4 docs-editor findings and 2 suspected inaccuracies open; docs-writer took them in one round. A gathered error report holds the failure, its occurrences and up to three newest requests and sessions, collected without a model (packages/workforce/src/error-reporter/reporter.ts:180, 401-465). The client polls every 3 seconds while push does not cover the roster (packages/client/src/live/live-read.ts:38; subscribe/push-hub.ts:15-21, 175-196). The Projects screen does not need the inventory (packages/shift-manager/src/surfaces/Project.tsx:88-104). The model's task tools are named `createTask` and so on and a coordinator turn has them with no task-taking delegate; the session's `<tool>_tasks` actions answer `no_delegation_board` (conversation-board/session-board.ts:9-17, board.ts:1845-1851, test/any-worker-files.test.ts). An added setting is shown on the roster row when named in `showSettings` (agent-worker-flow.ts:278-291). Examples: default-valued `messages` and `taskChainLimit` cut; the unused fork is now the edited worker. 10940 words. Page sha256 6540e88c259a.
 
+- After the loop (review): the Greptile review: a bad `taskChainLimit` is refused when `workforce(config)` is called, `kit "workforce": its config is invalid: taskChainLimit: ...` (packages/workforce/src/kit/workforce-kit.ts:145; packages/core/src/kit/define-kit.ts:250-255), not by `hireWorkforce`, which the kit never calls with it. 10946 words. Page sha256 79bb78855395.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 b11c4addd897, and the 48 Reference row(s) pass 6 moved.
@@ -62,6 +64,8 @@ Final fact check of the page as it closed, sha256 059c25a7fa08: 2 untrue, fixed 
 - "`readWorkforce(root)` does not throw for load problems. It returns `errors`, `skillErrors`, `teamErrors` and `packageErrors`." (offered as an API the reader can call) Untrue: `readWorkforce` is not exported from any public entry. It is defined in `src/loader/read-workforce.ts`, and `./loader` (`src/loader/index.ts`) exports only `readWorkforceFolder` and the `WorkforceFolder` type. The return shape the page describes (`errors`, `skillErrors`, `teamErrors`, `packageErrors`) is accurate, but a reader cannot call the function. The public loader is `readWorkforceFolder` from `@flow-state-dev/workforce/loader`. (docs/contributing/docs-revamp/pages/reference/workforce.md:112 (code: packages/workforce/src/loader/index.ts:17-20, packages/workforce/src/loader/read-workforce.ts:122))
 
 - Re-run after the review edit: each changed claim was read against the code it cites by the writer; both TypeScript examples type-check. No untrue claim remains open.
+
+- Re-run after the review edit: each changed claim was read against the cited code by a code reader. No untrue claim remains open.
 
 ## 6 · Depth pass
 

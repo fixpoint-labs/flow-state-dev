@@ -50,6 +50,8 @@ Written by `docs-writer` (sonnet), 8981 words. Scenario: The `support` app: one 
 
 - After the loop (review): the loop escalated with 5 docs-editor findings, one missed cold-read question and a page-check failure open; docs-writer took them in one round. The kit's boards are conversation boards, so a refused run ends `errored`; only a `harnessManager` you build on a board named with `boardCollectionId` cancels it (packages/harness-manager/src/kit/coder-flow.ts:223-226, manager.ts:550-566, 1470-1477, 2021-2033). "No lease" is cut. An `observed-gaps` row is described by when it appears and its fields (packages/claude-code/src/sdk/translate.ts:296-307, 478-510, work-collections.ts:129-159). A new "Who can send a line" bullet says only the run's own user can, anyone else gets a 404 `Unknown session` (packages/engine/src/routes/action-routes.ts:274-280, route-utils.ts:118-120), and a colleague's own task gets its own checkout and branch; steers stay at most 20 (packages/orchestration/src/tasks/schema/steer.ts:10). US spelling, one grammar fix, the banned word reworded, and the judge's *ask* verdict named as one. Example: the unused `plan: true` on `claudeCode()` is dropped; the config type-checks. 8146 words. Page sha256 3dd0287ae3e0.
 
+- After the loop (review): the Greptile review: a task waiting on pull requests completes once none is open and at least one has merged, and is cancelled when all close unmerged (packages/harness-manager/src/await-pull-requests.ts:149-155), in the options row, the holds table and step 8. A task filed through the kit gets two attempts unless it sets `maxAttempts`; one whose result goes to the conversation gets one (packages/workforce/src/conversation-board/board.ts:183, 1368). 8186 words. Page sha256 38b4eb4134b7.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 b2d53408ac2a, and the 18 Reference row(s) pass 6 moved.
@@ -70,6 +72,8 @@ Final fact check of the page as it closed, sha256 f3d344b6c9df: 6 untrue, fixed 
 - Step 3: "Any other value [than `finished`] fails the attempt with `the run terminated normally reporting <outcome> and the code phase is still not done`." Untrue: That wording is used only for `failed` or a `null` outcome, where `null` reads `no terminal result`, not an empty value. A `stopped-at-limit` outcome gives `the run stopped at its limit and the code phase is still not done`. An outcome of `finished` that the phase still refuses gives `the run finished cleanly and the code phase is still not done`. A reason is appended after a colon when the phase gives one. (/home/user/flow-state-dev/docs/contributing/docs-revamp/pages/reference/harness-runs.md:170 (code: /home/user/flow-state-dev/packages/harness-manager/src/manager.ts:3490-3500))
 
 - Re-run after the review edit: each changed claim was read against the code it cites by the writer. No untrue claim remains open.
+
+- Re-run after the review edit: each changed claim was read against the cited code by a code reader. No untrue claim remains open.
 
 ## 6 · Depth pass
 

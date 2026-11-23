@@ -37,7 +37,7 @@ The rows other pages' depth passes moved here (`grep` over `*.record.md`, 18 row
 | Row (short) | Verdict | Where it is on this sheet |
 |---|---|---|
 | Unfilled harness: worker names one (four phrasings) | **True, carried** | 7.3 |
-| Install order: dependency, then listed order; a required kit must be listed (corrected) | **True, carried** | 3 |
+| Install order: each step the first listed kit whose requirements are placed; a required kit must be listed (corrected) | **True, carried** | 3 |
 | `fill` and slot kinds: harness as a kit (`claudeCode`) or a plain value (`codexHarness`, `cursorHarness`) | **True, carried** | 6, 9 |
 | `workerFlows` entry that cannot receive messages, error names the flow | **True, carried** | 7.4 |
 | Unread file; worker, team, skill, package, document that fails to load; symlink; all at once | **True, carried; the reader's list is longer than the row's: it also has `reference`** | 7.6 |
@@ -92,7 +92,7 @@ Declared with `slot.keyed(schema)` or `slot.list(schema)`, exported from `@flow-
 | `keyed` | By key. A contributor gives a record, or an array of entries that each carry a string `id`, which becomes the key. A lone non-array entry is read as a record (`Object.entries`), not keyed by its `id` (`kp:177-191`). | A read-only record `Readonly<Record<string, T>>`, with no prototype. | Two contributors giving one key is refused, naming both. The app's `fill` counts as a contributor. | `dk:22-31`, `dk:46-48`, `kp:169-199`; tests `et:146-169`, `et:171-198`, `et:236-247` |
 | `list` | Appended. A contributor gives one entry or an array. | A read-only array `readonly T[]`. | None; every entry is kept. | `dk:33-41`, `dk:46-48`, `kp:157-166`; test `et:92-106` |
 
-- List order: kits in install order (each kit after the kits it requires, ties in the order the app listed them), the app's `fill` last. `dk:33-36`, `kp:149`, `kp:204` (the app's rank is infinity). Test: `et:92-106` (`["c","app"]`), `et:81-90`. A tie between two kits that are independent of each other has no test of its own; the order follows the install order in section 3 (`kp:76-80`, `kp:149`). [table]
+- List order: kits in install order (each kit after the kits it requires, the first listed kit whose requirements are placed at each step, so two independent kits can swap when one waits on a requirement), the app's `fill` last. `dk:33-36`, `kp:149`, `kp:204` (the app's rank is infinity). Test: `et:92-106` (`["c","app"]`), `et:81-90`. A tie between two kits that are independent of each other has no test of its own; the order follows the install order in section 3 (`kp:76-80`, `kp:149`). [table]
 - Every entry is checked against the slot's schema, and `install` receives what the schema parsed: defaults applied, values coerced. `dk:29`, `dk:39`, `kp:151-156`; test `et:208-224`. [table]
 - A keyed entry listed by `id` with no string `id` is refused: `slot "<key>" is keyed, but <who> gave it an entry with no string \`id\` to key it by.` `kp:177`; test `et:166-168`. A keyed slot given something that is neither a record nor a list: `slot "<key>" is keyed, but <who> gave it something other than a record or a list of entries.` `kp:184`. [table]
 - An entry keyed `__proto__` stays an own key of the record. `kp:167-170`; test `et:171-198`.
@@ -101,7 +101,7 @@ Declared with `slot.keyed(schema)` or `slot.list(schema)`, exported from `@flow-
 ## 3. Install order
 
 - The app lists kits in any order. They install in dependency order: each kit after every kit it requires. `dk:203-206`, `ty:160-163`, `kp:55-85`; test `et:81-90` (`[d(), b(), c()]` installs `b`, `c`, `d`); goal `g1:5,13`. [table]
-- Two kits where neither requires the other keep the order the app listed them: each step takes the first kit in the listed order whose requirements are placed. `kp:72-84`. [table]
+- Each step takes the first kit in the listed order whose requirements are placed, so two kits where neither requires the other can install out of listed order: for `[a(), b(), c()]` where only `a` requires `c`, the order is `b, c, a` (corrected after review; no test covers it). `kp:72-84`. [table]
 - `requires` takes the other kit's factory, so a kit can require only a kit defined before it (a factory must exist to be named). The page states only that; the cycle refusal is the 7.2 row (test `et:293-296`), and how a cycle is written is not stated. `dk:121-122`, `dk:200-201`.
 - A required kit must itself be in the app's `kits` list. Requiring a kit that is not listed is refused. `kp:63-69`; test `et:291`. [table]
 - A kit's `contributes` runs dependents first, so a kit's own slots are finished before its `contributes` reads them: the kits are walked in reverse install order. `kp:207-229`, `kp:6-10`. Every contribution is merged before any `install` runs, so each `install` sees its slots complete. `kp:16-18`, `kp:292-299`. [table]

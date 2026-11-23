@@ -316,7 +316,7 @@ A user's edit of a standard worker applies from the next turn and leaves the fil
 | Part | Owner | Seen by | Stored | How many |
 | --- | --- | --- | --- | --- |
 | A `references/` file | The app. | Workers whose place reaches it, narrowed by `references:`. | Not stored. Read when each request starts. | One per file. |
-| A `resources/` document | The organization, once written. The file is the starting text. | Every worker on the built-in `agent` flow, unless its `resources:` line narrows the list. | The app's org-scope store. | One per organization, or one per organization per worker with `flowIsolation: true`. |
+| A `resources/` document | The organization, once written. The file is the starting text. | Every worker on the built-in `agent` flow, unless its `resources:` line narrows the list. | The app's org-scope store. | One per organization, or one per organization per worker flow with `flowIsolation: true`. Workers on the same flow share the document. |
 | A `WORKER.md` | The app. A user's edit saves that user's own copy under the same id. | Every user of every organization. | Not stored. A deploy that changes the file changes the worker. | One per file. |
 | A `TEAM.md` | The app. | That team's workers only. | Not stored. It rides each team worker's configuration. | At most one per team. |
 

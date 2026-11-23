@@ -110,7 +110,7 @@ Declare a slot with `slot.keyed(schema)` or `slot.list(schema)`, both from `@flo
 | `keyed` | A record, or an array of entries that each carry a string `id`, which becomes the key | A read-only record with no prototype | Refused, naming both. The app's `fill` counts as a contributor. |
 | `list` | One entry or an array, appended | A read-only array | Not applicable |
 
-A list holds entries in install order, whatever order `contributes` ran in, then the app's `fill`. Two kits that do not require each other contribute in the order the app listed them. A slot nobody contributes to is an empty record or an empty array, so `install` always receives every slot its kit declares.
+A list holds entries in install order, whatever order `contributes` ran in, then the app's `fill`. Install order follows the app's list except where a kit waits on a kit it requires. A slot nobody contributes to is an empty record or an empty array, so `install` always receives every slot its kit declares.
 
 ## Who may fill a slot
 
@@ -125,7 +125,7 @@ A kit fills a slot by naming the owner's factory: `{ [owner.slots.name]: entries
 | Rule | Detail |
 | --- | --- |
 | Dependency order | Each kit installs after every kit it requires, whatever order the app listed them in. `[d(), b(), c()]` installs `b`, `c`, `d`. |
-| Listed order | Two kits where neither requires the other keep the order the app listed them. |
+| Listed order | Each step installs the first kit in the app's list whose required kits are already installed. A kit waiting on a requirement is skipped, so two kits that do not require each other can install in the opposite order to the list. |
 | A required kit must be listed | Requiring a kit that is not in `kits` is refused. |
 | Contributions | `contributes` runs dependents first, so a kit's slots are finished before it reads them. Every contribution is merged before any `install` runs. |
 | Two moments | `createFlowState(...)` is synchronous and plans the kits: order, slots, folders. `ready()` reads the folders, then runs every `install` in order. |
