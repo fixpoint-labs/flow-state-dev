@@ -23,12 +23,14 @@
  * (FIX-870, FIX-2885). A fragment may name published packages only (BP-022);
  * this is checked on every PR, not first met by the release job.
  *
- * `--changesets` runs that second check alone. It reads each fragment with
- * Changesets' own parser (`@changesets/parse`, resolved through the installed
- * `@changesets/cli` so it is the copy `changeset version` runs), so a fragment
- * it can't parse fails here exactly as it would there. That needs the install,
- * so CI runs it in the Export check job; the default run needs no dependencies
- * and stays in Process guards.
+ * `--changesets` runs that second check alone. It reads the pending notes
+ * with `@changesets/read`, the module `changeset version` reads them with,
+ * resolved from the installed `@changesets/cli`, whose runtime dependency it
+ * is. Read applies Changesets' own file filters and parse, so a note it skips
+ * or throws on is skipped or fails here exactly as it would there. When read
+ * throws, each note is parsed alone with read's own `@changesets/parse` to name
+ * the file. That needs the install, so CI runs it in the Export check job; the
+ * default run needs no dependencies and stays in Process guards.
  *
  * Exits non-zero naming the package or fragment and the fix.
  */
@@ -37,6 +39,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { isPendingChangeset } from "./pending-changesets.mjs";
 import { workspaceManifests } from "./workspace-members.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
@@ -90,13 +93,31 @@ export function findPublishable(dirs, read) {
 }
 
 /**
- * The parser `changeset version` reads fragments with, from the installed `@changesets/cli`.
- * @returns {(source: string) => { releases: { name: string, type: string }[], summary: string }}
+ * `@changesets/read`, as `changeset version` runs it, and the `@changesets/parse` it reads
+ * each note with: read from the installed `@changesets/cli` (a runtime dependency there),
+ * parse from read (a runtime dependency of read), so neither leans on hoisting.
+ * @returns {{ read: (root: string) => Promise<{ id: string, releases: { name: string }[] }[]>, parse: (source: string) => { releases: { name: string }[] } }}
  */
-export function loadChangesetParser() {
+export function loadChangesets() {
   const fromCli = createRequire(createRequire(import.meta.url).resolve("@changesets/cli/package.json"));
-  const parse = fromCli("@changesets/parse");
-  return parse.default ?? parse;
+  const fromRead = createRequire(fromCli.resolve("@changesets/read"));
+  const read = fromCli("@changesets/read");
+  const parse = fromRead("@changesets/parse");
+  return { read: read.default ?? read, parse: parse.default ?? parse };
+}
+
+/**
+ * A parsed note's releases that `changeset version` would refuse, as `{ path, name, reason }`.
+ * @param {string} path
+ * @param {{ name: string }[]} releases
+ * @param {Map<string, boolean>} packages
+ */
+function refusedReleases(path, releases, packages) {
+  return releases.flatMap(({ name }) => {
+    if (!packages.has(name)) return [{ path, name, reason: "is not a workspace package" }];
+    if (packages.get(name)) return [{ path, name, reason: "is private, so changeset version skips it" }];
+    return [];
+  });
 }
 
 /**
@@ -108,7 +129,7 @@ export function loadChangesetParser() {
  *
  * @param {{ path: string, source: string }[]} fragments — `.changeset/*.md` other than the README.
  * @param {Map<string, boolean>} packages — each workspace package's name and whether it is private.
- * @param {ReturnType<typeof loadChangesetParser>} parse — Changesets' fragment parser.
+ * @param {ReturnType<typeof loadChangesets>["parse"]} parse — Changesets' fragment parser.
  */
 export function findUnversionable(fragments, packages, parse) {
   const offenders = [];
@@ -120,10 +141,7 @@ export function findUnversionable(fragments, packages, parse) {
       offenders.push({ path, name: null, reason: `cannot be parsed: ${String(error.message).split("\n")[0]}` });
       continue;
     }
-    for (const { name } of releases) {
-      if (!packages.has(name)) offenders.push({ path, name, reason: "is not a workspace package" });
-      else if (packages.get(name)) offenders.push({ path, name, reason: "is private, so changeset version skips it" });
-    }
+    offenders.push(...refusedReleases(path, releases, packages));
   }
   return offenders;
 }
@@ -138,20 +156,37 @@ function readWorkspace() {
   return packages;
 }
 
-const readPendingChangesets = () =>
-  readdirSync(join(ROOT, ".changeset"))
-    .filter((f) => f.endsWith(".md") && f !== "README.md")
-    .map((f) => ({ path: `.changeset/${f}`, source: readFileSync(join(ROOT, ".changeset", f), "utf8") }));
+/**
+ * The pending notes and what `changeset version` would refuse in them, read by `@changesets/read`.
+ * When read throws (it stops at the first note it can't parse), each note read would take is
+ * parsed alone, so the failure names its file.
+ * @param {string} root
+ * @param {Map<string, boolean>} packages
+ * @param {ReturnType<typeof loadChangesets>} changesets
+ */
+export async function readUnversionable(root, packages, { read, parse }) {
+  try {
+    const notes = await read(root);
+    return { count: notes.length, offenders: notes.flatMap((note) => refusedReleases(`.changeset/${note.id}.md`, note.releases, packages)) };
+  } catch (error) {
+    const fragments = readdirSync(join(root, ".changeset"))
+      .map((file) => `.changeset/${file}`)
+      .filter(isPendingChangeset)
+      .map((path) => ({ path, source: readFileSync(join(root, path), "utf8") }));
+    const offenders = findUnversionable(fragments, packages, parse);
+    if (offenders.length === 0) offenders.push({ path: ".changeset", name: null, reason: `cannot be read: ${String(error.message).split("\n")[0]}` });
+    return { count: fragments.length, offenders };
+  }
+}
 
 const readManifest = (dir) =>
   JSON.parse(readFileSync(join(ROOT, "packages", dir, "package.json"), "utf8"));
 
-/** `--changesets`: every pending fragment, read with Changesets' parser. */
-function mainChangesets() {
-  const fragments = readPendingChangesets();
-  const unversionable = findUnversionable(fragments, readWorkspace(), loadChangesetParser());
+/** `--changesets`: every pending note, read as `changeset version` reads it. */
+async function mainChangesets() {
+  const { count, offenders: unversionable } = await readUnversionable(ROOT, readWorkspace(), loadChangesets());
   if (unversionable.length === 0) {
-    console.log(`✓ ${fragments.length} pending changeset(s) parse and name published packages only`);
+    console.log(`✓ ${count} pending changeset(s) parse and name published packages only`);
     process.exit(0);
   }
   console.error(`\n✗ ${unversionable.length} problem(s) in pending changesets that changeset version would refuse:\n`);
@@ -200,6 +235,6 @@ if (
   process.argv[1] !== undefined &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  if (process.argv.includes("--changesets")) mainChangesets();
+  if (process.argv.includes("--changesets")) await mainChangesets();
   else main();
 }

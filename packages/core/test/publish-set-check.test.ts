@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
-import { findPublishable, findUnversionable, loadChangesetParser, neverPublish } from "../../../scripts/validate-publish-set.mjs";
+import { findPublishable, findUnversionable, loadChangesets, neverPublish } from "../../../scripts/validate-publish-set.mjs";
 
 type Offender = { dir: string; name: string | null; reason: string };
 type Manifest = { name?: string; private?: boolean };
@@ -65,7 +65,7 @@ describe("packages held out of the publish set", () => {
 type Unversionable = { path: string; name: string | null; reason: string };
 
 // The real parser `changeset version` runs, so a case here fails exactly when the release would.
-const parse = (loadChangesetParser as () => unknown)();
+const { parse } = (loadChangesets as () => { parse: unknown })();
 
 const unversionable = (fragments: Record<string, string>): Unversionable[] =>
   (findUnversionable as (f: { path: string; source: string }[], p: Map<string, boolean>, parse: unknown) => Unversionable[])(

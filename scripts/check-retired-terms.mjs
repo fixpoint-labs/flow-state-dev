@@ -100,6 +100,8 @@ import {
   TREE_RULES,
 } from "../docs/contributing/glossary.mjs";
 import { gitReader } from "./mechanism-exports.mjs";
+// The notes `changeset version` deletes; a `releaseNote` flag may name these and nothing else.
+import { isPendingChangeset } from "./pending-changesets.mjs";
 
 /** The glossary's areas, terms, exceptions and pins, re-exported for this guard's tests and codemods. */
 export { AREAS, EXCEPTIONS, PERSON_PINS, TERMS };
@@ -446,13 +448,6 @@ export function checkGlossary(text) {
  *   the text of each one that reads as text
  * @param {{ extraExceptions?: object[]; reads?: typeof NAME_READS }} [options] `reads`: the parser reads (a test drops one)
  */
-/**
- * A pending changeset: a note at the top of `.changeset/`, never its README. `changeset version`
- * deletes exactly these, so a `releaseNote` flag may name these and nothing else.
- * @param {string} path
- */
-export const isPendingChangeset = (path) => /^\.changeset\/[^/]+\.md$/.test(path) && path !== ".changeset/README.md";
-
 export function census({ files, paths }, { extraExceptions = [], releaseNotes = RELEASE_NOTE_EXEMPTIONS, reads = NAME_READS } = {}) {
   const exceptions = [...EXCEPTIONS, ...extraExceptions];
   const unscoped = [];
