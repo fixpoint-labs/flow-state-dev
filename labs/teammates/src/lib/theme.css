@@ -20,57 +20,94 @@
  * whether the Talk pane is open or not.
  *
  * The radius values are Tailwind's own theme variables: `rounded-sm`,
- * `rounded-md` and `rounded-lg` read `--radius-sm`, `--radius-md` and
- * `--radius-lg` directly, so these set them.
+ * `rounded-md`, `rounded-lg` and `rounded-xl` read `--radius-sm` … `--radius-xl`
+ * directly, so these set them: buttons and chips, list rows and task cards,
+ * conversation cards, the composer.
+ *
+ * Beyond the registry's names, the theme adds the steps the shell is drawn
+ * with: `bg-subtle` (the context bar), `surface-raised` (the user's bubble, a
+ * selected item), `border-strong` (buttons, the composer), the text steps
+ * `text-2` and `text-3` (never dimmer than `text-3`, for contrast), `brand`
+ * (the periwinkle for unread badges, send and links; the registry's `accent`
+ * stays the quiet hover surface), and a `-text`, `-soft` (fill) and `-line`
+ * (border) for `success`, `warning` and `danger`. `src/styles.css` maps each
+ * to a Tailwind colour name.
+ *
+ * Fonts: Inter and JetBrains Mono when the machine has them, else the system
+ * stacks. The lab ships no font files.
  */
 :root,
 .dark {
-  --background: #141415;
-  --foreground: #ececee;
-  --card: #1c1c1e;
-  --card-foreground: #ececee;
-  --popover: #1c1c1e;
-  --popover-foreground: #ececee;
-  --primary: #ececee;
-  --primary-foreground: #141415;
-  --secondary: #26262a;
-  --secondary-foreground: #ececee;
-  --muted: #1c1c1e;
-  --muted-foreground: #8e8e93;
-  --accent: #26262a;
-  --accent-foreground: #ececee;
-  --destructive: #f0716a;
-  --destructive-foreground: #141415;
-  --border: #2a2a2e;
-  --input: #2a2a2e;
-  --ring: #5f5f66;
-  --success: #8fcfa6;
-  --success-foreground: #141415;
-  --warning: #e3ac74;
-  --warning-foreground: #141415;
+  --background: #0b0c0e;
+  --foreground: #ecedef;
+  --card: #131418;
+  --card-foreground: #ecedef;
+  --popover: #131418;
+  --popover-foreground: #ecedef;
+  --primary: #ecedef;
+  --primary-foreground: #0b0c0e;
+  --secondary: #1a1b20;
+  --secondary-foreground: #ecedef;
+  --muted: #131418;
+  --muted-foreground: #a4a7ae;
+  --accent: #1a1b20;
+  --accent-foreground: #ecedef;
+  --destructive: #f07a6a;
+  --destructive-foreground: #0b0c0e;
+  --border: #1e2025;
+  --input: #2a2c33;
+  --ring: #5f6370;
+  --success: #5bd69a;
+  --success-foreground: #0b0c0e;
+  --warning: #e9b44c;
+  --warning-foreground: #0b0c0e;
   --info: #93b4ec;
-  --info-foreground: #141415;
-  --attention: #e6c47c;
-  --attention-foreground: #141415;
+  --info-foreground: #0b0c0e;
+  --attention: #e9b44c;
+  --attention-foreground: #0b0c0e;
 
-  --sidebar: #0f0f10;
-  --inspector: #111112;
+  --sidebar: #0f1013;
+  --inspector: #0f1013;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --bg-subtle: #0d0e10;
+  --surface: #131418;
+  --surface-raised: #1a1b20;
+  --selected: #191a1f;
+  --border-strong: #2a2c33;
+  --text-2: #a4a7ae;
+  --text-3: #858993;
+  --brand: #a3aeff;
+  --brand-foreground: #0b0c0e;
+  --success-text: #7fe3b1;
+  --success-soft: #12261c;
+  --warning-text: #f0cb7e;
+  --warning-soft: #1c170d;
+  --warning-line: #4a3a1a;
+  --danger: #f07a6a;
+  --presence-idle: #4a4d55;
 
-  --radius-sm: 0.375rem;
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-sm: 0.5rem;
   --radius-md: 0.625rem;
-  --radius-lg: 1.25rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 0.875rem;
 
   --teammate-blue: #8fb3f0;
   --teammate-green: #8fd0a4;
-  --teammate-amber: #e5b678;
+  --teammate-amber: #e9b44c;
   --teammate-rose: #ee9aa8;
-  --teammate-violet: #b9a2ee;
-  --teammate-teal: #7fcfc9;
+  --teammate-violet: #b79cf5;
+  --teammate-teal: #5cc8d6;
+  --teammate-blue-soft: #141c2b;
+  --teammate-green-soft: #12261c;
+  --teammate-amber-soft: #2a2213;
+  --teammate-rose-soft: #2a161b;
+  --teammate-violet-soft: #211a2e;
+  --teammate-teal-soft: #12262a;
 
-  --thread-width: 46rem;
+  --thread-width: 47.5rem;
 
   color-scheme: dark;
 }

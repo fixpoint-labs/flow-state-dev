@@ -114,7 +114,7 @@ export const subscribeInputSchema = z
       .optional()
       .describe(
         'Narrow what passes: { screen: "labels", any: [...] }, { screen: "words", any: [...] } (title or text, any case), ' +
-          '{ screen: "allow", ids: [...] } (only these senders), { screen: "custom", name } (one of the app\'s own screens, listed in the tool\'s description), ' +
+          '{ screen: "allow", ids: [...], bots?: [...] } (only these senders; with bots, a bot must be in bots and anyone else in ids), { screen: "custom", name } (one of the app\'s own screens, listed in the tool\'s description), ' +
           '{ screen: "interest" } (a model reads what the other screens passed against your interest sentence). Every listed screen must pass.'
       ),
     outsiders: z.literal(true).optional().describe("Also hear people outside the project (not members, collaborators or listed bots). Off by default."),

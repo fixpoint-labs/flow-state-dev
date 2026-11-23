@@ -75,7 +75,7 @@ describe("a coding task's spend", () => {
     const server = stubServer({ board: { [`conversation:${LEAD}`]: [ranOn("t1", "codex", CODEX), ranOn("t2", "claude-code", CLAUDE)] } });
     render(<TestProvider server={scriptedServer({ speed: 0.2 })} client={server.client}><App /></TestProvider>);
     const panel = await screen.findByRole("complementary", { name: "Lead's panel" });
-    await waitFor(() => expect(panel.querySelector("[data-coding-spend]")?.textContent).toBe("Coding tasks: 23.9k tokens · $0.42"));
+    await waitFor(() => expect(panel.querySelector("[data-coding-spend-value]")?.textContent).toBe("23.9k · $0.42"));
   });
 });
 
@@ -83,7 +83,7 @@ describe("the panel's coding-task total", () => {
   const task = (spend?: ReturnType<typeof spent>) => ranOn("t", "codex", spend ?? null);
 
   it("says partial when a task's count is still missing a source, so a floor never reads as the whole", () => {
-    expect(codingSpendLine([task(spent("codex", "gpt-5.5-codex", 1_000, 200, 0.1)), task(spent("codex", "gpt-5.5-codex", 2_000, null, null, true))])).toBe("Coding tasks: 3.2k tokens (partial) · $0.10");
+    expect(codingSpendLine([task(spent("codex", "gpt-5.5-codex", 1_000, 200, 0.1)), task(spent("codex", "gpt-5.5-codex", 2_000, null, null, true))])).toBe("3.2k · $0.10 · partial");
   });
 
   it("is empty until some task reports a count, so a started run never reads as 0 tokens", () => {

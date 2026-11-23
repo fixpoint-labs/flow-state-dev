@@ -1008,6 +1008,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     options.normalize === undefined ? undefined : { [provider.provider]: { service: { entry: SUBSCRIPTION_ROUTE_ENTRY, normalize: options.normalize } } };
   return defineFlow({
     kind: options.kind,
+    description: `Takes ${provider.provider} events in and routes them to the workers subscribed to them. Each delivery runs once, as a one-off run.`,
     actions: {},
     ...(webhooks === undefined ? {} : { webhooks }),
     ...(schedules === undefined ? {} : { schedules }),

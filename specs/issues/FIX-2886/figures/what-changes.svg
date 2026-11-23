@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="Before and after. Before, each fire of a poll schedule reaches the engine with no session, the engine mints an ephemeral session per fire, and nothing removes them. After, the poll's resolver marks the schedule per-schedule, the dispatch endpoint derives one reserved session id from the flow, the user and the schedule id, every fire runs in that session, and the service flow's retention caps its history at a day"
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+      .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-gone{ fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .t-gone{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+  <g id="before">
+    <text class="t-lbl" x="16" y="28">BEFORE · EVERY FIRE OF A POLL</text>
+    <rect class="n-box" x="16" y="40" width="200" height="66" rx="5"/>
+    <text class="t-lbl" x="28" y="58">SCHEDULE TICK</text>
+    <text class="t-b" x="28" y="77">every 5 minutes</text>
+    <text class="t-s" x="28" y="94">a due poll schedule</text>
+    <path class="arrow" d="M216 73 H240"/><path class="arrow" d="M240 69 L246 73 L240 77"/>
+    <rect class="n-box" x="246" y="40" width="200" height="66" rx="5"/>
+    <text class="t-lbl" x="258" y="58">DISPATCH ENDPOINT</text>
+    <text class="t-b" x="258" y="77">envelope, no session</text>
+    <text class="t-s" x="258" y="94">overlap skip, claim</text>
+    <path class="arrow" d="M446 73 H470"/><path class="arrow" d="M470 69 L476 73 L470 77"/>
+    <rect class="n-box" x="476" y="40" width="200" height="66" rx="5"/>
+    <text class="t-lbl" x="488" y="58">RUNACTION</text>
+    <text class="t-b" x="488" y="77">mints ephemeral_…</text>
+    <text class="t-s" x="488" y="94">one session per fire</text>
+    <path class="arrow" d="M676 73 H700"/><path class="arrow" d="M700 69 L706 73 L700 77"/>
+    <rect class="n-gone" x="706" y="40" width="218" height="66" rx="5"/>
+    <text class="t-lbl" x="718" y="58">THE STORE</text>
+    <text class="t-b" x="718" y="77">288 sessions a day</text>
+    <text class="t-s" x="718" y="94">nothing removes them</text>
+  </g>
+  <g id="after">
+    <text class="t-lbl" x="16" y="152">AFTER · THE POLL SAYS session: &quot;per-schedule&quot;</text>
+    <rect class="n-box" x="16" y="164" width="200" height="66" rx="5"/>
+    <text class="t-lbl" x="28" y="182">SCHEDULE TICK</text>
+    <text class="t-b" x="28" y="201">every 5 minutes</text>
+    <text class="t-s" x="28" y="218">a due poll schedule</text>
+    <path class="arrow" d="M216 197 H240"/><path class="arrow" d="M240 193 L246 197 L240 201"/>
+    <rect class="n-new" x="246" y="164" width="200" height="66" rx="5"/>
+    <text class="t-lbl" x="258" y="182">DISPATCH ENDPOINT</text>
+    <text class="t-b" x="258" y="201">derives one session id</text>
+    <text class="t-s" x="258" y="218">flow · user · schedule id</text>
+    <path class="arrow" d="M446 197 H470"/><path class="arrow" d="M470 193 L476 197 L470 201"/>
+    <rect class="n-new" x="476" y="164" width="200" height="66" rx="5"/>
+    <text class="t-lbl" x="488" y="182">INBOUND HOST</text>
+    <text class="t-b" x="488" y="201">reserved prefix</text>
+    <text class="t-s" x="488" y="218">only the scheduled source</text>
+    <path class="arrow" d="M676 197 H700"/><path class="arrow" d="M700 193 L706 197 L700 201"/>
+    <rect class="n-new" x="706" y="164" width="218" height="66" rx="5"/>
+    <text class="t-lbl" x="718" y="182">ONE SESSION PER POLL</text>
+    <text class="t-b" x="718" y="201">every fire in its history</text>
+    <text class="t-s" x="718" y="218">retention keeps one day</text>
+    <text class="t-s" x="16" y="262">Webhook deliveries and schedules that do not opt in keep one-off runs. The old sessions stay until FIX-2887.</text>
+    <text class="t-s" x="16" y="282">A slow fire: the next is skipped by onOverlap before it reaches the session; the poll's mark catches up.</text>
+  </g>
+</svg>

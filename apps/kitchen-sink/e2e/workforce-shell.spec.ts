@@ -74,7 +74,7 @@ async function openShell(page: Page): Promise<void> {
 
 const rail = (page: Page) => page.getByTestId("rail");
 const row = (page: Page, name: string) => rail(page).getByRole("button", { name, exact: true });
-/** A flow's own row. The worker flow and its one copy share the name `agent`. */
+/** A flow's own line. The worker flow's one copy shares its name `agent`, so this line is that copy's leaf. */
 const flowRow = (page: Page, flow: string) => rail(page).locator(`button[data-kind="${flow}"]`);
 /** A copy's row under its flow. */
 const copyRow = (page: Page, id: string) => rail(page).locator(`button[data-instance-id="${id}"]`);
@@ -108,18 +108,14 @@ test("the rail opens the coordinator into the user's conversation with it and th
     expect(new URL(url).searchParams.get("state.workerId"), url).toBe(COORDINATOR);
   }
 
-  // The worker flow is a collection with one copy: opening its row lists the
-  // copy and reads nothing. No copy is drawn per worker.
+  // The worker flow is a collection with one copy, named for the flow: the
+  // flow's line is that copy's leaf, so no copy line is drawn, and none per
+  // worker. Opening it is one read, for that copy, and shows the
+  // conversation created naming the worker.
   await flowRow(page, WORKER_FLOW).click();
-  await expect(copyRow(page, WORKER_FLOW)).toBeVisible();
-  await expect(copyRow(page, WORKER)).toHaveCount(0);
-  await page.waitForTimeout(300);
-  expect(requests.take()).toEqual([]);
-
-  // Opening the copy is one read, for that copy, and shows the conversation
-  // created naming the worker.
-  await copyRow(page, WORKER_FLOW).click();
   await expect(rail(page).locator(`[data-session-id="${workerSessionId}"]`)).toBeVisible();
+  await expect(copyRow(page, WORKER_FLOW)).toHaveCount(0);
+  await expect(copyRow(page, WORKER)).toHaveCount(0);
   const workerReads = requests.take();
   expect(workerReads).toHaveLength(1);
   expect(workerReads[0]).toContain(`flowId=${encodeURIComponent(WORKER_FLOW)}`);
@@ -154,7 +150,6 @@ test("the header names the assistant's model on the assistant only, never on a c
   await expect(headerModel).toHaveCount(0);
 
   await expand(flowRow(page, WORKER_FLOW));
-  await expand(copyRow(page, WORKER_FLOW));
   await rail(page).locator(`[data-session-id="${workerSessionId}"]`).click();
   await expect(page.locator('[data-testid="picked-session"]:visible')).toBeVisible();
   await expect(headerModel).toHaveCount(0);

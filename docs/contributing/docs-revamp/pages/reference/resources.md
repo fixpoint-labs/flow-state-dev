@@ -39,6 +39,26 @@ export const refundPolicy = defineResource({
 });
 ```
 
+The block that drafts replies declares it and reads the body:
+
+```ts title="src/flows/support/blocks/draft-reply.ts"
+import { generator } from "@flow-state-dev/core";
+import { z } from "zod";
+import { refundPolicy } from "../resources/refund-policy";
+
+export const draftReply = generator({
+  name: "draft-reply",
+  model: "openai/gpt-6-luna",
+  prompt: "You answer customer support messages. Follow the refund policy you are given.",
+  inputSchema: z.string(),
+  resources: { refundPolicy },
+  user: async (input, ctx) => {
+    const policy = await ctx.resources.refundPolicy.readContent();
+    return `Refund policy:\n${policy ?? ""}\n\nCustomer message:\n${input}`;
+  },
+});
+```
+
 ### `defineResource` fields
 
 | Field | Type | Meaning |
@@ -191,6 +211,27 @@ export const ticketNotes = defineResourceCollection({
 });
 ```
 
+A block adds a note and finds the notes by the same author through the index:
+
+```ts title="src/flows/support/blocks/add-note.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { ticketNotes } from "../resources/ticket-notes";
+
+export const addNote = handler({
+  name: "add-note",
+  inputSchema: z.object({ noteId: z.string(), text: z.string() }),
+  resources: { notes: ticketNotes },
+  execute: async (input, ctx) => {
+    const author = ctx.user.identity.userId ?? "unknown";
+    const note = await ctx.resources.notes.create(input.noteId, { author });
+    await note.writeContent(input.text);
+    const byAuthor = await ctx.resources.notes.findBy("byAuthor", author);
+    return { notesByAuthor: byAuthor.length };
+  },
+});
+```
+
 ### `defineResourceCollection` fields
 
 A collection takes the `defineResource` fields `scope`, `stateSchema`, `contentTemplate`, `contentTemplateRef`, `llmReadable`, `llmWritable`, `secret`, `writable`, `flowIsolation`, `sharedToLineage`, `prefetchMode`, `reactTo`, `edges`, `runBy` and `canWrite`, with these differences.
@@ -314,21 +355,20 @@ A key segment starting with `~` is reserved for these collections in every app. 
 ```ts title="src/flows/support/resources/orders.ts"
 import { defineProjectedResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
-
-const orders = new Map([["o-1", { status: "shipped" }]]);
+import { findOrder, searchOrders } from "../../../lib/orders";
 
 export const orderView = defineProjectedResourceCollection({
   pattern: "orders/*",
   scope: "user",
   stateSchema: z.object({ status: z.string() }),
-  async read({ key }) {
-    return orders.get(key) ?? null;
+  async read({ key, ctx }) {
+    const order = await findOrder(key);
+    if (!order || order.userId !== ctx.userId || order.orgId !== ctx.orgId) return null;
+    return { status: order.status };
   },
-  async search({ query }) {
-    const hits = [...orders]
-      .filter(([key]) => key.startsWith(query.search ?? ""))
-      .map(([key, state]) => ({ key, state }));
-    return { hits };
+  async search({ query, ctx }) {
+    const found = await searchOrders({ userId: ctx.userId, orgId: ctx.orgId, text: query.search });
+    return { hits: found.map((order) => ({ key: order.id, state: { status: order.status } })) };
   },
   client: { state: { read: true } },
 });
@@ -618,7 +658,7 @@ The snapshot groups resources by scope. A single resource's entry has `clientDat
 
 ### HTTP routes
 
-All paths are under `/api/flows`.
+All paths are under `/api/flows`. The read routes:
 
 | Method | Path | Purpose | Notes |
 |---|---|---|---|
@@ -626,12 +666,19 @@ All paths are under `/api/flows`.
 | `GET` | `/sessions/:id/resources/:ref/:topic/content` | An entry's body | `404` for a missing entry; `400` when the topic does not match the pattern |
 | `GET` | `/sessions/:id/resources/:ref` | One page of entries | `limit` 1 to 200 (default 50, anything else `400`), `cursor`, `topicPrefix`. Returns `{ items: [{ topic, storageKey, clientData }], nextCursor? }`. `403` without `state.read`. |
 | `GET` | `/sessions/:id/resources/:ref/:topic` | One entry's state | `200` with `null` when absent. `403` without `state.read`. |
+| `GET` | `/sessions/:id/manifest` | The [manifest](#the-manifest) | `404` for an unknown session |
+
+Both content routes answer `content: null` when a resource's `contentTemplateRef` template is stored under an owner segment for a user other than the caller, unless an `ownerWrites` collection in the template's scope covers that key. See [Owner-keyed rows](#owner-keyed-rows).
+
+The write routes:
+
+| Method | Path | Purpose | Notes |
+|---|---|---|---|
 | `POST` | `/sessions/:id/resources/:ref` | Create an entry | Body `{ topic, content? }`. `201`. Needs `content.create`. |
 | `PATCH` | `/sessions/:id/resources/:ref/:topic/content` | Replace an entry's body | Body `{ content }`. Needs `content.update`. |
 | `DELETE` | `/sessions/:id/resources/:ref/:topic` | Delete an entry | Needs `content.delete`. Deleting a missing entry is `200`. |
-| `GET` | `/sessions/:id/manifest` | The [manifest](#the-manifest) | `404` for an unknown session |
 
-`:topic` takes slashes, which clients encode as `%2F`. A topic named `content` is not reachable through the item-state route. The three write routes work for session-scoped collections only and answer `501` otherwise.
+The write routes work for session-scoped collections only and answer `501` otherwise. `:topic` takes slashes, which clients encode as `%2F`. A topic named `content` is not reachable through the item-state route.
 
 Create, update and delete refuse as follows.
 
@@ -746,7 +793,7 @@ A request loads the resources its flow declares, directly or through its blocks.
 | A block, or a sequencer or router that collects it | When an action containing that block runs. A sibling action's resources do not load. |
 | A block, with `prefetchMode: "lazy"` | A single resource loads when its declaring block runs. A lazy collection reads one entry from the store per key you touch. |
 
-A sequencer collects its steps' declarations, a router its routes', and `defineFlow` merges the result into the flow's `resources`. A block carries its declaration into every flow it joins. A capability a block uses can carry resources as well.
+A sequencer collects its steps' declarations, a router its routes', and `defineFlow` merges the result into the flow's `resources`. A block carries its declaration into every flow it joins. A capability a block uses can carry resources as well. One `defineResource` reference installs once, however many blocks and capabilities list it. A different reference under one accessor throws at build: `Resource conflict in capability "<cap>" (<source>): accessor "<key>" is declared with different defineResource() references` when two capabilities clash, and `Resource conflict: accessor "<key>" is declared with different defineResource() references. Use the same reference across blocks.` when a capability clashes with the block's own `resources`.
 
 | `prefetchMode` | Collection reads |
 |---|---|

@@ -52,6 +52,31 @@ export function githubLoginsListed(document: string | null | undefined): string[
   return logins;
 }
 
+/**
+ * A reviewer list from {@link githubReviewers}, users and bots kept apart: a
+ * bot's id is its app slug without `[bot]`, the same form as a user's login, so
+ * a user who registers a listed bot's name must never match it.
+ */
+export interface GitHubReviewers {
+  /** The users listed, each login as GitHub sends a sender's id (lower-cased). */
+  readonly users: readonly string[];
+  /** The bots listed (`name[bot]`), as GitHub sends a bot's id. The service flow must trust them too (`trustedBots`). */
+  readonly bots: readonly string[];
+}
+
+/**
+ * A reviewer list as one setting writes it: comma-separated GitHub logins, a
+ * bot by its login (`greptile-apps[bot]`). `undefined` when it lists nobody.
+ */
+export function githubReviewers(value: string | undefined): GitHubReviewers | undefined {
+  const logins = (value ?? "").split(",").map((login) => login.trim()).filter((login) => login !== "");
+  if (logins.length === 0) return undefined;
+  const bot = (login: string) => /\[bot\]$/i.test(login);
+  const users = [...new Set(logins.filter((login) => !bot(login)).map(githubLoginId))];
+  const bots = [...new Set(logins.filter(bot).map(githubLoginId))];
+  return { users, bots };
+}
+
 /** Build the screen. */
 export function githubTrustedReviewersScreen(options: GitHubTrustedReviewersOptions): CustomScreen {
   const api = (options.apiUrl ?? "https://api.github.com").replace(/\/+$/, "");

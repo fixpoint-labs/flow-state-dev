@@ -61,7 +61,7 @@ describe("the worker list follows the roster", () => {
     render(<ScriptedProvider server={lab}><App /></ScriptedProvider>);
     await screen.findByLabelText("Message Lead");
     // This tab's own hire, from its form.
-    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Hire a teammate" })[0]!);
     const form = screen.getByRole("form", { name: "Hire a teammate" });
     fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "scribe" } });
     fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Takes notes" } });
@@ -107,7 +107,7 @@ describe("the worker list follows the roster", () => {
     const lab = scriptedServer({ speed: 0.05 });
     render(<ScriptedProvider server={lab}><App /></ScriptedProvider>);
     await screen.findByLabelText("Message Lead");
-    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Hire a teammate" })[0]!);
     const form = screen.getByRole("form", { name: "Hire a teammate" });
     fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "scribe" } });
     fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Takes notes" } });

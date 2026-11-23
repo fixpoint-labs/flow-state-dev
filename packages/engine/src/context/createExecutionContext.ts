@@ -111,7 +111,7 @@ import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
-import { cloneValue, getTransientKeys, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
+import { cloneValue, getTransientKeys, getReadonlyStateKeys, ONE_OFF_SESSION_PREFIX } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
 import {
@@ -729,7 +729,7 @@ export async function createExecutionContext<
   }
 
   const userId = options.userId;
-  const sessionId = options.sessionId ?? `ephemeral_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const sessionId = options.sessionId ?? `${ONE_OFF_SESSION_PREFIX}${Date.now()}_${Math.random().toString(16).slice(2)}`;
   // FIX-2623: a view's dependencies, recorded as its blocks read. Absent
   // outside a view. The only use of the raw recorder: every read path below
   // goes through this surface, which holds the topic rules (`view-reads.ts`).

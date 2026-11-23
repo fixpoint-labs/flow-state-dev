@@ -10,7 +10,8 @@
  *                    (`MOVED_RENAMES` in goal.mjs): a renamed row is looked for under its
  *                    new name in its new home, and under both names on the entries it left;
  *   FSD_CORE_SPECS — JSON list of every core specifier the installed exports map
- *                    offers, as `run.mjs` expands it.
+ *                    offers, as `run.mjs` expands it;
+ *   FSD_TEST_FILE  — source of `run.mjs`'s `TEST_FILE` pattern, the one test-file rule.
  *
  * Holds when: no `harness`, `internal` or `unexport` name is exported from the
  * root or `core/types`; every `harness` name is on `core/harness`; every
@@ -19,7 +20,7 @@
  * public core entry (they moved to `@flow-state-dev/testing/benchmark`, which the
  * packed-install check's `benchmark-subpaths.mjs` reads); `BlockContext` has
  * neither a `requestHost` member nor a symbol-keyed one; and the installed package
- * holds no compiled test file (`*.test.*`, `*.spec.*`).
+ * holds no compiled test file (`FSD_TEST_FILE`).
  *
  * Prints `core-dts: ok`, or `core-dts: FAIL at moved-names: <n> violation(s): …`
  * followed by one line per violation. Anything else (TypeScript missing, a crash)
@@ -87,9 +88,10 @@ else {
   for (const p of props.filter((n) => n.startsWith("__@"))) violations.push(`BlockContext has a symbol-keyed member (${p.split("@")[1]})`);
 }
 
+const testFile = new RegExp(process.env.FSD_TEST_FILE);
 const installed = join("node_modules", CORE);
 for (const e of readdirSync(installed, { recursive: true, withFileTypes: true }))
-  if (e.isFile() && /\.(test|spec)\.[mc]?[jt]sx?$|\.(test|spec)\.d\.[mc]?ts$/.test(e.name))
+  if (e.isFile() && testFile.test(e.name))
     violations.push(`the tarball ships a compiled test file: ${join(e.parentPath ?? e.path, e.name).slice(installed.length + 1)}`);
 
 if (violations.length === 0) console.log("core-dts: ok");

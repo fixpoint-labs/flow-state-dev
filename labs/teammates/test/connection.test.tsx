@@ -52,7 +52,7 @@ describe("the server going away", () => {
     expect(rowStatus("Lead").className).not.toContain(STALE);
   });
 
-  it("greys a running task's dot and stops its pulse in the panel while the feed is stale", async () => {
+  it("greys a running task's card and stops its pulse in the panel while the feed is stale", async () => {
     const server = stubServer({ board: { "conversation:teammates.chief-of-staff": [codingTask({ id: "t-1", assignee: "teammates.researcher", title: "Check the beta numbers", status: "in_progress" })] } });
     const lab = scriptedServer({ speed: 0.05 });
     render(<TestProvider server={lab} client={server.client}><App /></TestProvider>);
@@ -62,10 +62,9 @@ describe("the server going away", () => {
     expect(row().className).not.toContain(STALE);
 
     act(() => lab.setConnection("lapsed"));
-    // The dot sits inside the greyed row, where STALE_CLASS's pulse suppression reaches it.
+    // The whole card greys, so STALE_CLASS's pulse suppression reaches everything inside it (a running card's bar).
     expect(row().className).toContain(STALE);
     expect(row().className).toContain("[&_.animate-pulse]:animate-none");
-    expect(row().querySelector("[data-task-dot]")).not.toBeNull();
 
     act(() => lab.setConnection("live"));
     expect(row().className).not.toContain(STALE);

@@ -238,6 +238,17 @@ export const runRecordStateSchema = z.object({
   baseCommit: z.string().nullable().default(null),
   // BP-030.
   /**
+   * The cut the run's last settle read it against (`effectiveCut`): the base
+   * branch's tip then, when it had {@link baseCommit} in its history, else the
+   * cut. Written on every settle, beside the decision, so a file's patch read
+   * later reads as the review's files and the judge's did. A read re-guards
+   * it against {@link baseCommit} (`effectiveCut` again), so a value left from
+   * an earlier attempt can only ever be the cut or a commit past it. `null` on
+   * a record written before it was kept, and the read keeps the cut.
+   */
+  effectiveCut: z.string().nullable().default(null),
+  // BP-030.
+  /**
    * The run was first provisioned with no repository: its kept files alone.
    * Kept across attempts for the reason {@link remote} is, so a project that
    * gains a repository later never moves a files run onto a checkout and away
