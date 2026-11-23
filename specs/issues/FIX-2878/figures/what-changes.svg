@@ -1,0 +1,87 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="Before and after, side by side. Today, on the left: the work claim, a steer, a delivered message and the door each ask the session's worker which harness it names; the model is fixed when the harness value is built; a resume continues whatever session the run row holds; a plan run that writes still succeeds. After, on the right: the harness kit's filler writes harness and model into the task, dropping what the filer sent; the first claim runs one order, task then worker then kit, checks the lock and the model, and freezes the pair on the run record; steer, message, door and the next attempt read that pair; a model feed carries the model to the harness; a session is resumed only by the harness id written with it; a read-only run that writes fails by name."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-gone{ fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-rec { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .ln-g  { stroke:var(--gone); stroke-width:1.2; fill:none; stroke-dasharray:4 3; }
+    .ln-c  { stroke:var(--code); stroke-width:1.4; fill:none; }
+    .ln-a  { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="400" height="438" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY</text>
+    <rect class="n-box" x="32" y="52" width="368" height="44" rx="5"/>
+    <text class="t-b" x="44" y="72">The session's worker</text>
+    <text class="t-s" x="44" y="88">harness: … else the kit's defaultHarness</text>
+    <g id="today-routes">
+      <rect class="n-gone" x="32" y="130" width="84" height="40" rx="4"/><text class="t-s" x="44" y="154">work claim</text>
+      <rect class="n-gone" x="126" y="130" width="84" height="40" rx="4"/><text class="t-s" x="146" y="154">steer</text>
+      <rect class="n-gone" x="220" y="130" width="84" height="40" rx="4"/><text class="t-s" x="234" y="154">message</text>
+      <rect class="n-gone" x="314" y="130" width="86" height="40" rx="4"/><text class="t-s" x="342" y="154">door</text>
+      <path class="ln-g" d="M74 130 V96 M168 130 V96 M262 130 V96 M357 130 V96"/>
+      <text class="t-g" x="32" y="188">each route asks the worker again</text>
+    </g>
+    <rect class="n-box" x="32" y="210" width="368" height="44" rx="5"/>
+    <text class="t-b" x="44" y="230">The model</text>
+    <text class="t-g" x="44" y="246">fixed when the harness value is built</text>
+    <rect class="n-box" x="32" y="270" width="368" height="44" rx="5"/>
+    <text class="t-b" x="44" y="290">Resume</text>
+    <text class="t-g" x="44" y="306">any session on the row; source recorded, never checked</text>
+    <rect class="n-box" x="32" y="330" width="368" height="44" rx="5"/>
+    <text class="t-b" x="44" y="350">A plan run that wrote</text>
+    <text class="t-g" x="44" y="366">ends as a success</text>
+    <rect class="n-box" x="32" y="390" width="368" height="44" rx="5"/>
+    <text class="t-b" x="44" y="410">A task's input</text>
+    <text class="t-g" x="44" y="426">free-form; feature work under the harnessFeature key</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="432" y="16" width="492" height="438" rx="6"/>
+    <text class="t-lbl" x="448" y="38">AFTER</text>
+    <rect class="n-new" x="448" y="52" width="460" height="44" rx="5"/>
+    <text class="t-b" x="460" y="72">Filing: the harness kit's filler writes harness and model</text>
+    <text class="t-c" x="460" y="88">the filer's values dropped · a background filing takes its run's pair · lock refused here</text>
+    <rect class="n-new" x="448" y="112" width="460" height="44" rx="5"/>
+    <text class="t-b" x="460" y="132">First claim: one order, once</text>
+    <text class="t-c" x="460" y="148">task, then worker, then kit · lock · model against a catalog that answered</text>
+    <path class="ln-c" d="M678 96 V112"/>
+    <rect class="n-rec" x="448" y="172" width="460" height="44" rx="5"/>
+    <text class="t-b" x="460" y="192">Run record: the frozen pair</text>
+    <text class="t-s" x="460" y="208">harness id and model, kept across attempts · and the session's harness id</text>
+    <path class="ln-a" d="M678 156 V172"/>
+    <g id="after-routes">
+      <rect class="n-box" x="448" y="244" width="106" height="40" rx="4"/><text class="t-s" x="476" y="268">steer</text>
+      <rect class="n-box" x="566" y="244" width="106" height="40" rx="4"/><text class="t-s" x="590" y="268">message</text>
+      <rect class="n-box" x="684" y="244" width="106" height="40" rx="4"/><text class="t-s" x="720" y="268">door</text>
+      <rect class="n-box" x="802" y="244" width="106" height="40" rx="4"/><text class="t-s" x="814" y="268">next attempt</text>
+      <path class="ln-a" d="M501 244 V216 M619 244 V216 M737 244 V216 M855 244 V216"/>
+    </g>
+    <rect class="n-new" x="448" y="304" width="460" height="44" rx="5"/>
+    <text class="t-b" x="460" y="324">Model feed to the harness</text>
+    <text class="t-c" x="460" y="340">a refused model runs the harness default, and the run says which</text>
+    <rect class="n-new" x="448" y="360" width="460" height="44" rx="5"/>
+    <text class="t-b" x="460" y="380">Resume only by the same harness id</text>
+    <text class="t-c" x="460" y="396">another, or none: a fresh session · the door refuses by name</text>
+    <rect class="n-new" x="448" y="410" width="460" height="36" rx="5"/>
+    <text class="t-b" x="460" y="432">A read-only run that wrote fails, naming what</text>
+  </g>
+</svg>
