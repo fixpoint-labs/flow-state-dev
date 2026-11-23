@@ -37,7 +37,7 @@ export const codingTaskInputSchema = z // NEW (FIX-2878); its type is CodingTask
     issue: z.string().min(1).optional(), // with mode "implement", replaces input.harnessFeature.issue
     project: projectAddressSchema.optional(), // was input.project
   })
-  .strict(); // so a task's `doneWhen` or `workspace` is refused: those are server code (ER-10)
+  .strict();
 export type CodingTaskInput = z.infer<typeof codingTaskInputSchema>;
 
 /** NEW (FIX-2878): a legacy row's marker, read as implement (BP-030); nothing writes it again. */
@@ -56,6 +56,7 @@ task: {
       // NEW (FIX-2894): the declaration; FIX-2894's spec picks `taskInput`'s final shape.
       input: taskInput(codingTaskInputSchema, {
         serverOwned: ["harness", "model", "plan"], // every run setting that widens a run when changed; never `mode`
+        dropped: ["doneWhen", "workspace"], // NEW (FIX-2878): a mode's server code, dropped from a filer's input like the above (ER-9)
         fill: fillRunSettings, // NEW (FIX-2878): the harness kit's filler (step 3)
         check: checkMode, // NEW (FIX-2878): the mode is registered and has its inputs (section 7)
         project: options.project === true ? "required" : "optional", // was the hire's `needsProject`
@@ -286,7 +287,10 @@ const resolveRun = async (ctx: BlockContext, task: { input?: unknown } | undefin
   // an unlocked worker runs the triple, a locked one runs it or refuses by name. So a model-written
   // assignee can't move a task onto another coder or out of plan mode (ER-10's assignee rule).
   // The lock may also pin `mode`, which is filer-written: filing checked it too (section 7).
-  const mode = asked.mode ?? defaultMode; // the app's default mode; filing already checked the name
+  // Filing wrote `defaultMode` into a task that named none, so the stored mode is the one that runs;
+  // only a row filed before FIX-2878, with no marker, reaches the fallback (BP-030).
+  const mode = asked.mode ?? defaultMode;
+  checkRequires(mode, asked); // the claim re-checks the mode's `requires` (section 7)
   const lock = (worker.config.lock ?? {}) as Partial<typeof triple & { mode: string }>; // NEW (FIX-2878): name is its spec's
   for (const [field, fixed] of Object.entries(lock)) {
     const got = { ...triple, mode }[field as keyof typeof triple | "mode"];
@@ -470,7 +474,7 @@ export const shiftManagerModes = {
     instructions: (run) => featureBrief(run), // what coder.mts's feature phase says today
     doneWhen: (run) => hasCommitTheBaseLacks(run), // a commit the base lacks
     workspace: workspaceHost, // a repo checkout on a branch
-    needs: ["issue"], // a mode's required inputs, checked at filing; how a mode states them is FIX-2878's spec's
+    requires: ["issue"], // ModeSpec.requires (FIX-2877): task-input fields this mode needs, checked at filing (FIX-2878)
   },
   answer: {
     instructions: (run) => answerBrief(run),
@@ -480,17 +484,25 @@ export const shiftManagerModes = {
 } satisfies Record<string, ModeSpec>;
 ```
 
-Filing checks the mode against the registered set and the mode's required inputs, in the coder
-flow's declaration (ER-9), so workforce knows no mode name:
+Filing writes `defaultMode` into a task that names no mode, then checks the mode against the
+registered set and its `requires`, in the coder flow's declaration (ER-9), so workforce knows no
+mode name. The stored mode is what the claim runs, so a later change to `defaultMode` reaches only
+tasks not yet filed; the claim re-checks `requires`:
 
 ```ts
-/** NEW (FIX-2878): the declaration's check, run at filing after the parse. */
-const checkMode = (input: CodingTaskInput) => {
-  const name = input.mode ?? defaultMode;
+/** NEW (FIX-2878): the declaration's check, run at filing after the parse; returns the input to store. */
+const checkMode = (input: CodingTaskInput): CodingTaskInput => {
+  const name = input.mode ?? defaultMode; // written in by the server, before the requires check
+  checkRequires(name, input);
+  return { ...input, mode: name };
+};
+
+/** At filing, and again at claim. */
+const checkRequires = (name: string, input: CodingTaskInput) => {
   const mode = modes[name];
   if (mode === undefined) throw new TaskWriteRefusedError("unknown_mode", `no mode "${name}" here; one of ${Object.keys(modes).join(", ")}. Nothing was filed.`);
-  for (const need of mode.needs ?? []) {
-    if (input[need] === undefined) throw new TaskWriteRefusedError("mode_needs_input", `mode "${name}" needs ${need}; this task names none. Nothing was filed.`);
+  for (const need of mode.requires ?? []) {
+    if (input[need] === undefined) throw new TaskWriteRefusedError("mode_needs_input", `mode "${name}" requires ${need}; this task names none. Nothing was filed.`);
   }
 };
 ```
@@ -498,8 +510,9 @@ const checkMode = (input: CodingTaskInput) => {
 Task filings, as the board stores them, in Shift Manager:
 
 ```jsonc
-// No mode: runs in the app's default, `answer`.
+// No mode: filing writes the app's `defaultMode` in.
 { "goal": "Why does the nightly build skip the docs job?", "input": {} }
+//   → stored: { "mode": "answer", … }
 // An answer, named.
 { "goal": "Why does the nightly build skip the docs job?", "input": { "mode": "answer" } }
 // A change: implement, with its issue.
@@ -509,10 +522,10 @@ Task filings, as the board stores them, in Shift Manager:
 //   → refused: no mode "review" here; one of implement, answer. Nothing was filed.
 // Implement with no issue: refused, never run as an answer instead.
 { "goal": "Make the docs job run nightly", "input": { "mode": "implement" } }
-//   → refused: mode "implement" needs issue; this task names none. Nothing was filed.
-// A filer naming its own done check or workspace: refused, the schema is strict.
+//   → refused: mode "implement" requires issue; this task names none. Nothing was filed.
+// A filer naming its own done check or workspace: those keys are dropped, as server-owned fields are.
 { "goal": "Make the docs job run nightly", "input": { "mode": "implement", "issue": "ENG-142", "doneWhen": "always", "workspace": "/" } }
-//   → refused: this task's input doesn't fit "devteam.coder": Unrecognized keys: "doneWhen", "workspace". Nothing was filed.
+//   → stored: { "mode": "implement", "issue": "ENG-142", "harness": …, "model": …, "plan": … } — implement's own doneWhen and workspace run
 ```
 
 A worker can pin its mode with the lock (ER-11), and a filing that conflicts is refused by name:
@@ -561,7 +574,8 @@ it("a child filing takes the app's default mode, not its parent's", async () => 
   const parent = await claimed(board, { assignee: "devteam.coder", input: { mode: "implement", issue: "ENG-142" } });
   const child = await asRunOf(parent).createTask({ assignee: "devteam.coder", goal: "what does the docs job read?" });
   const frozen = await runOf(parent);
-  expect(child.input).toEqual({ harness: frozen.harnessId, model: frozen.model, plan: frozen.plan }); // no mode
+  // the three run settings, and the app's defaultMode written in at filing, not the parent's "implement"
+  expect(child.input).toEqual({ harness: frozen.harnessId, model: frozen.model, plan: frozen.plan, mode: "answer" });
   await claimed(child);
   expect((await runOf(child)).mode).toBe("answer"); // Shift Manager's default
 });
