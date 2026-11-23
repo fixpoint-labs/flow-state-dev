@@ -197,6 +197,8 @@ Recorded verbatim for the implementer. None changes the approach.
 - cursor[bot], `SPEC.md` (the diff): "For one-shot HTTP, lead with `oneOffSessionId()` below rather than `createSession()` so D1 migration cost reads correctly."
 - cursor[bot], review summary: "Note extra admission session I/O and retention `listAll()` on flows with retention; optional arbiter skip for `isOneOffSessionId` on queue hosts if profiling warrants it."
 
+- cursor[bot] security review, folded into `SPEC.md` → *How we verify* (e): "Add one clause to (a): a second user, a second org, and a second tenant each send the first run's session id (an `ephemeral_` id included), receive the same response as an id that was never used, and leave no request record."
+
 ## How it got here
 
 - **Draft** — Jake ruled there are no sessionless requests and closed FIX-2888's stamp; this
