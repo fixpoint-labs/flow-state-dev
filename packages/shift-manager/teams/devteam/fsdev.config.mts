@@ -84,7 +84,8 @@ import { parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/works
 import type { AskFeature } from "./ask.mts";
 import { claudeCodeEnv, codexEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
 import { CHECKOUT } from "./fsd-checkouts.mts";
-import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab, operatorGitHubToken, readDevTeamTree } from "./host.mts";
+import { operatorGitHubToken } from "@flow-state-dev/workforce";
+import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab, readDevTeamTree } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
