@@ -37,6 +37,8 @@ Written by `docs-writer` (sonnet), 5897 words. Scenario: One made-up app: flow `
 
 - After the loop (review): read the record and the final fact check. Spot-checked the queue modes against packages/engine/src/flowstate/types.ts:58-67 (`colocated`, `enqueue-only`, `process-only`; the page no longer names `dispatch-only`) and the `--quiet` set against packages/fsdev/src/commands/run.ts:336,414,575,591. No change. 5302 words. Page sha256 7138174e1ce5.
 
+- After the loop (review): the R-29 depth pass moved the generator contract for `fsdev gen` here (8 rows and the exit sentence). Checked against packages/fsdev/src/commands/gen.ts:46-83, 149, 162, 201-239 and exit-codes.ts:15-17: all true. 5406 words. Page sha256 0651c465c5a1.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 29877834a330, and the 23 Reference row(s) pass 6 moved.
@@ -51,6 +53,8 @@ Final fact check of the page as it closed, sha256 0fb09125a70b: 2 untrue, fixed 
 
 - `--quiet` on `run` silences ... "the missing-config hint and the model-override notice." Untrue: There is no model-override notice. No file under packages/fsdev/src prints a message when `--model` is used. `run` prints the `[fsdev] running as ...` line, the `[fsdev] store: ...` line, the waiting report and the missing-config hint, and `--quiet` suppresses those. The `--model` path in `run` (src/commands/run.ts:478-486) writes nothing to stderr. Remove "and the model-override notice" from the sentence. (docs/contributing/docs-revamp/pages/reference/cli.md:341 (code: packages/fsdev/src/commands/run.ts:478-486, packages/fsdev/src/model-override.ts))
 - Seed accepted | "Exit 2, ending `Nothing was written`." Untrue: Only a refusal from the session-create or readonly-state checks ends with `Nothing was written`. A seed that is not valid JSON or cannot be read also exits 2, but with a different message: `Invalid JSON in --seed-session`, `Cannot read seed file for --seed-session: <path>` or `Invalid JSON in seed file for --seed-session: <path>`. None of these ends in `Nothing was written`. (docs/contributing/docs-revamp/pages/reference/cli.md:89 (code: packages/fsdev/src/commands/run.ts:77-100, 281-293, 305-316))
+
+- Re-run after the review edit: a code reader checked the moved lines against the code; no untrue claim remains open.
 
 ## 6 · Depth pass
 

@@ -39,6 +39,8 @@ Written by `docs-writer` (sonnet), 2694 words. Scenario: A `research` flow that 
 
 - After the loop (review): the depth pass cut this page's example-app tables, so three pages that pointed at them were edited to say what this page now holds. catalog/starters/claude-code-style.md and catalog/starters/teammates.md say the app reads its variables in its `fsdev.config.mts` (labs/claude-code-style/fsdev.config.mts, labs/teammates/fsdev.config.mts) and that this page lists the model and search keys. reference/items.md's `FSDEV_TRACE_OBSERVABILITY` row points to its own `lean` row for what a completed block leaves. Kept.
 
+- After the loop (review): the R-27 depth pass moved the harness base pass list here. Checked against packages/core/src/helpers/harness-env.ts:26-40: all 13 names true. 1410 words. Page sha256 78e1c49448d2.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 219fe8ab537e, and the 21 Reference row(s) pass 6 moved.
@@ -55,6 +57,8 @@ Final fact check of the page as it closed, sha256 36988536c53f: 3 untrue, fixed 
 - FSD_QUIET_WARNINGS applies to "every once-per-process framework warning" Untrue: Only warnOnce and warnOnceDev honour it. Boot diagnostics guarded by firstInProcess ignore it, and the module header says so explicitly. warnOnceDev is also skipped under NODE_ENV=production. (docs/contributing/docs-revamp/pages/reference/environment.md:96 (code: packages/core/src/helpers/deprecation.ts:36, packages/core/src/helpers/once-per-process.ts:26))
 - GITHUB_TOKEN has default "none" Untrue: operatorGitHubToken() reads GITHUB_TOKEN (trimmed, ignored if empty), then falls back to the output of `gh auth token` (10 s timeout), and returns undefined only when neither yields a token. The default is the signed-in `gh` token, not none. (packages/workforce/src/service-flows/github/operator.ts:20-34 (page line 72))
 - A coding harness "hands it only the names on a pass-list, not the server's whole environment" Untrue: By default no pass-list applies. With `env` unset, the Claude Code run (and the Codex and Cursor runs, per their env-pass docs) gets the server's entire process.env. The pass-list takes effect only when you set `env: harnessEnv({ pass: CLAUDE_CODE_PASS })` (or `CODEX_PASS` / `CURSOR_PASS`). The harness names in the table are what those exported lists add to the base list. (docs/contributing/docs-revamp/pages/reference/environment.md:134 (code: packages/claude-code/src/sdk/agent.ts:358-362, packages/codex/src/env-pass.ts:5-8))
+
+- Re-run after the review edit: a code reader checked the moved lines against the code; no untrue claim remains open.
 
 ## 6 · Depth pass
 

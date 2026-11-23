@@ -191,7 +191,7 @@ Only server code that calls the exported function sees these codes; see [Sending
 | `not_yourself` | `to` is the sending worker, or the target session is the one the message is sent from. An answer sent from another of the worker's own conversations is allowed. |
 | `no_worker` | No worker with that id is on the sender's user's roster. An unknown id and another user's worker answer with the same text: `no worker "<to>" on your roster.` For `{ task }` or `{ session }`, the worker that runs the session has been fired. |
 | `worker_unavailable` | The worker is on the roster but cannot run: its saved row cannot be read, or it moved to another flow since the session opened. The error says why. |
-| `task_sessions_only` | The recipient's flow hears messages only in its tasks' sessions, and the send is by worker id. Does not apply to an answer. File the worker a task instead. |
+| `task_sessions_only` | The recipient's flow hears messages only in its tasks' sessions, and the send is by worker id. Does not apply to an answer. File the worker a task instead. A finished task's session can be messaged with `to: { task }`, and answers by resuming its coding session. While the task or a follow-up in that session is open, the send is refused with `task_running`. |
 
 ### A task or a conversation
 
