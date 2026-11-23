@@ -93,8 +93,8 @@ async function botHeard(h: Host, session: string) {
 async function rewrite(h: Host, scope: "user" | "org", prefix: string, edit: (state: Record<string, any>) => Record<string, any>) {
   const runtime = await h.state.getRuntime();
   const scopeId = scope === "user" ? `alice:~org:${ORG}` : ORG;
-  const rows = await runtime.stores.resourceState.getByPrefix(scope, scopeId, prefix);
-  for (const [key, row] of Object.entries(rows)) await runtime.stores.resourceState.set(scope, scopeId, key, edit(row.state as Record<string, any>) as never, "any" as never);
+  const stored = await runtime.stores.resourceState.getByPrefix(scope, scopeId, prefix);
+  for (const [key, entry] of Object.entries(stored)) await runtime.stores.resourceState.set(scope, scopeId, key, edit(entry.state as Record<string, any>) as never, "any" as never);
 }
 
 const dropScreens = (entry: Record<string, any>) => ({ ...entry, screens: [] });
@@ -108,7 +108,7 @@ describe("a subscription's bot admission", () => {
       const event = { provider: "github", thread: PR, screens: [{ screen: "custom", name: "github-reviewers" }], botsScreenedBy: "github-reviewers", interest: "the PR" };
       const asked = (await h.act("alice", session, "saveRoutine", { trigger: { event } }, "follower")) as { output?: { ok?: boolean }; error?: unknown };
       expect(asked.error !== undefined || asked.output?.ok === false, "the model's routine is refused").toBe(true);
-      expect((await h.subscriptionRows("alice")).some((row) => row.botsScreenedBy !== undefined), "no row carries it").toBe(false);
+      expect((await h.subscriptionRows("alice")).some((subscription) => subscription.botsScreenedBy !== undefined), "no subscription carries it").toBe(false);
       expect(await botHeard(h, session), "the bot wakes nothing").toBe(false);
     } finally {
       await h.dispose();
@@ -123,8 +123,8 @@ describe("a subscription's bot admission", () => {
       expect(await botHeard(h, run), "the follow hears the listed bot").toBe(true);
       // The run's own session saves a routine on its pull request, with no screens: the same subscription.
       expect(await h.subscribe("alice", run, { thread: PR })).toHaveProperty("id");
-      const [row] = await h.subscriptionRows("alice");
-      expect({ hearsClose: row!.hearsClose, screens: row!.screens }).toEqual({ hearsClose: true, screens: [] });
+      const [follow] = await h.subscriptionRows("alice");
+      expect({ hearsClose: follow!.hearsClose, screens: follow!.screens }).toEqual({ hearsClose: true, screens: [] });
       expect(await botHeard(h, run), "rewritten without its screen: not heard").toBe(false);
     } finally {
       await h.dispose();
@@ -137,8 +137,8 @@ describe("a subscription's bot admission", () => {
       const run = await h.follower("alice");
       await h.act("alice", run, "respond", { message: "opened it [follow-pr:412]" }, "follower");
       expect(await h.subscribe("alice", run, { thread: PR, screens: [{ screen: "custom", name: "github-reviewers" }] })).toHaveProperty("id");
-      const [row] = await h.subscriptionRows("alice");
-      expect(row!.botsScreenedBy).toBe("github-reviewers");
+      const [follow] = await h.subscriptionRows("alice");
+      expect(follow!.botsScreenedBy).toBe("github-reviewers");
       expect(await botHeard(h, run)).toBe(true);
     } finally {
       await h.dispose();

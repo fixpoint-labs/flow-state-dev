@@ -27,13 +27,8 @@ import { defineFlow } from "@flow-state-dev/core";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
-import {
-  GITHUB_REVIEWERS_DOC,
-  GITHUB_REVIEWERS_JUDGE,
-  GITHUB_REVIEWERS_TOOL,
-  githubReviewersDocument,
-  githubTrustedReviewers,
-} from "@flow-state-dev/workforce";
+import { GITHUB_REVIEWERS_DOC, githubReviewersDocument, githubTrustedReviewers } from "@flow-state-dev/workforce";
+import { GITHUB_REVIEWERS_JUDGE, GITHUB_REVIEWERS_TOOL } from "@flow-state-dev/workforce/internal";
 import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
 

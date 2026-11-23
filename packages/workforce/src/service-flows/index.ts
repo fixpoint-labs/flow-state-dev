@@ -20,7 +20,6 @@ export { operatorGitHub, operatorGitHubToken, type OperatorGitHubOptions } from 
 export { githubServiceFlow, type GitHubServiceFlowOptions } from "./github/service-flow";
 export { followPullRequest, type FollowPullRequestOptions } from "./github/follow-pull-request";
 export {
-  GITHUB_REVIEWERS_SCREEN,
   githubTrustedReviewers,
   githubTrustedReviewersScreen,
   type GitHubTrustedReviewers,
@@ -28,7 +27,6 @@ export {
   type GitHubTrustedReviewersScreenOptions
 } from "./github/trusted-reviewers";
 export { GITHUB_REVIEWERS_DOC, githubLoginsListed, githubReviewersDocument } from "./github/reviewers-document";
-export { GITHUB_REVIEWERS_JUDGE, GITHUB_REVIEWERS_TOOL } from "./github/reviewers-tool";
 export {
   internalServiceFlow,
   type InternalServiceFlow,
