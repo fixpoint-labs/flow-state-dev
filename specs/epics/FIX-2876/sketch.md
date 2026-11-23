@@ -42,16 +42,27 @@ export type CodingTaskInput = z.infer<typeof codingTaskInputSchema>;
 
 /**
  * NEW (FIX-2878): a legacy row's marker, read as implement (BP-030); nothing writes it again.
- * A pre-parse step on the declaration, so filing, updateTask and claim all see `{ mode, issue }`.
- * The marker's `phase` is ignored: the old `phases` map only ever had `feature`, so every
- * well-formed marker is implement, whatever `phase` says. One with no valid `issue` is refused.
+ * Only on rows already stored with the key: at claim and in readers of stored input, before the
+ * default, `requires` and lock steps. The write path refuses the key (`refuseLegacyMarker`).
+ * A marker whose `phase` is absent or "implement" reads as implement; any other `phase` is refused
+ * by name, never converted. One with no valid `issue` is refused, and so is a row with an explicit `mode` too.
  */
 const readLegacy = (raw: Record<string, unknown>): Record<string, unknown> => {
   if (!("harnessFeature" in raw)) return raw;
   const { harnessFeature, ...rest } = raw;
+  if (rest.mode !== undefined) throw new Error("this task has both a mode and a feature marker; the marker never overrides a mode. Nothing ran.");
   const marker = harnessFeatureSchema.safeParse(harnessFeature); // { issue, phase? }
   if (!marker.success) throw new Error("this task's feature marker is malformed. Nothing ran."); // never run as an answer
-  return { ...rest, mode: "implement", issue: marker.data.issue }; // `phase` dropped
+  const { issue, phase } = marker.data;
+  if (phase !== undefined && phase !== "implement") throw new Error(`this task's feature marker names phase "${phase}", which no mode reads. Nothing ran.`);
+  return { ...rest, mode: "implement", issue };
+};
+
+/** NEW (FIX-2878): the write path. A sent marker could pick implement past the lock, so it is refused. */
+const refuseLegacyMarker = (sent: Record<string, unknown>) => {
+  if ("harnessFeature" in sent) {
+    throw new TaskWriteRefusedError("legacy_marker", 'harnessFeature is no longer accepted; file mode: "implement" with issue instead. Nothing was filed.');
+  }
 };
 
 task: {
@@ -62,7 +73,8 @@ task: {
       input: taskInput(codingTaskInputSchema, {
         serverOwned: ["harness", "model", "plan"], // every run setting that widens a run when changed; never `mode`
         dropped: ["doneWhen", "workspace"], // NEW (FIX-2878): a mode's server code, dropped from a filer's input like the above (ER-9)
-        legacy: readLegacy, // NEW (FIX-2878): pre-parse, at filing, updateTask and claim
+        refuse: refuseLegacyMarker, // NEW (FIX-2878): on createTask and updateTask, before the parse
+        stored: readLegacy, // NEW (FIX-2878): only on stored rows, at claim and in readers of stored input
         fill: fillRunSettings, // NEW (FIX-2878): the harness kit's filler (step 3)
         check: checkMode, // NEW (FIX-2878): default mode, registered and `requires`, then the lock (section 7)
         project: options.project === true ? "required" : "optional", // was the hire's `needsProject`
@@ -121,9 +133,10 @@ const base = sequencer({ name, inputSchema: taskWorkerInputSchema })
 `needsProject` is build-time config, not a stored field, so removing it touches no task record.
 The claim parses only the schema and the project requirement stays a filing check, so a task in
 flight whose project came from its context is not refused at its next claim. What a task in flight
-does meet is FIX-2894's own break, with one exception: an old `harnessFeature` key is read as
-`mode: "implement"` with its `issue` (`readLegacy`, BP-030), and only a malformed marker is
-refused. A task filed before FIX-2878 may also carry a `harness` or `model` no filler wrote. Both fall under the drain
+does meet is FIX-2894's own break, with one exception: a stored row's `harnessFeature` key is read as
+`mode: "implement"` with its `issue` (`readLegacy`, BP-030), and only a malformed marker, a
+`phase` other than `implement`, or a row that also names a `mode` is refused. A filing that
+sends the key is refused (`refuseLegacyMarker`). A task filed before FIX-2878 may also carry a `harness` or `model` no filler wrote. Both fall under the drain
 that the FIX-2894 implementer note asks its spec to name as a deliberate exception to BP-030.
 
 ## 2 · The person's pick travels as a field, not text (FIX-2879)
@@ -320,9 +333,11 @@ const frozenRunOf = async (ctx: BlockContext) => {
   return { ...found, id: run.harnessId, model: { model: run.model ?? undefined }, plan: run.plan, mode: run.mode };
 };
 
-// runTopicOf: new runs write `<epic>/<issue>/<modeName>`; a reader tries that key, then the legacy
-// phase-value key (implement ↔ code, default ↔ the old single-phase value). No migration and no
-// rewrite: a run started under the old key finishes under it. FIX-2877's spec owns the detail.
+// runTopicOf: new runs write `<epic>/<issue>/<modeName>`; the segment also names the run's branch,
+// checkout and board task id. A reader looks up that key, then, when it is absent, the mode's old
+// phase value, and uses that record without copying it, so a run found under its old key keeps that
+// segment for all of them. Only the kit's default changes value (`code` → `default`); Shift
+// Manager's `implement` and `answer` keep theirs. Nothing rewrites old records. FIX-2877's spec owns it.
 
 // In byHarness: only the work entry's fresh claim resolves; steer, message and door read the frozen run settings.
 execute: async (input: { input?: unknown } & Record<string, unknown>, ctx: never) => {
@@ -504,10 +519,11 @@ tasks not yet filed; the claim re-checks `requires`:
 ```ts
 /**
  * NEW (FIX-2878): the declaration's check, run at filing after the parse; returns the input to store.
- * Order: legacy read (pre-parse) → default mode → registered and `requires` → the assignee's lock.
+ * Order: a sent `harnessFeature` refused → default mode → registered and `requires` → the assignee's lock.
+ * `requires` and the lock compare the RESOLVED mode (`name`, after the default), never raw `input.mode`.
  */
 const checkMode = (input: CodingTaskInput, worker: { id: string; config: { lock?: { mode?: string } } }): CodingTaskInput => {
-  const name = input.mode ?? defaultMode; // written in by the server, before the requires check
+  const name = input.mode ?? defaultMode; // the resolved mode, written in by the server before the requires check
   checkRequires(name, input);
   const pinned = worker.config.lock?.mode; // ER-11: refused at filing here, and again at claim in resolveRun
   if (pinned !== undefined && pinned !== name) {
@@ -563,15 +579,25 @@ lock:
 //   → refused: worker "devteam.researcher" always runs with mode answer; this task asked for implement. Nothing was filed.
 ```
 
-A legacy row filed before FIX-2878 still carries the marker. It is read as `implement` with its
-issue (BP-030) at filing, `updateTask` and claim, and nothing writes the marker again. The marker's
-`phase` is ignored, so every well-formed marker is `implement`; one with no valid `issue` is
-refused, never run as an answer:
+A legacy row filed before FIX-2878 still carries the marker. Only that stored row is read as
+`implement` with its issue (BP-030), at claim and in readers of stored input; a filing or
+`updateTask` that sends the key is refused, because it could pick `implement` past the lock. A
+marker whose `phase` is absent or `implement` reads as `implement`; any other `phase` is refused
+by name and never converted; one with no valid `issue`, or beside an explicit `mode`, is refused,
+never run as an answer:
 
 ```jsonc
+// stored:  { "harnessFeature": { "issue": "ENG-142" } }
+// read as: { "mode": "implement", "issue": "ENG-142" }
+// stored:  { "harnessFeature": { "issue": "ENG-142", "phase": "implement" } }
+// read as: { "mode": "implement", "issue": "ENG-142" }
 // stored:  { "harnessFeature": { "issue": "ENG-142", "phase": "code" } }
-// read as: { "mode": "implement", "issue": "ENG-142" }   (`phase` ignored, whatever it says)
-// stored:  { "harnessFeature": { "phase": "code" } }   → refused: this task's feature marker is malformed. Nothing ran.
+//   → refused: this task's feature marker names phase "code", which no mode reads. Nothing ran.
+// stored:  { "harnessFeature": { "phase": "implement" } }   → refused: this task's feature marker is malformed. Nothing ran.
+// stored:  { "mode": "answer", "harnessFeature": { "issue": "ENG-142" } }
+//   → refused at claim: this task has both a mode and a feature marker; the marker never overrides a mode. Nothing ran.
+// filed:   { "input": { "harnessFeature": { "issue": "ENG-142" } } }
+//   → refused: harnessFeature is no longer accepted; file mode: "implement" with issue instead. Nothing was filed.
 ```
 
 The task's own text is appended to the mode's instructions; per-task wording lives there, never
