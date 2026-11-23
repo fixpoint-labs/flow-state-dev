@@ -470,6 +470,11 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
     // question holds, one source at a time. Cancelled if it does.
     if (mirror !== undefined && outcome?.outcome === "declined" && outcome.reason === "open-question") {
       cancelRefusedStop(record.ctx, row.id, mirror.source);
+    } else if (outcome?.outcome === "declined") {
+      // The row moved on between the read above and this write: a cancel that
+      // landed meanwhile found no mirror to resume (FIX-2847). Judged from the
+      // committed row, as the check before the read does.
+      await endOrphanedStop(record, ending);
     }
     return undefined;
   }

@@ -764,6 +764,44 @@ describe("a judged run on a board read from the claim, with review on", () => {
     }, { timeout: 10_000, interval: 50 });
   }, 60_000);
 
+  // FIX-2847.
+  it("ends the run's review stop when its task is cancelled after the check read the row and before it mirrored the stop", async () => {
+    // The check reads the row running, then a cancel lands before its write that mirrors the stop: the write is refused.
+    let cancelled = false;
+    const lab = claimHost({
+      mode: "claim",
+      durable: true,
+      script: [{ answer: "added the line", commits: 1 }],
+      manager: { reviewChanges: true },
+      gateLedger: (ref) =>
+        new Proxy(ref, {
+          get(target, key, receiver) {
+            if (key !== "setKeptOpenBy") return Reflect.get(target, key, receiver);
+            return async (...args: Parameters<NonNullable<typeof ref.setKeptOpenBy>>) => {
+              const [id, , options] = args;
+              if (options?.hold !== undefined && !cancelled) {
+                cancelled = true;
+                await target.cancel(id, "cancelled by the test, between the read and the write");
+              }
+              return target.setKeptOpenBy!(...args);
+            };
+          },
+        }),
+    });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(cancelled).toBe(true);
+    const task = await lab.row(CONVERSATIONS, "t1", "conv-a");
+    expect(task.status).toBe("cancelled");
+    expect(task.holds?.some((h) => h.source.kind === "suspension") ?? false).toBe(false);
+    const store = (await (lab.stores as StoreAdapter).resolve(["primary"])).request!;
+    await vi.waitFor(async () => {
+      const statuses = (await store.list({ sessionId: "s_task_tasks_conv-a_t1" })).map((r) => r.status);
+      expect(statuses.length).toBeGreaterThan(0);
+      expect(statuses.filter((s) => s === "suspended" || s === "in_progress")).toEqual([]);
+    }, { timeout: 10_000, interval: 50 });
+  }, 60_000);
+
   it("holds a judge's ask on a question, with no review", async () => {
     const lab = claimHost({
       mode: "claim",
