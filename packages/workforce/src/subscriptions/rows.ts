@@ -32,6 +32,7 @@ import {
   SUBSCRIPTIONS_RESOURCE
 } from "./keys";
 import { routineMakerSchema } from "../routines/listed-routine";
+import { listsTrustedListScreen } from "../service-flows/github/reviewers-document";
 import { ROSTER_FLOW } from "../workers/keys";
 
 /** The most terms a listed screen carries. */
@@ -225,25 +226,18 @@ type ListedScreen = z.infer<typeof listedScreenSchema>;
 
 // FIX-2873; BP-030.
 /**
- * Whether a subscription is a run's pull-request follow saved before the trusted reviewers'
- * one list: a follow (it hears its thread's close) with no `followRev`, that takes outsiders,
- * lists an `allow` screen with `bots`, and lists no custom screen. Its fixed allow list would
- * keep hearing an account the operator has since removed, with no write check, so the `allow`
- * screen refuses every event on it until the run follows its pull request again. A current
- * follow of the same screens carries `followRev` and is heard as it lists.
+ * Whether a subscription is a run's pull-request follow saved before the trusted reviewers' one
+ * list, and so fails closed: a follow (it hears its thread's close) with no `followRev`, unless it
+ * lists the trusted reviewers' list screen, which reads the shared list and the write check as a
+ * current follow does. Whatever else it lists (the removed follower's fixed `allow` list, or
+ * nothing, after an old rewrite dropped its screens), the `allow` screen refuses every event on
+ * it until the run follows its pull request again. A current follow carries `followRev`.
  */
-export function isLegacyReviewedFollow(entry: {
-  readonly hearsClose?: true | undefined;
-  readonly followRev?: 2 | undefined;
-  readonly outsiders?: true | undefined;
-  readonly screens: readonly ListedScreen[];
-}): boolean {
+export function isLegacyReviewedFollow(entry: { readonly hearsClose?: true | undefined; readonly followRev?: 2 | undefined; readonly screens: readonly ListedScreen[] }): boolean {
   return (
     entry.hearsClose === true &&
     entry.followRev !== 2 &&
-    entry.outsiders === true &&
-    entry.screens.some((listed) => listed.screen === "allow" && listed.bots !== undefined) &&
-    !entry.screens.some((listed) => listed.screen === "custom")
+    !listsTrustedListScreen(entry.screens)
   );
 }
 

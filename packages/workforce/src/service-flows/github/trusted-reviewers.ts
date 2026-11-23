@@ -36,11 +36,10 @@ import type { SubscriptionProvider } from "../../subscriptions/subscribe";
 import type { WorkerInstallation } from "../../workers/installation";
 import { followPullRequest } from "./follow-pull-request";
 import { githubRepositoryOf } from "./provider";
-import { GITHUB_REVIEWERS_DOC, githubLoginsListed, githubReviewersDocument, isListedBot, reviewersDocumentOf, reviewersRender } from "./reviewers-document";
+import { GITHUB_REVIEWERS_DOC, GITHUB_REVIEWERS_SCREEN, githubLoginsListed, githubReviewersDocument, isListedBot, reviewersDocumentOf, reviewersRender } from "./reviewers-document";
 import { githubReviewersTool } from "./reviewers-tool";
 
-/** The custom screen's name on the GitHub provider, as the follow lists it. **Pinned**: saved follows name it. */
-export const GITHUB_REVIEWERS_SCREEN = "github-reviewers";
+export { GITHUB_REVIEWERS_SCREEN };
 /** The capability a worker picks the tool through (`capabilities: { githubReviewers: [tool] }`). */
 const GITHUB_REVIEWERS_CAPABILITY = "githubReviewers";
 

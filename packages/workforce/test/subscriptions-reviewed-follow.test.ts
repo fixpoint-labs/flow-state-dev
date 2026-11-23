@@ -233,22 +233,32 @@ describe("the list's one source", () => {
 });
 
 describe("a run's follow of a fixed allow list", () => {
-  /** A host whose run follows #412 with the screens the removed allow-list follower wrote, and `alice` comments after `save []`. */
-  async function aliceHeard(asSaved: (host: Host) => Promise<void>) {
+  /** How a run's follow is built: the removed follower's fixed allow list (default), no screens, or the reviewers' own follow. */
+  type Shape = "allow" | "none" | "reviewers";
+
+  /** A host whose run follows #412 as `shape`, the list saved as `list`; whether `from`'s comment is then heard, and the routing reasons. */
+  async function aliceHeard(asSaved: (host: Host) => Promise<void>, shape: Shape = "allow", list: string[] = [], from = "alice") {
     const reviewers = reviewersOf(SETTING);
     const operator = operatorGitHub({ operator: "alice", token: "operator-token", apiUrl, reviewers });
     const provider = { ...github, screens: operator.screens! };
     const host = bootSubscriptionsHost({
       screens: operator.screens!,
-      follower: (installation) =>
-        followPullRequest({ providers: [provider], installation, screens: [{ screen: "allow", ids: ["alice"], bots: ["greptile-apps"] }], outsiders: true })
+      follower:
+        shape === "reviewers"
+          ? reviewers.follow(provider)
+          : (installation) =>
+              followPullRequest(
+                shape === "none"
+                  ? { providers: [provider], installation }
+                  : { providers: [provider], installation, screens: [{ screen: "allow", ids: ["alice"], bots: ["greptile-apps"] }], outsiders: true }
+              )
     });
     try {
       const run = await host.follower("alice");
       await host.act("alice", run, "respond", { message: "opened it [follow-pr:412]" }, "follower");
       await asSaved(host);
-      await save(host, []);
-      const said = comment("alice", "member");
+      await save(host, list);
+      const said = comment(from, "member");
       const routed = await host.route(said.event);
       const reasons = (routed.output as { verdicts: Array<{ reason: string }> }).verdicts.map((v) => v.reason);
       return { heard: (await host.heard(run)).some((m) => m.includes(said.text)), reasons };
@@ -276,6 +286,21 @@ describe("a run's follow of a fixed allow list", () => {
   it("made today, is heard as it lists, whatever the shared list says", async () => {
     const { heard } = await aliceHeard(async () => undefined);
     expect(heard, "current follow: alice heard").toBe(true);
+  });
+
+  it("saved unmarked with no screens (an old rewrite dropped them), hears no one: a project member doesn't steer it", async () => {
+    const { heard, reasons } = await aliceHeard(asLegacy, "none", ["alice"]);
+    expect(heard, "unmarked follow with no screens: refused").toBe(false);
+    expect(reasons).toEqual([expect.stringMatching(/^allow: .*follows its pull request again/)]);
+  });
+
+  it("saved unmarked with the list screen, still screens through the shared list and the write check", async () => {
+    expect((await aliceHeard(asLegacy, "reviewers", ["alice"])).heard, "unmarked follow with the list screen: listed alice heard").toBe(true);
+    expect((await aliceHeard(asLegacy, "reviewers", ["alice"], "bob")).heard, "unmarked follow with the list screen: unlisted bob refused").toBe(false);
+  });
+
+  it("made today with no screens, is heard as the sender screen lets it", async () => {
+    expect((await aliceHeard(async () => undefined, "none")).heard, "marked follow, unchanged").toBe(true);
   });
 
   it("saved before the one list (no followRev), hears no one, at routing and at delivery", async () => {

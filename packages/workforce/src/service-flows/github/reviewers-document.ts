@@ -11,6 +11,16 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { retryOnConflict } from "../../projects/cas-retry";
 import { githubLoginId } from "./normalize";
 
+/**
+ * The custom screen the trusted reviewers' follow lists, on the GitHub provider. A follow from before
+ * `followRev` is heard only if it lists this, so it reads the shared list. **Pinned**: saved follows name it.
+ */
+export const GITHUB_REVIEWERS_SCREEN = "github-reviewers";
+
+/** Whether `screens` lists the trusted reviewers' list screen: a follow that does reads the shared list and the write check. */
+export const listsTrustedListScreen = (screens: readonly { readonly screen: string; readonly name?: string }[]) =>
+  screens.some((listed) => listed.screen === "custom" && listed.name === GITHUB_REVIEWERS_SCREEN);
+
 /** The document's ref and accessor: the org's one list. **Pinned**: a saved list reads under it. */
 export const GITHUB_REVIEWERS_DOC = "github-reviewers";
 
