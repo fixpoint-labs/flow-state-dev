@@ -26,26 +26,61 @@ const modelSelection = z.union([
   z.object({ id: z.string().min(1), params: z.array(z.object({ id: z.string(), value: z.string() })).optional() }).strict(),
 ]);
 
-export const codingTaskInput = z // NEW (FIX-2878)
+export const codingTaskInputSchema = z // NEW (FIX-2878); its type is CodingTaskInput
   .object({
     harness: z.string().min(1).optional(), // server-owned (ER-10): the filler writes it
     model: modelSelection.optional(), // server-owned (ER-10): the filler writes it
     // server-owned (ER-10): it narrows what a run may do, so clearing it widens it. Until FIX-2599
     // moves plan mode onto it, `claude-code-plan` stays a harness id; the field's name is FIX-2878's spec's.
     plan: z.boolean().optional(),
-    feature: harnessFeatureSchema.optional(), // was input.harnessFeature; the namespacing goes
+    mode: z.string().min(1).optional(), // filer-written; checked against the app's modes at filing (ER-9)
+    issue: z.string().min(1).optional(), // with mode "implement", replaces input.harnessFeature.issue
     project: projectAddressSchema.optional(), // was input.project
   })
   .strict();
+export type CodingTaskInput = z.infer<typeof codingTaskInputSchema>;
+
+/**
+ * NEW (FIX-2878): a legacy row's marker, read by the run-key table (BP-030); nothing writes it again.
+ * Only on rows already stored with the key: at claim and in readers of stored input, before the
+ * default, `requires` and lock steps. The write path refuses the key (`refuseLegacyMarker`).
+ * The marker's `phase` (absent: the manager's own phase) becomes the registered mode whose old
+ * phase value it is, by FIX-2877's table (implement → implement, code → default), compared with
+ * `sameSegment` as `assertFeatureRowIdentity` does today. A phase no registered mode had is refused
+ * by name before any checkout opens. No valid `issue`, or a row with an explicit `mode` too: refused.
+ */
+const readLegacy = (raw: Record<string, unknown>, ownPhase: string): Record<string, unknown> => {
+  if (!("harnessFeature" in raw)) return raw;
+  const { harnessFeature, ...rest } = raw;
+  if (rest.mode !== undefined) throw new Error("this task has both a mode and a feature marker; the marker never overrides a mode. Nothing ran.");
+  const marker = harnessFeatureSchema.safeParse(harnessFeature); // { issue, phase? }
+  if (!marker.success) throw new Error("this task's feature marker is malformed. Nothing ran."); // never run as an answer
+  const { issue, phase = ownPhase } = marker.data; // ownPhase: "implement" for Shift Manager's implement manager, "code" for the kit
+  // oldPhaseOf: FIX-2877's table, the mode's old phase value (implement → "implement", default → "code").
+  const mode = Object.keys(modes).find((name) => sameSegment(oldPhaseOf(name), phase));
+  if (mode === undefined) throw new Error(`legacy task names phase "${phase}", which no registered mode keeps. Nothing ran.`); // no checkout opened
+  return { ...rest, mode, issue };
+};
+
+/** NEW (FIX-2878): the write path. A sent marker could pick implement past the lock, so it is refused. */
+const refuseLegacyMarker = (sent: Record<string, unknown>) => {
+  if ("harnessFeature" in sent) {
+    throw new TaskWriteRefusedError("legacy_marker", 'harnessFeature is no longer accepted; file mode: "implement" with issue instead. Nothing was filed.');
+  }
+};
 
 task: {
   actions: {
     work: workerTaskEntry({
       name: `${CODER_FLOW}-work`,
       // NEW (FIX-2894): the declaration; FIX-2894's spec picks `taskInput`'s final shape.
-      input: taskInput(codingTaskInput, {
-        serverOwned: ["harness", "model", "plan"], // every run setting that widens a run when changed
+      input: taskInput(codingTaskInputSchema, {
+        serverOwned: ["harness", "model", "plan"], // every run setting that widens a run when changed; never `mode`
+        dropped: ["doneWhen", "workspace"], // NEW (FIX-2878): a mode's server code, dropped from a filer's input like the above (ER-9)
+        refuse: refuseLegacyMarker, // NEW (FIX-2878): on createTask and updateTask, before the parse
+        stored: readLegacy, // NEW (FIX-2878): only on stored rows, at claim and in readers of stored input
         fill: fillRunSettings, // NEW (FIX-2878): the harness kit's filler (step 3)
+        check: checkMode, // NEW (FIX-2878): default mode, registered and `requires`, then the lock (section 7)
         project: options.project === true ? "required" : "optional", // was the hire's `needsProject`
       }),
       block: byHarness(`${CODER_FLOW}-by-harness`, taskWorkerInputSchema.passthrough(), (b) => b.manager, true),
@@ -102,8 +137,10 @@ const base = sequencer({ name, inputSchema: taskWorkerInputSchema })
 `needsProject` is build-time config, not a stored field, so removing it touches no task record.
 The claim parses only the schema and the project requirement stays a filing check, so a task in
 flight whose project came from its context is not refused at its next claim. What a task in flight
-does meet is FIX-2894's own break: old keys (`harnessFeature`) are refused at claim, and a task
-filed before FIX-2878 may carry a `harness` or `model` no filler wrote. Both fall under the drain
+does meet is FIX-2894's own break, with one exception: a stored row's `harnessFeature` key is read as
+`mode: "implement"` with its `issue` (`readLegacy`, BP-030), and only a malformed marker, a
+`phase` other than `implement`, or a row that also names a `mode` is refused. A filing that
+sends the key is refused (`refuseLegacyMarker`). A task filed before FIX-2878 may also carry a `harness` or `model` no filler wrote. Both fall under the drain
 that the FIX-2894 implementer note asks its spec to name as a deliberate exception to BP-030.
 
 ## 2 · The person's pick travels as a field, not text (FIX-2879)
@@ -243,17 +280,18 @@ harness value's own default; for plan, the task's. Until FIX-2599, `plan` never 
 id: `plan: true` on a harness that is not a plan harness fails the claim, and a plan harness is a
 plan run whatever `plan` says. Only a fresh work claim runs it, and it freezes the harness, the
 **effective** model (the harness default included, never a null that reads the option later) and
-the plan setting on the run record as one triple. A worker's lock is then checked against that
-triple, on every field the lock names. Steer, message, door and
-resume read that frozen triple, never the session's current
-`codeWith`, so a pick made after the claim changes nothing in flight.
+the plan setting as one triple, and with it `review` and the stored `mode`: together, the frozen
+run settings, on the run record. A worker's lock is then checked against them, on every field the
+lock names. Steer, message, door and resume read the frozen run settings, never the session's
+current `codeWith` or the app's current `defaultMode`, so nothing changed after the claim reaches
+a run in flight.
 
 ```ts
 // packages/harness-manager/src/kit/coder-flow.ts, replacing harnessOf
 const resolveRun = async (ctx: BlockContext, task: { input?: unknown } | undefined) => { // NEW (FIX-2878)
   const worker = await installation.resolveWorker(ctx, CODER_FLOW);
   const own = worker.config.harness as string | undefined;
-  const asked = codingTaskInput.parse(task?.input ?? {});
+  const asked = codingTaskInputSchema.parse(readLegacy({ ...((task?.input ?? {}) as Record<string, unknown>) }, managerPhase)); // the stored row
   const id = asked.harness ?? own ?? options.defaultHarness;
   const found = id === undefined ? undefined : built[id];
   if (found === undefined) throw new Error(`no harness "${id ?? "(none)"}" here; one of ${ids.join(", ")}. Nothing ran.`);
@@ -272,17 +310,22 @@ const resolveRun = async (ctx: BlockContext, task: { input?: unknown } | undefin
   // triple. This runs for every worker that claims a coding task, not only the one the turn meant:
   // an unlocked worker runs the triple, a locked one runs it or refuses by name. So a model-written
   // assignee can't move a task onto another coder or out of plan mode (ER-10's assignee rule).
-  const lock = (worker.config.lock ?? {}) as Partial<typeof triple>; // NEW (FIX-2878): name is its spec's
+  // The lock may also pin `mode`, which is filer-written: filing checked it too (section 7).
+  // Filing wrote `defaultMode` into a task that named none, so the stored mode is the one that runs;
+  // only a row filed before FIX-2878, with no marker, reaches the fallback (BP-030).
+  const mode = asked.mode ?? defaultMode;
+  checkRequires(mode, asked); // the claim re-checks the mode's `requires` (section 7)
+  const lock = (worker.config.lock ?? {}) as Partial<typeof triple & { mode: string }>; // NEW (FIX-2878): name is its spec's
   for (const [field, fixed] of Object.entries(lock)) {
-    const got = triple[field as keyof typeof triple];
+    const got = { ...triple, mode }[field as keyof typeof triple | "mode"];
     if (got !== fixed) throw new Error(`worker "${worker.id}" always runs with ${field} ${fixed}; this task asked for ${got}. Nothing ran.`);
   }
-  // `review` is frozen with the triple, per task (FIX-2878 D1), but never inherited by a child filing.
+  // `review` and `mode` are frozen with the triple, per task (FIX-2878 D1), but never inherited by a child filing.
   const review = (worker.config.review as boolean | undefined) ?? options.review === true;
-  return { ...found, id, manager: review ? found.reviewed : found.manager, model: { ...checked, model: triple.model ?? undefined }, plan, triple, frozen: { ...triple, review } };
+  return { ...found, id, manager: review ? found.reviewed : found.manager, model: { ...checked, model: triple.model ?? undefined }, plan, triple, frozen: { ...triple, review, mode } };
 };
 
-/** NEW (FIX-2878): the triple a fresh work claim froze, for every other route. */
+/** NEW (FIX-2878): the frozen run settings a fresh work claim wrote, for every other route. */
 const frozenRunOf = async (ctx: BlockContext) => {
   const filed = await board(ctx);
   const task = filed === undefined ? undefined : sessionTask(filed.tasks, ctx.session.identity.id);
@@ -290,16 +333,23 @@ const frozenRunOf = async (ctx: BlockContext) => {
   if (run?.harnessId == null) throw new Error("this session's task has not been claimed; nothing to steer. Nothing ran.");
   const found = built[run.harnessId];
   if (found === undefined) throw new Error(`the run's harness "${run.harnessId}" is not here any more. Nothing ran.`);
-  return { ...found, id: run.harnessId, model: { model: run.model ?? undefined }, plan: run.plan };
+  // `mode` is the frozen one, never the app's current defaultMode: a claimed implement task stays implement.
+  return { ...found, id: run.harnessId, model: { model: run.model ?? undefined }, plan: run.plan, mode: run.mode };
 };
 
-// In byHarness: only the work entry's fresh claim resolves; steer, message and door read the frozen triple.
+// runTopicOf: new runs write `<epic>/<issue>/<modeName>`; the segment also names the run's branch,
+// checkout and board task id. A reader looks up that key, then, when it is absent, the mode's old
+// phase value, and uses that record without copying it, so a run found under its old key keeps that
+// segment for all of them. Only the kit's default changes value (`code` → `default`); Shift
+// Manager's `implement` and `answer` keep theirs. Nothing rewrites old records. FIX-2877's spec owns it.
+
+// In byHarness: only the work entry's fresh claim resolves; steer, message and door read the frozen run settings.
 execute: async (input: { input?: unknown } & Record<string, unknown>, ctx: never) => {
   // A task's own input carries `goal`; a steer, a message or a door line doesn't (the door's `taskId` is a label only).
   const freshClaim = "goal" in input && route === "work"; // `route`: byHarness's own argument, one per entry
   const chosen = freshClaim ? await resolveRun(ctx, input) : await frozenRunOf(ctx);
   if (freshClaim) {
-    // NEW (FIX-2878): frozen beside `sessionId`; all four fields `.nullable().default(null)` (BP-030).
+    // NEW (FIX-2878): frozen beside `sessionId`; all five fields `.nullable().default(null)` (BP-030).
     await writeRunRecord(ctx, chosen.frozen); // the effective model, never a null that reads the option later
   }
   if (ready) {
@@ -389,7 +439,8 @@ harnesses({
   workspace: workspaceHost ?? answerHost,
   logReadiness: true,
   defaultHarness: process.env.DEVFORCE_LAB_HARNESS, // NEW here (FIX-2877)
-  // + the coder option for its split of feature work from answers. FIX-2877's spec shapes it.
+  modes: shiftManagerModes, // NEW (FIX-2877): its split of feature work from answers (section 7)
+  defaultMode: "answer", // NEW (FIX-2877): a task with no `mode` runs this; absent, `default`
 }),
 ```
 
@@ -411,4 +462,188 @@ lock:                 # NEW (FIX-2878): fixed values for server-owned run settin
   plan: true          # after FIX-2599 this alone holds plan mode, even on claude-code
 
 ---
+```
+
+## 7 · Modes (FIX-2877, FIX-2878)
+
+A mode is a named kind of coding run an app registers on the harness kit: `instructions` build
+the prompt, `doneWhen` is the server's done check, and `workspace` is where the run works
+(ER-1). A task picks one by name with `mode`; with none, it runs in the app's default mode.
+`doneWhen` and `workspace` are server code, never task fields (ER-10). The kit option is `modes`
+plus `defaultMode` (absent: `default`), FIX-2877's; the task field and its checks are FIX-2878's.
+
+A kit with no `modes` has one mode, `default`: today's single phase.
+
+```ts
+// labs/teammates/host.mts: no modes, so every task runs in `default`
+harnesses({ workspace, defaultHarness: harness, review: true, checks });
+
+// packages/harness-manager/src/kit/coder-flow.ts: the kit's own default mode (was `PHASE: PhaseSpec`)
+const DEFAULT_MODE: ModeSpec = { // NEW (FIX-2877): PhaseSpec → ModeSpec, PhaseDoneVerdict → ModeDoneVerdict, codingPhase → codingMode
+  instructions: (run) => codingBrief(run, { terms: [/* today's terms */] }), // was buildPrompt
+  doneWhen: (run) => run.stopReport === "finished", // was isDone, with its validate and doneTimeoutMs
+  workspace: options.workspace, // the kit's workspace host
+};
+```
+
+An app can override part of the default mode and keep the rest:
+
+```ts
+harnesses({
+  workspace,
+  modes: { default: { instructions: (run) => `${teamBrief}\n\n${run.task.goal}` } }, // the kit's doneWhen and workspace stay
+});
+```
+
+Shift Manager registers two modes and sets `defaultMode: "answer"` (section 6), as a task without
+the feature marker is an answer today:
+
+```ts
+// packages/shift-manager/teams/devteam/modes.mts
+export const shiftManagerModes = {
+  implement: {
+    instructions: (run) => featureBrief(run), // what coder.mts's feature phase says today
+    doneWhen: (run) => hasCommitTheBaseLacks(run), // a commit the base lacks
+    workspace: workspaceHost, // a repo checkout on a branch
+    requires: ["issue"], // ModeSpec.requires (FIX-2877): task-input fields this mode needs, checked at filing (FIX-2878)
+  },
+  answer: {
+    instructions: (run) => answerBrief(run),
+    doneWhen: (run) => run.answer.trim() !== "" && run.stopReport !== "stopped-at-limit", // a non-empty answer
+    workspace: answerHost, // the `answers` scratch host, which keeps nothing
+  },
+} satisfies Record<string, ModeSpec>;
+```
+
+Filing writes `defaultMode` into a task that names no mode, then checks the mode against the
+registered set and its `requires`, in the coder flow's declaration (ER-9), so workforce knows no
+mode name. The stored mode is what the claim runs, so a later change to `defaultMode` reaches only
+tasks not yet filed; the claim re-checks `requires`:
+
+```ts
+/**
+ * NEW (FIX-2878): the declaration's check, run at filing after the parse; returns the input to store.
+ * Order: a sent `harnessFeature` refused → default mode → registered and `requires` → the assignee's lock.
+ * `requires` and the lock compare the RESOLVED mode (`name`, after the default), never raw `input.mode`.
+ */
+const checkMode = (input: CodingTaskInput, worker: { id: string; config: { lock?: { mode?: string } } }): CodingTaskInput => {
+  const name = input.mode ?? defaultMode; // the resolved mode, written in by the server before the requires check
+  checkRequires(name, input);
+  const pinned = worker.config.lock?.mode; // ER-11: refused at filing here, and again at claim in resolveRun
+  if (pinned !== undefined && pinned !== name) {
+    throw new TaskWriteRefusedError("mode_locked", `worker "${worker.id}" always runs with mode ${pinned}; this task asked for ${name}. Nothing was filed.`);
+  }
+  return { ...input, mode: name };
+};
+
+/** At filing, and again at claim. */
+const checkRequires = (name: string, input: CodingTaskInput) => {
+  // An own-key lookup, so `constructor` or `toString` is an unknown mode, never Object.prototype's.
+  const mode = Object.hasOwn(modes, name) ? modes[name] : undefined;
+  // The refusal texts are FIX-2878's (its SPEC Examples). `quoted` renders `"implement" and "answer"`.
+  if (mode === undefined) throw new TaskWriteRefusedError("unknown_mode", `this app has no mode "${name}". Its modes are ${quoted(Object.keys(modes))}. Nothing was filed.`);
+  for (const need of mode.requires ?? []) {
+    if (input[need] === undefined) throw new TaskWriteRefusedError("mode_needs_input", `mode "${name}" needs "${need}", and this filing has none. Nothing was filed.`);
+  }
+};
+```
+
+Task filings, as the board stores them, in Shift Manager:
+
+```jsonc
+// No mode: filing writes the app's `defaultMode` in.
+{ "goal": "Why does the nightly build skip the docs job?", "input": {} }
+//   → stored: { "mode": "answer", … }
+// An answer, named.
+{ "goal": "Why does the nightly build skip the docs job?", "input": { "mode": "answer" } }
+// A change: implement, with its issue.
+{ "goal": "Make the docs job run nightly", "input": { "mode": "implement", "issue": "ENG-142" } }
+// An unknown mode: refused. A prototype key is unknown too (own-key lookup).
+{ "goal": "Review ENG-142", "input": { "mode": "review" } }
+//   → refused: this app has no mode "review". Its modes are "implement" and "answer". Nothing was filed.
+{ "goal": "Review ENG-142", "input": { "mode": "constructor" } }
+//   → refused: this app has no mode "constructor". Its modes are "implement" and "answer". Nothing was filed.
+// Implement with no issue: refused, never run as an answer instead.
+{ "goal": "Make the docs job run nightly", "input": { "mode": "implement" } }
+//   → refused: mode "implement" needs "issue", and this filing has none. Nothing was filed.
+// A filer naming its own done check or workspace: those keys are dropped, as server-owned fields are.
+{ "goal": "Make the docs job run nightly", "input": { "mode": "implement", "issue": "ENG-142", "doneWhen": "always", "workspace": "/" } }
+//   → stored: { "mode": "implement", "issue": "ENG-142", "harness": …, "model": …, "plan": … } — implement's own doneWhen and workspace run
+```
+
+A worker can pin its mode with the lock (ER-11), and a filing that conflicts is refused by name:
+
+```md
+<!-- workers/researcher/WORKER.md -->
+---
+flow: coder
+lock:
+  mode: answer
+---
+```
+
+```jsonc
+{ "assignee": "devteam.researcher", "goal": "Make the docs job run nightly", "input": { "mode": "implement", "issue": "ENG-142" } }
+//   → refused: worker "devteam.researcher" always runs with mode answer; this task asked for implement. Nothing was filed.
+```
+
+A legacy row filed before FIX-2878 still carries the marker. Only that stored row is read (BP-030),
+at claim and in readers of stored input; a filing or `updateTask` that sends the key is refused,
+because it could pick `implement` past the lock. The marker's `phase`, absent meaning the
+manager's own, becomes the registered mode whose old phase value it is, by FIX-2877's run-key
+table (`implement` → `implement`, `code` → `default`), compared with `sameSegment`. A phase no
+registered mode had is refused by name and opens no checkout; one with no valid `issue`, or
+beside an explicit `mode`, is refused, never run as an answer:
+
+```jsonc
+// Shift Manager, on its implement manager (own phase "implement"):
+// stored:  { "harnessFeature": { "issue": "ENG-142" } }                      read as: { "mode": "implement", "issue": "ENG-142" }
+// stored:  { "harnessFeature": { "issue": "ENG-142", "phase": "implement" } } read as: { "mode": "implement", "issue": "ENG-142" }
+// The kit with no modes (own phase "code"):
+// stored:  { "harnessFeature": { "issue": "ENG-142" } }                      read as: { "mode": "default", "issue": "ENG-142" }
+// stored:  { "harnessFeature": { "issue": "ENG-142", "phase": "code" } }      read as: { "mode": "default", "issue": "ENG-142" }
+// Either app:
+// stored:  { "harnessFeature": { "issue": "ENG-142", "phase": "review" } }
+//   → refused: legacy task names phase "review", which no registered mode keeps. Nothing ran. (no checkout opened)
+// stored:  { "harnessFeature": { "phase": "implement" } }   → refused: this task's feature marker is malformed. Nothing ran.
+// stored:  { "mode": "answer", "harnessFeature": { "issue": "ENG-142" } }
+//   → refused at claim: this task has both a mode and a feature marker; the marker never overrides a mode. Nothing ran.
+// filed:   { "input": { "harnessFeature": { "issue": "ENG-142" } } }
+//   → refused: harnessFeature is no longer accepted; file mode: "implement" with issue instead. Nothing was filed.
+```
+
+The task's own text is appended to the mode's instructions; per-task wording lives there, never
+in a mode:
+
+```text
+── implement's instructions ──
+You are working on ENG-142 in a checkout of the repo on branch devteam/ENG-142.
+Commit what you change with git. You are done when the branch has a commit the base lacks.
+
+── the task ──
+Make the docs job run nightly. Keep the weekly link-check as it is.
+```
+
+`mode` is never inherited (ER-2). A child an `implement` run files with no mode gets the app's
+default, not the parent's mode; only the three run settings come down:
+
+```ts
+it("a child filing takes the app's default mode, not its parent's", async () => {
+  const parent = await claimed(board, { assignee: "devteam.coder", input: { mode: "implement", issue: "ENG-142" } });
+  const child = await asRunOf(parent).createTask({ assignee: "devteam.coder", goal: "what does the docs job read?" });
+  const frozen = await runOf(parent);
+  // the three run settings, and the app's defaultMode written in at filing, not the parent's "implement"
+  expect(child.input).toEqual({ harness: frozen.harnessId, model: frozen.model, plan: frozen.plan, mode: "answer" });
+  await claimed(child);
+  expect((await runOf(child)).mode).toBe("answer"); // Shift Manager's default
+});
+```
+
+**Illustration only, not built:** a future board stage is a task on a mode. An app that wants
+plan → implement → review registers three modes and files a task per stage; nothing new is needed.
+"Phase" stays free for that board idea.
+
+```ts
+harnesses({ workspace, modes: { plan: planMode, implement: implementMode, review: reviewMode }, defaultMode: "plan" });
+// stage 1: { mode: "plan", issue: "ENG-142" } → stage 2: { mode: "implement", issue: "ENG-142" } → stage 3: { mode: "review", issue: "ENG-142" }
 ```
