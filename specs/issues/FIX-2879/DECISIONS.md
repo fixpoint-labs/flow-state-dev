@@ -16,7 +16,7 @@ flowchart TD
   D1 -.->|"rejected: a model would write the pick"| X1["a tool sets the pick from the person's words"]
   I --> D2["D2 · Re-run on a coder moves Code with too"]
   D2 -.->|"rejected: a second writer of a task's coder"| X2["the re-run carries its own coder"]
-  I --> D3["D3 · a session no person writes to files on the pick it was opened with"]
+  I --> D3["D3 · a filing from a session no person writes to uses the person's current pick"]
   D3 -.->|"rejected: a researcher's task can't ask for code"| X3["refuse coding filings from those sessions"]
   D3 -.->|"rejected: a later pick reaches work in flight"| X4["follow the conversation's current pick"]
 ```
@@ -58,32 +58,33 @@ checked as a turn field is, as a second source the filler reads.
 It comes down to one writer: a re-run with its own coder is a second way to set one.
 
 <a name="d3"></a>
-## D3 · A session no person writes to files coding work on the pick it was opened with
+## D3 · A filing from a session no person writes to uses the person's current pick
 
 | | |
 |---|---|
-| **Instead of** | Refusing every coding filing from a session that is neither the person's conversation nor a coding run, or following the conversation's current pick |
-| **Because** | ER-10 gives two sources: the person's turn, and a coding run's frozen pair. A researcher's task is neither: it runs outside any coding run, so it has no frozen pair to read, and ER-10's literal text would leave it nothing to file on. The pick its session carried at hand-over is written by the server at filing, from the turn that filed it, and no turn there can change it ([below](#decided-not-asked)). So it is that filing's pick, kept, in the same sense as a run's frozen pair. Following the current pick would let a later pick reach work in flight, which ER-2 forbids for runs. Refusing would leave a researcher who finds a bug unable to ask for the fix |
-| **Locks in** | The server resolves a filing's pick by ancestry, in order. **(1) Inside a coding run** (a coding task's session, or any turn that runs inside a coding run): that run's frozen triple (harness, model, plan), as [ER-10](../../epics/FIX-2876/DECISIONS.md#who-owns-what) says, never the kit default. **(2) Descended from a coding run** (a non-coding task a coding run started, directly or through other non-coding tasks): at hand-over the server carries that run's resolved triple into the task session. It wins over any `codeWith` there, and such a filing never falls back to worker or kit, so an extra delegation cannot widen a plan-only parent ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5607#discussion_r4667755346)). **(3) Otherwise** (a researcher's delegate session a person's turn opened): the session's carried `codeWith`, which the server wrote at open. **(4) With none:** the worker, then the kit. That is safe: the kit default is chosen by the server, and there is no parent pick to escape. The carried triple is server-written and no filer can set it, like `codeWith` (BP-031). **This amends two epic rows.** [ER-5](../../epics/FIX-2876/DECISIONS.md#who-owns-what)'s "a task session's carried copy is never read for run settings" becomes "never inside a coding run or below one, where the frozen or carried triple is". [ER-10](../../epics/FIX-2876/DECISIONS.md#who-owns-what)'s background-filing rule gains the ancestry step: a filing below a coding run reads the triple the server carried at hand-over, and still never falls back to the kit default; its "never falls back" does not apply to a session with no coding run above it, which reads the carried `codeWith`, then worker, then kit. ER-10 is FIX-2878's row, so **the coordinator's follow-up PR on the epic covers both rows, coordinated with FIX-2878's spec**, opened when this is signed |
+| **Instead of** | The pick that session was opened with (its carried copy), or refusing every coding filing from such a session |
+| **Because** | The carried copy is a second, stale source. The person can move *Code with* after the session opened, and a session opened before any pick holds none. An empty stamp skips ER-11's lock, so the worker's or the kit's coder runs, and that can be wider than what the person picked ([security review](https://github.com/fixpoint-labs/flow-state-dev/pull/5607#discussion_r4667849222)). The root conversation's current `codeWith` is what the person chose. The server reads it through the session link, which no filer writes (BP-031). Reading the current pick only stamps new tasks: [ER-2](../../epics/FIX-2876/DECISIONS.md#who-owns-what) freezes a run's pick at first claim, so work in flight never moves. That was the cost that first kept the opened-with pick, and it does not hold. Refusing would leave a researcher who finds a bug unable to ask for the fix |
+| **Locks in** | The server resolves a filing's pick in this order. **(1) Inside a coding run** (a coding task's session, or any turn that runs inside a coding run): that run's frozen triple (harness, model, plan), as [ER-10](../../epics/FIX-2876/DECISIONS.md#who-owns-what) says, and never a default. **(2) Below a coding run** (a non-coding task a coding run started, directly or through other non-coding tasks): the run's resolved triple, which the server carries into the task session at hand-over. It wins over any `codeWith`, and the filing never falls back to worker or kit, so delegating cannot widen a plan-only parent ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5607#discussion_r4667755346)). **(3) Any other session that is not the person's own conversation** (a delegate's, a task's, a workstream lead's, a routine's): the root conversation's *current* `codeWith`, read when the task is filed, by walking the session links. The carried copy is never read. **(4) The person's own conversation:** its `codeWith`. **(5) No pick on that conversation:** the server-written default (FIX-2877 D2). It is exactly what the person's own turn would get with no pick, so it is never wider than their choice. **(6) No root conversation resolves:** the filing is refused by name. The carried triple is server-written and no filer can set it (BP-031). **A turn field is not carried at hand-over.** Nothing displays it there: *Code with* shows only on the person's conversation, and a linked session's instruction names the pick this order resolves. **This amends two epic rows.** [ER-5](../../epics/FIX-2876/DECISIONS.md#who-owns-what)'s "a task session's carried copy is never read for run settings" now holds everywhere, because no copy of `codeWith` is carried. It gains one clause: the run triple of step 2 is a frozen pick, not a copy of `codeWith`. [ER-10](../../epics/FIX-2876/DECISIONS.md#who-owns-what)'s rule for filings no person started gains steps 2, 3, 5 and 6. A filing outside any coding run reads the root conversation's current pick. With none, it gets the person's own no-pick default, and with no root it is refused. ER-10 is FIX-2878's row, so **the coordinator's follow-up PR on the epic covers both rows, coordinated with FIX-2878's spec**, opened when this is signed |
 
 Which pick the filler writes, by where the filing comes from
 ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5607#discussion_r4667742949)):
 
-| Filing from | Inside an active coding run? | Below one? | The filler writes | With no pick |
-|---|---|---|---|---|
-| A person's turn | No | No | That turn's `codeWith` | None: worker, then kit |
-| A coding task's session, or any other turn running inside a coding run | Yes | n/a | That run's frozen triple (ER-10) | Never the kit default |
-| A non-coding task session a coding run started, directly or through other non-coding tasks | No | Yes | The run's triple, carried by the server at hand-over; wins over any `codeWith` | Never worker or kit |
-| A session no person writes to, with no coding run above it, such as a researcher's delegate session | No | No | The session's carried `codeWith`, server-written at open | None: worker, then kit |
+| Filing from | The filler writes | With no pick |
+|---|---|---|
+| A coding task's session, or any other turn running inside a coding run | That run's frozen triple (ER-10) | Never a default |
+| A non-coding task session a coding run started, directly or through other non-coding tasks | The run's triple, carried by the server at hand-over; wins over any `codeWith` | Never worker or kit |
+| Another session no person writes to, with no coding run above it (a delegate's, a task's, a workstream lead's, a routine's) | The root conversation's current `codeWith`, read when the task is filed, through the session links | The server-written default, as the person's own turn gets |
+| The person's own conversation, a routine's wake there included | Its `codeWith` | The server-written default |
+| A session whose root conversation can't be resolved | Nothing: the filing is refused by name | — |
 
-**What would change my mind:** long-lived delegate conversations (opened once, messaged for
-weeks) filing much coding work. Their pick is the one they were opened with, which can be older
-than the person's. Then each message re-carries the sender's pick, which is FIX-1990's to build.
+**What would change my mind:** people who delegate work and then move *Code with* to compare
+coders, and who expect the delegated work's later filings to stay on the old pick. Then the pick
+would be stamped at hand-over, as a server-written triple like step 2, not as a carried copy.
 
-![D3: the pick a session was opened with, chosen, beside refusing those filings and beside following the current pick. Decides it: a researcher's task that needs a code change. Price: a delegate's long-lived conversation keeps an older pick, and epic ER-5's and ER-10's text is amended. Locks in: inside or below a coding run the filler writes that run's triple; otherwise it reads the session's codeWith. Flips if long-lived delegate conversations file much coding work](figures/d3-carried.svg)
+![D3: the person's current pick, chosen, beside the pick the session opened with and beside refusing the filing. Decides it: a researcher's task that needs a code change. Price: a delegate's next coding filing follows a later pick. Never wider than the person's pick, which the opened-with pick can be. Locks in: a run's triple; else the root conversation's current codeWith, then the server default, else refused. Flips if delegated work must keep its old pick](figures/d3-current.svg)
 
-It comes down to a researcher's task: refusing it strands the fix, and following the current
-pick moves work in flight.
+It comes down to a researcher's task: refusing it strands the fix, and the opened-with pick can
+be stale or empty, and so wider than the person's.
 
 ## Decided, not asked
 
@@ -98,8 +99,8 @@ pick moves work in flight.
   filings; the same holds for `setSessionFields` ([D2](#d2)).
 - **Where a turn field can be written.** Only on the person's own conversation, as open fields
   today. On a task's, a delegate's, a workstream lead's or a project coordinator's session a
-  `fields` entry is refused, naming why, and the message is not stored. Those sessions hold what
-  their hand-over carried.
+  `fields` entry is refused, naming why, and the message is not stored. Those sessions hold no
+  turn field; a filing there reads the root conversation's ([D3](#d3)).
 - **A refused field refuses the whole request.** A field not declared, one marked `written:
   "open"`, or a value that doesn't parse: nothing is stored, the message included. The issue's
   acceptance said so.
@@ -111,11 +112,15 @@ pick moves work in flight.
   nullable value, added when someone asks for it.
 - **The model.** Teammates' *Code with* lists the picked harness's models from a new view on the
   harnesses flow, beside readiness, over `Harness.models`. A harness whose list failed offers only
-  its default. The model is checked again at claim (FIX-2878's rule); the picker is never trusted.
+  its default. **At the write**, `harness` is accepted only if it is a filled harness id, and
+  `model` only if that harness's `models()` listed it; anything else refuses the whole request,
+  as an open-only field does ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5607#discussion_r4667849231)).
+  The model is checked again at claim (FIX-2878's rule); the picker is never trusted.
   FIX-2598 reads the same view.
 - **The one instruction** comes from the harness kit's capability, beside `READINESS_GUIDANCE`
-  and FIX-2877's default-coder line, and names this conversation's pick, read from the session
-  for each turn. It says: a coding task runs on that coder; don't ask which, and don't pick
+  and FIX-2877's default-coder line, and names the pick [D3](#d3)'s order resolves for this
+  session, read for each turn. It is built from the server's label for the harness id, never from
+  the stored string. It says: a coding task runs on that coder; don't ask which, and don't pick
   another; a coder named in words is picked in *Code with* ([D1](#d1)); a pick marked ✗ files
   nothing, and the person is told what to run or to pick a ready one.
 - **One coder worker in Teammates**, `teammates.coder`, unlocked and with no `harness:` line, so
@@ -143,6 +148,7 @@ pick moves work in flight.
 | A new session-schema slot for turn state (the issue's first framing) | Owner's call, [epic Q-C](../../epics/FIX-2876/DECISIONS.md#decided-in-review): a fourth way to extend session state |
 | The pick on the request only, not the session | A turn no person started has no request to read, and a reload would lose it (the owner's "both") |
 | A per-teammate default coder | Removed by FIX-2877; the epic's *Decided, not asked* |
+| The pick the session opened with (its carried copy) | D3's first draft. A stale or empty copy can stamp a coder wider than the person's current pick, and the cost that kept it (moving work in flight) doesn't hold: ER-2 freezes at first claim ([D3](#d3)) |
 | Removing the Claude Code-style lab's `Coder:` line here | FIX-2598's, with its workers ([epic D3](../../epics/FIX-2876/DECISIONS.md#d3)) |
 
 ## Open
@@ -177,6 +183,10 @@ target after the collapse ([D2](#d2)). *Concern, recorded:* D3's price is left t
   `codeWith`, then worker, then kit. The epic follow-up covers both rows, with FIX-2878's spec.
   D3 gained a resolution table, and an ancestry step (security review): a non-coding task a
   coding run started carries the run's triple, so delegation cannot widen a plan-only parent.
+- **Security review (Cursor)** — D3 flipped from the pick the session opened with to the root
+  conversation's current pick, then the server default, else a refusal. `codeWith` is no longer
+  carried. The write checks the harness and model against the filled catalog, and the
+  instruction is built from the server's label.
 
 ## Notes from review
 

@@ -10,7 +10,7 @@
 | **reloads the page, or opens the conversation on another machine** | *Code with* is back on the app's default | *Code with* shows the conversation's pick, read from the session |
 | **types "have Codex do it" with Claude Code picked** | Lead files the task on the Codex worker | Nothing runs on Codex. Lead says that the coder is chosen in *Code with*; a task it files runs on Claude Code ([D1](DECISIONS.md#d1)) |
 | **presses *Re-run on Claude Code* on a failed task** | A new task on the Claude Code worker | A new task on the one coder, on Claude Code. The conversation's *Code with* is now Claude Code too ([D2](DECISIONS.md#d2)) |
-| **is away while a worker's reply, a routine or a task's result wakes Lead, which files a coding task** | Lead guesses from the last line that named a coder | The task runs on the conversation's last pick; with none, on the app's default. A researcher's task that files a coding task uses the pick it was filed under ([D3](DECISIONS.md#d3)) |
+| **is away while a worker's reply, a routine or a task's result wakes Lead, which files a coding task** | Lead guesses from the last line that named a coder | The task runs on the conversation's last pick; with none, on the app's default. A researcher's task that files a coding task uses the conversation's current pick ([D3](DECISIONS.md#d3)) |
 | **builds an app that keeps a value on each session** | Sets `sessionFields` on the workforce kit; the value is written once, when the session opens | Fills `workforce.slots.sessionFields`, and says per field whether it is written once at open or again by each turn. Another kit can fill it too |
 
 Nothing changes in the Claude Code-style lab's picker: its `Coder:` line and its coder workers
@@ -34,8 +34,8 @@ turns no person started, and no message text carries it.**
 flowchart LR
   P["pick Codex and a listed model · send through the public client"] --> T["Lead files a task · scripted coders"]
   T -->|"stored task and run name Codex and the model · no text line"| OK["PASS · the goal is met"]
-  R["reload · a routine wake · a researcher's task · words name another coder"] -->|"the conversation's pick, or the filing's"| OK
-  C["controls · text line · filler ignores the pick · carried copy ignored · no run triple carried"] -.->|"each must FAIL its signal"| T
+  R["reload · a routine wake · a researcher's task · words name another coder"] -->|"the conversation's current pick, or the run's"| OK
+  C["controls · text line · filler ignores the pick · carried copy used · no run triple carried"] -.->|"each must FAIL its signal"| T
 ```
 
 The check reads the stored task, the run record and the scripted harness's own report, never
@@ -44,10 +44,10 @@ Lead's reply or the picker. Under each control its named signal must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/teammates-lab/code-with-reaches-the-task/` · Teammates over HTTP through the public client, scripted coders, a real model for Lead · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | **Pick:** a send with `codeWith` Codex and a model read from the harnesses flow's model list files one task whose stored input, run record and scripted report all name Codex and that model; the stored message has no `Coding harness:` text, in at least 2 runs of 3. **Reload:** a fresh client reads `codeWith` off the session, and a second send with no fields files a task on the same pair. **Words:** with Claude Code picked, "have Codex do it" runs nothing on Codex, in 3 runs of 3; any task it files runs on Claude Code. **No person:** a routine fired in the conversation files a task on its pick. **Filed task:** a researcher's task, filed under a Cursor pick, files a coding task that runs on Cursor after the conversation's pick moved to Codex. **Delegated:** a coding run locked to plan mode files a researcher task that files coding work; the new run is a plan run on the parent's harness, in 3 runs of 3. **Refused:** a send whose `fields` name an open-only field, or a value that doesn't parse, is refused and stores neither the field nor the message |
+| **Signal** | **Pick:** a send with `codeWith` Codex and a model read from the harnesses flow's model list files one task whose stored input, run record and scripted report all name Codex and that model; the stored message has no `Coding harness:` text, in at least 2 runs of 3. **Reload:** a fresh client reads `codeWith` off the session, and a second send with no fields files a task on the same pair. **Words:** with Claude Code picked, "have Codex do it" runs nothing on Codex, in 3 runs of 3; any task it files runs on Claude Code. **No person:** a routine fired in the conversation files a task on its pick. **Filed task:** a researcher's task is filed under a Cursor pick, the person moves *Code with* to Codex, and the researcher's next coding filing runs on Codex: it reads the root conversation's current pick. *Code with* changes between two filings, and the second task follows. **Delegated:** a coding run locked to plan mode files a researcher task that files coding work; the new run is a plan run on the parent's harness, in 3 runs of 3. **Refused:** a send whose `fields` name an open-only field, or a value that doesn't parse, is refused and stores neither the field nor the message. So is a harness that isn't filled, or a model its harness didn't list. A second principal posting `fields` on this session stores nothing and gets the same response as an unknown session id |
 | **Input** | Two scripted harnesses under the ids `codex` and `claude-code`, each listing two models and reporting the model it ran and whether it ran in plan mode ([ER-6](../../epics/FIX-2876/DECISIONS.md#who-owns-what)). The change request is drawn from two wordings; no worker file or prompt names a harness |
 | **Anti-game** | Read the stored task, the run record and the scripted report. Never Lead's reply, the picker, or a stubbed board |
-| **Control that must fail** | `GOAL_CONTROL=text-line` (the composer's line back, no `fields`) fails **Pick** and **Reload**; `no-fill` (the filler ignores `codeWith`) fails **Pick** and **No person**; `ignore-carried` (the filler reads only the conversation) fails **Filed task**. `drop-ancestry` (the hand-over carries no run triple) fails **Delegated**. Today's `main` fails all but **Refused**. The PR shows each FAIL before the PASS |
+| **Control that must fail** | `GOAL_CONTROL=text-line` (the composer's line back, no `fields`) fails **Pick** and **Reload**; `no-fill` (the filler ignores `codeWith`) fails **Pick** and **No person**; `use-carried` (the filler reads the session's carried copy) fails **Filed task**, so the carried copy fails closed. `drop-ancestry` (the hand-over carries no run triple) fails **Delegated**. Today's `main` fails all but **Refused**. The PR shows each FAIL before the PASS |
 
 ## What changes
 
@@ -128,11 +128,11 @@ the session, whoever started the turn, which is why nothing a model writes can c
 |---|---|
 | **Ways a person's choice rides a turn to the server:** `sessionFields` (written once, at open) · `taskId` on the respond action (a label) · `createSession`'s `state` (refused for server-owned keys) · agent-flow `settings` (per worker, never read) · capability `sessionStateSchema` (declares, writes nothing) · message text (`Coding harness:`, `Coder:`) | **Extends the first.** Searched `sessionFields`, `respond`, `settings`, `stateSchema` and `Coding harness` across `packages/` and `labs/`. As a new piece this would be the seventh way; as a `written: "turn"` mode it is none |
 | `setSessionFieldsAction`: admits only the session's own user on their own conversation, parses each field, writes in one versioned write | **Extended**: a turn field may be written again; an open field stays write-once. The respond action writes through the same rule |
-| `carriedSessionFields` at each hand-over (three sites in `board.ts`) | **Extended.** A task's session carries `codeWith` down like any field; at a hand-over inside or below a coding run the server also carries that run's resolved triple, which no filer can set. The filler reads them in [D3](DECISIONS.md#d3)'s order |
+| `carriedSessionFields` at each hand-over (three sites in `board.ts`) | **Extended.** A `written: "turn"` field is not carried: a linked session reads the root conversation's current `codeWith` through its links, and nothing displays a carried copy. At a hand-over inside or below a coding run, the server carries that run's resolved triple, which no filer can set. The filler reads them in [D3](DECISIONS.md#d3)'s order |
 | `Harness.models` (FIX-2458), read today only by FIX-2878's claim check | **Extended** with a view on the harnesses flow, beside readiness, for a picker |
 | `READINESS_GUIDANCE` and FIX-2877's default-coder line in the harness kit's capability | **Extended** with the one instruction, which names the conversation's pick |
 | Teammates' `withHarness`, `LEAD_FALLBACK_HARNESS`, Lead's routing rules, three coding workers, *Re-run on* by worker | **Removed**, or moved onto the one coder |
-| Epic [ER-5](../../epics/FIX-2876/DECISIONS.md#who-owns-what), [D2](../../epics/FIX-2876/DECISIONS.md#d2), [D3](../../epics/FIX-2876/DECISIONS.md#d3), [Q-C](../../epics/FIX-2876/DECISIONS.md#decided-in-review); [FIX-2616 D1](../../epics/FIX-2616/DECISIONS.md#d1) | **Built.** ER-5's "never the carried copy" and ER-10's "never falls back to the kit default" are read as "never inside or below a coding run" ([D3](DECISIONS.md#d3)), which amends both rows' text; ER-10 is FIX-2878's, so the epic follow-up is coordinated with its spec. FIX-2616 D1 (the pick is the person's) is kept |
+| Epic [ER-5](../../epics/FIX-2876/DECISIONS.md#who-owns-what), [D2](../../epics/FIX-2876/DECISIONS.md#d2), [D3](../../epics/FIX-2876/DECISIONS.md#d3), [Q-C](../../epics/FIX-2876/DECISIONS.md#decided-in-review); [FIX-2616 D1](../../epics/FIX-2616/DECISIONS.md#d1) | **Built.** ER-5's "never the carried copy" holds everywhere, since `codeWith` is no longer carried. ER-10 gains [D3](DECISIONS.md#d3)'s steps for filings outside a coding run: the root conversation's current pick, then the person's no-pick default, else a refusal. Both rows' text is amended; ER-10 is FIX-2878's, so the epic follow-up is coordinated with its spec. FIX-2616 D1 (the pick is the person's) is kept |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
@@ -147,7 +147,7 @@ the session, whoever started the turn, which is why nothing a model writes can c
 |---|---|
 | **Removes** | The `sessionFields` config key and its nested-key refusal · Teammates' `Coding harness:` line, `withHarness`, `LEAD_FALLBACK_HARNESS` and the prompt rules that read the line · two of Teammates' three coding workers · *Re-run on* by worker |
 | **Adds** | The slot, `written`, `fields` on respond and on `send`, `codeWith`, the model list view: published, permanent by design |
-| **Leaves** | The lab's `Coder:` line and its eight workers, which FIX-2598 removes together · a delegate's ongoing conversation keeps the pick it was opened with ([D3](DECISIONS.md#d3)) |
+| **Leaves** | The lab's `Coder:` line and its eight workers, which FIX-2598 removes together |
 
 **Net: down.** A text protocol, a config key, two workers and three prompt rules go; one slot
 with a mode replaces the key, and the rest extend pieces that exist.
@@ -166,10 +166,10 @@ field nobody but the harness kit uses.
    person to *Code with*.** If wrong: people who switch coder by typing find it doesn't work.
 2. **[D2](DECISIONS.md#d2) · *Re-run on* another coder also moves the conversation's *Code
    with* to it.** If wrong: someone comparing coders finds the conversation's coder changed.
-3. **[D3](DECISIONS.md#d3) · A session no person writes to files coding work on the pick it was
-   opened with.** If wrong: a delegate's long-lived conversation files on an older pick.
+3. **[D3](DECISIONS.md#d3) · A filing from a session no person writes to uses the person's
+   current pick.** If wrong: someone who moves *Code with* finds a delegate's next task followed.
 
-**Open: none.** D3 is the one to weigh: it amends the wording of epic ER-5 and ER-10 (inside or below a coding run, that run's triple, never the kit default; otherwise the session's carried `codeWith`, then worker, then kit).
+**Open: none.** D3 is the one to weigh: it amends the wording of epic ER-5 and ER-10 (inside or below a coding run, that run's triple; otherwise the root conversation's current `codeWith`, then the person's no-pick default, else refused).
 
 Feature · `workforce`, `harness-manager`, Teammates lab, Claude Code-style lab · medium-large · epic
 [FIX-2876](../../epics/FIX-2876/SPEC.md) · blocked by FIX-2877 and FIX-2878 · two PRs: the
