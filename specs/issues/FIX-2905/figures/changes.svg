@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="Left: the repository's worktrees. The person's own checkout is untouched. Three in-flight worker worktrees and one whose pull request has merged. Right: one preview, a clone of its own, cut from the latest main, with the first two in-flight branches merged in. The third conflicts after the first two and is left out and named. A fence at the bottom of the preview says it has no remote and nothing can be pushed from it."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F3DEDC; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A1F1D; } }
+    .bg    { fill:var(--surface); }
+    .zone  { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.3; }
+    .live  { fill:var(--surface); stroke:var(--accent); stroke-width:1.5; }
+    .dim   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:5 4; }
+    .merge { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .out   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .fence { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.6; }
+    .arrow { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .arrow-x { stroke:var(--gone); stroke-width:1.6; fill:none; stroke-dasharray:5 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="left-zone">
+    <rect class="zone" x="16" y="12" width="330" height="396" rx="8"/>
+    <text class="t-lbl" x="32" y="32">THE REPOSITORY'S WORKTREES</text>
+    <text class="t-s" x="32" y="48">nothing here is touched</text>
+
+    <g id="your-checkout">
+      <rect class="box" x="32" y="62" width="298" height="52" rx="5"/>
+      <text class="t-h" x="46" y="84">Your own checkout</text>
+      <text class="t-s" x="46" y="102">branch, files and config as you left them</text>
+    </g>
+    <g id="live-export">
+      <rect class="live" x="32" y="128" width="298" height="52" rx="5"/>
+      <text class="t-h" x="46" y="150">feat-export</text>
+      <text class="t-s" x="46" y="168">in flight · committed work only</text>
+    </g>
+    <g id="live-login">
+      <rect class="live" x="32" y="190" width="298" height="52" rx="5"/>
+      <text class="t-h" x="46" y="212">fix-login</text>
+      <text class="t-s" x="46" y="230">in flight · committed work only</text>
+    </g>
+    <g id="live-docs">
+      <rect class="live" x="32" y="252" width="298" height="52" rx="5"/>
+      <text class="t-h" x="46" y="274">chore-docs</text>
+      <text class="t-s" x="46" y="292">in flight · edits the same file as feat-export</text>
+    </g>
+    <g id="merged-search">
+      <rect class="dim" x="32" y="314" width="298" height="52" rx="5"/>
+      <text class="t-h" x="46" y="336">feat-search</text>
+      <text class="t-s" x="46" y="354">pull request merged · already in main, not in flight</text>
+    </g>
+    <text class="t-s" x="32" y="392">in flight = on a branch, and no merged pull request</text>
+  </g>
+
+  <g id="arrows">
+    <path class="arrow" d="M 332 154 L 452 154"/>
+    <path class="arrow" d="M 332 216 L 452 216"/>
+    <path class="arrow-x" d="M 332 278 L 452 278"/>
+  </g>
+
+  <g id="preview-zone">
+    <rect class="zone" x="456" y="12" width="468" height="396" rx="8"/>
+    <text class="t-lbl" x="472" y="32">PREVIEW · A CLONE OF ITS OWN, REBUILT ON REQUEST</text>
+    <text class="t-s" x="472" y="48">run the app here, on a port you choose</text>
+
+    <rect class="box" x="472" y="62" width="436" height="52" rx="5"/>
+    <text class="t-h" x="486" y="84">Latest main</text>
+    <text class="t-s" x="486" y="102">the base every build starts from</text>
+
+    <rect class="merge" x="472" y="128" width="436" height="52" rx="5"/>
+    <text class="t-ok" x="486" y="150">+ merge feat-export</text>
+    <text class="t-s" x="486" y="168">its tip as committed (3fa9c2), read when built</text>
+
+    <rect class="merge" x="472" y="190" width="436" height="52" rx="5"/>
+    <text class="t-ok" x="486" y="212">+ merge fix-login</text>
+    <text class="t-s" x="486" y="230">a merge commit, so each one can be seen apart</text>
+
+    <rect class="out" x="472" y="252" width="436" height="52" rx="5"/>
+    <text class="t-bad" x="486" y="274">left out: chore-docs</text>
+    <text class="t-s" x="486" y="292">conflicts after feat-export in shared.txt; named in the output</text>
+
+    <rect class="fence" x="472" y="320" width="436" height="72" rx="5"/>
+    <text class="t-bad" x="486" y="344">No remote</text>
+    <text class="t-s" x="486" y="362">git push from here fails: any name, a second remote, a typed URL.</text>
+    <text class="t-s" x="486" y="378">Your repository and every worktree push as before.</text>
+  </g>
+</svg>
