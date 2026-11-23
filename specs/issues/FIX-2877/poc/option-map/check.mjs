@@ -122,9 +122,21 @@ const tm = {
 };
 for (const [name, [src, re]] of Object.entries(tm)) if (!re.test(src)) problems.push(`NOT FOUND on this tree: ${name}`);
 
+// The old phase values a run's key ends in today, which the spec's legacy-key table names.
+// Renaming a mode changes its key only where its value changes; each must still be found.
+const legacy = {
+  "run key is <epic>/<issue>/<segment>": [read("packages/harness-manager/src/run-record.ts"), /return `\$\{epic\}\/\$\{issue\}\/\$\{phase\}`;/],
+  "board task id uses the same segment": [read("packages/harness-manager/src/workspace.ts"), /joinIdentity\(assertSafeSegment\("issue", issue\), assertSafeSegment\("phase", phase\)\)/],
+  "kit default's old value is code": [kit, /const PHASE: PhaseSpec = \{\s*phase: "code",/],
+  "implement's old value is implement": [read("packages/shift-manager/teams/devteam/phase.mts"), /export const PHASE = "implement";/],
+  "answer's old value is answer": [read("packages/shift-manager/teams/devteam/phase.mts"), /export const ANSWER_PHASE = "answer";/],
+};
+for (const [name, [src, re]] of Object.entries(legacy)) if (!re.test(src)) problems.push(`LEGACY KEY NOT AS THE SPEC SAYS: ${name}`);
+
 const count = (c) => Object.entries(MAP).filter(([k, [v]]) => v === c && found.includes(k)).length;
 console.log(`fork pieces: ${found.length} · HAS ${count("HAS")} · GAINS ${count("GAINS")} · DROP ${count("DROP")}`);
 console.log(`teammates and shift-manager sites checked: ${Object.keys(tm).length}`);
+console.log(`legacy-key facts checked: ${Object.keys(legacy).length}`);
 for (const [k, [c, why]] of Object.entries(MAP)) if (found.includes(k)) console.log(`  ${c.padEnd(5)} ${k.padEnd(28)} ${why}`);
 if (problems.length > 0) {
   console.error(problems.join("\n"));

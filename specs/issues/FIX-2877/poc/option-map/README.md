@@ -25,11 +25,14 @@ OPTION_MAP_CONTROL=1 node specs/issues/FIX-2877/poc/option-map/check.mjs    # mu
 - **The kit side.** Each `HAS` names an option the kit's `CoderFlowOptions` has today, and each
   `GAINS` names one it lacks.
 - **The sites.** Eight regexes find each knob and list on the tree.
+- **Legacy keys.** Five regexes confirm the facts the spec's legacy-key table rests on: a run's
+  key is `<epic>/<issue>/<segment>`, the board task id uses the same segment, and today's values
+  are `code` (the kit's one phase), `implement` and `answer` (Shift Manager's).
 - **Control.** `OPTION_MAP_CONTROL=1` plants an option key the map does not know. It must fail
   with `UNCLASSIFIED: plantedOption`.
 
 **Result on `main` `26e76736b` (2026-11-23).** 25 pieces: 14 `HAS`, 7 `GAINS`, 4 `DROP`; 8
-sites found. PASS. The control exits 1 with `UNCLASSIFIED: plantedOption`.
+sites found; 5 legacy-key facts hold. PASS. The control exits 1 with `UNCLASSIFIED: plantedOption`.
 
 The 7 `GAINS` are fork keys, not options. They land in D1's three: `phase`, `answerPhase` and
 `answerWorkspace` in `modes` (Shift Manager's `implement` and `answer` entries); `approveTools` in its own; `resources`, `setting.document` and

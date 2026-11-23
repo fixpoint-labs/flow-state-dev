@@ -40,11 +40,11 @@ control its leg must fail.
 
 | How we verify | |
 |---|---|
-| **Goal check** | Leg a: `goals/teammates-lab/one-default-picks-the-coder/`, real model, Lead on the lab's default. Leg b: `goals/shift-manager/its-coder-is-the-shared-flow/`, no model. Run by the implementer at completion; verdicts in the implementation PR. Shift Manager's existing coder goals (`goals/devforce-lab/*`, `goals/shift-manager/*` that open a Lab) run too, on the shared flow |
-| **Signal** | **a:** for each value, in every run (3 of 3), the stored task's assignee is the coding worker whose `harness:` is that value, the run record names that harness, and the stored message has no `Coding harness:` text. With the default on `codex`, an ask whose message and README (which Lead reads) both say `Coding harness: Cursor` still lands on the Codex worker, 3 of 3; a person assigning the task to the Cursor worker on the board runs it on Cursor. A filing made inside a coding run is not rewritten: no signal reads one as moved to the default. A *Code with* pick landing on its coder is FIX-2879's check, not this one. A teammate hired with a `harness` setting has none on its roster row. **b:** for each id, the run record names that harness, the run is a `coder` flow run, and a hire naming an id outside the readiness rows is refused with exactly the readiness ids |
-| **Input** | A held-out ask, "add a line to the README", in two wordings, plus the planted-text ask; scripted harnesses (`GOAL_HARNESS=stub`), so no vendor sign-in is needed. Leg b: two scripted harness values under different ids |
+| **Goal check** | Leg a: `goals/teammates-lab/one-default-picks-the-coder/`, real model, Lead on the lab's default. Leg b: `goals/shift-manager/its-coder-is-the-shared-flow/`, no model. Leg c: `goals/harness-manager/a-run-keeps-its-key-across-the-rename/`, no model. Run by the implementer at completion; verdicts in the implementation PR. Shift Manager's existing coder goals (`goals/devforce-lab/*`, `goals/shift-manager/*` that open a Lab) run too, on the shared flow |
+| **Signal** | **a:** for each value, in every run (3 of 3), the stored task's assignee is the coding worker whose `harness:` is that value, the run record names that harness, and the stored message has no `Coding harness:` text. With the default on `codex`, an ask whose message and README (which Lead reads) both say `Coding harness: Cursor` still lands on the Codex worker, 3 of 3; a person assigning the task to the Cursor worker on the board runs it on Cursor. A filing made inside a coding run is not rewritten: no signal reads one as moved to the default. A *Code with* pick landing on its coder is FIX-2879's check, not this one. A teammate hired with a `harness` setting has none on its roster row. **b:** for each id, the run record names that harness, the run is a `coder` flow run, and a hire naming an id outside the readiness rows is refused with exactly the readiness ids **c:** a run started on the kit's default mode before the change, recorded under `<epic>/<issue>/code`, resumed after it, is found there: it keeps its branch, checkout and saved session, and nothing is written under `<epic>/<issue>/default`. A new run on the same mode writes `<epic>/<issue>/default` |
+| **Input** | A held-out ask, "add a line to the README", in two wordings, plus the planted-text ask; scripted harnesses (`GOAL_HARNESS=stub`), so no vendor sign-in is needed. Leg b: two scripted harness values under different ids Leg c: a run record, branch and session stored under today's key, then the changed code |
 | **Anti-game** | No worker file or prompt names the default. Read the stored task, the message and the run record, never Lead's reply or the picker. The server's no-pick assignee ([D2](DECISIONS.md#d2)) is the mechanism under test, not a way round it; what it must not do is read the default from anything a model wrote |
-| **Control that must fail** | Leg a: `GOAL_CONTROL=model-assignee` (the server's no-pick write patched out, so Lead's assignee stands) must FAIL *on the default, every run*; today's `main` must FAIL it for `codex`, and FAIL the planted-text ask. Leg b: today's `main` must FAIL *a `coder` flow run* and *readiness ids equal the coder's* |
+| **Control that must fail** | Leg a: `GOAL_CONTROL=model-assignee` (the server's no-pick write patched out, so Lead's assignee stands) must FAIL *on the default, every run*; today's `main` must FAIL it for `codex`, and FAIL the planted-text ask. Leg b: today's `main` must FAIL *a `coder` flow run* and *readiness ids equal the coder's*. Leg c: `GOAL_CONTROL=no-legacy-key` (the legacy-key fallback removed) must FAIL: the resumed run starts a fresh branch |
 
 ## What changes
 
@@ -115,8 +115,24 @@ no-pick path and lands on the default. It ends when FIX-2879 ships its pick; bot
 manager's `phase` option and the run record's `phase` topic segment → `mode`. Readers move in the
 same PR: `harness-manager`'s `manager.ts`, `command-check.ts`, `index.ts`, `kit/coder-flow.ts` and
 four of its tests, Shift Manager's `phase.mts`, and `goals/harness-manager/` (`host.mts` and three
-`run.mts`). A stored run record written under `phase` reads as its `mode` (BP-030). "Phase" stays
-free for a later task-board idea.
+`run.mts`). "Phase" stays free for a later task-board idea.
+
+**The run's key keeps working across the rename** (BP-030: dual-read, no migration). The last
+segment of a run's key, `<epic>/<issue>/<segment>`, is a stored value, and the same segment names
+the run's branch, checkout and board task id. New runs write `<epic>/<issue>/<modeName>`. A reader
+looks up that key first; when it is absent, it looks up the mode's old phase value and uses the
+record found there, never copying it to the new key. A run found under the old key finishes under
+it: its branch, checkout, retries, steer and resume all keep that segment. Nothing rewrites or moves
+old records. The old values, read from the code on this tree:
+
+| Mode | New segment | Old segment, read as a fallback |
+|---|---|---|
+| The kit's `default` | `default` | `code` (the kit's one phase, `kit/coder-flow.ts`) |
+| Shift Manager's `implement` | `implement` | `implement` (its `PHASE`): unchanged, so no fallback is needed |
+| Shift Manager's `answer` | `answer` | `answer` (its `ANSWER_PHASE`): unchanged |
+
+Only the kit's default changes value, so only it needs the fallback. A legacy `harnessFeature`
+marker that carries its own `phase` value is read under that value (FIX-2878's legacy read).
 
 **Docs:** the harness kit has no user page yet. Changesets for `@flow-state-dev/harness-manager`
 (the three options, `modes` and the default mode, the phase-to-mode rename as a minor change, the default in context, and the server's no-pick assignee) and `@flow-state-dev/shift-manager` (readiness
@@ -201,6 +217,16 @@ modes: { implement: { instructions: implementBrief, doneWhen: commitTheBaseLacks
 ```text
 filing:  { mode: "implement", description: "Add a line to the README" }
 Refused: mode "implement" needs "issue", and this filing has none.
+```
+
+A run that was in flight when the change deployed is found under its old key, and finishes there.
+
+```text
+before deploy:  a run on the kit's default, recorded at  acme/FIX-12/code   (branch and session too)
+after deploy:   resume  ->  look up acme/FIX-12/default   absent
+                        ->  look up acme/FIX-12/code      found: same branch, same session, same history
+                writes go to acme/FIX-12/code; nothing is written under acme/FIX-12/default
+a new run on the same issue, started after deploy:  acme/FIX-12/default
 ```
 
 A task's own text is appended to its mode's instructions, so per-task wording lives in the task
