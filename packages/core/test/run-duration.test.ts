@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatRunDuration } from "../run-duration";
+import { formatRunDuration } from "../src/helpers/run-duration";
 
 describe("formatRunDuration", () => {
   it("reads minutes and seconds the way a person would say them", () => {

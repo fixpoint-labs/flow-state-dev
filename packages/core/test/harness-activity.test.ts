@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { harnessActivityOf, reportHarnessActivity, reportHarnessEvent } from "../harness-activity";
+import { harnessActivityOf, reportHarnessActivity, reportHarnessEvent } from "../src/helpers/harness-activity";
 
 describe("a harness run's activity", () => {
   it("is a whole assistant message or a started tool call, in every harness's event names", () => {
