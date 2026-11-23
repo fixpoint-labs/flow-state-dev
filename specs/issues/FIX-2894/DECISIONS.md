@@ -68,20 +68,40 @@ It comes down to what a model does with a field it reads: it writes it.
   the routed filing (`fileRouted`, which skips `assertProjectFor` today), a `session: "new"`
   step (checked against the worker's own flow), `patchSettings` (`updateTask`'s input and
   assignee) and `setAssignee`. An inline step never reaches a `work` entry and stays open.
-- **The order:** `refuse` on what was sent · drop every `serverOwned` name · `fill` (a filing or
-  a move) or keep the stored values (an edit) · parse · `check` · parse its return again ·
-  **re-pin** · the project requirement · store the parsed value. The project the board writes
+  **The raw handles are writers too** (coordinator, review round 2): `filingConversationBoard()`
+  and `conversationLedgers()` hand out a mutable `TaskCollectionRef`, and its `createTask`,
+  `createTasks`, `patchSettings`, `setAssignee` and any other write to input or assignee are
+  routed through the same check. The exports stay. Code that wrote a misfit through them is now
+  refused, a public behaviour change the changeset names (minor, pre-1.0).
+- **The order:** read the row at revision N · `refuse` on what was sent · drop every
+  `serverOwned` name · `fill` (a filing, a move, or a stale stamp) or keep the stored values (an
+  edit with a matching stamp) · parse · `check` · parse its return again · **re-pin** · the JSON
+  round trip · the project requirement · write if the row is still at N, stamped `filledFor`. The project the board writes
   into `input` (`ownProjectIn`) is written before the parse.
-- **Re-pin: `check` never changes a server-owned field** (coordinator, review round 1). After
-  `check`, the board compares each `serverOwned` name with the value it filled, or kept on an
-  edit. A difference refuses the write as `input_refused`, named as a bug in the flow, and the
-  board never stores a server-owned value `check` returned. FIX-2878's default-mode write is
+- **Re-pin: `check` never changes a server-owned field** (coordinator, review rounds 1 and 2).
+  Before `check`, the board takes a deep, independent clone of the server-owned values it filled
+  or kept (the baseline). After `check`, it compares each `serverOwned` name with the baseline and
+  restores every one from it, unconditionally. A difference still refuses the write as
+  `input_refused`, named as a bug in the flow. A nested, in-place mutation is caught the same way. FIX-2878's default-mode write is
   allowed: `mode` is filer-written, not server-owned.
 - **An edit on a declared flow reads the stored row through `stored` first** and takes the kept
-  server-owned values from that read, then runs `refuse` · drop · keep · parse · `check` ·
-  re-pin. An unassigned row, or a row on an open flow, has no declaration and stays unchecked
+  server-owned values from that read, but only when the row's `filledFor` stamp matches; with no
+  stamp or another one, the edit is a filing. Then `refuse` · drop · keep or fill · parse ·
+  `check` · re-pin. An unassigned row, or a row on an open flow, has no declaration and stays unchecked
   on an edit; a move onto a declared flow is then a filing ([D2](#d2)), so nothing it carried
   counts.
+- **The `filledFor` stamp** (coordinator, review round 2). Each row the board filled carries a
+  server-written metadata key: the flow id and a fingerprint of the declaration (its JSON Schema,
+  `serverOwned` list and project requirement; the hash is the implementer's). Stored server-owned
+  values are trusted, at claim and on `updateTask`, only when the stamp names the assignee's
+  current flow and declaration. Otherwise the claim drops them and runs the filler again, before
+  the parse and before anything freezes them, and `updateTask` treats the edit as a filing. A row
+  stored before this change has no stamp, so its first claim re-fills. For a coding task that is
+  FIX-2878's filler at claim, in the task's own session.
+- **One row version** (coordinator, review round 2). Whether a write is an edit or a move, the
+  `stored` read, the hooks, and the input and assignee they produce are all computed from the
+  revision the write read, and written with a compare-and-set on it. On a conflict the board
+  re-reads and re-runs the whole check, at most three times, then refuses `input_conflict` by name.
 - **The lookup:** the installation reads the declaration off each flow's `work` entry, as
   `takesConversationTasks` reads the entry's mark today, and the board takes one internal option,
   `taskInputOf(flowKind)`, in place of `needsProject(flowKind)`. No app sets it. It is read per
@@ -102,7 +122,10 @@ It comes down to what a model does with a field it reads: it writes it.
 - **A schema must survive the JSON round trip the stored row takes:** `parse(JSON round trip of
   parse(x))` equals `parse(x)`. A schema that can break it is refused when the flow is built:
   `.transform`, `.preprocess`, `.pipe`, `.catch`, `z.coerce.*`, `z.date`, `z.bigint`, `z.map` and
-  `z.set`, anywhere in it. `.default`, `.refine` and `.describe` keep it.
+  `z.set`, anywhere in it. `.default`, `.refine` and `.describe` keep it. **That ban is an early
+  refusal, not the guarantee** (coordinator, review round 2): every write serialises the value it
+  is about to store, parses it again, deep-compares, and refuses by name on any difference. That
+  catches a `z.unknown()` or `z.any()` field holding a `Date`, a `BigInt` or a `Map`.
 - **A rule only `check` or `refuse` enforces goes in the field's `.describe()` too,** so a model
   reads it in `listDelegates` before it is refused. A rule for flow authors, in the docs line.
 - **No assignee and one task-taking delegate:** checked against it, as the issue asks. Several:
@@ -153,5 +176,9 @@ not by a fresh sub-agent: this dispatch has no agent tool. Weigh it as a self-ch
   field (re-pin after `check`); an edit reads the stored row through `stored` first; the
   build-time refusal became a JSON round-trip invariant; a `check`-only rule is carried in the
   field's description, and `listDelegates` emits inlined draft-07.
+- **Review round 2** (Codex, coordinator's calls) — the raw handles route through the filing
+  check; a `filledFor` stamp makes a stale declaration or flow re-fill at claim; validation and
+  write share one row revision; the re-pin baseline is a deep clone restored after `check`; the
+  JSON round trip is checked at runtime on every write.
 
 **Open: none.**

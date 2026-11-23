@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 470" role="img" aria-label="Before and after, side by side. Today, on the left: createTask copies input through as a record; updateTask, a batch, a routed filing and a reassign write it unchecked; the only filing check is the project requirement, from the needsProject hire option; the claim parses only the envelope, and each reader parses input on its own, late; listDelegates says only takes tasks. After, on the right: the flow's work entry declares its task input, with server-owned fields, a filler, refuse, check, stored and the project requirement; every write path runs one filing check in order: refuse, drop the server-owned fields, fill or keep the stored values, parse, check, re-pin the server-owned fields, project, store parsed; the claim reads stored rows through stored, parses again and hands the worker block the parsed input; listDelegates shows the filer's fields as JSON Schema; a flow with no declaration keeps an open record."
+<svg viewBox="0 0 940 470" role="img" aria-label="Before and after, side by side. Today, on the left: createTask copies input through as a record; updateTask, a batch, a routed filing and a reassign write it unchecked; the only filing check is the project requirement, from the needsProject hire option; the claim parses only the envelope, and each reader parses input on its own, late; listDelegates says only takes tasks. After, on the right: the flow's work entry declares its task input, with server-owned fields, a filler, refuse, check, stored and the project requirement; every write path runs one filing check in order: refuse, drop the server-owned fields, fill or keep the stored values, parse, check, re-pin the server-owned fields, a JSON round trip, project, and a write only if the row is still at the revision read, stamped filledFor; the raw handles go through the same check; the claim reads stored rows through stored, re-fills server-owned fields on a stale stamp, parses again and hands the worker block the parsed input; listDelegates shows the filer's fields as JSON Schema; a flow with no declaration keeps an open record."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -68,15 +68,15 @@
       <path class="ln-c" d="M490 146 V178 M582 146 V178 M674 146 V178 M766 146 V178 M862 146 V178"/>
     </g>
     <rect class="n-new" x="448" y="178" width="460" height="44" rx="5"/>
-    <text class="t-b" x="460" y="198">One filing check, the assignee's flow's declaration</text>
+    <text class="t-b" x="460" y="198">One filing check, raw handles too: the assignee's flow's declaration</text>
     <text class="t-c" x="460" y="214">refuse · drop server-owned · fill or keep · parse · check · re-pin · project</text>
     <rect class="n-rec" x="448" y="238" width="460" height="44" rx="5"/>
     <text class="t-b" x="460" y="258">Stored parsed</text>
-    <text class="t-s" x="460" y="274">a misfit refused, naming the field · nothing filed</text>
+    <text class="t-s" x="460" y="274">only if the row is still at the revision read · stamped filledFor</text>
     <path class="ln-a" d="M678 222 V238"/>
     <rect class="n-new" x="448" y="298" width="460" height="44" rx="5"/>
     <text class="t-b" x="460" y="318">Claim: stored read, then parse again</text>
-    <text class="t-c" x="460" y="334">the worker block is handed parsed input · a misfit fails by name</text>
+    <text class="t-c" x="460" y="334">a stale stamp re-fills · the block is handed parsed input</text>
     <path class="ln-a" d="M678 282 V298"/>
     <rect class="n-new" x="448" y="358" width="460" height="44" rx="5"/>
     <text class="t-b" x="460" y="378">listDelegates shows the input</text>

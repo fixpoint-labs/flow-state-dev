@@ -31,7 +31,7 @@ server owns.**
 | **The real need** | The epic's run settings must reach a coding task "as fields of the coder flow's declared task input", checked, and never written by a filer ([ER-9, ER-10](../../epics/FIX-2876/DECISIONS.md#who-owns-what)). The issue: "Nobody checks it when the task is filed, when it is claimed, or when its worker's `work` entry runs it" |
 | **Smaller, and rejected** | "`createTask` parses `input` against a schema." Met while `updateTask`, a batch, a routed filing or a reassign still write unchecked input, and while a filer can still write a server-owned field |
 | **Bigger, and not this issue's** | The coder flow's schema, filler, mode checks and lock: [FIX-2878](../FIX-2878/SPEC.md). Typing `taskBoard({ workers })` under strict TypeScript: FIX-2732 |
-| **Not done if** | A model can file a valid task only because the test told it the shape · one write path (batch, routed, step, `updateTask`, reassign) skips the check · the claim trusts the stored row · a declared flow's worker block still parses `input` itself |
+| **Not done if** | A model can file a valid task only because the test told it the shape · one write path (batch, routed, step, `updateTask`, reassign, a raw handle) skips the check · the claim trusts the stored row, or server-owned values filled under another declaration · two racing edits store input checked against a revision it wasn't · a declared flow's worker block still parses `input` itself |
 
 ```mermaid
 flowchart LR
@@ -49,14 +49,14 @@ The check reads the stored row and what the worker block was handed, never the t
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/workforce/a-task-fits-its-flow/` · a real model for the **Discover** leg, scripted for the rest · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | **Discover:** in 5 runs, a model that has only `listDelegates` files a task for a flow declaring `{ ticket: /^ENG-\d+$/, kind: "fix" \| "probe" }`, and the first filing is accepted in at least 4. **Refuse:** a misfit on `createTask`, `createTasks`, a routed filing, a `session: "new"` step and `updateTask` is refused with `input_refused`, naming the path, and no row is written. **Own:** a filer's server-owned value is replaced by the filler's on filing, and kept from the stored row (read through `stored`) on `updateTask`; a `check` that returns a different `requestedBy` is refused with `input_refused` and nothing is written. **Move:** assigning an unassigned row, and reassigning to a worker on another declared flow, run the filler and the parse. **Claim:** a stored row that no longer fits fails its attempt, naming the field, and the block never runs; a row the flow's `stored` maps runs on the mapped input. **Open:** a flow with no declaration stores and hands over any object unchanged. **Project:** a declaration with `project: "required"` refuses as `no_project` does today |
-| **Input** | A scripted `triage` flow (below), an agent flow with no declaration, a conversation with one and with two delegates. A different shape or field name must pass too |
+| **Signal** | **Discover:** in 5 runs, a model that has only `listDelegates` files a task for a flow declaring `{ ticket: /^ENG-\d+$/, kind: "fix" \| "probe" }`, and the first filing is accepted in at least 4. **Refuse:** a misfit is refused with `input_refused`, naming the path, and no row is written, on every write path: `createTask`, `createTasks`, a routed filing, a `session: "new"` step, `updateTask`, `setAssignee`, and the same mutators (`createTask`, `createTasks`, `patchSettings`, `setAssignee`) on the raw handles `filingConversationBoard()` and `conversationLedgers()` hand out. **Own:** a filer's server-owned value is replaced by the filler's on filing, and kept from the stored row (read through `stored`) on `updateTask`; a `check` that returns a different `requestedBy`, or mutates a nested server-owned value in place, is refused with `input_refused` and nothing is written. **Stamp:** a row whose declaration changed between filing and claim, and a row whose worker moved to another flow, have their server-owned values dropped and filled again at claim, before the parse; the stored values are not run. **Race:** two edits of one row at once (one changing `input`, one moving the assignee to another flow) end with one checked result: the loser re-runs the whole check on the new revision, or is refused `input_conflict` after three conflicts; no row holds input checked against a revision it didn't have. **Round trip:** a `check` that returns a `Date` in a `z.unknown()` field is refused at the write, by name. **Move:** assigning an unassigned row, and reassigning to a worker on another declared flow, run the filler and the parse. **Claim:** a stored row that no longer fits fails its attempt, naming the field, and the block never runs; a row the flow's `stored` maps runs on the mapped input. **Open:** a flow with no declaration stores and hands over any object unchanged. **Project:** a declaration with `project: "required"` refuses as `no_project` does today |
+| **Input** | A scripted `triage` flow (below), an agent flow with no declaration, a conversation with one and with two delegates. Between filing and claim, one run changes the `triage` declaration (a new server-owned field) and one moves the worker to another declared flow. Two edits raced on one row. A different shape or field name must pass too |
 | **Anti-game** | Read the stored row and the input the worker block received. Never the tool's reply, and never a stubbed board |
-| **Control that must fail** | `GOAL_CONTROL=hide-shape` fails **Discover** (at most 1 of 5); `filing-only` (only `createTask` checks) fails **Refuse**; `trust-filer` and `check-rewrites-owned` (the scripted `check` overwrites `requestedBy`, and the board stores it) fail **Own**; `move-unchecked` fails **Move**; `trust-stored` fails **Claim**. Today's `main` fails every signal but **Open** and **Project**. The PR shows each FAIL before the PASS |
+| **Control that must fail** | `GOAL_CONTROL=hide-shape` fails **Discover** (at most 1 of 5); `filing-only` (only `createTask` checks) and `raw-handle-bypass` (the raw handles write unchecked) fail **Refuse**; `trust-filer`, `check-rewrites-owned` (the scripted `check` overwrites `requestedBy`, and the board stores it) and `shallow-baseline` (the baseline is a shallow copy, and `check` mutates a nested server-owned value in place) fail **Own**; `trust-stale-declaration` and `trust-stale-flow` (the claim trusts the stored server-owned values) fail **Stamp**; `no-cas` (the write ignores the revision) fails **Race**; `build-time-only` (no runtime round trip) fails **Round trip**; `move-unchecked` fails **Move**; `trust-stored` fails **Claim**. Today's `main` fails every signal but **Open** and **Project**. The PR shows each FAIL before the PASS |
 
 ## What changes
 
-![Before and after. Today: createTask copies input through, readers parse it late, needsProject is a separate hire option. After: one declaration on the work entry; every write path runs one filing check (refuse, drop, fill, parse, check, project); the claim reads stored rows and parses again; listDelegates shows the shape](figures/what-changes.svg)
+![Before and after. Today: createTask copies input through, readers parse it late, needsProject is a separate hire option. After: one declaration on the work entry; every write path runs one filing check (refuse, drop, fill, parse, check, re-pin, project); the claim reads stored rows and parses again; listDelegates shows the shape](figures/what-changes.svg)
 
 Every write that puts input on a task passes one filing check, and the claim parses again.
 
@@ -98,14 +98,20 @@ follow at release.
 
 ```mermaid
 flowchart LR
-  W["createTask · createTasks · routed · step (new session) · updateTask · assign · reassign"] --> L["assignee → its flow → the work entry's declaration"]
+  W["createTask · createTasks · routed · step (new session) · updateTask · assign · reassign · raw handles"] --> V["read the row at revision N"]
+  V --> L["assignee → its flow → the work entry's declaration"]
   L -->|"none"| O["open record · as today"]
-  L --> RF["refuse(sent)"] --> D["drop server-owned"] --> FL["fill · or keep stored on an edit"] --> PA["parse"] --> CH["check"] --> RP["re-pin server-owned"] --> PR["project"] --> S["stored parsed"]
-  S --> C["claim · stored() · parse"] --> BL["the worker block, handed the parsed input"]
+  L --> RF["refuse(sent)"] --> D["drop server-owned"] --> FL["fill · or keep stored when the stamp matches"] --> PA["parse"] --> CH["check on a clone"] --> RP["re-pin from the baseline"] --> RT["JSON round trip"] --> PR["project"] --> S["write if still N · stamp filledFor"]
+  S -.->|"revision moved · retry, at most 3"| V
+  S --> C["claim · stored() · re-fill on a stale stamp · parse"] --> BL["the worker block, handed the parsed input"]
 ```
 
 The board looks up the assignee's flow and its declaration per call. It calls the hooks; it never
-reads a field a flow declares.
+reads a field a flow declares. Every write that changes a row's input or assignee goes through
+this one check, the raw handles that `filingConversationBoard()` and `conversationLedgers()`
+hand out included: their `createTask`, `createTasks`, `patchSettings` and `setAssignee` are
+routed through it, and the exports stay as they are. That is a public behaviour change, noted
+in the changeset (minor): code that wrote a misfit through a raw handle is now refused.
 
 ## Examples
 
@@ -183,6 +189,17 @@ A missing field, and a value off the enum, each name their path the same way (`a
 required`; `at "severity", expected "low" | "high", received "urgent"`). A batch is refused
 whole: one row that doesn't fit files none of them.
 
+Code that writes through a raw handle gets the same check. The handle is still exported; its
+mutators now refuse what the tool would:
+
+```ts
+const { tasks } = await filingConversationBoard(ctx);
+await tasks.createTask({ assignee: "ops.triager", goal: "…", input: { ticket: 142 } });
+//   → throws input_refused: … at "ticket", expected string, received number. … Nothing was filed.
+await tasks.patchSettings("t_17", { input: { ticket: "ENG-150", requestedBy: "u_admin" } });
+//   → stored: { "ticket": "ENG-150", "severity": "low", "requestedBy": "u_jane" }
+```
+
 A project-requiring flow, with no project anywhere. The text is today's `no_project`, unchanged:
 
 ```text
@@ -226,18 +243,24 @@ input: taskInput(triageInput, {
 //   → not_on_call: "ops.intern" isn't on call, so it takes no high-severity task. Nothing was filed.
 ```
 
-`check` may change a filer's field, never a server-owned one. After `check`, the board compares
-each `serverOwned` name with the value it filled (or kept, on an edit). A difference is a bug in
-the flow: the write is refused, and the board never stores a server-owned value `check` returned.
+`check` may change a filer's field, never a server-owned one. Before `check` runs, the board
+takes a deep, independent clone of the server-owned values (the baseline) and hands `check` a
+copy. After `check`, it compares each `serverOwned` name with the baseline, then restores every
+server-owned value from the baseline, always. A difference is a bug in the flow: the write is
+refused, and nothing `check` did to a server-owned value is ever stored, a nested in-place
+mutation included.
 
 ```ts
-check: (input) => ({ ...input, requestedBy: "u_admin" }), // a buggy check
+check: (input) => ({ ...input, requestedBy: "u_admin" }), // a buggy check: a new value
+check: (input) => { input.audit.by = "u_admin"; return input; }, // a buggy check: nested, in place
 ```
 
 ```text
 input_refused: flow "triage"'s check changed "requestedBy", which only its filler writes.
 This is a bug in the flow, not in the task. Nothing was filed.
 ```
+
+(For the second, the text names `"audit"`, a server-owned field in a flow that declares one.)
 
 FIX-2878's `checkMode` writes the default `mode` into a task that names none. That is allowed:
 `mode` is filer-written, not server-owned.
@@ -257,10 +280,12 @@ input: taskInput(codingTaskInputSchema, {
 
 ### `updateTask`
 
-`updateTask` replaces `input` whole. It never calls the filler: a server-owned field keeps its
-stored value, whatever the filer sent. On a declared flow the order is: read the stored row
-through `stored` and take the server-owned values from that read · `refuse` · drop · keep ·
-parse · `check` · re-pin.
+`updateTask` replaces `input` whole. It never calls the filler on a row the board filled for
+the assignee's current flow and declaration: a server-owned field keeps its stored value,
+whatever the filer sent. On a declared flow the order is: read the row at revision N, through
+`stored` · if its `filledFor` stamp matches, take the server-owned values from that read, else
+treat the edit as a filing · `refuse` · drop · keep (or fill) · parse · `check` · re-pin · JSON
+round trip · write if the row is still at N.
 
 ```jsonc
 // stored: { "ticket": "ENG-142", "severity": "low", "requestedBy": "u_jane" }
@@ -271,12 +296,27 @@ parse · `check` · re-pin.
 //     at "ticket", invalid. Read what it takes with listDelegates. Nothing was filed.
 ```
 
-A row stored in an old shape keeps the server-owned values its `stored` read gives:
+A row with no stamp (stored before this change), or one stamped for another declaration, is
+treated as a filing: its stored server-owned values are dropped and the filler writes them.
 
 ```jsonc
-// stored: { "ticketId": "ENG-9", "reporter": "u_jane" }   // stored maps reporter → requestedBy
-{ "id": "t_18", "input": { "ticket": "ENG-9", "severity": "high", "requestedBy": "u_admin" } }
-//   → stored: { "ticket": "ENG-9", "severity": "high", "requestedBy": "u_jane" }
+// stored, no filledFor: { "ticketId": "ENG-9", "requestedBy": "u_admin" }; Jane edits it
+{ "id": "t_18", "input": { "ticket": "ENG-9", "severity": "high" } }
+//   → stored: { "ticket": "ENG-9", "severity": "high", "requestedBy": "u_jane" }, stamped filledFor
+```
+
+Two edits of one row at once are serialised by the row's revision. Each one is checked against
+the revision it read and written only if the row is still there. The loser re-reads and runs the
+whole check again, at most three times:
+
+```jsonc
+// t_19 at revision 7, on ops.triager (flow "triage")
+// A: { "id": "t_19", "input": { "ticket": "ENG-150" } }        checked against 7
+// B: { "id": "t_19", "assignee": "ops.helper" }                checked against 7, writes first → 8
+//   → A re-reads revision 8 (flow "agent", open) and runs the check again: stored as sent
+// After three conflicts in a row:
+//   → input_conflict: task "t_19" changed while this edit was checked, three times. Read it
+//     again with getTask and send the edit again. Nothing was filed.
 ```
 
 An unassigned row, or a row on an open flow, has no declaration, so an edit stays unchecked, as
@@ -326,8 +366,21 @@ stored: (raw) => ("ticketId" in raw ? { ...omit(raw, "ticketId"), ticket: raw.ti
 //   → the block is handed { "ticket": "ENG-9", "severity": "low", "requestedBy": "u_jane" }
 ```
 
-The claim checks only the schema. The project requirement and `check` are filing checks, so a
-task whose project came from its conversation is not refused at its next claim.
+The claim trusts the stored server-owned values only when the row's `filledFor` stamp names the
+assignee's current flow and declaration. With no stamp, or another one, the claim drops them
+and runs the filler again, before the parse and before anything freezes them (FIX-2878's run
+record):
+
+```jsonc
+// filed under triage v1 (serverOwned: ["requestedBy"]); stamp { flow: "triage", declaration: "a41f…" }
+// before the claim, triage v2 adds a server-owned "region"; its fingerprint is "9c07…"
+//   → claim: stamp is stale → requestedBy and region dropped, filled again, then parsed
+// before the claim, ops.triager's file moves it to flow "intake"
+//   → claim: stamp names "triage" → intake's server-owned fields are filled, then parsed against intake
+```
+
+The claim checks only the schema and the stamp. The project requirement and `check` are filing
+checks, so a task whose project came from its conversation is not refused at its next claim.
 
 ### What `listDelegates` shows
 
@@ -364,6 +417,20 @@ can break it is refused when the flow is built. That is `.transform`, `.preproce
 `.catch`, `z.coerce.*`, `z.date`, `z.bigint`, `z.map` and `z.set`, anywhere in the schema.
 `.default`, `.refine` and `.describe` keep it.
 
+The build-time ban is an early, friendlier refusal, not the guarantee. The guarantee runs on
+every write: the board serialises the value it is about to store, parses it again and
+deep-compares the two, and refuses on any difference. That catches a `z.unknown()` or `z.any()`
+field holding a `Date`, a `BigInt` or a `Map`, which no build-time ban can see:
+
+```ts
+check: (input) => ({ ...input, meta: { seenAt: new Date() } }), // meta: z.unknown()
+```
+
+```text
+input_refused: this task's input for "ops.triager" (flow "triage") doesn't survive being stored:
+at "meta.seenAt", a Date becomes a string. Store plain JSON values. Nothing was filed.
+```
+
 ```ts
 workerTaskEntry({ name: "triage-work", turn, input: taskInput(z.object({ n: z.string().transform(Number) })) });
 //   → Error: workerTaskEntry "triage-work": a task input may not use .transform (at "n"). It is
@@ -398,14 +465,15 @@ workerTaskEntry({ name: "triage-work", turn, input: taskInput(z.object({ due: z.
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | `taskInput(schema, { serverOwned, fill, refuse, check, stored, project })` and `workerTaskEntry({ input })` | `task` · `createTask`'s record schema; `needsProject` | **Composed:** the record schema stays the tool's shape; the declaration is read off the flow, replacing a per-concern hire option |
-| One filing check on every write path | `assertProjectFor` | **Extends** it: the same convergence point, more rules, more writers |
+| One filing check on every write path, raw handles included, written by compare-and-set on the row's revision | `assertProjectFor`; the collection's versioned writes | **Extends** both: the same convergence point, more rules, more writers, and the revision the guarded writes already carry |
+| A `filledFor` stamp (flow and declaration fingerprint) on each row the board filled | The board's server-written row metadata (`FILED_PROJECT`, `FILED_HOP`) | **Extends**: one more server-written key, which a caller's metadata can't set |
 | A claim parse in `workerTaskEntry` | The entry's envelope parse | **Extends** the existing sequencer by one step |
 | `input` on a `listDelegates` row | `takes` | **Extends** the row |
 
 | The debt | |
 |---|---|
 | **Removes** | `needsProject` in three places and `assertProjectFor` · each declared flow's own late parse of `input` |
-| **Adds** | One public declaration and its six options, permanent by design. A board option that looks up a flow's declaration (internal) |
+| **Adds** | One public declaration and its six options, permanent by design. A board option that looks up a flow's declaration (internal). The `filledFor` row stamp, the bounded retry and the runtime round trip (internal, permanent by design) |
 | **Leaves** | Fixed boards' top-level payload (FIX-2878 keeps it) · Layer-1 typing under strict TypeScript, FIX-2732 |
 
 **Net: flat.** One declaration replaces a hire option and scattered parses; the check gains
