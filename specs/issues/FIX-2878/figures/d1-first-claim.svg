@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, when a coding task decides its harness, model, plan setting and review. Chosen: its first claim, kept for the task&#x27;s life. Instead of: running the order again at every attempt&#x27;s claim. It comes down to the first row: after a worker&#x27;s file or the app default changes, a retry under the chosen option keeps the same coder and session, while re-resolving can switch vendor and lose the session without anyone asking. The price is the second row: a stuck task keeps the old coder and must be refiled, where re-resolving would pick up a fixed default. Steer, message and door are a tie: both read the frozen settings. Locks in: configuration changes reach only unclaimed tasks. Flips if: a fixed default should reach tasks already claimed."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, when a coding task decides its harness, model, plan setting, review and mode. Chosen: its first claim, kept for the task&#x27;s life. Instead of: running the order again at every attempt&#x27;s claim. It comes down to the first row: after a worker&#x27;s file or the app default changes, a retry under the chosen option keeps the same coder and session, while re-resolving can switch vendor and lose the session without anyone asking. The price is the second row: a stuck task keeps the old coder and must be refiled, where re-resolving would pick up a fixed default. Steer, message and door are a tie: both read the frozen settings. Locks in: configuration changes reach only unclaimed tasks. Flips if: a fixed default should reach tasks already claimed."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,7 +36,7 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
-    <text class="t-q" x="32" y="52">When does a coding task decide which harness, model and plan it runs on?</text>
+    <text class="t-q" x="32" y="52">When does a coding task decide which harness, model, plan and mode it runs on?</text>
   </g>
 
   <g id="options">
