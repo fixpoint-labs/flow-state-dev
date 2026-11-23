@@ -292,7 +292,7 @@ export const BEHAVIOUR_ROWS = {
  */
 export const RECORDERS = {
   "orchestration:checkTask": "the claim gate: a dispatched task's request-end check fails the attempt (FIX-2077, FIX-2088)",
-  "orchestration:checkAnswered": "the claim gate: a dispatched task's request-end check settles it done (FIX-2077)",
+  "orchestration:completeFenced": "the claim gate: a dispatched task's request-end check settles it done, fenced against a late steer; checkAnswered and a stopped later request's checkStopped both settle through it (FIX-2077, FIX-2795)",
   "orchestration:settleAtRequestEnd": "the claim gate: the settle every request-end and recorder write passes through",
   "orchestration:cancelFromTurn": "the claim gate's turn: the turn holding a task's claim cancels it when a person closed what it worked toward, its pull requests closed without merging (FIX-2578 D2)",
   "orchestration:cancelForStop": "the claim gate: a stop of a task's run waiting on a user cancels the task where it would have failed the try (FIX-2129, rule 12)",

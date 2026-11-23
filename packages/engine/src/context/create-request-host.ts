@@ -94,6 +94,8 @@ import {
 } from "../stores/scope-keys";
 import { deriveDispatchRunSessionId, evaluateAdoption, readonlyStateMismatch } from "./dispatch-run";
 import { ownsRecord } from "./record-owner";
+import { isWriteSessionId } from "../resources/write-session-id";
+import { isScheduleSessionId } from "../transports/scheduled/schedule-session-id";
 import type { DispatchOperation } from "./dispatch-operation";
 import type { ServiceRouteOperation } from "../durability/owner-runs";
 import {
@@ -604,6 +606,17 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       return sender;
     }
     if ("id" in spec.session) {
+      // FIX-2886: a schedule's session is the scheduled dispatch's, and a
+      // write session the server's. Refused before a `{ id, state }` target
+      // births one, so no row is left under this request's user to lock the
+      // schedule (or the writer) out.
+      const reserved = isScheduleSessionId(spec.session.id) ? "schedule" : isWriteSessionId(spec.session.id) ? "write" : undefined;
+      if (reserved !== undefined) {
+        return refuse(
+          "session-not-addressable",
+          `session "${spec.session.id}" is a ${reserved} session, reserved to the server: a dispatch can't name one`
+        );
+      }
       if (spec.session.state !== undefined) {
         return resolveOrBirthSession(spec.session.id, spec.session.state, targetFlow);
       }

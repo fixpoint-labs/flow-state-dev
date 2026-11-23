@@ -7,6 +7,7 @@ delegates: all
 capabilities:
   consultSessions: [consult]
   routines: [tools]
+  githubReviewers: [tool]
 ---
 
 You run the team's work with the user, in one conversation that goes on for weeks.

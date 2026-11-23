@@ -9,7 +9,7 @@ import { ownsRecord } from "../context/record-owner";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import type { DurabilityProvider } from "../durability/types";
-import { isPublicReentryAllowed } from "./public-reentry";
+import { isRequestPublicReentryAllowed } from "./public-reentry";
 import { isWaitGate } from "@flow-state-dev/core/internal";
 import { expireUnderLease, resumeUnderLease } from "../durability/resume-under-lease";
 import {
@@ -115,7 +115,7 @@ export async function handleResumeSuspension(
   // retry/continue routes (FIX-999) and runs before anything else can act on the
   // record, returning the same not-found shape as a missing record so a refused
   // request is indistinguishable from one that does not exist.
-  if (!isPublicReentryAllowed(originalRequest.source, ctx.publicReentrySources)) {
+  if (!isRequestPublicReentryAllowed(originalRequest, ctx.publicReentrySources)) {
     return unknownRequestResponse(route.requestId);
   }
 

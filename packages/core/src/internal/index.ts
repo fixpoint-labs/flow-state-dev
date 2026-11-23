@@ -114,6 +114,7 @@ export {
 export type {
   BackgroundFailure,
   RequestEndHook,
+  RequestEndHookOptions,
   RequestEndSeam,
   RequestEndStatus,
   RequestEndVerdict,

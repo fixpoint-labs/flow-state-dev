@@ -355,6 +355,18 @@ export const ENTRIES = [
     ],
   },
   {
+    term: "Schedule session",
+    means: "The one session every fire of a `per-schedule` schedule runs in. The scheduled dispatch derives its id from the org and user the fire runs as, the flow instance and the schedule id, under the reserved prefix `fsd-schedule.` (colon-free, beside the write session's `fsd-write.`): only the scheduled dispatch creates it or runs in it, and its owner lists and reads it. The flow's `session.retention` caps its history.",
+    decision: "FIX-2886 D1",
+    retires: [],
+  },
+  {
+    term: "Schedule session option",
+    means: "Where a schedule's fires run: `session: \"per-fire\"` (the default, a one-off run per fire) or `session: \"per-schedule\"` (one schedule session), on a schedule or on `createResourceCollectionScheduleResolver`. A preset, never an id; not the flow's `session` config, which declares the flow's session state and retention.",
+    decision: "FIX-2886 D1",
+    retires: [],
+  },
+  {
     term: "Flow runner",
     means: "What decides where a flow action runs (`FlowRunner`).",
     decision: "FIX-2245",
