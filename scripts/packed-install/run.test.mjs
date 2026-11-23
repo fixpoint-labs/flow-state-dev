@@ -31,15 +31,23 @@ test("finds every compiled shape of a test file, at any depth", () => {
     "dist/foo.spec.mjs",
     "dist/foo.spec.d.mts",
     "dist/view.test.jsx",
+    "dist/surface.type-test.js",
+    "dist/surface.type-test.d.ts",
+    "dist/action-entry.test-d.js",
+    "dist/action-entry.test-d.d.ts",
     "src/raw.test.ts",
   ]);
   try {
     assert.deepEqual(shippedTestFiles(dir), [
+      "dist/action-entry.test-d.d.ts",
+      "dist/action-entry.test-d.js",
       "dist/bindings/__tests__/createBindingCache.test.js",
       "dist/foo.spec.d.mts",
       "dist/foo.spec.mjs",
       "dist/helpers/tests/harness-activity.test.d.ts",
       "dist/helpers/tests/harness-activity.test.js",
+      "dist/surface.type-test.d.ts",
+      "dist/surface.type-test.js",
       "dist/view.test.jsx",
       "src/raw.test.ts",
     ]);

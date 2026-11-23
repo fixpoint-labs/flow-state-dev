@@ -211,13 +211,18 @@ function packageFiles(dir, prefix = "") {
   return out;
 }
 
-/** A test file in any shape it compiles to: `x.test.js`, `x.spec.d.mts`, `x.test.tsx`. */
-const TEST_FILE = /\.(test|spec)(\.d)?\.[mc]?[jt]sx?$/;
+/**
+ * A test file in any shape it compiles to: `x.test.js`, `x.spec.d.mts`,
+ * `x.test.tsx`, a type test (`x.type-test.d.ts`) or a vitest one (`x.test-d.js`).
+ * The goal's `goal-core-dts.mjs` fixture gets it as `FSD_TEST_FILE`.
+ */
+const TEST_FILE = /\.(test|spec|type-test)(-d)?(\.d)?\.[mc]?[jt]sx?$/;
 
 /**
  * Package-relative paths, sorted, of every test file under `dir` (an installed
  * package). Tests live in each package's `test/`, outside what it publishes, so
- * any hit is a test file that ended up in the tarball.
+ * any hit is a test file that ended up in the tarball. It matches names only: a
+ * helper under a `tests/` directory that isn't named as a test is not caught.
  */
 export function shippedTestFiles(dir) {
   return packageFiles(dir)
@@ -557,6 +562,7 @@ export const GOAL_CHECKS = [
         FSD_MOVED_TSV: MOVED_TSV,
         FSD_MOVED_RENAMES: JSON.stringify(MOVED_RENAMES),
         FSD_CORE_SPECS: JSON.stringify(specs),
+        FSD_TEST_FILE: TEST_FILE.source,
       });
     },
   },
