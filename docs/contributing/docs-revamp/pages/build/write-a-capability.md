@@ -1,14 +1,14 @@
 ---
 title: Write a capability
 type: recipe
-description: "Bundle a tool, a prompt section and a resource into one capability, switch parts off per block, and make it configurable."
+description: "Bundle a resource, helper functions, a tool and a prompt section into one capability that any block can list, switch parts off per block, and make it configurable."
 ---
 
 # Write a capability
 
-A generator is a block that calls a model. One that answers questions about orders needs three things: a tool the model can call to look an order up, a line in its prompt about how to talk about orders, and a resource to remember which order came up. A resource is named, stored data that a block declares. Wired by hand, every generator that touches orders repeats those three edits.
+Blocks are the steps of a flow. A handler runs your code; a generator calls a model. In a support desk, blocks that work with orders share a resource that remembers which order came up (a resource is named, stored data that a block declares) and helper functions that read it. A generator also wants a tool to look an order up and a line in its prompt about orders. Wired by hand, every block repeats those edits.
 
-A capability packages them under one name. A block lists it in `uses` and gets all three. This page builds an `orders` capability for the support desk, listed by two generators, `draftReply` and `summarizeOrder`. For what a capability is and how it fits with kits, see [Capabilities](../concepts/capabilities.md). For every field and rule, see the [capabilities reference](../reference/capabilities.md).
+A capability packages them under one name. Any block lists it in `uses`, whether a handler, generator, evaluator, router or sequencer, and gets the resource and the helpers. The tool and the prompt line work only on a generator, and other blocks switch them off. This page builds `orders` for two generators, `draftReply` and `summarizeOrder`, and a handler, `refundLastOrder`.
 
 ## Step 1: Write the tool
 
@@ -43,7 +43,7 @@ A context section is text added to the generator's prompt. A string is the simpl
 Quote the order number whenever you mention an order.
 ```
 
-It goes in the capability in step 4. Context and tools are for generators only; the [reference](../reference/capabilities.md) says where a context section lands in the model's messages and what happens on other block kinds.
+It goes in the capability in step 4. The [reference](../reference/capabilities.md) says where it lands in the model's messages.
 
 ## Step 3: Declare the resource
 
@@ -59,20 +59,25 @@ export const orderLog = defineResource({
 });
 ```
 
-`scope: "session"` gives each session its own `orderLog`.
-
 ## Step 4: Bundle them
 
-`defineCapability` takes a name, the resources, and presets. A preset is a named part of the capability that a block can switch on or off. The context and the tools each get one, and `default` lists the presets that are on unless a block says otherwise.
+`defineCapability` takes a name, the resources, helpers in `fns`, and presets. A preset is a named part of the capability that a block can switch on or off. The context and the tools each get one, and `default` lists the presets that are on unless a block says otherwise.
 
 ```ts title="src/flows/support/capabilities/orders.ts"
-import { defineCapability } from "@flow-state-dev/core";
+import { defineCapability, type ContextOf } from "@flow-state-dev/core";
 import { orderLog } from "../resources/order-log";
 import { lookUpOrder } from "../tools/look-up-order";
 
 export const orders = defineCapability({
   name: "orders",
   resources: { orderLog },
+  fns: (ctx) => {
+    const log = ctx.resources.orderLog as ContextOf<typeof orderLog>;
+    return {
+      lastOrderId: (): string | null => log.state.lastOrderId,
+      clearLastOrder: () => log.patchState({ lastOrderId: null }),
+    };
+  },
   presets: {
     context: { context: "Quote the order number whenever you mention an order." },
     tools: { tools: [lookUpOrder] },
@@ -81,7 +86,9 @@ export const orders = defineCapability({
 });
 ```
 
-A generator gets all three by listing it.
+`fns` runs once per block run with that block's `ctx`; its helpers land at `ctx.cap.orders`, keyed by the capability's name. That `ctx` is not typed with the capability's resources, so the cast to [`ContextOf`](../reference/type-helpers.md) gives `orderLog` its `state` and `patchState`, and `lastOrderId` declares what it returns.
+
+A generator lists it.
 
 ```ts title="src/flows/support/blocks/draft-reply.ts"
 import { generator } from "@flow-state-dev/core";
@@ -98,7 +105,7 @@ export const draftReply = generator({
 });
 ```
 
-`draftReply` has the context section in its prompt, `lookUpOrder` in its tool list and the `orderLog` resource. A flow that includes `draftReply` gets the resource from the block, so the flow declares nothing.
+`draftReply` has the context section in its prompt, `lookUpOrder` in its tool list, the `orderLog` resource and the helpers. A flow that includes `draftReply` declares nothing: the resource comes with the block.
 
 ## Step 5: Turn a preset off
 
@@ -119,14 +126,41 @@ export const summarizeOrder = generator({
 });
 ```
 
-`summarizeOrder` is offered no tools and gets the context and the resource. `orders` itself is unchanged, so `draftReply` keeps its tool. A misspelled key is refused, not ignored. `orders.with({ tool: false })` throws at the call, naming the key and listing the presets `[context, tools]`, and for a capability with no config it is also a compile error. `orders.presets({ tool: false })` throws `Unknown preset "tool"` when the block is built. The [reference](../reference/capabilities.md) covers the other ways to switch a preset.
+`summarizeOrder` is offered no tools and gets the context and the resource. `orders` itself is unchanged, so `draftReply` keeps its tool. A misspelled key, as in `orders.with({ tool: false })`, throws at the call. The [reference](../reference/capabilities.md) covers the other ways to switch a preset.
 
-## Step 6: Take a value with a factory
+## Step 6: Call a helper from a handler
 
-Presets switch parts the capability already has. They cannot change a resource's scope, because the scope is set where the resource is defined. To let each app pick it, write a function that returns the capability. This replaces `capabilities/orders.ts` from step 4. The tool and the resource move inside the function, since both depend on the scope, so delete `tools/look-up-order.ts` and `resources/order-log.ts`.
+`refundLastOrder` refunds the order `lookUpOrder` last looked up, read through the helper, with no model involved. `refundOrder` is a stand-in in `src/lib/orders.ts`.
+
+```ts title="src/flows/support/blocks/refund-last-order.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { refundOrder } from "../../../lib/orders";
+import { orders } from "../capabilities/orders";
+
+export const refundLastOrder = handler({
+  name: "refundLastOrder",
+  inputSchema: z.object({}),
+  outputSchema: z.object({ orderId: z.string(), refundCents: z.number() }).nullable(),
+  uses: [orders.with({ context: false, tools: false })],
+  execute: async (_input, ctx) => {
+    const orderId = ctx.cap.orders.lastOrderId();
+    if (orderId === null) return null;
+    const { refundCents } = await refundOrder(orderId);
+    await ctx.cap.orders.clearLastOrder();
+    return { orderId, refundCents };
+  },
+});
+```
+
+A handler that lists `orders` with its context or tools on throws when it is built, so it switches both off. Presets don't control `fns`, so the helpers and the resource stay. `ctx.cap.orders` is typed from `uses`: a misspelled helper is a compile error. After a refund, a second call refunds nothing and returns `null`.
+
+## Step 7: Take a value with a factory
+
+Presets switch parts the capability already has. They cannot change a resource's scope, which is set where the resource is defined. To let each app pick it, write a function that returns the capability. The file below replaces `capabilities/orders.ts` from step 4. The tool and the resource depend on the scope, so they move into the function; delete `tools/look-up-order.ts` and `resources/order-log.ts`.
 
 ```ts title="src/flows/support/capabilities/orders.ts"
-import { defineCapability, defineResource, handler } from "@flow-state-dev/core";
+import { defineCapability, defineResource, handler, type ContextOf } from "@flow-state-dev/core";
 import { z } from "zod";
 import { findOrder } from "../../../lib/orders";
 
@@ -149,8 +183,15 @@ export function createOrdersCapability(options: { scope: "session" | "user" }) {
   });
 
   return defineCapability({
-    name: `orders:${options.scope}`,
+    name: "orders",
     resources: { orderLog },
+    fns: (ctx) => {
+      const log = ctx.resources.orderLog as ContextOf<typeof orderLog>;
+      return {
+        lastOrderId: (): string | null => log.state.lastOrderId,
+        clearLastOrder: () => log.patchState({ lastOrderId: null }),
+      };
+    },
     presets: {
       context: { context: "Quote the order number whenever you mention an order." },
       tools: { tools: [lookUpOrder] },
@@ -162,13 +203,13 @@ export function createOrdersCapability(options: { scope: "session" | "user" }) {
 export const orders = createOrdersCapability({ scope: "session" });
 ```
 
-With `scope: "session"` there is one `orderLog` per session. A customer who comes back in a new session starts fresh: `lastOrderId` reads `null` until the tool writes it. With `scope: "user"` there is one per user per organization, so the log follows the customer between sessions.
+With `scope: "session"`, a customer who comes back in a new session starts fresh: `lastOrderId` reads `null` until the tool writes it. With `scope: "user"` there is one log per user per organization, and it follows the customer between sessions.
 
 The capability stores nothing itself. The resource lives in the flow's store, which is in memory by default and lost on restart unless you use a file, SQLite or Postgres store. See [Persistence](../concepts/persistence.md).
 
-The name includes the scope because two different capability calls with the same name in one block throw `Capability name collision`. Call the factory once, in this file, and have every block import `orders`. If `draftReply` and `summarizeOrder` each called `createOrdersCapability({ scope: "session" })` in their own files, each call would make its own `orderLog`, and building the flow would throw `Resource conflict`. The [reference](../reference/capabilities.md) lists what else throws when names or resources collide.
+Call the factory once, in this file, and have every block import `orders`. If two blocks each called `createOrdersCapability({ scope: "session" })` in their own files, each call would make its own `orderLog`, and building the flow would throw `Resource conflict`.
 
-For a value that is not a resource, such as a limit or a list, a capability can also take config through `.config()`. The [reference](../reference/capabilities.md) covers it.
+A plain value, such as a limit, can go through `.config()` instead; see the [reference](../reference/capabilities.md).
 
 ## Next
 
