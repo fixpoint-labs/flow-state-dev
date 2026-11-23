@@ -42,7 +42,7 @@ import { githubReviewersTool } from "./reviewers-tool";
 /** The custom screen's name on the GitHub provider, as the follow lists it. **Pinned**: saved follows name it. */
 export const GITHUB_REVIEWERS_SCREEN = "github-reviewers";
 /** The capability a worker picks the tool through (`capabilities: { githubReviewers: [tool] }`). */
-export const GITHUB_REVIEWERS_CAPABILITY = "githubReviewers";
+const GITHUB_REVIEWERS_CAPABILITY = "githubReviewers";
 
 /** The permissions that can push to a repository. */
 const WRITES = new Set(["admin", "maintain", "write"]);
