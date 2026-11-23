@@ -74,7 +74,8 @@ export type ConcurrencyKey =
 export interface ConcurrencyKeyContext {
   flowKind: string;
   actionName: string;
-  sessionId?: string;
+  /** The run's session: every dispatch names one, a one-off run's included. */
+  sessionId: string;
   userId: string;
   tenantId?: string;
   orgId?: string;
