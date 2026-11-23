@@ -123,7 +123,7 @@ What a kit refuses is on [Kits and slots](./kits.md). The kit contract is there 
 | --- | --- | --- | --- |
 | `jobQueue` | `JobQueueAdapter` | none: in process | A job queue adapter such as `bullmqJobQueue(...)` from `@flow-state-dev/bullmq`. Mutually exclusive with `runner`. See [Background work](./background-work.md). |
 | `runner` | `FlowRunner` | in process | A low-level hook for where actions run. `jobQueue` is the usual choice. Mutually exclusive with `jobQueue`. |
-| `dispatchDrainTimeoutMs` | `number` | `30000` | How long `dispose()` waits for dispatched runs that are running in this process. See [Background work](./background-work.md). |
+| `dispatchDrainTimeoutMs` | `number` | `30000` | How long `dispose()` waits for dispatched runs that are running in this process. A run in flight when it ends is cancelled. `codingDrainBudgetMs` computes a value for coding runs, on the [harness-manager API reference](./api/harness-manager.md). See [Background work](./background-work.md). |
 | `scheduler` | `SchedulerAdapter \| false` | built-in local cron | When schedules fire. Omitted: a local cron ticks each minute, when a registered flow declares static schedules or a schedule index. `false`: nothing fires the tick. An adapter such as `vercelScheduler()` from `@flow-state-dev/vercel` fires it itself. When the cron is armed is on [Schedules](./schedules.md). |
 
 ### Read by commands

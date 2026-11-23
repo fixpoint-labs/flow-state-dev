@@ -131,7 +131,7 @@ What the two debug switches allow, and the options that override them, are on [H
 
 ## Coding harness variables
 
-A coding harness (Claude Code, Codex or Cursor) starts its agent as a child process. With `env` unset on the block, that child gets the server's whole `process.env`. Set `env: harnessEnv({ pass: CLAUDE_CODE_PASS })` (or `CODEX_PASS`, `CURSOR_PASS`) to hand it only the names on the list. The harness values the packages export apply their list for you. The base list, the sign-in each harness needs and `harnessEnv({ pass })` are on [Harness runs](./harness-runs.md). Each exported list adds these names to the base:
+A coding harness (Claude Code, Codex or Cursor) starts its agent as a child process. With `env` unset on the block, that child gets the server's whole `process.env`. Set `env: harnessEnv({ pass: CLAUDE_CODE_PASS })` (or `CODEX_PASS`, `CURSOR_PASS`) to hand it only the names on the list. The harness values the packages export apply their list for you. The base list is `PATH`, `HOME`, `USER`, `SHELL`, `TMPDIR` and the proxy names `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, `http_proxy`, `ALL_PROXY`, `all_proxy`, `NO_PROXY` and `no_proxy`. How a run uses `harnessEnv({ pass })` is on [Harness runs](./harness-runs.md). Each exported list adds these names to the base:
 
 | Harness | Names added to the base |
 | --- | --- |

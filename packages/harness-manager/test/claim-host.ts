@@ -173,6 +173,8 @@ export interface HostOptions {
   upstream?: boolean;
   /** Stand in for the workspace host's `baseTip`, as a host that can't say where the base is now. */
   baseTip?: () => Promise<string | undefined>;
+  /** Wrap the ledger the claim gate admits and checks the task on, to force an interleave at one of its writes. */
+  gateLedger?: (ref: TaskCollectionRef) => TaskCollectionRef;
 }
 
 /** Build one host. */
@@ -425,12 +427,15 @@ export function claimHost(options: HostOptions) {
           block: manager as BlockDefinition,
           from: taskLedgers({
             name: "claim-host-door",
-            resolve: async (ledgerId, ctx, partition) =>
-              ledgerId === FIXED_BOARD && partition === undefined
-                ? ledgerAt(ctx, ledgerId, undefined)
-                : ledgerId === CONVERSATIONS && partition !== undefined
-                  ? ledgerAt(ctx, ledgerId, partition)
-                  : undefined,
+            resolve: async (ledgerId, ctx, partition) => {
+              const ref =
+                ledgerId === FIXED_BOARD && partition === undefined
+                  ? await ledgerAt(ctx, ledgerId, undefined)
+                  : ledgerId === CONVERSATIONS && partition !== undefined
+                    ? await ledgerAt(ctx, ledgerId, partition)
+                    : undefined;
+              return ref === undefined || options.gateLedger === undefined ? ref : options.gateLedger(ref);
+            },
             uses: [ledgerResources],
           }),
         },
