@@ -9,9 +9,9 @@
  * rename is keyed by the new name.
  */
 import { afterAll, describe, expect, it } from "vitest";
-import { runTopic } from "../src";
+import { HARNESS_FEATURE_KEY, runTopic } from "../src";
 import { runBoardSegment } from "../src/workspace";
-import { CONVERSATIONS, claimHost, cleanUpHosts, messageOf } from "./claim-host";
+import { CONVERSATIONS, FIXED_BOARD, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 
 afterAll(cleanUpHosts);
 
@@ -67,5 +67,50 @@ describe("a run stored under its mode's former name", () => {
     expect(after.seen[0]!.resume).toBeNull();
     const fresh = (await after.record(runTopic(SEGMENT, "t1", "default")))!;
     expect(fresh.branch).not.toBe(stored.branch);
+  }, 60_000);
+});
+
+describe("a fixed-board row filed before the rename", () => {
+  // A fixed board's row carries its segment in its payload (`{ issue, phase }`),
+  // and its id derives from it. A row filed as `code` is the same mode as the
+  // manager's `default`, formerly `code`: it runs, under the segment it names.
+  it("runs on the renamed mode, and finishes under the segment its payload names", async () => {
+    const id = "fix-1--code";
+    const before = claimHost({ mode: "fixed", modeName: "code", isDone: () => false, script: [{ answer: "half done", commits: 1 }] });
+    await before.seed({ ledgerId: FIXED_BOARD, id, goal: "the feature", input: { issue: "FIX-1", phase: "code" }, maxAttempts: 3 });
+    await before.runAttempt(FIXED_BOARD, id);
+    const stored = (await before.record(runTopic(FIXED_BOARD, "FIX-1", "code")))!;
+    expect(stored.sessionId).toBe("sess_1");
+
+    const after = claimHost({ mode: "fixed", modeName: "default", formerName: "code", restartOf: { dir: before.dir, stores: before.stores } });
+    const resumed = await after.runAttempt(FIXED_BOARD, id);
+    expect(resumed.result.error, messageOf(resumed.result.error)).toBeUndefined();
+    expect(after.seen[0]?.resume).toBe(stored.sessionId);
+    const finished = (await after.record(runTopic(FIXED_BOARD, "FIX-1", "code")))!;
+    expect(finished.attempt).toBe(2);
+    expect(finished.outcome).toBe("succeeded");
+    expect(finished.branch).toBe(stored.branch);
+    expect(await after.record(runTopic(FIXED_BOARD, "FIX-1", "default"))).toBeNull();
+    expect((await after.row(FIXED_BOARD, id)).status).toBe("completed");
+  }, 60_000);
+
+  it("on a board read from the claim, a feature marker naming the former name runs, under that segment", async () => {
+    const lab = claimHost({ mode: "claim", modeName: "default", formerName: "code" });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: PARTITION, id: "t3", goal: "the feature", input: { [HARNESS_FEATURE_KEY]: { issue: "FIX-1", phase: "code" } } });
+    const { result } = await lab.runAttempt(CONVERSATIONS, "t3", PARTITION);
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    expect((await lab.record(runTopic(SEGMENT, "t3", "code")))?.outcome).toBe("succeeded");
+    expect(await lab.record(runTopic(SEGMENT, "t3", "default"))).toBeNull();
+  }, 60_000);
+
+  it("is still refused on a manager whose mode it is not", async () => {
+    const id = "fix-1--review";
+    const lab = claimHost({ mode: "fixed", modeName: "default", formerName: "code" });
+    await lab.seed({ ledgerId: FIXED_BOARD, id, goal: "the review", input: { issue: "FIX-1", phase: "review" }, maxAttempts: 1 });
+    const { result } = await lab.runAttempt(FIXED_BOARD, id);
+    const task = await lab.row(FIXED_BOARD, id);
+    expect(task.status).toBe("errored");
+    expect(`${task.error} ${messageOf(result.error)}`).toContain(`is a "review" task on a manager configured for "default"`);
+    expect(lab.seen).toHaveLength(0);
   }, 60_000);
 });

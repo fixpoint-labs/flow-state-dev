@@ -12,8 +12,14 @@
  * gate, real fenced settlement and a real git checkout (the package's claim
  * host, restarted over the same stores). Only the harness is a stub.
  *
- * Control (`GOAL_CONTROL`): `no-legacy-key` removes the former-name read from
- * `readModeRunRecord`. Must fail `resume:session`.
+ * A second leg (`fixed:*`) does the same on a fixed board, whose row names
+ * its segment in its payload (`{ issue, phase: "code" }`): the manager must
+ * take that row as its own mode, under its former name.
+ *
+ * Controls (`GOAL_CONTROL`): `no-legacy-key` removes the former-name read from
+ * `readModeRunRecord`; must fail `resume:session`. `former-name-refused`
+ * removes the former name from the manager's row identity check; must fail
+ * `fixed:resume`.
  *
  * Run: pnpm tsx goals/harness-manager/a-run-keeps-its-key-across-the-rename/run.mts
  */
@@ -28,7 +34,7 @@ import { runTopic } from "@flow-state-dev/harness-manager";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
 import { codingMode } from "../../../packages/harness-manager/src/kit/coder-flow.ts";
 import { runBoardSegment } from "../../../packages/harness-manager/src/workspace.ts";
-import { CONVERSATIONS, claimHost, cleanUpHosts, messageOf } from "../../../packages/harness-manager/test/claim-host.ts";
+import { CONVERSATIONS, FIXED_BOARD, claimHost, cleanUpHosts, messageOf } from "../../../packages/harness-manager/test/claim-host.ts";
 
 interface Fixture {
   /** The segment the kit's runs were keyed by before modes had names. */
@@ -52,6 +58,16 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; must: string[] }> = {
         module: RUN_RECORD,
         from: String.raw`  if \(record !== undefined \|\| mode\.formerName === undefined \|\| mode\.formerName === mode\.name\) \{`,
         to: "  if (true) {",
+      },
+    ],
+  },
+  "former-name-refused": {
+    must: ["fixed:resume"],
+    patches: [
+      {
+        module: "packages/harness-manager/src/manager.ts",
+        from: String.raw` && !\(mode\.formerName !== undefined && sameSegment\(phaseName, mode\.formerName\)\)\) \{`,
+        to: ") {",
       },
     ],
   },
@@ -130,6 +146,29 @@ await runGoal(async (failures, tell) => {
     if (freshRecord?.outcome !== "succeeded") fail("new:keyed-by-name", `no finished record under ${at("t2", kit.name)}: ${JSON.stringify(freshRecord?.outcome)}`);
     if ((await after.record(at("t2", fixture.formerSegment))) !== null) fail("new:not-former", `a new run wrote under ${at("t2", fixture.formerSegment)}`);
     else evidence.push(`a new run was keyed ${at("t2", kit.name)}`);
+
+    // A fixed board: the row names its segment in its payload, filed before the rename.
+    const rowId = `fix-1--${fixture.formerSegment}`;
+    const fixedBefore = claimHost({ mode: "fixed", modeName: fixture.formerSegment, isDone: () => false, script: [{ answer: "half done", commits: 1 }] });
+    await fixedBefore.seed({ ledgerId: FIXED_BOARD, id: rowId, goal: fixture.goal, input: { issue: "FIX-1", phase: fixture.formerSegment }, maxAttempts: 3 });
+    await fixedBefore.runAttempt(FIXED_BOARD, rowId);
+    const fixedStored = await fixedBefore.record(runTopic(FIXED_BOARD, "FIX-1", fixture.formerSegment));
+    if (fixedStored?.sessionId == null) fail("fixed:stored", `no run was stored under ${runTopic(FIXED_BOARD, "FIX-1", fixture.formerSegment)}`);
+    const fixedAfter = claimHost({
+      mode: "fixed",
+      modeName: kit.name,
+      ...(kit.formerName === undefined ? {} : { formerName: kit.formerName }),
+      restartOf: { dir: fixedBefore.dir, stores: fixedBefore.stores },
+    });
+    await fixedAfter.runAttempt(FIXED_BOARD, rowId);
+    const fixedRow = await fixedAfter.row(FIXED_BOARD, rowId);
+    if (fixedAfter.seen[0]?.resume !== fixedStored?.sessionId || fixedAfter.seen[0] === undefined) {
+      fail("fixed:resume", `the row filed as "${fixture.formerSegment}" did not resume its session: ${JSON.stringify({ seen: fixedAfter.seen.length, resume: fixedAfter.seen[0]?.resume, status: fixedRow.status, error: (fixedRow as { error?: unknown }).error })}`);
+    }
+    const fixedFinished = await fixedAfter.record(runTopic(FIXED_BOARD, "FIX-1", fixture.formerSegment));
+    if (fixedFinished?.outcome !== "succeeded" || fixedRow.status !== "completed") fail("fixed:finished-there", `record ${JSON.stringify(fixedFinished?.outcome)}, row ${fixedRow.status}`);
+    else if ((await fixedAfter.record(runTopic(FIXED_BOARD, "FIX-1", kit.name))) !== null) fail("fixed:nothing-new", `a record was written under ${runTopic(FIXED_BOARD, "FIX-1", kit.name)}`);
+    else evidence.push(`a fixed-board row filed as ${fixture.formerSegment} resumed on its session and finished under ${runTopic(FIXED_BOARD, "FIX-1", fixture.formerSegment)}`);
   } finally {
     cleanUpHosts();
   }
