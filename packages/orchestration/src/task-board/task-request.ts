@@ -71,6 +71,7 @@ import { readCommittedTask } from "../tasks/collection/read-committed";
 import { untakenSteers } from "../tasks/steers";
 import { ticketStillRunsTask } from "../tasks/collection/internal";
 import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
+import { isTerminalStatus } from "../tasks/schema/task-status";
 import { advisoryCancel, advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
 import { startLeaseRenewal, startTicker, type LeaseRenewalDriver, type Ticker } from "../tasks/lease-renewal";
@@ -449,7 +450,10 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
   }
   // Settled, retried, taken back or claimed for a later
   // turn meanwhile: not this request's to write.
-  if (!claimHolds(ref, ticket, row)) return undefined;
+  if (!claimHolds(ref, ticket, row)) {
+    await endOrphanedStop(record, ending);
+    return undefined;
+  }
   // A later request (a notice, a steer's turn) while the task's own request is
   // suspended settles nothing and fails nothing: the task still waits on that
   // request, and keeps an answer this one gave that counts.
@@ -545,6 +549,27 @@ function mirrorOf(ctx: BlockContext, ending: TaskEnding): SuspensionHold | undef
 /** How long the cancel of a refused stop keeps trying while its request finishes parking. */
 const REFUSED_STOP_RETRY_MS = [50, 100, 250, 500, 1_000, 2_000, 5_000];
 
+// FIX-2847.
+/**
+ * End a stop for a person that no row will mirror: its request stopped after
+ * its task ended (a cancel pressed while the run worked on past its harness,
+ * before it stopped for its review). That cancel found no mirror to resume,
+ * and the check writes none on an ended row, so nothing would ever answer the
+ * stop: its request would stay `suspended`, counted as a run still going. It
+ * is cancelled as the task's cancel would have, `taskCancelled`, so the run
+ * asks nobody again. A stop on a row still running (claimed again for a later
+ * attempt or turn) is left alone.
+ */
+async function endOrphanedStop(record: Admitted, ending: TaskEnding): Promise<void> {
+  const suspension = ending.status === "suspended" ? ending.suspension : undefined;
+  if (suspension === undefined || !isUserSuspension(suspension)) return;
+  const stop = mirrorOf(record.ctx, ending);
+  if (stop === undefined) return;
+  const stored = await readCommittedTask(record.ref, record.ticket.taskId);
+  if (stored !== undefined && !isTerminalStatus(stored.status)) return;
+  cancelRefusedStop(record.ctx, record.ticket.taskId, stop.source, { taskCancelled: true });
+}
+
 // FIX-2133.
 /**
  * Cancel a stop a held row refused to mirror (one wait per turn),
@@ -552,8 +577,10 @@ const REFUSED_STOP_RETRY_MS = [50, 100, 250, 500, 1_000, 2_000, 5_000];
  * Inbox item survives for it. Called while the request is still parking, so
  * the cancel is tried again until the engine has recorded it parked. Not the
  * task's cancel: the row and its questions stand. Never fails the caller.
+ * With `taskCancelled`, the stop ends as a cancelled task's does: the run asks
+ * nobody again ({@link endOrphanedStop}).
  */
-function cancelRefusedStop(ctx: BlockContext, taskId: string, address: SuspensionAddress): void {
+function cancelRefusedStop(ctx: BlockContext, taskId: string, address: SuspensionAddress, options?: { taskCancelled: true }): void {
   const resumeWait = requestHostOf(ctx)?.resumeWait;
   if (resumeWait === undefined) return;
   const suspension = { requestId: address.requestId, suspensionId: address.suspensionId };
@@ -561,7 +588,7 @@ function cancelRefusedStop(ctx: BlockContext, taskId: string, address: Suspensio
     for (const wait of [0, ...REFUSED_STOP_RETRY_MS]) {
       if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
       try {
-        const result = await resumeWait({ suspension, outcome: { cancelled: true } });
+        const result = await resumeWait({ suspension, outcome: { cancelled: true }, ...options });
         if (result.ok || result.refused !== "busy") return;
       } catch (error) {
         console.warn(`[task-board] task "${taskId}": the stop its questions refused couldn't be cancelled: ${(error as Error).message}`);

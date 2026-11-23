@@ -5,7 +5,7 @@
  * answer route as a screen sends them. Only the harness is a stub, and it
  * records what each step was handed.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { heard } from "./heard";
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -22,7 +22,7 @@ import {
 } from "@flow-state-dev/core/harness";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, runAction, type StoreAdapter } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
@@ -728,6 +728,40 @@ describe("a judged run on a board read from the claim, with review on", () => {
     expect(prompt).toContain("2 commits on");
     expect(prompt).toContain("1 file changed (+1 −0).");
     expect(prompt).not.toContain("a teammate's change");
+  }, 60_000);
+
+  // FIX-2847.
+  it("ends the run that reaches its review after its task was cancelled, so no stopped run is left counted", async () => {
+    // The judge reads after the harness step, where no poll of the row stops the run: a cancel
+    // pressed while it reads lands before the run stops for its review, which nothing mirrors.
+    let cancel: () => Promise<unknown> = async () => {};
+    const judge = {
+      floor: 0.7,
+      block: handler({
+        name: "cancelling-judge",
+        inputSchema: z.unknown(),
+        outputSchema: z.unknown(),
+        execute: async () => {
+          await cancel();
+          return verdict("done", 0.9, "the line is in");
+        },
+      }),
+    };
+    const lab = claimHost({ mode: "claim", durable: true, script: [{ answer: "added the line", commits: 1 }], manager: { judge, reviewChanges: true } });
+    cancel = () => lab.act("cancel", { ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1" });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect((await lab.row(CONVERSATIONS, "t1", "conv-a")).status).toBe("cancelled");
+    // The run's request, in the task's own session: a stop nobody can answer leaves it `suspended`
+    // for good, and a session's runs count it as background work still running.
+    const sessionId = "s_task_tasks_conv-a_t1";
+    const store = (await (lab.stores as StoreAdapter).resolve(["primary"])).request!;
+    const requests = () => store.list({ sessionId });
+    await vi.waitFor(async () => {
+      const statuses = (await requests()).map((r) => r.status);
+      expect(statuses.length).toBeGreaterThan(0);
+      expect(statuses.filter((s) => s === "suspended" || s === "in_progress")).toEqual([]);
+    }, { timeout: 10_000, interval: 50 });
   }, 60_000);
 
   it("holds a judge's ask on a question, with no review", async () => {
