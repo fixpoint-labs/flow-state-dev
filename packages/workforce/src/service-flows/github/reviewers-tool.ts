@@ -28,9 +28,9 @@ import { isUserTurn } from "../../standing-rules/user-turn";
 import { GITHUB_REVIEWERS_DOC, githubLoginsListed, reviewersDocumentOf } from "./reviewers-document";
 
 /** The tool's name, as a worker's `tools:` line spells it. */
-export const GITHUB_REVIEWERS_TOOL = "setGitHubReviewers";
+const GITHUB_REVIEWERS_TOOL = "setGitHubReviewers";
 /** The evaluator that judges the operator's message before the tool writes. Pinned: a scripted model resolves it by this. */
-export const GITHUB_REVIEWERS_JUDGE = "github-reviewers-edit-judge";
+const GITHUB_REVIEWERS_JUDGE = "github-reviewers-edit-judge";
 /** A yes the judge must reach that the message asks for this change, and the most likely it may find that something else wrote the ask. */
 const ASKED_FLOOR = 0.8;
 const INJECTED_CEILING = 0.2;
