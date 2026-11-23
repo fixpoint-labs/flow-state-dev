@@ -74,7 +74,7 @@ import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
 import { isTerminalStatus } from "../tasks/schema/task-status";
 import { advisoryCancel, advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
-import { adoptLapsedLease } from "./stale-claim";
+import { StaleTaskClaimError, adoptLapsedLease } from "./stale-claim";
 import { startLeaseRenewal, startTicker, type LeaseRenewalDriver, type Ticker } from "../tasks/lease-renewal";
 import { stampLeaseRenewal, withLeaseRenewalScope } from "../tasks/lease-renewal-scope";
 import { currentWorkerClaim, openWorkerClaimScope, stampCurrentClaim } from "./flow-policy-wiring";
@@ -471,13 +471,23 @@ async function checkTask(record: Admitted, ending: TaskEnding): Promise<Error | 
     // takeover (the span the claim committed to, a renewal that must say it
     // landed), and mirrors the stop, so the person can still answer it.
     // Cancelling the stop instead would let the resume, admitted on this
-    // same attempt, settle the task on a review nobody gave (FIX-2847). A
-    // takeover refused for any reason leaves the write refused, and the stop
-    // is ended below as superseded.
+    // same attempt, settle the task on a review nobody gave (FIX-2847). Only
+    // a definite refusal (`StaleTaskClaimError`: a reclaim won, no verdict,
+    // no span to take it back for) leaves the write refused, and the stop is
+    // ended below as superseded. Any other failure is thrown: the attempt may
+    // still own the row, so the stop stays suspended, still needing its
+    // review, for the request's recovery.
     if (mirror !== undefined && outcome?.outcome === "declined" && outcome.reason === "lost-claim") {
       const stored = await readCommittedTask(ref, row.id);
       if (claimHolds(ref, ticket, stored)) {
-        const adopted = await adoptLapsedLease(ref, stored).catch(() => undefined);
+        const adopted = await adoptLapsedLease(ref, stored).catch((error: unknown) => {
+          if (error instanceof StaleTaskClaimError) return undefined;
+          // Said here: an engine with no logger says nothing of a hook that throws.
+          console.warn(
+            `[task-board] task "${row.id}": its lease lapsed before its stop for a person was mirrored, and taking the row back failed; the stop stays for its person: ${(error as Error).message}`
+          );
+          throw error;
+        });
         if (adopted !== undefined) outcome = await waitOn(record, adopted, stop.on, undefined, mirror);
       }
     }

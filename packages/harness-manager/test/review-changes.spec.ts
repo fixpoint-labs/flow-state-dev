@@ -902,6 +902,37 @@ describe("a judged run on a board read from the claim, with review on", () => {
     expect(task.leaseUntil).toBeLessThan(Date.now());
   }, 60_000);
 
+  it("keeps the review stop when the lease lapsed and the takeover's renewal fails, and says why", async () => {
+    // Not a refusal: the store failed, and the attempt may still own the row. Ending the stop as
+    // superseded here could let the task finish with no review, so the stop stays for the person.
+    const ran = { done: false };
+    const warned: string[] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => void warned.push(args.map(String).join(" ")));
+    const errored = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => void warned.push(args.map(String).join(" ")));
+    try {
+      const lab = hostWithGap(lapse, ran, (_target, key) =>
+        key === "renewLease"
+          ? async () => {
+              throw new Error("the store is down");
+            }
+          : undefined,
+      );
+      await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
+      await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+      expect(ran.done).toBe(true);
+      // Past every try the superseded cancel would make: the stop is still there to answer.
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      const store = (await (lab.stores as StoreAdapter).resolve(["primary"])).request!;
+      const statuses = (await store.list({ sessionId: "s_task_tasks_conv-a_t1" })).map((r) => r.status);
+      expect(statuses).toContain("suspended");
+      expect((await lab.row(CONVERSATIONS, "t1", "conv-a")).status).toBe("in_progress");
+      expect(warned.some((line) => line.includes("the store is down"))).toBe(true);
+    } finally {
+      spy.mockRestore();
+      errored.mockRestore();
+    }
+  }, 60_000);
+
   it("holds a judge's ask on a question, with no review", async () => {
     const lab = claimHost({
       mode: "claim",
