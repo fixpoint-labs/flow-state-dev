@@ -18,21 +18,22 @@
  * a listed user costs one permission call per comment, and a bot or a
  * stranger none.
  *
- * Controls (each must FAIL, on the named signal):
- * - `GOAL_CONTROL=empty-falls-back`: the list screen reads `GITHUB_REVIEWERS`
- *   when the saved list is empty. Fails on "save []: alice refused".
- * - `GOAL_CONTROL=provider-wide-bots`: the list's bots fed to the service's
- *   `trustedBots`. Fails on "ordinary subscription not woken".
+ * Controls, each an `it` that plants its regression and shows the named signal breaks:
+ * - `empty-falls-back`: the list screen reads `GITHUB_REVIEWERS` when the
+ *   saved list is empty. Breaks "save []: alice refused".
+ * - `provider-wide-bots`: the list's bots fed to the service's `trustedBots`.
+ *   Breaks "ordinary subscription not woken".
  */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { GITHUB_REVIEWERS_DOC, githubLoginsListed, githubReviewersDocument, githubTrustedReviewers, operatorGitHub, type GitHubTrustedReviewers } from "../src";
+import { followPullRequest, GITHUB_REVIEWERS_DOC, githubLoginsListed, githubReviewersDocument, githubTrustedReviewers, operatorGitHub, type GitHubTrustedReviewers } from "../src";
 import { bootSubscriptionsHost, event, github } from "./subscriptions-harness";
 import { ORG } from "./conversation-board-harness";
 
-const CONTROL = process.env.GOAL_CONTROL;
+/** A planted regression a control runs the wiring with. */
+type Plant = "empty-falls-back" | "provider-wide-bots";
 const SETTING = "alice,greptile-apps[bot]";
 
 /** Each login's permission on acme/api, as GitHub answers it; anyone else isn't a collaborator. */
@@ -59,9 +60,9 @@ afterAll(async () => {
 });
 
 /** The reviewers as Teammates builds them, or under `empty-falls-back` with the fallback the decision rejects planted. */
-function reviewersOf(setting: string): GitHubTrustedReviewers {
-  const reviewers = githubTrustedReviewers({ operator: "alice", judgeModel: "test/judge", env: { GITHUB_REVIEWERS: setting } });
-  if (CONTROL !== "empty-falls-back") return reviewers;
+function reviewersOf(setting: string, plant?: Plant): GitHubTrustedReviewers {
+  const reviewers = githubTrustedReviewers({ operator: "alice", judgeModel: "test/judge", holders: ["eng.lead"], env: { GITHUB_REVIEWERS: setting } });
+  if (plant !== "empty-falls-back") return reviewers;
   const read = async (ctx: BlockContext) => {
     const listed = await reviewers.read(ctx);
     return listed.length > 0 ? listed : githubLoginsListed(githubReviewersDocument(setting.split(",")));
@@ -70,7 +71,7 @@ function reviewersOf(setting: string): GitHubTrustedReviewers {
 }
 
 /** A host on Teammates' wiring: the follow, the provider's list screen, and the service with no `trustedBots` from the list. */
-function teammatesHost(reviewers: GitHubTrustedReviewers) {
+function teammatesHost(reviewers: GitHubTrustedReviewers, plant?: Plant) {
   const operator = operatorGitHub({ operator: "alice", token: "operator-token", apiUrl, reviewers });
   // The harness's provider (read access, `self`) with the screens `operatorGitHub` declares.
   const provider = { ...github, screens: operator.screens! };
@@ -81,7 +82,7 @@ function teammatesHost(reviewers: GitHubTrustedReviewers) {
     screens: operator.screens!,
     follower: reviewers.follow(provider),
     // The harness's service trusts `codex` only; the control feeds the list's bots to it, service-wide.
-    ...(CONTROL === "provider-wide-bots" ? { service: { trustedBots: ["codex", ...bots] } } : {})
+    ...(plant === "provider-wide-bots" ? { service: { trustedBots: ["codex", ...bots] } } : {})
   });
 }
 
@@ -172,6 +173,68 @@ describe("one stored list, on Teammates' wiring", () => {
   });
 });
 
+describe("controls: each planted regression breaks its signal", () => {
+  /** A run following #412 and an ordinary subscription on #413, on the wiring with `plant`. */
+  async function planted(plant: Plant, body: (host: Host, run: string, ordinary: string) => Promise<void>) {
+    const host = teammatesHost(reviewersOf(SETTING, plant), plant);
+    try {
+      const run = await host.follower("alice");
+      await host.act("alice", run, "respond", { message: "opened it [follow-pr:412]" }, "follower");
+      const ordinary = await host.follower("alice", "eng.watcher");
+      await host.subscribe("alice", ordinary, { thread: "github:acme/api#413", kinds: ["comment"] });
+      await body(host, run, ordinary);
+    } finally {
+      await host.dispose();
+    }
+  }
+  const heard = async (host: Host, session: string, said: ReturnType<typeof comment>) => {
+    await host.route(said.event);
+    return (await host.heard(session)).some((m) => m.includes(said.text));
+  };
+
+  it("empty-falls-back: after save [], alice is heard", async () => {
+    await planted("empty-falls-back", async (host, run) => {
+      await save(host, []);
+      expect(await heard(host, run, comment("alice", "member")), "save []: alice heard under the plant").toBe(true);
+    });
+  });
+
+  it("provider-wide-bots: the listed bot wakes the ordinary subscription", async () => {
+    await planted("provider-wide-bots", async (host, _run, ordinary) => {
+      expect(await heard(host, ordinary, comment("greptile-apps", "bot", 413)), "ordinary subscription woken under the plant").toBe(true);
+    });
+  });
+});
+
+// BP-030: Teammates' follows saved before the one list carry a fixed `allow` screen of their own and
+// no list screen, so the list never runs on them. A follow of that shape must not keep hearing a
+// user the operator has since removed from the list, nor skip the write check.
+describe("a run's follow saved before the one list", () => {
+  it("hears no one, at routing and at delivery, rather than its old fixed allow list", async () => {
+    const reviewers = reviewersOf(SETTING);
+    const operator = operatorGitHub({ operator: "alice", token: "operator-token", apiUrl, reviewers });
+    const provider = { ...github, screens: operator.screens! };
+    // The follow exactly as the removed allow-list follower wrote it.
+    const host = bootSubscriptionsHost({
+      screens: operator.screens!,
+      follower: (installation) =>
+        followPullRequest({ providers: [provider], installation, screens: [{ screen: "allow", ids: ["alice"], bots: ["greptile-apps"] }], outsiders: true })
+    });
+    try {
+      const run = await host.follower("alice");
+      await host.act("alice", run, "respond", { message: "opened it [follow-pr:412]" }, "follower");
+      await save(host, []);
+      const said = comment("alice", "member");
+      const routed = await host.route(said.event);
+      expect((await host.heard(run)).some((m) => m.includes(said.text)), "legacy follow, save []: alice refused").toBe(false);
+      const verdicts = (routed.output as { verdicts: Array<{ pass: boolean; reason: string }> }).verdicts;
+      expect(verdicts.map((v) => v.reason)).toEqual([expect.stringMatching(/^allow: .*follows its pull request again/)]);
+    } finally {
+      await host.dispose();
+    }
+  });
+});
+
 describe("githubLoginsListed", () => {
   it("reads users and bots apart, lower-cased, a bot keeping its [bot]", () => {
     expect(githubLoginsListed("# Title\n\nProse - not a login\n- JHoffner\n* @Bob\n- Cursor[bot]\n- not a login\n")).toEqual(["jhoffner", "bob", "cursor[bot]"]);
@@ -180,16 +243,16 @@ describe("githubLoginsListed", () => {
 
 describe("the list's default", () => {
   it("is read when the reviewers are built, never at import, and lists each account once", () => {
-    const built = githubTrustedReviewers({ operator: "alice", judgeModel: "test/judge", env: { GITHUB_REVIEWERS: " Alice, greptile-apps[bot],alice ,, " } });
+    const built = githubTrustedReviewers({ operator: "alice", judgeModel: "test/judge", holders: ["eng.lead"], env: { GITHUB_REVIEWERS: " Alice, greptile-apps[bot],alice ,, " } });
     const content = (built.document as { content?: string }).content;
     expect(githubLoginsListed(content)).toEqual(["alice", "greptile-apps[bot]"]);
     // Unset: a list that names nobody.
-    const unset = githubTrustedReviewers({ operator: "alice", judgeModel: "test/judge", env: {} });
+    const unset = githubTrustedReviewers({ operator: "alice", judgeModel: "test/judge", holders: ["eng.lead"], env: {} });
     expect(githubLoginsListed((unset.document as { content?: string }).content)).toEqual([]);
   });
 
   it("is the document's definition content, not a template: a stored row wins", () => {
-    const built = githubTrustedReviewers({ operator: "alice", judgeModel: "test/judge", env: { GITHUB_REVIEWERS: SETTING } });
+    const built = githubTrustedReviewers({ operator: "alice", judgeModel: "test/judge", holders: ["eng.lead"], env: { GITHUB_REVIEWERS: SETTING } });
     expect(built.document).not.toHaveProperty("contentTemplate");
     expect(typeof (built.document as { content?: unknown }).content).toBe("string");
   });

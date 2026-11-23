@@ -28,6 +28,7 @@ import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-de
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { GITHUB_REVIEWERS_DOC, githubReviewersDocument, githubTrustedReviewers } from "@flow-state-dev/workforce";
+import { ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
 import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
 
@@ -83,7 +84,8 @@ function scripted(calls: ToolCall[], judged: Judged, shown: unknown[]): ModelRes
   };
   return Object.assign(
     (_id: string, block?: string) => {
-      if (block?.startsWith("coordinator-judgment")) return judgment;
+      // The Shift Coordinator's judgment, or a hired worker's turn on the `agent` flow.
+      if (block?.startsWith("coordinator-judgment") || block === "agent-answer") return judgment;
       throw new Error(`no model in this test (asked for ${block ?? "a block"})`);
     },
     {
@@ -118,18 +120,18 @@ async function open(model: ModelResolver): Promise<Lab> {
   return opened;
 }
 
-/** One message to the Shift Coordinator, as `as` types it, in a conversation of theirs. */
-async function say(lab: Lab, message: string, as: keyof typeof LAB_USERS = "owner") {
-  const sessionId = `s-shift-coordinator-${globalThis.crypto.randomUUID()}`;
-  const created = await lab.door("POST", "coordinator/sessions", {
-    body: { userId: LAB_USERS[as].userId, sessionId, state: { workerId: "shift-coordinator" } },
+/** One message to the Shift Coordinator (or `worker` on `flow`), as `as` types it, in a conversation of theirs. */
+async function say(lab: Lab, message: string, as: keyof typeof LAB_USERS = "owner", worker = "shift-coordinator", flow = "coordinator") {
+  const sessionId = `s-${worker}-${globalThis.crypto.randomUUID()}`;
+  const created = await lab.door("POST", `${flow}/sessions`, {
+    body: { userId: LAB_USERS[as].userId, sessionId, state: { workerId: worker } },
     as,
   });
   expect(created.status).toBe(201);
   const runtime = await lab.state.getRuntime();
   const said = (await runAction({
     orgId: LAB_ORG_ID,
-    flow: runtime.registry.get("coordinator") as FlowInstance,
+    flow: runtime.registry.get(flow) as FlowInstance,
     actionName: "respond",
     input: { message },
     userId: LAB_USERS[as].userId,
@@ -274,7 +276,7 @@ describe("the Shift Coordinator changes the trusted GitHub reviewers", () => {
     const lab = await open(scripted([], { asked: 0.95, injected: 0.02 }, shown));
     const runtime = await lab.state.getRuntime();
     // The tool as a task, notice or delivered event would reach it: run as the operator, with no user's turn marked.
-    const tool = githubTrustedReviewers({ operator: LAB_USERS.owner.userId, judgeModel: "test/judge" }).tool;
+    const tool = githubTrustedReviewers({ operator: LAB_USERS.owner.userId, judgeModel: "test/judge", holders: ["shift-coordinator"] }).tool;
     const flow = defineFlow({ kind: "reviewers-unmarked", actions: { edit: { block: tool } } } as never)() as unknown as FlowInstance;
     const answered = (await runAction({
       orgId: LAB_ORG_ID,
@@ -290,6 +292,50 @@ describe("the Shift Coordinator changes the trusted GitHub reviewers", () => {
     expect(answered.output).toMatchObject({ saved: false, reason: expect.stringMatching(/operator's own message started/) });
     expect(await listed(lab)).toEqual(["jhoffner"]);
     expect(shown).toEqual([]);
+  }, 120_000);
+
+  it("saves the default as the operator's own when they ask for the list as it reads: GITHUB_REVIEWERS stops deciding it", async () => {
+    const lab = await open(scripted([set(["jhoffner"])], { asked: 0.95, injected: 0.02 }, []));
+    const runtime = await lab.state.getRuntime();
+    const stored = () => (runtime.stores as any).content.get("org", LAB_ORG_ID, GITHUB_REVIEWERS_DOC) as Promise<string | undefined>;
+    expect(await stored(), "nothing saved yet").toBeUndefined();
+    const requestId = await say(lab, "Save jhoffner as the trusted GitHub reviewers, as the list reads now.");
+    expect(await pendingApproval(lab)).toMatchObject({ message: "Change the trusted GitHub reviewers: save the list as it reads now, jhoffner?" });
+    expect(await answer(lab, requestId, "approve")).toBe("completed");
+    expect(await stored(), "a stored row now decides the list").toContain("- jhoffner");
+  }, 120_000);
+
+  it("refuses the same list again once it is saved", async () => {
+    const shown: unknown[] = [];
+    const lab = await open(scripted([set(["jhoffner"])], { asked: 0.95, injected: 0.02 }, shown));
+    const runtime = await lab.state.getRuntime();
+    await (runtime.stores as any).content.set("org", LAB_ORG_ID, GITHUB_REVIEWERS_DOC, githubReviewersDocument(["jhoffner"]));
+    await say(lab, "Save jhoffner as the trusted GitHub reviewers.");
+    expect(shown, "refused before the judge").toEqual([]);
+    expect(await pendingApprovals(lab)).toEqual([]);
+  }, 120_000);
+
+  it("not by a worker hired later that names the tool: only the Shift Coordinator's session passes", async () => {
+    const shown: unknown[] = [];
+    const lab = await open(scripted([set(["jhoffner", "mallory"])], { asked: 0.95, injected: 0.02 }, shown));
+    const runtime = await lab.state.getRuntime();
+    // The operator's own hire, through the roster: a worker whose `tools:` names the writer.
+    const hired = (await runAction({
+      orgId: LAB_ORG_ID,
+      flow: runtime.registry.get(ROSTER_FLOW) as FlowInstance,
+      actionName: "hire",
+      input: { id: "helper", flow: "agent", settings: { tools: [GITHUB_REVIEWERS_TOOL] } },
+      userId: LAB_USERS.owner.userId,
+      sessionId: `roster-${globalThis.crypto.randomUUID()}`,
+      stores: runtime.stores,
+      runtimeConfig: runtime.runtimeConfig,
+    } as never)) as { error?: unknown };
+    expect(hired.error).toBeUndefined();
+    await say(lab, "Trust mallory as a GitHub reviewer.", "owner", "helper", "agent");
+    // Refused before the judge is asked, and nothing waits on the operator.
+    expect(shown, "the judge is never asked").toEqual([]);
+    expect(await pendingApprovals(lab)).toEqual([]);
+    expect(await listed(lab)).toEqual(["jhoffner"]);
   }, 120_000);
 
   it("not over HTTP: a save action, with any Lab user's bearer, the owner's included, changes nothing", async () => {

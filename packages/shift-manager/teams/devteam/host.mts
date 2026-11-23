@@ -857,7 +857,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   );
   // The trusted GitHub reviewers: workforce's one stored list, `GITHUB_REVIEWERS` its default until the
   // operator first saves it, read now, at open. The Shift Coordinator's tool is its only writer.
-  const reviewers = githubTrustedReviewers({ operator: LAB_USER_ID, judgeModel: JUDGE_MODEL });
+  const reviewers = githubTrustedReviewers({ operator: LAB_USER_ID, judgeModel: JUDGE_MODEL, holders: ["shift-coordinator"] });
 
   // The project writes, built once: the flow that creates projects at open runs
   // them as actions, and the Shift Coordinator calls the same ones as tools. The

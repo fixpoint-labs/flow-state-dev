@@ -112,6 +112,11 @@ export interface GitHubTrustedReviewersOptions {
   readonly operator: string;
   /** The evaluation model the tool's judge reads the operator's message on. */
   readonly judgeModel: string;
+  /**
+   * The workers that may use the tool (`worker id`s): the host's coordinator. Any other worker that
+   * reaches it, a hired one that picked its capability or named it in `tools:`, is refused.
+   */
+  readonly holders: readonly string[];
   /** Where `GITHUB_REVIEWERS` is read from, once, when this is called. Default `process.env`. */
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
@@ -156,7 +161,7 @@ export function githubTrustedReviewers(options: GitHubTrustedReviewersOptions): 
     scope: "org",
     stateSchema: z.object({}).passthrough(),
     default: {},
-    content: githubReviewersDocument(settingLogins(env.GITHUB_REVIEWERS)),
+    content: githubReviewersDocument(settingLogins(env.GITHUB_REVIEWERS), { unsaved: true }),
     description: "The GitHub accounts trusted to steer a coding run through comments on its pull request. Only the operator changes it.",
     llmReadable: true,
     llmWritable: false,
@@ -165,7 +170,7 @@ export function githubTrustedReviewers(options: GitHubTrustedReviewersOptions): 
   const resources = { [GITHUB_REVIEWERS_DOC]: document };
   // The stored row whenever one exists, an emptied list included; the default only with none. No fallback here.
   const read = (ctx: BlockContext) => reviewersDocumentOf(ctx).read();
-  const tool = githubReviewersTool({ operator: options.operator, judgeModel: options.judgeModel, document });
+  const tool = githubReviewersTool({ operator: options.operator, judgeModel: options.judgeModel, holders: options.holders, document });
   return {
     document,
     resources,

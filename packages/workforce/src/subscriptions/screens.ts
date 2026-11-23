@@ -36,7 +36,7 @@
 import { handler } from "@flow-state-dev/core";
 import { subscriptionEventSchema, type BlockContext, type DeclaredResourceEntry, type EvaluationModel, type SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { botsHandedOn, indexEntrySchema, type IndexEntry, type ScreenKind } from "./rows";
+import { botsHandedOn, indexEntrySchema, isLegacyReviewedFollow, type IndexEntry, type ScreenKind } from "./rows";
 
 /**
  * One verdict: a subscription, whether it passed, and the screen that decided it and why. **Pinned** (D1).
@@ -143,6 +143,8 @@ export function screenRefusal(kind: ScreenKind, event: SubscriptionEvent, entry:
       return undefined;
     }
     case "allow":
+      // FIX-2873; BP-030: a follow from before the trusted reviewers' list hears no one, never its old fixed list.
+      if (isLegacyReviewedFollow(entry)) return "a follow saved before the trusted reviewers' list hears no one until the run follows its pull request again";
       for (const listed of entry.screens) {
         if (listed.screen !== "allow") continue;
         // With `bots`, a bot is matched against `bots` and anyone else against `ids`, never across.

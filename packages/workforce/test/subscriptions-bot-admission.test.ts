@@ -13,16 +13,16 @@
  *   or stale) hands no bot on, so a listed bot never reaches a subscription
  *   that has no list screen.
  *
- * Controls (each must FAIL, on the named signal):
- * - `GOAL_CONTROL=model-sets-bot-flag`: `subscribe`'s input carries the
- *   setting through to the write. Fails on "the model's routine is refused".
- * - `GOAL_CONTROL=flag-without-screen`: the setting is honoured whether or
- *   not the subscription lists its screen. Fails on each "not heard" signal.
+ * Controls, each an `it` that plants its regression and shows the claim breaks:
+ * - the setting honoured whether or not the subscription lists its screen
+ *   (`botsHandedOn` planted, below): every "not heard" signal turns heard.
+ * - a model's `subscribe` carrying the setting through to the write: its own
+ *   file, `subscriptions-bot-admission-control.test.ts`, since that plant
+ *   replaces the input schema the routine tools are built from.
  */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import type { PullRequestFollower } from "@flow-state-dev/core/harness";
 import { SUBSCRIPTION_INDEX_PATTERN, SUBSCRIPTIONS_PATTERN, type SubscriptionProvider } from "../src/subscriptions";
 import { followPullRequest, githubTrustedReviewers, operatorGitHub } from "../src";
@@ -30,24 +30,15 @@ import type { WorkerInstallation } from "../src/workers/installation";
 import { bootSubscriptionsHost, event, github } from "./subscriptions-harness";
 import { ORG } from "./conversation-board-harness";
 
-vi.mock("../src/subscriptions/subscribe", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../src/subscriptions/subscribe")>();
-  if (process.env.GOAL_CONTROL !== "model-sets-bot-flag") return real;
-  // The planted regression: the input schema takes the setting, and the write takes it from the input.
-  type Input = Parameters<typeof real.subscribe>[2] & { botsScreenedBy?: string };
-  return {
-    ...real,
-    subscribeInputSchema: real.subscribeInputSchema.extend({ botsScreenedBy: z.string().optional() }),
-    subscribe: (ctx: never, providers: never, input: Input, target?: never, write: Parameters<typeof real.subscribe>[4] = {}) =>
-      real.subscribe(ctx, providers, input, target, { ...write, ...(input.botsScreenedBy === undefined ? {} : { botsScreenedBy: input.botsScreenedBy }) })
-  };
-});
+/** The control's switch: while set, the setting is honoured whatever the subscription lists. */
+const plant = vi.hoisted(() => ({ flagWithoutScreen: false }));
 
 vi.mock("../src/subscriptions/rows", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/subscriptions/rows")>();
-  if (process.env.GOAL_CONTROL !== "flag-without-screen") return real;
-  // The planted regression: the setting is honoured whatever the subscription lists.
-  return { ...real, botsHandedOn: (entry: { botsScreenedBy?: string }) => entry.botsScreenedBy };
+  return {
+    ...real,
+    botsHandedOn: (entry: Parameters<typeof real.botsHandedOn>[0]) => (plant.flagWithoutScreen ? entry.botsScreenedBy : real.botsHandedOn(entry))
+  };
 });
 
 let api: Server;
@@ -69,7 +60,7 @@ const PR = "github:acme/api#412";
 
 /** A host on the trusted reviewers' wiring, its follow as `follower` builds it (default the reviewers' own). */
 function host(follower?: (provider: SubscriptionProvider, installation: WorkerInstallation) => PullRequestFollower) {
-  const reviewers = githubTrustedReviewers({ operator: "alice", judgeModel: "test/judge", env: { GITHUB_REVIEWERS: "greptile-apps[bot]" } });
+  const reviewers = githubTrustedReviewers({ operator: "alice", judgeModel: "test/judge", holders: ["eng.lead"], env: { GITHUB_REVIEWERS: "greptile-apps[bot]" } });
   const operator = operatorGitHub({ operator: "alice", token: "operator-token", apiUrl, reviewers });
   const provider = { ...github, screens: operator.screens! };
   return bootSubscriptionsHost({
@@ -99,6 +90,44 @@ async function rewrite(h: Host, scope: "user" | "org", prefix: string, edit: (st
 
 const dropScreens = (entry: Record<string, any>) => ({ ...entry, screens: [] });
 
+/** A host whose run follows #412, run through `body`, then disposed. */
+async function withFollow<T>(body: (h: Host, run: string) => Promise<T>): Promise<T> {
+  const h = host();
+  try {
+    const run = await h.follower("alice");
+    await h.act("alice", run, "respond", { message: "opened it [follow-pr:412]" }, "follower");
+    return await body(h, run);
+  } finally {
+    await h.dispose();
+  }
+}
+
+/** The run's own session saves a routine on its pull request with no screens (the same subscription): whether the bot is then heard. */
+const rewrittenWithoutScreen = () =>
+  withFollow(async (h, run) => {
+    expect(await botHeard(h, run), "the follow hears the listed bot").toBe(true);
+    expect(await h.subscribe("alice", run, { thread: PR })).toHaveProperty("id");
+    const [follow] = await h.subscriptionRows("alice");
+    expect({ hearsClose: follow!.hearsClose, screens: follow!.screens }).toEqual({ hearsClose: true, screens: [] });
+    return botHeard(h, run);
+  });
+
+/** The thread's index entry loses its screens: whether routing still hands the bot on. */
+const staleIndexEntry = () =>
+  withFollow(async (h, run) => {
+    await rewrite(h, "org", SUBSCRIPTION_INDEX_PATTERN.replace("*", ""), (index) => ({
+      subscriptions: Object.fromEntries(Object.entries(index.subscriptions as Record<string, Record<string, any>>).map(([slot, entry]) => [slot, dropScreens(entry)]))
+    }));
+    return botHeard(h, run);
+  });
+
+/** The subscription's own row loses its screens: whether delivery still hands the bot on. */
+const restoredRow = () =>
+  withFollow(async (h, run) => {
+    await rewrite(h, "user", SUBSCRIPTIONS_PATTERN.replace("*", ""), dropScreens);
+    return botHeard(h, run);
+  });
+
 describe("a subscription's bot admission", () => {
   it("can't be set by a model's subscribe: the model's routine is refused, and the bot wakes nothing", async () => {
     const h = host();
@@ -116,19 +145,7 @@ describe("a subscription's bot admission", () => {
   });
 
   it("is dropped when a model rewrites the follow without its list screen", async () => {
-    const h = host();
-    try {
-      const run = await h.follower("alice");
-      await h.act("alice", run, "respond", { message: "opened it [follow-pr:412]" }, "follower");
-      expect(await botHeard(h, run), "the follow hears the listed bot").toBe(true);
-      // The run's own session saves a routine on its pull request, with no screens: the same subscription.
-      expect(await h.subscribe("alice", run, { thread: PR })).toHaveProperty("id");
-      const [follow] = await h.subscriptionRows("alice");
-      expect({ hearsClose: follow!.hearsClose, screens: follow!.screens }).toEqual({ hearsClose: true, screens: [] });
-      expect(await botHeard(h, run), "rewritten without its screen: not heard").toBe(false);
-    } finally {
-      await h.dispose();
-    }
+    expect(await rewrittenWithoutScreen(), "rewritten without its screen: not heard").toBe(false);
   });
 
   it("is kept when a model's rewrite still lists the list screen", async () => {
@@ -146,29 +163,11 @@ describe("a subscription's bot admission", () => {
   });
 
   it("hands no bot on at routing from an index entry that lost its screen", async () => {
-    const h = host();
-    try {
-      const run = await h.follower("alice");
-      await h.act("alice", run, "respond", { message: "opened it [follow-pr:412]" }, "follower");
-      await rewrite(h, "org", SUBSCRIPTION_INDEX_PATTERN.replace("*", ""), (index) => ({
-        subscriptions: Object.fromEntries(Object.entries(index.subscriptions as Record<string, Record<string, any>>).map(([slot, entry]) => [slot, dropScreens(entry)]))
-      }));
-      expect(await botHeard(h, run), "stale index entry: not heard").toBe(false);
-    } finally {
-      await h.dispose();
-    }
+    expect(await staleIndexEntry(), "stale index entry: not heard").toBe(false);
   });
 
   it("hands no bot on at delivery from a row that lost its screen, though routing's entry still lists it", async () => {
-    const h = host();
-    try {
-      const run = await h.follower("alice");
-      await h.act("alice", run, "respond", { message: "opened it [follow-pr:412]" }, "follower");
-      await rewrite(h, "user", SUBSCRIPTIONS_PATTERN.replace("*", ""), dropScreens);
-      expect(await botHeard(h, run), "restored row: not heard").toBe(false);
-    } finally {
-      await h.dispose();
-    }
+    expect(await restoredRow(), "restored row: not heard").toBe(false);
   });
 
   it("is refused on a host's write that doesn't list its screen", async () => {
@@ -181,6 +180,20 @@ describe("a subscription's bot admission", () => {
       expect(await h.subscriptionRows("alice")).toEqual([]);
     } finally {
       await h.dispose();
+    }
+  });
+});
+
+describe("control: the setting honoured without its screen", () => {
+  // The plant reaches the write, routing and delivery alike: each claim above breaks under it.
+  it("lets the listed bot through a rewrite, a stale index entry and a restored row", async () => {
+    plant.flagWithoutScreen = true;
+    try {
+      expect(await rewrittenWithoutScreen(), "rewritten without its screen: heard under the plant").toBe(true);
+      expect(await staleIndexEntry(), "stale index entry: heard under the plant").toBe(true);
+      expect(await restoredRow(), "restored row: heard under the plant").toBe(true);
+    } finally {
+      plant.flagWithoutScreen = false;
     }
   });
 });

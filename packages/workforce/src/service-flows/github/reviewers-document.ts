@@ -28,13 +28,23 @@ export function githubLoginsListed(document: string | null | undefined): string[
   return logins;
 }
 
-/** The `github-reviewers` document's body for `logins`: what the default and a save both store. */
-export function githubReviewersDocument(logins: readonly string[]): string {
+/**
+ * The line only the default's body carries: a save writes the body without it, so the tool can
+ * tell a list nobody has saved from a saved one that reads the same. A stored row never carries it.
+ */
+const UNSAVED_LINE = "Nobody has saved this list yet: it is the `GITHUB_REVIEWERS` default.";
+
+/**
+ * The `github-reviewers` document's body for `logins`: what a save stores, and, with
+ * `{ unsaved: true }`, the default that stands until the first save.
+ */
+export function githubReviewersDocument(logins: readonly string[], options: { readonly unsaved?: true } = {}): string {
   return [
     "# Trusted GitHub reviewers",
     "",
     "A review or comment on a coding run's pull request reaches the run only from an account listed here: a bot, listed as `name[bot]`, or a user who can also write to the repository.",
     "",
+    ...(options.unsaved === true ? [UNSAVED_LINE, ""] : []),
     ...logins.map((login) => `- ${login}`),
     ""
   ].join("\n");
@@ -50,6 +60,11 @@ export function reviewersDocumentOf(ctx: BlockContext) {
   return {
     /** The stored row whenever one exists, an emptied list included; the definition content only with none. */
     read: async () => githubLoginsListed(await doc.readContent()),
+    /** Whether the operator has saved the list: a stored row, never the default, whatever it lists. */
+    saved: async () => {
+      const content = await doc.readContent();
+      return content !== null && !content.split("\n").includes(UNSAVED_LINE);
+    },
     write: (logins: readonly string[]) => {
       if (typeof doc.writeContent !== "function") throw new Error(`the "${GITHUB_REVIEWERS_DOC}" document can't be written here`);
       return doc.writeContent(githubReviewersDocument(logins));

@@ -8,11 +8,13 @@
  * action leaves the list as `GITHUB_REVIEWERS` set it.
  *
  * Lead holds the tool beside everything it held before; researcher
- * and writer, which write their own `tools:` lines, don't.
+ * and writer, which write their own `tools:` lines, don't. A teammate hired
+ * later that picks the tool's capability holds it too, and is refused: the
+ * tool takes the worker from the session's server-set state, and only Lead's
+ * passes.
  *
- * Control (must FAIL, on the named signal): `GOAL_CONTROL=public-save-action`
- * registers a save action for HTTP, as Shift Manager's was. Fails on "list
- * unchanged".
+ * Control: the `public-save-action` plant registers a save action for HTTP,
+ * as Shift Manager's was, and the loopback POST then rewrites the list.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -37,8 +39,12 @@ afterEach(async () => {
 /** The tools each worker's turn was offered, by worker, from a model that answers at once. */
 type Offered = Record<string, string[]>;
 
-/** The lab's host in process with `GITHUB_REVIEWERS` set, and what each turn was offered. */
-async function openHost(offered: Offered = {}) {
+/** A tool call a scripted turn makes, by worker, on its first step. */
+type Calls = Record<string, { toolName: string; args: Record<string, unknown> }>;
+
+/** The lab's host in process with `GITHUB_REVIEWERS` set: what each turn was offered, and each tool result it read back. */
+async function openHost(options: { offered?: Offered; calls?: Calls; results?: string[]; plant?: "public-save-action" } = {}) {
+  const offered = options.offered ?? {};
   const data = mkdtempSync(join(tmpdir(), "teammates-reviewers-"));
   cleanups.push(() => rmSync(data, { recursive: true, force: true }));
   const repo = join(data, "repo");
@@ -46,16 +52,25 @@ async function openHost(offered: Offered = {}) {
   vi.stubEnv("GITHUB_REVIEWERS", "alice-gh,greptile-apps[bot]");
   let turn = "?";
   // The worker's own turn (`agent-answer`), not memory's capture after it.
-  const answer = (block: string | undefined, o: { tools?: Array<{ name: string }> }) => {
-    if (block === "agent-answer") offered[turn] = (o.tools ?? []).map((t) => t.name).sort();
-    return { text: "ok", finishReason: "stop" as const };
+  let ids = 0;
+  const answer = (block: string | undefined, o: { tools?: Array<{ name: string }>; messages?: Array<{ role?: string; content?: unknown }> }) => {
+    if (block !== "agent-answer") return { text: "ok", finishReason: "stop" as const };
+    offered[turn] = (o.tools ?? []).map((t) => t.name).sort();
+    const tool = (o.messages ?? []).filter((m) => m.role === "tool");
+    options.results?.push(...tool.map((m) => JSON.stringify(m.content)));
+    const call = options.calls?.[turn];
+    if (call === undefined || tool.length > 0) return { text: "ok", finishReason: "stop" as const };
+    return { toolCalls: [{ toolCallId: `call_${++ids}`, ...call }], finishReason: "tool-calls" as const };
   };
   const models = (modelId: string, block?: string) => ({
     modelId,
     generateStep: async (o: never) => answer(block, o),
     async *streamStep(o: never) {
       const result = answer(block, o);
-      yield { type: "text_delta", textDelta: result.text };
+      if ("text" in result) yield { type: "text_delta", textDelta: result.text };
+      for (const call of ("toolCalls" in result ? result.toolCalls : undefined) ?? []) {
+        yield { type: "tool_call_delta", toolCallDelta: { toolCallId: call.toolCallId, toolName: call.toolName, argsDelta: JSON.stringify(call.args) } };
+      }
       yield { type: "finish", finishReason: result.finishReason, fullResult: result };
     }
   });
@@ -71,7 +86,7 @@ async function openHost(offered: Offered = {}) {
   // Read when the host was built: the setting can go back now.
   vi.unstubAllEnvs();
   cleanups.push(async () => (flowState as unknown as { dispose?: () => Promise<void> }).dispose?.());
-  if (process.env.GOAL_CONTROL === "public-save-action") (flowState as unknown as { register(flow: FlowInstance): void }).register(publicSaveAction());
+  if (options.plant === "public-save-action") (flowState as unknown as { register(flow: FlowInstance): void }).register(publicSaveAction());
   const loopback = createInProcessFetch(flowState as never) as unknown as typeof fetch;
   type Stores = { content: { get(...a: string[]): Promise<string | undefined> }; request: { get(id: string): Promise<{ status?: string } | undefined> } };
   const runtime = await (flowState as unknown as { getRuntime(): Promise<{ stores: Stores }> }).getRuntime();
@@ -104,7 +119,7 @@ async function openHost(offered: Offered = {}) {
     });
     for (let i = 0; i < 200 && offered[worker] === undefined; i += 1) await new Promise((resolve) => setTimeout(resolve, 25));
   };
-  return { post, stored, say };
+  return { post, stored, say, loopback };
 }
 
 /** The planted regression: a save action on a flow the host serves over HTTP, writing the list's row. */
@@ -122,20 +137,42 @@ function publicSaveAction(): FlowInstance {
   return defineFlow({ kind: "github-reviewers", actions: { setGitHubReviewers: { block: save } } } as never)() as unknown as FlowInstance;
 }
 
+/** POST a save to the save action and the flows the lab serves; what the list reads after, and each answer's status. */
+async function postSaves(host: Awaited<ReturnType<typeof openHost>>) {
+  // The save action Shift Manager once served, and the same name on the flows the lab serves.
+  const statuses: number[] = [];
+  for (const flow of ["github-reviewers", "agent", "coordinator"]) statuses.push(await host.post(flow, "setGitHubReviewers", { logins: ["mallory"] }));
+  const stored = await host.stored();
+  return { list: stored === undefined ? "nothing saved" : githubLoginsListed(stored).join(","), statuses };
+}
+
 describe("the trusted GitHub reviewers on the lab's host", () => {
   it("are written by no HTTP action: a loopback POST, as the lab's own user, leaves the list unchanged", async () => {
-    const host = await openHost();
-    // The save action Shift Manager once served, and the same name on the flows the lab serves.
-    const statuses: number[] = [];
-    for (const flow of ["github-reviewers", "agent", "coordinator"]) statuses.push(await host.post(flow, "setGitHubReviewers", { logins: ["mallory"] }));
-    const stored = await host.stored();
-    expect(stored === undefined ? "nothing saved" : githubLoginsListed(stored).join(","), "list unchanged").toBe("nothing saved");
+    const { list, statuses } = await postSaves(await openHost());
+    expect(list, "list unchanged").toBe("nothing saved");
     expect(statuses.every((status) => status >= 400), `no save action answered: ${statuses.join(", ")}`).toBe(true);
+  });
+
+  it("control: with a save action registered for HTTP, the same POST rewrites the list", async () => {
+    const { list } = await postSaves(await openHost({ plant: "public-save-action" }));
+    expect(list, "rewritten under the plant").toBe("mallory");
+  });
+
+  it("refuse a teammate hired later that picks the tool's capability: only Lead's session passes", async () => {
+    const offered: Offered = {};
+    const results: string[] = [];
+    const host = await openHost({ offered, results, calls: { "helper": { toolName: "setGitHubReviewers", args: { logins: ["alice-gh", "greptile-apps[bot]", "mallory"] } } } });
+    const hired = await host.post("workforce-roster", "hire", { id: "helper", settings: { capabilities: { githubReviewers: ["tool"] } } });
+    expect(hired, "the hire answered").toBeLessThan(400);
+    await host.say("helper", "Trust mallory as a GitHub reviewer.");
+    expect(offered["helper"], "the hired teammate holds the tool").toContain("setGitHubReviewers");
+    expect(results.join("\n"), "refused for its worker").toContain("Only teammates.chief-of-staff can change the trusted GitHub reviewers");
+    expect(await host.stored(), "list unchanged").toBeUndefined();
   });
 
   it("have one writer, Lead's tool, beside every tool it held; researcher and writer don't hold it", async () => {
     const offered: Offered = {};
-    const host = await openHost(offered);
+    const host = await openHost({ offered });
     await host.say("teammates.chief-of-staff", "hi");
     await host.say("teammates.researcher", "hi");
     await host.say("teammates.writer", "hi");

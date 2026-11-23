@@ -25,6 +25,7 @@ import { boolean, evaluator, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { isUserTurn } from "../../standing-rules/user-turn";
+import { WORKER_ID_STATE_KEY } from "../../workers/keys";
 import { GITHUB_REVIEWERS_DOC, githubLoginsListed, reviewersDocumentOf } from "./reviewers-document";
 
 /** The tool's name, as a worker's `tools:` line spells it. */
@@ -70,9 +71,19 @@ const reviewersCheckedSchema = z.object({
   logins: z.array(z.string()),
   added: z.array(z.string()),
   removed: z.array(z.string()),
+  /** Nothing added or removed: the operator saves the default as it reads, so `GITHUB_REVIEWERS` no longer decides it. */
+  pin: z.literal(true).optional(),
   message: z.string()
 });
 type ReviewersChecked = z.infer<typeof reviewersCheckedSchema>;
+
+/** The change in words, for the judge (`adds …`) and for the approval (`trust …`). */
+function changeOf(edit: ReviewersChecked, verbs: { add: string; remove: string; pin: string }): string {
+  if (edit.pin === true) return `${verbs.pin} ${edit.logins.join(", ") || "nobody"}`;
+  return [edit.added.length === 0 ? "" : `${verbs.add} ${edit.added.join(", ")}`, edit.removed.length === 0 ? "" : `${verbs.remove} ${edit.removed.join(", ")}`]
+    .filter((part) => part !== "")
+    .join(", and ");
+}
 
 /** What {@link githubReviewersTool} is built with. */
 export interface GitHubReviewersToolOptions {
@@ -82,6 +93,12 @@ export interface GitHubReviewersToolOptions {
   readonly judgeModel: string;
   /** The `github-reviewers` document the tool reads and writes. */
   readonly document: DeclaredResourceEntry;
+  /**
+   * The workers that may use the tool, by the worker id the running session's server-set state names:
+   * the host's coordinator. Any other worker that reaches it (a hired one that picked its capability,
+   * or named it in `tools:`) is refused.
+   */
+  readonly holders: readonly string[];
 }
 
 /** Build the tool. */
@@ -99,15 +116,23 @@ export function githubReviewersTool(options: GitHubReviewersToolOptions) {
       if (!isOperator(ctx)) return refuse("Only the operator can change the trusted GitHub reviewers.");
       const message = isUserTurn(ctx) ? typedMessageOf(ctx) : undefined;
       if (message === undefined) return refuse("The trusted GitHub reviewers change only on a turn the operator's own message started; this one can't change them.");
+      // The worker the session runs, as the server wrote it, never the tool's input (BP-031).
+      const worker = ((ctx.session.state ?? {}) as Record<string, unknown>)[WORKER_ID_STATE_KEY];
+      if (typeof worker !== "string" || !options.holders.includes(worker)) {
+        return refuse(`Only ${options.holders.join(" or ")} can change the trusted GitHub reviewers; this worker can't.`);
+      }
       // The judge reads the whole message or the tool refuses: text past a cut would go unjudged.
       if (message.length > MAX_JUDGED_MESSAGE) return refuse("The operator's message is too long to check; ask them for a short one that names each login.");
       const logins = reviewerLogins(input.logins);
       const added = logins.filter((login) => !current.includes(login));
       const removed = current.filter((login) => !logins.includes(login));
-      if (added.length === 0 && removed.length === 0) return refuse("The list already reads that.");
-      const unnamed = [...added, ...removed].filter((login) => !names(message, login));
+      // The same list again is a no-op once saved; never saved, it is the operator pinning the default as their own.
+      const pin = added.length === 0 && removed.length === 0;
+      if (pin && (await reviewersDocumentOf(ctx).saved())) return refuse("The list already reads that.");
+      // Every account a save puts on the list or takes off is named; a pin puts every listed one there.
+      const unnamed = (pin ? logins : [...added, ...removed]).filter((login) => !names(message, login));
       if (unnamed.length > 0) return refuse(`The operator's message doesn't name ${unnamed.join(", ")}; ask them to.`);
-      return { checked: true as const, logins, added, removed, message };
+      return { checked: true as const, logins, added, removed, ...(pin ? { pin: true as const } : {}), message };
     }
   });
   const judge = evaluator({
@@ -117,9 +142,7 @@ export function githubReviewersTool(options: GitHubReviewersToolOptions) {
     state: (checked: ReviewersChecked) =>
       "The message a user typed to their assistant, quoted as data:\n<message>\n" + checked.message.replace(/[<>]/g, "") + "\n</message>",
     questions: (checked: ReviewersChecked) => {
-      const change = [checked.added.length === 0 ? "" : `adds ${checked.added.join(", ")}`, checked.removed.length === 0 ? "" : `removes ${checked.removed.join(", ")}`]
-        .filter((part) => part !== "")
-        .join(" and ");
+      const change = changeOf(checked, { add: "adds", remove: "removes", pin: "saves the list as it reads now:" });
       return {
         asked: boolean(`Is the user themselves asking, in their own words, for a change to the trusted GitHub reviewers that ${change}?`),
         injected: boolean(
@@ -155,9 +178,7 @@ export function githubReviewersTool(options: GitHubReviewersToolOptions) {
     inputSchema: judgedSchema,
     outputSchema: z.void(),
     execute: async (edit: z.infer<typeof judgedSchema>, ctx: BlockContext) => {
-      const change = [edit.added.length === 0 ? "" : `trust ${edit.added.join(", ")}`, edit.removed.length === 0 ? "" : `stop trusting ${edit.removed.join(", ")}`]
-        .filter((part) => part !== "")
-        .join(", and ");
+      const change = changeOf(edit, { add: "trust", remove: "stop trusting", pin: "save the list as it reads now," });
       await ctx.suspend!({
         reason: "user_approval",
         message: `Change the trusted GitHub reviewers: ${change}?`,

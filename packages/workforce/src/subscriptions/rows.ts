@@ -209,6 +209,23 @@ export function botsHandedOn(entry: { readonly botsScreenedBy?: string | undefin
 
 type ListedScreen = z.infer<typeof listedScreenSchema>;
 
+// FIX-2873; BP-030.
+/**
+ * Whether a subscription is a run's pull-request follow saved before the trusted reviewers'
+ * one list: it hears its thread's close, takes outsiders, lists an `allow` screen with `bots`,
+ * and lists no custom screen. Its fixed allow list would keep hearing an account the operator
+ * has since removed, with no write check, so the `allow` screen refuses every event on it until
+ * the run follows its pull request again.
+ */
+export function isLegacyReviewedFollow(entry: { readonly hearsClose?: true | undefined; readonly outsiders?: true | undefined; readonly screens: readonly ListedScreen[] }): boolean {
+  return (
+    entry.hearsClose === true &&
+    entry.outsiders === true &&
+    entry.screens.some((listed) => listed.screen === "allow" && listed.bots !== undefined) &&
+    !entry.screens.some((listed) => listed.screen === "custom")
+  );
+}
+
 /**
  * One thread's subscriptions, by subscription id. Two users subscribing to one
  * thread at once both land: `updateState` re-runs its updater against the row
