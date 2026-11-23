@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 570" role="img" aria-label="Who owns what: twelve cross-cutting rules by FIX-2894, FIX-2877, FIX-2878, FIX-2879, the closure FIX-2883 and the coordinator. Each rule has exactly one builds or decides cell. ER-1 one coding flow, built by FIX-2877. ER-2 one resolution order, run at the first claim and frozen on the run record, which every route (work, steer, message, door, resume) reads, a refused harness failing the task, built by FIX-2878. ER-3 one default coder per app, built by FIX-2877. ER-4 harness means one thing, decided by FIX-2877. ER-5 the pick travels as structured state, built by FIX-2879. ER-6 the scripted harness reports its model, built by FIX-2878. ER-7 consumed issues keep their parents, the coordinator&#x27;s. ER-8 a resumed session belongs to the harness now dispatched, built by FIX-2878. ER-9 a task&#x27;s input is the schema its flow&#x27;s work entry declares, checked at filing and claim, built by FIX-2894. ER-10 harness, model and assignee are written by the server, from the authenticated turn or the filing run&#x27;s frozen pick, never taken from the filer, built by FIX-2878 and used by FIX-2879&#x27;s stamper. ER-11 a worker can lock its harness and a pick naming another is refused by name, built by FIX-2878. ER-12 a plan-mode run that wrote fails loudly, built by FIX-2878. The closure checks ER-1, 2, 3, 5 and 8 to 12 and uses ER-6."
+<svg viewBox="0 0 940 570" role="img" aria-label="Who owns what: twelve cross-cutting rules by FIX-2894, FIX-2877, FIX-2878, FIX-2879, the closure FIX-2883 and the coordinator. Each rule has exactly one builds or decides cell. ER-1 one coding flow, built by FIX-2877. ER-2 one resolution order, run at the first claim and frozen on the run record, which every route (work, steer, message, door, resume) reads, a refused harness failing the task, built by FIX-2878. ER-3 one default coder per app, built by FIX-2877. ER-4 harness means one thing, decided by FIX-2877. ER-5 the pick travels as structured state, built by FIX-2879. ER-6 the scripted harness reports its model, built by FIX-2878. ER-7 consumed issues keep their parents, the coordinator&#x27;s. ER-8 a resumed session belongs to the harness now dispatched, built by FIX-2878. ER-9 a task&#x27;s input is what its flow&#x27;s work entry declares, its schema, its server-owned fields with their filler and its project requirement, checked at filing and claim, built by FIX-2894. ER-10 harness and model are server-owned, written by the harness kit&#x27;s filler from the authenticated turn or the filing run&#x27;s frozen pick, never taken from the filer, built by FIX-2878 and used by FIX-2879. ER-11 a worker can lock its harness, and at every worker&#x27;s claim a different harness is refused by name, built by FIX-2878. ER-12 a plan-mode run that wrote fails loudly, built by FIX-2878. The closure checks ER-1, 2, 3, 5 and 8 to 12 and uses ER-6."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -140,7 +140,7 @@
 
   <g id="er-9">
     <text class="t-tag c-acc" x="24" y="414">ER-9</text>
-    <text class="t-b" x="76" y="414">A task&#x27;s input is its work entry&#x27;s declared schema</text>
+    <text class="t-b" x="76" y="414">Task input as its work entry declares, server-owned too</text>
     <rect class="chosen" x="444" y="398" width="72" height="24" rx="4"/>
     <text class="t-tag c-code" x="480" y="414" text-anchor="middle">BUILDS</text>
     <rect class="lost" x="604" y="398" width="72" height="24" rx="4"/>
@@ -154,7 +154,7 @@
 
   <g id="er-10">
     <text class="t-tag c-acc" x="24" y="454">ER-10</text>
-    <text class="t-b" x="76" y="454">Harness, model, assignee: the server&#x27;s, never the filer&#x27;s</text>
+    <text class="t-b" x="76" y="454">Harness, model: server-owned, never the filer&#x27;s</text>
     <rect class="chosen" x="604" y="438" width="72" height="24" rx="4"/>
     <text class="t-tag c-code" x="640" y="454" text-anchor="middle">BUILDS</text>
     <rect class="lost" x="684" y="438" width="72" height="24" rx="4"/>
@@ -166,7 +166,7 @@
 
   <g id="er-11">
     <text class="t-tag c-acc" x="24" y="494">ER-11</text>
-    <text class="t-b" x="76" y="494">A worker can lock its harness; another is refused by name</text>
+    <text class="t-b" x="76" y="494">A locked worker refuses another harness at any claim</text>
     <rect class="chosen" x="604" y="478" width="72" height="24" rx="4"/>
     <text class="t-tag c-code" x="640" y="494" text-anchor="middle">BUILDS</text>
     <rect class="lost" x="764" y="478" width="72" height="24" rx="4"/>

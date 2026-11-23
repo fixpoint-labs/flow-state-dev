@@ -10,14 +10,15 @@ to a child.
 
 ## 1 · The coder flow declares what its tasks take (FIX-2894, FIX-2878)
 
-The `work` entry names a schema. Filing checks a task against it, and the entry checks it again
-when the task is claimed. `harness` and `model` are on the schema, but only the server writes
-them (step 3).
+The `work` entry declares its tasks' input: a schema, the fields only the server writes, and the
+function that fills them. Filing checks a task against that declaration, and the entry checks the
+schema again when the task is claimed. A server-owned field is the task-input counterpart of
+`serverOwned` on session state (`withSessionFields`): one concept. The board knows no field names.
 
 ```ts
 // packages/harness-manager/src/kit/coder-flow.ts
 import { harnessFeatureSchema } from "../manager";
-import { projectAddressSchema, workerTaskEntry } from "@flow-state-dev/workforce";
+import { projectAddressSchema, taskInput, workerTaskEntry } from "@flow-state-dev/workforce";
 
 /** A model as the harness takes it: an id, or Cursor's `{ id, params }`. */
 const modelSelection = z.union([
@@ -27,8 +28,8 @@ const modelSelection = z.union([
 
 export const codingTaskInput = z // NEW (FIX-2878)
   .object({
-    harness: z.string().min(1).optional(), // written by the server only (ER-10)
-    model: modelSelection.optional(), // written by the server only (ER-10)
+    harness: z.string().min(1).optional(), // server-owned (ER-10): the filler writes it
+    model: modelSelection.optional(), // server-owned (ER-10): the filler writes it
     feature: harnessFeatureSchema.optional(), // was input.harnessFeature; the namespacing goes
     project: projectAddressSchema.optional(), // was input.project
   })
@@ -38,40 +39,69 @@ task: {
   actions: {
     work: workerTaskEntry({
       name: `${CODER_FLOW}-work`,
-      input: codingTaskInput, // NEW (FIX-2894): declared, so filing and claim can check it
+      // NEW (FIX-2894): the declaration; FIX-2894's spec picks `taskInput`'s final shape.
+      input: taskInput(codingTaskInput, {
+        serverOwned: ["harness", "model"],
+        fill: fillRunSettings, // NEW (FIX-2878): the harness kit's filler (step 3)
+        project: options.project === true ? "required" : "optional", // was the hire's `needsProject`
+      }),
       block: byHarness(`${CODER_FLOW}-by-harness`, taskWorkerInputSchema.passthrough(), (b) => b.manager, true),
     }),
   },
 },
 ```
 
-Filing uses the same hook the board already has for projects (`assertProjectFor`). The claim
-check is one more `tap` on the entry's sequencer.
+Filing makes one input check, and it asks the assignee's flow. It replaces `assertProjectFor`, and
+the `needsProject` option goes from the hire's `WorkerFlowEntry` and from the board's options, with
+no alias (BP-034). The project requirement is now part of the declaration, and the check looks for
+a project in the same order `assertProjectFor` does today. The claim check is one more `tap` on
+the entry's sequencer.
 
 ```ts
 // packages/workforce/src/conversation-board/board.ts, inside the guarded createTask
 const targeted = await withTarget(init);
-await assertInputFor(targeted); // NEW (FIX-2894)
-await assertProjectFor(targeted);
+const filed = await checkInputFor(targeted); // NEW (FIX-2894): replaces assertProjectFor(targeted)
 
-/** NEW (FIX-2894): the assignee's flow's declared input, checked before anything is reserved. */
-const assertInputFor = async (init: TaskInit): Promise<void> => {
+/** NEW (FIX-2894): the assignee's flow's declared input, applied before anything is reserved. */
+const checkInputFor = async (init: TaskInit): Promise<TaskInit> => {
   const assignee = init.assignee ?? (await soleDelegate());
   const flow = assignee === undefined ? undefined : (await reach(ctx)).available.get(assignee);
-  const declared = flow === undefined ? undefined : options.declaredInput?.(flow); // NEW, beside options.needsProject
-  if (declared === undefined) return; // no declaration: an open record, as today
-  const parsed = declared.safeParse(init.input ?? {});
+  // Read off the flow's own `work` entry, not a host option per concern. FIX-2894's spec picks the lookup.
+  const declared = flow === undefined ? undefined : declaredInputOf(flow);
+  if (declared === undefined) return init; // no declaration: an open record, as today
+  // A filer never writes a server-owned field, whatever it sent. The board drops each one by the
+  // declaration's list and calls the flow's filler; it never knows what the fields are called.
+  const sent = { ...((init.input ?? {}) as Record<string, unknown>) };
+  for (const name of declared.serverOwned) delete sent[name];
+  const input = { ...sent, ...(await declared.fill?.(ctx, { assignee: assignee!, input: sent })) };
+  const parsed = declared.schema.safeParse(input);
   if (!parsed.success) {
     throw new TaskWriteRefusedError("input_refused", `this task's input doesn't fit "${assignee}": ${parsed.error.issues[0]!.message}. Nothing was filed.`);
   }
+  // Was assertProjectFor: the input's project, or the target's, the follow-up root's, the filer's
+  // workstream or the row's stamp, in that order. `runProjectOf`'s `no-project` stays the backstop.
+  if (declared.project === "required" && !(await hasProjectFor(init, parsed.data))) {
+    throw new TaskWriteRefusedError("no_project", `"${assignee}" works in a project's files, and this conversation has no project for it to work in. Nothing was filed. ${SET_THE_FILERS_PROJECT}`);
+  }
+  return { ...init, input: parsed.data }; // stored parsed (FIX-2894)
 };
+
+// updateTask runs the same check but never calls the filler: it drops what the filer sent for a
+// server-owned field and keeps the stored value, so a rewrite can't change the coder either.
 
 // packages/workforce/src/conversation-board/task-entry.ts, in workerTaskEntry
 const base = sequencer({ name, inputSchema: taskWorkerInputSchema })
   .tap(noteRoutedFrom)
   .tap(startAtFiledHop)
-  .tap((task: TaskWorkerInput) => void options.input?.parse(task.input ?? {})); // NEW (FIX-2894): again at claim
+  .tap((task: TaskWorkerInput) => void options.input?.schema.parse(task.input ?? {})); // NEW (FIX-2894): again at claim
 ```
+
+`needsProject` is build-time config, not a stored field, so removing it touches no task record.
+The claim parses only the schema and the project requirement stays a filing check, so a task in
+flight whose project came from its context is not refused at its next claim. What a task in flight
+does meet is FIX-2894's own break: old keys (`harnessFeature`) are refused at claim, and a task
+filed before FIX-2878 may carry a `harness` or `model` no filler wrote. Both fall under the drain
+that the FIX-2894 implementer note asks its spec to name as a deliberate exception to BP-030.
 
 ## 2 · The person's pick travels as a field, not text (FIX-2879)
 
@@ -123,45 +153,35 @@ async function writeTurnFields(declared: SessionFields, fields: Record<string, u
 }
 ```
 
-## 3 · Filing: the server writes harness, model and assignee (ER-10)
+## 3 · Filing: the harness kit's filler writes harness and model (ER-10)
 
-What the filer sent is dropped, whatever it is. Then the server writes the pick in, through a
-stamper the host supplies to `createTask` and the harness kit provides, so workforce reads no
-harness-kit field. From a person's turn, the pick is the session's last `codeWith`. From a filing
-no person started, it is the frozen pair on the filing run's own record (step 4), never the task
-session's carried copy (`carriedSessionFields`), which was taken at hand-over and can be stale. The
-stamp runs before `assertInputFor`.
+The board has already dropped whatever the filer sent for `harness` and `model` (step 1), because
+the coder flow's declaration marks them server-owned. The harness kit's filler writes them back
+in, so workforce reads no harness-kit field. From a person's turn, the pick is the session's last
+`codeWith`. From a filing no person started, it is the frozen pair on the filing run's own record
+(step 4), never the task session's carried copy (`carriedSessionFields`), which was taken at
+hand-over and can be stale. The filler runs before the parse.
+
+The filler fills only harness and model. It never picks the assignee: with one coder worker that
+takes its harness per task, the pick has nothing to route. A model-written assignee is held at the
+claim instead (step 4, ER-11): whichever worker claims the task, it runs the task's harness or
+refuses it by name.
 
 ```ts
-// packages/workforce/src/conversation-board/board.ts, inside the guarded createTask
-const init = await stampRunSettings(heldAsTurnSays(ctx, asked)); // NEW: drop in FIX-2878, write in FIX-2879
-
-/** NEW: whatever the filer's tool args, input or metadata said, harness and model are the server's. */
-const stampRunSettings = async (init: TaskInit): Promise<TaskInit> => {
-  const { harness: _h, model: _m, ...rest } = (init.input ?? {}) as Record<string, unknown>;
-  // NEW (FIX-2879): host-supplied, beside `needsProject`; its spec picks the final name.
-  const stamped = await options.runSettingsOf?.(ctx); // { pick?, assignee? }, or undefined: no harness kit here
-  // ER-10: the assignee is the turn's routing's, never a model-written one. FIX-2878's spec picks refuse or restamp.
-  if (stamped?.assignee !== undefined && init.assignee !== undefined && init.assignee !== stamped.assignee) {
-    throw new TaskWriteRefusedError("assignee_refused", `this turn routes coding work to "${stamped.assignee}", not "${init.assignee}". Nothing was filed.`);
-  }
-  return { ...init, input: { ...rest, ...stamped?.pick } }; // a person's turn with no pick: none, and the worker's harness is used
-};
-
-// packages/harness-manager/src/kit/harnesses-kit.ts: the harness kit's stamper (NEW, FIX-2879)
-const runSettingsOf = async (ctx: BlockContext) => {
-  const assignee = await routedCoderOf(ctx); // the coding worker the authenticated turn routes to; FIX-2878's spec reads it
+// packages/harness-manager/src/kit/coder-flow.ts: the harness kit's filler (NEW, FIX-2878)
+const fillRunSettings = async (ctx: BlockContext): Promise<Partial<CodingTaskInput>> => {
   const run = await activeRunOf(ctx); // the filing session's own run record, if it is a coding run
   if (run !== undefined) {
     // A filing no person started: the filing run's frozen pair, kept exactly. Never the kit default, never wider.
-    return { assignee, pick: { harness: run.harnessId!, ...(run.model == null ? {} : { model: run.model }) } };
+    return { harness: run.harnessId!, ...(run.model == null ? {} : { model: run.model }) };
   }
-  const codeWith = (ctx.session.state as { codeWith?: { harness: string; model?: unknown } }).codeWith;
-  return { assignee, pick: codeWith }; // a person's turn, or a conversation turn no user started (Q-C)
+  // NEW (FIX-2879): a person's turn, or a conversation turn no user started (Q-C). Until FIX-2879
+  // lands there is no `codeWith`: the task carries none, and the worker's harness is used.
+  return (ctx.session.state as { codeWith?: Partial<CodingTaskInput> }).codeWith ?? {};
 };
 ```
 
-The attack the security review raised, refused:
+The attacks the security review raised, refused:
 
 ```ts
 it("a filer cannot choose its own coder", async () => {
@@ -175,6 +195,14 @@ it("a filer cannot choose its own coder", async () => {
   });
   expect(task.input).toEqual({ harness: "claude-code-plan" }); // the turn's pick; the filer's model is gone too
   expect((await runOf(task)).harness).toBe("claude-code-plan"); // read from the run, not the task
+});
+
+it("a filer cannot route around the pick by naming another worker", async () => {
+  // teammates.builder is locked to claude-code; the person picked plan mode.
+  await conversation.respond({ message: "Fix the flaky test", fields: { codeWith: { harness: "claude-code-plan" } } });
+  const task = await board.createTask({ assignee: "teammates.builder", goal: "Fix the flaky test" });
+  expect(task.input).toEqual({ harness: "claude-code-plan" }); // the assignee changes nothing the filler writes
+  await expect(claimed(task)).rejects.toThrow(/always codes with claude-code; this task asked for claude-code-plan/);
 });
 
 it("a task a worker's run files inherits that run's frozen pick", async () => {
@@ -200,6 +228,9 @@ const resolveRun = async (ctx: BlockContext, task: { input?: unknown } | undefin
   const own = worker.config.harness as string | undefined;
   const asked = codingTaskInput.parse(task?.input ?? {});
   // ER-11: a locked worker refuses a different pick by name. It never runs it, and never ignores it.
+  // This runs for every worker that claims a coding task, not only the one the turn meant: an
+  // unlocked worker runs the task's harness, a locked one runs it or refuses. So a model-written
+  // assignee can't move a task onto another coder, and the assignee needs no stamp.
   if (worker.config.harnessLocked === true && asked.harness !== undefined && asked.harness !== own) { // NEW (FIX-2878): name is its spec's
     throw new Error(`worker "${worker.id}" always codes with ${own}; this task asked for ${asked.harness}. Nothing ran.`);
   }
