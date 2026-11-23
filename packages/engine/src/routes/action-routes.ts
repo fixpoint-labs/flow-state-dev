@@ -36,6 +36,7 @@ import type { InternalRouteSeams, RequestContext } from "./http-handlers";
 import { claimRequestAttachments } from "./attachment-claim";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { asServerResourceSend, DEFAULT_WRITE_FLOW, isWriteSessionId, WRITE_SESSION_PREFIX } from "../resources/default-write-flow";
+import { isScheduleSessionId, ScheduleSessionIdError } from "../transports/scheduled/schedule-session-id";
 import type { ResourceSend } from "./scope-routes";
 
 type ActionRunInput = {
@@ -95,6 +96,11 @@ export async function handleExecuteAction(
       error: "reserved-session-id",
       message: `Session ids starting with "${WRITE_SESSION_PREFIX}" are the server's write sessions; a client can't name one.`
     });
+  }
+  // FIX-2886: only the scheduled dispatch runs in a schedule session, a
+  // resource send included.
+  if (sessionId !== undefined && isScheduleSessionId(sessionId)) {
+    return jsonResponse(400, { error: "reserved-session-id", message: new ScheduleSessionIdError(sessionId).message });
   }
   const metadata = asObject(body.metadata);
   // FIX-406 6D: optional tenant id from a configurable header.

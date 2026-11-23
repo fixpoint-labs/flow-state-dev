@@ -105,7 +105,7 @@ import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
 import { ownTaskOf, resumeIfChildEnded, resumeRequestWaiters } from "../durability/wait-chain";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
 import { noteSuspensionDeadline } from "../durability/suspension-deadlines";
-import { WRITES_OUTLIVE_ABORT, requestEndRegistryOf, type WritesOutliveAbort } from "./request-end-hooks";
+import { requestEndRegistryOf } from "./request-end-hooks";
 import { holdInterruptedEnding } from "./request-spend-ledger";
 import { isUserSuspension } from "@flow-state-dev/core/types";
 import { clearParkOwed, parkOwedKey } from "../durability/park-owed";
@@ -2387,13 +2387,10 @@ async function runActionAttempt<
     // request's registry as a block's `onRequestEnded` would add it. Before
     // the startup observers, so what they spend is handed on too, and a
     // failed startup ends through it below. Its writes record what the
-    // request spent, so an explicit abort doesn't stop them; every other
-    // hook's writes still stop on one.
+    // request spent, so an explicit abort doesn't stop them
+    // (`writesOutliveAbort`); a hook added without it still stops on one.
     const sessionEndHook = options.flow.session?.[SESSION_REQUEST_END_HOOK]?.(ctx);
-    if (sessionEndHook !== undefined) {
-      const outliveAbort = (ctx as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT];
-      onRequestEnded(ctx, outliveAbort === undefined ? sessionEndHook : (ending) => outliveAbort(async () => sessionEndHook(ending)));
-    }
+    if (sessionEndHook !== undefined) onRequestEnded(ctx, sessionEndHook, { writesOutliveAbort: true });
 
     await emitActionLifecycleSeam(internalSeams, "started", metadata);
 

@@ -23,7 +23,7 @@ import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder
 import { deliveredByWait, droppedHeldNotices, recordEnding as recordNoticeOwed, releasedHeldNotices, takenNoticePatch, withoutNoticeMarkers, type TaskNotice } from "../notice/task-notice";
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
-import { steersForAttempt, untakenSteers } from "../steers";
+import { steersForAttempt, untakenBy, untakenSteers } from "../steers";
 import type { SuspensionHold } from "../schema/hold";
 import { answerOf, askedOnTicket, droppedMirror, hasOpenHold, holdWrite, isOwnHold, keptOnEnding, newOwnHolds, openOwnHolds, owesTurn } from "./holds";
 import type { TaskChangeKind } from "./change-event";
@@ -1243,7 +1243,7 @@ export function requireClaimTicket(
   }
 }
 
-// FIX-2086; FIX-2077; FIX-2133.
+// FIX-2086; FIX-2077; FIX-2133; FIX-2795.
 /**
  * The patch `setKeptOpenBy` writes: set, with the request's answer
  * kept by {@link completionPatch}'s output rule and no lease unless one is
@@ -1258,13 +1258,35 @@ export function requireClaimTicket(
  * advances the turn generation and clears the mark. Set with `owesTurn`, the
  * wait is a turn owed (the steer turn), which the claim may take.
  *
- * @throws when clearing without a finite `leaseUntil`: a programming error.
+ * Cleared with `owesTurn` and no `leaseUntil`: a later request
+ * that took an owed turn with no wait beside it (the last question answered)
+ * was stopped, and gives the turn back. The row drops its lease and owes the
+ * turn again, as the answer left it, so the claim may take it.
+ *
+ * With `untakeSteersOf` (a request id), the steers that request took on
+ * this attempt are untaken again, in the same write: a stopped request never
+ * answered them, so the turn after it must read them. Applies to a wait set
+ * and to a turn given back, owed or not.
+ *
+ * @throws when clearing without a finite `leaseUntil`, other than to give a
+ *   turn back: a programming error.
  */
 export function waitingOnPatch(
   task: Task,
   keptOpenBy: Task["keptOpenBy"],
-  options: { leaseUntil?: number; answer?: { output: unknown }; hold?: SuspensionHold; resume?: boolean; owesTurn?: boolean }
+  options: {
+    leaseUntil?: number;
+    answer?: { output: unknown };
+    hold?: SuspensionHold;
+    resume?: boolean;
+    owesTurn?: boolean;
+    untakeSteersOf?: string;
+  }
 ): Partial<Task> {
+  const untaken = options.untakeSteersOf === undefined ? {} : untakeSteersPatch(task, options.untakeSteersOf);
+  if (keptOpenBy == null && options.owesTurn === true && options.leaseUntil === undefined) {
+    return { keptOpenBy: undefined, leaseUntil: undefined, turnOwed: true, ...untaken };
+  }
   if (keptOpenBy == null) {
     assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
     const resumed = options.resume === true ? holdWrite(task, { op: "resume" }) : "unchanged";
@@ -1294,7 +1316,15 @@ export function waitingOnPatch(
     ...kept,
     ...(typeof mirrored === "object" && "patch" in mirrored ? mirrored.patch : {}),
     ...(options.owesTurn === true ? { turnOwed: true as const } : {}),
+    ...untaken,
   };
+}
+
+// FIX-2795.
+/** The steers `requestId` took on `task`'s current attempt, untaken again; nothing when it took none. */
+function untakeSteersPatch(task: Task, requestId: string): Partial<Task> {
+  const next = untakenBy(task, requestId);
+  return next === task ? {} : { steers: next.steers };
 }
 
 /** Whether a progress report names anything to write. */

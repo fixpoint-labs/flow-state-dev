@@ -999,7 +999,9 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       : {
           resolve: createResourceCollectionScheduleResolver({
             collection: polling.resources[SUBSCRIPTION_POLLS_RESOURCE],
-            blocks: { [SUBSCRIPTION_POLL_HANDLER]: pollFire }
+            blocks: { [SUBSCRIPTION_POLL_HANDLER]: pollFire },
+            // One session per poll, not one per fire: the flow's retention caps its history.
+            session: "per-schedule"
           }),
           index: polling.index
         };
@@ -1012,6 +1014,10 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     actions: {},
     ...(webhooks === undefined ? {} : { webhooks }),
     ...(schedules === undefined ? {} : { schedules }),
+    // A day of history in each of the flow's sessions: a poll's, the routing's
+    // and each row's owner runs. Nothing reads further back; what a poll or a
+    // routing keeps lives in its resources.
+    session: { retention: { maxAge: "24h" } },
     resources: pollResources,
     internal: {
       actions: {
