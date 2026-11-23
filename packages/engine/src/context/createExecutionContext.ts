@@ -113,7 +113,7 @@ import { estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, getTransientKeys, getReadonlyStateKeys, ONE_OFF_SESSION_PREFIX } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
-import { normalizeError, displayCause } from "../errors/normalize-error";
+import { normalizeError, displayCause, displayDetails } from "../errors/normalize-error";
 import {
   safeCaptureError,
   toErrorCaptureEvent,
@@ -4910,7 +4910,7 @@ export async function createExecutionContext<
             // unwraps the synthetic layer normalizeError adds for plain throws,
             // so this matches the tool-output seam for the same failure.
             const blockTraceErrorDetails = errorDetailsWithCause({
-              details: normalized.details,
+              details: displayDetails(normalized),
               cause: displayCause(normalized),
             });
             childContext._runtimeHooks?.onBlockTraceCapture?.(

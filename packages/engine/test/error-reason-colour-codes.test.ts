@@ -104,6 +104,20 @@ describe("a failed turn's reason has no terminal colour codes", () => {
     expect(displayCause(rethrown)).toBe(thrown);
   });
 
+  it("keeps a cause first normalized as a raw throw, then given as an author's cause with the same text", () => {
+    const thrown = Object.assign(new Error("\u001b[31mplain\u001b[0m"), { code: "ECONNRESET" });
+    normalizeError(thrown);
+    const authored = normalizeError(new FlowError("plain", { cause: thrown }));
+    expect(displayCause(authored)).toBe(thrown);
+  });
+
+  it("shows an author's cause even when its message is exactly the author's", () => {
+    // Only a wrapper normalizeError built is unwrapped; an author's cause is
+    // always shown, which is more information, never less.
+    const cause = Object.assign(new Error("plain"), { code: "ECONNRESET" });
+    expect(displayCause(normalizeError(new FlowError("plain", { cause })))).toBe(cause);
+  });
+
   it("keeps the author's cause on the terminal error item when the seam clones the error", async () => {
     const flow = defineFlow({
       kind: "coloured-author-failure",
@@ -172,6 +186,9 @@ describe("a failed turn's reason has no terminal colour codes", () => {
     expect(result.error?.message).toBe(PLAIN);
     const errorItems = result.items.filter((item) => item.type === "error");
     expect(errorItems.length).toBeGreaterThan(0);
+    // A plain throw with no cause of its own still records no details: the
+    // wrapper's marker is not something to show.
+    expect((errorItems[0] as { details?: unknown }).details).toBeUndefined();
     // Nothing anywhere in what the turn recorded carries an escape code.
     // JSON.stringify writes ESC as the text `\u001b`, so search for that text.
     const ESCAPED_ESC = "\\u001b";

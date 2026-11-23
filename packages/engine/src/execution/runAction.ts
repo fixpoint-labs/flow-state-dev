@@ -62,7 +62,7 @@ import {
 import type { ExecutionContext } from "../context/types";
 import type { FlowError } from "../errors/flow-error";
 import { ValidationError } from "../errors/flow-error";
-import { normalizeError, displayCause } from "../errors/normalize-error";
+import { normalizeError, displayCause, displayDetails } from "../errors/normalize-error";
 import { safeCaptureError, toFinalErrorCaptureEvent } from "../errors/error-capture";
 import type { RequestRecord, StoreRegistry, WakeKey } from "../stores/types";
 import { mergeItemsById } from "../stores/shared";
@@ -906,7 +906,7 @@ async function emitTerminalError(
   // swallowed on the terminal error item. `displayCause` unwraps the synthetic
   // layer normalizeError adds for plain throws, matching the tool-output seam.
   const details = errorDetailsWithCause({
-    details: error.details,
+    details: displayDetails(error),
     cause: displayCause(error),
   });
   const item: ErrorItem = {

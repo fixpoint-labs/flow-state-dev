@@ -64,34 +64,28 @@ export function normalizeError(
       blockName: options.blockName,
       blockInstanceId: options.blockInstanceId,
       scope: options.scope,
-      details: options.details
+      details: wrapperDetails(options.details)
     });
-    if (classified !== undefined) {
-      recordUnwrap(normalized, true);
-      return classified;
-    }
+    if (classified !== undefined) return classified;
   }
 
   const code = options.code ?? inferCode(normalized);
   const retryable = options.retryable ?? inferRetryable(normalized, code);
 
   if (normalized instanceof FlowError) {
-    // An author's FlowError: compare the messages as thrown, before stripping.
-    // Re-normalizing finds the decision already recorded and keeps it.
-    const cause = normalized.cause;
-    if (cause instanceof Error) recordUnwrap(cause, cause.message === normalized.message);
+    const details = options.details ?? normalized.details;
     return new FlowError(message, {
       code,
       retryable,
       blockName: options.blockName ?? normalized.blockName,
       blockInstanceId: options.blockInstanceId ?? normalized.blockInstanceId,
       scope: options.scope ?? normalized.scope,
-      cause,
-      details: options.details ?? normalized.details
+      cause: normalized.cause,
+      // Re-normalizing a wrapper keeps it a wrapper; an author's FlowError never becomes one.
+      details: isNormalizedWrapper(normalized) ? wrapperDetails(details) : details
     });
   }
 
-  recordUnwrap(normalized, true);
   return new FlowError(message, {
     code,
     retryable,
@@ -99,30 +93,37 @@ export function normalizeError(
     blockInstanceId: options.blockInstanceId,
     scope: options.scope,
     cause: normalized,
-    details: options.details
+    details: wrapperDetails(options.details)
   });
 }
 
 /**
- * Whether `displayCause` unwraps a cause that `normalizeError` saw, decided
- * the first time it saw it: `true` for a raw throw it wrapped; for the cause
- * of an author's FlowError, whether the messages as thrown (before colour
- * codes were stripped) were equal. Keyed by the cause, so the decision holds
- * on any error that carries that cause, including a clone made by a seam.
- * Stripping never changes which causes are kept.
+ * Marks a FlowError that `normalizeError` built around a raw throw. It sits
+ * in `details` as a non-enumerable symbol property, so a seam's clone that
+ * copies `details` keeps it, and it never reaches output: JSON and object
+ * spread skip it, and `serializeError` does not read `details`.
  */
-const UNWRAPS = new WeakMap<Error, boolean>();
+const NORMALIZED_WRAPPER = Symbol.for("@flow-state-dev/engine/normalized-wrapper");
 
-function recordUnwrap(cause: Error, unwraps: boolean): void {
-  if (!UNWRAPS.has(cause)) UNWRAPS.set(cause, unwraps);
+function wrapperDetails(details: Record<string, unknown> | undefined): Record<string, unknown> {
+  // A copy, so a details object the caller shares is never marked.
+  return Object.defineProperty({ ...details }, NORMALIZED_WRAPPER, { value: true });
 }
 
-function unwrapsCause(message: string, cause: Error): boolean {
-  const recorded = UNWRAPS.get(cause);
-  if (recorded === undefined) return cause.message === message;
-  // A recorded `true` still needs the message to be the cause's: a raw error
-  // wrapped once and later given as the cause of a different message is kept.
-  return recorded && stripAnsi(cause.message) === message;
+function isNormalizedWrapper(error: FlowError): boolean {
+  return (error.details as Record<symbol, unknown> | undefined)?.[NORMALIZED_WRAPPER] === true;
+}
+
+/**
+ * The `details` to show for a normalized error: its own, with nothing when a
+ * wrapper's details hold only the marker (a plain throw carries none).
+ */
+export function displayDetails(error: FlowError): Record<string, unknown> | undefined {
+  const details = error.details;
+  if (details !== undefined && isNormalizedWrapper(error) && Object.keys(details).length === 0) {
+    return undefined;
+  }
+  return details;
 }
 
 /**
@@ -137,17 +138,12 @@ function unwrapsCause(message: string, cause: Error): boolean {
  * server's `block_trace` / terminal error details match the raw-throw seam
  * (`emit-tool-output`), which serializes the original error's `.cause` directly.
  *
- * For a cause `normalizeError` saw, the decision it recorded is used, since
- * stripped colour codes make message equality unreliable there. Any other
- * cause unwraps only when the messages are exactly equal.
+ * Only a wrapper `normalizeError` built is unwrapped, found by its marker,
+ * never by comparing messages. An author's FlowError shows its cause as is.
  */
 export function displayCause(error: FlowError): unknown {
   const cause = error.cause;
-  if (
-    cause instanceof Error &&
-    !FlowError.isInstance(cause) &&
-    unwrapsCause(error.message, cause)
-  ) {
+  if (cause instanceof Error && !FlowError.isInstance(cause) && isNormalizedWrapper(error)) {
     return (cause as Error & { cause?: unknown }).cause;
   }
   return cause;
