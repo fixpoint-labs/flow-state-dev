@@ -115,15 +115,16 @@ function isNormalizedWrapper(error: FlowError): boolean {
 }
 
 /**
- * The `details` to show for a normalized error: its own, with nothing when a
- * wrapper's details hold only the marker (a plain throw carries none).
+ * The `details` to show for a normalized error. A wrapper's details come back
+ * as a copy without the marker (spread skips it), so no emitted item, hook or
+ * observer ever holds the marked object; nothing at all when the marker was
+ * all they held (a plain throw carries none). Any other error's details are
+ * returned as they are.
  */
 export function displayDetails(error: FlowError): Record<string, unknown> | undefined {
   const details = error.details;
-  if (details !== undefined && isNormalizedWrapper(error) && Object.keys(details).length === 0) {
-    return undefined;
-  }
-  return details;
+  if (details === undefined || !isNormalizedWrapper(error)) return details;
+  return Object.keys(details).length === 0 ? undefined : { ...details };
 }
 
 /**

@@ -5,16 +5,16 @@
  * codes into their messages; the engine strips them where it normalizes the
  * error, so no surface has to.
  */
-import { DEFAULT_ORG_ID, defineFlow, FlowError, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, FlowError, handler, sequencer } from "@flow-state-dev/core";
 import { errorDetailsWithCause } from "@flow-state-dev/core/internal";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { runAction } from "../src";
-import { displayCause, normalizeError } from "../src/errors/normalize-error";
+import { displayCause, displayDetails, normalizeError } from "../src/errors/normalize-error";
 import { runActionInternal } from "../src/execution/runAction";
 import { applyNormalizedErrorSeam } from "../src/execution/internal/seams";
 import type { ExecutionMetadata } from "../src/execution/types";
-import { createInMemoryStores } from "../src/host";
+import { createInMemoryStores, createResponseEmitter } from "../src/host";
 
 /** What a field-preserving `interceptNormalizedError` seam returns. */
 const cloneError = (error: FlowError): FlowError =>
@@ -153,6 +153,102 @@ describe("a failed turn's reason has no terminal colour codes", () => {
       | undefined;
     expect(errorItem?.message).toBe("plain");
     expect(errorItem?.details?.cause).toMatchObject({ name: "Error", code: "ECONNRESET" });
+  });
+
+  it("displayDetails never hands out the marked details object", () => {
+    const wrapper = normalizeError(new Error("boom"), { details: { attempt: 2 } });
+    const shown = displayDetails(wrapper);
+    expect(shown).toEqual({ attempt: 2 });
+    expect(shown).not.toBe(wrapper.details);
+    expect(Object.getOwnPropertySymbols(shown!)).toEqual([]);
+    expect(displayDetails(normalizeError(new Error("boom")))).toBeUndefined();
+  });
+
+  it("emits no marker on the error item, with and without details of its own", async () => {
+    const run = async (requestId: string, withDetails: boolean) => {
+      const flow = defineFlow({
+        kind: `marker-free-${requestId}`,
+        actions: {
+          run: handler({
+            name: "fails",
+            inputSchema: z.object({}),
+            outputSchema: z.string(),
+            execute: () => {
+              throw new Error("boom");
+            }
+          })
+        }
+      })();
+      const result = await runActionInternal({
+        orgId: DEFAULT_ORG_ID,
+        flow,
+        actionName: "run",
+        input: {},
+        requestId,
+        sessionId: `sess_${requestId}`,
+        userId: `user_${requestId}`,
+        stores: createInMemoryStores(),
+        runtimeConfig: {},
+        // A seam that adds details to the engine's wrapper keeps the marked object.
+        internalSeams: withDetails
+          ? { interceptNormalizedError: (error) => (Object.assign(error.details ?? {}, { attempt: 2 }), error) }
+          : undefined
+      });
+      return result.items.find((item) => item.type === "error") as { details?: Record<string, unknown> };
+    };
+
+    const plain = await run("req_marker_plain", false);
+    expect(plain.details).toBeUndefined();
+    const detailed = await run("req_marker_detailed", true);
+    expect(detailed.details).toEqual({ attempt: 2 });
+    expect(Object.getOwnPropertySymbols(detailed.details!)).toEqual([]);
+  });
+
+  it("emits no marker on a failed block_trace, with and without details of its own", async () => {
+    const traceOf = async (requestId: string, thrown: () => Error) => {
+      const failing = handler({
+        name: "fails",
+        inputSchema: z.object({}),
+        outputSchema: z.object({}),
+        execute: () => {
+          throw thrown();
+        }
+      });
+      const flow = defineFlow({
+        kind: `trace-marker-${requestId}`,
+        actions: { run: sequencer({ name: "seq", inputSchema: z.object({}) }).step(failing) }
+      })();
+      const response = createResponseEmitter({ requestId, now: () => Date.now() });
+      await runAction({
+        orgId: DEFAULT_ORG_ID,
+        flow,
+        actionName: "run",
+        input: {},
+        requestId,
+        sessionId: `sess_${requestId}`,
+        userId: `user_${requestId}`,
+        stores: createInMemoryStores(),
+        responseEmitter: response,
+        runtimeConfig: {}
+      });
+      const trace = response
+        .getItems()
+        .find((item) => item.type === "block_trace" && (item as { blockName?: string }).blockName === "fails") as
+        | { status?: string; error?: { details?: Record<string, unknown> } }
+        | undefined;
+      expect(trace?.status).toBe("failed");
+      return trace!.error?.details;
+    };
+
+    // A plain throw: the engine's wrapper, whose details hold only the marker.
+    expect(await traceOf("req_trace_plain", () => new Error("boom"))).toBeUndefined();
+    // An error with details of its own and a cause, so details are emitted.
+    const detailed = await traceOf(
+      "req_trace_detailed",
+      () => new FlowError("boom", { details: { attempt: 2 }, cause: new Error("socket closed") })
+    );
+    expect(detailed).toMatchObject({ attempt: 2 });
+    expect(Object.getOwnPropertySymbols(detailed!)).toEqual([]);
   });
 
   it("reaches the turn's recorded error item and request result clean", async () => {
