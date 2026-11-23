@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-> **Amendment, 2026-11-23: modes replace the feature marker** (the owner's modes design; see the
+> **Amendment, 2026-11-23: modes replace the feature marker** (the owner's modes design, registered by FIX-2877 on [#5606](https://github.com/fixpoint-labs/flow-state-dev/pull/5606); see the
 > [SPEC's note](SPEC.md)). D1's frozen value gains the task's mode, D3's lock can pin it, and
 > *Decided, not asked* gains the mode rules and replaces "`harnessFeature` is refused" with a
 > legacy read as implement. D2 is unchanged.
@@ -10,8 +10,8 @@
 The epic decided most of this issue: the order, the freeze, server-owned harness, model and
 plan, the lock, the model catalog rule and the plan-run postcheck
 ([FIX-2876 rules](../../epics/FIX-2876/DECISIONS.md#who-owns-what), as amended on
-[#5605](https://github.com/fixpoint-labs/flow-state-dev/pull/5605), not yet approved, including
-its next amendment on the no-pick filing; this spec tracks #5605 and is re-checked when it merges). Three calls were left to this spec. Everything else is under *Decided, not asked*.
+[#5605](https://github.com/fixpoint-labs/flow-state-dev/pull/5605), merged, including
+its amendment on the no-pick filing; and the epic's modes amendment, [#5612](https://github.com/fixpoint-labs/flow-state-dev/pull/5612), changes Q-A's `feature?` to `mode?` and `issue?`; this spec is re-checked against it when it merges). Three calls were left to this spec. Everything else is under *Decided, not asked*.
 
 ## The tree
 
@@ -70,7 +70,7 @@ It comes down to one source for two harnesses: matching by source resumes a plan
 | **Instead of** | Refusing only at claim, which the epic requires and allows to be the only check (ER-11) |
 | **Because** | At filing the refusal reaches the filer while the person is still in the conversation, and nothing is filed. At claim it arrives as a failed task, later and elsewhere. The filler already runs on every coding filing and knows the assignee, so the check is one read of that worker's file. The claim check stays for tasks filed before the lock was set |
 | **Accepted** | **A filing that inherits its parent run's settings and meets a lock with other fixed values is refused.** It is never widened and never silently swapped to the worker's values (ER-10: an inherited pick is kept, never widened). So a worker locked to the plan harness takes only filings already on it: from a run on it, or a no-pick filing when the plan harness is the kit default. The refusal returned to the filer names the conflict and says to file to an unlocked worker or tell the person, so the filing model can recover |
-| **Locks in** | The public name `lock:` on a worker's file: fixed values for any server-owned run setting (`harness`, `plan`, `model`) and for `mode`, compared with deep equality, so a Cursor model with other params differs. A mode is the filer's to pick, and a lock is how a worker bounds that pick: `lock: { mode: answer }` refuses an implement filing by name (epic ER-11's refusal, applied to the mode). The refusal reads the same in both places, naming the field, the worker's value and the one asked for |
+| **Locks in** | The public name `lock:` on a worker's file: fixed values for any server-owned run setting (`harness`, `plan`, `model`) and for `mode`, compared with deep equality, so a Cursor model with other params differs. A mode is the filer's to pick, and a lock is how a worker bounds that pick: `lock: { mode: answer }` refuses an implement filing by name (epic ER-11's refusal, applied to the mode), and an old `harnessFeature` row too, since the legacy read turns it into implement before the lock compares. The refusal reads the same in both places, naming the field, the worker's value and the one asked for |
 
 **What would change my mind:** FIX-2894's filler not being handed the assignee. Then the lock
 is checked at claim only, as the epic allows, and this card goes.
@@ -123,14 +123,16 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
   steer a task onto a worker that reviews differently. Accepted because review mode is process,
   not permission: harness, model and plan stay server-written, so no text picks the coder or its
   sandbox ([architect review](https://github.com/fixpoint-labs/flow-state-dev/pull/5606#issuecomment-7105860295)).
-- **The mode is the filer's, bounded twice** (owner's modes design). `codingTaskInput.mode?:
+- **The mode is the filer's, bounded twice** (owner's modes design, registered by FIX-2877 on [#5606](https://github.com/fixpoint-labs/flow-state-dev/pull/5606)). `codingTaskInput.mode?:
   string`, absent meaning the app's default mode. It is filer-written, not server-owned: Lead
   legitimately picks answer or implement, as it picks the feature marker today. It is bounded by
   the app's registered modes, checked at filing (an unknown mode is refused by name, naming the
   registered ones), and by a worker's lock, checked at filing and at claim.
 - **A mode's required input is checked at filing.** `implement` needs `issue`; a filing without
-  it is refused by name, never run in another mode. The check reads what the registered mode
-  declares it needs, so a later mode's requirements are its own.
+  it is refused by name, never run in another mode. The check reads the registered mode's
+  `ModeSpec.requires`, which FIX-2877 owns on [#5606](https://github.com/fixpoint-labs/flow-state-dev/pull/5606) (Shift Manager's implement:
+  `requires: ["issue"]`), and refuses each missing field by name. This spec adds no
+  required-input declaration of its own; a later mode's requirements are its own `requires`.
 - **The mode is frozen at the first claim**, with the rest of the frozen settings ([D1](#d1)),
   and every route (claim, steer, message, door, next attempt, the coding board row) reads the
   frozen mode. A mode removed from the app fails its claimed tasks by name at their next attempt.
@@ -145,6 +147,10 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
   names go with no alias. A stored row with `harnessFeature: { issue }` reads as `mode:
   "implement"` with that issue at its first claim, which freezes `implement`. A malformed marker
   is refused at claim by name, never run as an answer, as today. Nothing writes the key.
+- **The legacy read comes first, then the checks** (coordinator decision). An old marker
+  becomes `mode: "implement"` with its issue before anything compares the mode, so the mode
+  validation and the lock ([D3](#d3)) see the derived mode, never an absent one. A worker locked
+  to `answer` refuses an old feature row by name at claim; it never runs it as an answer.
 - **Fixed boards stay.** Their rows keep `harnessTaskInputSchema` at the top of `input` and don't
   run the coder flow; folding them into `codingTaskInput` would change rows this epic doesn't own.
 - **Read-only is a mark on the `Harness` value,** set by Claude Code's plan harness, never an id
@@ -153,7 +159,8 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
   worktree status and the refs at the start, and after the run fails it if that worktree is
   dirty or a ref the run's worktree created or moved appears. It never reads the common git dir,
   so a concurrent task's branch, a `fetch` or a `gc` never fails it.
-- **Merge order: FIX-2894 and FIX-2877 first.** Shift Manager's `coder.mts` imports
+- **Merge order: FIX-2894 and FIX-2877 ([#5606](https://github.com/fixpoint-labs/flow-state-dev/pull/5606)) first.** FIX-2877 registers the modes
+  this issue validates against (`modes`, `defaultMode`, `ModeSpec` and its `requires`). Shift Manager's `coder.mts` imports
   `harnessFeatureOf`, which this issue removes without editing that file, and FIX-2877's
   `phases.feature` reads the `harnessFeature` key this issue replaces with `mode: "implement"`
   and `issue`; that read moves to the frozen mode. Written in Linear as blocks.
@@ -174,7 +181,7 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
 | A lock that wins over an inherited pick | It would widen or swap a pick nobody made (ER-10) |
 | An isolated read-only repository per plan run | The epic chose scoping: one checkout model, no new store |
 | Matching a resume by `source`; a per-session harness field | [D2](#d2) |
-| A server-owned mode, like the run settings | Lead legitimately picks answer or implement. The registered set and a lock bound the pick instead (owner's modes design) |
+| A server-owned mode, like the run settings | Lead legitimately picks answer or implement. The registered set and a lock bound the pick instead (owner's modes design, registered by FIX-2877 on [#5606](https://github.com/fixpoint-labs/flow-state-dev/pull/5606)) |
 | A child filing inheriting its parent's mode | A mode is the kind of work, like a role; an implement run's follow-up is often a question, and inheriting would run it as implement with no issue |
 | A filer's `doneWhen` or `workspace` on the task | It would widen what a run may do (BP-031) |
 | Refusing a stored `harnessFeature` row at claim (this spec as merged on #5604) | Those rows are real feature work in flight; reading them as implement keeps them running and costs one legacy read (BP-030) |
@@ -229,8 +236,13 @@ facts:* four `byHarness` routes and the `harness` action, by `grep` on `coder-fl
   value named as the three run settings plus the review mode, review never inherited (FIX-2583
   note); FIX-2877's `phases.feature` rename noted; lock ergonomics noted for the implementer.
 - **Merged** on [#5604](https://github.com/fixpoint-labs/flow-state-dev/pull/5604) at `fc3eb81`.
-- **Amendment: modes** (2026-11-23, the owner's modes design) — `mode` plus `issue` replaces the
+- **Amendment: modes** (2026-11-23, the owner's modes design, registered by FIX-2877 on [#5606](https://github.com/fixpoint-labs/flow-state-dev/pull/5606)) — `mode` plus `issue` replaces the
   `feature` field: checked at filing against the registered modes and the mode's required input,
   frozen at the first claim, read by every route, not inherited, lockable; `doneWhen` and
   `workspace` dropped from a task; an old `harnessFeature` row runs as implement. Three goal
   signals (Mode, Mode lock, Legacy feature) and an Examples section added.
+- **Amendment review fold** — the Legacy feature signal asserts the frozen `mode: "implement"`
+  on the run record, so it is red on `main` (twelve of fourteen fail); the legacy read runs
+  before validation and the lock, so a worker locked to `answer` refuses an old feature row;
+  required input is FIX-2877's `ModeSpec.requires` (#5606); figures list the mode; the epic's
+  modes amendment is #5612.

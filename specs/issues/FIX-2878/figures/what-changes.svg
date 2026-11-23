@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 470" role="img" aria-label="Before and after, side by side. Today, on the left: the work claim, a steer, a delivered message and the door each ask the session's worker which harness it names; the model is fixed when the harness value is built; a resume continues whatever session the run row holds; a plan run that writes still succeeds. After, on the right: the harness kit's filler writes harness, model and plan into the task with a marker, dropping what the filer sent, and a stored value without the marker counts as absent; the first claim runs one order, task then worker then kit, checks the lock and the model, and freezes the settings (harness, the effective model, plan, review) on the run record; steer, message, door and the next attempt read them; a model feed carries the model to the harness; a session from before the freeze is cleared at the first claim, and the door refuses one; a read-only run that writes in its own worktree, or creates or moves a ref, fails by name."
+<svg viewBox="0 0 940 470" role="img" aria-label="Before and after, side by side. Today, on the left: the work claim, a steer, a delivered message and the door each ask the session's worker which harness it names; the model is fixed when the harness value is built; a resume continues whatever session the run row holds; a plan run that writes still succeeds. After, on the right: the harness kit's filler writes harness, model and plan into the task with a marker, dropping what the filer sent, and a stored value without the marker counts as absent; the first claim runs one order, task then worker then kit, checks the lock and the model, and freezes the settings (harness, the effective model, plan, review, mode) on the run record; steer, message, door and the next attempt read them; a model feed carries the model to the harness; a session from before the freeze is cleared at the first claim, and the door refuses one; a read-only run that writes in its own worktree, or creates or moves a ref, fails by name."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -66,7 +66,7 @@
     <path class="ln-c" d="M678 96 V112"/>
     <rect class="n-rec" x="448" y="172" width="460" height="44" rx="5"/>
     <text class="t-b" x="460" y="192">Run record: the frozen settings</text>
-    <text class="t-s" x="460" y="208">harness, effective model, plan, review · kept across attempts · no source</text>
+    <text class="t-s" x="460" y="208">harness, effective model, plan, review, mode · kept across attempts · no source</text>
     <path class="ln-a" d="M678 156 V172"/>
     <g id="after-routes">
       <rect class="n-box" x="448" y="244" width="106" height="40" rx="4"/><text class="t-s" x="476" y="268">steer</text>
