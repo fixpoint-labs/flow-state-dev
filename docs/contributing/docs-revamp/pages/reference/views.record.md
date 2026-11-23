@@ -34,6 +34,8 @@ Written by `docs-writer` (sonnet), 2417 words. Scenario: The `roster` view of th
 - After revise round 2, page sha256 5744c254a312: exit 0.
 - After the final fact-check fix, page sha256 13d4b2bda63e: exit 0.
 
+- After the loop (review): at the owner's request, the scopes answer now says the caller is the principal the flow's resolver returns: verified credentials with `authentication.resolvePrincipal`, `body.userId` under the default resolver, so user and org views isolate users only once a resolver is set. No other line changed. 2569 words. Page sha256 dd9b8547d56f.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 413a88a4ec81, and the 21 Reference row(s) pass 6 moved.
@@ -45,6 +47,8 @@ Final fact check of the page as it closed, sha256 5744c254a312: 3 untrue, fixed 
 - useView option `changed`: "A notice to pass as the `changed` hint." Untrue: useView accepts `changed` in its type (UseViewOptions extends ViewCallOptions) but never forwards it. The watchView call passes only `sessionId` and `pollIntervalMs`, and watchView builds its call options from `sessionId` alone. The hint on a watched view comes only from the notice that woke the read, so setting `changed` on `useView` does nothing. It is honoured only by `client.view(ref, input, { changed })`. (packages/react/src/hooks/useView.ts:103-106; packages/client/src/view/view.ts:277,286)
 - A request's `changed` hint "is honoured when `topic` is one of the topics a view answer can return in `topics`". Untrue: `changeOf` checks only that `topic` is a well-formed wire topic (`isWireTopic`: scope `session` with a non-empty string id, or `user` or `org`, with an optional string `resource`). It is not checked against the topics this view's answer returns. It also requires `kind` to be one of the eight listed kinds and 1 to 100 string ids, and those parts of the claim are correct. (packages/engine/src/routes/view-routes.ts:223-229; packages/engine/src/push/socket-session.ts:228-240)
 - `view_answer_not_keyed` message: `View "<name>" declares a key, so its answer must be a list` Untrue: The message has the word key in literal backticks: View "<name>" declares a `key`, so its answer must be a list. A non-string key produces a different message, `View "<name>"'s rows must have distinct string keys; a key is not a string`. The page gives only the repeated-key form for both cases. (packages/engine/src/execution/runView.ts:251,261)
+
+- Re-run after the review edit: fact-checked against `view-routes.ts:81-93`, `defaultBodyUserIdPrincipalResolver.ts:31-43` and `pickPrincipalResolver.ts:21-28`; the earlier claim that the caller never comes from the body was untrue under the default resolver and is corrected on the page and the fact sheet. No untrue claim remains open.
 
 ## 6 · Depth pass
 

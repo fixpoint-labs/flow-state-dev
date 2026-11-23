@@ -48,6 +48,8 @@ Written by `docs-writer` (sonnet), 751 words. Scenario: A help-desk app that ins
 
 - After the loop (review): at the owner's request the page opens with an Experimental caution: kits, `defineKit`, slots and kit options can change between releases. No other line changed. 784 words. Page sha256 81e2f61bcda5.
 
+- After the reconcile edit: the cutover placeholders are replaced with the kits as built. Real imports (`@flow-state-dev/harness-manager/kit`, `@flow-state-dev/workforce/kit`), `harnesses({ workspace })`, a keyed `harnesses` slot with `without(slot, key)`, and the real install-order rule replace the reconcile comments. The three examples type-check with 0 errors in the example files against the workspace package sources; deliberate breaks (`harnesses({})`, `claudeCode({ plan: "yes" })`, an unknown slot) each fail in the example. 878 words. Page sha256 ba07cb14dfd8.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 6030ce3e30d6, and the 8 Reference row(s) pass 6 moved.
@@ -57,6 +59,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 603
 - Post-loop edit: both sentences are the pass-2 answer key's facts: missing required kit → `FlowStateConfigError` naming the gap (kp:59-69, et:289-303); stray folder entries → `ready()` rejects naming them (dk:70-75, et:348-364).
 
 - Re-run after the review edit: the caution states product status, not behaviour; no claim about behaviour changed. No untrue claim remains open.
+
+- Re-run after the reconcile edit: checked against `harness-manager/src/kit/harnesses-kit.ts:52,117-146`, `workforce/src/kit/workforce-kit.ts:136-185`, `claude-code/src/sdk/kit.ts:72-78`, `codex/src/harness.ts:32`, `engine/src/flowstate/kits.ts:66,74-84,172-189` and `core/src/kit/define-kit.ts:59,170`. No untrue claim remains open.
 
 ## 6 · Depth pass
 

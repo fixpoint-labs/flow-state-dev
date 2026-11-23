@@ -50,7 +50,7 @@ A flow installs views in the `views` map of `defineFlow`. An entry that `defineV
 
 ## Which scopes may a view have?
 
-Three: `"session"`, `"user"` and `"org"`. The caller's user and org come from the verified principal, never from the request body, query or headers.
+Three: `"session"`, `"user"` and `"org"`. The caller's user and org are the principal the flow's resolver returns, as for an action. Set `authentication.resolvePrincipal` and they come from the caller's verified credentials. Without it, the default resolver reads `userId` from the request body, so any caller can name any user. User and org views keep users apart only once a resolver is set.
 
 | Scope | Runs | Needs a session | Called with |
 | --- | --- | --- | --- |
