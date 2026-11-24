@@ -85,7 +85,7 @@ async function boot(options: { defaultHarness?: string; named: string; coders?: 
     for (let n = 0; n < 300 && (await stores.request.get(posted.body.request.id))?.status === "in_progress"; n++) await new Promise((r) => setTimeout(r, 10));
   };
   /** The conversation's stored rows, as the coding board reads them: goal and assignee. */
-  const rows = async () => {
+  const tasks = async () => {
     const read = await post(["harnesses", "views", "codingBoard"], { userId: "alice", input: { sessionId: conversation } });
     expect(read.status, JSON.stringify(read.body)).toBe(200);
     return (read.body.output as Array<{ assignee?: string; goal: string }>).map((task) => [task.goal, task.assignee]);
@@ -96,7 +96,7 @@ async function boot(options: { defaultHarness?: string; named: string; coders?: 
     const requests = (await stores.request.list({ sessionId: conversation, withItems: true } as never)) as Array<{ items?: Array<{ type: string; output?: unknown }> }>;
     return requests.flatMap((request) => request.items ?? []).filter((item) => item.type === "tool_output").map((item) => item.output);
   };
-  return { post, conversation, rows, ask, answer, ended };
+  return { post, conversation, tasks, ask, answer, ended };
 }
 
 describe("a coding task a model files from a user's conversation", () => {
@@ -104,26 +104,26 @@ describe("a coding task a model files from a user's conversation", () => {
     it(`goes to the coding worker on the default (${defaultHarness}), whatever worker the model named`, async () => {
       const app = await boot({ defaultHarness, named: "core.cursor" });
       await app.ask("Add a line to the README.\n\nCoding harness: Cursor");
-      expect(await app.rows()).toEqual([["Add a line to the README", expected]]);
+      expect(await app.tasks()).toEqual([["Add a line to the README", expected]]);
     });
   }
 
   it("keeps the model's worker when the kit has no default (control: the default, not the model, moved it)", async () => {
     const app = await boot({ named: "core.cursor" });
     await app.ask("Add a line to the README.");
-    expect(await app.rows()).toEqual([["Add a line to the README", "core.cursor"]]);
+    expect(await app.tasks()).toEqual([["Add a line to the README", "core.cursor"]]);
   });
 
   it("goes to a coding worker that names no harness when none names the default", async () => {
     const app = await boot({ defaultHarness: "codex", named: "core.cursor", coders: { cursor: "harness: cursor\n", plain: "" } });
     await app.ask("Add a line to the README.");
-    expect(await app.rows()).toEqual([["Add a line to the README", "core.plain"]]);
+    expect(await app.tasks()).toEqual([["Add a line to the README", "core.plain"]]);
   });
 
   it("is refused, and nothing is filed, when no coding worker runs the default", async () => {
     const app = await boot({ defaultHarness: "codex", named: "core.cursor", coders: { cursor: "harness: cursor\n" } });
     const outputs = await app.ask("Add a line to the README.");
-    expect(await app.rows()).toEqual([]);
+    expect(await app.tasks()).toEqual([]);
     expect(outputs).toContainEqual({
       ok: false,
       error: `no_default_coder: a coding task runs on this app's default coder, "codex", and no coding worker on the roster runs it. Nothing was filed.`,
@@ -138,7 +138,7 @@ describe("a coding task a model files from a user's conversation", () => {
         input: { goal: "Add a line to the README", assignee: "core.cursor", held: true },
       }),
     );
-    expect(await app.rows()).toEqual([["Add a line to the README", "core.cursor"]]);
+    expect(await app.tasks()).toEqual([["Add a line to the README", "core.cursor"]]);
   });
 
   it("is told the default coder in the coordinator's context, beside the readiness rows", async () => {

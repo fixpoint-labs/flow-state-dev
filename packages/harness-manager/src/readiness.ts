@@ -307,10 +307,10 @@ export function harnessReadinessCapability(readiness: HarnessReadinessRead, defa
       context: {
         context: [
           async () => {
-            const rows = await readiness.read();
-            const label = rows.find((row) => row.harness === defaultHarness)?.label;
+            const entries = await readiness.read();
+            const label = entries.find((entry) => entry.harness === defaultHarness)?.label;
             const named = label === undefined ? "" : `\n\n${defaultCoderLine(label)}`;
-            return { harnessReadiness: `${formatHarnessReadiness(rows)}${named}\n\n${READINESS_GUIDANCE}` };
+            return { harnessReadiness: `${formatHarnessReadiness(entries)}${named}\n\n${READINESS_GUIDANCE}` };
           },
         ],
       },

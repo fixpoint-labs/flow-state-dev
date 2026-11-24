@@ -40,8 +40,8 @@ describe("a model's task for a worker whose flow names its no-pick assignee", ()
     const host = bootBoardHost({ judgment: filing("eng.tasker"), registration: { tasker: { noPickAssignee } } });
     try {
       await ask(host, "pm");
-      const rows = await host.rows("alice");
-      expect(rows.map((row) => [row.goal, row.assignee, row.status])).toEqual([["Write the notes", "eng.writer", "completed"]]);
+      const tasks = await host.rows("alice");
+      expect(tasks.map((task) => [task.goal, task.assignee, task.status])).toEqual([["Write the notes", "eng.writer", "completed"]]);
       expect(host.runs.map((run) => run.worker)).toEqual(["eng.writer"]);
       // Decided on the filer's own turn, from its server-written session.
       expect(asked).toEqual(["pm"]);
@@ -54,7 +54,7 @@ describe("a model's task for a worker whose flow names its no-pick assignee", ()
     const host = bootBoardHost({ judgment: filing("eng.tasker") });
     try {
       await ask(host, "pm");
-      expect((await host.rows("alice")).map((row) => row.assignee)).toEqual(["eng.tasker"]);
+      expect((await host.rows("alice")).map((task) => task.assignee)).toEqual(["eng.tasker"]);
     } finally {
       await host.dispose();
     }
@@ -64,7 +64,7 @@ describe("a model's task for a worker whose flow names its no-pick assignee", ()
     const host = bootBoardHost({ judgment: filing("eng.tasker"), registration: { tasker: { noPickAssignee: async () => undefined } } });
     try {
       await ask(host, "pm");
-      expect((await host.rows("alice")).map((row) => row.assignee)).toEqual(["eng.tasker"]);
+      expect((await host.rows("alice")).map((task) => task.assignee)).toEqual(["eng.tasker"]);
     } finally {
       await host.dispose();
     }
@@ -96,7 +96,7 @@ describe("a model's task for a worker whose flow names its no-pick assignee", ()
       const filed = await host.act("alice", conv, "createTask_tasks", { goal: "Write the notes", assignee: "eng.tasker" });
       expect(filed.error, messageOf(filed.error)).toBeUndefined();
       await host.settled();
-      expect((await host.rows("alice")).map((row) => row.assignee)).toEqual(["eng.tasker"]);
+      expect((await host.rows("alice")).map((task) => task.assignee)).toEqual(["eng.tasker"]);
     } finally {
       await host.dispose();
     }
@@ -107,7 +107,7 @@ describe("a model's task for a worker whose flow names its no-pick assignee", ()
     const host = bootBoardHost({ judgment: filing("lead"), registration: { coordinator: { noPickAssignee: async () => "pm" } } });
     try {
       await ask(host, "boss");
-      expect((await host.rows("alice")).map((row) => row.assignee)).toEqual(["lead"]);
+      expect((await host.rows("alice")).map((task) => task.assignee)).toEqual(["lead"]);
     } finally {
       await host.dispose();
     }
