@@ -62,7 +62,8 @@ land on one concept page; one changeset may touch three.
   **Upgrading** page, not on the affected page. The plan always has three rows for it: create
   `reference/upgrading/<date>` (today's date, the branch's); remove the previous release's
   Upgrading page; and repoint the sidebar entry, every inbound link and the client redirects in
-  `apps/docs/docusaurus.config.ts` so each earlier `reference/upgrading/<date>` address lands on
+  `apps/docs/redirects.mjs` (its `UPGRADING` constant, and the removed page's address added to
+  `EARLIER_UPGRADING`) so each earlier `reference/upgrading/<date>` address lands on
   the new page (the build fails on a broken link). Every changeset a caller must act on is listed against the create row. The page's
   shape and what earns a row are
   [`release-docs.md`](../../../docs/contributing/release-docs.md#the-upgrading-page) → "The

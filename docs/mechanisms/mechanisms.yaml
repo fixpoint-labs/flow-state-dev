@@ -362,7 +362,7 @@ mechanisms:
     overlaps:
       - { id: streaming, relation: distinct-jobs, note: "streaming sends a request's or a session's items themselves; push delivery sends only that a topic changed, and the client reads." }
     status: canonical
-    doc: apps/docs/guides/realtime.md
+    doc: apps/docs/docs/build/live-updates.md
 
   # ── Transports and hosts ──────────────────────────────────────────────────
   - id: inbound-transport

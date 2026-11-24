@@ -89,7 +89,7 @@ keeps the older releases; the page links to them instead of repeating them.
 - **The old address keeps working.** Deleting the previous page breaks every link to it, and the
   site build fails on a broken link (`onBrokenLinks: "throw"`). In the same pass, point the sidebar
   entry and every inbound link at the new page, and repoint the client redirects in
-  `apps/docs/docusaurus.config.ts` (`@docusaurus/plugin-client-redirects`): every earlier
+  `apps/docs/redirects.mjs` (set `UPGRADING`, add the removed page's address to `EARLIER_UPGRADING`): every earlier
   `reference/upgrading/<date>` address, the one just removed included, goes to the new page.
 - **The first Upgrading page** was written at the docs cutover, from the changesets pending then.
 

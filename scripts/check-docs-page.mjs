@@ -1,5 +1,5 @@
 /**
- * Mechanical checks for the docs site's pages (`apps/docs/{docs,guides}/**`), and the check that
+ * Mechanical checks for the docs site's pages (`apps/docs/docs/**`), and the check that
  * each page went through every pass of the writing loop.
  *
  * Page rules: prose word count against the budget for the page's `type`, the words the writing
@@ -63,7 +63,7 @@ import { fileURLToPath } from "node:url";
 
 // The site's pages. Their records and fact sheets stay in the contributor folder: the page
 // `apps/docs/docs/<rel>.md` has `docs/contributing/docs-revamp/pages/<rel>.record.md`.
-const PAGES = ["apps/docs/docs", "apps/docs/guides"];
+const PAGES = ["apps/docs/docs"];
 const RECORDS = "docs/contributing/docs-revamp/pages";
 const SITEMAP = "specs/epics/FIX-2696/SITEMAP";
 // A release's Upgrading page is written by the release docs pass, not the page loop: no record.
