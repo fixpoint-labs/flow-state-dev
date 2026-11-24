@@ -87,6 +87,30 @@ describe("the installation a task's input check resolves", { timeout: 60_000 }, 
     }
   });
 
+  // A refused hire used to register its flows' doors as they resolved, so a
+  // second installation given a live one's prebuilt flow made that door shared,
+  // and the live installation's raw handles failed closed.
+  it("leaves a live installation's door its own when a second hire with the same prebuilt flow is refused", async () => {
+    const { ledger, entry, harness } = await fresh();
+    const installationModule = await import("../src/workers/installation");
+    const register = await import("../src/workers/register");
+    const a = harness.bootBoardHost();
+    try {
+      const shared = a.installation.workerFlows().tasker!.flow;
+      const b = installationModule.createWorkerInstallation({
+        standardWorkers: harness.boardWorkers(),
+        workerFlows: { tasker: { flow: shared as never, roles: ["contributor"] } }
+      });
+      expect(() => register.hireWorkforce(b)).toThrow();
+      const door = entry.conversationTaskDoorOf(shared)!;
+      const session = {};
+      expect(ledger.noteSourceOfDoor(session, door)).toBe(ledger.taskInputSourceOf(a.installation));
+      expect(ledger.sourceOfSession(session)).toBe(ledger.taskInputSourceOf(a.installation));
+    } finally {
+      await a.dispose();
+    }
+  });
+
   it("keeps nothing it can be asked to list: every lookup is keyed, and an unknown door resolves none", async () => {
     const { ledger } = await fresh();
     // Weak maps only: a dropped installation, and its flows' doors, are not kept by the registry.

@@ -85,9 +85,8 @@ import { WORKER_USAGE_RESOURCE, workerSpendHook, workerUsageCollection } from ".
 import { routineResourcesOf, type RoutineResources } from "../routines/routine-resources";
 import { routineSeedOf } from "../routines/routines-options";
 import { withSessionFields, type SessionFields } from "./session-fields";
-import { noteTaskInputSource, registerTaskDoor, registerTaskInputSource, type TaskInputSource } from "../task-input/checked-ledger";
+import { noteTaskInputSource, registerTaskInputSource, type TaskInputSource } from "../task-input/checked-ledger";
 import { declarationOfFlow } from "../task-input/declaration";
-import { conversationTaskDoorOf } from "../worker-task-entry";
 
 export { verifiedWorkerOf } from "./verified-worker";
 
@@ -503,17 +502,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
   };
   let resolvedFlows: Record<string, ResolvedWorkerFlow> | undefined;
-  const workerFlows = (): Record<string, ResolvedWorkerFlow> => {
-    if (resolvedFlows === undefined) {
-      resolvedFlows = resolveWorkerFlows(workerFlowsOption());
-      // Each flow's `work` door names this installation, so its claim finds what its tasks take (FIX-2894).
-      for (const { flow } of Object.values(resolvedFlows)) {
-        const door = conversationTaskDoorOf(flow);
-        if (door !== undefined) registerTaskDoor(door, taskInputSource);
-      }
-    }
-    return resolvedFlows;
-  };
+  const workerFlows = (): Record<string, ResolvedWorkerFlow> =>
+    (resolvedFlows ??= resolveWorkerFlows(workerFlowsOption()));
 
   // The settings a user sees on a worker's roster row: the ones its flow's
   // registration names, read when a row is, since the flows are read lazily.

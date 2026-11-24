@@ -24,6 +24,8 @@ import { setRoutineSeed, setRoutinesReach } from "../routines/routines-options";
 import { assertPollCadence } from "../subscriptions/poll";
 import { defineScheduledWork } from "../schedules/scheduled-work";
 import type { WorkerInstallation } from "./installation";
+import { registerTaskDoor, taskInputSourceOf } from "../task-input/checked-ledger";
+import { conversationTaskDoorOf } from "../worker-task-entry";
 import { defineWorkerRosterFlow } from "./roster-flow";
 import { standardWorkerFlow, workerDisplayName } from "./standard-workers";
 
@@ -142,6 +144,15 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
     { resources: routines.resources, schedules: scheduled.schedules, seed: routines.seed, view: routines.view }
   );
   copies.push(roster() as unknown as FlowInstance);
+  // Only a hire that succeeded names its flows' doors (FIX-2894): a refused one,
+  // which may share a prebuilt flow with a live installation, never takes its door.
+  const source = taskInputSourceOf(installation);
+  if (source !== undefined) {
+    for (const { flow } of Object.values(installation.workerFlows())) {
+      const door = conversationTaskDoorOf(flow);
+      if (door !== undefined) registerTaskDoor(door, source);
+    }
+  }
   return copies;
 }
 
