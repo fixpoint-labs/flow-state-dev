@@ -158,6 +158,9 @@ describe("the sidebar", () => {
     fireEvent.click(teammate("writer"));
     await tell("writer", "Publish the draft.");
     await waitFor(() => expect(teammate("writer").querySelector("[data-needs-you]")).toBeTruthy());
+    // Its bot says it too: the needs-you state, drawn on the highlighter whatever its team color.
+    expect(teammate("writer").querySelector<HTMLElement>("[data-avatar]")?.dataset.state).toBe("needs");
+    expect(teammate("researcher").querySelector<HTMLElement>("[data-avatar]")?.dataset.state).not.toBe("needs");
   });
 });
 

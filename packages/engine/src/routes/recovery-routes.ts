@@ -18,6 +18,7 @@ import {
   legacySessionlessResponse,
   parseJsonBody,
   SSE_HEADERS,
+  traceRequestAllowed,
   unknownRequestResponse
 } from "./route-utils";
 import { namesSession } from "../context/record-session";
@@ -278,7 +279,9 @@ export async function handleContinueRequest(
     // route) opts the caller's inline SSE response into trace-channel items —
     // the DevTool's per-row Continue needs `block_trace`/`router_decision`/
     // `state_snapshot` from the resumed portion for its Trace tab.
-    const includeTrace = new URL(request.url).searchParams.get("include") === "trace";
+    // Honoured only while trace observability is on (`traceRequestAllowed`).
+    const includeTrace =
+      new URL(request.url).searchParams.get("include") === "trace" && traceRequestAllowed();
     const handle = await ctx.host.continueRequest({
       requestId: route.requestId,
       includeTrace,

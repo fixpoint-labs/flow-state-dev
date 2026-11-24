@@ -43,7 +43,7 @@ describe("the model field", () => {
     ]);
   });
 
-  it("is the only setting either form offers: no coding harness of a teammate's own", () => {
+  it("offers, in either form, no coding harness of a teammate's own", () => {
     render(<EditForm name="Lead" choices={CHOICES} current={{ model: "openai/gpt-6-luna" }} onSave={vi.fn()} onCancel={() => {}} />);
     render(<HireForm choices={CHOICES} defaults={{ model: "openai/gpt-6-luna" }} onHire={vi.fn()} onCancel={() => {}} />);
     expect(screen.queryAllByLabelText(/coding harness/i)).toEqual([]);
@@ -58,6 +58,25 @@ describe("the model field", () => {
     fireEvent.change(screen.getByLabelText("Model for Lead"), { target: { value: "anthropic/claude-opus-5-5" } });
     fireEvent.click(save);
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ settingsPatch: { model: "anthropic/claude-opus-5-5" } }));
+  });
+
+  it("picks the teammate's look, a bot face and a color, and saves only what changed as its icon and color", async () => {
+    const onSave = vi.fn(async () => {});
+    render(<EditForm name="Lead" choices={CHOICES} current={{ model: "openai/gpt-6-luna", icon: "pip", color: "amber" }} onSave={onSave} onCancel={() => {}} />);
+    const faces = screen.getByRole("radiogroup", { name: "Face for Lead" });
+    const colors = screen.getByRole("radiogroup", { name: "Color for Lead" });
+    expect(screen.getAllByRole("radio").length).toBe(11 + 8);
+    // Each of the eleven faces is a bot of its own: no two draw the same.
+    expect(new Set([...faces.querySelectorAll("[data-avatar] svg")].map((svg) => svg.innerHTML)).size).toBe(11);
+    expect(faces.querySelector("[aria-checked=true]")?.getAttribute("aria-label")).toBe("pip");
+    // Every face is drawn in the color picked, so the pick is seen as it will look.
+    fireEvent.click(screen.getByRole("radio", { name: "teal" }));
+    expect([...faces.querySelectorAll("[data-avatar]")].map((a) => a.getAttribute("data-avatar"))).toEqual(Array(11).fill("teal"));
+    fireEvent.click(screen.getByRole("radio", { name: "hex" }));
+    expect(screen.getByRole("radio", { name: "hex" }).getAttribute("aria-checked")).toBe("true");
+    expect(colors.querySelector("[aria-checked=true]")?.getAttribute("aria-label")).toBe("teal");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ settingsPatch: { icon: "hex", color: "teal" } }));
   });
 
   it("still shows a teammate's own model the lab's list doesn't name", () => {
