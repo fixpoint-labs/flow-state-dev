@@ -23,12 +23,10 @@ The PR author picks the branch name and the label, so the check catches accident
 control. The same goes for the manifest that turns the release gate green. To make either a hard
 gate, put `apps/docs/` and `packages/*/README.md` under CODEOWNERS.
 
-Until the docs cutover, each published package has two READMEs: the long `packages/<dir>/README.md`
-on npm, and the cut copy that replaces it at cutover, under
-[`docs-revamp/readmes/`](./docs-revamp/readmes). A PR that edits a long README edits its cut copy
-too. `scripts/check-cut-readmes.mjs` (CI's **Export check** job) can't tell whether an edit reaches
-what the short copy says, so it fails a PR that edits the long one alone, and holds each cut copy to its
-shape: an install line, one example under 20 lines, and a link to the package's API reference.
+Each published package's `packages/<dir>/README.md` is short: an install line, one example under 20
+lines, and a link to the package's section of the generated API reference. The docs cutover moved
+these into place from `docs-revamp/readmes/`; `scripts/check-cut-readmes.mjs` held the two copies in
+step until then and has nothing left to compare.
 
 ## In a normal PR
 
@@ -94,8 +92,7 @@ keeps the older releases; the page links to them instead of repeating them.
   entry and every inbound link at the new page, and repoint the client redirects in
   `apps/docs/docusaurus.config.ts` (`@docusaurus/plugin-client-redirects`): every earlier
   `reference/upgrading/<date>` address, the one just removed included, goes to the new page.
-- **Before the docs cutover** the site has no Reference section, and a docs pass writes no Upgrading
-  page. The first is written at cutover, from the changesets pending then.
+- **The first Upgrading page** was written at the docs cutover, from the changesets pending then.
 
 ## Setup (once)
 

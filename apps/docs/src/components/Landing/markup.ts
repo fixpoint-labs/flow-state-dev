@@ -17,7 +17,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 </a>
 <div class="fs-doors" role="group" aria-label="Choose your door"><a href="https://www.flow-state.build">For everyone <span>.build</span></a><a class="on" href="/" aria-current="page">For developers <span>.dev</span></a></div>
 <nav class="fs-nav" aria-label="Main" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 22px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12.5px; font-weight: 500;">
-<a href="/docs/intro" style="padding: 12px 0;">Docs</a>
+<a href="/docs/start/what-flow-state-is" style="padding: 12px 0;">Docs</a>
 <a href="#starters" style="padding: 12px 0;">Starters</a>
 <a href="https://github.com/fixpoint-labs/flow-state-dev" style="padding: 12px 0;">GitHub ↗</a>
 </nav>
@@ -25,7 +25,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <summary aria-label="Menu"><svg viewBox="0 0 20 14" aria-hidden="true" style="display: block; width: 20px; height: 14px;"><path d="M0 1 H20 M0 7 H20 M0 13 H20" stroke="currentColor" stroke-width="1.8"></path></svg></summary>
 <div class="fs-menu-panel">
 <nav class="fs-nav" aria-label="Main">
-<a href="/docs/intro">Docs</a>
+<a href="/docs/start/what-flow-state-is">Docs</a>
 <a href="#starters">Starters</a>
 <a href="https://github.com/fixpoint-labs/flow-state-dev">GitHub ↗</a>
 </nav>
@@ -47,7 +47,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <p class="fs-mob" style="margin: 0; font-size: 16.5px; line-height: 1.6; color: #cbc5b5;">Your own harness, from one agent to a whole workforce, on any model, at a cost you control.</p>
 <div class="fs-hero-ctas" style="display: flex; flex-wrap: wrap; gap: 10px;">
 <a class="fs-btn fs-btn-bone fs-btn-mark" href="#starters">Pick a starter →</a>
-<a class="fs-btn fs-btn-ghost" href="/docs/intro">Read the docs</a>
+<a class="fs-btn fs-btn-ghost" href="/docs/start/what-flow-state-is">Read the docs</a>
 </div>
 <div class="fs-hero-install" style="display: flex; flex-direction: column; gap: 8px; padding-top: 4px;">
 <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10.5px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #8d8777;">Or add it to an app you have</span>
@@ -210,7 +210,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <div class="fs-p fs-l3" style="border-top: 1px solid rgba(27,26,21,.25); padding-top: 8px;">overnight: 2 two-way-door calls made · ready for review</div>
 </div>
 </article>
-<div><a class="fs-btn fs-btn-line" href="/docs/intro">See what else you can build →</a></div>
+<div><a class="fs-btn fs-btn-line" href="/docs/start/what-flow-state-is">See what else you can build →</a></div>
 </div>
 </section>
 
@@ -283,7 +283,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #57544a;">Flows · blocks</span>
 </div>
 <p style="margin: 0; font-size: 14.5px; line-height: 1.6; color: #3d3a32; max-width: 660px;">Most of the time you won't touch the backend. When your product needs something different, configure a ready-made block, write a custom flow, or turn any flow into a worker. Nothing is a fixed slot. And because it's all built on the same foundation, you can run it as its own app or add it to a web app you already have.</p>
-<div><a class="fs-btn fs-btn-line" href="/docs/intro">See how flows work →</a></div>
+<div><a class="fs-btn fs-btn-line" href="/docs/start/what-flow-state-is">See how flows work →</a></div>
 </div>
 </section>
 
@@ -407,7 +407,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <h2 id="cta-title" style="margin: 0; font-size: 46px; line-height: 1.02; letter-spacing: -0.04em; font-weight: 700; max-width: 720px; text-wrap: pretty;">Pick a starter. Make it yours.</h2>
 <div style="display: flex; flex-wrap: wrap; gap: 10px;">
 <a class="fs-btn fs-btn-ink" href="#starters">Pick a starter →</a>
-<a class="fs-btn fs-btn-line" href="/docs/getting-started/quick-start">Read the quick start</a>
+<a class="fs-btn fs-btn-line" href="/docs/start/run-a-starter">Read the quick start</a>
 <a class="fs-btn fs-btn-line" href="https://github.com/fixpoint-labs/flow-state-dev">GitHub ↗</a>
 </div>
 </div>
@@ -415,8 +415,8 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 
 <footer style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px 24px; padding: 18px 28px; border-top: 1px solid #1b1a15; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; color: #57544a;">
 <nav class="fs-nav" aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 4px 20px;">
-<a href="/docs/intro" style="padding: 12px 0;">Docs</a>
-<a href="/docs/getting-started/quick-start" style="padding: 12px 0;">Quick start</a>
+<a href="/docs/start/what-flow-state-is" style="padding: 12px 0;">Docs</a>
+<a href="/docs/start/run-a-starter" style="padding: 12px 0;">Quick start</a>
 <a href="https://github.com/fixpoint-labs/flow-state-dev" style="padding: 12px 0;">GitHub ↗</a>
 </nav>
 <span>© 2026 Fixpoint Labs, LLC</span>
