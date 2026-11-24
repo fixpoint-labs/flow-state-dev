@@ -41,6 +41,7 @@ import {
 } from "../src/index";
 import { claimedTask } from "../src/conversation-board/held-task";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
+import { taskInputSchema } from "../src/task-input/declaration";
 import type { WorkerManifest } from "../src/manifest";
 import { PROJECT_ENTRY_RESOURCES } from "../src/projects/project-address";
 import type { WorkerInstallation } from "../src/workers/installation";
@@ -85,7 +86,7 @@ function filerFlow(installation: WorkerInstallation) {
 type Asked = { state: Record<string, unknown>; input: unknown; answer: unknown };
 
 /** A delegate that takes a task: its turn asks the run source, as a coding run's would, and keeps the answer. */
-function takerFlow(installation: WorkerInstallation, asked: Asked[], source: RunSource) {
+function takerFlow(installation: WorkerInstallation, asked: Asked[], source: RunSource, project?: "required") {
   const turn = handler({
     name: "taker-turn",
     inputSchema: doorInput,
@@ -104,7 +105,16 @@ function takerFlow(installation: WorkerInstallation, asked: Asked[], source: Run
     session: installation.session(),
     resources: { ...installation.resources },
     actions: { respond: { block: turn, userMessage: (i: { message: string }) => i.message } },
-    task: { actions: { work: workerTaskEntry({ name: "taker-task", turn }) } }
+    // A flow whose tasks work in a project's files says so on its work entry (FIX-2894).
+    task: {
+      actions: {
+        work: workerTaskEntry({
+          name: "taker-task",
+          turn,
+          ...(project === undefined ? {} : { inputSchema: taskInputSchema(z.record(z.string(), z.unknown()), { project }) })
+        })
+      }
+    }
   } as never);
 }
 
@@ -115,7 +125,7 @@ const standardWorkers: WorkerManifest[] = [
 ];
 
 /** Boot the host. `checkouts` is handed to `projectWorkspace()`, the source every delegate's turn asks. */
-async function boot(options: { checkouts?: readonly ProjectCheckout[]; needsProject?: boolean; source?: RunSource } = {}) {
+async function boot(options: { checkouts?: readonly ProjectCheckout[]; project?: "required"; source?: RunSource } = {}) {
   const asked: Asked[] = [];
   const source = options.source ?? (options.checkouts === undefined ? projectWorkspace() : projectWorkspace({ checkouts: options.checkouts }));
   const projects = defineProjectBlocks();
@@ -130,7 +140,7 @@ async function boot(options: { checkouts?: readonly ProjectCheckout[]; needsProj
     }),
     flows: (installation) => ({
       filer: { flow: filerFlow(installation), roles: ["manager"] },
-      taker: { roles: ["contributor"], flow: takerFlow(installation, asked, source), needsProject: options.needsProject === true },
+      taker: { roles: ["contributor"], flow: takerFlow(installation, asked, source, options.project) },
       [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" })
     }),
     models: { generators: { "coordinator-judgment": judgment } }
@@ -324,7 +334,7 @@ describe("a task for a flow that needs a project", () => {
   };
 
   it("is refused at filing from a conversation with no project: no row, no run, and the refusal says how to settle one", async () => {
-    const h = await boot({ needsProject: true });
+    const h = await boot({ project: "required" });
     const { filed, rows } = await fileFrom(h, await h.plainConversation("alice"));
     expect(filed).toMatchObject({ ok: false });
     expect(filed.error).toMatch(/^no_project: /);
@@ -337,7 +347,7 @@ describe("a task for a flow that needs a project", () => {
   });
 
   it("files and runs in the conversation's project once it has one", async () => {
-    const h = await boot({ needsProject: true });
+    const h = await boot({ project: "required" });
     await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
     const { filed } = await fileFrom(h, await h.projectConversation("alice", storefront));
     expect(filed).toMatchObject({ ok: true });
@@ -345,7 +355,7 @@ describe("a task for a flow that needs a project", () => {
   });
 
   it("files a task that names a project from a conversation with none", async () => {
-    const h = await boot({ needsProject: true });
+    const h = await boot({ project: "required" });
     await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
     const { filed } = await fileFrom(h, await h.plainConversation("alice"), { input: { project: storefront } });
     expect(filed).toMatchObject({ ok: true });
@@ -353,15 +363,15 @@ describe("a task for a flow that needs a project", () => {
   });
 
   it("files from a workstream's conversation, which works in the workstream's project", async () => {
-    const h = await boot({ needsProject: true });
+    const h = await boot({ project: "required" });
     await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
     const run = await h.file("alice", await h.workstreamConversation("alice", storefront, "checkout"), {}, "filer");
     expect(run.answer).toEqual({ kind: "repo", repo: STOREFRONT_REPO, projectId: "storefront" });
   });
 
   // A host whose runs always work in one fixed repository has somewhere to work for every task, so its
-  // coding flow leaves `needsProject` off and is never refused at filing.
-  it("is never refused on a host with one fixed repository, which leaves needsProject off", async () => {
+  // coding flow declares no project requirement and is never refused at filing.
+  it("is never refused on a host with one fixed repository, whose flow requires no project", async () => {
     const h = await boot({ source: () => ({ kind: "repo", repo: STOREFRONT_REPO }) });
     const { filed } = await fileFrom(h, await h.plainConversation("alice"));
     expect(filed).toMatchObject({ ok: true });
@@ -370,7 +380,7 @@ describe("a task for a flow that needs a project", () => {
 
   // A name in the wrong shape still names a project: the run refuses it with what a name looks like.
   it("files a task naming a project by its id alone, and the run refuses it as the backstop", async () => {
-    const h = await boot({ needsProject: true });
+    const h = await boot({ project: "required" });
     const { filed } = await fileFrom(h, await h.plainConversation("alice"), { input: { project: "storefront" } });
     expect(filed).toMatchObject({ ok: true });
     expect(h.asked.map((run) => run.answer)).toEqual([expect.objectContaining({ kind: "refused", reason: "no-project" })]);

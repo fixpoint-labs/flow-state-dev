@@ -39,8 +39,6 @@ export interface WorkerFlowBuilder {
   readonly roles: readonly WorkerRole[] | undefined;
   /** The flow's settings a user may see on the roster; empty when it names none. */
   readonly showSettings: readonly string[];
-  /** Whether the flow's tasks work in a project's files, so a task filed with none is refused. */
-  readonly needsProject: boolean;
 }
 
 /**
@@ -53,24 +51,33 @@ export interface WorkerFlowBuilder {
  *   `manager` (runs its delegation board on `dispatch`, from
  *   `defineSessionBoard`). The hire checks each role's entries, and refuses a
  *   role's piece on a flow that doesn't declare it. `showSettings` names the
- *   flow's settings a user may see on the roster. `needsProject` says its
- *   tasks work in a project's files, as a coding run does: a task for one of
- *   its workers filed with no project is refused at filing (`no_project`).
+ *   flow's settings a user may see on the roster. Whether its tasks need a
+ *   project is its `work` entry's `inputSchema` (`taskInputSchema(schema, { project })`).
  * @returns An entry for `createWorkerInstallation({ workerFlows })`, and for
  *   the `workerFlows` map `fsdev gen` writes.
  */
 export function workerFlow(
   build: (installation: WorkerInstallation) => unknown,
-  options: { standardOnly?: boolean; roles?: readonly WorkerRole[]; showSettings?: readonly string[]; needsProject?: boolean } = {}
+  options: { standardOnly?: boolean; roles?: readonly WorkerRole[]; showSettings?: readonly string[] } = {}
 ): WorkerFlowBuilder {
+  // FIX-2894; BP-030: a removed option is refused by name, never ignored.
+  if (Object.hasOwn(options, "needsProject")) throw needsProjectRemoved("workerFlow(...)");
   return {
     [BUILDER]: true,
     build,
     standardOnly: options.standardOnly === true,
     roles: options.roles === undefined ? undefined : [...options.roles],
-    showSettings: [...(options.showSettings ?? [])],
-    needsProject: options.needsProject === true
+    showSettings: [...(options.showSettings ?? [])]
   };
+}
+
+// FIX-2894.
+/** The refusal for the removed `needsProject` option: the requirement moved onto the flow's `work` entry. */
+export function needsProjectRemoved(where: string): Error {
+  return new Error(
+    `${where}: \`needsProject\` is gone. Declare it on the flow's work entry: ` +
+      `workerTaskEntry({ ..., inputSchema: taskInputSchema(schema, { project: "required" }) }).`
+  );
 }
 
 /** Whether a `workerFlows` entry is a {@link workerFlow} builder. */

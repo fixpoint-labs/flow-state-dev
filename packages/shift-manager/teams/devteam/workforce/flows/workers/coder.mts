@@ -100,6 +100,7 @@ import {
   projectWorkspaceCapability,
   startOwedSteerTurn,
   steerTurnEntry,
+  taskInputSchema,
   workerMessagesResources,
   workerTaskEntry,
   type MessageReceived,
@@ -194,6 +195,13 @@ export interface CoderWorkerFlowOptions {
    * a run works in its project's repository or on its project's files.
    */
   workspace: WorkspaceConfig | WorkspaceHost;
+  // FIX-2894.
+  /**
+   * `"required"`: a task for a coder works in a project's files, so one filed
+   * with no project to work in is refused at filing (`no_project`). Set it on
+   * a projects workspace; a fixed repository always has somewhere to work.
+   */
+  project?: "required";
   /**
    * Where an answer task works: a workspace host whose source is
    * `projectWorkspace()`, so a task works in its project and is refused with
@@ -431,7 +439,11 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     // The one door: any session's tasks, handed over under its board's id.
     task: {
       actions: {
-        work: workerTaskEntry({ name: `${CODER_FLOW}-work`, block: byTask }),
+        work: workerTaskEntry({
+          name: `${CODER_FLOW}-work`,
+          block: byTask,
+          ...(options.project === undefined ? {} : { inputSchema: taskInputSchema(z.record(z.string(), z.unknown()), { project: options.project }) }),
+        }),
       },
     },
   } as never);

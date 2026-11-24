@@ -55,7 +55,7 @@ It comes down to the unassigned task: refusing moves leaves it with no way onto 
 |---|---|
 | **Instead of** | The whole schema with server-owned fields marked read-only, or a short text summary |
 | **Because** | A model files from what it reads. A field it may not write is one it will try to write, and the value is dropped without a word. JSON Schema is what a model's tool parameters already use, and the issue asks for it |
-| **Locks in** | `input` on a delegate row is public: `{ schema, project }` or `null`. The schema is JSON Schema draft-07, fully inlined, with no `$ref` or `definitions`. It is the filer's view, so it can differ from the type code imports (`z.infer` of the declared schema). A rule a JSON Schema can't express (a `refine`, a `check`, a `refuse`) reaches the model only through the field's `.describe()` text, which flow authors must write |
+| **Locks in** | `inputSchema` on a delegate row is public: `{ jsonSchema, project }` or `null` (named `inputSchema`, not `input`, by the owner on the implementation PR: it is the schema a task's input is checked against, not an input; the builder is `taskInputSchema` and the `workerTaskEntry` option `inputSchema`, for the same reason). The schema is JSON Schema draft-07, fully inlined, with no `$ref` or `definitions`. It is the filer's view, so it can differ from the type code imports (`z.infer` of the declared schema). A rule a JSON Schema can't express (a `refine`, a `check`, a `refuse`) reaches the model only through the field's `.describe()` text, which flow authors must write |
 
 ![D3. What listDelegates shows: the filer's fields as JSON Schema, chosen, beside the whole schema with server fields marked. Decides it: a model tries to write what it reads. Price: the shown shape differs from the code type. Locks in input on a delegate row; flips if models ignore read-only marks reliably](figures/d3-shape.svg)
 
@@ -127,6 +127,16 @@ It comes down to what a model does with a field it reads: it writes it.
   change a filer's field (FIX-2878 writes the default mode) and returns the input to store.
 - **The hooks are handed** the request's context, the assignee, and the assignee's worker (id
   and config, read per call). FIX-2878's lock needs the config; its D3 flips without it.
+- **At claim, the running entry is the authority** (implementation PR, review rounds). For every
+  `work` entry, whether it declares an input schema or not, the flow the hand-over recorded on
+  the session (`taskFlow`) and the worker, read once for the claim, must both name the flow whose
+  entry is running, or the attempt fails, `Nothing ran.` A session that records no `taskFlow`
+  fails too, except a workstream's (its readonly, birth-set `workstream`): its opener writes no
+  `taskFlow`, and the engine binds the session to the flow it runs on. A hand-over that resolves
+  no flow is refused by name, so every session it opens records one. BP-030: a delegate session
+  born before this change without `taskFlow` exists only where that hand-over resolved no flow
+  (its worker wasn't reachable then); its next claim fails with the named refusal, which is
+  accepted.
 - **The claim parses only the schema,** after `stored`, and hands the worker block the parsed
   input. A failure fails the attempt by name with `Nothing ran.`, and the block never runs.
   `check` and the project requirement run only at filing; FIX-2878's claim checks are its own.
@@ -147,7 +157,7 @@ It comes down to what a model does with a field it reads: it writes it.
   unchecked until assigned ([D2](#d2)).
 - **Shift Manager's `coder.mts`** moves its `needsProject` into its work entry's declaration if
   this lands before FIX-2877 deletes the file. Whichever merges second rebases.
-- **`createTask`'s description** tells the model to read a delegate's `input` with `listDelegates`.
+- **`createTask`'s description** tells the model to read a delegate's `inputSchema` with `listDelegates`.
 
 ## Considered and dropped
 
@@ -157,7 +167,7 @@ It comes down to what a model does with a field it reads: it writes it.
 | A host option on `createTask` per concern | The epic rejected it: the board would grow one option per flow's need |
 | Type the task primitive's `input` in orchestration | Every board would need a roster of schemas. Workforce is where an assignee resolves to a flow |
 | Run `check` again at claim | FIX-2878's claim runs its own order on the frozen settings; a second pass would run the lock twice with different inputs |
-| One `taskInput({ schema, … })` object | The epic's sketch and FIX-2878 use `taskInput(schema, options)`. An open flow that needs only a project writes `taskInput(z.record(z.string(), z.unknown()), { project: "required" })` |
+| One `taskInputSchema({ schema, … })` object | The epic's sketch and FIX-2878 use `taskInputSchema(schema, options)`. An open flow that needs only a project writes `taskInputSchema(z.record(z.string(), z.unknown()), { project: "required" })` |
 
 ## Analysis
 

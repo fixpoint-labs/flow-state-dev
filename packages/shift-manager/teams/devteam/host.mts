@@ -1086,6 +1086,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           ),
         }),
     workspace: workspaceHost ?? (options.workspace as WorkspaceConfig),
+    // On a projects workspace a coding task needs a project, and one filed with none is refused at
+    // filing (FIX-2333, FIX-2894). A lab on one fixed repository always has somewhere to work.
+    ...(workspaceHost === undefined ? {} : { project: "required" as const }),
     phase: coderPhase,
     runTimeoutMs,
     ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
@@ -1157,14 +1160,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const builtFlows: NonNullable<HireOptions["workerFlows"]> = {
     // The EM takes tasks (its coordinator's routed ones) and files the coder's.
     [EM_FLOW]: { flow: emFlow as never, roles: ["contributor", "manager"] },
-    // On a projects workspace a coding task needs a project, and one filed with none is refused at
-    // filing (FIX-2333). A lab on one fixed repository always has somewhere to work.
     // Each coder's `harness` rides on its roster row, so Roster shows which one it runs; a Lab with none to pick declares no such setting.
     [CODER_FLOW]: {
       flow: coderFlow as never,
       roles: ["contributor"],
       showSettings: harnessNames.length === 0 ? [] : [HARNESS_SETTING],
-      needsProject: workspaceHost !== undefined,
     },
     [AGENT_FLOW]: agentFlow as never,
     // The Shift Coordinator's flow. A routed task reaches a delegate on any flow
@@ -1264,10 +1264,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         return typeof entry === "function" || entry.flow === undefined ? entry : entry.flow;
       },
       (() => {
-        // The registration (roles, shown settings, projects) is the Lab's, known before the hire.
+        // The registration (roles, shown settings) is the Lab's, known before the hire.
         if (name === EM_FLOW) return { roles: ["contributor", "manager"] as WorkerRole[] };
         if (name === CODER_FLOW) {
-          return { roles: ["contributor"] as WorkerRole[], showSettings: harnessNames.length === 0 ? [] : [HARNESS_SETTING], needsProject: workspaceHost !== undefined };
+          return { roles: ["contributor"] as WorkerRole[], showSettings: harnessNames.length === 0 ? [] : [HARNESS_SETTING] };
         }
         return {};
       })(),
