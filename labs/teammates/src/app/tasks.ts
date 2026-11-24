@@ -67,17 +67,33 @@ export function useTaskWork(task: CodingBoardTask | undefined) {
   const plan = useView(recordedWorkViewRef(), { requestId: requestId ?? "" }, { client, pollIntervalMs, sessionId: runSession ?? undefined, enabled: running && flowKind === CODER_FLOW }).value?.plan;
   const streamed = useRequestStream({ client, flowKind, source: { requestId: requestId ?? "" }, filter: TOOL_CALLS, reconnect: true, flush: "immediate", enabled: running && flowKind !== undefined })
     .items as unknown as readonly OutputItem[];
+  const lines = useMemo(() => runSession === null ? [] : conversationLines(feed?.items ?? [], [], { renderers: teammatesRenderers }), [feed?.items, runSession]);
+  // A wake relinks the attempt to its new request, while preserving the
+  // attempt's start. Read that request's start, independently of feed pages.
+  const replyId = running ? requestId ?? undefined : undefined;
+  const [replyStart, setReplyStart] = useState<{ sessionId: string; flowKind: string; requestId: string; startedAt: number }>();
+  useEffect(() => {
+    if (runSession === null || flowKind === undefined || replyId === undefined) return;
+    let live = true;
+    client.flow(flowKind).request(replyId).status().then((status) => {
+      if (live && typeof status.startedAtMs === "number") setReplyStart({ sessionId: runSession, flowKind, requestId: replyId, startedAt: status.startedAtMs });
+    }, () => {});
+    return () => { live = false; };
+  }, [client, runSession, flowKind, replyId]);
+  const replyStartedAt = replyStart?.sessionId === runSession && replyStart.flowKind === flowKind && replyStart.requestId === replyId
+    ? replyStart.startedAt : undefined;
   return useMemo(() => {
     const fed = (feed?.items ?? []) as readonly OutputItem[];
     const stop = [...fed].reverse().find((item) => item.type === "suspension" && (item as { kind?: string }).kind === "review") as { data?: unknown } | undefined;
     const inFlight = running ? inFlightOf(streamed, fed, requestId) : undefined;
     const steps = running ? plan?.rows.map(({ title, status }): PlanRowNow => ({ title, status })) : undefined;
     return {
-      lines: runSession === null ? [] : conversationLines(fed, [], { renderers: teammatesRenderers }),
+      lines,
+      replyStartedAt,
       review: stop === undefined ? undefined : (reviewDetail(stop.data) ?? undefined),
       working: { ...(inFlight === undefined ? {} : { inFlight }), ...(steps === undefined ? {} : { plan: steps }) },
     };
-  }, [feed?.items, runSession, running, requestId, streamed, plan]);
+  }, [feed?.items, lines, replyStartedAt, running, requestId, streamed, plan]);
 }
 
 /**

@@ -391,7 +391,7 @@ export function ReviewBody({ review, onDraft, onFollowUp }: { review: ReviewDeta
 
 /**
  * A coding task's line under the title, its parts "·"-joined: what it ran on, what it spent, the
- * whole task's time so far (waits included) and, while its run waits for review, its commits and
+ * current attempt's time so far (waits included) and, while its run waits for review, its commits and
  * branch; then each pull request, a link once its address is known. `on` is "Claude Code ·
  * claude-opus-5-5"; `tokens` is "1.3M tokens". Nothing to say: no line.
  */
@@ -405,7 +405,7 @@ export function RunMeta({
   review?: ReviewDetail;
   on?: string;
   tokens?: string;
-  /** The whole task's time so far, waits included ("2d 3h"). */
+  /** The current attempt's time so far, waits included ("2d 3h"). */
   total?: string;
   pullRequests?: ReadonlyArray<{ number: number; url?: string }>;
 }) {
@@ -419,7 +419,7 @@ export function RunMeta({
     ),
     tokens === undefined ? null : <span key="tokens">{tokens}</span>,
     total === undefined ? null : (
-      <span key="total" title="Total time on this task, waits included" data-run-total>
+      <span key="total" title="Time on this attempt, waits included" data-run-total>
         {total}
       </span>
     ),
