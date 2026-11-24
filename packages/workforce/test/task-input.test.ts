@@ -156,6 +156,53 @@ function rawFlow(installation: WorkerInstallation) {
   } as never);
 }
 
+/** What the planner's turn files for itself, and what each filing came to. */
+const planner: { steps: Array<Record<string, unknown>>; outcomes: unknown[] } = { steps: [], outcomes: [] };
+
+/** A worker whose own turn files steps for itself, `session: "new"`, through its declared `work` entry. */
+function plannerFlow(installation: WorkerInstallation) {
+  const board = defineSessionBoard({ installation, flowKind: "planner" });
+  const turn = handler({
+    name: "planner-turn",
+    inputSchema: z.object({ message: z.string() }),
+    resources: { ...installation.resources, ...board.resources },
+    execute: async (input, ctx) => {
+      if (input.message.startsWith("You are working a step") || input.message.startsWith("The steps you filed")) return "done";
+      const ref = await board.board.turnResolver(ctx as never);
+      for (const step of planner.steps.splice(0)) {
+        try {
+          const added = await ref!.createTask({ goal: "a step", assignee: "ops.planner", session: "new", ...step } as never);
+          planner.outcomes.push({ assignee: added.assignee, input: added.input, stamp: added.metadata?.[FILLED_FOR] });
+        } catch (error) {
+          planner.outcomes.push(error instanceof TaskWriteRefusedError ? `${error.code}: ${error.message}` : String(error));
+        }
+      }
+      return "planned";
+    }
+  });
+  const planned = board.planned(turn);
+  const resolveWorker = handler({
+    name: "planner-resolve-worker",
+    inputSchema: z.unknown(),
+    outputSchema: z.object({}),
+    resources: { ...installation.resources },
+    execute: async (_input, ctx) => {
+      await installation.resolveWorker(ctx, "planner");
+      return {};
+    }
+  });
+  return defineFlow({
+    kind: "planner",
+    configSchema: workerConfigSchema(),
+    session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+    resources: { ...installation.resources, ...board.resources },
+    request: { onStarted: resolveWorker },
+    actions: { respond: { inputSchema: z.object({ message: z.string() }), block: planned, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+    internal: { actions: board.entries(planned) },
+    task: { actions: { work: workerTaskEntry({ name: "planner-work", turn: planned, input: triage }) } }
+  } as never);
+}
+
 /** The filing conversation: a session board whose actions are the task tools, and a batch filing. */
 function filerFlow(installation: WorkerInstallation) {
   const board = defineSessionBoard({ installation, flowKind: "filer" });
@@ -169,6 +216,18 @@ function filerFlow(installation: WorkerInstallation) {
       try {
         const added = await ref!.createTasks(input.tasks as never);
         return { ok: true, ids: added.map((stored) => stored.id) };
+      } catch (error) {
+        return { ok: false, error: error instanceof TaskWriteRefusedError ? `${error.code}: ${error.message}` : String(error) };
+      }
+    }
+  });
+  const routed = handler({
+    name: "filer-routed",
+    inputSchema: z.object({ id: z.string(), assignee: z.string(), input: z.record(z.unknown()) }),
+    resources: { ...installation.resources, ...board.resources },
+    execute: async (input, ctx) => {
+      try {
+        return { ok: true, outcome: await board.board.fileRouted(ctx as never, { id: input.id, goal: "routed", assignee: input.assignee, input: input.input }) };
       } catch (error) {
         return { ok: false, error: error instanceof TaskWriteRefusedError ? `${error.code}: ${error.message}` : String(error) };
       }
@@ -193,6 +252,7 @@ function filerFlow(installation: WorkerInstallation) {
     actions: {
       respond: { inputSchema: z.object({ message: z.string() }), block: turn, userMessage: (i: { message: string }) => i.message },
       batch: { inputSchema: z.object({ tasks: z.array(z.record(z.unknown())) }), block: batch },
+      routed: { inputSchema: z.object({ id: z.string(), assignee: z.string(), input: z.record(z.unknown()) }), block: routed },
       ...board.actions,
       ...board.delegates.actions
     },
@@ -213,13 +273,15 @@ function boot(): Host {
       worker("ops.intake", { flow: "intake", description: "Takes in tickets" }),
       worker("ops.helper", { flow: "helper", description: null }),
       worker("ops.raw", { flow: "rawfiler", description: "Files through the raw handle" }),
-      worker("ops.proj", { flow: "projtaker", description: "Works in a project" })
+      worker("ops.proj", { flow: "projtaker", description: "Works in a project" }),
+      worker("ops.planner", { flow: "planner", description: "Plans its own steps" })
     ],
     flows: (installation) => ({
       filer: { flow: filerFlow(installation), roles: ["manager"] },
       triage: { flow: declaredFlow(installation, "triage", triage), roles: ["contributor"] },
       intake: { flow: declaredFlow(installation, "intake", intake), roles: ["contributor"] },
       rawfiler: { flow: rawFlow(installation), roles: ["contributor"] },
+      planner: { flow: plannerFlow(installation), roles: ["contributor", "manager"] },
       projtaker: {
         flow: declaredFlow(installation, "projtaker", taskInput(z.record(z.string(), z.unknown()), { project: "required" })),
         roles: ["contributor"]
@@ -234,6 +296,8 @@ afterEach(async () => {
   seen.length = 0;
   raw.writes.length = 0;
   raw.outcomes.length = 0;
+  planner.steps.length = 0;
+  planner.outcomes.length = 0;
   await host?.dispose();
   host = undefined;
 });
@@ -532,6 +596,98 @@ describe("an unassigned filing's worker", () => {
     const filed = await file(host, id, { goal: "g", input: { ticket: "ENG-8", severity: "high" }, held: true });
     expect(filed).toMatchObject({ ok: true });
     expect(await host.row("jane", partition, filed.taskId!)).toMatchObject({ assignee: "ops.triager", input: { severity: "high" } });
+  });
+});
+
+describe("the worker a task is checked for is the worker it is stored for", () => {
+  /** A completed task for ops.triager, the root of the follow-ups below. */
+  async function completedRoot(h: Host, conv: string, partition: string) {
+    const filed = await file(h, conv, { assignee: "ops.triager", goal: "root", input: { ticket: "ENG-10" } });
+    await h.settled();
+    expect((await h.row("jane", partition, filed.taskId!))?.status).toBe("completed");
+    return filed.taskId!;
+  }
+
+  // Codex P1: a follow-up was checked for its root's worker and stored for the one it named.
+  it("refuses a follow-up naming another worker than its root's", async () => {
+    host = boot();
+    const { id, partition } = await conversation(host);
+    const rootId = await completedRoot(host, id, partition);
+    // The task tools refuse it first (`follow_up_takes_no_assignee`); code filing through the board itself reaches the board's own rule.
+    expect((await file(host, id, { followUpOf: rootId, assignee: "ops.intern", goal: "more", input: { ticket: "ENG-11" } })).error).toMatch(/^follow_up_takes_no_assignee: /);
+    const out = (await host.act("jane", id, "batch", { tasks: [{ followUpOf: rootId, assignee: "ops.intern", goal: "more", input: { ticket: "ENG-11" }, held: true }] }, "filer")).output as Output;
+    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_takes_its_root_worker: /) });
+    expect((await tasksOf(host)).some((task) => task.goal === "more")).toBe(false);
+  });
+
+  it("refuses the same follow-up through the raw handle a task session is handed", async () => {
+    host = boot();
+    const { id, partition } = await conversation(host);
+    const rootId = await completedRoot(host, id, partition);
+    raw.writes.push(
+      ((tasks: any) => tasks.createTask({ followUpOf: rootId, assignee: "ops.intern", goal: "raw more", input: { ticket: "ENG-15" } })) as never
+    );
+    await file(host, id, { assignee: "ops.raw", goal: "follow up through the raw handle", input: {} });
+    await host.settled();
+    expect(raw.outcomes[0]).toMatch(/^follow_up_takes_its_root_worker: /);
+    expect((await tasksOf(host)).some((task) => task.goal === "raw more")).toBe(false);
+  });
+
+  it("stores a follow-up naming no worker for its root's, checked for it", async () => {
+    host = boot();
+    const { id, partition } = await conversation(host);
+    const rootId = await completedRoot(host, id, partition);
+    const out = await file(host, id, { followUpOf: rootId, goal: "more", input: { ticket: "ENG-11", severity: "high" }, held: true });
+    expect(out).toMatchObject({ ok: true });
+    expect(await host.row("jane", partition, out.taskId!)).toMatchObject({ assignee: "ops.triager", input: { severity: "high", requestedBy: "u_jane" } });
+  });
+
+  it("leaves a filing with several delegates unassigned and unchecked, and checks it for the worker it is then assigned to (D2)", async () => {
+    host = boot();
+    const { id, partition } = await conversation(host);
+    const filed = await file(host, id, { goal: "g", input: { ticket: "ENG-16", requestedBy: "u_admin" }, held: true });
+    const waiting = await host.row("jane", partition, filed.taskId!);
+    expect(waiting?.assignee).toBeUndefined();
+    expect(waiting?.input).toEqual({ ticket: "ENG-16", requestedBy: "u_admin" });
+    expect(await update(host, id, { id: filed.taskId, assignee: "ops.triager" })).toMatchObject({ ok: true });
+    expect(await host.row("jane", partition, filed.taskId!)).toMatchObject({
+      assignee: "ops.triager",
+      input: { ticket: "ENG-16", severity: "low", requestedBy: "u_jane", audit: { by: "filing" } }
+    });
+  });
+
+  it("pins a batch row's default worker before its check, as a single filing's", async () => {
+    host = boot();
+    const { id, partition } = await conversation(host, "jane.solo");
+    behaviour.check = "swap";
+    const out = (await host.act("jane", id, "batch", { tasks: [{ goal: "g", input: { ticket: "ENG-12", severity: "high" }, held: true }] }, "filer")).output as { ok: boolean; ids?: string[] };
+    expect(out).toMatchObject({ ok: true });
+    expect(await host.row("jane", partition, out.ids![0]!)).toMatchObject({ assignee: "ops.triager", input: { severity: "high" } });
+  });
+
+  it("checks a routed filing for the worker it names, and stores it for that worker", async () => {
+    host = boot();
+    const { id, partition } = await conversation(host);
+    const refused = (await host.act("jane", id, "routed", { id: "task_routed_bad", assignee: "ops.triager", input: { ticket: 1 } }, "filer")).output as Output;
+    expect(refused).toMatchObject({ ok: false, error: expect.stringMatching(/^input_refused: /) });
+    expect(((await host.act("jane", id, "routed", { id: "task_routed_ok", assignee: "ops.triager", input: { ticket: "ENG-13", requestedBy: "u_admin" } }, "filer")).output as Output).ok).toBe(true);
+    const stored = await host.row("jane", partition, "task_routed_ok");
+    expect(stored).toMatchObject({ assignee: "ops.triager", input: { ticket: "ENG-13", requestedBy: "u_jane" } });
+    expect(stored?.metadata?.[FILLED_FOR]).toEqual({ flow: "triage", declaration: triage.fingerprint });
+  });
+
+  it("checks a step filed session: \"new\" against the worker's own flow, stored for the worker itself", async () => {
+    host = boot();
+    const created = await host.create("jane", "planner", { state: { workerId: "ops.planner" } });
+    planner.steps.push({ input: { ticket: 14 } }, { input: { ticket: "ENG-14", requestedBy: "u_admin" } });
+    const run = await host.act("jane", created.body.session!.id, "respond", { message: "plan it" }, "planner");
+    expect(run.error).toBeUndefined();
+    expect(planner.outcomes[0]).toMatch(/^input_refused: .*"ops.planner" takes \(flow "planner"\): at "ticket", expected string/);
+    expect(planner.outcomes[1]).toEqual({
+      assignee: "ops.planner",
+      input: { ticket: "ENG-14", severity: "low", requestedBy: "u_jane", audit: { by: "filing" } },
+      stamp: { flow: "planner", declaration: triage.fingerprint }
+    });
   });
 });
 

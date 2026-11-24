@@ -176,7 +176,7 @@ import { PLAN_LEDGER_ID, STEP_ATTEMPTS, definePlanning, isAnsweringTurn, isStepp
 import { verifiedWorkerOf } from "../workers/verified-worker";
 import type { TaskInputDeclaration, TaskInputRecord, TaskInputWorker } from "../task-input/declaration";
 import { FILLED_FOR, type CheckedInput } from "../task-input/filing-check";
-import { checkedPatch, checkFiledInput, type InputLookup } from "../task-input/checked-ledger";
+import { checkedPatch, checkFiledInput, withRootWorker, type InputLookup } from "../task-input/checked-ledger";
 
 /**
  * How many attempts a filed task gets: a failure with one left runs the task
@@ -1349,12 +1349,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
      * or written.
      */
     const checkedFor = async <T extends TaskInit>(init: T): Promise<{ init: T; checked: CheckedInput | undefined }> => {
-      const named = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
-      const root = named?.followUpOf === undefined ? named : ref.get(named.followUpOf);
-      // The worker the task goes to is read once: the one it is checked for is the one it is stored for,
-      // whatever the conversation's delegates become while the flow's hooks run.
-      const assignee = root?.assignee ?? init.assignee ?? (await soleDelegate());
-      const pinned = root === undefined && init.assignee === undefined && assignee !== undefined ? { ...init, assignee } : init;
+      // The worker the task goes to is read once and written on it: the one it is checked for is the one it is
+      // stored for, whatever the conversation's delegates become while the flow's hooks run. A follow-up's is its
+      // root's, and one naming another is refused.
+      const followed = withRootWorker(ref, init);
+      const assignee = followed.assignee ?? (followed.followUpOf === undefined ? await soleDelegate() : undefined);
+      const pinned = assignee !== undefined && followed.assignee === undefined ? { ...followed, assignee } : followed;
       return { init: pinned, checked: await checkInitInput(ctx, ref, pinned, assignee) };
     };
     // FIX-2894.
@@ -1393,12 +1393,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     /** Add one checked row under its chain reservation, with its checked input and stamp when its flow declares one. */
     const fileReserved = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }, checked?: CheckedInput): Promise<Task> => {
       const { id, markAdded } = reserved;
-      let assignee = init.assignee;
-      if (assignee === undefined) {
-        // An unassigned task goes to the conversation's only delegate; with
-        // none or several it waits on the board until it is assigned.
-        assignee = soleTaskDelegate(await options.delegates(ctx));
-      }
+      // The worker was read once, before the check (`checkedFor`): an unassigned task went to the
+      // conversation's only delegate then, or, with none or several, waits on the board until it is
+      // assigned. It is never read again here, after the awaits since (FIX-2894).
+      const assignee = init.assignee;
       // In a task session, the row is a piece of the task it was filed for:
       // server-written, so the task's cascade reaches only its own pieces.
       const owner = await pieceOwnerOf(ctx);

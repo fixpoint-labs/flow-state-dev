@@ -67,6 +67,28 @@ export async function checkFiledInput(lookup: InputLookup, ctx: BlockContext, as
   });
 }
 
+/**
+ * A follow-up with its root's worker written on it: it runs in its root's
+ * session, with that worker, so the worker its input is checked for is the
+ * one it is stored for. A follow-up naming another worker is refused.
+ *
+ * @throws TaskWriteRefusedError `follow_up_takes_its_root_worker`.
+ */
+export function withRootWorker<T extends TaskInit>(ref: Pick<TaskCollectionRef, "get">, init: T): T {
+  if (init.followUpOf === undefined) return init;
+  const named = ref.get(init.followUpOf);
+  const root = named?.followUpOf === undefined ? named : ref.get(named.followUpOf);
+  if (root?.assignee === undefined) return init;
+  if (init.assignee !== undefined && init.assignee !== root.assignee) {
+    throw new TaskWriteRefusedError(
+      "follow_up_takes_its_root_worker",
+      `a follow-up of task "${root.id}" runs with its worker, "${root.assignee}", and this one names "${init.assignee}". ` +
+        `Leave assignee out, or file a new task for "${init.assignee}". Nothing was filed.`
+    );
+  }
+  return { ...init, assignee: root.assignee };
+}
+
 /** The refusal for a write that names a worker whose flow can't be read now. */
 function unresolved(assignee: string): TaskWriteRefusedError {
   return new TaskWriteRefusedError(
@@ -179,8 +201,24 @@ export interface TaskInputSource {
 
 const bySession = new WeakMap<object, TaskInputSource>();
 const byInstallation = new WeakMap<object, TaskInputSource>();
-/** Each door's installations: one names it; two or more (a prebuilt flow given to both) name none on their own. */
-const byDoor = new WeakMap<object, Set<TaskInputSource>>();
+/**
+ * Each door's installations, held weakly so a dropped one is never kept: one
+ * names it; two or more (a prebuilt flow given to both) name none on their own.
+ */
+const byDoor = new WeakMap<object, Set<WeakRef<TaskInputSource>>>();
+
+/** The installations still alive that registered `door`, pruning the dropped ones. */
+function registrantsOf(door: object): TaskInputSource[] {
+  const refs = byDoor.get(door);
+  if (refs === undefined) return [];
+  const alive: TaskInputSource[] = [];
+  for (const ref of refs) {
+    const source = ref.deref();
+    if (source === undefined) refs.delete(ref);
+    else alive.push(source);
+  }
+  return alive;
+}
 
 /** Register an installation's source, for the installation's own board to read. */
 export function registerTaskInputSource(source: TaskInputSource, installation: object): void {
@@ -189,9 +227,10 @@ export function registerTaskInputSource(source: TaskInputSource, installation: o
 
 /** Register `door`, the `from` of one of an installation's flows' `work` entries, as that installation's. */
 export function registerTaskDoor(door: object, source: TaskInputSource): void {
+  if (registrantsOf(door).includes(source)) return;
   const known = byDoor.get(door);
-  if (known === undefined) byDoor.set(door, new Set([source]));
-  else known.add(source);
+  if (known === undefined) byDoor.set(door, new Set([new WeakRef(source)]));
+  else known.add(new WeakRef(source));
 }
 
 /** The source `installation` registered. */
@@ -206,9 +245,9 @@ export function noteTaskInputSource(session: object, source: TaskInputSource): v
 
 /** The installation `door` names, noted on the session: its one registrant, or, for a shared door, the one the session is already pinned to; else none. */
 export function noteSourceOfDoor(session: object, door: object): TaskInputSource | undefined {
-  const sources = byDoor.get(door);
-  if (sources === undefined) return undefined;
-  if (sources.size === 1) {
+  const sources = registrantsOf(door);
+  if (sources.length === 0) return undefined;
+  if (sources.length === 1) {
     const [source] = sources;
     bySession.set(session, source!);
     return source;
@@ -216,7 +255,7 @@ export function noteSourceOfDoor(session: object, door: object): TaskInputSource
   // A door two installations share names neither: only the one this request's `resolveWorker`
   // already noted, server-side and by installation, and only if it registered this door.
   const pinned = bySession.get(session);
-  return pinned !== undefined && sources.has(pinned) ? pinned : undefined;
+  return pinned !== undefined && sources.includes(pinned) ? pinned : undefined;
 }
 
 /** The source the running request's session was noted with; none when it was noted with none. */
@@ -270,7 +309,7 @@ export function checkedLedger(
     return { ...write, metadata };
   };
   const checkInit = async (given: TaskInit): Promise<TaskInit> => {
-    const init = unstamped(given);
+    const init = withRootWorker(ref, unstamped(given));
     return init.assignee === undefined ? init : withChecked(init, await checkFiledInput(lookup(), ctx, init.assignee, init.input));
   };
   return {
