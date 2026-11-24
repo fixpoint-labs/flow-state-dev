@@ -1367,7 +1367,7 @@ process.stdout.write(out);
       const detail = reviewDetail((await h.stop(h.review(asked)!))?.data);
       expect(detail?.lands).toEqual(["pull-request", "merge"]);
       // FIX-2920: the review names that pull request as where a `pull-request` accept puts the work, so no card
-      // invites the person to open a second one. Without it, the card's button read "Open pull request" beside a #42 link.
+      // invites the user to open a second one. Without it, the card's button read "Open pull request" beside a #42 link.
       expect(detail?.openPullRequest).toEqual({ number: 42, url: PR_URL });
       expect(detail?.pullRequests).toEqual([{ number: 42, url: PR_URL }]);
       expect(h.review(asked)!.ask.prompt).toContain(`Pull request #42 is already open from`);
@@ -1389,9 +1389,9 @@ process.stdout.write(out);
     }
   }, 60_000);
 
-  // FIX-2920 (review): the review named #42 and its accept read "Push to PR #42". Closed before the person accepted,
+  // FIX-2920 (review): the review named #42 and its accept read "Push to PR #42". Closed before the user accepted,
   // the accept would have opened #43 instead, which the button never said. It pushes only to #42, and asks again.
-  it("a person's accept onto the pull request the review named opens none when it closed since, and asks again with every way", async () => {
+  it("a user's accept onto the pull request the review named opens none when it closed since, and asks again with every way", async () => {
     const h = host({ script: ["commits"], remote: true });
     const calls = ghCalls().length;
     try {

@@ -4183,7 +4183,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         );
       }
       let onPullRequest = probed.open;
-      // The pull request the review names for a person's `pull-request` accept (FIX-2920): it goes only
+      // The pull request the review names for a user's `pull-request` accept (FIX-2920): it goes only
       // there, so it never opens a second one the card didn't offer; one closed since is dropped, and asked again.
       let named = probed.notOurs;
       let lands: LandHow[] = onPullRequest === null ? ways : ["pull-request"];
