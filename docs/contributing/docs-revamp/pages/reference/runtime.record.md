@@ -56,6 +56,8 @@ Written by `docs-writer` (sonnet), 7608 words. Scenario: The support desk: a `su
 
 - After the security review (owner-approved): the order stand-ins take the caller. `findOrder(orderId, caller)` returns nothing and `refundOrder(orderId, caller)` throws for an order the caller may not see; blocks pass `ctx.session.identity`, a projected read hook passes `ctx.userId`/`ctx.orgId`. Examples that read `order.status` directly gained a not-found branch. The changed examples type-check against the real core types with only `src/lib/orders.ts` stubbed; dropping `caller` fails with TS2554. 3717 words. Page sha256 2c5c9bca41ac.
 
+Cutover, 2026-11-24, after the move to `apps/docs/docs/reference/runtime.md`: "scheduled work" reads "work due at a set time" in the `maxDebtAgeMs` row (a word the published-docs vocabulary sweep retires, replaced at the move). `node scripts/check-docs-page.mjs` on the page: ok. The site build, broken links included: passes.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 c4d4f35afcc0, and the 29 Reference row(s) pass 6 moved.
@@ -85,6 +87,8 @@ Final fact check of the page as it closed, sha256 6726a59441ed: 7 untrue, fixed 
 - Re-run on the rows moved from B-07: every added or changed line checked against packages/ by a read-only code reader. Untrue or imprecise claims corrected on the page before commit: none; Node 22 (`packages/engine/package.json:101`). No untrue claim remains open.
 
 - Re-run after the security edit: checked against `packages/core/src/types/block.ts:353`, `packages/core/src/types/scope.ts:9-13,298`, `packages/engine/src/context/createExecutionContext.ts:1056-1058,3313-3320` and `packages/core/src/types/projected-resource-collection.ts:96-110`. No untrue claim remains open.
+
+Cutover, 2026-11-24: "scheduled work" reads "work due at a set time" in the `maxDebtAgeMs` row (a word the published-docs vocabulary sweep retires, replaced at the move). No claim is added; the edit changes wording or a link target only. Checked by the cutover pass against this record's earlier entries, not by a fresh `code-reader` run.
 
 ## 6 · Depth pass
 

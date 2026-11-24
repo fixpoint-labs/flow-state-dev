@@ -47,6 +47,8 @@ Written by `docs-writer` (sonnet), 796 words. Scenario: The support desk: flow `
 
 - After the loop (review): the eight open findings are closed: the auth paragraph says the app (not the host) refuses, split from the runtime sentence; "What it gets you" now has three points tied to `acme` and `buildReport`; "post-response primitive" replaced with what `after` does; "What has to live outside the process" names the store, the queue and the secrets and what the default in-memory store does on serverless; the auth paragraph gives the first-deploy 500, its log line and the `serve` startup refusal; the ten-minute section says a closed tab doesn't cancel a run and an interrupted run comes back as Continue or Discard on a persistent store. 1091 words. Page sha256 55cb955af42c.
 
+Cutover, 2026-11-24, after the move to `apps/docs/docs/build/deploy.md`: the AWS Lambda bullet's link to `./deploy/aws-lambda.md` is dropped (the page plan cuts that recipe, B-11); the bullet's text stays. `node scripts/check-docs-page.mjs` on the page: ok. The site build, broken links included: passes.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 49c2c98e4332, and the 5 Reference row(s) pass 6 moved.
@@ -54,6 +56,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 49c
 - Reference row 1: A host that takes network traffic answers every call with HTTP 500 until each flow has a way to tell who is calling (page line 44, and Reference row 1: "a host that takes network traffic answers every call with HTTP 500"). Untrue: True only for hosts that mount the router per request (Next.js, Lambda), where the request guard returns a generic HTTP 500. `serve` and `fsdev serve` are different. On a non-loopback host they refuse to bind and throw at startup, so the server never answers any call. A loopback bind is exempt. The 500 is also skipped when `allowUnauthenticated` is set. The check is also narrower than 'until each flow has a resolver': it fires when any served flow still uses the default body-userId resolver. (packages/node/src/bind-guard.ts:62-80 (assertNetworkBindIsAuthenticated throws before listening); packages/engine/src/routes/network-auth.ts:70-85 (per-request guard returns 500)) The row is recorded corrected.
 
 - Re-run after the review edit: checked against `packages/engine/src/routes/network-auth.ts:14,41-86`, `packages/vercel/src/handler.ts:67`, `packages/next/src/createNextHandler.ts:52`, `packages/node/src/aws-lambda.ts:39`, `packages/node/src/bind-guard.ts:84-90`, `packages/node/src/serve.ts:145,193-198`, `packages/fsdev/src/commands/serve.ts:115-122`, `packages/engine/src/flowstate/createFlowState.ts:1026-1040`, `packages/vercel/src/types.ts:39` and the engine's action routes `:185-191`. The auth claim was too broad and is now stated per host. No untrue claim remains open.
+
+Cutover, 2026-11-24: the AWS Lambda bullet's link to `./deploy/aws-lambda.md` is dropped (the page plan cuts that recipe, B-11); the bullet's text stays. No claim is added; the edit changes wording or a link target only. Checked by the cutover pass against this record's earlier entries, not by a fresh `code-reader` run.
 
 ## 6 · Depth pass
 

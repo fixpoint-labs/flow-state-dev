@@ -36,6 +36,8 @@ Written by `docs-writer` (sonnet), 1077 words. Scenario: The kitchen-sink suppor
 - After the loop (PR review): the PR review was taken: the custom delegate example gains the `onMessageReceived` entry every worker flow needs, built with `messageReceivedEntry` and `promptedMessageTurn`, and the sentence before it names the third requirement. Page sha256 0655493da6cd: the page check exits 0 and the brand lint has 0 findings.
 - After the loop (review): emit.data migration: the routing record is a `coordinator-route` data item, defined once, picked out by its `dataType`. 1156 words. Page sha256 fd1fdd10408f.
 
+Cutover, 2026-11-24, after the move to `apps/docs/docs/catalog/workforce/coordinators.md`: "handoff" reads "delegation" twice (a word the published-docs vocabulary sweep retires, replaced at the move). `node scripts/check-docs-page.mjs` on the page: ok. The site build, broken links included: passes.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 80c9f70abfac, and the 13 Reference row(s) pass 6 moved.
@@ -45,6 +47,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 80c
 - Reference row 10: Row 10 and page line 126: the conversation copies the file's `delegates` on its first message. Untrue: The copy is made the first time the list is read or changed, so an `addDelegate`/`removeDelegate` before any message also makes it, not only a first message. (/home/user/flow-state-dev/packages/workforce/src/coordinator/coordinator-flow.ts:11-16 ; /home/user/flow-state-dev/packages/workforce/src/coordinator/coordinator-config.ts:7-10) The row is recorded corrected.
 - Re-run after the review edit: the edit checked by running it. The example as printed, run through `hireWorkforce` in a throwaway vitest in `packages/workforce`, hires; the same flow without `internal` is refused "hireWorkforce refused 1 worker flow(s); nothing was registered" (`workers/register.ts:117-121`, `messages/message-received-entry.ts:108-118`). Both names are exported (`messages/index.ts:11,14`).
 - Re-run after the review edit: `emitCoordinatorRoute` stores `COORDINATOR_ROUTE` through `ctx._emitDataAwaited` with `{ client: true, history: false }` (packages/workforce/src/coordinator/coordinator-route.ts:116-123); `COORDINATOR_ROUTE` is `"coordinator-route"` (packages/workforce/src/coordinator/coordinator-keys.ts:25), exported from the browser entry (packages/workforce/src/browser.ts:76); a reader matches `type === "data"` and `dataType` (packages/workforce/src/coordinator/coordinator-lines.ts:215).
+
+Cutover, 2026-11-24: "handoff" reads "delegation" twice (a word the published-docs vocabulary sweep retires, replaced at the move). No claim is added; the edit changes wording or a link target only. Checked by the cutover pass against this record's earlier entries, not by a fresh `code-reader` run.
 
 ## 6 · Depth pass
 
