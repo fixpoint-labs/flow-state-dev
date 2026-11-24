@@ -54,7 +54,7 @@ export const assistantGenerator = generator({
   maxIterations: 20,
   outputSchema: z.string(),
 
-  // A retired mode in stored state still gets the ask prompt.
+  // Sessions saved with a retired mode use the default prompt.
   prompt: (input, ctx) => (modePrompts[ctx.session.state.mode] ?? modePrompts.ask).prompt(input, ctx),
 
   itemVisibility: { client: true, history: true },
