@@ -292,7 +292,7 @@ function teamOf(workers: readonly RosterEntry[]): { name: string; color: Teammat
 }
 
 /** The highlighter's small *you* pill: the user needs to act. */
-export function YouPill({ className }: { className?: string }) {
+function YouPill({ className }: { className?: string }) {
   return <span className={cn("inline-flex shrink-0 items-center rounded-full bg-attention px-1.5 font-mono text-xs leading-4 font-semibold text-attention-foreground", className)}>you</span>;
 }
 
@@ -397,7 +397,7 @@ const roleWord = (worker: RosterEntry) => worker.id.slice(worker.id.lastIndexOf(
  * body's grey beside its *you* pill (the highlighter is the pill, never the
  * words), a task's own tone where it has one (red for failed), else quiet.
  */
-export function statusClass(status: Status): string {
+function statusClass(status: Status): string {
   if (status.needsYou) return "text-text-2";
   if (status.state === "running") return "text-brand";
   return status.tone === PLAIN ? "text-text-3" : status.tone;

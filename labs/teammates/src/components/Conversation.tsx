@@ -415,7 +415,7 @@ function lineTime(line: ItemLine): number | undefined {
 }
 
 /** The lines that start a day, by id, with the day's label: the first timed line of each day. */
-export function dayBreaks(lines: readonly ItemLine[], now: number = Date.now()): Map<string, string> {
+function dayBreaks(lines: readonly ItemLine[], now: number = Date.now()): Map<string, string> {
   const breaks = new Map<string, string>();
   let last: string | undefined;
   for (const line of lines) {

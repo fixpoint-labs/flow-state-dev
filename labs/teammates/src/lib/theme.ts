@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 
-export const THEMES = ["paper", "night"] as const;
+const THEMES = ["paper", "night"] as const;
 export type Theme = (typeof THEMES)[number];
 
 const KEY = "teammates.theme";

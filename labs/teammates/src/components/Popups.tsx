@@ -67,7 +67,7 @@ function rerunTargets(task: Pick<CodingBoardTask, "assignee">, coders: readonly 
 export const PULL_REQUEST_HINT = "Merged? Say so here and I'll check.";
 
 /** The quick replies under the box while a run waits on its pull request: each sends as typed. */
-export const PULL_REQUEST_REPLIES = ["It's merged", "Address review comments"] as const;
+const PULL_REQUEST_REPLIES = ["It's merged", "Address review comments"] as const;
 
 /** A tool the registry's words call running a command: each harness's shell tool. */
 const isCommand = (tool: string) => knownToolVerbs(tool)?.singular === "ran a command";
