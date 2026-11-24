@@ -201,7 +201,7 @@ export interface PlanningEntryOptions<
  * planner left without one. Planner-emitted context wins (we only fill
  * gaps). Returns the rewritten `{ tasks }` for `seedTasksFromPlan`.
  */
-function createGoalContextEnricher<TState>(
+function createGoalContextEnricher<TState extends PlanningEntryStateShape>(
   name: string,
   stateSchema: z.ZodType<TState>,
 ) {
@@ -211,7 +211,7 @@ function createGoalContextEnricher<TState>(
     outputSchema: seedTaskInputSchema,
     sequencerStateSchema: stateSchema,
     execute: async (planOutput, ctx) => {
-      const goal = (ctx.sequencer?.state as { goal?: string } | undefined)?.goal ?? "";
+      const goal = ctx.sequencer?.state.goal ?? "";
       return {
         tasks: planOutput.tasks.map((t) => {
           const hasContext = typeof t.context === "string" && t.context.length > 0;
