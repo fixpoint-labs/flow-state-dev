@@ -14,8 +14,9 @@
  * Its policy is the kit's config, not code an app copies:
  *
  * - **Review.** A run that committed waits for your review before its task
- *   completes when the worker's `review:` line says so, else when the kit's
- *   `review` does. Either way `goalJudge` reads a run first (`judge`).
+ *   completes when the kit's `review` says so, or the worker's `review:` line
+ *   does; a worker can turn review on, never off. Either way `goalJudge`
+ *   reads a run first (`judge`).
  * - **Pull requests.** A task whose run opened a pull request is done when it
  *   merges, cancelled when it closes unmerged (`pullRequests`, on by default).
  * - **Checks.** A run that changed files is done only when the kit's `checks`
@@ -100,7 +101,7 @@ export interface CoderFlowOptions {
   workspace: WorkspaceHost;
   /** The harness a worker whose file names none runs on. Absent: such a worker's task is refused. */
   defaultHarness?: string;
-  /** A run that committed waits for your review before its task completes, unless the worker's `review:` line says otherwise. Default false. */
+  /** A run that committed waits for your review before its task completes, whatever the worker's `review:` line says; a worker's `review: true` turns it on alone. Default false. */
   review?: boolean;
   /** A task whose run opened a pull request waits for it to merge or close. Default true. */
   pullRequests?: boolean;
@@ -419,7 +420,9 @@ export function coderWorkerFlow(
         if (id === undefined || found === undefined) {
           throw new Error(`worker "${worker.id}" names no \`harness:\` in its WORKER.md, and the harness kit sets no \`defaultHarness\`.`);
         }
-        const review = (worker.config.review as boolean | undefined) ?? options.review === true;
+        // The kit's review is a floor: a worker's `review:` can turn it on, never off, so a worker anyone
+        // can hire never settles a change no user saw.
+        const review = options.review === true || worker.config.review === true;
         return { ...found, id, manager: review ? found.reviewed : found.manager };
       };
       /** Route by the session's worker; a run that starts work first asks whether its harness can run here. */

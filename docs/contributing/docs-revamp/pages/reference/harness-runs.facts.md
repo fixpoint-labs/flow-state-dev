@@ -38,7 +38,7 @@ Scope note for pass 3. The page is about the harnesses kit (`harnesses()` from `
 | --- | --- | --- | --- | --- |
 | `workspace` | `WorkspaceHost` (required) | none | The host a run works in. The schema checks only that it is an object; every test and the lab build it with `localWorkspaceHost({ root, remotes, source })`. | `hk:51-54`, `cf:87`, `hkt:53` |
 | `defaultHarness` | string, non-empty | none | The harness id a worker whose file names none runs on. With none, that worker's task fails with `worker "<id>" names no \`harness:\` in its WORKER.md, and the harness kit sets no \`defaultHarness\`.` A `defaultHarness` that is not a filled id throws at start: `the default harness "x" is not one of <ids>.` | `cf:88-89`, `cf:205-208`, `cf:257-262` |
-| `review` | boolean | `false` | A run that committed waits for a user's review before its task completes. A worker's own `review:` line overrides it either way. | `cf:90-91`, `cf:262` |
+| `review` | boolean | `false` | A run that committed waits for a user's review before its task completes. A worker's own `review:` line can turn it on, never off. | `cf:90-91`, `cf:262` |
 | `pullRequests` | boolean | `true` | A task whose run opened a pull request is done when it merges and cancelled when it closes unmerged. Off: the task settles on the verdict. | `cf:92-93`, `cf:236`, `apr:153-156` |
 | `judge` | boolean | `true` | `goalJudge` reads each run against its task's goal. | `cf:94-95`, `cf:235` |
 | `checks` | `{ commands: readonly string[]; timeoutMs?: number }` | none | Commands a run that changed files must pass in its checkout. `timeoutMs` is one wall clock for all of them, default 10 minutes (`600000`). An empty list runs nothing. | `cf:96-97`, `cf:82`, `cf:162-169` |
