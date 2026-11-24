@@ -1,5 +1,101 @@
 # @flow-state-dev/mcp
 
+## 0.1.7
+
+### Patch Changes
+
+- 8dfcb2e: Every request names its session, from the first write of its record (FIX-2907). The engine no longer makes up a session for a run that names none.
+
+  - **Breaking: a send needs a session id.** `client.flow(f).send(action, input, { sessionId })` and `useAction`'s `execute(input, sessionId)` require it, and so does `runAction` (`sessionId`) and a custom transport's `host.dispatch` envelope. An HTTP send with none is refused `400 { error: "session-required" }` before anything is written, and the route stays registered; `runAction`, `createExecutionContext` and `host.dispatch` throw `SessionRequiredError` (from `@flow-state-dev/engine/host`). Pass the conversation's id (`client.flow(f).createSession()`), or, for a one-shot send, `oneOffSessionId()` from `@flow-state-dev/core/helpers`: the same one-off run as before, folded under "One-off runs" in the navigator.
+  - **No behaviour change for runs with no conversation.** A webhook binding that names no session, a `per-fire` schedule fire and an MCP `tools/call` with no session directive still run in a fresh one-off session; the webhook route, the scheduled endpoint and the MCP adapter now make its id before they dispatch, so the request record and its gates name it. A one-off webhook session is born with `metadata.source: "webhook"` like a named one.
+  - **Requests recorded with no session before this release** stay readable and stoppable (a stop settles a parked one `aborted`). Running one again is refused by name: a resume, continuation, retry or wake answers `legacy-sessionless-request` (`409` over HTTP), and a queued BullMQ job with no session is settled failed under `LegacySessionlessRequestError` and not retried.
+  - `ConcurrencyKeyContext.sessionId` is now always set.
+
+  Docs: apps/docs/docs/client/overview.md (`send` takes a session id and how to get one; drop the "no session" sentences), apps/docs/docs/fundamentals/state-and-scopes.md (the "sent without a session id" line under the create check: such a send is refused), apps/docs/docs/server/connection-resilience.md (the snapshot's `sessionId` is absent only on a request recorded before sessions were required), apps/docs/docs/server/mcp.md and apps/docs/docs/server/scheduled.md (a one-off run gets a fresh session made for it, no behaviour change), packages/client/README.md and packages/react/README.md (`sessionId` on `send` and `execute`)
+
+- Updated dependencies [091a1dd]
+- Updated dependencies [04812f3]
+- Updated dependencies [61efa05]
+- Updated dependencies [ec99b11]
+- Updated dependencies [4b4a7d4]
+- Updated dependencies [8e111c9]
+- Updated dependencies [d30f516]
+- Updated dependencies [f888e69]
+- Updated dependencies [2cb6326]
+- Updated dependencies [2876f11]
+- Updated dependencies [a27cf26]
+- Updated dependencies [77a6c9b]
+- Updated dependencies [5e55476]
+- Updated dependencies [81b1693]
+- Updated dependencies [aa28006]
+- Updated dependencies [e3ca793]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [e505adf]
+- Updated dependencies [98b888d]
+- Updated dependencies [5b2bd16]
+- Updated dependencies [819c2a5]
+- Updated dependencies [fe85f56]
+- Updated dependencies [8dfcb2e]
+- Updated dependencies [091078d]
+- Updated dependencies [f89e8a5]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [44b199d]
+- Updated dependencies [5549fd1]
+- Updated dependencies [cf185b3]
+- Updated dependencies [c7ce9ff]
+- Updated dependencies [c487501]
+- Updated dependencies [95d9686]
+- Updated dependencies [1600ca1]
+- Updated dependencies [6b360fa]
+- Updated dependencies [3973e1f]
+- Updated dependencies [41dcd7e]
+- Updated dependencies [ae56d59]
+- Updated dependencies [e238e18]
+- Updated dependencies [a63b662]
+- Updated dependencies [e9722ee]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [74a7b9d]
+- Updated dependencies [b43424c]
+- Updated dependencies [182fb96]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [42980e4]
+- Updated dependencies [030eb14]
+- Updated dependencies [f9daf5a]
+- Updated dependencies [de09b77]
+- Updated dependencies [2e7c92f]
+- Updated dependencies [c82adfa]
+- Updated dependencies [aa45e92]
+- Updated dependencies [546603f]
+- Updated dependencies [4a6643c]
+- Updated dependencies [18adad9]
+- Updated dependencies [246f0ba]
+- Updated dependencies [4698256]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [714e98f]
+- Updated dependencies [91184e2]
+- Updated dependencies [95f3cce]
+- Updated dependencies [0454257]
+- Updated dependencies [1e58902]
+- Updated dependencies [81c145c]
+- Updated dependencies [13e3970]
+- Updated dependencies [ec1fdf9]
+- Updated dependencies [1970b12]
+- Updated dependencies [c36ffa0]
+- Updated dependencies [23bac7e]
+- Updated dependencies [1f46aaf]
+- Updated dependencies [b5b52b9]
+- Updated dependencies [ee91375]
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/engine@0.6.0
+
 ## 0.1.6
 
 ### Patch Changes

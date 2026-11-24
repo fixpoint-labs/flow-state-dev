@@ -31,6 +31,7 @@ import {
   runGoal,
   stripIntentOverrides,
 } from "../../lib/index.mts";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 interface Fixture {
   salt: string;
@@ -107,6 +108,7 @@ await runGoal(async (failures) => {
   const { stores, runtimeConfig } = durableStores();
 
   const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow: flow as never,
     actionName: "run",

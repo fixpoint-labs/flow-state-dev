@@ -91,6 +91,53 @@ describe("accepting a run by opening a pull request", () => {
     expect(landed).toEqual({ kind: "pull-request", url: PR_URL, number: 42, branch: "fsd/run-1", base: "main", remote: upstream.url });
   });
 
+  it("still pushes and opens with the host's GitHub credentials, and hands gh no other secret", async () => {
+    vi.stubEnv("GH_TOKEN", "gh_intended");
+    vi.stubEnv("GITHUB_TOKEN", "ghp_intended");
+    vi.stubEnv("SOME_SECRET", "x");
+    const seen = `${ghLog}.env`;
+    writeFileSync(
+      gh,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nprintf '%s|%s|%s\\n' "$GH_TOKEN" "$GITHUB_TOKEN" "$SOME_SECRET" >> '${seen}'\nif [ "$2" = "list" ]; then echo '[]'; else echo '${PR_URL}'; fi\n`,
+    );
+    const { h, place, commit } = await runWithCommit();
+
+    const landed = await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    expect(upstream.rev("refs/heads/fsd/run-1")).toBe(commit);
+    expect(landed).toMatchObject({ kind: "pull-request", url: PR_URL });
+    const calls = readFileSync(seen, "utf8").trim().split("\n");
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) expect(call).toBe("gh_intended|ghp_intended|");
+  });
+
+  it("hands a variable the host named in remotes.pass to its remote calls, and never to a setup command", async () => {
+    // A credential helper that reads its own variables (CodeCommit's AWS_*), named by the host.
+    vi.stubEnv("AWS_ACCESS_KEY_ID", "akid_for_the_helper");
+    const seen = `${ghLog}.aws`;
+    writeFileSync(gh, `#!/bin/sh\nprintf '%s\\n' "$AWS_ACCESS_KEY_ID" >> '${seen}'\nif [ "$2" = "list" ]; then echo '[]'; else echo '${PR_URL}'; fi\n`);
+    const setupSaw = join(tempDir("land-setup"), "env.json");
+    const h = localWorkspaceHost({
+      root,
+      remotes: { allow: [], pass: ["AWS_ACCESS_KEY_ID"] },
+      localRepositories: [repo],
+      source: () => ({ kind: "repo", repo }),
+      pullRequestRepo: () => GITHUB_REPO,
+      setup: { command: ["node", "-e", `require('fs').writeFileSync(${JSON.stringify(setupSaw)}, JSON.stringify(process.env))`] },
+    });
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    writeFileSync(join(place.cwd, "change.txt"), "the run's change\n");
+    git(place.cwd, "add", "change.txt");
+    git(place.cwd, "commit", "-q", "-m", "The run's change");
+
+    await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    const calls = readFileSync(seen, "utf8").trim().split("\n");
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) expect(call).toBe("akid_for_the_helper");
+    expect((JSON.parse(readFileSync(setupSaw, "utf8")) as Record<string, string>).AWS_ACCESS_KEY_ID).toBeUndefined();
+  });
+
   it("runs gh outside every checkout the run can configure, so it can't push again through the run's config", async () => {
     const { h, place } = await runWithCommit();
 

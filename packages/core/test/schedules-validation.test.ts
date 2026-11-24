@@ -161,6 +161,23 @@ describe("validateScheduleConfig (static)", () => {
     ).toThrow(/unsupported onOverlap value/);
   });
 
+  it("accepts both session values and rejects any other", () => {
+    for (const session of ["per-fire", "per-schedule"] as const) {
+      expect(() =>
+        validateScheduleConfig({ kind: "demo", id: "sess", schedule: { ...baseSchedule, session }, origin: "static" })
+      ).not.toThrow();
+    }
+    expect(() =>
+      validateScheduleConfig({
+        kind: "demo",
+        id: "bad-session",
+        // A session id is not a session value: the framework derives the id.
+        schedule: { ...baseSchedule, session: "my-session" as unknown as ScheduleConfig["session"] },
+        origin: "static"
+      })
+    ).toThrow(/unsupported session value/);
+  });
+
   it("rejects a principal with an empty userId", () => {
     expect(() =>
       validateScheduleConfig({

@@ -39,6 +39,10 @@ Written by `docs-writer` (sonnet), 7051 words. Scenario: The support desk: `refu
 
 - After the loop (owner's example review): the owner found examples contrived (made-up return values, declared pieces nothing used). docs-writer revised them: `refundPolicy` now has a use: a `draftReply` excerpt declares it and reads it with `readContent()` in its `user` slot. `ticketNotes` gets an `addNote` excerpt that creates a note, writes its body and queries the `byAuthor` index. The projected `orderView` reads and searches through `findOrder` and `searchOrders` stand-ins scoped by the context's `userId` and `orgId`, as the page's own rule asks, instead of an inline map matched by key prefix (the bare key reaches `read`: packages/engine/test/projected-resource-collection.test.ts). Each changed TypeScript example type-checks under `tsc --strict` against the workspace packages, and fails when a changed accessor is broken on purpose. 7424 words. Page sha256 6131cb95a8b0.
 
+- After the Reference rows moved from B-26 and B-31 landed (and the fact-check corrections below): check-docs-page and brand lint pass; no TypeScript example changed. 7739 words. Page sha256 52dce7d0f7ff.
+
+- After the security review (owner-approved): the order stand-ins take the caller. `findOrder(orderId, caller)` returns nothing and `refundOrder(orderId, caller)` throws for an order the caller may not see; blocks pass `ctx.session.identity`, a projected read hook passes `ctx.userId`/`ctx.orgId`. Examples that read `order.status` directly gained a not-found branch. The changed examples type-check against the real core types with only `src/lib/orders.ts` stubbed; dropping `caller` fails with TS2554. 7739 words. Page sha256 95f6929334fb.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 e3b0c44298fc, and the 4 Reference row(s) pass 6 moved.
@@ -56,6 +60,10 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 e3b
 - Re-run after the review edit: the moved lines were fact-checked against the code (about 45 claims across six pages), and the fixes re-read the cited lines. No untrue claim remains open.
 
 - Re-run after the owner's example review: the changed examples were type-checked and read against the APIs they use; stand-in functions from `src/lib/` are app code the page doesn't show. No untrue claim remains open.
+
+- Re-run on the rows moved from B-26 and B-31: every added or changed line checked against packages/ by a read-only code reader. Untrue or imprecise claims corrected on the page before commit: scope ids for `user`/`org` include the flow id when flow-isolated (`packages/engine/src/stores/scope-keys.ts:177-181,415-430`); Block eager also covers an eager resource not yet loaded (`createExecutionContext.ts:2196-2206,2285-2299`). No untrue claim remains open.
+
+- Re-run after the security edit: checked against `packages/core/src/types/block.ts:353`, `packages/core/src/types/scope.ts:9-13,298`, `packages/engine/src/context/createExecutionContext.ts:1056-1058,3313-3320` and `packages/core/src/types/projected-resource-collection.ts:96-110`. No untrue claim remains open.
 
 ## 6 · Depth pass
 

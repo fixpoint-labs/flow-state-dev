@@ -10,6 +10,7 @@ import {
   createInMemoryStores
 } from "../src/host";
 import { parseFlowRoute } from "../src/host";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function makeFlow(kind: string, id = kind): FlowInstance {
   return defineFlow({
@@ -240,7 +241,7 @@ describe("createFlowApiRouter", () => {
       new Request("http://localhost/api/flows/demo/actions/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify({ sessionId: oneOffSessionId(),
           input: { value: "x" }
         })
       }),
@@ -939,7 +940,7 @@ describe("createFlowApiRouter", () => {
         new Request("http://localhost/api/flows/org-flow/actions/run", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ userId: "u1", input: { value: "test" } })
+          body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u1", input: { value: "test" } })
         }),
         { params: { path: ["org-flow", "actions", "run"] } }
       );

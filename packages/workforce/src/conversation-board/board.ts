@@ -92,7 +92,6 @@ import {
   taskToolsForTurn,
   taskToolViews,
   afterTaskCheck,
-  TaskWriteRefusedError,
   assertDepsFileable,
   assertFilingCallerContext,
   assertFilingSettings,
@@ -110,6 +109,7 @@ import { taskToolActions, currentWorkerClaim, taskBoard } from "@flow-state-dev/
 import {
   TaskCapExceededError,
   TaskFilingRefusedError,
+  TaskWriteRefusedError,
   isClaimable,
   isTerminalStatus,
   type Task,
@@ -174,6 +174,10 @@ import { owedReports, sendLegacyReports } from "./report-owed";
 import { filedProjectOf, filingProjectStampOf, isStamped, pieceOwnerOf } from "./held-task";
 import { PLAN_LEDGER_ID, STEP_ATTEMPTS, definePlanning, isAnsweringTurn, isSteppingTurn, planLedgerAt, planLedgerResources } from "./plan";
 import { verifiedWorkerOf } from "../workers/verified-worker";
+import type { TaskInputSchema, TaskInputRecord } from "../task-input/declaration";
+import { FILLED_FOR, type CheckedInput } from "../task-input/filing-check";
+import { checkedPatch, checkFiledInput, withRootWorker, type InputLookup } from "../task-input/checked-ledger";
+import { handedFlowOrRefuse, handoverFlowReader } from "./handover-flow";
 
 /**
  * How many attempts a filed task gets: a failure with one left runs the task
@@ -206,13 +210,22 @@ export interface ConversationBoardOptions {
   takesOwnTasks?: () => boolean;
   /** The most tasks under one top task, read on every filing. Omitted, {@link DEFAULT_TASK_CHAIN_LIMIT}. */
   chainLimit?: () => number | undefined;
-  // FIX-2333.
+  // FIX-2894; FIX-2333.
   /**
-   * Whether a delegate's flow works in a project's files: a task
-   * for it filed with no project to work in is refused `no_project` before
-   * anything is reserved or written. Omitted, no flow needs one.
+   * What a delegate's flow takes: the declaration on its `work` entry, read
+   * per call, so a roster change counts. Every write that files a task for
+   * one of its workers, or moves one onto it, is checked against it
+   * (`../task-input/filing-check`), its project requirement included, before
+   * anything is reserved or written. Omitted, or `undefined` for a flow, the
+   * flow's tasks take any object, unchecked.
    */
-  needsProject?: (flowKind: string) => boolean;
+  taskInputOf?: (flowKind: string) => TaskInputSchema | undefined;
+  /**
+   * The worker a task is for, read once from its record: the flow it runs on and
+   * its declared configuration, as a flow's task-input hooks are handed it.
+   * Omitted, its flow as this session's delegates have it, with no configuration.
+   */
+  workerOf?: (ctx: BlockContext, workerId: string) => Promise<{ readonly flow: string; readonly config: Readonly<Record<string, unknown>> } | undefined>;
   /**
    * The app's session fields (the installation's `sessionFields`): each
    * hand-over carries the filer's values down to the session it opens, beside
@@ -898,6 +911,13 @@ function hasPastDue(rows: readonly Task[], now: number): boolean {
   });
 }
 
+// FIX-2894.
+/** Told to a filing turn whose delegates include ones whose flows declare what their tasks take, by name. */
+const declaredInputLine = (workers: readonly string[]): string =>
+  `Before you file a task for ${workers.map((worker) => JSON.stringify(worker)).join(", ")}, call listDelegates first and read that delegate's \`inputSchema\`: ` +
+  "a JSON Schema of the fields its tasks take. Send the task's `input` in exactly that shape, using the field descriptions to choose each value. " +
+  "A task that doesn't fit is refused, naming the field.";
+
 /** The most rounds of drain and repair one pass runs. */
 const MAX_PASS_ROUNDS = 3;
 
@@ -955,6 +975,68 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * that works steps files them whatever its delegates (`turnFiles`).
    */
   const files = async (ctx: BlockContext): Promise<boolean> => (await reach(ctx)).available.size > 0;
+
+  // FIX-2894; FIX-2333.
+  /**
+   * What the filing check reads in the running session, for one write: a
+   * worker's flow is its flow as this session's delegates have it, and the
+   * project rule is the one `runProjectOf` reads, in the same order (its
+   * `no-project` stays the backstop: a change to one belongs in the other).
+   * A project is the filer's workstream; a `target`'s (a target names a
+   * workstream a delegate leads, and a workstream is always in a project);
+   * the one the row is stamped with (a follow-up's root's, or an edited
+   * row's own); or one the task names, whose shape and existence the run
+   * checks.
+   *
+   * @param subject The filing, or the row an edit changes, the project rule reads.
+   * @param own The session's project, written over one the input names before the parse.
+   */
+  const inputLookup = (
+    ctx: BlockContext,
+    ref: TaskCollectionRef,
+    subject: Pick<TaskInit, "target" | "followUpOf"> & { readonly task?: Task },
+    own?: ProjectAddressRef,
+    self?: string
+  ): InputLookup => ({
+    // One snapshot of the worker: a delegate of this session now, on the flow its record names. A step's worker is
+    // the session's own, on this flow. A record whose flow isn't the one the session's delegates have is moving
+    // under the check: it resolves to nothing, so the write is refused rather than checked against two answers.
+    worker: async (assignee) => {
+      const delegateFlow = assignee === self ? options.flowKind : (await reach(ctx)).available.get(assignee);
+      if (delegateFlow === undefined) return undefined;
+      const record = await options.workerOf?.(ctx, assignee);
+      if (record !== undefined && record.flow !== delegateFlow) return undefined;
+      return { id: assignee, flow: delegateFlow, config: record?.config ?? {} };
+    },
+    declarationOf: (flow) => options.taskInputOf?.(flow),
+    hasProject: async (input) => {
+      if (subject.target !== undefined) return true;
+      // A follow-up runs where its root ran, with its worker and its target (`withFollowUpPlacement`).
+      const named = subject.followUpOf === undefined ? undefined : ref.get(subject.followUpOf);
+      const root = named?.followUpOf === undefined ? named : ref.get(named.followUpOf);
+      if (root?.target !== undefined) return true;
+      if (filingWorkstreamOf(ctx.session.state) !== undefined) return true;
+      if (subject.task !== undefined && isStamped(subject.task)) {
+        if (filedProjectOf(subject.task) !== undefined) return true;
+      } else if ((await filedProjectFor(ctx, named)).stamp !== null) return true;
+      return namesProject(input);
+    },
+    noProject: (assignee) =>
+      `"${assignee}" works in a project's files, and this conversation has no project for it to work in. Nothing was filed. ${SET_THE_FILERS_PROJECT}`,
+    ...(own === undefined ? {} : { rewrite: (input: TaskInputRecord) => ownProjectIn(input, own) as TaskInputRecord })
+  });
+
+  /**
+   * The filing check for `init`, filed for `assignee` (a follow-up's is its
+   * root's worker): its checked input and stamp, or `undefined` for a task
+   * that waits unassigned or is for a flow that declares nothing.
+   */
+  const checkInitInput = async (ctx: BlockContext, ref: TaskCollectionRef, init: TaskInit, assignee: string | undefined, self?: string): Promise<CheckedInput | undefined> => {
+    if (assignee === undefined) return undefined;
+    const root = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
+    const { own } = await filedProjectFor(ctx, root);
+    return checkFiledInput(inputLookup(ctx, ref, init, own, self), ctx, assignee, init.input);
+  };
 
   // FIX-2082 D2.
   /**
@@ -1052,6 +1134,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   // session, keyed by the task alone: a reassign would then re-enter a session
   // named for the first worker, and run as it. Keying by the worker too keeps
   // one session to one task and one worker, which is the rule's own reason.
+  const handedFlowOf = handoverFlowReader(reach);
   const address: DispatchAddress = {
     type: "task",
     // Every row, a routed task's included, goes to `work`.
@@ -1084,13 +1167,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // pieces, a roster worker) fired, removed or moved to a flow that takes
     // no tasks since the filing is refused here, with the claim held, so the
     // task fails and the conversation hears it.
-    flowKind: async (task, ctx) => {
-      const reachable = await reach(ctx);
-      const flow = reachable.available.get(task.assignee);
-      if (flow !== undefined) return flow;
-      const why = reachable.unavailable.get(task.assignee) ?? "it isn't one of this session's delegates";
-      throw new Error(`Task "${task.taskId}" wasn't handed to "${task.assignee}": ${why}.`);
-    },
+    // One read of the delegates per hand-over gives both the flow dispatched to and the flow the session opened
+    // is born naming (`state` below), so the two can't disagree (FIX-2894).
+    flowKind: async (task, ctx) => handedFlowOrRefuse(await handedFlowOf(ctx, task.taskId, task.assignee), task.taskId, task.assignee),
     // The task session is born naming its worker, the task, the session
     // that filed it and the flow that session runs on, its own flow, and its
     // place in the chain (the board its task is on, and the chain's top),
@@ -1103,7 +1182,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // session, by id, is never created.
     state: async (task, ctx) => {
       const partition = await filingSessionIdOf(ctx.session);
-      const flow = (await reach(ctx)).available.get(task.assignee);
+      // Always written: a hand-over that resolves no flow is refused by name, so no session is born without `taskFlow`.
+      const flow = handedFlowOrRefuse(await handedFlowOf(ctx, task.taskId, task.assignee), task.taskId, task.assignee);
       // The delegate's ongoing session for the conversation works no one
       // task (FIX-2080): born naming its worker, the worker, conversation and
       // flow that filed into it, and no task or task-chain place. It counts
@@ -1117,7 +1197,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
           [FILING_FLOW_STATE_KEY]: options.flowKind,
           ...filingWorkerOf(ctx.session.state),
           ...carriedHopState(ctx.session.state),
-          ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {}),
+          [TASK_FLOW_STATE_KEY]: flow,
           ...carriedSessionFields(options.sessionFields ?? {}, ctx.session.state)
         };
       }
@@ -1137,7 +1217,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // message from the task counts on in the exchange of the turn that
         // filed it. Never the task chain's.
         ...carriedHopState(ctx.session.state),
-        ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {}),
+        [TASK_FLOW_STATE_KEY]: flow,
         ...(workstream === undefined ? {} : { [FILING_WORKSTREAM_STATE_KEY]: workstream }),
         ...(project === undefined ? {} : { [FILING_PROJECT_STATE_KEY]: project }),
         ...carriedSessionFields(options.sessionFields ?? {}, ctx.session.state)
@@ -1273,34 +1353,28 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       }
       return { ...init, assignee, targetSessionId: resolved.sessionId };
     };
-    // FIX-2333.
+    // FIX-2894.
     /**
-     * A task for a delegate whose flow works in a project's files, filed with
-     * no project to work in, is refused here, before anything is reserved or
-     * written, so the app can ask for a project before a task
-     * exists. A project is the filer's workstream; a `target`'s (a target
-     * names a workstream a delegate leads, which `withTarget` has already
-     * resolved, and a workstream is always in a project); the one the row
-     * would be stamped with (a follow-up's root's); or one the task names,
-     * whose shape and existence the run checks. The same order as the run's
-     * own lookup (`runProjectOf`), whose `no-project` stays the backstop: a
-     * change to one belongs in the other.
+     * The filing check for a row about to be filed here: against the flow
+     * of the worker it goes to (a follow-up's root's, the one named, or the
+     * conversation's only task-taking delegate), before anything is reserved
+     * or written.
      */
-    const assertProjectFor = async (init: TaskInit): Promise<void> => {
-      if (options.needsProject === undefined || init.target !== undefined) return;
-      // A follow-up runs where its root ran, with its worker and its target (`withFollowUpPlacement`).
-      const named = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
-      const root = named?.followUpOf === undefined ? named : ref.get(named.followUpOf);
-      if (root?.target !== undefined) return;
-      const assignee = root?.assignee ?? init.assignee ?? (await soleDelegate());
-      const flow = assignee === undefined ? undefined : (await reach(ctx)).available.get(assignee);
-      if (flow === undefined || !options.needsProject(flow)) return;
-      if (filingWorkstreamOf(ctx.session.state) !== undefined) return;
-      if ((await filedProjectFor(ctx, named)).stamp !== null) return;
-      if (namesProject(init.input)) return;
-      throw new TaskWriteRefusedError(
-        "no_project",
-        `"${assignee}" works in a project's files, and this conversation has no project for it to work in. Nothing was filed. ${SET_THE_FILERS_PROJECT}`
+    const checkedFor = async <T extends TaskInit>(init: T): Promise<{ init: T; checked: CheckedInput | undefined }> => {
+      // The worker the task goes to is read once and written on it: the one it is checked for is the one it is
+      // stored for, whatever the conversation's delegates become while the flow's hooks run. A follow-up's is its
+      // root's, and one naming another is refused.
+      const followed = withRootWorker(ref, init);
+      const assignee = followed.assignee ?? (followed.followUpOf === undefined ? await soleDelegate() : undefined);
+      const pinned = assignee !== undefined && followed.assignee === undefined ? { ...followed, assignee } : followed;
+      return { init: pinned, checked: await checkInitInput(ctx, ref, pinned, assignee) };
+    };
+    // FIX-2894.
+    /** An edit of a row's settings: its input and worker through the filing check, on one revision of the row. */
+    const checkedEdit = (id: string, patch: Parameters<TaskCollectionRef["patchSettings"]>[1]): Promise<TaskWriteOutcome> => {
+      const edited = ref.get(id);
+      return checkedPatch(inputLookup(ctx, ref, { target: edited?.target, followUpOf: edited?.followUpOf, ...(edited === undefined ? {} : { task: edited }) }), ctx, ref, id, patch, (i, p) =>
+        ref.patchSettings(i, p)
       );
     };
     /** The conversation's only task-taking delegate, which a row filed with no assignee goes to; none with none or several. */
@@ -1328,15 +1402,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const owner = await pieceOwnerOf(ctx);
       if (owner !== undefined) await refuseIfParentCancelled(ctx, owner, conversationLedgerAt);
     };
-    /** Add one checked row under its chain reservation. */
-    const fileReserved = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }): Promise<Task> => {
+    /** Add one checked row under its chain reservation, with its checked input and stamp when its flow declares one. */
+    const fileReserved = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }, checked?: CheckedInput): Promise<Task> => {
       const { id, markAdded } = reserved;
-      let assignee = init.assignee;
-      if (assignee === undefined) {
-        // An unassigned task goes to the conversation's only delegate; with
-        // none or several it waits on the board until it is assigned.
-        assignee = soleTaskDelegate(await options.delegates(ctx));
-      }
+      // The worker was read once, before the check (`checkedFor`): an unassigned task went to the
+      // conversation's only delegate then, or, with none or several, waits on the board until it is
+      // assigned. It is never read again here, after the awaits since (FIX-2894).
+      const assignee = init.assignee;
       // In a task session, the row is a piece of the task it was filed for:
       // server-written, so the task's cascade reaches only its own pieces.
       const owner = await pieceOwnerOf(ctx);
@@ -1352,9 +1424,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ...heldMarker(options.holdsFiling, ctx, init),
         ...(owner === undefined ? {} : { [PIECE_OF]: owner }),
         [FILED_HOP]: heldFromFiling(init) ? freshHopMark(ctx) : turnHopMark(ctx),
-        [FILED_PROJECT]: project
+        [FILED_PROJECT]: project,
+        ...(checked === undefined ? {} : { [FILLED_FOR]: checked.filledFor })
       };
-      const input = ownProjectIn(init.input, own);
+      // A checked input had the session's project written over a named one before its parse.
+      const input = checked === undefined ? ownProjectIn(init.input, own) : checked.input;
       // The task this piece is for learns where its session is first, so its
       // ending's cascade can reach the piece (FIX-2080 D2).
       if (owner !== undefined) await stampFiledMarker(ctx, owner, conversationLedgerAt);
@@ -1387,10 +1461,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // conversation is a routed task: its layer attaches the message.
       // One at a time: a batch on such a turn files plain tasks.
       if (init.resultTo === "conversation" && options.routes?.routing(ctx) === true) return writeTaskLine(ctx, await options.routes.file(ctx, init));
-      const targeted = await withTarget(init);
-      await assertProjectFor(targeted);
+      const { init: targeted, checked } = await checkedFor(await withTarget(init));
       await refuseUnderCancelledTask();
-      return writeTaskLine(ctx, await fileReserved(targeted, await reserveFiling(ctx, ref, partition, targeted, true)));
+      return writeTaskLine(ctx, await fileReserved(targeted, await reserveFiling(ctx, ref, partition, targeted, true), checked));
     };
     /**
      * The options a write on this board presents: a claim the running
@@ -1519,7 +1592,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (self !== undefined && patch.assignee === self) throw filedApart(id);
         const metadata = patch.metadata === undefined ? undefined : (callerMetadata(patch.metadata) ?? {});
         await owePass(ctx);
-        const outcome = await ref.patchSettings(id, metadata === undefined ? patch : { ...patch, metadata });
+        // An edit of a row's input or worker is the filing check, on one revision of the row (FIX-2894).
+        const outcome = await checkedEdit(id, metadata === undefined ? patch : { ...patch, metadata });
         // Held before its first start, a task is held from its filing: released,
         // it starts a fresh chain, as one filed held does (FIX-2238).
         if (outcome.outcome !== "declined" && patch.held === true) await freshenFiledHop(ctx, ref, id);
@@ -1540,8 +1614,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         const filedWith = new Map(ordered.map((init) => [init.id, init]));
         for (const init of ordered) checkFiling(init, filedWith);
         const batch: Array<TaskInit & { id: string }> = [];
-        for (const init of ordered) batch.push({ ...(await withTarget(init)), id: init.id });
-        for (const init of batch) await assertProjectFor(init);
+        const targeted: Array<TaskInit & { id: string }> = [];
+        for (const init of ordered) targeted.push({ ...(await withTarget(init)), id: init.id });
+        // Every row's input is checked before the first add: one that doesn't fit files none of them.
+        const checked = new Map<string, CheckedInput | undefined>();
+        for (const init of targeted) {
+          const done = await checkedFor(init);
+          batch.push(done.init);
+          checked.set(init.id, done.checked);
+        }
         // As stored now, so one another request ended is refused before reserveFiling (FIX-2114).
         // A backing with no `refresh` must serve `get` committed across requests.
         const filed = new Set(batch.map((init) => init.id));
@@ -1553,14 +1634,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         const reserved: Array<{ id: string; markAdded: () => Promise<void> }> = [];
         for (const init of batch) reserved.push(await reserveFiling(ctx, ref, partition, init, true));
         const added: Task[] = [];
-        for (const [i, init] of batch.entries()) added.push(await fileReserved(init, reserved[i]!));
+        for (const [i, init] of batch.entries()) added.push(await fileReserved(init, reserved[i]!, checked.get(init.id)));
         return added;
       },
       async setAssignee(id, assignee) {
         if (self !== undefined && assignee === self) throw filedApart(id);
         await assertReassignable(id, assignee);
         await owePass(ctx);
-        const outcome = await ref.setAssignee(id, assignee);
+        // Every move of a task on the board is the checked edit (FIX-2894 D2), onto an open flow too, where its stamp is cleared.
+        const outcome = ref.get(id) !== undefined ? await checkedEdit(id, { assignee }) : await ref.setAssignee(id, assignee);
         // `unchanged` too: an assign retried after a lost wake starts the row.
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;
@@ -1649,13 +1731,18 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         );
       }
     };
+    // FIX-2894.
+    /** A step filed `session: "new"`, checked as a filing for the worker's own flow; an inline step stays open. */
+    const newSessionStepInput = async (init: TaskInit): Promise<CheckedInput | undefined> =>
+      init.session === "new" ? checkInitInput(ctx, plan, init, self, self) : undefined;
     /** Add one checked step under its chain reservation. */
-    const fileReservedStep = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }): Promise<Task> => {
+    const fileReservedStep = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }, checked?: CheckedInput): Promise<Task> => {
       const { id, markAdded } = reserved;
-      const metadata = callerMetadata(init.metadata);
+      const given = callerMetadata(init.metadata);
+      const metadata = checked === undefined ? given : { ...(given ?? {}), [FILLED_FOR]: checked.filledFor };
       // The project the step's own session is handed, so a guess in its input
       // matches it (FIX-2161).
-      const input = ownProjectIn(init.input, (await filedProjectFor(ctx)).own);
+      const input = checked !== undefined ? checked.input : ownProjectIn(init.input, (await filedProjectFor(ctx)).own);
       // A step a task session plans is that task's, server-written (FIX-2081).
       const owner = await pieceOwnerOf(ctx);
       const added = await plan.createTask({
@@ -1672,8 +1759,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     };
     const fileStep: TaskCollectionRef["createTask"] = async (init) => {
       checkStep(init);
+      // A step in a session of its own runs through the worker's own `work` entry, so its input is checked against the worker's own flow (FIX-2894).
+      const checked = await newSessionStepInput(init);
       // A step in a session of its own is one board deeper (FIX-2082 D2).
-      return fileReservedStep(init, await reserveFiling(ctx, plan, partition, init, init.session === "new"));
+      return fileReservedStep(init, await reserveFiling(ctx, plan, partition, init, init.session === "new"), checked);
     };
     /**
      * Each ledger resolves `deps` only among its own rows, so a dep on the
@@ -1747,11 +1836,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         const stepInits = dependencyOrder(batch.filter(isStepFiling));
         for (const init of stepInits) assertFilingSettings(init, undefined, plan.collectionId);
         assertDepsFileable(stepInits, (id) => plan.get(id));
+        const stepInputs: Array<CheckedInput | undefined> = [];
+        for (const init of stepInits) stepInputs.push(await newSessionStepInput(init));
         const reserved: Array<{ id: string; markAdded: () => Promise<void> }> = [];
         for (const init of stepInits) reserved.push(await reserveFiling(ctx, plan, partition, init, init.session === "new"));
         const tasks = await board.createTasks(batch.filter((init) => !isStepFiling(init)));
         const steps: Task[] = [];
-        for (const [i, init] of stepInits.entries()) steps.push(await fileReservedStep(init, reserved[i]!));
+        for (const [i, init] of stepInits.entries()) steps.push(await fileReservedStep(init, reserved[i]!, stepInputs[i]));
         const byId = new Map([...tasks, ...steps].map((row) => [row.id, row]));
         return batch.map((init) => byId.get(init.id)!);
       },
@@ -1824,7 +1915,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // The drain works a step in this request and doesn't wait on a held one, in any state.
         if (patch.held !== undefined) throw stepNotHeld(id);
         const metadata = patch.metadata === undefined ? undefined : (callerMetadata(patch.metadata) ?? {});
-        return plan.patchSettings(id, metadata === undefined ? patch : { ...patch, metadata });
+        const edit = metadata === undefined ? patch : { ...patch, metadata };
+        // A step in a session of its own runs through the worker's own `work` entry: its input is checked against the worker's own flow (FIX-2894).
+        const step = plan.get(id);
+        if (step?.session !== "new" || patch.input === undefined) return plan.patchSettings(id, edit);
+        const lookup = inputLookup(ctx, plan, { target: step.target, followUpOf: step.followUpOf, task: step }, undefined, self);
+        return checkedPatch(lookup, ctx, plan, id, edit, (i, p) => plan.patchSettings(i, p));
       },
     };
   };
@@ -2013,15 +2109,23 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // guess one: the board writes it on every task filed here anyway. On
         // a turn routing a message, how to hand it on (FIX-2083).
         context: async (_input, ctx) => {
-          const routing = routes !== undefined && routes.routing(ctx) && (await files(ctx)) ? routes.description : undefined;
+          const filing = await files(ctx);
+          const routing = routes !== undefined && routes.routing(ctx) && filing ? routes.description : undefined;
+          // A delegate whose flow declares what its tasks take (FIX-2894): the filer reads it before filing.
+          const takers = filing
+            ? [...(await reach(ctx)).available].filter(([, flow]) => options.taskInputOf?.(flow) !== undefined).map(([worker]) => worker)
+            : [];
+          const declared = takers.length === 0 ? undefined : declaredInputLine(takers);
           const own = filingProjectAddressOf(ctx.session.state);
-          if (own === undefined || !(await files(ctx))) return routing;
           // A project id is its creator's text and may hold quotes, so it goes
           // in as a JSON string: it can't close the name and start a sentence.
           const project =
-            `This conversation works in the ${own.visibility} project ${JSON.stringify(own.id)}. ` +
-            "Every task you file here works in that project, so leave `project` out of a task's `input`.";
-          return routing === undefined ? project : `${project}\n\n${routing}`;
+            own === undefined || !filing
+              ? undefined
+              : `This conversation works in the ${own.visibility} project ${JSON.stringify(own.id)}. ` +
+                "Every task you file here works in that project, so leave `project` out of a task's `input`.";
+          const lines = [project, declared, routing].filter((line): line is string => line !== undefined);
+          return lines.length === 0 ? undefined : lines.join("\n\n");
         }
       },
       default: ["tools"]
@@ -2052,8 +2156,16 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // no board marker in its metadata, and the session's own project in its input.
     // The filing turn's hop count, which the task's turn starts at (FIX-2106).
     const { stamp, own } = await filedProjectFor(ctx);
-    const metadata = { ...callerMetadata(filing.metadata), ...heldMarker(options.holdsFiling, ctx, filing), [FILED_HOP]: heldFromFiling(filing) ? freshHopMark(ctx) : turnHopMark(ctx), [FILED_PROJECT]: stamp };
-    const input = ownProjectIn(filing.input, own);
+    // The routed filing goes through the same filing check as every other writer (FIX-2894).
+    const checked = await checkInitInput(ctx, ref, filing, filing.assignee);
+    const metadata = {
+      ...callerMetadata(filing.metadata),
+      ...heldMarker(options.holdsFiling, ctx, filing),
+      [FILED_HOP]: heldFromFiling(filing) ? freshHopMark(ctx) : turnHopMark(ctx),
+      [FILED_PROJECT]: stamp,
+      ...(checked === undefined ? {} : { [FILLED_FOR]: checked.filledFor })
+    };
+    const input = checked === undefined ? ownProjectIn(filing.input, own) : checked.input;
     const { metadata: _metadata, input: _input, ...rest } = heldAsTurnSays(ctx, filing);
     const init: TaskInit & { id: string } = {
       ...rest,

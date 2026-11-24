@@ -171,6 +171,7 @@ describe("V3 · the terminal's outcome equals the app's action route, flow by fl
       // A credential-less HTTP caller naming the same user, action and input.
       const res = await http(router, "POST", `${flow}/actions/respond`, {
         userId: DEFAULT_LOCAL_USER_ID,
+        sessionId: `v3-http-${flow}`,
         input: { message: "hi" },
       });
       let httpOutcome: string;

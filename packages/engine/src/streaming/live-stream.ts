@@ -59,7 +59,8 @@ export type CreateLiveRequestStreamOptions = {
    * When `true`, forward every event (including trace-channel items like
    * `block_trace`/`router_decision`/`state_snapshot`) instead of applying the
    * client-visibility filter. Mirrors the GET stream route's `?include=trace`
-   * opt-in (`stream-routes.ts`). Default `false`/omitted preserves today's
+   * opt-in (`stream-routes.ts`); the HTTP routes set it only while trace
+   * observability is on (`traceRequestAllowed`). Default `false`/omitted preserves today's
    * filtered behavior.
    */
   includeTrace?: boolean;

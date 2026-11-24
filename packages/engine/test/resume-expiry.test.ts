@@ -54,6 +54,7 @@ async function seedSuspended(
     actionName: "go",
     userId: "u1",
     source: "http",
+    sessionId: "s1",
     status: "suspended",
     startedAtMs: 1,
     state: {},

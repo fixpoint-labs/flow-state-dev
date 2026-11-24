@@ -19,6 +19,7 @@ import type { ResourceStateSetOptions } from "../src/host";
 import type { StoreRegistry } from "../src";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { createFindByConformanceTests } from "../src/testing";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const ORG = "acme";
 const taskSchema = z.object({ id: z.string(), tags: z.array(z.string()).default([]) });
@@ -74,6 +75,7 @@ async function boot(flows: Record<string, unknown> = { ledger: ledgerFlow() }) {
   const runtime = await state.getRuntime();
   const run = async (input: z.input<typeof lookupInput>, userId = "alice") => {
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       flow: ledgerFlow(),
       actionName: "lookup",
       input,
@@ -158,6 +160,7 @@ describe("findBy", () => {
     const as = async (userId: string) =>
       (
         await runAction({
+          sessionId: oneOffSessionId(),
           flow: notesFlow(),
           actionName: "find",
           input: {},
@@ -223,6 +226,7 @@ describe("the index writer on the runtime's stores", () => {
     const h = await boot({ ledger: ledgerFlow(), writer: writerFlow() });
     const seen = recordSets(h.raw);
     await runAction({
+      sessionId: oneOffSessionId(),
       flow: writerFlow(),
       actionName: "write",
       input: {},
@@ -284,6 +288,7 @@ describe("the index writer and flow-isolated collections", () => {
     };
     const write = async (flow: typeof a) => {
       const result = await runAction({
+        sessionId: oneOffSessionId(),
         flow,
         actionName: "write",
         input: {},

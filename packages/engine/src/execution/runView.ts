@@ -314,7 +314,8 @@ async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
     actionName: run.name,
     requestId,
     userId: run.userId,
-    ...(noSession ? { noSession: true } : { sessionId: run.sessionId }),
+    // Checked above: a session view has its session, and only it.
+    ...(run.sessionId === undefined ? { noSession: true as const } : { sessionId: run.sessionId }),
     viewScope: run.scope,
     orgId: run.orgId,
     tenantId: run.tenantId,

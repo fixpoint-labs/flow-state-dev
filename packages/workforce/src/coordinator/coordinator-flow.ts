@@ -114,7 +114,7 @@ import {
   workstreamDelegateSeed
 } from "../projects/project-coordinator";
 import { isTerminalStatus, type Task, type TaskInit } from "@flow-state-dev/orchestration/tasks";
-import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/internal";
+import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/tasks";
 import { conversationLedgerAt } from "../conversation-board/ledger";
 import { defineSessionBoard, workerMessageStateShape } from "../conversation-board/session-board";
 import { workerTaskEntry } from "../conversation-board/task-entry";

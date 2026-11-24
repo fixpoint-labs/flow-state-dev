@@ -99,6 +99,8 @@ export type UseRequestStreamResult = {
   /** True when the main execution chain has completed but background work tasks are still running. */
   readonly isFinishing: boolean;
   readonly lastEventId?: string;
+  /** The request-created event's time, when the stream includes it. */
+  readonly startedAt?: number;
   /**
    * When the request ended, in ms: the time of the status event that ended it
    * (`completed`, `failed`, `aborted`, `incomplete` or `interrupted`).
@@ -174,6 +176,7 @@ export function useRequestStream(
 
   const [items, setItems] = useState<OutputItem[]>([]);
   const [status, setStatus] = useState<RequestStatus>("in_progress");
+  const [started, setStarted] = useState<{ requestId: string; flowKind: string | undefined; response: Response | null; ts: number }>();
   const [completedAt, setCompletedAt] = useState<number | undefined>(undefined);
   // Transport error or manual close — distinct from a terminal request status.
   const [ended, setEnded] = useState(false);
@@ -229,14 +232,21 @@ export function useRequestStream(
     store.clear();
     setItems([]);
     setStatus("in_progress");
+    setStarted(undefined);
     setCompletedAt(undefined);
     setEnded(false);
 
+    const bound = bindStoreToCallbacks(store, {
+      onChange: scheduleFlush,
+      itemFilter: filter ? (item) => passesTypeFilter(item, filter) : undefined
+    });
     const callbacks = {
-      ...bindStoreToCallbacks(store, {
-        onChange: scheduleFlush,
-        itemFilter: filter ? (item) => passesTypeFilter(item, filter) : undefined
-      }),
+      ...bound,
+      onRequestCreated: (event: Parameters<NonNullable<typeof bound.onRequestCreated>>[0]) => {
+        bound.onRequestCreated?.(event);
+        setStarted((current) => current?.requestId === event.requestId && current.flowKind === flowKind && current.response === responseObj
+          ? current : { requestId: event.requestId, flowKind, response: responseObj, ts: event.ts });
+      },
       onSessionMetadataChanged: () => onSessionMetadataChangedRef.current?.(),
       onError: () => {
         setEnded(true);
@@ -323,6 +333,8 @@ export function useRequestStream(
   return {
     items,
     status,
+    startedAt: started?.flowKind === flowKind && started?.response === responseObj && (reqId === null || started?.requestId === reqId)
+      ? started?.ts : undefined,
     messages,
     blockOutputs,
     currentStatus,

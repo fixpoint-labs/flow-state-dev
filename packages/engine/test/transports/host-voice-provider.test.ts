@@ -33,6 +33,7 @@ import {
   createInMemoryStores
 } from "../../src/host";
 import { createInboundTransportHost } from "../../src/host";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function provider(id: string): VoiceProvider {
   return {
@@ -74,6 +75,7 @@ function buildHost(opts: { routerProvider?: VoiceProvider; flowProvider?: VoiceP
 
 function dispatch(host: ReturnType<typeof buildHost>) {
   return host.dispatch({
+    sessionId: oneOffSessionId(),
     source: "test",
     flowKind: "voice-flow",
     action: "run",

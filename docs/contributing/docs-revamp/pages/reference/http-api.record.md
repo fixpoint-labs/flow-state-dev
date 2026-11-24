@@ -48,6 +48,8 @@ Written by `docs-writer` (sonnet), 6065 words. Scenario: none: reference page; o
 
 - After the loop (review): the Greptile review on the PR. The organization `403` sentence now says it comes for an open flow in an app where another flow signs callers in, and that when nothing in the app authenticates these routes skip the owner and organization checks (packages/engine/src/routes/route-auth.ts:395-400). 4762 words. Page sha256 dc806095713c.
 
+- After a code change (every request names its session): the action route's check order gains step 0, a send that names no session is `400 session-required` before the flow is looked up, and `attachments_need_session` leaves the attachment refusals, since no send reaches them without a session. Page sha256 edd28e3a184f: exit 0. 4803 words.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 51dea3abe090, and the 19 Reference row(s) pass 6 moved.
@@ -64,6 +66,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 51d
 - Reference row 12: Row 12: "Request stream resume: ... 4 MiB slow-reader cut-off, 30 second polling-backend interrupt" Untrue: The 30 second silence interrupt applies to SQLite, filesystem and Postgres (both the polling and the LISTEN path), not only polling backends. The in-memory store alone does not apply it, and the limit is overridable with `LIVE_TAIL_LIVENESS_MS`. (/home/user/flow-state-dev/packages/store-postgres/src/request-store.ts:787,878-880; /home/user/flow-state-dev/packages/engine/src/streaming/live-tail-liveness.ts:9-18) The row is recorded corrected.
 
 - Re-run after the review edit: with the default resolver and no authenticating flow, management routes return before any owner check. True.
+- Re-run after the code change, on the page at sha256 edd28e3a184f: "A send that names no session (no `sessionId` in the path or the body, or an empty one) is `400 { error: "session-required", message }`, before the flow is looked up or the caller resolved." True. (packages/engine/src/routes/action-routes.ts:82-94, the flow lookup after it at :97-104) `attachments_need_session` is gone from the refusal lists: no package source answers it. True.
 
 ## 6 · Depth pass
 

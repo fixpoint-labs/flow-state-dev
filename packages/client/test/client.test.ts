@@ -120,12 +120,29 @@ describe("flow(address).send", () => {
         return json(EXECUTE_RESPONSE);
       }
     });
-    const sent = await createClient({ userId: "devuser", baseUrl: "", fetcher }).flow("demo").send("run", { value: "ok" });
+    const sent = await createClient({ userId: "devuser", baseUrl: "", fetcher }).flow("demo").send("run", { value: "ok" }, { sessionId: "sess_1" });
 
     expect(sent.id).toBe("req_1");
     expect(sent.flow).toBe("demo");
     expect(sent.response.status).toBe("in_progress");
-    expect(calls(fetcher)).toEqual(["POST /api/flows/demo/actions/run"]);
+    expect(calls(fetcher)).toEqual(["POST /api/flows/demo/sess_1/actions/run"]);
+  });
+
+  // Every send names its session: the type requires it, and a JavaScript
+  // caller that leaves it out is refused before anything is sent, as the
+  // server would refuse it (`session-required`).
+  it("refuses a send with no session id before sending anything", async () => {
+    const fetcher = routed({ "POST /actions/run": () => json(EXECUTE_RESPONSE) });
+    const flow = createClient({ userId: "devuser", baseUrl: "", fetcher }).flow("demo");
+    // @ts-expect-error a send names its session
+    const bare = await flow.send("run", {}).catch((error: unknown) => error);
+    // @ts-expect-error a send names its session
+    const unnamed = await flow.send("run", {}, {}).catch((error: unknown) => error);
+    for (const refused of [bare, unnamed]) {
+      expect(refused).toBeInstanceOf(ClientHttpError);
+      expect(refused).toMatchObject({ status: 0 });
+    }
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("uses the session-scoped route when a session is named", async () => {
@@ -152,7 +169,7 @@ describe("flow(address).send", () => {
     const fetcher = routed({ "POST /actions/run": () => json({ error: "nope" }, 422) });
     const refused = await createClient({ userId: "devuser", baseUrl: "", fetcher })
       .flow("demo")
-      .send("run", {})
+      .send("run", {}, { sessionId: "sess_1" })
       .catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(ClientHttpError);
     expect(refused).toMatchObject({ status: 422, body: { error: "nope" } });
@@ -161,18 +178,18 @@ describe("flow(address).send", () => {
   it("checks the action name and input against a flow type, imported as a type only", async () => {
     const fetcher = routed({ "POST /actions/run": () => json(EXECUTE_RESPONSE) });
     const demo = createClient({ userId: "devuser", baseUrl: "", fetcher }).flow<typeof demoFlow>("demo");
-    await demo.send("run", { value: "ok" });
+    await demo.send("run", { value: "ok" }, { sessionId: "sess_1" });
     // @ts-expect-error not an action of the flow
-    await demo.send("walk", { value: "ok" }).catch(() => undefined);
+    await demo.send("walk", { value: "ok" }, { sessionId: "sess_1" }).catch(() => undefined);
     // @ts-expect-error the input does not match the action's schema
-    await demo.send("run", { value: 1 }).catch(() => undefined);
+    await demo.send("run", { value: 1 }, { sessionId: "sess_1" }).catch(() => undefined);
     expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
   it("addresses a collection flow's instance by its id", async () => {
     const fetcher = routed({ "POST /actions/run": () => json(EXECUTE_RESPONSE) });
-    await createClient({ userId: "devuser", baseUrl: "", fetcher }).flow<typeof demoFlow>("demo-copy-2").send("run", { value: "x" });
-    expect(calls(fetcher)).toEqual(["POST /api/flows/demo-copy-2/actions/run"]);
+    await createClient({ userId: "devuser", baseUrl: "", fetcher }).flow<typeof demoFlow>("demo-copy-2").send("run", { value: "x" }, { sessionId: "sess_1" });
+    expect(calls(fetcher)).toEqual(["POST /api/flows/demo-copy-2/sess_1/actions/run"]);
   });
 
   it("creates a session on the flow as the client's user", async () => {
@@ -207,18 +224,17 @@ describe("request handle", () => {
     ]);
   });
 
-  it("rejects continue and retry before any call for a request with no session", async () => {
-    const fetcher = routed({});
-    const sent = routed({
-      "POST /actions/run": () => json({ ...EXECUTE_RESPONSE, session: undefined })
+  // A request recorded before every request named its session reads back with
+  // no session: the handle refuses to continue or retry it before calling.
+  it("rejects continue and retry before any call for a request recorded with no session", async () => {
+    const fetcher = routed({
+      "GET /requests/req_1/status": () => json({ id: "req_1", status: "interrupted" })
     });
-    const client = createClient({ userId: "u1", baseUrl: "", fetcher: sent });
-    const request = await client.flow("demo").send("run", {});
+    const request = createClient({ userId: "u1", baseUrl: "", fetcher }).flow("demo").request("req_1");
 
     await expect(request.continue()).rejects.toMatchObject({ name: "ClientHttpError", status: 0 });
     await expect(request.retry()).rejects.toMatchObject({ name: "ClientHttpError", status: 0 });
-    expect(sent).toHaveBeenCalledTimes(1);
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(calls(fetcher)).toEqual(["GET /api/flows/demo/requests/req_1/status"]);
   });
 
   it("surfaces a continue the server refuses (already finished) as a typed ClientHttpError", async () => {

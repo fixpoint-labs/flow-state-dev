@@ -14,6 +14,7 @@ import { z } from "zod";
 import { runAction } from "../../src";
 import { createInMemoryStores } from "../../src/host";
 import { createResponseEmitter } from "../../src/host";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 describe("runAction — carried action core", () => {
   it("runs the carried core's block, bypassing flow.actions resolution", async () => {
@@ -37,6 +38,7 @@ describe("runAction — carried action core", () => {
     });
 
     await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       // Name intentionally absent from flow.actions — proves the carried core
@@ -59,6 +61,7 @@ describe("runAction — carried action core", () => {
 
     await expect(
       runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "missing" as keyof typeof flow.actions & string,

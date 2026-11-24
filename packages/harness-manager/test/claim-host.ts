@@ -150,7 +150,11 @@ export interface HostOptions {
   script?: HarnessStep[];
   /** The file types the stub harness says it takes. Default: none, as a harness that declares nothing. */
   accepts?: HarnessBlock["accepts"];
-  /** The phase's done-condition. Default: always done. */
+  /** The mode's name, which keys its runs. Default `PHASE`. */
+  modeName?: string;
+  /** The segment the mode's runs were stored under before it took `modeName` (`ModeSpec.formerName`). */
+  formerName?: string;
+  /** The mode's done check. Default: always done. */
   isDone?: (run: { answer?: string | null }) => boolean;
   /** Extra manager options (a judge, say). */
   manager?: Record<string, unknown>;
@@ -227,9 +231,10 @@ export function claimHost(options: HostOptions) {
       ? { boardCollectionId: FIXED_BOARD, boardCollection: fixedLedger }
       : { ledgers }),
     tenant: undefined,
-    phase: {
-      phase: PHASE,
-      buildPrompt: async (run: PromptRunContext) => {
+    mode: {
+      name: options.modeName ?? PHASE,
+      ...(options.formerName === undefined ? {} : { formerName: options.formerName }),
+      instructions: async (run: PromptRunContext) => {
         await options.beforePrompt?.(run.ctx);
         return [
           `Work on ${run.issue}, attempt ${run.attempt}: ${run.task.goal}`,
@@ -238,10 +243,12 @@ export function claimHost(options: HostOptions) {
           `ASK: ${run.askMarkerPath}`,
         ].join("\n");
       },
-      isDone: (run: CompletionRunContext) => {
-        const answer = (run as { answer?: string | null }).answer;
-        answersSeen.push(answer);
-        return options.isDone?.({ answer }) ?? true;
+      doneWhen: {
+        check: (run: CompletionRunContext) => {
+          const answer = (run as { answer?: string | null }).answer;
+          answersSeen.push(answer);
+          return options.isDone?.({ answer }) ?? true;
+        },
       },
     },
     workspace:

@@ -17,6 +17,7 @@
  *
  * Every process goes through `./exec`, the package's one door for them.
  */
+import { stripAnsi } from "@flow-state-dev/core/helpers";
 import { runToEnd } from "./exec";
 import type { WorkspaceSetup } from "./setup";
 
@@ -151,9 +152,6 @@ export function parseCheckoutCommand(command: string): { words: [string, ...stri
   return { words: [program!, ...args] };
 }
 
-// eslint-disable-next-line no-control-regex
-const COLOUR_CODES = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
-
 /** Options for {@link runCheckoutCommands}. */
 export interface RunCheckoutCommandsOptions {
   /** The checkout the commands run in. */
@@ -162,7 +160,11 @@ export interface RunCheckoutCommandsOptions {
   commands: readonly string[];
   /** The wall clock for all of them together, in milliseconds. */
   timeoutMs: number;
-  /** Extra environment, laid over the process's own. */
+  /**
+   * Variables to set for the commands. They never inherit the host's whole
+   * environment, only `WORKSPACE_BASE_PASS`: a command the run can rewrite
+   * (a package script) gains no secret the host didn't name here.
+   */
   env?: Record<string, string>;
   /**
    * Stops the commands early: the running one is stopped with its group and
@@ -208,7 +210,7 @@ export async function runCheckoutCommands(options: RunCheckoutCommandsOptions): 
       timedOut: ended.timedOut,
       skipped: false,
       durationMs: Date.now() - started,
-      tail: ended.output.replace(COLOUR_CODES, "").slice(-CHECK_OUTPUT_TAIL_CHARS),
+      tail: stripAnsi(ended.output).slice(-CHECK_OUTPUT_TAIL_CHARS),
     });
   }
   return results;

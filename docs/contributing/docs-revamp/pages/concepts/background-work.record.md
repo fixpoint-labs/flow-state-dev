@@ -63,6 +63,8 @@ Closed after the loop: pass 7 findings 1 to 3, both suspected inaccuracies, and 
 - Post-merge edit (the app fires its own schedules): the schedule paragraph says the app checks once a minute, one server of several does it, and on a serverless host one cron route does. Page sha256 f9011f5e74d3: check-docs-page.mjs exits 0.
 - After the loop (review): drift fix: "A flow cannot start itself. Something outside calls the server" contradicted the schedule tick the app runs itself each minute in a serving process (packages/engine/src/execution/schedule-tick.ts:1-35, packages/engine/src/flowstate/types.ts:420-423). The paragraph now opens on runs with no user behind them, a webhook and a schedule. 1079 words. Page sha256 fea0e30a5384.
 
+Cutover, 2026-11-24, after the move to `apps/docs/docs/concepts/background-work.md`: "you hand work off" reads "you send work away" (a word the published-docs vocabulary sweep retires, replaced at the move). `node scripts/check-docs-page.mjs` on the page: ok. The site build, broken links included: passes.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 8d57109d324c, and the 11 Reference row(s) pass 6 moved.
@@ -75,6 +77,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 8d5
 - Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749).
 - Post-merge edit, checked against the code: once a minute (`SCHEDULE_TICK_INTERVAL_MS = 60_000`, `engine/src/execution/schedule-tick.ts:35`); the flow's schedules and the stored ones (`schedules.static` and `index.claimDue`, `schedule-tick.ts:101`, `:112`); one server of several, through the store lease (`engine/src/execution/local-scheduler.ts:71`); on Vercel one cron route runs the tick (`packages/vercel/src/scheduler.ts:61`).
 - Re-run after the review edit: the tick fires every static and dynamic schedule of every registered flow (packages/engine/src/execution/schedule-tick.ts:3-16) at a one-minute interval (:35).
+
+Cutover, 2026-11-24: "you hand work off" reads "you send work away" (a word the published-docs vocabulary sweep retires, replaced at the move). No claim is added; the edit changes wording or a link target only. Checked by the cutover pass against this record's earlier entries, not by a fresh `code-reader` run.
 
 ## 6 · Depth pass
 

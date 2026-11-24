@@ -42,7 +42,7 @@ describe("FlowProvider with a credential fetcher and no baseUrl", () => {
       { wrapper }
     );
     await act(async () => {
-      await result.current.action.execute({}).catch(() => undefined);
+      await result.current.action.execute({}, "s1").catch(() => undefined);
     });
     await waitFor(() => {
       expect(sent.some(({ url }) => url.endsWith("/chat/requests/r1/stream"))).toBe(true);

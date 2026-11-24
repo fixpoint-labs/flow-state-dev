@@ -55,7 +55,8 @@ import { CHECKOUT, CHECKOUTS } from "./fsd-checkouts.mts";
 import { FSD_DOCUMENTS, FSD_MCP_SERVERS, FSD_PROJECTS, FSD_SKILLS } from "./fsd-projects.mts";
 import { readClaudeCodeUsage } from "@flow-state-dev/claude-code";
 import { claudeCodeEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
-import { LAB_TREE, openLab, operatorGitHubToken, readDevTeamTree } from "./host.mts";
+import { operatorGitHubToken } from "@flow-state-dev/workforce";
+import { LAB_TREE, openLab, readDevTeamTree } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
 

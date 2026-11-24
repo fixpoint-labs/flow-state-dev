@@ -85,7 +85,7 @@ import {
   taskIssueSegment,
   type HarnessFeeds,
   type HarnessJudge,
-  type PhaseSpec,
+  type ModeSpec,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock, PullRequestFollower } from "@flow-state-dev/core/harness";
@@ -100,6 +100,7 @@ import {
   projectWorkspaceCapability,
   startOwedSteerTurn,
   steerTurnEntry,
+  taskInputSchema,
   workerMessagesResources,
   workerTaskEntry,
   type MessageReceived,
@@ -194,6 +195,13 @@ export interface CoderWorkerFlowOptions {
    * a run works in its project's repository or on its project's files.
    */
   workspace: WorkspaceConfig | WorkspaceHost;
+  // FIX-2894.
+  /**
+   * `"required"`: a task for a coder works in a project's files, so one filed
+   * with no project to work in is refused at filing (`no_project`). Set it on
+   * a projects workspace; a fixed repository always has somewhere to work.
+   */
+  project?: "required";
   /**
    * Where an answer task works: a workspace host whose source is
    * `projectWorkspace()`, so a task works in its project and is refused with
@@ -201,9 +209,9 @@ export interface CoderWorkerFlowOptions {
    */
   answerWorkspace: WorkspaceHost;
   /** The implement phase: how a feature task's prompt is built, and what counts as done. */
-  phase: PhaseSpec;
+  phase: ModeSpec;
   /** The answer phase: the same for a task that names no feature work. */
-  answerPhase: PhaseSpec;
+  answerPhase: ModeSpec;
   /** The judge both managers run on a task. Absent, a task settles on its phase's check alone. */
   judge?: HarnessJudge;
   /**
@@ -253,9 +261,9 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   /** How a task's run is keyed: its task id, in its payload's phase or the answer phase. */
   const runOf = (row: Task) => {
     const feature = harnessFeatureOf(row.input);
-    if (feature !== undefined) return { issue: taskIssueSegment(row.id), phase: feature.phase ?? options.phase.phase };
+    if (feature !== undefined) return { issue: taskIssueSegment(row.id), mode: { name: feature.phase ?? options.phase.name } };
     // A malformed key is no run here, never an answer run: the router sends it to implement, which refuses it.
-    return namesHarnessFeature(row.input) ? undefined : { issue: taskIssueSegment(row.id), phase: options.answerPhase.phase };
+    return namesHarnessFeature(row.input) ? undefined : { issue: taskIssueSegment(row.id), mode: options.answerPhase };
   };
 
   // The board this session's run is on: the one of the session its task was
@@ -282,7 +290,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
       ledgers: conversationLedgers,
       ...checks,
       tenant: undefined,
-      phase: options.phase,
+      mode: options.phase,
       workspace: options.workspace,
       runTimeoutMs,
       ...(stopsOnAbort === undefined ? {} : { stopsOnAbort }),
@@ -298,7 +306,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
       ledgers: conversationLedgers,
       ...checks,
       tenant: undefined,
-      phase: options.answerPhase,
+      mode: options.answerPhase,
       workspace: options.answerWorkspace,
       runTimeoutMs,
       ...(stopsOnAbort === undefined ? {} : { stopsOnAbort }),
@@ -431,7 +439,11 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     // The one door: any session's tasks, handed over under its board's id.
     task: {
       actions: {
-        work: workerTaskEntry({ name: `${CODER_FLOW}-work`, block: byTask }),
+        work: workerTaskEntry({
+          name: `${CODER_FLOW}-work`,
+          block: byTask,
+          ...(options.project === undefined ? {} : { inputSchema: taskInputSchema(z.record(z.string(), z.unknown()), { project: options.project }) }),
+        }),
       },
     },
   } as never);

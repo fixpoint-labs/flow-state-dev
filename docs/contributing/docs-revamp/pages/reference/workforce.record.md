@@ -49,6 +49,8 @@ Written by `docs-writer` (sonnet), 11062 words. Scenario: A support app with a s
 
 - After the loop (review): the Greptile review: a bad `taskChainLimit` is refused when `workforce(config)` is called, `kit "workforce": its config is invalid: taskChainLimit: ...` (packages/workforce/src/kit/workforce-kit.ts:145; packages/core/src/kit/define-kit.ts:250-255), not by `hireWorkforce`, which the kit never calls with it. 10946 words. Page sha256 79bb78855395.
 
+Cutover, 2026-11-24, after the move to `apps/docs/docs/reference/workforce.md`: "without handing off" reads "without delegating" (a word the published-docs vocabulary sweep retires, replaced at the move). `node scripts/check-docs-page.mjs` on the page: ok. The site build, broken links included: passes.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 b11c4addd897, and the 48 Reference row(s) pass 6 moved.
@@ -66,6 +68,8 @@ Final fact check of the page as it closed, sha256 059c25a7fa08: 2 untrue, fixed 
 - Re-run after the review edit: each changed claim was read against the code it cites by the writer; both TypeScript examples type-check. No untrue claim remains open.
 
 - Re-run after the review edit: each changed claim was read against the cited code by a code reader. No untrue claim remains open.
+
+Cutover, 2026-11-24: "without handing off" reads "without delegating" (a word the published-docs vocabulary sweep retires, replaced at the move). No claim is added; the edit changes wording or a link target only. Checked by the cutover pass against this record's earlier entries, not by a fresh `code-reader` run.
 
 ## 6 · Depth pass
 

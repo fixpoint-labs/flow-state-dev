@@ -1,4 +1,4 @@
-import { WRITES_OUTLIVE_ABORT, attachRequestEndRegistry, createRequestEndRegistry, type WritesOutliveAbort } from "../execution/request-end-hooks";
+import { attachRequestEndRegistry, createRequestEndRegistry, type WritesOutliveAbort } from "../execution/request-end-hooks";
 import { createRequestSpendLedger, isInterruptedEndingHeld, loggedSpendOf, sumSpend } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { createBoardNoticeSeam } from "../bus/board-notice";
@@ -111,7 +111,7 @@ import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
-import { cloneValue, getTransientKeys, getReadonlyStateKeys, ONE_OFF_SESSION_PREFIX } from "@flow-state-dev/core/helpers";
+import { cloneValue, getTransientKeys, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
 import {
@@ -215,7 +215,9 @@ import { PAST_TURN_STATUSES } from "../execution/past-turns";
 import { readSettledTurns, type SettledTurns } from "./settled-turns";
 import { cancelledWithTask } from "../durability/cancel-user-suspension";
 import { NoSessionError, noSessionHandle, noSessionRecord } from "./no-session";
+import { SessionRequiredError } from "../transports/errors";
 import { createViewDependencies, guardViewRequestHost, recordSessionReads, refusingModelResolver, sessionReadObserver, ViewModelCallError } from "./view-reads";
+import { isScheduleSessionId } from "../transports/scheduled/schedule-session-id";
 
 // FIX-2063.
 /**
@@ -227,6 +229,17 @@ const SUSPEND_NEEDS_DURABILITY =
   "This host has none: it sets `durable: false`, runs on in-memory stores, or is a router given no " +
   "durability provider. Remove `durable: false`, or set `durable: true` to hold stops in memory " +
   "(tests only: they are lost when the process ends). Nothing was held.";
+
+// FIX-2886.
+/**
+ * Why `ctx.suspend()` refused in a schedule's session. A parked fire leaves
+ * the active registry, so the schedule's next fire may already run there,
+ * and anything that continued the parked one (an answer, a stop, a waited-on
+ * child ending, the sweep) would run it beside that fire.
+ */
+const SUSPEND_IN_SCHEDULE_SESSION =
+  "a fire in its schedule's own session can't stop or wait: the schedule's next fire may run there while it " +
+  "waits. Leave the schedule's `session` at \"per-fire\" (the default) for fires that stop or wait. Nothing was held.";
 
 /** A block's model usage as its lean trace records it: the counts, without provider metadata. */
 function leanModelUsageOf(usage: BlockTraceItem["modelUsage"]): BlockTraceItem["modelUsage"] {
@@ -657,9 +670,8 @@ export async function createExecutionContext<
 
   // The request-host seam (FIX-999) is built further down, once the session
   // and org bindings have been RESOLVED — see "the request-host seam" below.
-  // It cannot be built here: `options.sessionId` may be absent (an ephemeral
-  // session is generated below) and `options.orgId` may be absent on a request
-  // against an org-bound session, so both would be read before the authoritative
+  // It cannot be built here: `options.orgId` may be absent on a request
+  // against an org-bound session, so it would be read before the authoritative
   // value exists.
   const transientStateChanges = !shouldPersistScopeChange(flow);
   // Per-mutation budget for in-memory state writes (target / sequencer /
@@ -729,7 +741,18 @@ export async function createExecutionContext<
   }
 
   const userId = options.userId;
-  const sessionId = options.sessionId ?? `${ONE_OFF_SESSION_PREFIX}${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  // Every run names its session; nothing here makes one up. Asserted for an
+  // untyped caller, before any read or write. A view (`noSession`) has none:
+  // it loads, makes and stores no session, so the empty id below names
+  // nothing and reaches no session read.
+  if (!noSession && (typeof options.sessionId !== "string" || options.sessionId.length === 0)) {
+    throw new SessionRequiredError(flow.kind, "createExecutionContext");
+  }
+  const sessionId: string = noSession ? "" : options.sessionId;
+  // FIX-2886: a fire in its schedule's own session never parks
+  // (SUSPEND_IN_SCHEDULE_SESSION), so it gets no waits either: a wait refuses
+  // `wait_unavailable` before it starts any work.
+  const inScheduleSession = isScheduleSessionId(sessionId);
   // FIX-2623: a view's dependencies, recorded as its blocks read. Absent
   // outside a view. The only use of the raw recorder: every read path below
   // goes through this surface, which holds the topic rules (`view-reads.ts`).
@@ -1169,13 +1192,8 @@ export async function createExecutionContext<
   // and inherits the parent's org, so the seam has to close over the values
   // execution actually ran with:
   //
-  //  - `sessionId` is the EFFECTIVE session. An HTTP action may omit it, in
-  //    which case an ephemeral session is generated and persisted above. Such a
-  //    request has a perfectly valid `ctx.session`, so gating the seam on
-  //    `options.sessionId` withheld it from a request that had lineage to
-  //    reason about. The approved decision — no seam without a session — is
-  //    unchanged and now checks the thing it meant: every context has a session
-  //    by this point, so the seam is present whenever the host wired it.
+  //  - `sessionId` is the session the run named (required for every run), so
+  //    the seam is present whenever the host wired it.
   //  - `resolvedOrgId` is the session's authoritative org. A dispatch against an
   //    org-bound session may omit `orgId` (only a *differing* value is
   //    rejected, above), so capturing `options.orgId` left the host unbound and
@@ -1226,7 +1244,7 @@ export async function createExecutionContext<
                 }
               }
             : {}),
-          ...(options.requestHost.waits !== undefined
+          ...(options.requestHost.waits !== undefined && !inScheduleSession
             ? {
                 waits: {
                   provider: options.requestHost.waits.provider,
@@ -1847,8 +1865,20 @@ export async function createExecutionContext<
   }
 
   // How many writes now running record how the request ended (FIX-2145):
-  // theirs outlive an explicit abort. See `WRITES_OUTLIVE_ABORT`.
+  // theirs outlive an explicit abort. See `WritesOutliveAbort`. The count is
+  // the request's, not the hook's: while one such hook runs, every resource
+  // write of the request outlives the abort. The hooks run one at a time after
+  // the request's last drain, so only work an earlier hook left running
+  // unawaited can overlap one.
   let writesOutlivingAbort = 0;
+  const outliveAbort: WritesOutliveAbort = async (write) => {
+    writesOutlivingAbort += 1;
+    try {
+      return await write();
+    } finally {
+      writesOutlivingAbort -= 1;
+    }
+  };
 
   const requestRef: { current: RequestRecord } = {
     current: requestRecord
@@ -3595,7 +3625,7 @@ export async function createExecutionContext<
   const requestSpendLedger = interruptedEndingLive
     ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel), {}, [], [...(requestRecord.spentHarnessRuns ?? []), ...loggedSpend.harnessRuns])
     : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns, requestRecord.spentHarnessRuns);
-  const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
+  const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding(), outliveAbort);
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.
   // A crash's continuation names no resolution: the log's latest is how the
@@ -4466,6 +4496,9 @@ export async function createExecutionContext<
         if (!options.durabilityEnabled) {
           throw new Error(SUSPEND_NEEDS_DURABILITY);
         }
+        if (inScheduleSession) {
+          throw new Error(SUSPEND_IN_SCHEDULE_SESSION);
+        }
         const suspensionId = suspendOpts.suspensionId ?? generateId("susp");
         throw new SuspensionError({ ...suspendOpts, suspensionId });
       },
@@ -5075,14 +5108,6 @@ export async function createExecutionContext<
   (rootContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
   attachRequestEndRegistry(rootContext, requestEndRegistry);
   (rootContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = requestSpendLedger;
-  (rootContext as { [WRITES_OUTLIVE_ABORT]?: WritesOutliveAbort })[WRITES_OUTLIVE_ABORT] = async (write) => {
-    writesOutlivingAbort += 1;
-    try {
-      return await write();
-    } finally {
-      writesOutlivingAbort -= 1;
-    }
-  };
   (rootContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
   attachBuiltInHost(rootContext, builtInHost);
   // FIX-751: bind the live context so reactive dispatchers can run blocks

@@ -28,6 +28,7 @@ import {
 } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { approvalGate, approvalGateInput } from "../flows/chat-agent/approval-gate";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 // The approval pipeline calls no model. A mock resolver keeps runAction from
 // building the default resolver, which validates the ambient FSDEV_INTENT_*
@@ -83,6 +84,7 @@ describe("requestApproval durable pipeline", () => {
   it("approve runs the post-approval blocks and replays the prepare step", async () => {
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow: approvalFlow,
       actionName: "requestApproval",
@@ -119,6 +121,7 @@ describe("requestApproval durable pipeline", () => {
   it("reject runs the rejection block and skips the post-approval blocks", async () => {
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow: approvalFlow,
       actionName: "requestApproval",

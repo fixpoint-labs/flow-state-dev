@@ -211,12 +211,14 @@ function host(options: { script: Step[]; stopsOnAbort?: boolean; declares?: bool
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: {
-      phase: PHASE,
-      buildPrompt: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.`,
-      isDone: async () => {
-        await duringVerdict.shift()?.();
-        return true;
+    mode: {
+      name: PHASE,
+      instructions: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.`,
+      doneWhen: {
+        check: async () => {
+          await duringVerdict.shift()?.();
+          return true;
+        },
       },
     },
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
@@ -297,7 +299,7 @@ function host(options: { script: Step[]; stopsOnAbort?: boolean; declares?: bool
       collectionId: BOARD_ID,
       collection: resolveResourceCollection(ctx, BOARD_ID)!,
     }),
-    runOf: () => ({ issue: ISSUE, phase: PHASE }),
+    runOf: () => ({ issue: ISSUE, mode: { name: PHASE } }),
   });
   // The coding flow's own door: a line in the run's session.
   const message = harnessSessionDoor({

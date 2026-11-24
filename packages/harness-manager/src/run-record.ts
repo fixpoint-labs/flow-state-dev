@@ -665,7 +665,7 @@ export async function writeRunRecord(
  * for previous-attempt data.** That was not true when the claim was first
  * written: the implement prompt read `sessionId` off the row to name the last
  * attempt's harness session, and the clear meant it always saw `null`. The
- * carry-forward a phase needs now arrives on `PhaseRunContext` — the failure
+ * carry-forward a mode needs now arrives on `ModeRunContext` — the failure
  * reason from the board's own `feedback`, the previous session captured by the
  * manager before this write. A phase reading this row for anything the clear
  * touches is the same defect returning.
@@ -707,6 +707,44 @@ export async function readRunRecord(
 ): Promise<RunRecordState | undefined> {
   const ref = await collectionRef(ctx, RUNS).getOptional(topic);
   return ref?.state as RunRecordState | undefined;
+}
+
+// BP-030.
+/**
+ * Find one issue's run of a mode: under `<epic>/<issue>/<name>` first, then,
+ * when that key is absent and the mode names a `formerName`, under the former
+ * key. The segment it was found under is the run's from then on; nothing is
+ * copied to the new key. Found under neither, it is a new run, keyed by `name`.
+ *
+ * `spelled` is the segment as the task itself spelled it, when that differs
+ * from `name` (its folded form). Before the key folded, that spelling was the
+ * key, so it is read after `name` and before the former key.
+ *
+ * Every key but `name` is this task's only: a record there that names another
+ * task (`taskId`) is another row's run, so it counts as absent and the task
+ * opens a new run under `name`. A record that names no task is read as the
+ * task's. Pass the reading task's id whenever it is known.
+ */
+export async function readModeRunRecord(
+  ctx: CollectionHoldingContext,
+  epic: string,
+  issue: string,
+  mode: { readonly name: string; readonly formerName?: string },
+  taskId?: string,
+  spelled?: string,
+): Promise<{ segment: string; topic: string; record: RunRecordState | undefined }> {
+  const topic = runTopic(epic, issue, mode.name);
+  const record = await readRunRecord(ctx, topic);
+  const fresh = { segment: mode.name, topic, record };
+  if (record !== undefined) return fresh;
+  for (const older of [spelled, mode.formerName]) {
+    if (older === undefined || older === mode.name) continue;
+    const olderTopic = runTopic(epic, issue, older);
+    const found = await readRunRecord(ctx, olderTopic);
+    const anotherTasks = taskId !== undefined && found?.taskId != null && found.taskId !== taskId;
+    if (found !== undefined && !anotherTasks) return { segment: older, topic: olderTopic, record: found };
+  }
+  return fresh;
 }
 
 /**

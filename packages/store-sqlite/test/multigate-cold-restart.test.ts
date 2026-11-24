@@ -30,6 +30,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createSQLiteStores } from "../src/host";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function providerFor(stores: StoreRegistry): DurabilityProvider {
   return createCheckpointDurabilityProvider({
@@ -113,6 +114,7 @@ describe("multi-gate sequencer resume across a cold restart", () => {
     const storesA = createSQLiteStores({ filename });
     const providerA = providerFor(storesA);
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",

@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 /** A flow whose one step stops for `reason`, noting when it finishes and what `ctx.suspend` threw. */
 function build(reason: string, finished: string[], thrown: unknown[] = []) {
@@ -49,6 +50,7 @@ describe("a suspension under a retired human_* reason", () => {
     // The upgraded build writes user_approval; the record is then rewritten as
     // core 0.2.0 stored it, which is the stop an adopter upgrades with.
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow: build("user_approval", finished),
       actionName: "run",
@@ -94,6 +96,7 @@ describe("a suspension under a retired human_* reason", () => {
     const { stores, provider } = setup();
     const thrown: unknown[] = [];
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow: build(old, [], thrown),
       actionName: "run",
@@ -114,6 +117,7 @@ describe("a suspension under a retired human_* reason", () => {
   it("a custom reason still suspends: only the retired names are refused", async () => {
     const { stores, provider } = setup();
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow: build("my_custom_reason", []),
       actionName: "run",

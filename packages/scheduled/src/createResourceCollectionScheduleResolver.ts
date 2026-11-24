@@ -67,6 +67,14 @@ export interface CreateResourceCollectionScheduleResolverOptions {
    * {@link defaultParseScheduleId}. Return `null` to 404 the dispatch.
    */
   parseId?: (scheduleId: string) => ParsedScheduleId | null;
+  // FIX-2886.
+  /**
+   * Where every resolved schedule's fires run (`ScheduleConfig.session`).
+   * Default: `"per-fire"`, each fire a one-off run. Set for every row this
+   * resolver resolves, never read from a row, so a schedule written through
+   * a client can't pick its session.
+   */
+  session?: ScheduleConfig["session"];
 }
 
 /**
@@ -171,6 +179,7 @@ export function createResourceCollectionScheduleResolver(
     if (typeof state.description === "string") {
       config.description = state.description;
     }
+    if (options.session !== undefined) config.session = options.session;
 
     return config;
   };

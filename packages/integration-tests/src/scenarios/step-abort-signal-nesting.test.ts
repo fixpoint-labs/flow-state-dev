@@ -23,6 +23,7 @@ import { runAction } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 interface Marker {
   ran: boolean;
@@ -64,6 +65,7 @@ function runWith(root: ReturnType<typeof sequencer>) {
   })({ id: "test" });
 
   return runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",

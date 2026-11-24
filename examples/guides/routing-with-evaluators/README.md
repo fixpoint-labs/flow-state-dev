@@ -52,5 +52,4 @@ npm run typecheck
 ```
 
 The tests pass scripted evaluation models from `@flow-state-dev/testing` to `createRoutingFlow`,
-so they need no key. Inside the repository, `test/guide.test.ts` also checks that every code block
-in the guide is cut from these files; a copy has no guide page, so it skips that check.
+so they need no key.

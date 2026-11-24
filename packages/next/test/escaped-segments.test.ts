@@ -9,6 +9,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { createNextHandler } from "../src/createNextHandler";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const ESCAPED_ORG = "org%5Fpentest%5Flab.helper";
 const ESCAPED_USER = "acme.~alice%40acme%2Ecom.helper";
@@ -48,7 +49,7 @@ describe("createNextHandler — a flow kind that carries percent escapes", () =>
       new Request(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: "u1", input: {} })
+        body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u1", input: {} })
       }),
       { params: Promise.resolve({ path: nextPath }) }
     );

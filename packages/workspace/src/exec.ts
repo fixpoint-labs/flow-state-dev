@@ -7,6 +7,10 @@
  * number cannot be right for both. Making it required forces the caller to say
  * which kind of wait it is.
  *
+ * No child inherits this process's whole environment: each starts from the
+ * allowlist in `./child-env`, so a host's secrets reach one only when its
+ * caller names them.
+ *
  * Kept as a module of its own so a test can watch every process this package
  * starts — which is how "refused before any git process" is checked rather
  * than asserted.
@@ -18,6 +22,7 @@
 import { execFile, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
+import { childEnv } from "./child-env";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,8 +34,26 @@ export interface RunOptions {
    * a hang.
    */
   timeoutMs: number;
-  /** Extra environment, laid over the process's own. */
+  /**
+   * Variables to set on the child. It never inherits this process's whole
+   * environment: it starts from `WORKSPACE_BASE_PASS` and `pass` (see
+   * `./child-env`), and these are set over them, unfiltered: a credential
+   * named here reaches the child whatever `pass` says.
+   */
   env?: Record<string, string>;
+  /**
+   * Names the child may see from this process's environment beyond
+   * `WORKSPACE_BASE_PASS`: `HOST_GIT_PASS` for the host's own git,
+   * `HOST_REMOTE_PASS` for its remote calls. Nothing else of the host's is
+   * passed.
+   */
+  pass?: readonly string[];
+  /**
+   * Pass the host's `GIT_CONFIG_KEY_<n>` pairs that can carry a credential
+   * (`http.*`, `credential.*`, `url.*`, `remote.*`). Set only on the host's remote calls,
+   * beside `HOST_REMOTE_PASS`; without it those pairs are dropped.
+   */
+  gitCredentials?: boolean;
   /**
    * Cancellation, where interrupting is safe. Never passed on a call that
    * makes a worktree: a `worktree add` killed halfway leaves a tree the next
@@ -60,7 +83,7 @@ export async function run(
     cwd: options.cwd,
     timeout: options.timeoutMs,
     maxBuffer: options.maxBuffer ?? 8 * 1024 * 1024,
-    env: options.env === undefined ? process.env : { ...process.env, ...options.env },
+    env: childEnv(options),
     ...(options.signal !== undefined ? { signal: options.signal } : {}),
   });
   if (options.input !== undefined) pending.child.stdin?.end(options.input);
@@ -91,7 +114,7 @@ async function runByLine(
   const ownGroup = process.platform !== "win32";
   const child = spawn(file, args, {
     cwd: options.cwd,
-    env: options.env === undefined ? process.env : { ...process.env, ...options.env },
+    env: childEnv(options),
     stdio: ["pipe", "pipe", "pipe"],
     detached: ownGroup,
     ...(options.signal !== undefined ? { signal: options.signal } : {}),
@@ -179,14 +202,15 @@ export interface RunToEndResult {
  * Unlike {@link run}, a non-zero exit resolves: the caller's question is what
  * happened, not whether it worked. The process gets a group of its own, so
  * the wall clock stops what it started too (a test runner's workers), not
- * only the process named. A file that cannot be started at all resolves as
+ * only the process named. Its environment is {@link run}'s: the allowlist,
+ * never this process's whole one. A file that cannot be started at all resolves as
  * exit code 127, with the reason as its output. An aborted `signal` stops
  * the group as the wall clock does, and reports it as timed out.
  */
 export async function runToEnd(
   file: string,
   args: string[],
-  options: { cwd: string; timeoutMs: number; keepChars: number; env?: Record<string, string>; signal?: AbortSignal },
+  options: { cwd: string; timeoutMs: number; keepChars: number; env?: Record<string, string>; pass?: readonly string[]; gitCredentials?: boolean; signal?: AbortSignal },
 ): Promise<RunToEndResult> {
   let output = "";
   const keep = (chunk: string) => {
@@ -197,7 +221,7 @@ export async function runToEnd(
     let settled = false;
     const child = spawn(file, args, {
       cwd: options.cwd,
-      env: options.env === undefined ? process.env : { ...process.env, ...options.env },
+      env: childEnv(options),
       stdio: ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32",
     });

@@ -1,6 +1,7 @@
-import type { Config, PluginConfig } from "@docusaurus/types";
+import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
 import { inkTheme } from "./src/prismThemes";
+import { redirects } from "./redirects.mjs";
 
 // Search is Algolia DocSearch. The Vercel Algolia integration puts the app id
 // and the search-only key into the build's environment; the search key is
@@ -15,17 +16,6 @@ const algolia: Preset.ThemeConfig["algolia"] =
         indexName: "flow-state-dev",
       }
     : undefined;
-
-// Named by path, so Docusaurus loads the generator only when this build asks for it.
-const apiReference: PluginConfig[] =
-  process.env.FSD_API_REFERENCE === "1"
-    ? [
-        [
-          "./scripts/api-reference/plugin.mjs",
-          { id: "api", path: ".api-reference", routeBasePath: "docs/reference/api" },
-        ],
-      ]
-    : [];
 
 const config: Config = {
   title: "flow-state.dev",
@@ -108,88 +98,40 @@ const config: Config = {
   ],
 
   plugins: [
-    [
-      "@docusaurus/plugin-content-docs",
-      {
-        id: "guides",
-        path: "guides",
-        routeBasePath: "guides",
-        sidebarPath: "./sidebarsGuides.ts",
-        editUrl:
-          "https://github.com/fixpoint-labs/flow-state-dev/tree/main/implementation/apps/docs/",
-      },
-    ],
-    [
-      // Keep old URLs alive so existing links don't 404.
-      // Task Board and Flow Policy moved from /docs/patterns/* to
-      // /docs/orchestration/* when the orchestration package was carved out.
-      // Workers on disk moved from /docs/orchestration/* to /docs/workforce/*
-      // when Workforce became its own top-level section. The Claude Code
-      // `--remote` page was removed; its address points at the SDK agent.
-      // The Cloud Scheduler and EventBridge guides were removed (no code backed them).
-      "@docusaurus/plugin-client-redirects",
-      {
-        redirects: [
-          {
-            from: "/docs/workforce/chief-of-staff", // retired-name-refusal: an old docs link keeps landing on the page
-            to: "/docs/workforce/shift-coordinator",
-          },
-          {
-            from: "/docs/patterns/task-board",
-            to: "/docs/orchestration/task-board",
-          },
-          {
-            from: "/docs/patterns/flow-policy",
-            to: "/docs/orchestration/flow-policy",
-          },
-          {
-            from: "/docs/orchestration/workers-on-disk",
-            to: "/docs/workforce/workers-on-disk",
-          },
-          {
-            from: "/docs/skills/pattern-skills",
-            to: "/docs/skills/overview",
-          },
-          {
-            from: "/docs/advanced/utility-blocks-deprecated",
-            to: "/docs/patterns/utility-blocks/core",
-          },
-          {
-            from: "/docs/tools/claude-code-cli",
-            to: "/docs/tools/claude-code-sdk",
-          },
-          {
-            from: "/docs/workforce/channels",
-            to: "/docs/workforce/coordinators",
-          },
-          {
-            from: "/docs/workforce/mailboxes",
-            to: "/docs/workforce/coordinators",
-          },
-          {
-            from: "/guides/scheduled-cloud-scheduler",
-            to: "/docs/server/scheduled",
-          },
-          {
-            from: "/guides/scheduled-eventbridge",
-            to: "/docs/server/scheduled",
-          },
-        ],
-      },
-    ],
+    // Every address of the site before its five sections lands on the page that holds its
+    // topic, and every earlier Upgrading page on the current one (see redirects.mjs).
+    ["@docusaurus/plugin-client-redirects", { redirects }],
     // The generated API reference: one section per published package, built from
     // the doc comments in the `.d.ts` files each package publishes, at
     // `/docs/reference/api/<slug>`. Generated into `.api-reference/` at each build and never
-    // committed. Until the cutover it is built only when FSD_API_REFERENCE=1, which CI sets for
-    // a build into a scratch folder that is never deployed, and it has no sidebar entry; the
-    // cutover adds both. FSD_API_REFERENCE_SKIP_TYPES=1 skips the packages' types build when
-    // the caller has just run it.
-    ...apiReference,
+    // committed; the Reference sidebar links each section. FSD_API_REFERENCE_SKIP_TYPES=1
+    // skips the packages' types build when the caller has just run it.
+    [
+      "./scripts/api-reference/plugin.mjs",
+      { id: "api", path: ".api-reference", routeBasePath: "docs/reference/api" },
+    ],
     // The docs as text for a coding agent: every docs page's Markdown at its URL plus `.md`,
     // and `/llms.txt` listing them by sidebar section. `full` names the sections
-    // `/llms-full.txt` holds; it stays empty, and the file unwritten, until the cutover
-    // publishes Start, Concepts and the hand-written Reference.
-    ["./scripts/agent-docs/plugin.mjs", { full: [] }],
+    // `/llms-full.txt` holds: Start, Concepts and the hand-written Reference.
+    [
+      "./scripts/agent-docs/plugin.mjs",
+      {
+        full: [
+          "Start",
+          "Concepts",
+          "The model",
+          "Running it",
+          "Getting work done",
+          "Building blocks",
+          "State, data and the stream",
+          "Reference: Running it",
+          "Reference: Getting work done",
+          "File formats",
+          "Tools for building",
+          "The site's own pages",
+        ],
+      },
+    ],
   ],
 
   themeConfig: {
@@ -206,19 +148,11 @@ const config: Config = {
         srcDark: "img/flow-state-night.svg",
       },
       items: [
-        {
-          type: "docSidebar",
-          sidebarId: "docsSidebar",
-          position: "left",
-          label: "Docs",
-        },
-        {
-          type: "docSidebar",
-          sidebarId: "guidesSidebar",
-          docsPluginId: "guides",
-          position: "left",
-          label: "Guides",
-        },
+        { type: "docSidebar", sidebarId: "startSidebar", position: "left", label: "Start" },
+        { type: "docSidebar", sidebarId: "conceptsSidebar", position: "left", label: "Concepts" },
+        { type: "docSidebar", sidebarId: "catalogSidebar", position: "left", label: "Catalog" },
+        { type: "docSidebar", sidebarId: "buildSidebar", position: "left", label: "Build" },
+        { type: "docSidebar", sidebarId: "referenceSidebar", position: "left", label: "Reference" },
         {
           href: "https://github.com/fixpoint-labs/flow-state-dev",
           label: "GitHub",
@@ -232,25 +166,18 @@ const config: Config = {
         {
           title: "Docs",
           items: [
-            { label: "Introduction", to: "/docs/intro" },
-            { label: "Installation", to: "/docs/getting-started/installation" },
-            { label: "Quick Start", to: "/docs/getting-started/quick-start" },
-            { label: "Fundamentals", to: "/docs/fundamentals/overview" },
+            { label: "What Flow State is", to: "/docs/start/what-flow-state-is" },
+            { label: "Run a starter", to: "/docs/start/run-a-starter" },
+            { label: "How it fits together", to: "/docs/concepts/how-it-fits-together" },
+            { label: "Catalog", to: "/docs/catalog/" },
           ],
         },
         {
           title: "Learn",
           items: [
-            {
-              label: "Anatomy of a Flow",
-              to: "/guides/anatomy-of-a-flow",
-            },
-            {
-              label: "Building a Chat App",
-              to: "/guides/building-a-chat-app",
-            },
-            { label: "Engine setup", to: "/docs/server/setup" },
-            { label: "Dev tools", to: "/docs/cli/overview" },
+            { label: "Your first flow", to: "/docs/build/your-first-flow" },
+            { label: "Choose where to deploy", to: "/docs/build/deploy" },
+            { label: "Reference", to: "/docs/reference/blocks" },
           ],
         },
         {

@@ -36,6 +36,7 @@ import type { RequestRecord } from "@flow-state-dev/engine/host";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const FLOW_KIND = "abort-fence";
 const USER_ID = "u_fence";
@@ -93,6 +94,7 @@ function newPark(): Park & { markStarted: () => void } {
 
 function run(flow: ReturnType<typeof parkingFlow>, stores: StoreRegistry, requestId: string) {
   return runAction({
+    sessionId: oneOffSessionId(),
     flow,
     actionName: "run",
     input: {},
