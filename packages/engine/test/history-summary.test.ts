@@ -116,6 +116,17 @@ describe("historySummary on the engine", () => {
     expect(users).toEqual(["u4", "u5", "u6", "u7"]);
   });
 
+  it("continues a stored summary that predates the fold counters and pending list", async () => {
+    const stores = createInMemoryStores();
+    const calls: ModelCall[] = [];
+    await stores.resourceState.set("session", "s", "historySummary", { summary: "Earlier context" }, 0);
+    await talk(stores, chatFlow({ window: 4, summarize: foldingSummarize() }), calls, 5);
+
+    expect(lastInput(calls).system).toContain("<earlier-conversation>\nEarlier context u1\n</earlier-conversation>");
+    expect((await stores.resourceState.get("session", "s", "historySummary"))?.state)
+      .toMatchObject({ folds: 1, attempts: 1, pending: [], complete: true });
+  });
+
   it("keeps the key points core's summarizer returns beside its summary", async () => {
     const stores = createInMemoryStores();
     const calls: ModelCall[] = [];

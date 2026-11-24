@@ -38,7 +38,7 @@
  * turn reads it.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
 import type { WorkerInstallation } from "../workers/installation";
@@ -256,8 +256,8 @@ export function messageReceivedEntry(options: {
    * or "no answer" for `reason` when it is blank. A turn that ran and gave
    * none is logged: the sender hears only that nothing came back.
    */
-  const replyOwedHere = async (ctx: Parameters<typeof sendOwedReply>[0], text: string, reason: NoAnswerReason) => {
-    const owed = (ctx.request.state as Record<string, unknown> | undefined)?.[RECEIVED_REPLY_OWED_STATE];
+  const replyOwedHere = async (ctx: BlockContext<z.infer<typeof messageTurnStateSchema>>, text: string, reason: NoAnswerReason) => {
+    const owed = ctx.request.state[RECEIVED_REPLY_OWED_STATE];
     if (typeof owed !== "string") return;
     if (text.trim() === "" && reason !== "turnless") {
       console.warn("[workforce] a reply-requested message's turn ended with no answer to send", { messageId: owed, reason, flowKind: options.flowKind });
@@ -276,8 +276,7 @@ export function messageReceivedEntry(options: {
     execute: async (input, ctx) => {
       // Read off the request's state, which the heard step wrote: never off the
       // input's shape, which a turn's own output could match.
-      const state = ctx.request.state as Record<string, unknown> | undefined;
-      if (state?.[RECEIVED_LANDED_STATE] !== true) return {};
+      if (!ctx.request.state[RECEIVED_LANDED_STATE]) return {};
       // A turnless landing answers blank: "no answer".
       const reply = options.turn === undefined ? "" : replyTextOf(input);
       await replyOwedHere(ctx, reply, options.turn === undefined ? "turnless" : "silent");

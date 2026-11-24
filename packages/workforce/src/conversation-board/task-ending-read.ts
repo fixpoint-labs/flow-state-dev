@@ -61,9 +61,7 @@ export const taskEndingReadsStateSchema = z.object({
   [TASK_ENDING_READS_STATE]: z.array(taskEndingReadSchema).optional()
 });
 
-function readsOf(ctx: BlockContext): TaskEndingRead[] {
-  return ((ctx.request.state as Record<string, unknown> | undefined)?.[TASK_ENDING_READS_STATE] as TaskEndingRead[] | undefined) ?? [];
-}
+type EndingReadContext = BlockContext<z.infer<typeof taskEndingReadsStateSchema>>;
 
 /**
  * Keep `notice`'s ending of `row` as the `getTask` read the running request's
@@ -72,7 +70,7 @@ function readsOf(ctx: BlockContext): TaskEndingRead[] {
  * read takes the place of, on a turn the ending woke.
  */
 export async function noteTaskEndingRead(
-  ctx: BlockContext,
+  ctx: EndingReadContext,
   ref: TaskCollectionRef,
   row: Task,
   notice: TaskNotice,
@@ -86,8 +84,8 @@ export async function noteTaskEndingRead(
     result: { ok: true, task: readTaskView(row, ref.list()), ...(cancelled.length > 0 ? { cancelled } : {}) },
     ...(standsFor !== undefined ? { standsFor } : {})
   };
-  const kept = readsOf(ctx).filter((seen) => seen.callId !== read.callId);
-  await ctx.request.patchState({ [TASK_ENDING_READS_STATE]: [...kept, read] } as never);
+  const kept = (ctx.request.state[TASK_ENDING_READS_STATE] ?? []).filter((seen) => seen.callId !== read.callId);
+  await ctx.request.patchState({ [TASK_ENDING_READS_STATE]: [...kept, read] });
 }
 
 /**
@@ -96,8 +94,8 @@ export async function noteTaskEndingRead(
  * the message when the reads stand in for it. `message` alone when nothing
  * was noted, or a model call before this one took the reads.
  */
-export async function withTaskEndingReads(message: string, ctx: BlockContext): Promise<string | LLMMessage[]> {
-  const reads = readsOf(ctx);
+export async function withTaskEndingReads(message: string, ctx: EndingReadContext): Promise<string | LLMMessage[]> {
+  const reads = ctx.request.state[TASK_ENDING_READS_STATE] ?? [];
   if (reads.length === 0) return message;
   const caller = ctx.idempotencyKey ?? "taken";
   const mine = reads.filter((read) => read.takenBy === undefined || read.takenBy === caller);
@@ -105,7 +103,7 @@ export async function withTaskEndingReads(message: string, ctx: BlockContext): P
   if (mine.some((read) => read.takenBy === undefined)) {
     await ctx.request.patchState({
       [TASK_ENDING_READS_STATE]: reads.map((read) => (read.takenBy === undefined ? { ...read, takenBy: caller } : read))
-    } as never);
+    });
   }
   const calls = mine.map((read) => ({ toolCallId: read.callId, toolName: GET_TASK_TOOL, input: { id: read.taskId } }));
   const messages: LLMMessage[] = [

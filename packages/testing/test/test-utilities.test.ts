@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, defineResource, generator, handler, router } from "@flow-state-dev/core";
+import { defineCapability, defineFlow, defineResource, generator, handler, router, sequencer } from "@flow-state-dev/core";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   mockGenerator,
@@ -34,6 +34,41 @@ describe("testing utilities", () => {
     expect(result.output).toEqual({ ok: true });
     expect(result.state.session.count).toBe(3);
     expect(result.stateChanges.some((change) => change.operation === "incState")).toBe(true);
+  });
+
+  it("fills missing scope fields from a child handler and its capability", async () => {
+    const pins = defineCapability({
+      name: "pins",
+      userStateSchema: z.object({ pinned: z.array(z.string()).default([]) })
+    });
+    const read = handler({
+      name: "read-state",
+      inputSchema: z.object({}),
+      uses: [pins],
+      sessionStateSchema: z.object({ count: z.number().default(32), mode: z.string().default("auto") }),
+      orgStateSchema: z.object({ active: z.boolean().default(true) }),
+      execute: (_input, ctx) => ({
+        count: ctx.session.state.count,
+        mode: ctx.session.state.mode,
+        pinned: ctx.user.state.pinned,
+        active: ctx.org?.state.active
+      })
+    });
+    const pipeline = sequencer({ name: "inspect", inputSchema: read.inputSchema }).step(read);
+
+    const fresh = await testBlock(pipeline, { input: {} });
+    expect(fresh.error).toBeNull();
+    expect(fresh.output).toEqual({ count: 32, mode: "auto", pinned: [], active: true });
+
+    const seeded = await testBlock(pipeline, {
+      input: {},
+      session: { state: { count: 0, other: "keep" } },
+      user: { state: { pinned: ["first"] } },
+      org: { state: { active: false } }
+    });
+    expect(seeded.error).toBeNull();
+    expect(seeded.output).toEqual({ count: 0, mode: "auto", pinned: ["first"], active: false });
+    expect(seeded.state.session.other).toBe("keep");
   });
 
   it("registers a block's declared resources so ctx.resources is wired without explicit seeding", async () => {

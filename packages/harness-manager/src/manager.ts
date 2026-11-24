@@ -59,7 +59,7 @@ import type {
   HarnessUsageHook,
 } from "@flow-state-dev/core/harness";
 import { withTimeout } from "@flow-state-dev/core/helpers";
-import type { BlockContext, BlockDefinition, DeclaredResourceEntry } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition, DeclaredResourceEntry, StateRef } from "@flow-state-dev/core/types";
 import {
   currentLeaseRenewal,
   renderSteers,
@@ -156,11 +156,10 @@ import {
   MAX_APPROVAL_STEPS,
   grantMatches,
   heldToolCallOf,
-  heldToolCallSchema,
   heldToolDecision,
   toolApprovalOutcome,
   toolApprovalStop,
-  toolGrantSchema,
+  toolApprovalStateSchema,
   type HarnessToolApprovalHook,
   type HeldToolCall,
 } from "./tool-approval";
@@ -1001,6 +1000,8 @@ export type HarnessReviewAnswer = z.infer<typeof harnessReviewAnswerSchema>;
  */
 const decisionSchema = harnessJudgeInputSchema.nullable();
 
+const managerApprovalSchema = toolApprovalStateSchema.extend({ steps: z.number().int().nonnegative().default(0) });
+
 /**
  * The manager's per-run values.
  *
@@ -1072,14 +1073,7 @@ const managerStateSchema = z.object({
    * the answers left (per try, never on the task row), and how many steps
    * an answer resumed. `null` until the first call is held.
    */
-  approvals: z
-    .object({
-      pending: heldToolCallSchema.nullable().default(null),
-      grants: z.array(toolGrantSchema).default([]),
-      steps: z.number().int().nonnegative().default(0),
-    })
-    .nullable()
-    .default(null),
+  approvals: managerApprovalSchema.nullable().default(null),
   /**
    * What `decide` decided, for the step that settles it once a judge (if
    * any) has read the run: the output to return, and whether the task is held
@@ -1301,6 +1295,7 @@ function taskPayload(
  * {@link managerStateSchema} are handed them.
  */
 type ManagerState = z.infer<typeof managerStateSchema>;
+type ManagerContext = Omit<BlockContext, "sequencer"> & { sequencer?: StateRef<ManagerState> };
 
 /** The attempt identity every run-record write is fenced against. */
 function identityFrom(
@@ -1322,31 +1317,9 @@ function identityFrom(
   };
 }
 
-/**
- * The manager's state as a HARNESS's callback sees it.
- *
- * The harness is not one of our blocks, so its callbacks are handed the
- * framework's DEFAULT sequencer state rather than this manager's — the cast is
- * where that gap is crossed. One function rather than the same cast at each of
- * the three feeds: three spellings of one assumption is the shape that drifts,
- * and only one of them would be updated when the state grows.
- *
- * Typed by what it reads, like {@link RequestIdentityContext} above, so any
- * context satisfies it structurally and no caller needs the harness alias.
- *
- * It asserts nothing. The manager owns this shape and the harness never learns
- * it, which is the point of the channel; what each feed does about an empty
- * state is the feed's own business, and they differ.
- */
-function harnessCtxState(ctx: {
-  sequencer?: { state?: unknown } | undefined;
-}): ManagerState | undefined {
-  return ctx.sequencer?.state as ManagerState | undefined;
-}
-
 /** This run's refusal of the row it holds. Claim board: `errored` (a cancel there reaches nobody). Fixed board: `cancelled`. */
-function runRefused(ctx: { sequencer?: { state?: unknown } | undefined }, message: string): HarnessRunRefused {
-  const state = harnessCtxState(ctx);
+function runRefused(ctx: Pick<ManagerContext, "sequencer">, message: string): HarnessRunRefused {
+  const state = ctx.sequencer?.state;
   return new HarnessRunRefused(message, {
     taskId: state?.taskId ?? "",
     ending: state?.claim != null ? "errored" : "cancelled",
@@ -1757,9 +1730,9 @@ function createManagerCapability(options: {
  * other way. A run with no repository, or with no checkout yet, has no branch
  * to check. Never throws: a missing or signed-out `gh` is a status note.
  */
-async function checkBranchPullRequests(ctx: BlockContext, worktree?: string | null): Promise<void> {
+async function checkBranchPullRequests(ctx: ManagerContext, worktree?: string | null): Promise<void> {
   // Read raw, not through `managerState`: a run that failed before its checkout has none, and that is not an error here.
-  const state = harnessCtxState(ctx);
+  const state = ctx.sequencer?.state;
   if (state?.workspacePath == null || state.branch == null || !existsSync(state.workspacePath)) return;
   const worktrees = worktreesOf(ctx);
   const result = await recordBranchPullRequests(ctx, {
@@ -2031,8 +2004,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 
   // FIX-2086.
   /** The run's row as stored now: a steer is another request's write. */
-  const committedRow = async (ctx: BlockContext): Promise<Task | undefined> => {
-    const taskId = managerState(harnessCtxState(ctx)).taskId;
+  const committedRow = async (ctx: ManagerContext): Promise<Task | undefined> => {
+    const taskId = managerState(ctx.sequencer?.state).taskId;
     if (taskId === null) return undefined;
     const board = await runBoard(ctx);
     return readCommittedTask(board, taskId);
@@ -2040,7 +2013,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 
   /** Take this attempt's untaken steers in `takenIn`, fenced to the claim, then return what `select` reads. */
   const takeSteersFor = async (
-    ctx: BlockContext,
+    ctx: ManagerContext,
     takenIn: string,
     select: (row: Task, takenIn: string) => NonNullable<Task["steers"]>,
   ): Promise<{ steers: ShownSteer[]; taken: TaskSteer[] } | null> => {
@@ -2051,7 +2024,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     if (board.takeSteers !== undefined && untakenSteers(row).length > 0) {
       // The claim this run holds, never one minted from the row now: a later
       // turn of the attempt holds another ticket, and its steers are its own.
-      const claim = harnessCtxState(ctx)?.ticket ?? null;
+      const claim = ctx.sequencer?.state.ticket ?? null;
       if (claim === null) return null;
       const outcome = await board.takeSteers(row.id, { claim, takenIn });
       // Declined: the attempt no longer holds the row (claimed again, finished).
@@ -2067,8 +2040,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   };
 
   /** The run's board as the substrate sees it: the one its claim names, or the fixed board. */
-  const runBoard = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
-    const claim = harnessCtxState(ctx)?.claim ?? null;
+  const runBoard = async (ctx: ManagerContext): Promise<TaskCollectionRef> => {
+    const claim = ctx.sequencer?.state.claim ?? null;
     if (claim === null) return boardTasks(ctx);
     const board = await claimLedger(ctx, claim);
     if (board === undefined) {
@@ -2144,8 +2117,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * left as they were by the flush and are named on the record. A place with
    * no kept files (a fixed repository) writes nothing and answers `true`.
    */
-  const saveKeptFiles = async (ctx: BlockContext): Promise<boolean> => {
-    const state = harnessCtxState(ctx);
+  const saveKeptFiles = async (ctx: ManagerContext): Promise<boolean> => {
+    const state = ctx.sequencer?.state;
     const place = state?.place;
     if (place == null || place.filesDir === undefined) return true;
     let error: string | null = null;
@@ -2182,8 +2155,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * times first. A displaced attempt's record write is refused like every
    * other one, and nothing is dropped. With holding off, nothing runs.
    */
-  const holdWork = async (ctx: BlockContext): Promise<boolean> => {
-    const state = harnessCtxState(ctx);
+  const holdWork = async (ctx: ManagerContext): Promise<boolean> => {
+    const state = ctx.sequencer?.state;
     const place = state?.place;
     if (place == null || place.holding === undefined) return true;
     const identity = identityOf(ctx, state);
@@ -2228,9 +2201,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * Write where the run's place stands, where the host holds work. With
    * holding off this is never called and the record gains no `place`.
    */
-  const recordPlace = async (ctx: BlockContext, placeHost: string, placeState: PlaceStatus): Promise<void> => {
+  const recordPlace = async (ctx: ManagerContext, placeHost: string, placeState: PlaceStatus): Promise<void> => {
     await fenced(
-      writeRunRecord(ctx, identityOf(ctx, harnessCtxState(ctx)), {
+      writeRunRecord(ctx, identityOf(ctx, ctx.sequencer?.state), {
         place: { host: placeHost, state: placeState },
       }),
       `the place was recorded ${placeState}`,
@@ -2252,11 +2225,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * stream; a failed one is said with its tail and the run goes on.
    */
   const provisionPlace = async (
-    ctx: BlockContext,
+    ctx: ManagerContext,
     answer: RunSourceAnswer,
     location: RunLocation,
   ): Promise<WorkspacePlace> => {
-    const state = managerState(harnessCtxState(ctx));
+    const state = managerState(ctx.sequencer?.state);
     const holding = host.holds(answer);
     const recordedHost = state.recordedPlace?.host ?? null;
     const held = recordedHoldOf(state.held);
@@ -2307,7 +2280,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * the manager's one way to stop for a person. Stops the run when its turn
    * no longer holds the row.
    */
-  const holdOnQuestion = async (ctx: BlockContext, question: string): Promise<void> => {
+  const holdOnQuestion = async (ctx: ManagerContext, question: string): Promise<void> => {
     if ((await askStep(ctx, await runBoard(ctx), question)) === "superseded") {
       throw new HarnessAttemptSuperseded("the run's question held its task");
     }
@@ -2321,11 +2294,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * the run and the field, never the work's contents.
    */
   const holdOnMismatch = async (
-    ctx: BlockContext,
+    ctx: ManagerContext,
     mismatch: HeldWorkMismatchError,
     placeHost: string | null,
   ): Promise<never> => {
-    const state = managerState(harnessCtxState(ctx));
+    const state = managerState(ctx.sequencer?.state);
     const identity = identityOf(ctx, state);
     const held = state.held === null ? null : { ...state.held, parked: true };
     await fenced(
@@ -2360,9 +2333,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     // The host's capabilities too: the workspace's run source is asked here,
     // and a source that reads a collection resolves it off this context.
     uses: [managerCapability, ...(guardedUses ?? [])],
-    // Annotated for the reason `prepare`'s is: the host's `uses` widens the
-    // inferred context past what the helpers below accept.
-    execute: async (input, ctx: BlockContext) => {
+    execute: async (input, ctx) => {
       // **Which board, from the claim, checked against the row before
       // anything else.** The claim on the input is the entry adapter's copy of
       // the gate's ticket; the row at that ledger and partition is the
@@ -2598,7 +2569,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       await fenced(
         openRunRecord(
           ctx,
-          identityOf(ctx, harnessCtxState(ctx)),
+          identityOf(ctx, ctx.sequencer?.state),
           { workspacePath, branch, childSessionId: ctx.session.identity.id, run, runKey, ...(requestIds !== undefined ? { requestIds } : {}) },
         ),
         "the run record was opened",
@@ -2618,8 +2589,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * lease the caller holds: asked of the source on this context, refused when
    * the source moved the run since it opened.
    */
-  const provisionRunPlace = async (ctx: BlockContext): Promise<WorkspacePlace> => {
-    const state = managerState(harnessCtxState(ctx));
+  const provisionRunPlace = async (ctx: ManagerContext): Promise<WorkspacePlace> => {
+    const state = managerState(ctx.sequencer?.state);
     const location = locationFor(
       {
         principal: runPrincipal(ctx),
@@ -2648,8 +2619,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * check to add pull requests to; `null` for a run with no checkout or no
    * row. Never throws: a failed read is a status note.
    */
-  const recordRunCheckout = async (ctx: BlockContext): Promise<string | null> => {
-    const raw = harnessCtxState(ctx);
+  const recordRunCheckout = async (ctx: ManagerContext): Promise<string | null> => {
+    const raw = ctx.sequencer?.state;
     const worktrees = worktreesOf(ctx);
     if (raw?.workspacePath == null || raw.branch == null || worktrees === undefined || host.recordCheckout === undefined) return null;
     try {
@@ -2676,15 +2647,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     // The host's capabilities ride alongside the manager's own, so a phase's
     // prompt builder reads its collections off `ctx.resources` like any block.
     uses: [managerCapability, ...(guardedUses ?? [])],
-    // **`ctx` is annotated rather than inferred, and the annotation is
-    // load-bearing.** The host's `uses` widens the context `handler()` infers —
-    // its capabilities' resources and namespaces appear in it — and a narrowed
-    // `BlockContext` is not assignable to a plain one, so every helper called
-    // below would need a cast. Narrowing here keeps the option's cost at the
-    // option; `createManagerCapability` carries the long form of the same
-    // argument.
-    execute: async (input, ctx: BlockContext) => {
-      const state = managerState(harnessCtxState(ctx));
+    execute: async (input, ctx) => {
+      const state = managerState(ctx.sequencer?.state);
 
       // **Two channels, two meanings, and they never carry each other.** The
       // board's `feedback` says why the LAST ATTEMPT FAILED; `answers` say what
@@ -2803,7 +2767,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               }
             : { filesOnly: true };
         await fenced(
-          writeRunRecord(ctx, identityOf(ctx, harnessCtxState(ctx)), pin),
+          writeRunRecord(ctx, identityOf(ctx, ctx.sequencer?.state), pin),
           "the run's source was recorded",
         );
         await ctx.sequencer!.patchState(pin);
@@ -2930,16 +2894,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     sequencerStateSchema: managerStateSchema,
     // The done-condition runs in here, and it sees a phase's collections too.
     uses: [managerCapability, ...(guardedUses ?? [])],
-    // **`ctx` is annotated rather than inferred, and the annotation is
-    // load-bearing.** The host's `uses` widens the context `handler()` infers —
-    // its capabilities' resources and namespaces appear in it — and a narrowed
-    // `BlockContext` is not assignable to a plain one, so every helper called
-    // below would need a cast. Narrowing here keeps the option's cost at the
-    // option; `createManagerCapability` carries the long form of the same
-    // argument.
-    execute: async (handle, ctx: BlockContext) => {
-      const state = managerState(harnessCtxState(ctx));
-      const identity = identityOf(ctx, harnessCtxState(ctx));
+    execute: async (handle, ctx) => {
+      const state = managerState(ctx.sequencer?.state);
+      const identity = identityOf(ctx, state);
       const succeeded = handle.status === "completed";
       await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
@@ -3310,9 +3267,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * whose stop doesn't wait for its process is never stopped for one: its
    * call is denied instead, so nothing runs that nobody allowed.
    */
-  const askAboutToolCall: HarnessToolApprovalHook = (request, ctx) => {
+  const askAboutToolCall: HarnessToolApprovalHook = (request, ctx: ManagerContext) => {
     const requestId = ctx.request.identity.id;
-    const state = managerState(harnessCtxState(ctx));
+    const state = managerState(ctx.sequencer?.state);
     const call = heldToolCallOf(request, state.workspacePath!);
     const grants = state.approvals?.grants ?? [];
     const spent = spentGrants.get(requestId) ?? new Set<number>();
@@ -3357,19 +3314,19 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const harnessBlock = harness({
     // The run edits ITS checkout, and the record of what it touched is keyed
     // there too.
-    cwd: (ctx) => managerState(harnessCtxState(ctx)).workspacePath!,
+    cwd: (ctx: ManagerContext) => managerState(ctx.sequencer?.state).workspacePath!,
     // Which session this attempt continues. `null` on attempt 1, and on every
     // attempt after one whose harness named no session — a resume the vendor
     // refused, above all — so a dead id is not re-sent forever.
-    resume: (ctx) => harnessCtxState(ctx)?.previousSessionId ?? null,
+    resume: (ctx: ManagerContext) => ctx.sequencer?.state.previousSessionId ?? null,
     // **Fenced like every other write.** A refusal here means a replacement
     // holds the row, and recording this attempt's session onto it would hand
     // the replacement's next attempt a conversation that belongs to a run
     // nobody is waiting on. Stopping is also the right answer for the run
     // itself: it is mid-stream in paid model work on a row it no longer owns.
-    onSession: async (sessionId, ctx) => {
+    onSession: async (sessionId, ctx: ManagerContext) => {
       await fenced(
-        writeRunRecord(ctx, identityOf(ctx, harnessCtxState(ctx)), {
+        writeRunRecord(ctx, identityOf(ctx, ctx.sequencer?.state), {
           sessionId,
         }),
         "the harness named its session",
@@ -3411,12 +3368,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * own context, like the steer watch.
    */
   const progressNotes = new Map<string, ProgressNotes>();
-  const startProgressNotes = (ctx: BlockContext): void => {
+  const startProgressNotes = (ctx: ManagerContext): void => {
     progressNotes.get(ctx.request.identity.id)?.stop();
     progressNotes.set(
       ctx.request.identity.id,
       throttledNotes(async (statusNote) => {
-        const state = harnessCtxState(ctx);
+        const state = ctx.sequencer?.state;
         const claim = state?.ticket ?? null;
         const taskId = managerState(state).taskId;
         if (claim === null || taskId === null) return false;
@@ -3476,8 +3433,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           ]);
 
   /** Read the task's pull requests from GitHub, in the run's checkout when it still has one, inside the one network-call bound. */
-  const readTaskPullRequests = (ctx: BlockContext, prs: readonly TaskPullRequest[]) => {
-    const path = managerState(harnessCtxState(ctx)).workspacePath;
+  const readTaskPullRequests = (ctx: ManagerContext, prs: readonly TaskPullRequest[]) => {
+    const path = managerState(ctx.sequencer?.state).workspacePath;
     return readPullRequestStates(ctx, prs, {
       cwd: path != null && existsSync(path) ? path : process.cwd(),
       timeoutMs: NETWORK_CALL_TIMEOUT_MS,
@@ -3499,12 +3456,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * no harness: `woken` says so, and the caller ends the chain on it.
    */
   const settleOnPullRequests = async (
-    ctx: BlockContext,
+    ctx: ManagerContext,
     prs: readonly TaskPullRequest[],
     output: ManagerOutput,
     woken?: { readonly reads: Awaited<ReturnType<typeof readPullRequestStates>> },
   ): Promise<ManagerOutput> => {
-    const state = managerState(harnessCtxState(ctx));
+    const state = managerState(ctx.sequencer?.state);
     const identity = identityOf(ctx, state);
     // Read once per settle: a wake hands over the read it already made.
     const reads = woken?.reads ?? (await readTaskPullRequests(ctx, prs));
@@ -3584,10 +3541,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: z.void(),
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (_input, ctx: BlockContext) => {
+    execute: async (_input, ctx) => {
       if (!awaitPullRequests) return;
       const row = await committedRow(ctx);
-      const state = managerState(harnessCtxState(ctx));
+      const state = managerState(ctx.sequencer?.state);
       const recorded = await readRunRecord(ctx, state.topic!);
       const wait = row === undefined ? undefined : wokenWait(row);
       // Each wait is woken once: a later turn of the task (a retry, a question's answer) is not its wake.
@@ -3638,8 +3595,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: managerOutputSchema,
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (input: { verdict: HarnessJudgeVerdict | null } | null, ctx: BlockContext) => {
-      const state = managerState(harnessCtxState(ctx));
+    execute: async (input, ctx) => {
+      const state = managerState(ctx.sequencer?.state);
       const decision = state.decided!;
       if (decision.settle === "asked") return decision.output;
       // Cancelled while it waited for review: the run records nothing more.
@@ -3708,8 +3665,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: z.object({ verdict: harnessJudgeVerdictSchema.nullable() }).nullable(),
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (input: { verdict: HarnessJudgeVerdict | null } | null, ctx: BlockContext) => {
-      const state = managerState(harnessCtxState(ctx));
+    execute: async (input, ctx) => {
+      const state = managerState(ctx.sequencer?.state);
       const decision = state.decided;
       if (!reviewChanges || decision?.settle !== "complete") return input;
       const read = input?.verdict ?? null;
@@ -3854,7 +3811,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * either, the step's own end takes the steer.
    */
   const steerWatches = new Map<string, SteerWatch>();
-  const watchForSteers = (ctx: BlockContext): AbortSignal => {
+  const watchForSteers = (ctx: ManagerContext): AbortSignal => {
     const requestId = ctx.request.identity.id;
     const controller = new AbortController();
     const watch: SteerWatch = { stopped: false, timer: undefined, steer: null, handed: 0, polling: false, kick: () => {}, stop: () => {} };
@@ -3874,7 +3831,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       watch.timer = undefined;
       watch.polling = true;
       try {
-        const state = managerState(harnessCtxState(ctx));
+        const state = managerState(ctx.sequencer?.state);
         if (state.taskId === null) return;
         const row = await committedRow(ctx);
         if (!live()) return;
@@ -4018,7 +3975,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // already has: this composes into the block's own signal, which the SDK
       // path forwards into the query's abort controller. The row's watch
       // (a steer's stop, or the task's end) composes in beside it.
-      abortSignal: (ctx) => {
+      abortSignal: (ctx: ManagerContext) => {
         const deadline = AbortSignal.timeout(runTimeoutMs);
         // Armed for every step: a run may offer a live steer once it starts.
         const steer = watchForSteers(ctx);
@@ -4029,7 +3986,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // suspended. The tree is only written by the agent, so releasing the
       // moment it stops is tighter than holding through the verdict; a step
       // the request runs next for a steer takes it again.
-      onSettled: (ctx) => {
+      onSettled: (ctx: ManagerContext) => {
         stopWatching(ctx);
         stopProgressNotes(ctx);
         releaseLeaseFromState(ctx);
@@ -4061,8 +4018,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * steer or follows a stop, so the steer cap bounds them; past it the
    * attempt fails.
    */
-  const stepForSteer = async (ctx: BlockContext, stopped: boolean): Promise<{ prompt: string; again: true } | undefined> => {
-    const state = managerState(harnessCtxState(ctx));
+  const stepForSteer = async (ctx: ManagerContext, stopped: boolean): Promise<{ prompt: string; again: true } | undefined> => {
+    const state = managerState(ctx.sequencer?.state);
     const row = await committedRow(ctx);
     // Only this attempt's own row: a task cancelled, finished or claimed again
     // since takes no more steps from this request.
@@ -4141,14 +4098,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: z.unknown(),
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (value: unknown, ctx: BlockContext) => {
+    execute: async (value: unknown, ctx) => {
       if (!approveTools) return value;
       const requestId = ctx.request.identity.id;
       const held = heldCalls.get(requestId);
       const spent = spentGrants.get(requestId);
       heldCalls.delete(requestId);
       spentGrants.delete(requestId);
-      const approvals = managerState(harnessCtxState(ctx)).approvals ?? { pending: null, grants: [], steps: 0 };
+      const approvals = managerState(ctx.sequencer?.state).approvals ?? managerApprovalSchema.parse({});
       const grants = approvals.grants.filter((_, at) => spent?.has(at) !== true);
       if (held === undefined && grants.length === approvals.grants.length) return value;
       await ctx.sequencer!.patchState({ approvals: { ...approvals, grants, pending: held ?? null } });
@@ -4176,12 +4133,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: z.unknown(),
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (value: unknown, ctx: BlockContext) => {
+    execute: async (value: unknown, ctx) => {
       if (!approveTools) return value;
-      let state = managerState(harnessCtxState(ctx));
+      let state = managerState(ctx.sequencer?.state);
       const approvals = state.approvals;
-      const call = approvals?.pending ?? null;
-      if (approvals == null || call === null) return value;
+      if (approvals?.pending == null) return value;
+      const call = approvals.pending;
 
       const steps = approvals.steps + 1;
       if (steps > MAX_APPROVAL_STEPS) {
@@ -4209,7 +4166,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         },
       });
 
-      state = managerState(harnessCtxState(ctx));
+      state = managerState(ctx.sequencer?.state);
       const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
       await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session });
       if (state.place == null) await ctx.sequencer!.patchState({ place: await provisionRunPlace(ctx) });
@@ -4224,7 +4181,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: z.unknown(),
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (value: unknown, ctx: BlockContext) => {
+    execute: async (value: unknown, ctx) => {
       // An answered approval already resumes the session: its step goes round as it is.
       if ((value as { again?: unknown } | null)?.again === true) return value;
       // A step that ended on its own after its watch stopped it leaves the watch: it goes here.
@@ -4247,8 +4204,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: z.unknown(),
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
-    execute: async (value: unknown, ctx: BlockContext) => {
-      if (managerState(harnessCtxState(ctx)).decided?.settle !== "complete") return value;
+    execute: async (value: unknown, ctx) => {
+      if (managerState(ctx.sequencer?.state).decided?.settle !== "complete") return value;
       return (await stepForSteer(ctx, false)) ?? value;
     },
   });
@@ -4619,10 +4576,8 @@ const CONTINUE_AFTER_STOP =
  * No module-level state remains, so two managers in one process cannot touch
  * each other's lock by construction rather than by keying a table correctly.
  */
-function releaseLeaseFromState(ctx: {
-  sequencer?: { state?: unknown } | undefined;
-}): void {
-  const state = harnessCtxState(ctx);
+function releaseLeaseFromState(ctx: Pick<ManagerContext, "sequencer">): void {
+  const state = ctx.sequencer?.state;
   if (state?.lockPath == null || state.leaseToken == null) return;
   releaseCheckout({ lockPath: state.lockPath, token: state.leaseToken });
 }

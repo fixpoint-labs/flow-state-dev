@@ -143,6 +143,10 @@ export {
 } from "../helpers/harness-sdk-version";
 export type { InstalledSdkVersion, InstalledSdkVersionReader, TestedSdk } from "../helpers/harness-sdk-version";
 
+/** Scope schema collection shared by flow definitions and stand-alone block tests. */
+export { mergeFlowScopeStateSchemas } from "../flow/scope-state-schemas";
+export { walkBlockGraph } from "../helpers/block-graph";
+
 /** Runtime helpers the engine shares with core. */
 export { resolveActiveStatusMessage } from "../blocks/internal/resolve-active-status-message";
 export { resolveAllowedActions } from "../errors/resolve-allowed-actions";

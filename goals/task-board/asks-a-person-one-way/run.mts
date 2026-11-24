@@ -59,7 +59,6 @@ import { askMidway, taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orc
 import { getOrCreateTaskCollection, openHolds, type Task } from "@flow-state-dev/orchestration/tasks";
 import { createInboxClient, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, taskTruthOf, suspensionTruthOf, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
-import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../packages/workforce/src/conversation-board/steer.ts";
 import {
   createWorkerInstallation,
@@ -244,6 +243,7 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
   const installation = createWorkerInstallation({ standardWorkers: WORKERS, workerFlows: () => workerFlows as never });
   const doorInput = z.object({ message: z.string() });
   const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
+  const sessionStateSchema = z.object(installation.sessionStateShape);
   const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
 
   // The desk's turn: the filer's model (its task tools, and `suspendForUser` off a task row), or a note.
@@ -265,10 +265,10 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
   const proveTurn = handler({
     name: "asks-doer-prove",
     inputSchema: doorInput,
+    sessionStateSchema,
     outputSchema: z.unknown(),
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY] as string | undefined;
+    execute: async (input, ctx) => {
+      const { taskId } = ctx.session.state;
       const board = await filingConversationBoard(ctx);
       const row = taskId === undefined ? undefined : (board?.tasks.get(taskId) as Task | undefined);
       prove({ kind: "turn", requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, ...(taskId !== undefined ? { taskId } : {}), attempt: row?.attempts, turn: row?.turn, message: input.message });
@@ -291,11 +291,11 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
   const doerCode = handler({
     name: "asks-doer-code",
     inputSchema: doorInput,
+    sessionStateSchema,
     outputSchema: z.unknown(),
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (input, ctx) => {
       const message = input.message;
-      const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY] as string | undefined;
+      const { taskId } = ctx.session.state;
       const base = { requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, ...(taskId !== undefined ? { taskId } : {}) };
       const answered = /answering "/.test(message);
       if (message.includes("[review]") && !answered) {

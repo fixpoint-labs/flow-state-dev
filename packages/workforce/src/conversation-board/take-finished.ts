@@ -55,7 +55,7 @@ import { z } from "zod";
 import { isUserTurn } from "../standing-rules/user-turn";
 import { taskChainResources } from "./chain";
 import { CONVERSATION_LEDGER_ID, conversationLedgerResources, ownConversationLedger } from "./ledger";
-import { conversationBoardStateShape, settleTakenNotice } from "./task-settled";
+import { conversationBoardStateSchema, settleTakenNotice } from "./task-settled";
 import { subscriptionResources } from "../subscriptions/rows";
 import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
 
@@ -92,7 +92,7 @@ export const takeFinishedTasks = handler({
   name: "workforce-take-finished-tasks",
   inputSchema: z.unknown(),
   outputSchema: z.array(finishedTaskSchema),
-  sessionStateSchema: z.object(conversationBoardStateShape),
+  sessionStateSchema: conversationBoardStateSchema,
   requestStateSchema: taskEndingReadsStateSchema,
   // `settleTakenNotice` ends a failed task's subscriptions (FIX-2534).
   resources: { ...conversationLedgerResources, ...taskChainResources, ...subscriptionResources },

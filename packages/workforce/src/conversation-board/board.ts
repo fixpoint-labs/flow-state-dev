@@ -169,7 +169,7 @@ import { holdRoutedSession, routedSessionResources, sessionsHeldElsewhere } from
 import { conversationDelivery } from "./delivery";
 import { owedReports, sendLegacyReports } from "./report-owed";
 import { filedProjectOf, filingProjectStampOf, isStamped, pieceOwnerOf } from "./held-task";
-import { PLAN_LEDGER_ID, STEP_ATTEMPTS, definePlanning, isAnsweringTurn, isSteppingTurn, planLedgerAt, planLedgerResources } from "./plan";
+import { PLAN_LEDGER_ID, STEP_ATTEMPTS, definePlanning, planLedgerAt, planLedgerResources, type PlanRequestState } from "./plan";
 import { verifiedWorkerOf } from "../workers/verified-worker";
 
 /**
@@ -838,8 +838,6 @@ const passStateSchema = z.object({
   passPlanDue: z.number().optional(),
   passMessagesDue: z.number().optional()
 });
-type PassState = z.infer<typeof passStateSchema>;
-const passStateOf = (ctx: BlockContext): PassState => (ctx.request.state ?? {}) as PassState;
 
 /**
  * Build a conversation's task board and everything a flow carrying it
@@ -1476,7 +1474,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    *   file a step. Anywhere else a filing naming the worker is refused.
    */
   const withSteps = (
-    ctx: BlockContext,
+    ctx: BlockContext<PlanRequestState>,
     board: TaskCollectionRef,
     plan: TaskCollectionRef,
     partition: string,
@@ -1486,13 +1484,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     /** Every check a step passes before anything is written. */
     const checkStep = (init: TaskInit): void => {
       if (!routesSelf) throw stepFromItsOwnTurn(self);
-      if (isSteppingTurn(ctx)) {
+      if (ctx.request?.state?.planStepping === true) {
         throw new TaskWriteRefusedError(
           "no_step_while_stepping",
           "you are working a step, and a step files no step for itself: do this step, and say in your answer what is left. Nothing was filed."
         );
       }
-      if (isAnsweringTurn(ctx)) {
+      if (ctx.request?.state?.planAnswering === true) {
         throw new TaskWriteRefusedError(
           "no_step_while_answering",
           "your steps have ended and this turn gives your answer: do the work yourself, or answer. A task for a delegate is still dispatched. Nothing was filed."
@@ -1835,7 +1833,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const nextDue = await repairs(ctx, ref, partition, false);
       const top = taskChainOf(ctx)?.top;
       if (top !== undefined) await markAddedInChain(ctx, top, ref.list().map((row) => chainEntryKey(partition, row.id)));
-      const rounds = (passStateOf(ctx).passRounds ?? 0) + 1;
+      const rounds = (ctx.request.state.passRounds ?? 0) + 1;
       await ctx.request.patchState({ passRounds: rounds });
       const again = hasStartable(ref) && rounds < MAX_PASS_ROUNDS;
       return nextDue === undefined ? { again } : { again, nextDue };
@@ -1850,10 +1848,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     requestStateSchema: passStateSchema,
     execute: async (round, ctx) => {
       notePassEnded(ctx);
-      const { passPlanDue, passMessagesDue } = passStateOf(ctx);
+      const { passWake, passPlanDue, passMessagesDue } = ctx.request.state;
       const dues = [round.nextDue, passPlanDue, passMessagesDue].filter((at): at is number => at !== undefined);
       const due = dues.length === 0 ? undefined : Math.min(...dues);
-      await settlePassWake(ctx, DISPATCH_ENTRY, passStateOf(ctx).passWake, due);
+      await settlePassWake(ctx, DISPATCH_ENTRY, passWake, due);
       return round.nextDue === undefined ? {} : { nextDue: round.nextDue };
     }
   });

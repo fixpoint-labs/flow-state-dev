@@ -126,7 +126,7 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
       ? undefined
       : (repository: string) => workspace.checkRepository!(listed(repository) ?? repository, { ignored: ASK_MARKER_IGNORED });
   const projects = defineProjectsFlow({ checkRepository })({ id: PROJECTS_FLOW }) as { id: string };
-  const pins = definePinsFlow()({ id: PINS_FLOW }) as { id: string };
+  const pins = definePinsFlow()({ id: PINS_FLOW });
 
   /** Which harnesses a coding thread can run on here, over the environment each run gets. */
   const readiness = harnessReadiness({

@@ -94,26 +94,6 @@ const recordLayers = handler({
   }
 });
 
-const clientView = {
-  derived: {
-    ran: (ctx: {
-      state: {
-        team?: string | null;
-        teamKeyPresent?: boolean | null;
-        own?: string | null;
-        desk?: string | null;
-        runs?: number;
-      };
-    }) => ({
-      team: ctx.state.team ?? null,
-      teamKeyPresent: ctx.state.teamKeyPresent ?? null,
-      own: ctx.state.own ?? null,
-      desk: ctx.state.desk ?? null,
-      runs: ctx.state.runs ?? 0
-    })
-  }
-};
-
 /**
  * Composes the contract. No model, no generator — handlers only. One copy runs
  * every worker on it; a session names its worker, and the flow's
@@ -139,6 +119,13 @@ export function defineTriageFlow(installation: WorkerInstallation) {
       block: sequencer({ name: "triage-work", inputSchema }).tap(start).tap(recordLayers)
     }
   },
-  session: { ...installation.session(seatState.shape), client: clientView }
+  session: {
+    ...installation.session(seatState.shape),
+    client: {
+      derived: {
+        ran: ({ state: { team, teamKeyPresent, own, desk, runs } }) => ({ team, teamKeyPresent, own, desk, runs })
+      }
+    }
+  }
 });
 }

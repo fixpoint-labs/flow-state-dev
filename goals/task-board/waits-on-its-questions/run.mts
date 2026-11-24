@@ -43,7 +43,6 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
 import { createClient, type Client, type ClientFetch } from "@flow-state-dev/client";
 import { createFlowState, createInProcessFetch, runAction } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
@@ -51,7 +50,6 @@ import { askMidway, currentWorkerClaim } from "@flow-state-dev/orchestration/tas
 import { openHolds, type Task } from "@flow-state-dev/orchestration/tasks";
 import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, taskTruthOf, suspensionTruthOf, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
-import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../packages/workforce/src/conversation-board/steer.ts";
 import {
   createWorkerInstallation,
@@ -292,11 +290,11 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
   const doerTurn = handler({
     name: "questions-doer-turn",
     inputSchema: doorInput,
+    sessionStateSchema: z.object(installation.sessionStateShape),
     outputSchema: z.unknown(),
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (input, ctx) => {
       const message = input.message;
-      const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY] as string | undefined;
+      const { taskId } = ctx.session.state;
       const base = { requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, ...(taskId !== undefined ? { taskId } : {}) };
       if (message.startsWith('Task "') || message.startsWith("Message ")) return "noted";
       const board = await filingConversationBoard(ctx);

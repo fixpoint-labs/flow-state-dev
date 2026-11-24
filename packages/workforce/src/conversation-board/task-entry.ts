@@ -58,7 +58,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
-import { routedFromStateSchema } from "../workers/routed-from";
+import { workerSessionStateSchema } from "../workers/session-state";
 import { DISPATCH_ENTRY, FILED_HOP } from "./board-entries";
 import { hopMarkOf, messageTurnStateSchema, startTurnAtHop } from "../messages/hop";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
@@ -191,15 +191,14 @@ const noteRoutedFrom = handler({
   inputSchema: z.unknown(),
   outputSchema: z.object({}),
   resources: { ...routedSessionResources },
-  sessionStateSchema: z.object({ [ROUTED_FROM_STATE_KEY]: routedFromStateSchema }),
+  sessionStateSchema: workerSessionStateSchema.pick({ [ROUTED_FROM_STATE_KEY]: true }),
   execute: async (_task: unknown, ctx) => {
-    const state = (ctx.session.state ?? {}) as Record<string, unknown>;
-    if (typeof state[FILING_SESSION_STATE_KEY] === "string") return {};
+    if (filingPartitionOf(ctx) !== undefined) return {};
     const claim = currentWorkerClaim(ctx);
     const partition = claim?.collectionId === CONVERSATION_LEDGER_ID ? claim.partition : undefined;
     if (partition === undefined) return {};
     await noteRoutedSession(ctx, ctx.session.identity.id, { partition, taskId: claim!.taskId });
-    if (state[ROUTED_FROM_STATE_KEY] !== partition) await ctx.session.patchState({ [ROUTED_FROM_STATE_KEY]: partition });
+    if (ctx.session.state[ROUTED_FROM_STATE_KEY] !== partition) await ctx.session.patchState({ [ROUTED_FROM_STATE_KEY]: partition });
     return {};
   }
 });

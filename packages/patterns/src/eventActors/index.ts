@@ -342,10 +342,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
       execute: async (output, ctx) => {
         if (!reEmit) return;
 
-        const seqState = ctx.sequencer?.state as
-          | { _taskId?: string }
-          | undefined;
-        const taskId = seqState?._taskId;
+        const taskId = ctx.sequencer?.state._taskId;
         if (!taskId) return;
 
         const collection = await getCollection(ctx);

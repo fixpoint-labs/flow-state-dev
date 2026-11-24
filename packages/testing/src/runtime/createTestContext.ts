@@ -1,8 +1,7 @@
-import type { StateRef } from "@flow-state-dev/core/types";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
-import type { DeclaredResources } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, type DeclaredResources } from "@flow-state-dev/core";
+import type { BlockDefinition, FlowInstance, StateRef } from "@flow-state-dev/core/types";
 import { cloneValue, deepEqual } from "@flow-state-dev/core/helpers";
+import { mergeFlowScopeStateSchemas, walkBlockGraph } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import {
   createExecutionContext,
@@ -105,38 +104,14 @@ function buildFlatResourceMap(
   );
 }
 
-function createTestFlow(options: {
-  flow?: FlowInstance;
-  flowConfig?: Record<string, unknown>;
-  sessionId?: string;
-  sessionResources?: Record<string, unknown>;
-  userResources?: Record<string, unknown>;
-  orgResources?: Record<string, unknown>;
-  declaredResources?: DeclaredResources;
-}): FlowInstance {
-  if (options.flow !== undefined) {
-    // A hand-built instance may predate the config bag, or simply omit it.
-    // Production promises a block reads a value at `ctx.flow.config`, so the
-    // harness supplies the same empty bag the registry does rather than
-    // handing the block under test `undefined` (FIX-1331).
-    return (options.flow as { config?: unknown }).config === undefined
-      ? { ...options.flow, config: Object.freeze({}) }
-      : options.flow;
-  }
-
-  // FIX-435: every resource is intrinsically scoped; the test harness now
-  // emits a single flat `flow.resources` map covering all three buckets.
-  //
-  // Block-declared resources are merged first so a block that declares a
-  // resource on its `resources:` slot (e.g. round-robin/debate/routed-specialists)
-  // gets `ctx.resources.X` wired the same way production's `flow.resources` does.
-  // Explicitly-seeded scope resources are spread on top, so a test that opts to
-  // seed an accessor keeps its generic entry and existing behavior is unchanged.
+/** Build the stand-alone test flow from its resource seeds and the block's declarations. */
+export function createTestFlow(options: CreateTestContextOptions, block?: BlockDefinition): FlowInstance {
+  // Test seeds override the block's resource definitions so fixtures can supply their own values.
   const resources: Record<string, unknown> = {
-    ...(options.declaredResources ?? {}),
-    ...buildFlatResourceMap(options.sessionResources, "session"),
-    ...buildFlatResourceMap(options.userResources, "user"),
-    ...buildFlatResourceMap(options.orgResources, "org")
+    ...(block?.declaredResources ?? options.declaredResources),
+    ...buildFlatResourceMap(options.session?.resources, "session"),
+    ...buildFlatResourceMap(options.user?.resources, "user"),
+    ...buildFlatResourceMap(options.org?.resources, "org")
   };
 
   return {
@@ -144,9 +119,6 @@ function createTestFlow(options: {
     kind: "testing-flow",
     cardinality: "singleton",
     requireUser: true,
-    // Frozen, like a minted instance's: production promises a block reads a
-    // value here, never `undefined`, and a harness that disagreed with the
-    // runtime it stands in for would hide exactly that.
     config: Object.freeze({ ...(options.flowConfig ?? {}) }),
     actions: {},
     isolateUserState: false,
@@ -154,7 +126,8 @@ function createTestFlow(options: {
     resources: Object.keys(resources).length > 0 ? resources : undefined,
     session: {},
     user: {},
-    org: options.orgResources === undefined ? undefined : {}
+    org: options.org?.resources === undefined ? undefined : {},
+    scopeStateSchemas: block && mergeFlowScopeStateSchemas("testing-flow", {}, walkBlockGraph([block]))
   } as unknown as FlowInstance;
 }
 
@@ -437,15 +410,9 @@ function createTargetRef(
 export async function createTestContext<TInput = unknown>(
   options: CreateTestContextOptions<TInput> = {}
 ): Promise<TestContextRuntime> {
-  const flow = createTestFlow({
-    flow: options.flow,
-    flowConfig: options.flowConfig,
-    sessionId: options.sessionId,
-    sessionResources: options.session?.resources,
-    userResources: options.user?.resources,
-    orgResources: options.org?.resources,
-    declaredResources: options.declaredResources
-  });
+  let flow = options.flow ?? createTestFlow(options);
+  // Hand-built instances may predate the frozen config bag available in production.
+  if (flow.config === undefined) flow = { ...flow, config: Object.freeze({}) };
   const actionName = options.actionName ?? "test-action";
   const requestId = options.requestId ?? generateId("test_req");
   const sessionId = options.sessionId ?? generateId("test_session");

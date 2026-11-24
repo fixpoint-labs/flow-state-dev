@@ -82,7 +82,7 @@ import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import { doorTask, RESPOND_ACTION } from "./worker-door";
 import { declareBuiltInRoles } from "./worker-roles";
 import { routedTaskHistory } from "./coordinator/routed-brief";
-import { withTaskEndingReads } from "./conversation-board/task-ending-read";
+import { taskEndingReadsStateSchema, withTaskEndingReads } from "./conversation-board/task-ending-read";
 import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
 import { REPLY_CONCURRENCY } from "./conversation-board/task-settled";
@@ -1076,6 +1076,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       name,
       inputSchema,
       flowConfigSchema: settings,
+      requestStateSchema: taskEndingReadsStateSchema,
       itemVisibility: { client: true, history: true },
       // The earlier turns of THIS conversation, so a follow-up keeps its
       // subject. A conversation is one session: a worker has one per
@@ -1253,13 +1254,9 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // behind for a write that never committed. `undefined` means the mutator
       // never completed, which is the same answer as nothing added.
       const added = await withOutcome(
-        (mutator: (state: unknown) => Record<string, unknown>) =>
-          ctx.session.atomicState(mutator),
-        (current: unknown) => {
-          const held = (current as Record<string, unknown> | undefined)?.[
-            ACTIVE_SKILLS_STATE.field
-          ];
-          let entries = Array.isArray(held) ? held : [];
+        (mutator) => ctx.session.atomicState(mutator),
+        (current: typeof ctx.session.state) => {
+          let entries = current[ACTIVE_SKILLS_STATE.field];
           const before = entries.length;
           for (const name of names) {
             entries = pushActiveSkill(entries, { name, mode: "inline", activatedAt });

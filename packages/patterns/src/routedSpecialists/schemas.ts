@@ -32,10 +32,6 @@ export function createWorkspace<TStateSchema extends ZodTypeAny>(
   });
 }
 
-const tasksRecordSchema: ZodTypeAny = z
-  .record(z.string(), z.unknown())
-  .default({});
-
 // BP-030.
 /**
  * Sequencer control state for a routedSpecialists instance.
@@ -66,7 +62,7 @@ const tasksRecordSchema: ZodTypeAny = z
  * through this schema keeps it rather than stripping it; cleared by the
  * next iteration, which writes a real ticket.
  */
-export const routedSpecialistsControlSchema: ZodTypeAny = z.object({
+export const routedSpecialistsControlSchema = z.object({
   iteration: z.number().default(0),
   currentSpecialist: z.string().optional(),
   currentTaskId: z.string().optional(),
@@ -74,18 +70,11 @@ export const routedSpecialistsControlSchema: ZodTypeAny = z.object({
   // TODO(FIX-1025): remove currentAttempt, the writeBackGuard legacy branch, its reset and the two legacy tests once no checkpoints written before FIX-981 can still be resumed.
   currentAttempt: z.number().nullish(),
   done: z.boolean().default(false),
-  tasks: tasksRecordSchema,
+  tasks: z.record(z.string(), z.unknown()).default({}),
 });
 
-export type RoutedSpecialistsControlState = {
-  iteration: number;
-  currentSpecialist?: string;
-  currentTaskId?: string;
+export type RoutedSpecialistsControlState = Omit<z.infer<typeof routedSpecialistsControlSchema>, "currentClaim"> & {
   currentClaim?: TaskClaimTicket;
-  /** Legacy checkpoint field — see the schema doc. Read, never set. */
-  currentAttempt?: number | null;
-  done: boolean;
-  tasks: Record<string, unknown>;
 };
 
 /**

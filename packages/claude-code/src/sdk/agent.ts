@@ -930,15 +930,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       : {}),
     ...(uses !== undefined ? { uses } : {}),
     ...(onErrored !== undefined ? { onErrored } : {}),
-    // `ctx` is annotated rather than inferred. `uses` widens the context type
-    // that `handler()` infers — capability namespaces and state targets appear
-    // in it — and every helper below takes a plain `BlockContext`, so without
-    // this the widening propagates into two dozen signatures that have no
-    // interest in it. Narrowing here keeps the option's cost at the option.
-    execute: async (
-      input,
-      ctx: HarnessCallbackContext,
-    ): Promise<ClaudeCodeAgentHandle> => {
+    execute: async (input, ctx): Promise<ClaudeCodeAgentHandle> => {
       const promptText = (
         pickPrompt ? pickPrompt(input, ctx) : input.prompt
       )?.trim();
@@ -963,9 +955,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // default provider's `release` is a no-op for exactly this reason.
       let session: ClaudeCodeSession = { sdkSessionId: null };
       if (!detached) {
-        const priorSessionId = (ctx.session.state as Record<string, unknown>)[
-          CLAUDE_CODE_SESSION_ID_KEY
-        ];
+        const priorSessionId = ctx.session.state[CLAUDE_CODE_SESSION_ID_KEY];
         session = await sessionProvider.resolve(
           typeof priorSessionId === "string" ? priorSessionId : "",
         );
@@ -1571,7 +1561,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             );
           }
           await ctx.session.patchState(CLAUDE_CODE_AGENT_RUNS_KEY, (prev) => [
-            ...((prev as ClaudeCodeAgentHandle[] | undefined) ?? []),
+            ...(prev ?? []),
             handle,
           ]);
         }
