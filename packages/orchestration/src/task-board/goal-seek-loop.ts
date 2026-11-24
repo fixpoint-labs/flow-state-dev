@@ -251,7 +251,11 @@ const verdictSchema = z.discriminatedUnion("decision", [
  *  collision when merged into the one loop-owner container. */
 const goalSeekLoopStateSchema = z.object({
   goalSeekLoopDrains: z.number().default(0),
-  goalSeekLoopVerdict: verdictSchema.nullable().default(null),
+  // Keep the verdict summary across drains. Inline tasks travel to applyReplan on the chain.
+  goalSeekLoopVerdict: z.object({
+    decision: z.enum(["done", "continue", "replan"]),
+    reason: z.string(),
+  }).nullable().default(null),
   goalSeekLoopDrainResult: z.unknown().nullable().default(null),
   /** Whether the last drain left a task waiting on a person: the pass ends without a judge. */
   goalSeekLoopWaiting: z.boolean().default(false),
@@ -503,7 +507,9 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
         drains >= maxIterations && verdict.decision !== "done"
           ? { decision: "done", reason: "max-iterations" }
           : verdict;
-      await ctx.sequencer!.patchState({ goalSeekLoopVerdict: coerced });
+      await ctx.sequencer!.patchState({
+        goalSeekLoopVerdict: { decision: coerced.decision, reason: coerced.reason },
+      });
       return coerced;
     },
   });

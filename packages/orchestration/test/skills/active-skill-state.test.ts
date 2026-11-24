@@ -51,6 +51,18 @@ describe("pushActiveSkill", () => {
 });
 
 describe("unionAllowedTools", () => {
+  it("skips retired and incomplete entries from a persisted binding", () => {
+    const active = readActiveSkills({
+      activeSkills: [{ name: "retired", mode: "fork" }, { name: "incomplete" }, entry("current")],
+    });
+    const tools = unionAllowedTools(active, {
+      retired: ["old-tool"],
+      incomplete: ["tool-without-mode"],
+      current: ["current-tool"],
+    });
+    expect(tools).toEqual(["current-tool"]);
+  });
+
   it("returns undefined when no inline skill declares allowed-tools", () => {
     const active = [entry("foo"), entry("bar")];
     expect(

@@ -23,11 +23,8 @@ import { skillActivationSourceSchema } from "./skill-activation-types";
  * onto the generator's own `stateSchema`) and by the legacy session-state
  * fragment below.
  *
- * `mode` is `"inline"` — the only surviving value. A persisted
- * session from before the fork/pattern removal may carry a stale
- * `"fork"`/`"pattern"` entry; those are tolerated on read (`.catch`) and
- * normalized to `"inline"` so a resume never crashes. The entries are
- * inert either way — nothing reads `mode` other than the inline path.
+ * Parsing normalizes retired `"fork"` and `"pattern"` modes to `"inline"`.
+ * The raw storage reader below preserves the original modes.
  */
 export const activeSkillsArraySchema = z
   .array(
@@ -49,7 +46,7 @@ export const activeSkillsArraySchema = z
   .optional()
   .default([]);
 
-/** A single active-skill record stored in state. */
+/** A single active-skill record produced by the schema. */
 export type ActiveSkillEntry = z.infer<typeof activeSkillsArraySchema>[number];
 
 /** Zod schema for the session-state fragment the capability declares. */
@@ -57,12 +54,15 @@ export const activeSkillStateSchema = z.object({
   activeSkills: activeSkillsArraySchema,
 });
 
-/** Read the active-skills array from a session-state-like object. */
+/**
+ * Return the stored array unchanged. Its entries are unvalidated and older
+ * records may carry a retired mode or lack an activation timestamp. Consumers
+ * that render skills or collect their tools must check `mode === "inline"`.
+ */
 export function readActiveSkills(state: unknown, field = "activeSkills"): ActiveSkillEntry[] {
   if (state === null || typeof state !== "object") return [];
   const entries = (state as Record<string, unknown>)[field];
-  if (!Array.isArray(entries)) return [];
-  return entries;
+  return Array.isArray(entries) ? (entries as ActiveSkillEntry[]) : [];
 }
 
 /**
