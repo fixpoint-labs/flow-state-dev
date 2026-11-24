@@ -194,6 +194,17 @@ describe("which mode a task runs", () => {
   const registered = resolveCoderModes(shiftManager, kitMode, "coder");
   const kitOnly = resolveCoderModes({}, kitMode, "coder");
 
+  // FIX-2878 replaces this on purpose: the mode will come from a field the server writes, and a
+  // marker only on the filer's `input` will stay on the default mode. Until then it is the
+  // accepted interim, the same rule Shift Manager's own coder follows.
+  it("pins the interim: a marker the filer wrote only on `input` runs the task as implement", async () => {
+    const filerWritten = { description: "Add a line to the README", harnessFeature: { issue: "FIX-12" } };
+    expect(modeOfTask(filerWritten, registered)).toBe("implement");
+    expect(await start(shiftManager)).toBe("started");
+    const picked = routers.get("coder-codex-by-mode")!.execute({ input: filerWritten });
+    expect(managerBlocks.get(picked)).toBe("coder-codex-implement");
+  });
+
   it("runs a task carrying the feature marker as implement, and every other task in the default mode", () => {
     expect(modeOfTask({ harnessFeature: { issue: "FIX-12" } }, registered)).toBe("implement");
     expect(modeOfTask({ issue: "the problem", description: "Why?" }, registered)).toBe("answer");
