@@ -20,9 +20,8 @@ const pinsBlock = (name: string, change: (pinned: string[], taskId: string) => s
     outputSchema: pinsUserStateSchema,
     userStateSchema: pinsUserStateSchema,
     execute: async (input, ctx) => {
-      const pinned = change(ctx.user.state.pinned, input.taskId);
-      await ctx.user.patchState({ pinned });
-      return { pinned };
+      await ctx.user.patchState("pinned", (pinned) => change(pinned, input.taskId));
+      return { pinned: ctx.user.state.pinned };
     },
   });
 
