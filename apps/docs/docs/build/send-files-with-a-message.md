@@ -31,26 +31,26 @@ export const assistant = generator({
 });
 ```
 
-```ts title="src/flows/support/blocks/ask.ts"
+```ts title="src/flows/support/blocks/help.ts"
 import { sequencer } from "@flow-state-dev/core";
 import { recordAttachments } from "@flow-state-dev/core/attachments";
 import { z } from "zod";
 import { assistant } from "./assistant";
 
-export const ask = sequencer({ name: "ask", inputSchema: z.object({ message: z.string() }) })
+export const help = sequencer({ name: "help", inputSchema: z.object({ message: z.string() }) })
   .tap(recordAttachments)
   .step(assistant);
 ```
 
 ```ts title="src/flows/support/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
-import { ask } from "./blocks/ask";
+import { help } from "./blocks/help";
 
 export default defineFlow({
   kind: "support",
   requireUser: true,
   actions: {
-    ask: { block: ask, userMessage: (input) => input.message },
+    help: { block: help, userMessage: (input) => input.message },
   },
 })();
 ```
@@ -59,11 +59,11 @@ The files ride beside the input, so `inputSchema` never sees them. `recordAttach
 
 ## 2. Upload, then send
 
-```ts title="src/lib/ask-with-files.ts"
+```ts title="src/lib/send-with-files.ts"
 import { createClient } from "@flow-state-dev/client";
 import { attachmentLimitRefusal, attachmentMediaType } from "@flow-state-dev/core/attachments";
 
-export async function askWithFiles(userId: string, sessionId: string, message: string, files: File[]) {
+export async function sendWithFiles(userId: string, sessionId: string, message: string, files: File[]) {
   const support = createClient({ userId, baseUrl: "" }).flow("support");
   const typed = files.map((file) => ({ file, mediaType: attachmentMediaType(file) }));
   const refusal = attachmentLimitRefusal(typed);
@@ -72,7 +72,7 @@ export async function askWithFiles(userId: string, sessionId: string, message: s
   const attachments = await Promise.all(
     typed.map(({ file, mediaType }) => support.upload({ data: file, mediaType, filename: file.name })),
   );
-  return support.send("ask", { message }, { sessionId, attachments });
+  return support.send("help", { message }, { sessionId, attachments });
 }
 ```
 
@@ -100,7 +100,7 @@ export function Composer({ userId, sessionId }: { userId: string; sessionId: str
 
   const send = () =>
     box.submit((line, attachments) =>
-      session.sendAction("ask", { message: line }, { userMessage: line, attachments }),
+      session.sendAction("help", { message: line }, { userMessage: line, attachments }),
     );
 
   return (
