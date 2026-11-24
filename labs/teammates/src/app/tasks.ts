@@ -65,19 +65,19 @@ export function useTaskWork(task: CodingBoardTask | undefined) {
   const flowKind = task?.runFlow ?? undefined;
   // The plan view is the coding flow's: a run on any other flow is refused, so only a coder run reads it.
   const plan = useView(recordedWorkViewRef(), { requestId: requestId ?? "" }, { client, pollIntervalMs, sessionId: runSession ?? undefined, enabled: running && flowKind === CODER_FLOW }).value?.plan;
-  const streamed = useRequestStream({ client, flowKind, source: { requestId: requestId ?? "" }, filter: TOOL_CALLS, reconnect: true, flush: "immediate", enabled: running && flowKind !== undefined })
-    .items as unknown as readonly OutputItem[];
+  const stream = useRequestStream({ client, flowKind, source: { requestId: requestId ?? "" }, filter: TOOL_CALLS, reconnect: true, flush: "immediate", enabled: running && flowKind !== undefined });
   return useMemo(() => {
     const fed = (feed?.items ?? []) as readonly OutputItem[];
     const stop = [...fed].reverse().find((item) => item.type === "suspension" && (item as { kind?: string }).kind === "review") as { data?: unknown } | undefined;
-    const inFlight = running ? inFlightOf(streamed, fed, requestId) : undefined;
+    const inFlight = running ? inFlightOf(stream.items as unknown as readonly OutputItem[], fed, requestId) : undefined;
     const steps = running ? plan?.rows.map(({ title, status }): PlanRowNow => ({ title, status })) : undefined;
     return {
       lines: runSession === null ? [] : conversationLines(fed, [], { renderers: teammatesRenderers }),
+      replyStartedAt: running ? stream.startedAt : undefined,
       review: stop === undefined ? undefined : (reviewDetail(stop.data) ?? undefined),
       working: { ...(inFlight === undefined ? {} : { inFlight }), ...(steps === undefined ? {} : { plan: steps }) },
     };
-  }, [feed?.items, runSession, running, requestId, streamed, plan]);
+  }, [feed?.items, runSession, running, requestId, stream.items, stream.startedAt, plan]);
 }
 
 /**
