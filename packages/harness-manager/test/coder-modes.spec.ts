@@ -261,6 +261,16 @@ describe("the app's own part of the coding flow", () => {
     expect(await start({ worker }, "document: no\n")).toContain("document");
   });
 
+  it("builds the shared copy with a required app setting, and refuses a worker that leaves it out", async () => {
+    const worker = { settings: { document: z.string().min(1) } };
+    // Every worker supplies it: the app starts, though the shared copy carries no worker's settings.
+    expect(await start({ worker }, "document: notes\n")).toBe("started");
+    // A worker without it is still refused when it is hired, naming the setting.
+    const refused = await start({ worker });
+    expect(refused).toContain("codex");
+    expect(refused).toContain("document");
+  });
+
   it("refuses an app setting the flow already declares", async () => {
     expect(await start({ worker: { settings: { harness: z.string() } } })).toContain('`worker.settings` declares "harness"');
   });

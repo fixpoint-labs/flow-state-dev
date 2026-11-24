@@ -36,7 +36,7 @@
  * A line typed in a task's session talks to that run's coding session (the
  * door), and a delivered message wakes it the same way.
  */
-import { defineFlow, handler, router, sequencer, type DeclaredResources } from "@flow-state-dev/core";
+import { defineFlow, FlowConfigRefusalError, handler, router, sequencer, type DeclaredResources } from "@flow-state-dev/core";
 import type { PullRequestFollower } from "@flow-state-dev/core/harness";
 import { mergeDeclaredResources } from "@flow-state-dev/core/internal";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
@@ -156,6 +156,11 @@ export interface CoderWorkerExtension {
 /**
  * The flow's settings: workforce's, `harness` naming a filled harness, `review`,
  * and the app's own. An app setting the flow already declares is refused.
+ *
+ * An app setting a worker must set is optional here, so the shared copy,
+ * which carries no worker's settings, can be built; {@link requireAppSettings}
+ * refuses a worker's copy that leaves it out. A setting that already takes
+ * `undefined` (optional, or with a default) is kept as declared.
  */
 function coderSettingsSchema(ids: readonly string[], own: z.ZodRawShape | undefined) {
   const builtIn = workerConfigSchema().extend({
@@ -167,7 +172,39 @@ function coderSettingsSchema(ids: readonly string[], own: z.ZodRawShape | undefi
   if (taken.length > 0) {
     throw new Error(`${CODER_FLOW}: the app's \`worker.settings\` declares ${taken.map((key) => `"${key}"`).join(", ")}, which the flow already declares.`);
   }
-  return builtIn.extend(own) as unknown as typeof builtIn;
+  const buildable = Object.fromEntries(
+    Object.entries(own).map(([key, setting]) => [key, setting.safeParse(undefined).success ? setting : setting.optional()]),
+  );
+  return builtIn.extend(buildable) as unknown as typeof builtIn;
+}
+
+/**
+ * The flow's factory, refusing a worker's copy (one minted with a config bag)
+ * that leaves out an app setting it must set, as `defineFlow` refuses any
+ * other bad setting, with the setting named. The shared copy, minted with no
+ * bag, is not checked.
+ */
+function requireAppSettings<F extends (options?: { id?: string; config?: Record<string, unknown> }) => unknown>(
+  flow: F,
+  own: z.ZodRawShape | undefined,
+): F {
+  if (own === undefined) return flow;
+  const required = z.object(own);
+  const mint = (options?: { id?: string; config?: Record<string, unknown> }) => {
+    const copy = flow(options);
+    if (options?.config === undefined) return copy;
+    const parsed = required.safeParse(options.config);
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map((issue) => ({ path: issue.path, code: issue.code, message: issue.message }));
+      throw new FlowConfigRefusalError(
+        `Flow "${CODER_FLOW}" instance "${options.id ?? CODER_FLOW}" has an invalid config bag: ` +
+          issues.map((issue) => `"${issue.path.join(".")}": ${issue.message}`).join("; ") + ".",
+        issues,
+      );
+    }
+    return copy;
+  };
+  return Object.assign(mint, flow);
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -403,7 +440,7 @@ export function coderWorkerFlow(
         throw new Error(`${CODER_FLOW}: the app's \`worker.actions\` declares ${taken.map((name) => `"${name}"`).join(", ")}, which the flow already serves.`);
       }
 
-      return defineFlow({
+      return requireAppSettings(defineFlow({
         kind: CODER_FLOW,
         description: "The coding worker flow: a worker that codes runs each task here, in a coding harness.",
         cardinality: "collection",
@@ -453,7 +490,7 @@ export function coderWorkerFlow(
             }),
           },
         },
-      } as never);
+      } as never), options.worker?.settings);
     },
     // Each coding worker's `harness:` rides on its roster row, so a task line can name it.
     { roles: ["contributor"], showSettings: ["harness"], needsProject: options.project === true },
