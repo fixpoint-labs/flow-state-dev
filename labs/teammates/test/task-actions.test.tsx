@@ -70,6 +70,23 @@ function openTask(server: ReturnType<typeof onBoard>, taskId = "t1") {
 const buttons = (popup: HTMLElement) => [...popup.querySelectorAll<HTMLElement>('[data-testid="task-action-row"] button')].map((b) => b.textContent ?? "");
 
 describe("a coding task's popup has its buttons", () => {
+  it("while it waits on its pull request, offers quick replies that each send as they read, and leave what you typed", async () => {
+    const server = onBoard([coding("t1", "cursor", { pullRequests: [7] })]);
+    const popup = await openTask(server);
+    const replies = await within(popup).findByRole("group", { name: "Quick replies" }, POPUP_READ);
+    fireEvent.change(within(popup).getByLabelText("Steer this task"), { target: { value: "half a thought" } });
+    fireEvent.click(within(replies).getByRole("button", { name: "It's merged" }));
+    expect((await within(popup).findByTestId("task-action-outcome")).textContent).toBe("Sent to the task.");
+    expect(server.posts.map(actionOf)).toContainEqual({ action: "updateTask_tasks", input: { id: "t1", message: "It's merged" } });
+    expect((within(popup).getByLabelText("Steer this task") as HTMLTextAreaElement).value).toBe("half a thought");
+  });
+
+  it("offers no quick replies to a run that isn't waiting on a pull request", async () => {
+    const popup = await openTask(onBoard([coding("t1", "cursor")]));
+    await within(popup).findByRole("region", { name: "Steer" }, POPUP_READ);
+    expect(within(popup).queryByRole("group", { name: "Quick replies" })).toBeNull();
+  });
+
   it("while it runs: Cancel, and the Steer compose at the popup's foot; once cancelled: Retry and a Re-run on each other harness, never its own", async () => {
     const server = onBoard([coding("t1", "cursor")]);
     const popup = await openTask(server);

@@ -66,6 +66,9 @@ function rerunTargets(task: Pick<CodingBoardTask, "assignee">, coders: readonly 
 /** The line a task waiting on its pull request offers, while nothing tells it of a merge. */
 export const PULL_REQUEST_HINT = "Merged? Say so here and I'll check.";
 
+/** The quick replies under the box while a run waits on its pull request: each sends as typed. */
+const PULL_REQUEST_REPLIES = ["It's merged", "Address review comments"] as const;
+
 /** A tool the registry's words call running a command: each harness's shell tool. */
 const isCommand = (tool: string) => knownToolVerbs(tool)?.singular === "ran a command";
 
@@ -242,10 +245,11 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const spent = total === undefined ? undefined : `${total} tokens`;
   // The header's status, read once: its words, and the pill's tone and mark.
   const badge: { label: ReactNode; tone: "neutral" | "info" | "success"; icon?: ReactNode } =
+    // What waits on you is the highlighter's pill (`styles.css` reads `data-needs-you`); everything else keeps the overlay's tones.
     waiting === "review"
-      ? { label: "Needs review", tone: "info" }
+      ? { label: <span data-needs-you>Needs your review</span>, tone: "info" }
       : waiting === "question"
-        ? { label: "Waiting on you", tone: "info" }
+        ? { label: <span data-needs-you>Waiting on you</span>, tone: "info" }
         : pullRequestOpen
           ? { label: "PR open", tone: "success", icon: <GitPullRequestArrowIcon aria-hidden /> }
           : { label: status, tone: "neutral" };
@@ -268,7 +272,14 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
     ) : pinned !== null ? (
       pinned
     ) : task && OPEN.has(task.status) ? (
-      <SteerCompose key={task.id} words={words} setWords={setWords} steer={(message) => actions.steer(task.id, message)} placeholder={pullRequestOpen ? PULL_REQUEST_HINT : undefined} />
+      <SteerCompose
+        key={task.id}
+        words={words}
+        setWords={setWords}
+        steer={(message) => actions.steer(task.id, message)}
+        placeholder={pullRequestOpen ? PULL_REQUEST_HINT : undefined}
+        quickReplies={pullRequestOpen ? PULL_REQUEST_REPLIES : undefined}
+      />
     ) : null;
   const feed = (
     <>
@@ -283,7 +294,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
       ) : null}
       {/* Why it failed, or the reason it was cancelled with, as an error. How the run got there is below. */}
       {task?.error ? (
-        <section aria-label="Error" role="alert" data-step="error" className="flex flex-col gap-1 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <section aria-label="Error" role="alert" data-step="error" className="flex flex-col gap-1 rounded-lg border border-destructive/40 bg-(--redbg) px-3 py-2 text-sm text-destructive">
           <ErrorBody message={task.error} />
         </section>
       ) : null}
@@ -315,9 +326,9 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
           aria-label="Result"
           data-step="result"
           data-tone={taskPresentation(task).word}
-          className={cn("flex flex-col gap-3 rounded-xl border border-l-2 border-border border-l-current bg-surface-raised/40 px-4 py-4", taskPresentation(task).tone)}
+          className={cn("flex flex-col gap-3 rounded-lg border border-l-2 border-border border-l-current bg-card px-4 py-4 shadow-(--shadow-card)", taskPresentation(task).tone)}
         >
-          <h3 aria-hidden className="text-xs font-semibold tracking-[0.08em] text-text-3 uppercase">
+          <h3 aria-hidden className="font-mono text-xs font-medium tracking-[0.08em] text-text-3 uppercase">
             Result
           </h3>
           <div data-result-answer className="flex flex-col gap-3 text-foreground">
@@ -328,7 +339,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
         </section>
       ) : task && status === "done" ? (
         // Done with nothing written is not a plain success: say so, where the result would be.
-        <section aria-label="No result" data-step="no-result" className="rounded-xl border border-warning-line bg-warning-soft px-4 py-3 text-sm">
+        <section aria-label="No result" data-step="no-result" className="rounded-lg border border-border bg-card px-4 py-3 text-sm">
           {coding ? "The coding task" : nameOf(to)} finished without writing a result. Its steps below show what it did.
         </section>
       ) : null}
@@ -497,8 +508,12 @@ function QuestionPopup({ task, answer }: { task: CodingBoardTask; answer: (task:
     }
   };
   return (
-    <section aria-label="Waiting on you" data-step="question" className="rounded-md border border-warning/60 bg-warning/10 px-3 py-2 text-sm">
-      <div className="font-semibold">Waiting on you</div>
+    // A normal card: the highlighter is only its small pill.
+    <section aria-label="Waiting on you" data-step="question" className="rounded-lg border border-border bg-card px-3.5 py-3 text-sm shadow-(--shadow-card)">
+      <div className="flex items-center gap-2 font-semibold">
+        <span className="rounded-full bg-attention px-1.5 font-mono text-xs leading-4 font-semibold text-attention-foreground">Needs you</span>
+        Waiting on you
+      </div>
       {hold?.ask.prompt ? <MarkdownText className="mt-0.5" text={hold.ask.prompt} /> : null}
       {unanswerable !== null ? (
         <p className="mt-1.5 text-xs text-muted-foreground">{unanswerable}</p>
@@ -516,14 +531,14 @@ function QuestionPopup({ task, answer }: { task: CodingBoardTask; answer: (task:
                 void send();
               }
             }}
-            className="w-full rounded-md border border-border bg-background p-2 text-xs"
+            className="w-full rounded-md border border-border-strong bg-background p-2 text-sm focus-visible:border-ring focus-visible:outline-none"
           />
           <div>
             <button
               type="button"
               disabled={pending || words.trim() === ""}
               onClick={() => void send()}
-              className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md border border-border-strong px-3 py-1 text-xs font-semibold hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-ring"
             >
               Answer
             </button>
