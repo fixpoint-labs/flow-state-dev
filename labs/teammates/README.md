@@ -5,9 +5,10 @@ is one half of the evidence that the same package pieces make familiar apps: an 
 configuration, React UI and a few small flows, and anything else it needs is a gap filed against the
 package.
 
-Its theme is its own: a dark, chat-first look like Grok Bot's, in `src/lib/theme.css`, over the
-registry's `tokens` item. The other labs take theirs from the design system; this one keeps a local
-theme so it reads as the app it copies.
+It draws in the Flow State design's two themes, Paper (light) and Night (near-black, warm), from
+one set of tokens in `src/lib/theme.css`, mapped onto the registry's `tokens` item so the installed
+components read them too. A switch in the sidebar picks the theme and keeps the pick; with none, the
+page follows the system's light or dark setting. Yellow marks only the user needing to act.
 
 - **Left:** the teammates, Lead, researcher and writer. Each row is a teammate with an
   ongoing role, never a list of sessions. A row shows the teammate's icon on its color, a line
@@ -171,10 +172,10 @@ name another one.
 ### Your own teammates
 
 You can hire teammates of your own (*Hire a teammate*, under the list): a name, one line on what it
-does, its instructions, and optionally its model and default coding harness. It joins the list at once, you can talk to it, and Lead can
+does, its instructions, and optionally its model. It joins the list at once, you can talk to it, and Lead can
 hand it tasks. *Edit teammate* in a conversation's header opens a dialog to rename a teammate, replace its
-instructions, or change its model (what its replies run on, from the next reply) and default coding harness
-(where the composer's *Code with* starts). A teammate from the files can be edited too, and *Reset to default*
+instructions, or change its model (what its replies run on, from the next reply). A teammate has no coding
+harness of its own: coding work starts on the lab's default. A teammate from the files can be edited too, and *Reset to default*
 puts its file back. Your own teammates' header has *Fire*, which takes them off the list; their conversation stays readable.
 
 ### Routines
@@ -208,7 +209,7 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | `TEAMMATES_MODEL` | the model Lead, researcher and writer answer on | `openai/gpt-6-luna` |
 | `TEAMMATES_MODELS` | the models a teammate may reply with, comma-separated, for the *Model* field of *Edit teammate* and *Hire a teammate*; each shows where its calls go (a provider's key, Vercel AI Gateway or OpenRouter) or why it can't run, and a pick is saved to that teammate | `TEAMMATES_MODEL` alone |
 | `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | the root of this repository |
-| `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on, and where *Code with* starts for a teammate with no default harness of its own: `claude-code`, `codex` or `cursor` | `cursor` |
+| `TEAMMATES_HARNESS` | the lab's default coder: Lead starts coding work on the coding worker with this harness unless you name another, and *Code with* starts there: `claude-code`, `codex` or `cursor` | `cursor` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
@@ -216,7 +217,7 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | `TEAMMATES_RUN_TIMEOUT_MS` | the wall-clock budget for one coding run, in milliseconds | `1200000` (20 minutes) |
 | `TEAMMATES_SETUP` | a command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`; no shell | none |
 | `GITHUB_TOKEN` | the token a routine that follows a GitHub pull request reads GitHub with, for the lab's own user alone | what `gh auth token` answers at start; none, and GitHub routines are refused |
-| `TEAMMATES_GITHUB_REVIEWERS` | the GitHub logins, comma-separated, a coding run hears on the pull request it opens: their reviews and comments reach the run's session, which answers them in the pull request. List a bot by its login, such as `greptile-apps[bot]`: the lab trusts it on the GitHub service too, which a bot needs to be heard. The repository is public and a run acts on what it hears, so no one else is heard | none, and a run follows no pull request |
+| `GITHUB_REVIEWERS` | the GitHub accounts, comma-separated, a coding run hears on the pull request it opens: their reviews and comments reach the run's session, which answers them in the pull request. List a bot by its login, such as `greptile-apps[bot]`; a person is heard only while they can also push to the repository. It is the default of the trusted-reviewers list until that list is first saved: after that the saved list wins, an empty one included, and Lead changes it on your own word, with your Approve in Inbox. The repository is public and a run acts on what it hears, so no one else is heard. Renamed from `TEAMMATES_GITHUB_REVIEWERS`, which is no longer read | none: nobody is heard until the list is saved |
 | `TEAMMATES_CHECKS` | the commands a coding run's worktree must pass before its task is done, `;`-separated, such as `pnpm typecheck; pnpm test`; no shell, so a `;` inside one command, even quoted, isn't supported. A red one sends the run back with the command's output | none |
 
 The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`). Each coding agent needs its
@@ -271,6 +272,12 @@ checkout that doesn't. The checkout's own branch and working tree are never chan
   A pull request's events are polled (no public URL) on the operator's own GitHub token, for the
   operator alone (workforce's `operatorGitHub`); `fsdev dev` ticks the polls and the clock routines,
   each from a SQLite file of its own beside the store.
+- **Trusted reviewers** are workforce's one stored list (`githubTrustedReviewers`), `GITHUB_REVIEWERS`
+  its default until it is first saved. A coding run follows its pull request through the list's
+  follow, which hears a listed bot or a listed person who can push, and nobody else; the GitHub
+  service trusts no bot of its own. The list's only writer is its `setGitHubReviewers` tool, which
+  Lead alone picks, through the `githubReviewers` capability rather than a `tools:` line, so it
+  keeps every tool it had. No HTTP action writes the list.
 - Every request is the lab's own user in the lab's own org, never a user the request names: the
   operator-only GitHub token is gated on it. `openTeammates`'s `user` option, which names the user
   each request is (the lab's own when it names none), is for a goal's host that needs two users
@@ -342,9 +349,13 @@ when the server says they changed, and on a host whose push can miss a change, s
 store the lab runs on, every 1.5 seconds as well. A long reply costs them no more reads than a
 short one.
 
-`color:` names one of the lab's palette, `blue`, `green`, `amber`, `rose`, `violet` or `teal`,
-each a `--teammate-*` token in the theme. A teammate whose file sets neither line, such as one you
-hire here, gets its initial on a palette color picked from its id.
+`icon:` names one of eleven bot faces, `pip`, `tally`, `bolt`, `dot`, `hex`, `sprocket`, `visor`,
+`dome`, `pod`, `telly` or `chip`, and
+`color:` one of the team palette, `coral`, `amber`, `mint`, `teal`, `iris`, `orchid`, `rose` or
+`slate`, each three `--team-*` tokens in the theme (an older `blue`, `green` or `violet` reads as
+`iris`, `mint` or `orchid`). A teammate whose file sets neither line, such as one you hire here, gets
+a face and a color picked from its id. The bot shows what the teammate is doing: running, needs you,
+queued, done or idle.
 
 Not wired yet:
 

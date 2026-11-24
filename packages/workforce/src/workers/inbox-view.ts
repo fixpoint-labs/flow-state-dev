@@ -35,6 +35,7 @@
  * The client's handle is `inboxViewRef` (`inbox-view-ref.ts`), which holds no block.
  */
 import { defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
+import { isOneOffSessionId } from "@flow-state-dev/core/helpers";
 import { requireRequestHost, type PeerSessionView, type RequestSessions } from "@flow-state-dev/core/internal";
 import type { BlockContext, BlockDefinition, PendingUserSuspension } from "@flow-state-dev/core/types";
 import { inboxItems, taskActionName, type InboxItem } from "@flow-state-dev/orchestration/inbox";
@@ -192,9 +193,11 @@ export function defineInboxView(installation: WorkerInstallation): InboxView {
           .filter((filing) => partitions.get(filing.holder) === filing.partition)
           .map((filing) => ({ ...filing.task, owner: boardOwnerLabel(filing.holder, found.get(filing.holder)!) }));
 
-        // Whose each suspension is: today's rule on its session, or nobody's for a run with no conversation.
+        // Whose each suspension is: today's rule on its session, or nobody's for a run with no
+        // conversation: one recorded with no session, or one in a one-off session (a server run,
+        // a webhook delivery, a per-fire schedule fire), which nobody converses in.
         const asks = pending.flatMap((entry): InboxSuspensionDetail[] => {
-          if (entry.sessionId === undefined) return [{ ...entry, sessionId: null, workerId: null }];
+          if (entry.sessionId === undefined || isOneOffSessionId(entry.sessionId)) return [{ ...entry, sessionId: null, workerId: null }];
           const session = found.get(entry.sessionId);
           if (session === undefined) return [];
           const workerId = text(session.state[WORKER_ID_STATE_KEY]);

@@ -27,7 +27,12 @@ import { run } from "./exec";
 export interface WorkspaceSetup {
   /** The program and its arguments, run in the checkout without a shell. */
   command: readonly [string, ...string[]];
-  /** Extra environment, laid over the host process's own. */
+  /**
+   * Variables to set for the command. It never inherits the host's whole
+   * environment, only `WORKSPACE_BASE_PASS` (`PATH`, `HOME`, locale, proxy
+   * and CA settings): a variable it needs, a registry token say, is named
+   * here.
+   */
   env?: Record<string, string>;
 }
 

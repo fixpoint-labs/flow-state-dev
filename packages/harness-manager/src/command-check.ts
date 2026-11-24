@@ -1,8 +1,8 @@
 /**
- * `commandCheck`: a phase is done only when the project's own checks pass.
+ * `commandCheck`: a mode's run is done only when the project's own checks pass.
  *
- * A wrapper over a {@link PhaseSpec}, not a stage beside it. The phase's own
- * `isDone` runs first; only when it says done do the commands run, in the
+ * A wrapper over a {@link ModeSpec}, not a stage beside it. The mode's own
+ * done check runs first; only when it says done do the commands run, in the
  * run's checkout (`@flow-state-dev/workspace`'s `runCheckoutCommands`). Any red
  * command makes the run *not done*, and the verdict's `reason` names each
  * failure with the end of its output, which the manager adds to the not-done
@@ -13,8 +13,8 @@
  * runs the repository's own scripts, which the agent may have edited.
  *
  * ```ts
- * const phase = commandCheck(
- *   { phase: "code", buildPrompt, isDone: ({ stopReport }) => stopReport === "finished" },
+ * const mode = commandCheck(
+ *   { name: "default", instructions, doneWhen: { check: ({ stopReport }) => stopReport === "finished" } },
  *   { commands: ["pnpm typecheck", "pnpm --filter web test"], timeoutMs: 10 * 60_000 },
  * );
  * ```
@@ -29,7 +29,7 @@ import {
 } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { NETWORK_CALL_TIMEOUT_MS } from "./timeouts";
-import type { CompletionRunContext, PhaseDoneVerdict, PhaseSpec, PromptRunContext } from "./manager";
+import type { CompletionRunContext, ModeDoneVerdict, ModeSpec, PromptRunContext } from "./manager";
 
 /** One check's result, as it is recorded: the command, how it ended, and the end of its output. */
 export const commandCheckResultSchema = z.object({
@@ -60,18 +60,18 @@ export interface CommandCheckOptions<TContext = CompletionRunContext> {
   commands: CommandCheckCommands<TContext>;
   /** The wall clock for all of them together, in milliseconds. */
   timeoutMs: number;
-  /** Extra environment for the commands, laid over the host process's own. */
+  /** Variables to set for the commands. They never inherit the host's whole environment: only `PATH`, `HOME`, locale, proxy and CA settings are passed. */
   env?: Record<string, string>;
   /**
    * Name the commands in the brief too: `commandCheck` adds a section to the
-   * phase's prompt, and `harnessSessionFlow` to each turn's, saying these run
+   * mode's instructions, and `harnessSessionFlow` to each turn's, saying these run
    * after the agent and asking it to run them first and report each with its
    * result. Read from the same `commands`, so the brief names exactly what
    * runs. A resolver is then also handed the prompt's context, before the run:
    * for `commandCheck`, the run's context with `stopReport`, `answer` and
    * `baseCommit` all `null`. A resolver must not read them to leave a check
    * out of the brief, or the brief names fewer checks than run.
-   * Off by default: the prompt is the phase's own.
+   * Off by default: the prompt is the mode's own.
    */
   inBrief?: boolean;
 }
@@ -164,24 +164,23 @@ export async function runCommandChecks<TContext>(
 }
 
 /**
- * The phase, done only when its own check and then `options.commands` pass.
+ * The mode, done only when its own check and then `options.commands` pass.
  *
- * Sets the phase's `doneTimeoutMs` to its own bound plus `timeoutMs`, so the
+ * Sets the mode's `doneWhen.timeoutMs` to its own bound plus `timeoutMs`, so the
  * manager waits long enough. Pass the same number to
  * `harnessDrainBudgetMs({ doneTimeoutMs })` so a shutdown waits for it too.
  *
  * @throws At construction, on a `timeoutMs` that isn't a positive whole number.
  */
-export function commandCheck(phase: PhaseSpec, options: CommandCheckOptions): PhaseSpec {
+export function commandCheck(mode: ModeSpec, options: CommandCheckOptions): ModeSpec {
   assertCommandCheckOptions(options as CommandCheckOptions<unknown>, "commandCheck");
-  const own = phase.doneTimeoutMs ?? NETWORK_CALL_TIMEOUT_MS;
+  const own = mode.doneWhen.timeoutMs ?? NETWORK_CALL_TIMEOUT_MS;
   return {
-    ...phase,
-    doneTimeoutMs: own + options.timeoutMs,
+    ...mode,
     ...(options.inBrief === true
       ? {
-          buildPrompt: async (run: PromptRunContext): Promise<string> => {
-            const prompt = await phase.buildPrompt(run);
+          instructions: async (run: PromptRunContext): Promise<string> => {
+            const prompt = await mode.instructions(run);
             // Before the run: no report, answer or base yet, so a resolver that reads them names its whole list.
             const context: CompletionRunContext = { ...run, stopReport: null, answer: null, baseCommit: null };
             const commands = typeof options.commands === "function" ? await options.commands(context) : options.commands;
@@ -190,24 +189,28 @@ export function commandCheck(phase: PhaseSpec, options: CommandCheckOptions): Ph
           },
         }
       : {}),
-    isDone: async (run: CompletionRunContext): Promise<PhaseDoneVerdict> => {
-      const before = readVerdict(await phase.isDone(run));
-      if (!before.done) return before;
-      // The manager aborts the signal when the check's time is up, then lets
-      // the checkout go: a check that is late starts nothing, and a running
-      // command is stopped (skipped / timed out, so the run is not done).
-      if (run.signal?.aborted === true) return { done: false, reason: CHECK_TIME_UP };
-      const results = await runCommandChecks(options, run.workspacePath, run, run.signal);
-      const checks = [...(before.checks ?? []), ...results];
-      const failure = commandChecksFailure(results);
-      return failure === undefined
-        ? { ...before, checks }
-        : { done: false, reason: before.reason === undefined ? failure : `${before.reason}\n\n${failure}`, checks };
+    doneWhen: {
+      ...mode.doneWhen,
+      timeoutMs: own + options.timeoutMs,
+      check: async (run: CompletionRunContext): Promise<ModeDoneVerdict> => {
+        const before = readVerdict(await mode.doneWhen.check(run));
+        if (!before.done) return before;
+        // The manager aborts the signal when the check's time is up, then lets
+        // the checkout go: a check that is late starts nothing, and a running
+        // command is stopped (skipped / timed out, so the run is not done).
+        if (run.signal?.aborted === true) return { done: false, reason: CHECK_TIME_UP };
+        const results = await runCommandChecks(options, run.workspacePath, run, run.signal);
+        const checks = [...(before.checks ?? []), ...results];
+        const failure = commandChecksFailure(results);
+        return failure === undefined
+          ? { ...before, checks }
+          : { done: false, reason: before.reason === undefined ? failure : `${before.reason}\n\n${failure}`, checks };
+      },
     },
   };
 }
 
-/** A phase check's answer, as the manager reads it: a boolean is a verdict with no reason. */
-export function readVerdict(answer: boolean | PhaseDoneVerdict): PhaseDoneVerdict {
+/** A mode's done check's answer, as the manager reads it: a boolean is a verdict with no reason. */
+export function readVerdict(answer: boolean | ModeDoneVerdict): ModeDoneVerdict {
   return typeof answer === "boolean" ? { done: answer } : answer;
 }

@@ -13,13 +13,14 @@
  * there (`checkedOutBranch`), so a session attached to another's worktree can
  * tell whether its turn left the owner's branch where it found it.
  */
+import { HOST_GIT_PASS } from "./child-env";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 import { acquireLock, HOST_LOCK_BOUNDS, type LockLease } from "./lock";
 
 /** The branch checked out in the worktree at `cwd`, or `null` when HEAD is detached or git can't say. */
 export async function checkedOutBranch(cwd: string): Promise<string | null> {
   try {
-    const { stdout } = await run("git", ["symbolic-ref", "--short", "-q", "HEAD"], { cwd, timeoutMs: GIT_TIMEOUT_MS });
+    const { stdout } = await run("git", ["symbolic-ref", "--short", "-q", "HEAD"], { cwd, timeoutMs: GIT_TIMEOUT_MS, pass: HOST_GIT_PASS });
     return stdout.trim() === "" ? null : stdout.trim();
   } catch {
     return null;

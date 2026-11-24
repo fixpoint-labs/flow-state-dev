@@ -235,6 +235,8 @@ export type BoardHostOptions = {
    * before each step (FIX-2086's steers).
    */
   agentModel?: GeneratorModel;
+  /** More of the `agent` flow's registration: its shown and retired settings. */
+  registration?: { agent?: { showSettings?: readonly string[]; retiredSettings?: readonly string[] } };
   /** More worker flows, built on the installation, registered beside the four, keyed by `kind`. */
   flows?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** More scripted generators, by block name. */
@@ -339,7 +341,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   flows = {
     tasker: { flow: tasker, roles: ["contributor"] },
     helper: { flow: helper, roles: ["contributor"] },
-    agent,
+    agent: options.registration?.agent === undefined ? agent : { flow: agent, ...options.registration.agent },
     coordinator,
     ...(options.flows?.(installation) ?? {})
   };

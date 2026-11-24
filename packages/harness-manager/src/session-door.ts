@@ -36,7 +36,7 @@ import {
 } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { resolveOwnership, type HarnessSlot } from "./manager";
-import { readRunRecord, RUNS, runRecordCollection, runTopic } from "./run-record";
+import { readModeRunRecord, RUNS, runRecordCollection } from "./run-record";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { acquireCheckout, releaseCheckout, runBoardSegment } from "./workspace";
 
@@ -83,8 +83,13 @@ export class SessionDoorRefused extends Error {
 export interface SessionDoorBoard {
   /** The board's rows, as the managers that ran them read them. */
   readonly tasks: TaskCollectionRef;
-  /** The issue and phase a row's run is keyed by, or `undefined` for a row no manager behind this door runs. */
-  readonly runOf: (row: Task) => { issue: string; phase: string } | undefined;
+  // BP-030.
+  /**
+   * The issue and mode a row's run is keyed by, or `undefined` for a row no
+   * manager behind this door runs. A mode's `formerName` finds a run stored
+   * under it before the rename.
+   */
+  readonly runOf: (row: Task) => { issue: string; mode: { readonly name: string; readonly formerName?: string } } | undefined;
 }
 
 /** How a host builds a talk turn: the door's options but the steer's. */
@@ -112,9 +117,10 @@ export interface HarnessSessionDoorOptions extends HarnessTalkTurnOptions {
   /**
    * Called after a steer that left the task waiting on it (it was running
    * nothing): start the turn the steer is owed. A Workforce host passes
-   * `startOwedSteerTurn`.
+   * `startOwedSteerTurn`, which resolves to whether it started one; the door
+   * reads nothing from the result.
    */
-  readonly onSteered?: (ctx: BlockContext, row: Task) => Promise<void>;
+  readonly onSteered?: (ctx: BlockContext, row: Task) => Promise<unknown>;
 }
 
 /** The newest of `rows`, by filing time, then attempts. */
@@ -217,7 +223,7 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
       const record =
         identity === undefined
           ? undefined
-          : await readRunRecord(ctx, runTopic(runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.phase));
+          : (await readModeRunRecord(ctx, runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.mode, row.id)).record;
       if (record?.sessionId == null || record.workspacePath == null) throw new SessionDoorRefused("cannot-continue");
       // The checkout is held for the talk, as for any run, so a follow-up
       // claimed meanwhile waits rather than resume the same session beside it.

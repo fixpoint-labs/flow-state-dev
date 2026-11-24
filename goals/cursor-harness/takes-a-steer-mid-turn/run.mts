@@ -182,7 +182,7 @@ await runGoal(async (failures) => {
       boardCollectionId: BOARD,
       boardCollection: ledger,
       tenant: undefined,
-      phase: { phase: "implement", buildPrompt: async () => slowTask(), isDone: async () => true },
+      mode: { name: "implement", instructions: async () => slowTask(), doneWhen: { check: async () => true } },
       workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 60_000 },
       runTimeoutMs: TURN_MS,
       stopsOnAbort: false,

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 452" role="img" aria-label="What's in the box. In the box, the lab: a harness choice that lists the models of the selected harness only; plan mode as an option of a harness that has one; the plan signed off before work starts; the run reporting its own harness and model. In the box, the packages: each harness package says whether it has a plan mode; one shared model-choice shape lifted out of Kitchen Sink; the model lists, which are FIX-2458's and already shipped. A fence across the box: what a harness offers is asked of its package, and the lab keeps no model list and no plan list of its own. Composed in by the app: the person's choice of harness, model and plan mode, stored once and read by the harness slot. Replaced in one line: the Coder chip and its Coder line in the message, the Plan first worker, and Kitchen Sink's copy of the choice shape. Not built: repositories, the sidebar and Settings, which are the sibling epic FIX-2592's; attachments in the composer; a plan mode for a harness that has none; any workforce package change."
+<svg viewBox="0 0 940 452" role="img" aria-label="What's in the box. In the box, the lab: a harness choice that lists the models of the selected harness only; plan mode as an option of a harness that has one; the plan signed off before work starts; the run reporting its own harness and model. In the box, the packages: each harness package says whether it has a plan mode; one shared model-choice shape lifted out of Kitchen Sink; the model lists, which are FIX-2458's and already shipped. A fence across the box: what a harness offers is asked of its package, and the lab keeps no model list and no plan list of its own. Composed in by the app: the person's choice of harness, model and plan mode, carried by the sibling epic FIX-2876's Code with field and read by the harness slot. Replaced in one line: the Coder chip and its Coder line in the message, the Plan first worker, and Kitchen Sink's copy of the choice shape. Not built: repositories, the sidebar and Settings, which are the sibling epic FIX-2592's; attachments in the composer; a plan mode for a harness that has none; any workforce package change, which is FIX-2876's."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -57,8 +57,8 @@
     <rect class="app" x="644" y="16" width="280" height="150" rx="8"/>
     <text class="t-tag c-acc" x="660" y="38">COMPOSED IN BY THE APP</text>
     <text class="t-b" x="660" y="66">The person's choice</text>
-    <text class="t-s" x="660" y="84">harness, model and plan mode, stored</text>
-    <text class="t-s" x="660" y="100">once and read by the harness slot</text>
+    <text class="t-s" x="660" y="84">harness, model and plan mode, carried</text>
+    <text class="t-s" x="660" y="100">by FIX-2876's Code with field</text>
     <text class="t-b" x="660" y="130">The lab's look and copy</text>
     <text class="t-s" x="660" y="148">the registry's pieces, the lab's words</text>
   </g>
@@ -84,5 +84,6 @@
     <text class="t-b" x="472" y="394">A plan mode for Codex</text>
     <text class="t-s" x="472" y="410">a harness with none gets none</text>
     <text class="t-b" x="692" y="394">Any workforce package change</text>
+    <text class="t-s" x="692" y="410">the carrier is FIX-2876's</text>
   </g>
 </svg>

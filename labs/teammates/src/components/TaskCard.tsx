@@ -24,15 +24,6 @@ export const taskLabel = (line: string, task: { harness?: string; model?: string
   const on = runsOn(task);
   return on === undefined ? line : `${line}, on ${on}`;
 };
-/** What a coding task runs on, as a small tag after its line. */
-export function RunsOn({ on }: { on: string }) {
-  return (
-    <span className="shrink-0 rounded-sm border border-border px-1.5 py-0.5 font-mono text-xs font-normal text-muted-foreground" data-harness>
-      {on}
-    </span>
-  );
-}
-
 /** How long an active task has run, coarse for its card: "42s", "2m", "3h", "2d". */
 function sinceShort(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -51,9 +42,6 @@ function TerminalIcon() {
     </svg>
   );
 }
-
-/** The dot before a task's status word, in the word's colour. */
-const DOT: Record<string, string> = { running: "bg-success", waiting: "bg-warning", failed: "bg-danger" };
 
 /**
  * A task a conversation filed, as a card in the thread: a tile (a terminal
@@ -83,9 +71,6 @@ export const TaskCard = memo(function TaskCard({
   const state = taskPresentation(task);
   const status = taskStatus(task);
   const active = isActive(task);
-  const waiting = active && task.asks.length > 0;
-  // An idle task (a pull request open) gets no dot: it says what it waits on.
-  const dot = active ? DOT[waiting ? "waiting" : "running"] : DOT[status];
   const started = attemptStartedAt(task);
   // Only an active task counts up; an idle one says what it waits on, an ended one how it ended.
   const since = active && typeof started === "number" ? sinceShort(Date.now() - started) : undefined;
@@ -95,9 +80,9 @@ export const TaskCard = memo(function TaskCard({
     <div
       data-entry="task"
       data-status={status}
-      className="relative flex w-full items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm hover:border-border-strong"
+      className="relative flex w-full items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-sm shadow-(--shadow-card) hover:border-border-strong"
     >
-      <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-sm border border-border bg-background text-text-2">
+      <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-background text-text-2">
         {coding ? <TerminalIcon /> : avatar}
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -126,13 +111,12 @@ export const TaskCard = memo(function TaskCard({
           )}
         </span>
       </span>
-      <span className="flex shrink-0 items-center gap-1.5 text-xs">
-        {dot === undefined ? null : <span aria-hidden className={cn("size-1.5 rounded-full", dot)} />}
-        <span className={cn("inline-block first-letter:uppercase", state.tone)} data-task-status>
+      <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", state.pill)} data-task-pill>
+        <span className="inline-block first-letter:uppercase" data-task-status>
           {state.word}
         </span>
         {since === undefined ? null : (
-          <span className={cn("font-mono", state.tone)} data-task-since>
+          <span className="font-mono" data-task-since>
             · {since}
           </span>
         )}
@@ -142,7 +126,7 @@ export const TaskCard = memo(function TaskCard({
         aria-label={coding ? taskLabel(line, runs) : line}
         onClick={() => onOpen(task.id)}
         // One control: its ::after stretches over the card, so a click anywhere on the card is this button's, with one tab stop.
-        className="shrink-0 rounded-sm border border-border-strong px-2.5 py-1 text-xs font-medium text-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-ring"
+        className="shrink-0 rounded-md border border-border-strong px-2.5 py-1 text-xs font-medium text-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
       >
         Open
       </button>

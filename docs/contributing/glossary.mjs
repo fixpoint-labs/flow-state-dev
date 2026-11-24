@@ -54,7 +54,7 @@ export const REFUSAL_MARKER = "retired-name-refusal";
 
 // A lab or an example is read like a package (FIX-2354).
 const CODE = /^(packages|apps|labs|examples)\/.*\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/;
-const PUBLISHED = /^(apps\/docs\/(docs|guides)\/.*\.(md|mdx|svg)|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
+const PUBLISHED = /^(apps\/docs\/docs\/.*\.(md|mdx|svg)|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
 const CODE_OR_PUBLISHED = new RegExp(`${CODE.source}|${PUBLISHED.source}`);
 const PENDING_NOTES = /^(\.changeset\/.*\.md|goals\/.*\.(md|mts|ts))$/;
 const CODE_PUBLISHED_OR_NOTES = new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`);
@@ -355,6 +355,42 @@ export const ENTRIES = [
     ],
   },
   {
+    term: "Schedule session",
+    means: "The one session every fire of a `per-schedule` schedule runs in. The scheduled dispatch derives its id from the org and user the fire runs as, the flow instance and the schedule id, under the reserved prefix `fsd-schedule.` (colon-free, beside the write session's `fsd-write.`): only the scheduled dispatch creates it or runs in it, and its owner lists and reads it. The flow's `session.retention` caps its history.",
+    decision: "FIX-2886 D1",
+    retires: [],
+  },
+  {
+    term: "Schedule session option",
+    means: "Where a schedule's fires run: `session: \"per-fire\"` (the default, a one-off run per fire) or `session: \"per-schedule\"` (one schedule session), on a schedule or on `createResourceCollectionScheduleResolver`. A preset, never an id; not the flow's `session` config, which declares the flow's session state and retention.",
+    decision: "FIX-2886 D1",
+    retires: [],
+  },
+  {
+    term: "oneOffSessionId",
+    means: "The one maker of a one-off session id (`oneOffSessionId()`, from `@flow-state-dev/core/helpers`): a fresh `ephemeral_…` id for a run that is a session of its own. A one-shot send passes it; the webhook route, the scheduled endpoint (`per-fire`) and the MCP adapter call it for a run with no session. The prefix is display-only: the navigator folds those sessions under \"One-off runs\" (`isOneOffSessionId`).",
+    decision: "FIX-2907 D3",
+    retires: [],
+  },
+  {
+    term: "session-required",
+    means: "The HTTP action route's refusal of a send that names no session: `400 { error: \"session-required\" }`, before the flow is looked up, the caller resolved or anything written. Every request names its session; the server never makes one up for a caller that could have named it.",
+    decision: "FIX-2907 D1",
+    retires: [],
+  },
+  {
+    term: "SessionRequiredError",
+    means: "What `runAction`, `createExecutionContext` and `host.dispatch` throw for a run with no session id (code `session-required`), before anything is registered or written. Exported from `@flow-state-dev/engine/host`.",
+    decision: "FIX-2907 D1",
+    retires: [],
+  },
+  {
+    term: "legacy-sessionless-request",
+    means: "The refusal of running again a request recorded before every request named its session (`LegacySessionlessRequestError`, a `409` over HTTP): a resume, a continuation, a recovery retry, a wake or a queued job. Such a record is still read and stopped; a stop settles a parked one `aborted` without running it.",
+    decision: "FIX-2907",
+    retires: [],
+  },
+  {
     term: "Flow runner",
     means: "What decides where a flow action runs (`FlowRunner`).",
     decision: "FIX-2245",
@@ -412,6 +448,13 @@ export const ENTRIES = [
         pattern: /\b(addTasks?|readTask|cancelTask|dispatchTask|assignTask|failTask|blockTask|completeTask|answerTask\w*|(create)?[Pp]arkOnQuestion|parkedOnQuestion|awaitReview|unparkAndDrain|onReview|answerQuestion)(_\w+)?\b/,
       },
     ],
+  },
+  {
+    term: "Task input schema",
+    means:
+      "What a worker flow's tasks take, declared on its `work` entry (`workerTaskEntry({ inputSchema: taskInputSchema(schema, { serverOwned, fill, refuse, check, stored, project }) })`): checked at every write that files a task for one of its workers or moves one onto it, parsed again at claim, and shown to a filer by `listDelegates` as `inputSchema` (JSON Schema, without its server-owned fields). Called an input schema, never an input: a task's `input` is the value it is checked against. A server-owned field is dropped from what a filer sends and written by the flow's `fill`, never refused. A flow that declares none takes any object.",
+    decision: "FIX-2894 (epic FIX-2876 ER-9); its `project` replaces the removed `needsProject` hire option",
+    retires: [],
   },
   {
     term: "Routed task",
@@ -732,6 +775,21 @@ export const ENTRIES = [
     retires: [],
   },
   {
+    term: "Mode",
+    means: "A name for how a coding run is told what to do and when it counts as done (`ModeSpec`: `name`, `instructions`, `doneWhen`). A harness manager runs one; a run's key, branch and checkout end in its name. Not a stage of a task on a board.",
+    decision: "Owner, 2026-11-23 (FIX-2877 D1): the public word is mode, never phase, which stays free for a later task-board idea",
+    // Code and goals only: the published pages and READMEs that still name the old type are rewritten at
+    // release (`/release-docs`), and a changeset names the old names to say what replaced them.
+    retires: [
+      {
+        id: "phase-spec",
+        check: "sweep",
+        files: new RegExp(`${CODE.source}|^goals\\/.*\\.(mts|ts)$`),
+        pattern: /\b(PhaseSpec|PhaseDoneVerdict|PhaseRunContext|codingPhase)\b/,
+      },
+    ],
+  },
+  {
     term: "Starter",
     means: "An app on FSD that ships as a template to start your own from: the Claude Code-style app and Teammates. Its screen reads and writes the server through `src/app/`, one file per job, whose `index.ts` exports `AppProvider` and `useApp`; its root component is `src/components/App.tsx`.",
     decision: "Owner, 2026-11-17 (FIX-2755): the labs ship as app starters; the module is `src/app/` and its hook `useApp`, not `data`",
@@ -885,17 +943,8 @@ export const ENTRIES = [
 // 2. The exemptions
 // ---------------------------------------------------------------------------------------------
 
-/** A person who isn't the signed-in user stays (BR-5), pinned by file and phrase. */
-export const PERSON_PINS = [
-  // A support desk's example worker: a human on the support team, not the customer writing in.
-  { path: "apps/docs/docs/workforce/coordinators.md", phrase: /\bhow to reach a person\b/g },
-  // A triage worker's example: it escalates to a human, not back to the user who asked.
-  { path: "apps/docs/docs/workforce/overview.md", phrase: /\bor to a person\b/g },
-  { path: "apps/docs/docs/workforce/workers-on-disk.md", phrase: /\bhands off to a person\b/g },
-];
-
 /** The projects surface, where "member" is a project's: its modules, their tests, the Projects page and figure, and the revamp's Projects page with its sheets. */
-const PROJECT_MODULES = /^packages\/workforce\/src\/projects\/|^packages\/workforce\/test\/(?:projects?|workstreams?)[\w-]*\.test\.ts$|^apps\/docs\/docs\/workforce\/(?:projects\.md|project-overview\.svg)$|^docs\/contributing\/docs-revamp\/pages\/catalog\/workforce\/(?:projects(?:\.facts|\.record)?\.md|figures\/a-shared-project\.svg)$/;
+const PROJECT_MODULES = /^packages\/workforce\/src\/projects\/|^packages\/workforce\/test\/(?:projects?|workstreams?)[\w-]*\.test\.ts$|^apps\/docs\/docs\/workforce\/(?:projects\.md|project-overview\.svg)$|^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/workforce\/(?:projects(?:\.facts|\.record)?\.md|figures\/a-shared-project\.svg)$/;
 
 /**
  * Every place a retired word is kept on purpose. Each names the retirements it keeps and why.
@@ -961,38 +1010,52 @@ const EXEMPTIONS = [
     why: "the Teammates lab's own worker is called Chief of Staff; the Shift Coordinator decision (FIX-2244) retires that name for Shift Manager's coordinator, not for this lab",
   },
   {
+    // The Harness runs and Workforce reference pages quote names and messages the code still spells with ask.
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/reference\/(?:harness-runs|workforce)(?:\.facts)?\.md$/,
+    line: /\brun\.askMarkerPath\b|Asks are read from worker sessions|it wasn't set at hire to change its own/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: Reference pages quoting the harness manager's `run.askMarkerPath` field and two workforce error messages verbatim; the pages must name what the code returns",
+  },
+  {
     // The Messaging record quotes Shift Manager's own line text for a send that asks for a reply.
-    path: /^docs\/contributing\/docs-revamp\/pages\/catalog\/workforce\/messaging\.record\.md$/,
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/workforce\/messaging\.record\.md$/,
     line: /"Asked <id>"/,
     rules: ["ask-symbol-in-docs"],
     why: "FIX-2703: a pass-5 fact check quoting Shift Manager's UI string \"Asked <id>\" verbatim; the rule's backtick pattern spans the prose between two code spans",
   },
   {
+    // The UI components reference quotes the registry's own button and header text.
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/reference\/ui-components(?:\.facts)?\.md$/,
+    line: /Ask for changes|"Asking ada…", "Asked ada"/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: ReviewHold's \"Ask for changes\" button and the workforce lines' \"Asking ada…\" / \"Asked ada\" headers, quoted as the registry renders them (packages/ui/registry/components/review-hold.tsx:410); the rule's backtick pattern spans the prose between two code spans",
+  },
+  {
     // The docs-revamp pages that describe the Teammates lab name its worker as the lab does.
-    path: /^docs\/contributing\/docs-revamp\/pages\/(?:start\/(?:run-a-starter|what-flow-state-is)|catalog\/starters\/teammates|catalog\/workforce\/messaging)(?:\.facts|\.record)?\.md$/,
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/(?:start\/(?:run-a-starter|what-flow-state-is)|catalog\/starters\/teammates|catalog\/workforce\/messaging)(?:\.facts|\.record)?\.md$|^apps\/docs\/docs\/(?:start\/figures\/what-just-started|catalog\/starters\/figures\/what-it-installs|catalog\/workforce\/figures\/messaging-two-ways)\.svg$/,
     rules: ["shift-coordinator-names", "shift-coordinator-prose"],
     why: "FIX-2696: pages about the Teammates lab, and the Messaging page whose example is that lab, name its Chief of Staff worker and its `teammates.chief-of-staff` id as the lab ships them; FIX-2244 retires the name for Shift Manager's coordinator, not for this lab",
   },
   {
-    // User docs change only at release (docs/contributing/release-docs.md), so these pages document the
-    // released names until then. As FIX-2479 D4's released-quotes: /release-docs rewrites them from the
-    // changeset's Docs: line, and deletes this in the same PR.
-    path: /^(?:apps\/docs\/docs\/workforce\/delegating-work\.md|apps\/docs\/docs\/shift-manager\/overview\.md|packages\/workforce\/README\.md|packages\/shift-manager\/README\.md)$/,
-    rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "recurring-work-prose"],
-    why: "FIX-2614: published pages may name the released schedule and subscription surface until /release-docs rewrites them, and deletes this in the same PR",
+    path: /^apps\/docs\/docs\/reference\/upgrading\/\d{4}-\d{2}-\d{2}\.md$/,
+    rules: ["buildItemRenderStream", "ItemRenderSegment", "BuildItemRenderStreamOptions", "human-reasons"],
+    why: "a release's Upgrading page: it names each removed export and retired reason beside what replaces it (docs/contributing/release-docs.md, The Upgrading page)",
   },
   {
     path: /^\.changeset\/one-conversation-model\.md$/,
+    releaseNote: true,
     rules: ["buildItemRenderStream", "ItemRenderSegment", "BuildItemRenderStreamOptions"],
     why: "FIX-2848: the release note that tells consumers which renamed React exports to replace",
   },
   {
     path: /^\.changeset\/user-suspension-reasons\.md$/,
+    releaseNote: true,
     rules: ["human-reasons"],
     why: "FIX-2151: the release note that tells consumers which old reasons to replace",
   },
   {
     path: /^\.changeset\/(retired-names-(contracts|react)|no-compat-engine)\.md$/,
+    releaseNote: true,
     rules: ["human-reasons"],
     why: "FIX-2454: the release notes that say a new human_* reason throws and a stored one reads as a user's",
   },
@@ -1027,7 +1090,7 @@ const EXEMPTIONS = [
     why: "WR-7: a goal's dated verdict row, or a line saying the tool was removed: history",
   },
   {
-    path: /^apps\/docs\/docs\/(shift-manager\/|glossary\.md$|glossary\/)/,
+    path: /^apps\/docs\/docs\/(shift-manager\/|glossary\.md$|glossary\/|catalog\/starters\/shift-manager\.md$|reference\/glossary\.md$)/,
     line: /Shift Manager|AskCard|Inbox|approval|question|suspended|\bAsks?\b \|/i,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
     why: "Shift Manager's Ask: an approval or question to a person",
@@ -1074,6 +1137,13 @@ const EXEMPTIONS = [
     line: /\b(turnAsked|askMidway)\b|\.ask(\.(kind|prompt)\b|\)\.toMatchObject)/,
     rules: ["ask-symbol", "ask-symbol-in-docs", "ask-mark"],
     why: "FIX-2131: the worker's question, which holds its task for the user, and the turn-asked fact it is refused on",
+  },
+  {
+    // The Task board reference names the midway question helper as orchestration exports it.
+    path: /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/reference\/task-(?:board|collections)(?:\.facts|\.record)?\.md$/,
+    line: /\baskMidway\b/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2699: `askMidway(ctx, board, …)`, the exported helper that opens a question midway (packages/orchestration/src/task-board/task-request.ts), named on the Task board and Task collections Reference pages (and their fact sheets and records) as the published task-board page already does",
   },
   {
     path: /^packages\/devtool\/(src\/react\/lib\/task-collection-state\.ts|test\/(task-collections-reason\.test\.tsx|task-collection-state\.test\.ts))$/,
@@ -1126,7 +1196,7 @@ const EXEMPTIONS = [
     why: "WR-5: a claimed request record passed to the run that holds it, mid-work (D3)",
   },
   {
-    path: /^apps\/docs\/docs\/glossary\.md$/,
+    path: /^apps\/docs\/docs\/(?:reference\/)?glossary\.md$/,
     line: /^\| \*\*Hand-off\*\* \| orchestration \| A session that was doing the work passes it to another session, mid-work\./,
     rules: ["handoff-prose"],
     why: "D3: the glossary row that defines hand-off as mid-work only",
@@ -1220,7 +1290,7 @@ const EXEMPTIONS = [
     why: "WR-5: two actions that ask a desk a question; not a wait",
   },
   {
-    path: /^packages\/workspace\/src\/(local-host|land)\.ts$/,
+    path: /^packages\/workspace\/src\/worktree\.ts$/,
     line: /core\.askPass/,
     rules: ["ask-symbol"],
     why: "git's own setting name",
@@ -1289,6 +1359,7 @@ const EXEMPTIONS = [
   },
   {
     path: /^\.changeset\/no-compat-[\w-]+\.md$/,
+    releaseNote: true,
     rules: ["question-hold-names", "task-tool-names", "handoff-symbol-in-docs", "message-budget"],
     why: "FIX-2454: the release notes that list what was removed, by its old name, so a consumer can find the uses to delete",
   },
@@ -1392,9 +1463,9 @@ const EXEMPTIONS = [
   {
     id: "codex-thread-option",
     terms: ["thread"],
-    where: (path) => path.startsWith("docs/contributing/docs-revamp/pages/catalog/harnesses/codex."),
+    where: (path) => /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/harnesses\/codex\./.test(path),
     strip: /`thread`/g,
-    why: "the Codex block's own `thread` option, named in code font on the revamp's Codex page",
+    why: "the Codex block's own `thread` option, named in code font on the Codex page",
   },
   {
     id: "claude-code-threads",
@@ -1407,7 +1478,7 @@ const EXEMPTIONS = [
     id: "claude-code-style-worker-ids",
     terms: ["thread"],
     where: (path) =>
-      /^docs\/contributing\/docs-revamp\/pages\/catalog\/(starters\/claude-code-style|workforce\/(delegating-work|coordinators))\./.test(path),
+      /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/(starters\/claude-code-style|workforce\/(delegating-work|coordinators))\./.test(path),
     strip: /\bdesk\.thread(?:-coder(?:-[a-z]+)?)?\b|`thread-coder(?:-[a-z]+)?`/g,
     why: "the Claude Code-style lab's worker ids (`desk.thread`, `desk.thread-coder`), quoted as the lab ships them; the lab names its threads mode after Claude Code's",
   },
@@ -1423,9 +1494,18 @@ const EXEMPTIONS = [
     why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there (GitHub's `MEMBER` association), and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
   },
   {
+    id: "routines-page-thread-field",
+    terms: ["thread"],
+    where: (path) => /^(?:docs\/contributing\/docs-revamp\/pages|apps\/docs\/docs)\/catalog\/workforce\/routines\./.test(path),
+    strip: /"thread"(?=:)|\bthread:(?= ")/g,
+    why: "an event routine's own `thread` field, the key of the outside service's pull request or topic it follows, in the Routines page's examples",
+  },
+  {
     id: "subscription-docs",
     terms: ["thread", "member", "kind"],
-    where: (path) => path === "packages/workforce/README.md" || path === "apps/docs/docs/workforce/messaging-workers.md" || path === ".changeset/fix-2614-routines.md",
+    // The pages it covered were rewritten at the docs cutover; the release note is what is left.
+    releaseNote: true,
+    where: (path) => path === ".changeset/fix-2614-routines.md",
     // Only on a line that names the outside service, so a mailbox's thread elsewhere on the page still counts.
     strip: /\bSCREEN_KINDS\b|(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)(?=[^\n]*(?:subscri|provider|\bPR\b|pull request|repositor|outside|`thread`|canRead|github))|(?<=(?:subscri|provider|\bPR\b|pull request|repositor|outside|canRead|github)[^\n]*)(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)/g,
     why: "the subscription pages' outside thread, a sender's member role and an event's kind (FIX-2471), on lines that name the outside service",
@@ -1433,8 +1513,8 @@ const EXEMPTIONS = [
   {
     id: "old-page-redirect",
     terms: ["mailbox"],
-    where: (path) => path === "apps/docs/docusaurus.config.ts",
-    strip: /(?<=from: ")\/docs\/workforce\/mailboxes(?=")/g,
+    where: (path) => path === "apps/docs/redirects.mjs",
+    strip: /(?<=")\/docs\/workforce\/mailboxes(?=":)/g,
     why: "a redirect from a removed page's address, so an old link still lands",
   },
   {
@@ -1443,13 +1523,6 @@ const EXEMPTIONS = [
     where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\/|^packages\/ui\/registry\.json$/.test(path),
     strip: /\battachmentKind\b|\bkinds?\b|\bpersons?\b|\bperson's\b|\bthreads?\b/gi,
     why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test, and the registry's own manifest, which names workforce-lines' workforce dependency: its words are the registry's",
-  },
-  {
-    id: "person-any-human",
-    terms: ["person"],
-    where: (path) => PERSON_PINS.some((pin) => pin.path === path),
-    strip: (path, line) => PERSON_PINS.filter((pin) => pin.path === path).reduce((out, pin) => out.replace(pin.phrase, " "), line),
-    why: "a person who isn't the signed-in user stays, pinned by file and phrase (BR-5)",
   },
 
   // ---- side-chain ----
@@ -1479,18 +1552,6 @@ const EXEMPTIONS = [
     rules: ["collection-row"],
     path: /(?:^|\/)(?:components|surfaces)\//,
     why: "a UI list module under components/ or surfaces/: a rendered row is a row (owner, 2026-11-06; FIX-2479, a path rule)",
-  },
-  {
-    id: "released-quotes",
-    rules: ["collection-row"],
-    pages: /^(?:apps\/docs\/(?:docs|guides)\/.*\.mdx?|packages\/[^/]+\/README\.md)$/,
-    // The owner-private refusal, the owner-writes refusal, and the first line of the startup overlap error.
-    quotes: [
-      /A row of an owner-private collection is readable only by the user it belongs to\./g,
-      /A row of an owner-writes collection is written only by the user it belongs to\./g,
-      /Collection pattern "[^"]*" can reach the rows of owner-(?:private|writes) collection/g,
-    ],
-    why: "FIX-2479 D4: a published page may quote a released message until /release-docs rewrites it, and deletes this in the same PR",
   },
 ];
 
@@ -1628,25 +1689,39 @@ const byCheck = (check) => {
 };
 export const SWEEP_EXEMPTIONS = byCheck("sweep");
 
+/**
+ * Every exemption its author flagged `releaseNote: true`, of any check: the path names pending
+ * changesets and nothing else. The guard holds each to that against the tracked tree.
+ */
+export const RELEASE_NOTE_EXEMPTIONS = EXEMPTIONS.filter((e) => e.releaseNote === true);
+
 /** The bare retirements: they name no check, so the sweep and the guard both read them. */
 const BARE = new Set(RETIREMENTS.filter((r) => r.check === undefined).map((r) => r.id));
 
 /**
  * A sweep-shaped exemption that keeps a bare retirement keeps it for the guard too, so one
  * exemption gives both checks one answer (D2): in the files it names, on the lines it keeps,
- * the guard strips the retired name.
+ * the guard strips the retired name. Exported so the guard's control builds its plants the
+ * same way the glossary's own exemptions are built.
+ * @param {{ path: RegExp, rules: string[], why: string, line?: RegExp, releaseNote?: boolean }} e
+ * @param {string} id
  */
-const SHARED_GUARD_EXEMPTIONS = SWEEP_EXEMPTIONS.filter((e) => e.rules.some((id) => BARE.has(id))).map((e, i) => {
-  const terms = e.rules.filter((id) => BARE.has(id));
+export function sharedGuardExemption(e, id) {
+  const terms = e.rules.filter((rule) => BARE.has(rule));
   const res = GUARD_TERMS.filter((t) => terms.includes(t.id)).map((t) => t.re);
   return {
-    id: `shared-${i}-${terms.join("+")}`,
+    id,
     terms,
     why: e.why,
+    releaseNote: e.releaseNote === true,
     where: (path) => e.path.test(path),
     strip: (_path, line) => (e.line && !e.line.test(line.trim()) ? line : res.reduce((l, re) => l.replace(re, " "), line)),
   };
-});
+}
+
+const SHARED_GUARD_EXEMPTIONS = SWEEP_EXEMPTIONS.filter((e) => e.rules.some((id) => BARE.has(id))).map((e, i) =>
+  sharedGuardExemption(e, `shared-${i}-${e.rules.filter((id) => BARE.has(id)).join("+")}`),
+);
 export const GUARD_EXEMPTIONS = [...byCheck("guard"), ...SHARED_GUARD_EXEMPTIONS];
 export const SIDE_CHAIN_EXEMPT_FILES = byCheck("side-chain").flatMap((e) => e.files);
 export const TREE_EXEMPTIONS = byCheck("tree");

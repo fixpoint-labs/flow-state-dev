@@ -17,9 +17,11 @@ import {
   addedSince,
   declaredNames,
   GLOSSARY_TERMS,
-  PERSON_PINS,
   PLANTS,
+  NOTE_PLANTS,
   STALE_PLANT,
+  SWEEP_NOTE_MISFLAG_PLANT,
+  staleOnVersionCommit,
   census,
   checkGlossary,
   control,
@@ -39,7 +41,7 @@ type Census = {
   ok: boolean;
 };
 
-const GLOSSARY = "apps/docs/docs/glossary.md";
+const GLOSSARY = "apps/docs/docs/reference/glossary.md";
 
 /** A glossary with one row per shipped term, in its Workforce section. */
 const glossaryText = (extraRows: string[] = []): string =>
@@ -70,15 +72,17 @@ describe("the guard refuses a retired word wherever it isn't kept on purpose", (
     // The CLI's --control runs this over the real tree; here it runs over a
     // fixture, so a plant that only passes because of the real tree's contents
     // would show up as slipping through.
-    const fixture = tree({ [PERSON_PINS[0].path]: "Say how to reach a person when you can't help.\n" });
+    const fixture = tree({});
     const { results, ok } = (control as (t: Tree) => { results: Array<{ what: string; refused: boolean }>; ok: boolean })(fixture);
     expect(results.filter((x) => !x.refused)).toEqual([]);
     expect(ok).toBe(true);
     // One result per plant with a term, plus the duplicate row, the stale
-    // exception and the unscoped folder, then one per added-names plant and
-    // one per parser read (each must have a plant).
+    // exception, the unscoped folder and the sweep-only misflag, one per release-note plant (and one more
+    // for each misflagged one), then one per added-names plant and one per
+    // parser read (each must have a plant).
+    const notes = NOTE_PLANTS as Array<{ misflagged: boolean }>;
     expect(results).toHaveLength(
-      (PLANTS as Array<{ term: string | null }>).filter((p) => p.term !== null).length + 3 + (ADDED_PLANTS as unknown[]).length + (NAME_READS as unknown[]).length,
+      (PLANTS as Array<{ term: string | null }>).filter((p) => p.term !== null).length + 4 + notes.length + notes.filter((p) => p.misflagged).length + (ADDED_PLANTS as unknown[]).length + (NAME_READS as unknown[]).length,
     );
   });
 
@@ -112,14 +116,6 @@ describe("the guard refuses a retired word wherever it isn't kept on purpose", (
       "packages/workforce/src/zz.ts": "// see goals/workforce-seats/x/ for the worker\n", // retired-name-refusal
     });
     expect(counted(r)).toEqual(["packages/workforce/src/zz.ts:1:seat"]);
-  });
-
-  it("strips a pinned non-user person and counts any other person on the line", () => {
-    const pin = PERSON_PINS[0] as { path: string };
-    const kept = run({ [pin.path]: "If you can't help, say how to reach a person.\n" });
-    expect(kept.hits).toEqual([]);
-    const r = run({ [pin.path]: "If you can't help, say how to reach a person, and tell the person who signed in.\n" });
-    expect(counted(r)).toEqual([`${pin.path}:1:person`]);
   });
 });
 
@@ -216,6 +212,69 @@ describe("totality: every file has an area, every exception earns its place", ()
     expect(r.ok).toBe(false);
   });
 
+  // `changeset version` deletes a pending note in the commit the release job pushes, so an
+  // exception kept for that note alone strips nothing there; failing it stopped the release push.
+  // Only that case is excused: a pending note it keeps nothing in, or a path that names a real
+  // file too, is an exception nobody needs, the same hole as any other stale one.
+  type NotePlant = { exception: { id: string }; stale: boolean; misflagged: boolean; file?: string };
+  const notePlants = NOTE_PLANTS as NotePlant[];
+  const noteTree: Record<string, string> = { "packages/workforce/src/zz.ts": "// nothing to strip\n" };
+  for (const p of notePlants) if (p.file) noteTree[p.file] = "Nothing retired.\n";
+
+  it("passes a release-note exception whose note changeset version has deleted, and says so", () => {
+    const released = notePlants.filter((p) => !p.stale);
+    expect(released).toHaveLength(1);
+    const r = run(noteTree, released.map((p) => p.exception)) as Census & { released: string[] };
+    expect(r.stale).not.toContain(released[0].exception.id);
+    expect(r.released).toContain(released[0].exception.id);
+  });
+
+  it("still refuses a pending note it keeps nothing in, and a path that also names a real file", () => {
+    const strict = notePlants.filter((p) => p.stale);
+    expect(strict.map((p) => p.exception.id)).toEqual(["zz-planted-pending-note", "zz-planted-mixed-note"]);
+    const r = run(noteTree, strict.map((p) => p.exception));
+    for (const p of strict) expect(r.stale).toContain(p.exception.id);
+    expect(r.ok).toBe(false);
+  });
+
+  // The release job's push runs this check on the commit that deletes every pending note, so an
+  // exemption kept for a note alone must carry the flag, or fail the PR that adds it, not the release.
+  it("names a note-only exception without the flag, which the version commit would leave stale", () => {
+    // The retired name is joined at run time, so the vocabulary sweep doesn't count this file.
+    const retired = ["build", "ItemRenderStream"].join("");
+    const note = { ".changeset/zz-planted-note.md": `---\n---\n\nUse \`conversationLines\`, not \`${retired}\`.\n` };
+    const keeps = (releaseNote: boolean) => ({
+      ...(notePlants[0].exception as object),
+      id: "zz-planted-note-keeper",
+      releaseNote,
+      where: (path: string) => path === ".changeset/zz-planted-note.md",
+    });
+    const onVersion = staleOnVersionCommit as (t: Tree, o: { extraExceptions: object[] }) => string[];
+    expect(run(note, [keeps(false)]).stale).not.toContain("zz-planted-note-keeper");
+    expect(onVersion(tree(note), { extraExceptions: [keeps(false)] })).toEqual(["zz-planted-note-keeper"]);
+    expect(onVersion(tree(note), { extraExceptions: [keeps(true)] })).toEqual([]);
+  });
+
+  // The sweep never reads the flag, so a sweep-only exemption flagged on a path that names more
+  // than pending notes must still be refused by the guard, from the glossary's raw shape.
+  it("refuses the releaseNote flag on a sweep-only exemption whose path names the changesets' README", () => {
+    const r = (census as (t: Tree, o: object) => Census & { misflagged: string[] })(
+      tree({ ".changeset/README.md": "Changesets.\n", ".changeset/zz-planted-sweep.md": "---\n---\n\nNote.\n" }),
+      { releaseNotes: [SWEEP_NOTE_MISFLAG_PLANT] },
+    );
+    expect(r.misflagged).toEqual([`${(SWEEP_NOTE_MISFLAG_PLANT as { path: RegExp }).path} (.changeset/README.md)`]);
+    expect(r.ok).toBe(false);
+  });
+
+  // The flag is the author's word, so a path that also names a real file must not ride on it.
+  it("refuses the releaseNote flag on a path that names a file outside .changeset/", () => {
+    const flagged = notePlants.filter((p) => p.misflagged);
+    const r = run(noteTree, flagged.map((p) => p.exception)) as Census & { misflagged: string[] };
+    expect(r.misflagged).toEqual(["zz-planted-mixed-note (packages/workforce/src/zz-planted-mixed.ts)"]);
+    expect(r.ok).toBe(false);
+  });
+
+
   it("lets every exception strip only the terms it names", () => {
     // An exception that could strip any term would hide a second word on its line.
     for (const e of EXCEPTIONS as Array<{ id: string; terms: string[] }>) expect(e.terms.length, e.id).toBeGreaterThan(0);
@@ -242,12 +301,6 @@ describe("the glossary defines each shipped term exactly once", () => {
 
 const resourceHits = (path: string, text: string): string[] =>
   (scanTreeRules as (path: string, text: string) => Hit[])(path, text).map((h) => `${h.line}:${h.text}`);
-
-// FIX-2479 D4.
-/** The three released messages a published page may still quote. */
-const OWNER_PRIVATE = "A row of an owner-private collection is readable only by the user it belongs to.";
-const OWNER_WRITES = "A row of an owner-writes collection is written only by the user it belongs to.";
-const OVERLAP = 'Collection pattern "[tenant]/**" can reach the rows of owner-private collection';
 
 describe("the resource entry reads the whole tree: a stored thing is a resource, a lifecycle a Status", () => {
   const rule = (TREE_RULES as Array<{ id: string; term: string; say: string }>).find((r) => r.id === "collection-row");
@@ -384,26 +437,11 @@ describe("the resource entry reads the whole tree: a stored thing is a resource,
     expect(resourceHits("apps/docs/docs/resources/overview.md", "response.getItems() returns an OutputItem.\nEach table row is a grid row.\n")).toEqual([]);
   });
 
-  it("lets a published page quote the three released messages, stripping the quote and not the line", () => {
-    const page = "apps/docs/docs/resources/collections.md";
-    expect(resourceHits(page, `Anyone else's write throws "${OWNER_WRITES}" and changes nothing.\n`)).toEqual([]);
-    expect(resourceHits(page, `\`get\` throws "${OWNER_PRIVATE}"\n`)).toEqual([]);
-    expect(resourceHits(page, `${OVERLAP}\n`)).toEqual([]);
-    expect(resourceHits("packages/workforce/README.md", `  \`${OWNER_WRITES}\`, whichever flow\n`)).toEqual([]);
-    // A second use on the quoting line still counts.
-    expect(resourceHits(page, `It throws "${OWNER_WRITES}" for each row of the owner-writes collection.\n`)).toHaveLength(1);
-    // Only published pages: a contributor doc says the new words now.
-    expect(resourceHits("docs/architecture/resources-and-client-data.md", `(\`${OWNER_WRITES}\`)\n`)).toHaveLength(1);
-    // Only the released text: a paraphrase is not a quote.
-    expect(resourceHits(page, "It throws: a row of an owner-writes collection is written only by its user.\n")).toHaveLength(1);
-  });
-
-  it("carries no exemption beyond the store-adapter and UI-list paths and the released quotes", () => {
+  it("carries no exemption beyond the store-adapter and UI-list paths", () => {
     const kept = (TREE_EXEMPTIONS as Array<Record<string, unknown>>).map((e) => [e.id, Object.keys(e).sort().join(",")]);
     expect(kept).toEqual([
       ["store-adapter-rows", "id,path,rules,why"],
       ["ui-list-rows", "id,path,rules,why"],
-      ["released-quotes", "id,pages,quotes,rules,why"],
     ]);
   });
 
@@ -413,12 +451,10 @@ describe("the resource entry reads the whole tree: a stored thing is a resource,
     expect(resourceHits("docs/contributing/glossary.mjs", "Each collection row is stored.\n")).toEqual([]);
   });
 
-  it("fails the census on a hit and on a quote exemption nothing needs any more", () => {
+  it("fails the census on a hit", () => {
     const hit = run({ "packages/workforce/src/zz.ts": "export type FooRow = { id: string };\n" });
     expect(hit.ok).toBe(false);
     expect(counted(hit)).toContain("packages/workforce/src/zz.ts:1:collection-row");
-    // A fixture with no quote: the released-quote exemption strips nothing, so it is stale.
-    expect(run({}).stale).toContain("released-quotes");
   });
 });
 
@@ -526,7 +562,7 @@ describe("TypeScript's parser reads every declaration kind, and a use never", ()
 
   it("dropping any one read lets its plant through the control", () => {
     // The control is only as good as its plants: each read must have one that nothing else catches.
-    const fixture = tree({ [PERSON_PINS[0].path]: "Say how to reach a person when you can't help.\n" });
+    const fixture = tree({});
     const run = control as (t: Tree, o: { reads: Read[] }) => { results: Array<{ what: string; refused: boolean }>; ok: boolean };
     for (const dropped of NAME_READS as Read[]) {
       const { ok, results } = run(fixture, { reads: (NAME_READS as Read[]).filter((r) => r !== dropped) });

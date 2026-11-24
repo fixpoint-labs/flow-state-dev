@@ -128,6 +128,20 @@ describe("useRequestStream (react)", () => {
     cleanup();
   });
 
+  it("reports the request-created time and clears it when following another request", () => {
+    const { result, rerender } = renderHook(
+      ({ id }) => useRequestStream({ flowKind: "demo", source: { requestId: id }, flush: "immediate" }),
+      { initialProps: { id: "r1" } },
+    );
+    expect(result.current.startedAt).toBeUndefined();
+    act(() => feed({ ...requestCreated(), ts: 123 }));
+    expect(result.current.startedAt).toBe(123);
+    rerender({ id: "r2" });
+    expect(result.current.startedAt).toBeUndefined();
+    act(() => feed({ ...requestCreated(), requestId: "r2", ts: 456 }));
+    expect(result.current.startedAt).toBe(456);
+  });
+
   it("accumulates streamed message text mid-stream, before item.done (FIX-846 regression)", () => {
     const { result } = renderHook(() =>
       useRequestStream({ flowKind: "demo", source: { requestId: "r1" }, flush: "immediate" }),

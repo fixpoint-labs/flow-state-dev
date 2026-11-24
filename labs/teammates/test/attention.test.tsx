@@ -34,32 +34,49 @@ const status = (over: Partial<StatusInputs>) => statusOf("writer", inputs(over),
 
 describe("the status line puts what needs you first", () => {
   it("an approval you haven't answered, even while the teammate is answering", () => {
-    expect(status({ lines: [approval()], activity: { running: true, lastActiveAt: NOW } as StatusInputs["activity"] })).toEqual({ text: "Needs your OK: Publish the draft?", tone: "text-attention", needsYou: true });
+    expect(status({ lines: [approval()], activity: { running: true, lastActiveAt: NOW } as StatusInputs["activity"] })).toEqual({ text: "Needs your OK: Publish the draft?", tone: "text-text-2", needsYou: true, state: "needs" });
     // Answered, it needs nothing.
     expect(status({ lines: [approval("approved")] }).needsYou).toBe(false);
   });
 
   it("a task that waits on you, above the same task running", () => {
     const asks = task("t1", { asks: [openHold("question", "Which branch?")] });
-    expect(status({ tasks: [asks] })).toEqual({ text: "Waiting on you: Which branch?", tone: "text-attention", needsYou: true });
-    expect(status({ tasks: [task("t1", {})] }).text).toBe("Running coding task: Task t1");
+    expect(status({ tasks: [asks] })).toEqual({ text: "Waiting on you: Which branch?", tone: "text-text-2", needsYou: true, state: "needs" });
+    expect(status({ tasks: [task("t1", { leaseUntil: NOW + 60_000 })] }).text).toBe("Running coding task: Task t1");
+    // The bot follows the line: blue-eyed while a run works, the highlighter while the task waits on you.
+    expect(status({ tasks: [task("t1", { leaseUntil: NOW + 60_000 })] }).state).toBe("running");
+  });
+
+  it("says a coding task is running only while a run holds its lease: one parked on its pull request says so, and one nothing runs claims nothing", () => {
+    // Its run ended and its work is pull request 7: no lease, it waits on the merge.
+    expect(status({ tasks: [task("t1", { pullRequests: [7] })] }).text).toBe("Waiting on its pull request: Task t1");
+    // Open, but nothing moves until the pull request does: the bot is queued, not idle and not running.
+    expect(status({ tasks: [task("t1", { pullRequests: [7] })] }).state).toBe("queued");
+    // Kept open with no run on it (a steer no turn took), or a run that stopped renewing: never "Running".
+    expect(status({ tasks: [task("t1", {})] }).text).toBe("Idle");
+    expect(status({ tasks: [task("t1", { leaseUntil: NOW - 1 })] }).text).toBe("Idle");
+    // At its deadline the lease has lapsed, as the board and the row's time signal read it.
+    expect(status({ tasks: [task("t1", { leaseUntil: NOW })] }).text).toBe("Idle");
+    // A live run outranks a parked task.
+    expect(status({ tasks: [task("t1", { pullRequests: [7] }), task("t2", { leaseUntil: NOW + 60_000 })] }).text).toBe("Running coding task: Task t2");
   });
 
   it("several running tasks: the newest names the line, so a task left running for days can't hide the one you just started", () => {
-    const stale = task("old", { title: "Clarify search guidance", startedAt: NOW - 72 * 3_600_000 });
-    const fresh = task("new", { title: "Add day dividers", startedAt: NOW - 60_000 });
+    // Each holds a live lease: only a task a run holds counts as running.
+    const stale = task("old", { title: "Clarify search guidance", startedAt: NOW - 72 * 3_600_000, leaseUntil: NOW + 60_000 });
+    const fresh = task("new", { title: "Add day dividers", startedAt: NOW - 60_000, leaseUntil: NOW + 60_000 });
     // Either order on the board: the line still names the newest.
     expect(status({ tasks: [stale, fresh] }).text).toBe("Running 2 tasks · Add day dividers");
     expect(status({ tasks: [fresh, stale] }).text).toBe("Running 2 tasks · Add day dividers");
     // A task with no start yet (queued, never run) ranks oldest: one that has started is what is happening now.
-    const unstarted = task("queued", { title: "Queued work", startedAt: undefined, run: undefined });
+    const unstarted = task("queued", { title: "Queued work", startedAt: undefined, run: undefined, leaseUntil: NOW + 60_000 });
     expect(status({ tasks: [unstarted, fresh] }).text).toBe("Running 2 tasks · Add day dividers");
   });
 
   it("doesn't count a task waiting on its pull request as running: three PRs open is idle, not 'Running 3 tasks'", () => {
     const open = (id: string) => task(id, { pullRequests: [Number(id.slice(2))], startedAt: NOW - 3_600_000 });
     expect(status({ tasks: [open("pr5451"), open("pr5452"), open("pr5512")] }).text).not.toMatch(/^Running/);
-    expect(status({ tasks: [open("pr5451"), task("new", { title: "Add day dividers", startedAt: NOW - 60_000 })] }).text).toBe("Running coding task: Add day dividers");
+    expect(status({ tasks: [open("pr5451"), task("new", { title: "Add day dividers", startedAt: NOW - 60_000, leaseUntil: NOW + 60_000 })] }).text).toBe("Running coding task: Add day dividers");
   });
 
   it("still reports a task that was idle on its pull request when the merge completes it", () => {
@@ -72,8 +89,8 @@ describe("the status line puts what needs you first", () => {
 
   it("a coding task that just ended, for two minutes, a failure in red", () => {
     const failed = task("t2", { status: "errored", completedAt: NOW - 30_000 });
-    expect(status({ tasks: [failed] })).toEqual({ text: "Coding task failed: Task t2", tone: "text-destructive", needsYou: false });
-    expect(status({ tasks: [task("t3", { status: "completed", completedAt: NOW - 1_000 })] })).toEqual({ text: "Coding task finished: Task t3", tone: "text-muted-foreground", needsYou: false });
+    expect(status({ tasks: [failed] })).toEqual({ text: "Coding task failed: Task t2", tone: "text-destructive", needsYou: false, state: "idle" });
+    expect(status({ tasks: [task("t3", { status: "completed", completedAt: NOW - 1_000 })] })).toEqual({ text: "Coding task finished: Task t3", tone: "text-success-text", needsYou: false, state: "done" });
     expect(status({ tasks: [task("t3", { status: "completed", completedAt: NOW - ENDING_SHOWN_MS })] }).text).toBe("Idle");
     // A teammate's job isn't a coding task, and a withdrawn task doesn't flash.
     expect(status({ tasks: [task("t4", { assignee: "researcher", status: "completed", completedAt: NOW })] }).text).toBe("Idle");

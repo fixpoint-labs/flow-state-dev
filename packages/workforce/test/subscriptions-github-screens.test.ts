@@ -34,10 +34,10 @@ describe("githubSubscriptionProvider's screens", () => {
 
 });
 
-// FIX-2789.
+// FIX-2789; FIX-2873.
 describe("githubTrustedReviewersScreen", () => {
-  // Why: a comment that passes it steers a coding run that has Bash and a push, so only a listed
-  // login that can write to the repository passes, a bot never does, and the list is read each time.
+  // Why: a comment that passes it steers a coding run that has Bash and a push, so only a listed bot,
+  // or a listed login that can write to the repository, passes, and the list is read each time.
   const permissions: Record<string, { status: number; body?: unknown }> = {
     "jhoffner": { status: 200, body: { permission: "admin", role_name: "admin" } },
     "maintainer": { status: 200, body: { permission: "write", role_name: "maintain" } },
@@ -52,7 +52,7 @@ describe("githubTrustedReviewersScreen", () => {
     const answer = permissions[login] ?? { status: 404 };
     return new Response(JSON.stringify(answer.body ?? {}), { status: answer.status });
   }) as typeof fetch;
-  let listed = ["jhoffner", "Maintainer", "reader", "stranger", "flaky", "deploy-bot"];
+  let listed = ["jhoffner", "Maintainer", "reader", "stranger", "flaky", "deploy-bot", "Greptile-Apps[bot]"];
   const screen = githubTrustedReviewersScreen({ reviewers: () => listed, token: () => "operator-token", apiUrl: "https://gh.test/", fetch: fakeFetch });
   const from = (id: string, role: "member" | "collaborator" | "bot" = "member") =>
     event({ threads: ["github:acme/api", "github:acme/api#412"], sender: { id, name: id, role } });
@@ -69,18 +69,24 @@ describe("githubTrustedReviewersScreen", () => {
     expect(await run("stranger")).toBe('"stranger" can\'t write to acme/api');
   });
 
-  it("refuses an unlisted login without asking GitHub, and a bot even when listed", async () => {
+  it("refuses an unlisted login, and passes a listed bot, without asking GitHub", async () => {
     const before = asked.length;
     expect(await run("octocat")).toBe('"octocat" isn\'t a trusted reviewer');
-    expect(await run("deploy-bot", "bot")).toBe('bot "deploy-bot" is never a trusted reviewer');
+    expect(await run("greptile-apps", "bot")).toBeUndefined();
     expect(asked.length).toBe(before);
+  });
+
+  it("keeps users and bots apart: a bot named like a listed user, and a user named like a listed bot, are refused", async () => {
+    // `deploy-bot` is listed as a user; `greptile-apps` only as a bot.
+    expect(await run("deploy-bot", "bot")).toBe('bot "deploy-bot" isn\'t a trusted reviewer');
+    expect(await run("greptile-apps")).toBe('"greptile-apps" isn\'t a trusted reviewer');
   });
 
   it("reads the list for each event, so an edit applies to the next one", async () => {
     expect(await run("jhoffner")).toBeUndefined();
     listed = ["maintainer"];
     expect(await run("jhoffner")).toBe('"jhoffner" isn\'t a trusted reviewer');
-    listed = ["jhoffner", "Maintainer", "reader", "stranger", "flaky", "deploy-bot"];
+    listed = ["jhoffner", "Maintainer", "reader", "stranger", "flaky", "deploy-bot", "Greptile-Apps[bot]"];
   });
 
   it("throws when GitHub can't be asked, so the event is refused as failed, never passed", async () => {

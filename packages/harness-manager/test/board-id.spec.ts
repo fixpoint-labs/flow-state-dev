@@ -131,7 +131,7 @@ describe("an id git cannot carry is refused when the manager is built", () => {
         stateSchema: z.object({ issue: z.string(), phase: z.string() }),
       }),
       tenant: undefined,
-      phase: { phase: "implement", buildPrompt: () => "go", isDone: () => true },
+      mode: { name: "implement", instructions: () => "go", doneWhen: { check: () => true } },
       workspace: { root: join(tmpdir(), "harness-manager-board-id"), sourceRepo, baseRef: "main" },
       runTimeoutMs: 30_000,
       harness: () =>

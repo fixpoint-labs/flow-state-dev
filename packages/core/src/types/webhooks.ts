@@ -71,8 +71,9 @@ export interface WebhookEventBinding extends ActionCore {
   input: (event: WebhookInboundEvent) => unknown | Promise<unknown>;
   /**
    * Derive the session id from the event. May return a value or a Promise.
-   * When omitted (or it resolves to `undefined`), the runtime creates a
-   * fresh ephemeral session — a webhook has no thread to key on.
+   * When omitted (or it resolves to `undefined` or `""`), the webhook route
+   * makes a fresh one-off session id (`oneOffSessionId()`) before it
+   * dispatches — a webhook has no thread to key on.
    */
   sessionId?: (event: WebhookInboundEvent) => string | Promise<string> | undefined;
   /**

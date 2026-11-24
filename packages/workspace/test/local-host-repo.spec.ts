@@ -157,7 +157,9 @@ describe("a repository run gets a fresh branch in checkout/", () => {
       h.provision({ kind: "repo", repo: remote.url }, { place: ["run-2"], branch: "fsd/run-2" }),
     ]);
 
-    expect(gitCommands().filter((c) => c === "init")).toHaveLength(1);
+    // One clone made: each fetch also inits a scratch repository of its own, which isn't a clone.
+    const cloneInits = spawned.mock.calls.filter(([, args]) => subcommand(args)[0] === "init" && String(args.at(-1)).includes(".making-"));
+    expect(cloneInits).toHaveLength(1);
     expect(readdirSync(join(root, ".clones")).filter((name) => name.endsWith(".git"))).toHaveLength(1);
     expect(readFileSync(join(a.cwd, "marker.txt"), "utf8")).toBe("marker A");
     expect(readFileSync(join(b.cwd, "marker.txt"), "utf8")).toBe("marker A");
@@ -185,6 +187,27 @@ describe("a repository run gets a fresh branch in checkout/", () => {
     const next = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-2"], branch: "fsd/run-2" });
 
     expect(git(next.cwd, "rev-parse", "HEAD")).toBe(latest);
+  });
+
+  it("fetches past a URL rewrite or credential helper a run wrote into the shared clone's config", async () => {
+    const h = host();
+    const first = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
+    // A run's worktree shares the clone's config, so it can aim the next fetch elsewhere
+    // and plant a helper that would run with the host's credentials.
+    const other = createRemote("someone else's");
+    const planted = other.commit("main", "planted.txt", "not the remote's");
+    git(first.cwd, "config", `url.${other.url}.insteadOf`, remote.url);
+    const marker = join(tempDir("marker"), "ran");
+    const helper = join(tempDir("helper"), "helper.sh");
+    writeFileSync(helper, `#!/bin/sh\necho ran >> '${marker}'\nexit 1\n`, { mode: 0o755 });
+    git(first.cwd, "config", "credential.helper", helper);
+    const latest = remote.commit("main", "later.txt", "later");
+
+    const next = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-2"], branch: "fsd/run-2" });
+
+    expect(git(next.cwd, "rev-parse", "HEAD")).toBe(latest);
+    expect(() => git(next.repo!.clone, "cat-file", "-e", `${planted}^{commit}`)).toThrow();
+    expect(existsSync(marker)).toBe(false);
   });
 
   it("cuts from a named base when the source names one", async () => {

@@ -18,8 +18,8 @@ import { defineCapability, defineView, handler, type DefinedCapability } from "@
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { tasksInSession } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
-import { readRunChanges, runChangesSchema, type RunChanges } from "./commits";
-import { readRunRecord, RUNS, runRecordCollection, runTopic } from "./run-record";
+import { effectiveCut, readRunChanges, runChangesSchema, type RunChanges } from "./commits";
+import { readModeRunRecord, RUNS, runRecordCollection } from "./run-record";
 import { sessionTask, type SessionDoorBoard } from "./session-door";
 import { runBoardSegment } from "./workspace";
 
@@ -90,7 +90,7 @@ export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
       const record =
         identity === undefined
           ? undefined
-          : await readRunRecord(ctx, runTopic(runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.phase));
+          : (await readModeRunRecord(ctx, runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.mode, row.id)).record;
       const at = input.path === undefined ? {} : { path: input.path };
       if (record?.filesOnly === true) {
         return input.path === undefined
@@ -103,7 +103,9 @@ export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
           ? { taskId: row.id, diff: { files: [], fileCount: 0, added: 0, removed: 0, verified: false }, patch: null }
           : { taskId: row.id, diff: null, patch: { path: input.path, patch: "", truncated: false, verified: false } };
       }
-      const changes = await readRunChanges(record.workspacePath, record.baseRef ?? null, record.baseCommit ?? null, at);
+      // The cut the settle read against, re-guarded: never a commit the recorded cut isn't in.
+      const cut = await effectiveCut(record.workspacePath, record.baseCommit ?? null, record.effectiveCut ?? null);
+      const changes = await readRunChanges(record.workspacePath, record.baseRef ?? null, cut, at);
       return { taskId: row.id, ...changes };
     },
   });

@@ -17,6 +17,7 @@ import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint
 import type { DurabilityProvider } from "../src/durability/types";
 import type { StoreRegistry } from "../src/stores/types";
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function createDurableStores() {
   const stores = createInMemoryStores();
@@ -131,6 +132,7 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -200,6 +202,7 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -264,6 +267,7 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -310,6 +314,7 @@ describe("router decision cannot be honored on resume (FIX-814)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -366,6 +371,7 @@ describe("router decision cannot be honored on resume (FIX-814)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",

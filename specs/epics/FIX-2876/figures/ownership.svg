@@ -1,0 +1,188 @@
+<svg viewBox="0 0 940 570" role="img" aria-label="Who owns what: twelve cross-cutting rules by FIX-2894, FIX-2877, FIX-2878, FIX-2879, the closure FIX-2883 and the coordinator. Each rule has exactly one builds or decides cell. ER-1 one coding flow, built by FIX-2877. ER-2 one resolution order, run at the first claim and frozen on the run record, which every route (work, steer, message, door, resume) reads, a refused harness failing the task, built by FIX-2878. ER-3 one default coder per app, built by FIX-2877. ER-4 harness means one thing, decided by FIX-2877. ER-5 the pick travels as structured state, built by FIX-2879. ER-6 the scripted harness reports its model, built by FIX-2878. ER-7 consumed issues keep their parents, the coordinator&#x27;s. ER-8 a resumed session belongs to the harness and plan setting now dispatched, matched on both, built by FIX-2878. ER-9 a task&#x27;s input is what its flow&#x27;s work entry declares, its schema, its server-owned fields with their filler and its project requirement, checked at filing and claim, built by FIX-2894. ER-10 harness, model and plan are server-owned, written by the harness kit&#x27;s filler in a six-step order (a run&#x27;s frozen or carried settings, the root conversation&#x27;s current Code with, the server default, else refused), never taken from the filer, built by FIX-2878 and used by FIX-2877, whose interim no-pick assignee write it retires, and FIX-2879. ER-11 a worker can lock its harness and plan setting, and at every worker&#x27;s claim a frozen triple that differs on a locked field is refused by name, built by FIX-2878. ER-12 a plan-mode run that changed its own worktree, or created or moved a ref, fails loudly, and another task&#x27;s change never fails it, built by FIX-2878. The closure checks ER-1, 2, 3, 5 and 8 to 12 and uses ER-6."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .comp   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .input  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; stroke-dasharray:4 3; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .fence  { stroke:var(--gone); stroke-width:2; stroke-dasharray:7 4; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+    .c-pro  { fill:var(--prose); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="570"/>
+
+  <g id="columns">
+    <text class="t-tag c-mute" x="480" y="48" text-anchor="middle">FIX-2894</text>
+    <text class="t-tag c-mute" x="560" y="48" text-anchor="middle">FIX-2877</text>
+    <text class="t-tag c-mute" x="640" y="48" text-anchor="middle">FIX-2878</text>
+    <text class="t-tag c-mute" x="720" y="48" text-anchor="middle">FIX-2879</text>
+    <text class="t-tag c-mute" x="800" y="48" text-anchor="middle">FIX-2883</text>
+    <text class="t-tag c-mute" x="880" y="48" text-anchor="middle">COORD.</text>
+    <line class="row" x1="16" y1="62" x2="924" y2="62"/>
+  </g>
+
+  <g id="er-1">
+    <text class="t-tag c-acc" x="24" y="94">ER-1</text>
+    <text class="t-b" x="76" y="94">One coding flow: the harness kit&#x27;s coder</text>
+    <rect class="chosen" x="524" y="78" width="72" height="24" rx="4"/>
+    <text class="t-tag c-code" x="560" y="94" text-anchor="middle">BUILDS</text>
+    <rect class="lost" x="604" y="78" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="640" y="94" text-anchor="middle">uses</text>
+    <rect class="lost" x="684" y="78" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="720" y="94" text-anchor="middle">uses</text>
+    <rect class="lost" x="764" y="78" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="800" y="94" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="110" x2="924" y2="110"/>
+  </g>
+
+  <g id="er-2">
+    <text class="t-tag c-acc" x="24" y="134">ER-2</text>
+    <text class="t-b" x="76" y="134">One order at first claim, frozen for every route</text>
+    <rect class="chosen" x="604" y="118" width="72" height="24" rx="4"/>
+    <text class="t-tag c-code" x="640" y="134" text-anchor="middle">BUILDS</text>
+    <rect class="lost" x="684" y="118" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="720" y="134" text-anchor="middle">uses</text>
+    <rect class="lost" x="764" y="118" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="800" y="134" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="150" x2="924" y2="150"/>
+  </g>
+
+  <g id="er-3">
+    <text class="t-tag c-acc" x="24" y="174">ER-3</text>
+    <text class="t-b" x="76" y="174">One default coder per app: defaultHarness</text>
+    <rect class="chosen" x="524" y="158" width="72" height="24" rx="4"/>
+    <text class="t-tag c-code" x="560" y="174" text-anchor="middle">BUILDS</text>
+    <rect class="lost" x="684" y="158" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="720" y="174" text-anchor="middle">uses</text>
+    <rect class="lost" x="764" y="158" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="800" y="174" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="190" x2="924" y2="190"/>
+  </g>
+
+  <g id="er-4">
+    <text class="t-tag c-acc" x="24" y="214">ER-4</text>
+    <text class="t-b" x="76" y="214">harness means one thing</text>
+    <rect class="chosen" x="524" y="198" width="72" height="24" rx="4"/>
+    <text class="t-tag c-code" x="560" y="214" text-anchor="middle">DECIDES</text>
+    <rect class="lost" x="604" y="198" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="640" y="214" text-anchor="middle">uses</text>
+    <rect class="lost" x="684" y="198" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="720" y="214" text-anchor="middle">uses</text>
+    <line class="row" x1="16" y1="230" x2="924" y2="230"/>
+  </g>
+
+  <g id="er-5">
+    <text class="t-tag c-acc" x="24" y="254">ER-5</text>
+    <text class="t-b" x="76" y="254">The pick is structured state, never text</text>
+    <rect class="chosen" x="684" y="238" width="72" height="24" rx="4"/>
+    <text class="t-tag c-code" x="720" y="254" text-anchor="middle">BUILDS</text>
+    <rect class="lost" x="764" y="238" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="800" y="254" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="270" x2="924" y2="270"/>
+  </g>
+
+  <g id="er-6">
+    <text class="t-tag c-acc" x="24" y="294">ER-6</text>
+    <text class="t-b" x="76" y="294">The scripted harness reports its model</text>
+    <rect class="chosen" x="604" y="278" width="72" height="24" rx="4"/>
+    <text class="t-tag c-code" x="640" y="294" text-anchor="middle">BUILDS</text>
+    <rect class="lost" x="764" y="278" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="800" y="294" text-anchor="middle">uses</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+
+  <g id="er-7">
+    <text class="t-tag c-acc" x="24" y="334">ER-7</text>
+    <text class="t-b" x="76" y="334">Consumed issues keep their parents</text>
+    <rect class="chosen" x="844" y="318" width="72" height="24" rx="4"/>
+    <text class="t-tag c-code" x="880" y="334" text-anchor="middle">DECIDES</text>
+    <line class="row" x1="16" y1="350" x2="924" y2="350"/>
+  </g>
+
+  <g id="er-8">
+    <text class="t-tag c-acc" x="24" y="374">ER-8</text>
+    <text class="t-b" x="76" y="374">A changed coder or plan starts fresh, never a resume</text>
+    <rect class="chosen" x="604" y="358" width="72" height="24" rx="4"/>
+    <text class="t-tag c-code" x="640" y="374" text-anchor="middle">BUILDS</text>
+    <rect class="lost" x="684" y="358" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="720" y="374" text-anchor="middle">uses</text>
+    <rect class="lost" x="764" y="358" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="800" y="374" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="390" x2="924" y2="390"/>
+  </g>
+
+  <g id="er-9">
+    <text class="t-tag c-acc" x="24" y="414">ER-9</text>
+    <text class="t-b" x="76" y="414">Task input as its work entry declares, server-owned too</text>
+    <rect class="chosen" x="444" y="398" width="72" height="24" rx="4"/>
+    <text class="t-tag c-code" x="480" y="414" text-anchor="middle">BUILDS</text>
+    <rect class="lost" x="604" y="398" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="640" y="414" text-anchor="middle">uses</text>
+    <rect class="lost" x="684" y="398" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="720" y="414" text-anchor="middle">uses</text>
+    <rect class="lost" x="764" y="398" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="800" y="414" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="430" x2="924" y2="430"/>
+  </g>
+
+  <g id="er-10">
+    <text class="t-tag c-acc" x="24" y="454">ER-10</text>
+    <text class="t-b" x="76" y="454">Harness, model, plan: server-owned, never the filer&#x27;s</text>
+    <rect class="lost" x="524" y="438" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="560" y="454" text-anchor="middle">uses</text>
+    <rect class="chosen" x="604" y="438" width="72" height="24" rx="4"/>
+    <text class="t-tag c-code" x="640" y="454" text-anchor="middle">BUILDS</text>
+    <rect class="lost" x="684" y="438" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="720" y="454" text-anchor="middle">uses</text>
+    <rect class="lost" x="764" y="438" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="800" y="454" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="470" x2="924" y2="470"/>
+  </g>
+
+  <g id="er-11">
+    <text class="t-tag c-acc" x="24" y="494">ER-11</text>
+    <text class="t-b" x="76" y="494">A locked worker refuses a different harness or plan</text>
+    <rect class="chosen" x="604" y="478" width="72" height="24" rx="4"/>
+    <text class="t-tag c-code" x="640" y="494" text-anchor="middle">BUILDS</text>
+    <rect class="lost" x="764" y="478" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="800" y="494" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="510" x2="924" y2="510"/>
+  </g>
+
+  <g id="er-12">
+    <text class="t-tag c-acc" x="24" y="534">ER-12</text>
+    <text class="t-b" x="76" y="534">A plan run that changed its own tree or refs fails</text>
+    <rect class="chosen" x="604" y="518" width="72" height="24" rx="4"/>
+    <text class="t-tag c-code" x="640" y="534" text-anchor="middle">BUILDS</text>
+    <rect class="lost" x="764" y="518" width="72" height="24" rx="4"/>
+    <text class="t-tag c-lost" x="800" y="534" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="550" x2="924" y2="550"/>
+  </g>
+</svg>

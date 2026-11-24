@@ -13,7 +13,7 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { App } from "../src/components/App";
 import { codingTask, POPUP_READ, stubServer, TestProvider, type StubData } from "./stub-server";
-import { TEAMMATE_COLORS } from "../src/lib/looks";
+import { BOT_FACES, TEAMMATE_COLORS } from "../src/lib/looks";
 import { scriptedServer } from "./scripted-server";
 
 // The script runs at a twentieth of real time.
@@ -137,7 +137,7 @@ describe("the teammates screen", () => {
 
   it("marks where Lead's word-for-word turns begin, and calls it out of view, not summarized", async () => {
     render(<TestProvider server={fast()}><App /></TestProvider>);
-    const divider = await screen.findByRole("separator");
+    const divider = await screen.findByRole("separator", { name: /^Earlier turns/ });
     expect(divider.getAttribute("aria-label")).toBe("Earlier turns out of view");
     // 52 turns seeded, 50 in the window: turns 1 and 2 sit before the divider, turn 3 right after it.
     const after = divider.nextElementSibling as HTMLElement;
@@ -148,7 +148,7 @@ describe("the teammates screen", () => {
 
   it("labels the divider summarized only when the earlier turns were summarized", async () => {
     render(<TestProvider server={fast({ summary: true })}><App /></TestProvider>);
-    const divider = await screen.findByRole("separator");
+    const divider = await screen.findByRole("separator", { name: /^Earlier turns/ });
     expect(divider.getAttribute("aria-label")).toBe("Earlier turns summarized");
   });
 
@@ -248,12 +248,19 @@ describe("the teammates screen", () => {
   });
 
   it("holds researcher's reply as pending while Lead answers you, and lands it after that answer", async () => {
-    render(<TestProvider server={fast()}><App /></TestProvider>);
+    const lab = fast();
+    render(<TestProvider server={lab}><App /></TestProvider>);
+    // The script's clock runs on its own, so the order is pinned: researcher answers only after your second
+    // line has started Lead's turn, and that turn holds until the reply is pending.
+    const researcherAnswers = lab.holdNextTurn("teammates.researcher");
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     await within(conversation()).findByRole("button", { name: /^Messaged researcher/ });
 
     // Step 3: a second line before researcher answers. Lead takes it, and the reply arrives mid-turn.
+    const leadAnswers = lab.holdNextTurn("teammates.chief-of-staff");
     await tell("Lead", "Make section 2 about pricing.");
+    await waitFor(() => expect(within(conversation()).getByRole("status", OUTSIDE_COMPOSER).textContent).toMatch(/Lead is answering/));
+    act(() => researcherAnswers());
     await waitFor(() => expect(conversation().querySelector("[data-pending]")?.textContent).toBe("← researcher replied · Lead reads it after this turn"), {
       interval: 5,
       timeout: 2000,
@@ -262,6 +269,7 @@ describe("the teammates screen", () => {
     expect(entries("received")).toHaveLength(2); // only writer's two older replies so far
 
     // The reply lands as its own line after Lead's answer to you, and Lead's next line uses it.
+    act(() => leadAnswers());
     const reply = await within(conversation()).findByRole("region", { name: "From researcher" }, { timeout: 2000 });
     expect(conversation().querySelector("[data-pending]")).toBeNull();
     const answer = within(conversation()).getByText(/Noted: "Make section 2 about pricing\."/);
@@ -332,7 +340,7 @@ describe("the teammates screen", () => {
     });
     const side = await screen.findByRole("complementary", { name: "Lead's panel" });
     const tiles = () => within(side).getAllByRole("tab").map((t) => t.textContent);
-    await waitFor(() => expect(tiles()).toEqual(["0Running", "0Idle", "1Failed", "3Done"]));
+    await waitFor(() => expect(tiles()).toEqual(["Running0", "Idle0", "Failed1", "Done3"]));
     // A failure is one click away, on its tile.
     fireEvent.click(within(side).getByRole("tab", { name: /Failed/ }));
     const failed = within(side).getByRole("list", { name: "Failed" });
@@ -350,7 +358,7 @@ describe("the teammates screen", () => {
     const active = await within(side).findByRole("list", { name: "Running" }, { timeout: 2000 });
     expect(within(active).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" })).toBeTruthy();
     board[4] = { ...board[4]!, status: "completed", completedAt: Date.now() };
-    await waitFor(() => expect(tiles()[0]).toBe("0Running"), { timeout: 4000 });
+    await waitFor(() => expect(tiles()[0]).toBe("Running0"), { timeout: 4000 });
     expect(within(side).queryByRole("list", { name: "Running" })).toBeNull();
   });
 
@@ -361,8 +369,8 @@ describe("the teammates screen", () => {
     expect(row.getAttribute("data-task")).toBe("running");
     // The lab has no projects: no select, no prompt, no card, and no word for one anywhere.
     expect(screen.queryByRole("combobox")).toBeNull();
-    // The one group on screen is the harness chips (FIX-2403), never a project choice.
-    expect(screen.queryAllByRole("group").map((g) => g.getAttribute("aria-label"))).toEqual(["Coding harnesses"]);
+    // No group on screen is a project choice: the harness list (FIX-2403) waits behind its control.
+    expect(screen.queryAllByRole("group")).toEqual([]);
     expect(document.body.textContent).not.toMatch(/project/i);
 
     server.board[LEAD]![0] = { ...server.board[LEAD]![0]!, status: "completed", completedAt: Date.now() };
@@ -378,7 +386,7 @@ describe("the teammates screen", () => {
     await screen.findByRole("complementary", { name: "Lead's panel" });
     await openByAddress("t-1");
     const popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" }, POPUP_READ);
-    await waitFor(() => expect(within(popup).getByRole("region", { name: "Result" }).textContent).toBe("Fixed the typo in README.md, line 1."));
+    await waitFor(() => expect(within(popup).getByRole("region", { name: "Result" }).querySelector("[data-result-answer]")?.textContent).toBe("Fixed the typo in README.md, line 1."));
     // The answer came on a read naming the task; every other board read named none, so none carried it.
     expect(server.boardReads.filter((read) => read.taskId !== undefined).every((read) => read.taskId === "t-1" && read.sessionId === LEAD)).toBe(true);
     expect(server.boardReads.some((read) => read.taskId === "t-1")).toBe(true);
@@ -397,7 +405,10 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(popup.textContent).toMatch(/Edit \/work\/README\.md/), { timeout: 2000 });
     // It ends: its answer lands in the popup open on it.
     server.board[LEAD]![0] = { ...server.board[LEAD]![0]!, status: "completed", completedAt: Date.now(), detail: { answer: "Fixed the typo in README.md, line 1.", answerCut: false } };
-    expect((await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 })).textContent).toBe("Fixed the typo in README.md, line 1.");
+    const result = await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 });
+    expect(result.querySelector("[data-result-answer]")?.textContent).toBe("Fixed the typo in README.md, line 1.");
+    // Its label is real text on screen, not a CSS-drawn one: find-in-page and selection reach it.
+    expect(result.querySelector("h3")?.textContent).toBe("Result");
     // The row says it's the one open, and the conversation stays.
     expect(item.getAttribute("aria-current")).toBe("true");
     expect(conversation()).toBeTruthy();
@@ -467,7 +478,7 @@ describe("the teammates screen", () => {
     const reason = "Cursor isn't set up on this machine: no sign-in found. Sign in to Cursor, then start the task again.";
     renderOnBoard({ [LEAD]: [coding("t-1", "cursor", { status: "errored", completedAt: Date.now(), error: reason })] });
     const side = await screen.findByRole("complementary", { name: "Lead's panel" });
-    fireEvent.click(await within(side).findByRole("tab", { name: /^1\s*Failed/ }, POPUP_READ));
+    fireEvent.click(await within(side).findByRole("tab", { name: /^Failed\s*1/ }, POPUP_READ));
     const line = await within(within(side).getByRole("list", { name: "Failed" })).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
     expect(line.getAttribute("data-task")).toBe("failed");
     expect(line.textContent).toMatch(/Cursor isn't set up on this machine/);
@@ -528,7 +539,7 @@ describe("the teammates screen", () => {
     try {
       render(<TestProvider server={fast()}><App /></TestProvider>);
       await screen.findByLabelText("Message Lead");
-      await screen.findByRole("separator");
+      await screen.findByRole("separator", { name: /^Earlier turns/ });
       const first = conversation().querySelector<HTMLElement>("[data-scroller]")!;
       expect(first.scrollTop).toBe(4500);
       // Up to read, then over to another worker: it opens on its own latest turn, not where you were.
@@ -747,26 +758,27 @@ describe("the teammates screen", () => {
     expect(await within(conversation()).findByText("Published.", {}, { timeout: 2000 })).toBeTruthy();
   });
 
-  it("gives each teammate the icon and color its file sets, the same in the list, the header, a message line and its popup", async () => {
+  it("gives each teammate the bot face and color its file sets, the same in the list, the header, a message line and its popup", async () => {
     render(<TestProvider server={fast()}><App /></TestProvider>);
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
     const look = (worker: HTMLElement) => {
       const avatar = worker.querySelector<HTMLElement>("[data-avatar]")!;
-      return [avatar.dataset.icon, avatar.dataset.avatar];
+      return [avatar.dataset.face, avatar.dataset.avatar];
     };
-    expect(look(workerRow("Lead"))).toEqual(["★", "amber"]);
-    expect(look(workerRow("researcher"))).toEqual(["🔎", "teal"]);
-    expect(look(workerRow("writer"))).toEqual(["✎", "violet"]);
-    expect(look(within(conversation()).getByRole("banner"))).toEqual(["★", "amber"]);
+    expect(look(workerRow("Lead"))).toEqual(["pip", "amber"]);
+    expect(look(workerRow("researcher"))).toEqual(["hex", "teal"]);
+    // writer's file names the earlier palette's violet: it reads as the nearest color of this one.
+    expect(look(workerRow("writer"))).toEqual(["tally", "orchid"]);
+    expect(look(within(conversation()).getByRole("banner"))).toEqual(["pip", "amber"]);
 
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
-    expect(look(line)).toEqual(["🔎", "teal"]);
+    expect(look(line)).toEqual(["hex", "teal"]);
     fireEvent.click(line);
-    expect(look(screen.getByRole("dialog", { name: "Messaged researcher" }))).toEqual(["🔎", "teal"]);
+    expect(look(screen.getByRole("dialog", { name: "Messaged researcher" }))).toEqual(["hex", "teal"]);
   });
 
-  it("gives a teammate whose file sets no look its initial, on a color of the palette", async () => {
+  it("gives a teammate whose file sets no look a face and a color of its own", async () => {
     render(<TestProvider server={fast()}><App /></TestProvider>);
     await screen.findByLabelText("Message Lead");
     fireEvent.click(screen.getAllByRole("button", { name: "Hire a teammate" })[0]!);
@@ -775,7 +787,7 @@ describe("the teammates screen", () => {
     fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Runs the tests." } });
     await act(async () => fireEvent.click(within(form).getByRole("button", { name: "Hire" })));
     const avatar = (await waitFor(() => workerRow("tester").querySelector<HTMLElement>("[data-avatar]")!))!;
-    expect(avatar.textContent).toBe("T");
+    expect(BOT_FACES).toContain(avatar.dataset.face);
     expect(TEAMMATE_COLORS).toContain(avatar.dataset.avatar);
   });
 
@@ -798,10 +810,18 @@ describe("the teammates screen", () => {
     // Once the reply is in and read, nothing is running: idle, and nothing made up.
     await waitFor(() => expect(status("researcher")).toMatch(/^Idle/), { timeout: 3000 });
 
-    // A coding task its conversation filed runs: the board's row says so.
-    server.board[LEAD]!.push(coding("t-1", "cursor"));
+    // A coding task its conversation filed runs: the board says so, its lease held by the run.
+    server.board[LEAD]!.push(coding("t-1", "cursor", { leaseUntil: Date.now() + 60 * 60_000 }));
     await waitFor(() => expect(status("Lead")).toBe("Running coding task: Fix the typo in the README's first line"), { interval: 5, timeout: 2000 });
     expect(header()).toBe("Running coding task: Fix the typo in the README's first line");
+
+    // It fails: the bot goes idle (no done smile), but the header's pill keeps the failure's red, as the sidebar's line does.
+    Object.assign(server.board[LEAD]!.find((t) => t.id === "t-1")!, { status: "errored", completedAt: Date.now(), leaseUntil: undefined });
+    await waitFor(() => expect(header()).toBe("Coding task failed: Fix the typo in the README's first line"), { interval: 5, timeout: 2000 });
+    const pill = conversation().querySelector<HTMLElement>("[data-header-status]")!;
+    expect(pill.dataset.state).toBe("idle");
+    expect(pill.className).toContain("bg-(--redbg)");
+    expect(pill.className).toContain("text-destructive");
   });
 
   it("hires with Cmd+Enter in the instructions and saves new ones with Ctrl+Enter, never from a form that can't send yet", async () => {
@@ -906,7 +926,7 @@ describe("the teammates screen", () => {
     render(<TestProvider server={lab}><App /></TestProvider>);
     await screen.findByLabelText("Message Lead");
     // A worker from the files has no fire control.
-    expect(within(conversation()).queryByRole("button", { name: "Fire" })).toBeNull();
+    expect(within(conversation()).queryByRole("button", { name: /^More for / })).toBeNull();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Hire a teammate" })[0]!);
     const form = screen.getByRole("form", { name: "Hire a teammate" });
@@ -928,6 +948,16 @@ describe("the teammates screen", () => {
     expect(edits()).toEqual([{ id: "tester", name: "QA Bot", instructions: "Answer in one sentence." }]);
     await waitFor(() => expect(within(conversation()).getByRole("heading", { name: "QA Bot" })).toBeTruthy());
     expect(workerRow("QA Bot")).not.toBeNull();
+
+    // Its look is picked in the same form: a bot face and a color, saved as its icon and color, and drawn everywhere.
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));
+    const look = screen.getByRole("form", { name: "Edit QA Bot" });
+    fireEvent.click(within(within(look).getByRole("radiogroup", { name: "Face for QA Bot" })).getByRole("radio", { name: "sprocket" }));
+    fireEvent.click(within(within(look).getByRole("radiogroup", { name: "Color for QA Bot" })).getByRole("radio", { name: "rose" }));
+    await act(async () => fireEvent.click(within(look).getByRole("button", { name: "Save" })));
+    expect(edits().at(-1)).toEqual({ id: "tester", settingsPatch: { icon: "sprocket", color: "rose" } });
+    await waitFor(() => expect(workerRow("QA Bot").querySelector<HTMLElement>("[data-avatar]")!.dataset).toMatchObject({ face: "sprocket", avatar: "rose" }));
+    expect(conversation().querySelector<HTMLElement>("[data-bot-figure]")!.dataset).toMatchObject({ face: "sprocket", avatar: "rose" });
     expect(screen.getByLabelText("Message QA Bot")).toBeTruthy();
     // A teammate you hired has no file to go back to.
     fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));
@@ -939,15 +969,24 @@ describe("the teammates screen", () => {
     window.confirm = () => {
       throw new Error("Fire must not open a browser confirm");
     };
-    fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" }));
+    // Fire is in the header's ⋯ menu.
+    const more = within(conversation()).getByRole("button", { name: "More for QA Bot" });
+    // The menu closes when focus leaves it, a click outside or a Tab away, so it never hangs open over the page.
+    fireEvent.click(more);
+    await waitFor(() => expect(document.activeElement).toBe(within(conversation()).getByRole("menuitem", { name: "Fire QA Bot" })));
+    act(() => screen.getByLabelText("Message QA Bot").focus());
+    expect(within(conversation()).queryByRole("menu")).toBeNull();
+    fireEvent.click(more);
+    fireEvent.click(within(conversation()).getByRole("menuitem", { name: "Fire QA Bot" }));
     const ask = within(conversation()).getByRole("group", { name: "Fire QA Bot?" });
     await waitFor(() => expect(document.activeElement).toBe(within(ask).getByRole("button", { name: "Keep" })));
     fireEvent.click(within(ask).getByRole("button", { name: "Keep" }));
     expect(within(conversation()).queryByRole("group", { name: "Fire QA Bot?" })).toBeNull();
-    // Keeping puts focus back on the header's Fire, so the next Tab goes on from where the person was.
-    expect(document.activeElement).toBe(within(conversation()).getByRole("button", { name: "Fire" }));
+    // Keeping puts focus back on the header's ⋯, so the next Tab goes on from where the person was.
+    expect(document.activeElement).toBe(more);
     expect(workerRow("QA Bot")).not.toBeNull();
-    fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" }));
+    fireEvent.click(more);
+    fireEvent.click(within(conversation()).getByRole("menuitem", { name: "Fire QA Bot" }));
     await act(async () => fireEvent.click(within(within(conversation()).getByRole("group", { name: "Fire QA Bot?" })).getByRole("button", { name: "Fire" })));
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
     expect(workerRow("QA Bot")).toBeNull();

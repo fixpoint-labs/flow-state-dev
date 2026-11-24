@@ -32,6 +32,7 @@ import {
   TASK_SOURCE,
   WEBHOOK_SOURCE,
 } from "../execution/transport-sources";
+import { isScheduleSessionId } from "../transports/scheduled/schedule-session-id";
 
 /**
  * Sources that arrived on a caller-facing transport and may be re-entered.
@@ -113,6 +114,23 @@ export function isPublicReentryAllowed(
   if (PUBLIC_REENTRY_SOURCES.has(source)) return true;
   if (additionalSources === undefined || NEVER_PUBLIC_REENTRY_SOURCES.has(source)) return false;
   return additionalSources.includes(source);
+}
+
+// FIX-2886.
+/**
+ * Whether `request` may be re-entered through the public retry / continue /
+ * resume routes: its source is allowed ({@link isPublicReentryAllowed}) and it
+ * did not run in a schedule's session. A re-run there would skip the
+ * schedule's overlap check and run caller-chosen input beside a live fire;
+ * the schedule's next fire catches up instead. The routes refuse it, and a
+ * request listing marks it not retryable, by this one rule.
+ */
+export function isRequestPublicReentryAllowed(
+  request: { readonly source?: string; readonly sessionId?: string | null },
+  additionalSources?: readonly string[]
+): boolean {
+  if (request.sessionId != null && isScheduleSessionId(request.sessionId)) return false;
+  return isPublicReentryAllowed(request.source, additionalSources);
 }
 
 // BP-030.

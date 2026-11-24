@@ -576,13 +576,13 @@ await runGoal(async (failures, tell_) => {
     if (waiting >= 0) {
       reviewed = { commit: runOnDisk() };
       await tasks.nth(earlier + waiting).click();
-      const review = page.getByRole("dialog", { name: /^Coding task: / }).getByRole("region", { name: "Ready for review" });
+      const review = page.getByRole("dialog", { name: /^Coding task: / }).getByRole("region", { name: "Your review" });
       // The lab's working folder has no remote, so the one way to land is a merge into it.
-      const accept = review.getByRole("button", { name: "Accept: Merge locally", exact: true });
+      const accept = review.getByRole("button", { name: "Merge locally", exact: true });
       if (await accept.waitFor({ timeout: 30_000 }).then(() => true, () => false)) {
         await accept.click();
         evidence.push("5: the run waited for your review; accepted from its popup, merged locally");
-      } else fail("5", `the task waits on you, but its popup offers no "Accept: Merge locally"`);
+      } else fail("5", `the task waits on you, but its popup offers no "Merge locally"`);
       await page.keyboard.press("Escape");
       ended = await readUntil(page, (es) => cardsNow(es).some((e) => e.status !== undefined && ENDED.test(e.status)), 120_000);
     }

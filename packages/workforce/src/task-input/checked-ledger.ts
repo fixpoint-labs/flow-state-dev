@@ -1,0 +1,360 @@
+// FIX-2894.
+/**
+ * Every write that puts input on a task, or moves it to another worker, goes
+ * through the one filing check (`./filing-check`): the board's own guarded
+ * writes, and the raw ledger handles a task session is handed
+ * (`filingConversationBoard()`, `conversationLedgers()`), whose
+ * `createTask`, `createTasks`, `patchSettings` and `setAssignee` are routed
+ * here.
+ *
+ * - **An edit or a move** ({@link checkedPatch}) is decided on one revision of
+ *   the row and written only while the row is still there (a compare-and-set
+ *   on `revision`). A conflict re-reads the row and runs the whole check
+ *   again, at most three times, then refuses `input_conflict`. An edit within
+ *   a flow keeps the stored server-owned values when the row's stamp
+ *   matches; a move onto a declared flow, an assign, or an edit of a row
+ *   stamped for another declaration, is a filing for that flow (D2).
+ * - **Where a worker's flow and declaration come from**: a
+ *   {@link TaskInputSource}, one per installation, keyed by the objects that
+ *   name it and nothing else: the installation, and each of its flows' `work`
+ *   doors ({@link registerTaskDoor}), in weak maps, so a dropped installation
+ *   is never kept. The claim finds its source by its own door; a raw handle,
+ *   by the source its session's request was noted with (when it resolved its
+ *   worker or claimed its task). A handle with no source noted refuses a
+ *   write it can't check, `input_unchecked`.
+ */
+import type { BlockContext } from "@flow-state-dev/core/types";
+import { TaskWriteRefusedError, type Task, type TaskCollectionRef, type TaskInit, type TaskSettingsPatch, type TaskWriteOutcome } from "@flow-state-dev/orchestration/tasks";
+import type { TaskInputSchema, TaskInputRecord } from "./declaration";
+import { checkFiling, FILLED_FOR, filledForOf, stampMatches, type CheckedInput, type CheckedWorker } from "./filing-check";
+
+/** What the check reads about workers and flows, bound to one request. */
+export interface InputLookup {
+  /**
+   * `assignee`, read once: its flow and configuration from one read of its
+   * record, or `undefined` when it names no worker this filer reaches now.
+   */
+  worker(assignee: string): Promise<CheckedWorker | undefined>;
+  /** The declaration flow `flow`'s `work` entry carries, or `undefined` for a flow that declares none. */
+  declarationOf(flow: string): TaskInputSchema | undefined;
+  /**
+   * Whether a task with `input` has a project to work in, for a declaration
+   * that requires one. `anchor` is the stored task the write is about: the
+   * task an edit changes, or a follow-up's root, whose own project counts.
+   */
+  hasProject(input: TaskInputRecord, anchor?: Task): Promise<boolean>;
+  /** The `no_project` refusal for `assignee`. */
+  noProject(assignee: string): string;
+  /** The board's own rewrite of an input before the parse; none leaves it. */
+  rewrite?(input: TaskInputRecord): TaskInputRecord;
+}
+
+/**
+ * The filing check for a task for `assignee` with `sent` as its input, on a
+ * filing (no kept values), or `undefined` when its flow declares nothing.
+ */
+export async function checkFiledInput(lookup: InputLookup, ctx: BlockContext, assignee: string, sent: unknown, anchor?: Task): Promise<CheckedInput | undefined> {
+  const worker = await lookup.worker(assignee);
+  // A worker whose flow can't be read now is no open flow: what it takes is unknown, so nothing is filed.
+  if (worker === undefined) throw unresolved(assignee);
+  const declaration = lookup.declarationOf(worker.flow);
+  if (declaration === undefined) return undefined;
+  return checkFiling({
+    ctx,
+    declaration,
+    worker,
+    sent,
+    ...(lookup.rewrite === undefined ? {} : { rewrite: (input: TaskInputRecord) => lookup.rewrite!(input) }),
+    hasProject: (input) => lookup.hasProject(input, anchor),
+    noProject: () => lookup.noProject(assignee)
+  });
+}
+
+/**
+ * A follow-up with its root's worker written on it: it runs in its root's
+ * session, with that worker, so the worker its input is checked for is the
+ * one it is stored for. A follow-up naming another worker is refused.
+ *
+ * @throws TaskWriteRefusedError `follow_up_takes_its_root_worker`.
+ */
+export function withRootWorker<T extends TaskInit>(ref: Pick<TaskCollectionRef, "get">, init: T): T {
+  if (init.followUpOf === undefined) return init;
+  const named = ref.get(init.followUpOf);
+  const root = named?.followUpOf === undefined ? named : ref.get(named.followUpOf);
+  if (root?.assignee === undefined) return init;
+  if (init.assignee !== undefined && init.assignee !== root.assignee) {
+    throw new TaskWriteRefusedError(
+      "follow_up_takes_its_root_worker",
+      `a follow-up of task "${root.id}" runs with its worker, "${root.assignee}", and this one names "${init.assignee}". ` +
+        `Leave assignee out, or file a new task for "${init.assignee}". Nothing was filed.`
+    );
+  }
+  return { ...init, assignee: root.assignee };
+}
+
+/** The refusal for a write that names a worker whose flow can't be read now. */
+function unresolved(assignee: string): TaskWriteRefusedError {
+  return new TaskWriteRefusedError(
+    "input_unchecked",
+    `"${assignee}" isn't a worker this task can be checked against now, so what its tasks take can't be read. Nothing was filed.`
+  );
+}
+
+/** `init` with its checked input and stamp, or as given on a flow that declares nothing. */
+function withChecked<T extends TaskInit>(init: T, checked: CheckedInput | undefined): T {
+  if (checked === undefined) return init;
+  return { ...init, input: checked.input, metadata: { ...(init.metadata ?? {}), [FILLED_FOR]: checked.filledFor } };
+}
+
+/** How many conflicts an edit takes before it is refused. */
+const MAX_CONFLICTS = 3;
+
+/**
+ * An edit of a row's input or assignee, checked on one revision of the row
+ * and written with a compare-and-set on it. A patch that touches neither is
+ * written as given.
+ *
+ * @param write The write itself: `patchSettings` on the ledger.
+ * @throws TaskWriteRefusedError from the check, or `input_conflict` after three conflicts.
+ */
+export async function checkedPatch(
+  lookup: InputLookup,
+  ctx: BlockContext,
+  ref: TaskCollectionRef,
+  id: string,
+  patch: TaskSettingsPatch,
+  write: (id: string, patch: TaskSettingsPatch) => Promise<TaskWriteOutcome>
+): Promise<TaskWriteOutcome> {
+  if (patch.input === undefined && patch.assignee === undefined) return write(id, patch);
+  for (let conflicts = 0; ; ) {
+    await ref.refresh?.(id);
+    const task = ref.get(id);
+    // The write answers a task that isn't there, by its own rule.
+    if (task === undefined) return write(id, patch);
+    const outcome = await write(id, await decidedPatch(lookup, ctx, task, patch));
+    // A caller's own fence is the caller's: a revision it named that the task has left is declined, never retried.
+    if (patch.ifRevision !== undefined) return outcome;
+    if (outcome.outcome !== "declined" || outcome.reason !== "revision-moved") return outcome;
+    conflicts += 1;
+    if (conflicts >= MAX_CONFLICTS) {
+      throw new TaskWriteRefusedError(
+        "input_conflict",
+        `task "${id}" changed while this edit was checked, three times. Read it again with getTask and send the edit again. Nothing was filed.`,
+        id
+      );
+    }
+  }
+}
+
+/** The patch to write on `row` as read: checked when its worker's flow declares an input, and fenced on its revision. */
+async function decidedPatch(lookup: InputLookup, ctx: BlockContext, task: Task, patch: TaskSettingsPatch): Promise<TaskSettingsPatch> {
+  // The caller's fence when it named one, so a stale edit is declined; else the revision this decision read.
+  const ifRevision = patch.ifRevision ?? task.revision ?? 0;
+  const assignee = patch.assignee ?? task.assignee;
+  // The worker is read once; its flow, declaration and configuration all come from that read.
+  const worker = assignee === undefined ? undefined : await lookup.worker(assignee);
+  // A worker whose flow can't be read now (removed, fired) is no open flow: the edit can't be checked, so it is refused.
+  if (assignee !== undefined && worker === undefined) throw unresolved(assignee);
+  const declaration = worker === undefined ? undefined : lookup.declarationOf(worker.flow);
+  if (worker === undefined || declaration === undefined) {
+    // An unassigned task, or one on a flow that declares nothing: unchecked, as
+    // before, and nothing it carries counts (spec, "updateTask"): an unchecked
+    // write clears the stamp, so the next move onto a declared flow, or its
+    // claim, fills the server-owned values again.
+    const unstamp = filledForOf(task) !== undefined;
+    return { ...patch, ...(unstamp ? { metadata: { ...(patch.metadata ?? {}), [FILLED_FOR]: null } } : {}), ifRevision };
+  }
+  // An edit within the flow the task was filled for keeps its server-owned
+  // values, read through `stored`; anything else is a filing for this flow (D2).
+  const priorFlow = task.assignee === undefined ? undefined : task.assignee === worker.id ? worker.flow : (await lookup.worker(task.assignee))?.flow;
+  const edit = priorFlow === worker.flow && stampMatches(task, worker.flow, declaration);
+  const kept = edit ? keptValues(declaration, task.input) : undefined;
+  const checked = await checkFiling({
+    ctx,
+    declaration,
+    worker,
+    // Only a missing input reads as none: an edit sending `null` sends it.
+    sent: patch.input !== undefined ? patch.input : task.input,
+    ...(kept === undefined ? {} : { kept }),
+    ...(lookup.rewrite === undefined ? {} : { rewrite: (input: TaskInputRecord) => lookup.rewrite!(input) }),
+    hasProject: (input) => lookup.hasProject(input, task),
+    noProject: () => lookup.noProject(worker.id)
+  });
+  return { ...patch, input: checked.input, metadata: { ...(patch.metadata ?? {}), [FILLED_FOR]: checked.filledFor }, ifRevision };
+}
+
+/** The stored row's server-owned values, read through the declaration's `stored`. */
+function keptValues(declaration: TaskInputSchema, stored: unknown): TaskInputRecord {
+  const raw = stored !== null && typeof stored === "object" && !Array.isArray(stored) ? (stored as TaskInputRecord) : {};
+  const read = declaration.stored === undefined ? raw : declaration.stored(raw);
+  return Object.fromEntries(declaration.serverOwned.filter((name) => Object.hasOwn(read, name)).map((name) => [name, read[name]]));
+}
+
+
+/**
+ * Where a raw handle reads workers and declarations: one per installation,
+ * registered when it is created.
+ */
+export interface TaskInputSource {
+  /** The declaration flow `flow`'s `work` entry carries. */
+  declarationOf(flow: string): TaskInputSchema | undefined;
+  /** The flow and declared configuration of a worker on the session user's roster. */
+  workerOf(ctx: BlockContext, id: string): Promise<{ readonly flow: string; readonly config: Readonly<Record<string, unknown>> } | undefined>;
+}
+
+const bySession = new WeakMap<object, TaskInputSource>();
+const byInstallation = new WeakMap<object, TaskInputSource>();
+/**
+ * Each door's installations, held weakly so a dropped one is never kept: one
+ * names it; two or more (a prebuilt flow given to both) name none on their own.
+ */
+const byDoor = new WeakMap<object, Set<WeakRef<TaskInputSource>>>();
+/** The flow each installation registered a door under: the flow whose `work` entry it is. */
+const doorFlows = new WeakMap<object, WeakMap<TaskInputSource, string>>();
+
+/** The installations still alive that registered `door`, pruning the dropped ones. */
+function registrantsOf(door: object): TaskInputSource[] {
+  const refs = byDoor.get(door);
+  if (refs === undefined) return [];
+  const alive: TaskInputSource[] = [];
+  for (const ref of refs) {
+    const source = ref.deref();
+    if (source === undefined) refs.delete(ref);
+    else alive.push(source);
+  }
+  return alive;
+}
+
+/** Register an installation's source, for the installation's own board to read. */
+export function registerTaskInputSource(source: TaskInputSource, installation: object): void {
+  byInstallation.set(installation, source);
+}
+
+/** Register `door`, the `from` of one of an installation's flows' `work` entries, as that installation's. */
+export function registerTaskDoor(door: object, source: TaskInputSource, flow: string): void {
+  let flows = doorFlows.get(door);
+  if (flows === undefined) doorFlows.set(door, (flows = new WeakMap()));
+  flows.set(source, flow);
+  if (registrantsOf(door).includes(source)) return;
+  const known = byDoor.get(door);
+  if (known === undefined) byDoor.set(door, new Set([new WeakRef(source)]));
+  else known.add(new WeakRef(source));
+}
+
+/** The source `installation` registered. */
+export function taskInputSourceOf(installation: object): TaskInputSource | undefined {
+  return byInstallation.get(installation);
+}
+
+/** Note the source the running request's session runs on: its worker was resolved there, or its task claimed. */
+export function noteTaskInputSource(session: object, source: TaskInputSource): void {
+  bySession.set(session, source);
+}
+
+/** The installation `door` names, noted on the session: its one registrant, or, for a shared door, the one the session is already pinned to; else none. */
+export function noteSourceOfDoor(session: object, door: object): TaskInputSource | undefined {
+  const sources = registrantsOf(door);
+  if (sources.length === 0) return undefined;
+  if (sources.length === 1) {
+    const [source] = sources;
+    bySession.set(session, source!);
+    return source;
+  }
+  // A door two installations share names neither: only the one this request's `resolveWorker`
+  // already noted, server-side and by installation, and only if it registered this door.
+  const pinned = bySession.get(session);
+  return pinned !== undefined && sources.includes(pinned) ? pinned : undefined;
+}
+
+/** Take `source` off `door`'s registrants: an installation whose hire was refused. */
+export function unregisterTaskDoor(door: object, source: TaskInputSource): void {
+  const refs = byDoor.get(door);
+  if (refs !== undefined) for (const ref of refs) if (ref.deref() === source) refs.delete(ref);
+  doorFlows.get(door)?.delete(source);
+}
+
+/** The flow `door` is the `work` entry of, in `source`: the flow a claim behind it runs on. */
+export function flowOfDoor(door: object, source: TaskInputSource): string | undefined {
+  return doorFlows.get(door)?.get(source);
+}
+
+/** The source the running request's session was noted with; none when it was noted with none. */
+export function sourceOfSession(session: object): TaskInputSource | undefined {
+  return bySession.get(session);
+}
+
+/** The source the running request's session runs on, as noted. */
+function sourceFor(ctx: BlockContext): TaskInputSource | undefined {
+  return sourceOfSession(ctx.session as object);
+}
+
+/** The project rule a raw handle reads: whether a task has a project to work in, given the stored task the write is about. */
+export interface ProjectRule {
+  has(input: TaskInputRecord, anchor?: Task): Promise<boolean>;
+  refusal(assignee: string): string;
+}
+
+/** A lookup over `source`, bound to `ctx`, with the project rule the raw handles read. */
+function sourceLookup(ctx: BlockContext, source: TaskInputSource, project: ProjectRule): InputLookup {
+  return {
+    worker: async (assignee) => {
+      const worker = await source.workerOf(ctx, assignee);
+      return worker === undefined ? undefined : { id: assignee, flow: worker.flow, config: worker.config };
+    },
+    declarationOf: (flow) => source.declarationOf(flow),
+    hasProject: project.has,
+    noProject: project.refusal
+  };
+}
+
+/**
+ * `ref` with every write that puts input on a task, or moves it, routed
+ * through the filing check. A write the check can't be run for (no
+ * installation this request ran on) is refused, never let through.
+ */
+export function checkedLedger(ctx: BlockContext, ref: TaskCollectionRef, project: ProjectRule): TaskCollectionRef {
+  const lookup = (): InputLookup => {
+    const source = sourceFor(ctx);
+    if (source === undefined) {
+      throw new TaskWriteRefusedError(
+        "input_unchecked",
+        "this handle files only in a request that resolved its worker, so the task's input can be checked against its flow. Nothing was filed."
+      );
+    }
+    return sourceLookup(ctx, source, project);
+  };
+  // A caller never writes the stamp: a forged one would let a later edit keep server-owned values no filler wrote.
+  const unstamped = <T extends { metadata?: Record<string, unknown> }>(write: T): T => {
+    if (write.metadata === undefined || !Object.hasOwn(write.metadata, FILLED_FOR)) return write;
+    const { [FILLED_FOR]: _stamp, ...metadata } = write.metadata;
+    return { ...write, metadata };
+  };
+  const checkInit = async (given: TaskInit): Promise<TaskInit> => {
+    const init = withRootWorker(ref, unstamped(given));
+    if (init.assignee === undefined) return init;
+    // A follow-up's project is its root's, as the guarded board reads it.
+    const named = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
+    const root = named?.followUpOf === undefined ? named : ref.get(named.followUpOf);
+    return withChecked(init, await checkFiledInput(lookup(), ctx, init.assignee, init.input, root));
+  };
+  return {
+    ...ref,
+    createTask: async (init) => ref.createTask(await checkInit(init)),
+    createTasks: async (inits) => {
+      // Refused whole: every row is checked before the first is filed.
+      const checked: TaskInit[] = [];
+      for (const init of inits) checked.push(await checkInit(init));
+      return ref.createTasks(checked);
+    },
+    patchMetadata: (id, patch) => ref.patchMetadata(id, unstamped({ metadata: patch }).metadata ?? {}),
+    patchSettings: async (id, given) => {
+      const patch = unstamped(given);
+      return patch.input === undefined && patch.assignee === undefined
+        ? ref.patchSettings(id, patch)
+        : checkedPatch(lookup(), ctx, ref, id, patch, (i, p) => ref.patchSettings(i, p));
+    },
+    // Every move of a task on the board is the checked edit, onto an open flow too: its stamp is cleared there.
+    setAssignee: async (id, assignee) =>
+      ref.get(id) === undefined ? ref.setAssignee(id, assignee) : checkedPatch(lookup(), ctx, ref, id, { assignee }, (i, p) => ref.patchSettings(i, p))
+  };
+}

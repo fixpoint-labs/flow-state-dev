@@ -26,6 +26,7 @@ import type {
   SessionCreateCheck,
   SessionCreateCheckInput,
   SessionCreateCheckResult,
+  SessionLabel,
   InitialSkill
 } from "@flow-state-dev/core/types";
 import type {
@@ -84,6 +85,9 @@ import { WORKER_USAGE_RESOURCE, workerSpendHook, workerUsageCollection } from ".
 import { routineResourcesOf, type RoutineResources } from "../routines/routine-resources";
 import { routineSeedOf } from "../routines/routines-options";
 import { withSessionFields, type SessionFields } from "./session-fields";
+import { noteTaskInputSource, registerTaskDoor, registerTaskInputSource, type TaskInputSource } from "../task-input/checked-ledger";
+import { conversationTaskDoorOf, taskEntryNameOf } from "../worker-task-entry";
+import { declarationOfFlow } from "../task-input/declaration";
 
 export { verifiedWorkerOf } from "./verified-worker";
 
@@ -299,7 +303,8 @@ export interface WorkerInstallation extends WorkerGrants {
    * ({@link SESSION_BOARD_SERVER_OWNED}, which carries `workProjectId` too). A flow without those fields still refuses a
    * create that seeds one, by name, rather than dropping it. `workProjectId` is exposed to the
    * session read too, so a screen shows the project a conversation works in. The app's
-   * {@link sessionFields} join the schema, `serverOwned` and the session read. It also carries,
+   * {@link sessionFields} join the schema, `serverOwned` and the session read. Its `label` names a
+   * session by its worker, and its task when it has one. It also carries,
    * under a framework-only symbol, the request-end hook that adds every
    * request's spend to the worker's usage record (`worker-usage`).
    */
@@ -310,6 +315,7 @@ export interface WorkerInstallation extends WorkerGrants {
     createCheck: SessionCreateCheck;
     serverOwned: readonly string[];
     client: { expose: readonly string[] };
+    label: SessionLabel;
     [SESSION_REQUEST_END_HOOK]: SessionRequestEndHook;
   };
   /**
@@ -382,11 +388,27 @@ function declaredDelegates(declared: Readonly<Record<string, unknown>>): string[
   return Array.isArray(listed) ? listed.filter((name): name is string => typeof name === "string") : [];
 }
 
-/** The settings a row hands its flow: its own settings, keyed as a `WORKER.md` frontmatter. */
-function declaredOf(row: WorkerResourceState): Record<string, unknown> {
+// BP-030.
+/**
+ * The settings a row hands its flow: its own settings, keyed as a `WORKER.md`
+ * frontmatter. A setting its flow retired is left out, so a worker stored
+ * before it was retired still runs.
+ */
+function declaredOf(row: WorkerResourceState, retired: readonly string[]): Record<string, unknown> {
   const declared: Record<string, unknown> = { ...row.settings, flow: row.flow };
+  for (const key of retired) delete declared[key];
   delete declared.description;
   return declared;
+}
+
+/**
+ * A worker's problems as one clause for a sentence the caller ends: each
+ * problem's own closing full stop dropped (a flow's refusal is a whole
+ * sentence), joined with "; ". Every sentence that names a worker's problems
+ * goes through here, so none ends on a doubled stop.
+ */
+export function problemsClause(problems: readonly string[]): string {
+  return problems.map((problem) => problem.replace(/\.$/, "")).join("; ");
 }
 
 /**
@@ -457,7 +479,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         standardOnly: entry.standardOnly,
         ...(entry.roles === undefined ? {} : { roles: entry.roles }),
         showSettings: entry.showSettings,
-        needsProject: entry.needsProject
+        retiredSettings: entry.retiredSettings
       };
       built.set(entry, flow);
     }
@@ -471,9 +493,53 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     boundAgent ??= defineAgentWorkerFlow({ installation });
     return { [AGENT_FLOW]: boundAgent as never, ...given };
   };
+  // FIX-2894.
+  /**
+   * What a task's input is checked against, for this installation: each
+   * flow's declaration, and a worker's flow and declared configuration (its
+   * row's settings, or its file's front matter), read now. Registered, so a
+   * raw ledger handle in one of its sessions checks what it files.
+   */
+  const taskInputSource: TaskInputSource = {
+    declarationOf: (flow) => (Object.hasOwn(workerFlows(), flow) ? declarationOfFlow(workerFlows()[flow]!.flow) : undefined),
+    workerOf: async (ctx, id) => {
+      const found = lookupWorker(id, (await workerCollection(ctx as WorkerTurnContext, "taskInputSchema").getOptional(id))?.state);
+      if (found.found === "own") return { flow: found.flow, config: declaredOf(found.row, retiredOf(found.flow)) };
+      if (found.found === "standard") return { flow: found.flow, config: found.manifest.declared };
+      return undefined;
+    }
+  };
+  // BP-030.
+  /** The settings `flow` retired, which a stored row is read without. */
+  const retiredOf = (flow: string): readonly string[] => (Object.hasOwn(workerFlows(), flow) ? workerFlows()[flow]!.retiredSettings : []);
   let resolvedFlows: Record<string, ResolvedWorkerFlow> | undefined;
-  const workerFlows = (): Record<string, ResolvedWorkerFlow> =>
-    (resolvedFlows ??= resolveWorkerFlows(workerFlowsOption()));
+  const workerFlows = (): Record<string, ResolvedWorkerFlow> => {
+    if (resolvedFlows === undefined) {
+      resolvedFlows = resolveWorkerFlows(workerFlowsOption());
+      // Each flow's `work` door names this installation and the flow, so a claim behind it knows the flow it
+      // runs on (FIX-2894). A hire that is refused gives them up (`hireWorkforce`).
+      // A door names exactly one flow, which the claim's authority check reads: one `workerTaskEntry(...)`
+      // reused by two flows is refused, by name.
+      const flowOfDoor = new Map<object, string>();
+      for (const [name, { flow }] of Object.entries(resolvedFlows)) {
+        const door = conversationTaskDoorOf(flow);
+        if (door === undefined) continue;
+        const first = flowOfDoor.get(door);
+        if (first !== undefined) {
+          resolvedFlows = undefined;
+          const entry = taskEntryNameOf(door);
+          throw new Error(
+            `workerTaskEntry${entry === undefined ? "" : ` "${entry}"`} is used by two flows ("${first}", "${name}"): give each flow its own entry.`
+          );
+        }
+        flowOfDoor.set(door, name);
+      }
+      for (const [door, name] of flowOfDoor) registerTaskDoor(door, taskInputSource, name);
+      // Frozen, so no flow joins the record after the scan above: a door is checked once, and names one flow.
+      Object.freeze(resolvedFlows);
+    }
+    return resolvedFlows;
+  };
 
   // The settings a user sees on a worker's roster row: the ones its flow's
   // registration names, read when a row is, since the flows are read lazily.
@@ -577,7 +643,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       ok: true,
       manifest: {
         id,
-        declared: declaredOf(row),
+        declared: declaredOf(row, retiredOf(row.flow)),
         body: row.instructions ?? "",
         skills: row.skills.map((name) => skillOf(name)!),
         ...(row.teamInstructions !== null ? { teamInstructions: row.teamInstructions } : {}),
@@ -873,7 +939,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     if (worker.found === "own") {
       if (worker.standardOnly) refuse(`Worker "${workerId}" ${standardOnlyReason(flow, false)}.`);
       const built = manifestOfRow(workerId, worker.row);
-      if (!built.ok) refuse(`Worker "${workerId}" can't run: ${built.problems.join("; ")}.`);
+      if (!built.ok) refuse(`Worker "${workerId}" can't run: ${problemsClause(built.problems)}.`);
       manifest = (built as { manifest: WorkerManifest }).manifest;
       description = worker.row.description;
     } else {
@@ -883,7 +949,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
 
     const minted = mint(manifest);
-    if (!minted.ok) refuse(`Worker "${workerId}" can't run: ${minted.problems.join("; ")}.`);
+    if (!minted.ok) refuse(`Worker "${workerId}" can't run: ${problemsClause(minted.problems)}.`);
     const instance = (minted as { worker: FlowInstance }).worker;
     const reached = (instance.resources ?? {}) as Record<string, unknown>;
 
@@ -896,6 +962,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       granted.set(accessor, entry.llmWritable === true && entry.writable !== false ? "visible" : "read-only");
     }
     markVerifiedWorker(ctx.session as object, workerId, instance.config as Readonly<Record<string, unknown>>, granted);
+    noteTaskInputSource(ctx.session as object, taskInputSource);
     return {
       id: workerId,
       standard: worker.found === "standard",
@@ -981,6 +1048,22 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     };
   };
 
+  /**
+   * What a reader calls a worker session: its worker's name, and the task it
+   * was opened for when it was. A standard worker's name is its file's
+   * `name:`; a hired worker's is on its owner's roster, which a label cannot
+   * read, so it reads as its id. Both fields are readonly, so the session
+   * shows them.
+   */
+  const workerSessionLabel: SessionLabel = ({ state }) => {
+    const workerId = state[WORKER_ID_STATE_KEY];
+    if (typeof workerId !== "string") return undefined;
+    const found = standard.get(workerId);
+    const worker = (found === undefined ? null : workerDisplayName(found)) ?? workerId;
+    const taskId = state[TASK_ID_STATE_KEY];
+    return typeof taskId === "string" ? `${worker} · ${taskId}` : worker;
+  };
+
   const installation: WorkerInstallation = {
     resources,
     documents,
@@ -997,7 +1080,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
           stateSchema: z.object({ ...sessionStateShape, ...workerMessageStateShape, ...(extraShape ?? {}) }) as never,
           createCheck,
           serverOwned: SESSION_BOARD_SERVER_OWNED,
-          client: { expose: [WORK_PROJECT_STATE_KEY] }
+          client: { expose: [WORK_PROJECT_STATE_KEY] },
+          label: workerSessionLabel
         },
         sessionFields
       );
@@ -1015,5 +1099,6 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     standardWorkerProblems
   };
   Object.assign(resources, routineResourcesOf(installation));
+  registerTaskInputSource(taskInputSource, installation);
   return installation;
 }

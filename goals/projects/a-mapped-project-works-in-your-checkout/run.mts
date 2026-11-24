@@ -207,11 +207,11 @@ await runGoal(async (failures) => {
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: {
-      phase: PHASE,
-      buildPrompt: (run) =>
+    mode: {
+      name: PHASE,
+      instructions: (run) =>
         [`Work on ${run.issue}, attempt ${run.attempt}.`, "To ask, write it as the entire contents of this file:", `  ${run.askMarkerPath}`].join("\n"),
-      isDone: () => true,
+      doneWhen: { check: () => true },
     },
     workspace: host,
     runTimeoutMs: SETTLE_MS,

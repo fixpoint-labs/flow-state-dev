@@ -1,8 +1,9 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { GitPullRequestArrowIcon, SquareTerminalIcon } from "lucide-react";
 import { conversationLines, useSessionFeed, type ItemLine } from "@flow-state-dev/react";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import type { RosterEntry, WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
-import type { CodingBoardTask, ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import {
   useAppClient,
   usePullRequestLinks,
@@ -13,7 +14,8 @@ import {
 } from "../app";
 import { harnessName } from "../lib/harness";
 import { settingOf, takesTasks } from "../lib/roster";
-import { waitsFor, waitsOnPullRequest, holdOf, attemptDurationMs, attemptStartedAt, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
+import { waitsFor, waitsOnPullRequest, holdOf, attemptDurationMs, attemptStartedAt, elapsedText, harnessOf, modelOf, taskStatus, workerOf } from "../lib/task";
+import { useNow } from "../lib/use-watch";
 import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
@@ -21,17 +23,18 @@ import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import { ErrorBody } from "./flow-state/error";
 import { MarkdownText } from "./flow-state/message-response";
-import { LandedOutcome, ReviewHold, type ReviewAnswer } from "./flow-state/review-hold";
+import { LandedOutcome, type ReviewAnswer } from "./flow-state/review-hold";
 import { Spend } from "./flow-state/spend";
 import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
 import { SessionOverlay } from "./flow-state/session-overlay";
 import { Steps } from "./Steps";
-import { RunsOn, runsOn, taskLine } from "./TaskCard";
+import { Fold, ReviewBody, ReviewFooter, RunAnswer, RunMeta, SteerCompose } from "./TaskReview";
+import { runsOn, taskLine } from "./TaskCard";
 import { teammatesRenderers } from "./lines";
 import { stepOf } from "./flow-state/conversation-lines";
-import { durationText } from "./flow-state/spend";
+import { durationText, tokenTotal } from "./flow-state/spend";
 import { knownToolVerbs } from "./flow-state/tool-grouping";
 
 /** What a popup shows: a task one conversation filed, or one message a worker sent. */
@@ -64,36 +67,8 @@ function rerunTargets(task: Pick<CodingBoardTask, "assignee">, coders: readonly 
 /** The line a task waiting on its pull request offers, while nothing tells it of a merge. */
 export const PULL_REQUEST_HINT = "Merged? Say so here and I'll check.";
 
-/**
- * *PR open · #7*, each number a link to its pull request once its run
- * session's record is read, and the line that says how to wake the task.
- */
-function PullRequestOpen({ task }: { task: Pick<CodingBoardTask, "pullRequests" | "run"> }) {
-  const numbers = task.pullRequests.flatMap((n) => (n === null ? [] : [n]));
-  const links = usePullRequestLinks(task.run?.sessionId, numbers.join(","));
-  return (
-    <section aria-label="Pull request" data-step="pull-request" className="flex flex-col gap-0.5 text-sm">
-      <span data-testid="pull-request-wait">
-        PR open
-        {numbers.map((n, i) => (
-          <span key={n}>
-            {i === 0 ? " · " : ", "}
-            {links.has(n) ? (
-              <a href={links.get(n)} target="_blank" rel="noreferrer" className="underline">
-                #{n}
-              </a>
-            ) : (
-              `#${n}`
-            )}
-          </span>
-        ))}
-      </span>
-      <span data-testid="pull-request-hint" className="text-xs text-muted-foreground">
-        {PULL_REQUEST_HINT}
-      </span>
-    </section>
-  );
-}
+/** The quick replies under the box while a run waits on its pull request: each sends as typed. */
+const PULL_REQUEST_REPLIES = ["It's merged", "Address review comments"] as const;
 
 /** A tool the registry's words call running a command: each harness's shell tool. */
 const isCommand = (tool: string) => knownToolVerbs(tool)?.singular === "ran a command";
@@ -189,10 +164,14 @@ export function PopupView({ popup, nameOf, lookOf, isCoding, coders, followUp, o
 
 /**
  * A task's run session and its result (or, done with none written, a line
- * saying so), with its action row: Cancel and Steer
- * while it is open (the popup has no composer, so Steer is its own box),
- * Release while held, Retry and a Re-run per other harness once it failed or
- * was cancelled. The board decides each; the row shows its words.
+ * saying so), with its action row: Cancel while it is open, Release while
+ * held, Retry and a Re-run per other harness once it failed or was
+ * cancelled. The board decides each; the row shows its words.
+ *
+ * Its foot holds one compose box: while the task is open it steers it; while
+ * a coding run waits for your review it is the review's note, beside Request
+ * changes and the ways to land the work (`ReviewFooter`), and the review
+ * itself leads the body (`ReviewBody`), the run's steps folded under it.
  */
 function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
   popup: Extract<Popup, { kind: "task" }>;
@@ -206,7 +185,8 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
 }) {
   const actions = useTaskActions(popup.sessionId);
   // The popup's own read of the board: every row, and this task's with its answer.
-  const tasks = useTaskDetail(popup.sessionId, popup.taskId).value;
+  const detail = useTaskDetail(popup.sessionId, popup.taskId);
+  const tasks = detail.value;
   const task = tasks?.find((t) => t.id === popup.taskId);
   const missing = tasks !== undefined && task === undefined;
   useEffect(() => {
@@ -220,17 +200,20 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   // A teammate's task carries its look; a coding task is nobody's.
   const harness = task === undefined ? undefined : harnessOf(task);
   const on = task === undefined ? undefined : runsOn({ harness, model: modelOf(task) });
-  const title =
-    task && !coding ? (
-      <Titled look={lookOf(to)} line={line} />
-    ) : (
-      <span className="flex items-center gap-2">
-        {line}
-        {on === undefined ? null : <RunsOn on={on} />}
-      </span>
-    );
+  // A coding task's tile already says it is one, so its title is the task's own; the dialog's name keeps the whole line.
+  const title = task && !coding ? <Titled look={lookOf(to)} line={line} /> : (task?.title ?? line);
   // A coding task says what it starts on from the moment it is filed, before its run reports anything.
-  const starting = harness !== undefined && coding ? `Starting on ${harness}…` : task?.run?.sessionId ? "Starting…" : "Not started yet.";
+  // Until its own read answers, nothing is known of it: loading, or a read that failed, never "Not started yet."
+  const starting =
+    tasks === undefined
+      ? detail.stale
+        ? "This task couldn't be loaded."
+        : "Loading…"
+      : harness !== undefined && coding
+        ? `Starting on ${harness}…`
+        : task?.run?.sessionId
+          ? "Starting…"
+          : "Not started yet.";
   // A coding task's re-runs, one per other harness on the roster.
   const rerun: TaskRerunOption[] =
     task === undefined || !coding ? [] : rerunTargets(task, coders).map((worker) => ({ label: harnessName(worker.harness), run: () => actions.rerun(task, worker.id) }));
@@ -243,19 +226,68 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
   const waiting = task === undefined ? undefined : waitsFor(task);
   const status = task === undefined ? undefined : taskStatus(task);
   // What waits on you is held below the feed, which opens on the latest step, so it can't scroll out of view.
-  const pinned =
-    task && waiting === "review" ? (
-      <TaskReview task={task} review={work.review} answer={actions.answer} onAnswered={decided} />
-    ) : task && waiting === "question" ? (
-      <QuestionPopup task={task} answer={actions.answer} />
-    ) : null;
+  const pinned = task && waiting === "question" ? <QuestionPopup task={task} answer={actions.answer} /> : null;
   const pullRequestOpen = task !== undefined && waitsOnPullRequest(task);
+  // The task's pull requests, each with its address once its run session's record is read: the meta line links them.
+  // While its run waits on one (PR open, in the status), the compose at the foot wakes it to check for a merge.
+  const prNumbers = (task?.pullRequests ?? []).flatMap((n) => (n === null ? [] : [n]));
+  // No pull request, no read of the run session's record.
+  const prLinks = usePullRequestLinks(prNumbers.length === 0 ? undefined : task?.run?.sessionId, prNumbers.join(","));
+  const pullRequests = prNumbers.map((n) => ({ number: n, ...(prLinks.has(n) ? { url: prLinks.get(n)! } : {}) }));
   const answer = task?.detail?.answer ?? undefined;
-  return (
-    <SessionOverlay variant="modal" label={line} title={title} status={waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : pullRequestOpen ? "PR open" : status} onClose={onClose} footer={pinned}>
-      {/* Its run is done and its work is a pull request: open until it merges or closes. The Steer box wakes it to check. */}
-      {task !== undefined && pullRequestOpen ? <PullRequestOpen task={task} /> : null}
-      {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} steer rerun={rerun} />}
+  // The compose box's words, kept per task: Back can move the popup to another, and a send that ends after
+  // the move clears only its own task's words.
+  const [drafts, setDrafts] = useState<Readonly<Record<string, string>>>({});
+  const words = drafts[popup.taskId] ?? "";
+  const setWords = (text: string) => setDrafts((all) => ({ ...all, [popup.taskId]: text }));
+  // A coding run's review leads the body; one it can't read leaves the foot with the hold's prompt.
+  const review = task && waiting === "review" ? work.review : undefined;
+  const total = tokenTotal(task?.spend);
+  const spent = total === undefined ? undefined : `${total} tokens`;
+  // The current attempt's time, including waits; the live line counts only its reply.
+  const now = useNow(undefined, status === "running");
+  const started = task === undefined ? undefined : attemptStartedAt(task);
+  const totalMs = status === "running" && started !== undefined ? now - started : undefined;
+  // The header's status, read once: its words, and the pill's tone and mark.
+  const badge: { label: ReactNode; tone: "neutral" | "info" | "success"; icon?: ReactNode } =
+    // What waits on you is the highlighter's pill (`styles.css` reads `data-needs-you`); everything else keeps the overlay's tones.
+    waiting === "review"
+      ? { label: <span data-needs-you>Needs your review</span>, tone: "info" }
+      : waiting === "question"
+        ? { label: <span data-needs-you>Waiting on you</span>, tone: "info" }
+        : pullRequestOpen
+          ? { label: "PR open", tone: "success", icon: <GitPullRequestArrowIcon aria-hidden /> }
+          : { label: status, tone: "neutral" };
+  const hold = task === undefined ? undefined : holdOf(task);
+  const footer =
+    task && waiting === "review" ? (
+      <ReviewFooter
+        key={`${task.id}:${hold?.id}`}
+        review={review}
+        {...(review === undefined && hold?.ask.prompt ? { prompt: hold.ask.prompt } : {})}
+        words={words}
+        setWords={setWords}
+        answer={async (verdict) => {
+          await actions.answer(task, verdict);
+          decided(verdict);
+        }}
+        unanswerable={hold?.unanswerable ?? null}
+        holdId={hold?.id ?? null}
+      />
+    ) : pinned !== null ? (
+      pinned
+    ) : task && OPEN.has(task.status) ? (
+      <SteerCompose
+        key={task.id}
+        words={words}
+        setWords={setWords}
+        steer={(message) => actions.steer(task.id, message)}
+        placeholder={pullRequestOpen ? PULL_REQUEST_HINT : undefined}
+        quickReplies={pullRequestOpen ? PULL_REQUEST_REPLIES : undefined}
+      />
+    ) : null;
+  const feed = (
+    <>
       {/* What a coding task's run changed, what it ran and how long it took, without opening a step. */}
       {task && coding ? <TaskSummary task={task} steps={steps} /> : null}
       {task && status !== "running" ? <TaskOutcomeActions task={task} followUp={followUp} /> : null}
@@ -267,7 +299,7 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
       ) : null}
       {/* Why it failed, or the reason it was cancelled with, as an error. How the run got there is below. */}
       {task?.error ? (
-        <section aria-label="Error" role="alert" data-step="error" className="flex flex-col gap-1 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <section aria-label="Error" role="alert" data-step="error" className="flex flex-col gap-1 rounded-lg border border-destructive/40 bg-(--redbg) px-3 py-2 text-sm text-destructive">
           <ErrorBody message={task.error} />
         </section>
       ) : null}
@@ -293,26 +325,86 @@ function TaskPopup({ popup, nameOf, lookOf, isCoding, coders, followUp, onClose,
       })}
       {/* The run's result is its last entry. */}
       {task && (answer || task.landed) ? (
-        // The box's border takes the task's colour from the lab's one reader of it; the words keep the body colour.
-        <section aria-label="Result" data-step="result" data-tone={taskPresentation(task).word} className={cn("rounded-md border border-dashed border-current px-3 py-2 text-sm", taskPresentation(task).tone)}>
-          <div className="text-foreground">
-            {answer ? <MarkdownText text={answer} /> : null}
-            {task.detail?.answerCut ? <p className="mt-1 text-xs text-muted-foreground">The answer is longer than this; only its first 20,000 characters show.</p> : null}
+        // The left edge takes the task's colour from the lab's one reader of it; the words keep the body colour.
+        // The region is already named Result, so its visible heading is hidden from the accessibility tree.
+        <section
+          aria-label="Result"
+          data-step="result"
+          data-tone={taskPresentation(task).word}
+          className={cn("flex flex-col gap-3 rounded-lg border border-l-2 border-border border-l-current bg-card px-4 py-4 shadow-(--shadow-card)", taskPresentation(task).tone)}
+        >
+          <h3 aria-hidden className="font-mono text-xs font-medium tracking-[0.08em] text-text-3 uppercase">
+            Result
+          </h3>
+          <div data-result-answer className="flex flex-col gap-3 text-foreground">
+            {answer ? <RunAnswer answer={answer} report={coding} /> : null}
+            {task.detail?.answerCut ? <p className="text-xs text-text-3">The answer is longer than this; only its first 20,000 characters show.</p> : null}
             {task.landed == null ? null : <LandedOutcome landed={task.landed} />}
           </div>
         </section>
       ) : task && status === "done" ? (
         // Done with nothing written is not a plain success: say so, where the result would be.
-        <section aria-label="No result" data-step="no-result" className="rounded-md border border-dashed border-warning/60 bg-warning/10 px-3 py-2 text-sm">
+        <section aria-label="No result" data-step="no-result" className="rounded-lg border border-border bg-card px-4 py-3 text-sm">
           {coding ? "The coding task" : nameOf(to)} finished without writing a result. Its steps below show what it did.
         </section>
       ) : null}
       {/* The live line ends the feed while it runs: until its first step, the line above says it is starting; a task waiting on you isn't working. */}
       {task && status === "running" && holdOf(task) === undefined && !pullRequestOpen && task.run?.sessionId !== undefined && steps.length > 0 ? (
-        <StreamingIndicator message={workingStatus({ ...work.working, note: task.statusNote })} since={attemptStartedAt(task)} />
+        <StreamingIndicator message={workingStatus({ ...work.working, note: task.statusNote })} since={work.replyStartedAt} />
       ) : null}
+    </>
+  );
+  return (
+    <SessionOverlay
+      variant="modal"
+      label={line}
+      title={title}
+      icon={coding ? <SquareTerminalIcon className="size-[18px]" /> : undefined}
+      meta={
+        coding ? (
+          <RunMeta
+            {...(review ? { review } : {})}
+            {...(on === undefined ? {} : { on })}
+            {...(spent === undefined ? {} : { tokens: spent })}
+            {...(totalMs === undefined ? {} : { total: elapsedText(totalMs) })}
+            {...(pullRequests.length > 0 ? { pullRequests } : {})}
+          />
+        ) : undefined
+      }
+      status={badge.label}
+      statusTone={badge.tone}
+      {...(badge.icon ? { statusIcon: badge.icon } : {})}
+      onClose={onClose}
+      footer={footer}
+    >
+      {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} rerun={rerun} />}
+      {task && review ? (
+        <>
+          <ReviewLead key={hold?.id}>
+            <ReviewBody review={review} onDraft={setWords} {...(followUp ? { onFollowUp: (note: string) => followUp.start(`${followUpText(task)}${note}`) } : {})} />
+          </ReviewLead>
+          <Fold data-run-steps label="How it got there">
+            <div className="flex flex-col gap-3">{feed}</div>
+          </Fold>
+        </>
+      ) : (
+        feed
+      )}
     </SessionOverlay>
   );
+}
+
+/** The board statuses a task can still be steered in. */
+const OPEN = new Set(["pending", "held", "in_progress"]);
+
+/** The review, brought into view once as it arrives: the feed under it opens on its latest step. */
+function ReviewLead({ children }: { children: ReactNode }) {
+  const lead = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => lead.current?.scrollIntoView?.({ block: "start" }));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  return <div ref={lead}>{children}</div>;
 }
 
 /** How many file chips show before the rest fold into "+N more". */
@@ -335,13 +427,13 @@ function TaskSummary({ task, steps }: { task: CodingBoardTask; steps: readonly I
   const more = rows.length - shown.length;
   return (
     <div data-task-summary className="flex flex-col gap-1.5">
-      <p data-summary-line className="text-xs text-muted-foreground">
+      <p data-summary-line className="font-mono text-xs text-text-3">
         {line}
       </p>
       {shown.length === 0 ? null : (
         <ul aria-label="Files changed" className="flex flex-wrap gap-1">
           {shown.map(({ path }) => (
-            <li key={path} title={path} data-file-chip className="rounded-sm border border-border px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+            <li key={path} title={path} data-file-chip className="rounded-md border border-border bg-surface-raised/50 px-1.5 py-0.5 font-mono text-xs text-text-2">
               {path.split("/").filter((part) => part !== "").pop() ?? path}
             </li>
           ))}
@@ -371,7 +463,7 @@ function TaskOutcomeActions({ task, followUp }: { task: CodingBoardTask; followU
       // A refused clipboard leaves the text to select by hand.
     }
   };
-  const button = "rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground";
+  const button = "h-7 rounded-md border border-border-strong px-2.5 text-xs font-medium text-text-2 hover:bg-surface-raised hover:text-foreground";
   return (
     <div data-outcome-actions className="flex flex-wrap gap-1.5">
       {text === undefined ? null : (
@@ -400,31 +492,6 @@ export const placeDecisions = (decisions: readonly Decision[], count: number): D
 /** "Accepted", or "Asked for changes: …" with the words sent. */
 const decisionLine = (answer: ReviewAnswer) => (answer.verdict === "accepted" ? "Accepted" : `Asked for changes: ${answer.words}`);
 
-/** A coding run's review, with the registry's card: its commits and the judge's verdict, and Accept or Ask for changes. */
-function TaskReview({ task, review, answer, onAnswered }: {
-  task: CodingBoardTask;
-  /** The run's latest review stop, read from its session; `undefined` until it is read. */
-  review: ReviewDetail | undefined;
-  /** Answers the hold the board's row holds now. */
-  answer: (task: CodingBoardTask, answer: ReviewAnswer) => Promise<void>;
-  /** The answer went through. */
-  onAnswered: (answer: ReviewAnswer) => void;
-}) {
-  const hold = holdOf(task);
-  return (
-    <ReviewHold
-      review={review}
-      prompt={review === undefined ? hold?.ask.prompt : undefined}
-      answer={async (verdict) => {
-        await answer(task, verdict);
-        onAnswered(verdict);
-      }}
-      unanswerable={hold?.unanswerable ?? null}
-      holdId={hold?.id ?? null}
-    />
-  );
-}
-
 /** A question the task's run asked you, with a box for your answer; the run goes on with it. */
 function QuestionPopup({ task, answer }: { task: CodingBoardTask; answer: (task: CodingBoardTask, answer: { text: string }) => Promise<void> }) {
   const [words, setWords] = useState("");
@@ -447,8 +514,12 @@ function QuestionPopup({ task, answer }: { task: CodingBoardTask; answer: (task:
     }
   };
   return (
-    <section aria-label="Waiting on you" data-step="question" className="rounded-md border border-warning/60 bg-warning/10 px-3 py-2 text-sm">
-      <div className="font-semibold">Waiting on you</div>
+    // A normal card: the highlighter is only its small pill.
+    <section aria-label="Waiting on you" data-step="question" className="rounded-lg border border-border bg-card px-3.5 py-3 text-sm shadow-(--shadow-card)">
+      <div className="flex items-center gap-2 font-semibold">
+        <span className="rounded-full bg-attention px-1.5 font-mono text-xs leading-4 font-semibold text-attention-foreground">Needs you</span>
+        Waiting on you
+      </div>
       {hold?.ask.prompt ? <MarkdownText className="mt-0.5" text={hold.ask.prompt} /> : null}
       {unanswerable !== null ? (
         <p className="mt-1.5 text-xs text-muted-foreground">{unanswerable}</p>
@@ -466,14 +537,14 @@ function QuestionPopup({ task, answer }: { task: CodingBoardTask; answer: (task:
                 void send();
               }
             }}
-            className="w-full rounded-md border border-border bg-background p-2 text-xs"
+            className="w-full rounded-md border border-border-strong bg-background p-2 text-sm focus-visible:border-ring focus-visible:outline-none"
           />
           <div>
             <button
               type="button"
               disabled={pending || words.trim() === ""}
               onClick={() => void send()}
-              className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md border border-border-strong px-3 py-1 text-xs font-semibold hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-ring"
             >
               Answer
             </button>
@@ -504,7 +575,7 @@ function MessagePopup({ popup, nameOf, lookOf, onClose }: {
   const to = nameOf(popup.to);
   const line = `Messaged ${to}`;
   return (
-    <SessionOverlay variant="modal" label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={answerIn(talk, popup.messageId)} onClose={onClose}>
+    <SessionOverlay variant="modal" label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={answerIn(talk, popup.messageId)} statusTone="neutral" onClose={onClose}>
       <p className="font-mono text-xs text-muted-foreground">
         {nameOf(popup.from)} → {to}
       </p>

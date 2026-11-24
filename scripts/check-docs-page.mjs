@@ -1,6 +1,6 @@
 /**
- * Mechanical checks for docs-revamp pages, and the check that each page went through every pass
- * of the writing loop.
+ * Mechanical checks for the docs site's pages (`apps/docs/docs/**`), and the check that
+ * each page went through every pass of the writing loop.
  *
  * Page rules: prose word count against the budget for the page's `type`, the words the writing
  * standard bans, em-dashes, long tables, and TypeScript examples that do not name their file,
@@ -11,8 +11,11 @@
  * read as CommonMark reads it (backticks or tildes, closed by the same character at the opener's
  * length or longer), and a page that ends inside one fails.
  *
- * Record rules: every page has a `<page>.record.md` beside it, next to its `<page>.facts.md`.
- * The record names the page's sitemap entry and has one section per pass, plus the rows the depth
+ * Record rules: every page has a `<page>.record.md` and a `<page>.facts.md`. A site page's live
+ * in the contributor folder at the page's path (`apps/docs/docs/concepts/blocks.md` has
+ * `docs/contributing/docs-revamp/pages/concepts/blocks.record.md`); a page outside the site, a
+ * draft, has them beside it. A release's Upgrading page (`reference/upgrading/<date>`) is written
+ * by the release docs pass and keeps none. The record names the page's sitemap entry and has one section per pass, plus the rows the depth
  * pass moved to Reference:
  *
  *   Sitemap: C-07
@@ -32,7 +35,8 @@
  * may start with `Skipped` or `Not sampled`. `Reference rows` may say `None.`
  *
  * A page edited by a change needs a new pass 4 and pass 5 entry in that change (`--changed-since`).
- * A record or fact sheet whose page is gone fails.
+ * A change to a page's link targets alone, as moving it does, is not an edit. A record or fact
+ * sheet whose page is gone fails.
  *
  *   node scripts/check-docs-page.mjs                    every page under the default root, with
  *                                                       its record. What CI runs on main
@@ -54,14 +58,18 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Moves to apps/docs/{docs,guides} at cutover (FIX-2705).
-const PAGES = "docs/contributing/docs-revamp/pages";
+// The site's pages. Their records and fact sheets stay in the contributor folder: the page
+// `apps/docs/docs/<rel>.md` has `docs/contributing/docs-revamp/pages/<rel>.record.md`.
+const PAGES = ["apps/docs/docs"];
+const RECORDS = "docs/contributing/docs-revamp/pages";
 const SITEMAP = "specs/epics/FIX-2696/SITEMAP";
-// Written before the record existed; FIX-2701 brings it to the loop and drops it from here.
-const PREDATES_RECORD = new Set([`${PAGES}/blocks.md`]);
+// Pages a release docs pass writes, not the page loop, carry no record: the release's Upgrading
+// page, and pages a pass added after the cutover. Records go to drafts only once the last draft
+// lands (FIX-2916), and this list goes with them.
+const NO_RECORD = /^(reference\/upgrading\/|build\/send-files-with-a-message\.md$|build\/webhooks\/github-reviews\.md$|catalog\/workforce\/routines\.md$)/;
 
 const BUDGET = { start: 800, concept: 1500, catalog: 1500, tutorial: 2500, recipe: 800 };
 const BANNED = [
@@ -208,8 +216,8 @@ function sectionsOf(raw) {
  * base had it, given when the change edited the page itself: passes 4 and 5 must then be new.
  */
 function recordProblems(pagePath, title, before) {
-  const path = pagePath.replace(/\.md$/, ".record.md");
-  if (!existsSync(path)) return [`no record: ${basename(path)} beside the page`];
+  const path = sidecarOf(pagePath, ".record.md");
+  if (!existsSync(path)) return [`no record: ${relative(ROOT, path)}`];
   const raw = readFileSync(path, "utf8");
   const problems = [];
   const sections = sectionsOf(raw);
@@ -240,6 +248,41 @@ function recordProblems(pagePath, title, before) {
   return problems;
 }
 
+/** A site page's path relative to its site root, or undefined for a page outside the site. */
+function siteRel(page) {
+  for (const root of PAGES) {
+    const rel = relative(join(ROOT, root), page);
+    if (!rel.startsWith("..") && !isAbsolute(rel)) return rel;
+  }
+  return undefined;
+}
+
+/** A page's record or fact sheet (`ext`): in the contributor folder for a site page, else beside it. */
+function sidecarOf(page, ext) {
+  const rel = siteRel(page);
+  return join(rel === undefined ? dirname(page) : join(ROOT, RECORDS, dirname(rel)), basename(page).replace(/\.md$/, ext));
+}
+
+/** The page a record or fact sheet belongs to: beside it if there is one, else its site page. */
+function pageOf(sidecar) {
+  const beside = sidecar.replace(SIDECAR, ".md");
+  const rel = relative(join(ROOT, RECORDS), beside);
+  if (existsSync(beside) || rel.startsWith("..")) return beside;
+  const candidates = PAGES.map((root) => join(ROOT, root, rel));
+  return candidates.find(existsSync) ?? candidates[0];
+}
+
+/** A page that keeps a record: any page outside the site, and every site page bar `NO_RECORD`. */
+function keepsRecord(page) {
+  const rel = siteRel(page);
+  return rel === undefined || !NO_RECORD.test(rel);
+}
+
+/** Every site page. */
+function sitePages() {
+  return PAGES.flatMap((root) => pagesUnder(join(ROOT, root))).sort();
+}
+
 /** Every page under `dir`: Markdown that is not a record or a fact sheet. */
 function pagesUnder(dir) {
   if (!existsSync(dir)) return [];
@@ -252,7 +295,7 @@ function pagesUnder(dir) {
 
 /** The records and fact sheets among `paths` (absolute) that are on disk and whose page is not. */
 function orphansOf(paths) {
-  return paths.filter((f) => SIDECAR.test(f) && existsSync(f) && !existsSync(f.replace(SIDECAR, ".md"))).sort();
+  return paths.filter((f) => SIDECAR.test(f) && existsSync(f) && !existsSync(pageOf(f))).sort();
 }
 
 /** Every record and fact sheet under `dir`. */
@@ -272,19 +315,36 @@ function changedSince(ref) {
   // LC_ALL=C keeps git's messages in English, so the stderr match below holds in any locale.
   const git = (...a) => execFileSync("git", a, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, LC_ALL: "C" } });
   const script = relative(ROOT, fileURLToPath(import.meta.url));
-  const paths = script.startsWith("..") ? [PAGES, SITEMAP] : [PAGES, SITEMAP, script];
+  const dirs = [...PAGES, RECORDS];
+  const paths = script.startsWith("..") ? [...dirs, SITEMAP] : [...dirs, SITEMAP, script];
   const changed = git("diff", "--name-only", "--no-renames", ref, "HEAD", "--", ...paths).split("\n").filter(Boolean);
-  const inPages = changed.filter((f) => f.startsWith(`${PAGES}/`) && f.endsWith(".md"));
-  const named = inPages.map((f) => join(ROOT, f.replace(SIDECAR, ".md")));
-  const all = changed.some((f) => !f.startsWith(`${PAGES}/`)) ? pagesUnder(join(ROOT, PAGES)) : [];
+  const under = (f) => dirs.some((d) => f.startsWith(`${d}/`));
+  const inPages = changed.filter((f) => under(f) && f.endsWith(".md"));
+  const named = [...new Set(inPages.map((f) => (SIDECAR.test(f) ? pageOf(join(ROOT, f)) : join(ROOT, f))))];
+  const all = changed.some((f) => !under(f)) ? sitePages() : [];
   const files = [...new Set([...all, ...named])].filter(existsSync).sort();
-  const sidecars = named.flatMap((p) => [".record.md", ".facts.md"].map((ext) => p.replace(/\.md$/, ext)));
-  const orphans = orphansOf(all.length ? sidecarsUnder(join(ROOT, PAGES)) : sidecars);
-  const before = new Map();
-  for (const rel of inPages.filter((f) => !SIDECAR.test(f))) {
-    const at = `${ref}:${rel.replace(/\.md$/, ".record.md")}`;
+  const sidecars = named.flatMap((p) => [".record.md", ".facts.md"].map((ext) => sidecarOf(p, ext)));
+  const orphans = orphansOf(all.length ? sidecarsUnder(join(ROOT, RECORDS)) : sidecars);
+  const show = (at) => {
     try {
-      before.set(join(ROOT, rel), git("show", at));
+      return git("show", at);
+    } catch (err) {
+      if (err.status === 128 && /does not exist|exists on disk, but not in/.test(String(err.stderr))) return undefined;
+      throw new Error(`git show ${at} failed: ${String(err.stderr ?? err.message).trim()}`);
+    }
+  };
+  // A page moved into the site with only its link targets changed is not edited: moving it
+  // forces new link paths, and its passes still hold. Its base is its contributor-folder copy.
+  const linkless = (text) => text.replace(/\]\([^)]*\)/g, "]()");
+  const before = new Map();
+  for (const page of named.filter((p) => existsSync(p) && keepsRecord(p))) {
+    const rel = relative(ROOT, page);
+    const site = siteRel(page);
+    const base = show(`${ref}:${rel}`) ?? (site === undefined ? undefined : show(`${ref}:${join(RECORDS, site)}`));
+    if (base !== undefined && linkless(base) === linkless(readFileSync(page, "utf8"))) continue;
+    const at = `${ref}:${relative(ROOT, sidecarOf(page, ".record.md"))}`;
+    try {
+      before.set(page, git("show", at));
     } catch (err) {
       // The base had no record: the page is new to the loop, and nothing in it is stale.
       if (err.status === 128 && /does not exist|exists on disk, but not in/.test(String(err.stderr))) continue;
@@ -322,23 +382,23 @@ let orphans = [];
 if (since) {
   ({ files, before, orphans } = changedSince(since));
   if (!files.length && !orphans.length) {
-    console.log(`no page under ${PAGES} changed since ${since}; nothing to check`);
+    console.log(`no page under ${PAGES.join(" or ")} changed since ${since}; nothing to check`);
     process.exit(0);
   }
 } else if (args.length) {
-  files = [...new Set(args.map((f) => resolve(f.replace(SIDECAR, ".md"))))];
+  files = [...new Set(args.map((f) => (SIDECAR.test(f) ? pageOf(resolve(f)) : resolve(f))))];
 } else {
-  files = pagesUnder(join(ROOT, PAGES));
+  files = sitePages();
   if (!files.length) {
-    console.log(`FAIL no page found under ${PAGES}`);
+    console.log(`FAIL no page found under ${PAGES.join(" or ")}`);
     process.exit(1);
   }
-  orphans = orphansOf(sidecarsUnder(join(ROOT, PAGES)));
+  orphans = orphansOf(sidecarsUnder(join(ROOT, RECORDS)));
 }
 
 let failed = orphans.length > 0;
 for (const orphan of orphans) {
-  console.log(`FAIL ${relative(ROOT, orphan)}: its page ${basename(orphan.replace(SIDECAR, ".md"))} does not exist`);
+  console.log(`FAIL ${relative(ROOT, orphan)}: its page ${relative(ROOT, pageOf(orphan))} does not exist`);
 }
 for (const file of files) {
   const rel = relative(ROOT, file);
@@ -349,7 +409,7 @@ for (const file of files) {
     continue;
   }
   const { type, title, words, problems } = pageProblems(readFileSync(file, "utf8"));
-  if (records && !PREDATES_RECORD.has(rel)) problems.push(...recordProblems(file, title, before.get(file)));
+  if (records && keepsRecord(file)) problems.push(...recordProblems(file, title, before.get(file)));
   console.log(`${problems.length ? "FAIL" : "ok  "} ${shown} (${type ?? "?"}, ${words} words)`);
   for (const problem of problems) console.log(`     ${problem}`);
   failed ||= problems.length > 0;

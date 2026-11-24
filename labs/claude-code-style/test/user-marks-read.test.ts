@@ -8,6 +8,7 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
+import { appPins } from "../flows/user-marks.mts";
 import { useDismissed, usePins } from "../src/app";
 import { closeApps, openTestApp } from "./app-host";
 
@@ -17,6 +18,17 @@ afterEach(async () => {
 });
 
 describe("your marks", () => {
+  it("keeps each pin once when two updates overlap", async () => {
+    const lab = await openTestApp({ noProject: true });
+    const pins = lab.client.resource(appPins);
+    expect(await pins.state()).toEqual({ pinned: [] });
+
+    await lab.calls.unpin("first");
+    await Promise.all([lab.calls.pin("first"), lab.calls.pin("second")]);
+    await lab.calls.pin("first");
+    expect((await pins.state()).pinned.sort()).toEqual(["first", "second"]);
+  });
+
   it("read with no session found or made, and again when another tab pins or dismisses", async () => {
     const lab = await openTestApp({ noProject: true });
     const sessions = async () => (await lab.client.sessions.list()).length;

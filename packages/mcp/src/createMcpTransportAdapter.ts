@@ -46,6 +46,7 @@ import {
   listExposedResources,
   renderContent
 } from "@flow-state-dev/engine/internal";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 import { isCollectionConfig } from "@flow-state-dev/core/types";
 import type { ActionConfig, ActionMcpConfig, McpConfig } from "@flow-state-dev/core/types";
 import {
@@ -405,7 +406,10 @@ async function handleToolsCall(
         ? { ...((args ?? {}) as Record<string, unknown>), ...forwardedInput }
         : args;
 
-  const sessionId = deriveSessionId(target.action.mcp?.session, input);
+  // The directive's session, or, when it yields none, a one-off session of
+  // the call's own, made here so the request record names it from the first
+  // write.
+  const sessionId = deriveSessionId(target.action.mcp?.session, input) ?? oneOffSessionId();
 
   let handle: ReturnType<InboundTransportHost["dispatch"]>;
   try {
@@ -482,13 +486,13 @@ async function handleToolsCall(
  * Derive the dispatch `sessionId` for a `tools/call` from the action's
  * `mcp.session` directive (see `ActionMcpConfig.session`).
  *
- * - `undefined` directive → `undefined` (fresh ephemeral session, v1 default).
+ * - `undefined` directive → `undefined` (the caller makes a one-off session, v1 default).
  * - `string` template → a freshly minted id: the first `*` is replaced by a
  *   random token, or the token is appended when there is no `*` (so a template
  *   with no `*` never collides on a constant id).
  * - `{ fromInput }` → the string value at `input[fromInput]`, when present and
  *   non-empty; otherwise `undefined` (the missing/blank field falls through to
- *   an ephemeral session, and the action's own schema rejects it downstream).
+ *   a one-off session, and the action's own schema rejects it downstream).
  */
 function deriveSessionId(
   directive: ActionMcpConfig["session"],

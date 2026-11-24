@@ -105,7 +105,9 @@ describe("best fit (V3)", () => {
     expect(host.route.calls).toHaveLength(1);
     // Both posts went to eng.coder; the second waits behind the first in its session.
     expect((await host.routedRows("alice")).map((row) => row.assignee)).toEqual(["eng.coder", "eng.coder"]);
-    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    // eng.coder is still on the first post, held, not stopped: a stopped request cancels its task,
+    // which would free the session for the second post's task before the removal below.
+    await host.untilHung("eng.coder");
     await quiet(host);
 
     expect((await host.act("alice", id, "removeDelegate", { worker: "eng.coder" })).error).toBeUndefined();
@@ -114,6 +116,7 @@ describe("best fit (V3)", () => {
     expect(heardBy(host)).toEqual(["eng.coder", "eng.em"]);
     const bys = (await host.items(id)).records.map((record: any) => record.by);
     expect(bys).toEqual(["evaluated", "held", "evaluated"]);
+    host.releaseHangs();
   });
 
   it("keeps the hold, and lands no line, when the holder's turn answers nothing (FIX-2083)", async () => {
@@ -636,8 +639,8 @@ describe("judgment (V7)", () => {
     await post(host, id, "who are your delegates?");
     const { all } = await host.items(id);
     const read = all.find((item: any) => item.type === "tool_output" && item.blockName === "listDelegates");
-    // The records as the session holds them, each with what it does and takes, which are read, never stored.
-    expect(read.output.delegates.map(({ takes: _takes, description: _description, ...record }: any) => record)).toEqual(
+    // The records as the session holds them, each with what it does, takes and the input schema it takes, which are read, never stored.
+    expect(read.output.delegates.map(({ takes: _takes, description: _description, inputSchema: _inputSchema, ...record }: any) => record)).toEqual(
       (await host.sessionState(id)).delegates
     );
     // Never in its prompt: the turn's system text names no delegate. Two

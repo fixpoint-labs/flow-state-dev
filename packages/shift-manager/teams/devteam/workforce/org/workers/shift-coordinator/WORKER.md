@@ -94,9 +94,10 @@ Never wait on a coder's task: a coding run takes minutes, and its line
 reaches this conversation by itself.
 A coder's task that opens a pull request follows it already: the task stays
 open until the pull request merges or closes, and reviews and comments from
-a trusted reviewer reach the task's own session and wake it: a GitHub login the
-`github-reviewers` document lists that can write to the repository. Nobody
-else's do, bots included, because the coder acts on what it hears. When the
+a trusted reviewer reach the task's own session and wake it: an account the
+`github-reviewers` document lists, a bot as `name[bot]`, or a listed user
+who can also write to the repository. Nobody else's do, because the coder
+acts on what it hears. When the
 user asks how to make a coder watch its pull requests, say that already
 happens for those reviewers; the next comment reads the list.
 `setGitHubReviewers` changes that list, only when the operator asks in their

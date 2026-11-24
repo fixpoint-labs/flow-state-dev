@@ -67,6 +67,7 @@ import { taskChainLimitOf } from "../workers/chain-limit";
 import { markRolePiece, takesTasks } from "../worker-roles";
 import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard, type RoutedFiling } from "./board";
+import { taskInputSourceOf } from "../task-input/checked-ledger";
 import { CHECK_TASK_ENTRY, DISPATCH_ENTRY, STEER_TURN_ENTRY } from "./board-entries";
 import { checkTaskEntry } from "./task-admission";
 import { TASK_SETTLED_ENTRY } from "./board-entries";
@@ -175,8 +176,9 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     // A worker's step filed `session: "new"` runs through its own `work` entry (FIX-2082 D2).
     takesOwnTasks: () => takesTasks(options.installation.workerFlows()[options.flowKind]),
     chainLimit: () => taskChainLimitOf(options.installation),
-    // A coding flow's task is refused when it is filed with no project (FIX-2333).
-    needsProject: (flow) => options.installation.workerFlows()[flow]?.needsProject === true,
+    // What each delegate's flow takes, read off its `work` entry per call (FIX-2894), its project requirement included (FIX-2333).
+    taskInputOf: (flow) => taskInputSourceOf(options.installation)?.declarationOf(flow),
+    workerOf: async (ctx, id) => taskInputSourceOf(options.installation)?.workerOf(ctx, id),
     // The app's session fields go down every hand-over with the filing project.
     sessionFields: options.installation.sessionFields,
     // The messages the session sent that haven't landed (FIX-2240): the pass sends them again.

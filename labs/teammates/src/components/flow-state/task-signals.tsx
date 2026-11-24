@@ -12,6 +12,11 @@ import { durationText } from "./spend";
  *
  * - **working · 4m 12s**: a running row, timed from this attempt's run start
  *   (`run.startedAt`), so a retried task never counts its earlier attempts.
+ * - **idle · 3d**: a running task no lease holds: no run is on it (it is
+ *   kept open, owes a turn, or waits on its pull request), so it is not
+ *   working, however long ago its run started. Counted from the task's last
+ *   write. Not *waiting*, which {@link taskCounts} keeps for a task held for
+ *   a person.
  * - **quiet for 7m**: a running row whose lease has lapsed, by the board's own
  *   rule (`leaseLapsed`): no live run renews it. A live run in one long step
  *   keeps renewing, so it never reads quiet. Counted from the row's last
@@ -36,7 +41,7 @@ export interface TaskSignalRun {
 }
 
 /** Which signal a row shows; an app maps each to its own tone. */
-export type TaskSignalKind = "working" | "quiet" | "ended";
+export type TaskSignalKind = "working" | "idle" | "quiet" | "ended";
 
 export interface TaskSignal {
   kind: TaskSignalKind;
@@ -45,25 +50,26 @@ export interface TaskSignal {
 
 const ENDED = new Set(["done", "failed", "cancelled"]);
 
-/** "just now", "12m ago", "3h ago", "2d ago". */
-export function agoText(ms: number): string {
+/** "24m", "3h", "2d": a span in its largest whole unit, the one ladder every signal but *working* reads. */
+function spanText(ms: number): string {
   const minutes = Math.floor(Math.max(0, ms) / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
-  return hours < 24 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`;
+  return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
 }
 
-/** "7m", "1h 3m": how long a quiet row has said nothing. */
-function quietFor(ms: number): string {
-  const minutes = Math.floor(Math.max(0, ms) / 60_000);
-  return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+/** "just now", "12m ago", "3h ago", "2d ago". */
+export function agoText(ms: number): string {
+  return ms < 60_000 ? "just now" : `${spanText(ms)} ago`;
 }
 
 /**
  * A row's signal at `now`, or `null` when it has none: a queued, held or
- * waiting row, a running row whose run hasn't linked itself yet, or an ended
- * row with no time.
+ * waiting row, a running row it was given no run for (nothing says whether a
+ * lease holds it), a running row whose run hasn't linked itself yet, or an
+ * ended row with no time. A running row whose run holds no lease reads
+ * *idle*: the claim writes the lease with the claim, so a claimed row never
+ * passes through it.
  */
 export function taskSignal(view: TaskSignalView, run: TaskSignalRun | null | undefined, now: number, options: { stale?: boolean } = {}): TaskSignal | null {
   const { updatedAt, completedAt } = view.times;
@@ -71,11 +77,13 @@ export function taskSignal(view: TaskSignalView, run: TaskSignalRun | null | und
     const at = completedAt ?? updatedAt;
     return at == null ? null : { kind: "ended", text: agoText(now - at) };
   }
-  if (view.state !== "running") return null;
+  if (view.state !== "running" || run == null) return null;
+  // No lease, no run on it: a kept-open or parked task is idle, it does not work.
+  if (run.leaseUntil == null) return { kind: "idle", text: updatedAt == null ? "idle" : `idle · ${spanText(now - updatedAt)}` };
   // The board's rule, on the row as listed: only the status and the lease deadline are read.
-  const lapsed = leaseLapsed({ status: "in_progress", leaseUntil: run?.leaseUntil ?? undefined } as Parameters<typeof leaseLapsed>[0], now);
-  if (lapsed && options.stale !== true) return { kind: "quiet", text: updatedAt == null ? "quiet" : `quiet for ${quietFor(now - updatedAt)}` };
-  return run?.startedAt == null ? null : { kind: "working", text: `working · ${durationText(now - run.startedAt)}` };
+  const lapsed = leaseLapsed({ status: "in_progress", leaseUntil: run.leaseUntil } as Parameters<typeof leaseLapsed>[0], now);
+  if (lapsed && options.stale !== true) return { kind: "quiet", text: updatedAt == null ? "quiet" : `quiet for ${spanText(now - updatedAt)}` };
+  return run.startedAt == null ? null : { kind: "working", text: `working · ${durationText(now - run.startedAt)}` };
 }
 
 /** "2 running · 1 waiting · 1 failed · 28 done": the states a person acts on, without zeros. Empty when none. */

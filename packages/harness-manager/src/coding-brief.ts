@@ -14,12 +14,13 @@
  *
  * ```ts
  * const phase = commandCheck(
- *   { phase: "code", buildPrompt: (run) => codingBrief(run, { instructions }), isDone },
+ *   { name: "default", instructions: (run) => codingBrief(run, { instructions }), doneWhen: { check } },
  *   { commands: projectChecks(), timeoutMs, inBrief: true },
  * );
  * ```
  */
 import { harnessFeatureOf, type PromptRunContext } from "./manager";
+import { RUN_REPORT_ASK } from "./run-report";
 
 /** What an app puts in a coding brief beside the task. Every part is optional. */
 export interface CodingBriefParts {
@@ -41,11 +42,6 @@ export interface CodingBriefParts {
 /** The conventions line when the app hands none. The helper reads no file. */
 const DEFAULT_CONVENTIONS =
   "Follow the repository's own conventions: read its AGENTS.md or CLAUDE.md first, if it has one.";
-
-/** The report every coding run ends with. */
-const REPORT =
-  "End with a short report: what you changed; what you checked, naming each command you ran with its result; " +
-  "and what you could not check, and why.";
 
 /**
  * The most of each of `deps` and `priorWork` a brief carries, in characters of
@@ -95,7 +91,7 @@ export function codingBrief(run: PromptRunContext, parts: CodingBriefParts): str
     ...section("Your team's conventions", parts.conventions ?? DEFAULT_CONVENTIONS),
     `# Where and how to work`,
     ``,
-    `Task ${run.issue}, phase ${run.phase}, attempt ${run.attempt}.`,
+    `Task ${run.issue}, mode ${run.mode}, attempt ${run.attempt}.`,
     ...(issue !== undefined && issue !== run.issue ? [`Issue ${issue}.`] : []),
     run.branch === "" ? `Work in ${run.workspacePath}.` : `Work in ${run.workspacePath}, on branch ${run.branch}.`,
     ...(parts.terms ?? []),
@@ -108,7 +104,7 @@ export function codingBrief(run: PromptRunContext, parts: CodingBriefParts): str
           ...run.answers.map((answered) => `You asked: ${answered.question}\nThey answered: ${answered.answer}`),
           ``,
         ]),
-    ...(parts.report === false ? [] : [`# Your report`, ``, REPORT]),
+    ...(parts.report === false ? [] : [`# Your report`, ``, RUN_REPORT_ASK]),
     ...(run.feedback === undefined ? [] : [``, `# Why the last attempt stopped`, ``, run.feedback]),
   ].join("\n");
 }

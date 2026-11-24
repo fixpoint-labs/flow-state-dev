@@ -37,12 +37,16 @@ Skipped: S-1 is piloted in the sitemap, and the page was already at `what-flow-s
 - After the loop (review): `planQueries` and `summarize` gained `user` slots, so the topic and the search results reach the model (a generator with no `user` slot sends no user message; `packages/core/src/blocks/internal/message-assembly.ts:87-89`).
 - After the loop (review): `research` and `planQueries` take `{ topic }` instead of a bare string, because a block handed to a model as a tool passes its input schema through unchanged and OpenAI needs an object at the root of a tool's parameters (`packages/core/src/blocks/generator.ts:907-915`).
 
+- After PR review: the config example passes `process.cwd()` to `localRepositories` and `source` instead of `"."`, which `localWorkspaceHost` refuses as `invalid-remote` because it matches listed repositories by absolute path. No other line changed. 799 words. Page sha256 d8345c0a8b9f.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the page as it was kept, sha256 ee2f3b6a1bc7, and the 2 Reference row(s) pass 6 moved.
 
 - harnesses({ workspace: { root: "./runs", sourceRepo: ".", baseRef: "main" } }) in the fsdev.config.ts snippet Untrue: `workspace` is a WorkspaceHost object built with `localWorkspaceHost({ root, remotes: { allow }, source, ... })`, not a plain `{ root, sourceRepo, baseRef }` literal. The schema only checks that it is an object, so the snippet passes config validation. The literal has none of the host's methods, so it is not a working host. Neither `sourceRepo` nor a top-level `baseRef` is a host option; `baseRef` is a per-run field. (packages/harness-manager/src/kit/harnesses-kit.ts:48-50 (workspace is z.custom<WorkspaceHost>, message says `localWorkspaceHost(…)`); packages/workspace/src/local-host.ts:194-203 and :656 (LocalWorkspaceHostOptions requires root, remotes.allow, source))
 - Behind both is a backend that ... picks a run back up where it stopped after a crash (stated as something the starter backend does) Untrue: Resuming after a crash depends on the host having durable execution, where the durability sweep re-drives interrupted or suspended requests. Without it, a crash loses the run outright. The page states it unconditionally. (docs/architecture/execution-and-errors.md:193 (sweep and re-drive, "when the host has durable execution"); docs/architecture/dispatched-work.md:421 (a crash or redeploy loses the run outright in the non-durable mode))
+
+- Re-run after the review edit: checked against `packages/workspace/src/local-host.ts:681,1427-1431`. No untrue claim remains open.
 
 ## 6 · Depth pass
 

@@ -67,7 +67,8 @@ export class ClientHttpError extends Error {
 export type ExecuteActionRequestBody = {
   input: unknown;
   userId: string;
-  sessionId?: string;
+  /** The session the action runs in: required, as the server refuses a send with none (`session-required`). */
+  sessionId: string;
   requestId?: string;
   metadata?: Record<string, unknown>;
   /** The message's files, as references from an upload, beside the input. */
@@ -105,6 +106,8 @@ export type FlowListEntry = {
   requireUser: boolean;
   actions: string[];
   actionSchemas?: Record<string, ActionInputSchema>;
+  /** What the flow is for, in a sentence, when its definition says. Display only. */
+  description?: string;
 };
 
 export type { ActionInputSchema, ActionFieldSchema, ActionFieldType } from "@flow-state-dev/core/types";
@@ -136,6 +139,13 @@ export type SessionSummary = {
   flowId?: string;
   userId: string;
   title?: string;
+  /**
+   * What the session's flow calls it (its `session.label`), computed from the
+   * state the session shows when the session is read. Absent when the flow
+   * declares none or names nothing. Display only: a title, when the session
+   * has one, reads first.
+   */
+  label?: string;
   description?: string;
   tags?: string[];
   metadata?: Record<string, unknown>;

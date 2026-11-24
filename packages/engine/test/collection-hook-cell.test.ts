@@ -19,6 +19,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { createFlowRegistry, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function boot(options: { flowIsolation?: boolean } = {}) {
   const seen: CollectionHookContext[] = [];
@@ -54,6 +55,7 @@ function boot(options: { flowIsolation?: boolean } = {}) {
     const flow = kind({ id: pin === undefined ? "notes.app" : `${orgId}.~${userId}.notes` }) as FlowInstance;
     registry.register(flow, pin === undefined ? undefined : { pin });
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "write",
       input: {},
@@ -143,6 +145,7 @@ describe("CollectionHookContext.cell with overlapping collections", () => {
     })() as FlowInstance;
     const stores = createInMemoryStores();
     const result = await runAction({
+      sessionId: oneOffSessionId(),
       flow,
       actionName: "write",
       input: {},

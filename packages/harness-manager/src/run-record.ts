@@ -238,6 +238,17 @@ export const runRecordStateSchema = z.object({
   baseCommit: z.string().nullable().default(null),
   // BP-030.
   /**
+   * The cut the run's last settle read it against (`effectiveCut`): the base
+   * branch's tip then, when it had {@link baseCommit} in its history, else the
+   * cut. Written on every settle, beside the decision, so a file's patch read
+   * later reads as the review's files and the judge's did. A read re-guards
+   * it against {@link baseCommit} (`effectiveCut` again), so a value left from
+   * an earlier attempt can only ever be the cut or a commit past it. `null` on
+   * a record written before it was kept, and the read keeps the cut.
+   */
+  effectiveCut: z.string().nullable().default(null),
+  // BP-030.
+  /**
    * The run was first provisioned with no repository: its kept files alone.
    * Kept across attempts for the reason {@link remote} is, so a project that
    * gains a repository later never moves a files run onto a checkout and away
@@ -654,7 +665,7 @@ export async function writeRunRecord(
  * for previous-attempt data.** That was not true when the claim was first
  * written: the implement prompt read `sessionId` off the row to name the last
  * attempt's harness session, and the clear meant it always saw `null`. The
- * carry-forward a phase needs now arrives on `PhaseRunContext` — the failure
+ * carry-forward a mode needs now arrives on `ModeRunContext` — the failure
  * reason from the board's own `feedback`, the previous session captured by the
  * manager before this write. A phase reading this row for anything the clear
  * touches is the same defect returning.
@@ -696,6 +707,44 @@ export async function readRunRecord(
 ): Promise<RunRecordState | undefined> {
   const ref = await collectionRef(ctx, RUNS).getOptional(topic);
   return ref?.state as RunRecordState | undefined;
+}
+
+// BP-030.
+/**
+ * Find one issue's run of a mode: under `<epic>/<issue>/<name>` first, then,
+ * when that key is absent and the mode names a `formerName`, under the former
+ * key. The segment it was found under is the run's from then on; nothing is
+ * copied to the new key. Found under neither, it is a new run, keyed by `name`.
+ *
+ * `spelled` is the segment as the task itself spelled it, when that differs
+ * from `name` (its folded form). Before the key folded, that spelling was the
+ * key, so it is read after `name` and before the former key.
+ *
+ * Every key but `name` is this task's only: a record there that names another
+ * task (`taskId`) is another row's run, so it counts as absent and the task
+ * opens a new run under `name`. A record that names no task is read as the
+ * task's. Pass the reading task's id whenever it is known.
+ */
+export async function readModeRunRecord(
+  ctx: CollectionHoldingContext,
+  epic: string,
+  issue: string,
+  mode: { readonly name: string; readonly formerName?: string },
+  taskId?: string,
+  spelled?: string,
+): Promise<{ segment: string; topic: string; record: RunRecordState | undefined }> {
+  const topic = runTopic(epic, issue, mode.name);
+  const record = await readRunRecord(ctx, topic);
+  const fresh = { segment: mode.name, topic, record };
+  if (record !== undefined) return fresh;
+  for (const older of [spelled, mode.formerName]) {
+    if (older === undefined || older === mode.name) continue;
+    const olderTopic = runTopic(epic, issue, older);
+    const found = await readRunRecord(ctx, olderTopic);
+    const anotherTasks = taskId !== undefined && found?.taskId != null && found.taskId !== taskId;
+    if (found !== undefined && !anotherTasks) return { segment: older, topic: olderTopic, record: found };
+  }
+  return fresh;
 }
 
 /**

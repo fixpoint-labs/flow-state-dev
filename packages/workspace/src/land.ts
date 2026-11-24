@@ -12,6 +12,10 @@
  *   person's own credential helpers and nothing in config that runs a
  *   program. A remote repointed since is refused, naming the pin file, the
  *   same as a fetch. Never a force push.
+ * - **Only the remote calls hold the host's credentials.** The push,
+ *   `ls-remote`, fetch and `gh` start with `HOST_REMOTE_PASS` (gh's tokens,
+ *   the ssh agent); every local git call starts with `HOST_GIT_PASS`, which
+ *   carries none (`./child-env`).
  * - **A merge never resolves a conflict.** It runs in the person's checkout
  *   of the base branch, refuses one with uncommitted changes, and on a
  *   conflict aborts, so the checkout is as it was, and says which files.
@@ -28,12 +32,13 @@
 import { pullRequestRefFromUrl } from "@flow-state-dev/core/harness";
 import { existsSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { childEnv, HOST_GIT_PASS, HOST_REMOTE_PASS } from "./child-env";
 import { run } from "./exec";
 import { scratchDir } from "./held-work";
 import { WorkspaceRefusedError } from "./refused";
 import { checkRemoteShape, redactRemote, withoutCredential, type AllowedRemote } from "./remotes";
 import type { KeptFetchPins } from "./repository";
-import { firstLine, NO_HOOKS } from "./worktree";
+import { firstLine, NO_HOOKS, remoteCallConfig } from "./worktree";
 
 /** How long one landing may take, by default: every command in it shares this one deadline. */
 const LAND_TIMEOUT_MS = 2 * 60_000;
@@ -142,6 +147,12 @@ export interface LandHost {
   /** The host's environment for git. */
   readonly env: Record<string, string>;
   /**
+   * The names a remote call (push, `ls-remote`, fetch, `gh`) may see from the
+   * host's environment: `HOST_REMOTE_PASS` and the host's `remotes.pass`.
+   * Default `HOST_REMOTE_PASS`.
+   */
+  readonly remotePass?: readonly string[];
+  /**
    * The GitHub repository (`host/owner/name`, gh's `--repo`) a pinned remote's
    * URL names, or `undefined` when it names none. Default {@link repoOf}.
    */
@@ -157,7 +168,7 @@ export interface LandHost {
  */
 export async function landWays(host: LandHost, target: LandTarget): Promise<Array<LandRequest["kind"]>> {
   const git = async (cwd: string, args: string[]) =>
-    (await run("git", [...NO_HOOKS, "-c", "core.fsmonitor=false", ...args], { cwd, timeoutMs: RESTORE_TIMEOUT_MS, env: host.env })).stdout.trim();
+    (await run("git", [...NO_HOOKS, "-c", "core.fsmonitor=false", ...args], { cwd, timeoutMs: RESTORE_TIMEOUT_MS, env: host.env, pass: HOST_GIT_PASS })).stdout.trim();
   try {
     const { repo } = await pullRequestPlace(git, host, target.baseRef);
     return repo === undefined ? ["merge"] : ["pull-request", "merge"];
@@ -195,13 +206,13 @@ export async function existingPullRequest(
   const deadline = Date.now() + (options.timeoutMs ?? LAND_TIMEOUT_MS);
   const left = () => Math.max(1, deadline - Date.now());
   const git = async (cwd: string, args: string[]) =>
-    (await run("git", [...NO_HOOKS, "-c", "core.fsmonitor=false", ...args], { cwd, timeoutMs: left(), env: host.env })).stdout.trim();
+    (await run("git", [...NO_HOOKS, "-c", "core.fsmonitor=false", ...args], { cwd, timeoutMs: left(), env: host.env, pass: HOST_GIT_PASS })).stdout.trim();
   const branch = await branchToLand(git, target);
   const { remote, repo } = await pullRequestPlace(git, host, target.baseRef);
   if (remote === undefined || repo === undefined) return null;
   const ghDir = scratchDir();
   try {
-    const gh = { gh: options.gh ?? "gh", ghDir, ghEnv: { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) }, where: ["--repo", repo] };
+    const gh = { gh: options.gh ?? "gh", ghDir, ghEnv: { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) }, where: ["--repo", repo], pass: host.remotePass ?? HOST_REMOTE_PASS };
     // Into the base a landing would ask for: the remote's default branch when the run's is gone.
     const judged = checkRemoteShape(remote.url);
     // A base gone with no default to fall back on throws `base-gone`: it can't be told where a pull request would be.
@@ -231,13 +242,13 @@ export async function landRun(host: LandHost, target: LandTarget, request: LandR
   const deadline = Date.now() + (request.timeoutMs ?? LAND_TIMEOUT_MS);
   const left = () => Math.max(1, deadline - Date.now());
   const git = async (cwd: string, args: string[], env: Record<string, string> = {}) =>
-    (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: left(), env: { ...host.env, ...env } })).stdout.trim();
+    (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: left(), env: { ...host.env, ...env }, pass: HOST_GIT_PASS })).stdout.trim();
   const restoreGit = async (cwd: string, args: string[], env: Record<string, string> = {}) =>
-    (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: RESTORE_TIMEOUT_MS, env: { ...host.env, ...env } })).stdout.trim();
+    (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: RESTORE_TIMEOUT_MS, env: { ...host.env, ...env }, pass: HOST_GIT_PASS })).stdout.trim();
   const landing = { ...target, branch: await branchToLand(git, target) };
   const place = await pullRequestPlace(git, host, target.baseRef);
   return request.kind === "merge"
-    ? await merge(git, restoreGit, host.repo, place.base, landing.branch, { ...process.env, ...host.env })
+    ? await merge(git, restoreGit, host.repo, place.base, landing.branch, childEnv({ pass: HOST_GIT_PASS, env: host.env }))
     : await openPullRequest(git, host, landing, place, request, left);
 }
 
@@ -632,7 +643,7 @@ async function openPullRequest(
   const ghEnv = { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) };
   const where = ["--repo", repo];
   try {
-    return await pushAndOpen(git, host, target, { ...remote, base: into.base }, into.gone, judged, request, left, { gh, ghDir, ghEnv, where, repo });
+    return await pushAndOpen(git, host, target, { ...remote, base: into.base }, into.gone, judged, request, left, { gh, ghDir, ghEnv, where, pass: host.remotePass ?? HOST_REMOTE_PASS, repo });
   } finally {
     try {
       rmSync(ghDir, { recursive: true, force: true });
@@ -651,7 +662,7 @@ const OPEN_PULL_REQUESTS_READ = 20;
  * not this run's. A field gh doesn't give is not held against it.
  */
 async function openPullRequestOf(
-  gh: { gh: string; ghDir: string; ghEnv: Record<string, string>; where: string[] },
+  gh: { gh: string; ghDir: string; ghEnv: Record<string, string>; where: string[]; pass: readonly string[] },
   branch: string,
   base: string,
   timeoutMs: number,
@@ -662,7 +673,7 @@ async function openPullRequestOf(
       "pr", "list", ...gh.where, "--head", branch, "--state", "open",
       "--json", "number,url,baseRefName,isCrossRepository", "--limit", String(OPEN_PULL_REQUESTS_READ),
     ],
-    { cwd: gh.ghDir, timeoutMs, env: gh.ghEnv },
+    { cwd: gh.ghDir, timeoutMs, env: gh.ghEnv, pass: gh.pass, gitCredentials: true },
   );
   const parsed = JSON.parse(stdout || "[]") as unknown;
   const listed = (Array.isArray(parsed) ? parsed : []) as Array<{ url?: unknown; baseRefName?: unknown; isCrossRepository?: unknown }>;
@@ -681,7 +692,7 @@ async function pushAndOpen(
   judged: AllowedRemote,
   request: Extract<LandRequest, { kind: "pull-request" }>,
   left: () => number,
-  gh: { gh: string; ghDir: string; ghEnv: Record<string, string>; where: string[]; repo: string },
+  gh: { gh: string; ghDir: string; ghEnv: Record<string, string>; where: string[]; pass: readonly string[]; repo: string },
 ): Promise<Landed> {
   const landedAt = (url: string, existing = false): Landed => {
     const ref = pullRequestRefFromUrl(url)!;
@@ -751,7 +762,7 @@ async function pushAndOpen(
       const { stdout } = await run(
         gh.gh,
         ["pr", "create", ...gh.where, "--head", head, "--base", remote.base, "--title", request.title, "--body", request.body],
-        { cwd: gh.ghDir, timeoutMs: left(), env: gh.ghEnv },
+        { cwd: gh.ghDir, timeoutMs: left(), env: gh.ghEnv, pass: gh.pass, gitCredentials: true },
       );
       url = stdout.trim().split("\n").reverse().find((line) => pullRequestRefFromUrl(line.trim()) !== null)?.trim();
     } catch (error) {
@@ -765,16 +776,7 @@ async function pushAndOpen(
 /** Push the branch's tip to the pinned remote, never forced. */
 /** The `-c` settings every remote call runs under: no hooks, no askpass, only the judged protocol, the host's pinned credentials. */
 function remoteConfig(host: LandHost, judged: AllowedRemote): string[] {
-  return [
-    "-c", "core.sshCommand=ssh",
-    "-c", "core.askPass=",
-    ...NO_HOOKS,
-    "-c", "core.fsmonitor=false",
-    "-c", "protocol.allow=never",
-    "-c", `protocol.${judged.scheme}.allow=always`,
-    "-c", "credential.helper=",
-    ...(host.pins?.credentialHelpers ?? []).flatMap(([key, value]) => ["-c", `${key}=${value}`]),
-  ];
+  return remoteCallConfig(judged.scheme, host.pins?.credentialHelpers ?? []);
 }
 
 /**
@@ -803,11 +805,11 @@ async function lsRemote(host: LandHost, judged: AllowedRemote, refs: string[], l
   let scratch: string | undefined;
   try {
     scratch = scratchDir();
-    await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env: host.env });
+    await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env: host.env, pass: HOST_GIT_PASS });
     const { stdout } = await run(
       "git",
       [...remoteConfig(host, judged), "ls-remote", "--symref", "--", judged.url, ...refs],
-      { cwd: scratch, timeoutMs: left(), env: { ...host.env, GIT_DIR: scratch, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" } },
+      { cwd: scratch, timeoutMs: left(), env: { ...host.env, GIT_DIR: scratch, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" }, pass: host.remotePass ?? HOST_REMOTE_PASS, gitCredentials: true },
     );
     return stdout;
   } finally {
@@ -887,14 +889,14 @@ async function remoteBranchHolds(
   try {
     scratch = scratchDir();
     const env = { ...host.env, GIT_DIR: scratch, GIT_OBJECT_DIRECTORY: cutAt.objects, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" };
-    await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env: host.env });
-    await run("git", [...NO_HOOKS, "update-ref", "refs/cut", cutAt.commit], { cwd: scratch, timeoutMs: left(), env });
+    await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env: host.env, pass: HOST_GIT_PASS });
+    await run("git", [...NO_HOOKS, "update-ref", "refs/cut", cutAt.commit], { cwd: scratch, timeoutMs: left(), env, pass: HOST_GIT_PASS });
     await run(
       "git",
       [...remoteConfig(host, judged), "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--", judged.url, `+refs/heads/${branch}:refs/default`],
-      { cwd: scratch, timeoutMs: left(), env },
+      { cwd: scratch, timeoutMs: left(), env, pass: host.remotePass ?? HOST_REMOTE_PASS, gitCredentials: true },
     );
-    return await run("git", [...NO_HOOKS, "merge-base", "--is-ancestor", cutAt.commit, "refs/default"], { cwd: scratch, timeoutMs: left(), env }).then(
+    return await run("git", [...NO_HOOKS, "merge-base", "--is-ancestor", cutAt.commit, "refs/default"], { cwd: scratch, timeoutMs: left(), env, pass: HOST_GIT_PASS }).then(
       () => true,
       (error: { code?: unknown }) => (error.code === 1 ? false : undefined),
     );
@@ -923,7 +925,7 @@ async function push(
     scratch = scratchDir();
     const objects = join(await git(host.repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]), "objects");
     const isolated = { ...host.env, GIT_DIR: scratch, GIT_OBJECT_DIRECTORY: objects };
-    await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env: host.env });
+    await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env: host.env, pass: HOST_GIT_PASS });
     await run(
       "git",
       [
@@ -936,7 +938,7 @@ async function push(
         judged.url,
         `${commit}:refs/heads/${target.branch}`,
       ],
-      { cwd: scratch, timeoutMs: left(), env: { ...isolated, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" } },
+      { cwd: scratch, timeoutMs: left(), env: { ...isolated, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" }, pass: host.remotePass ?? HOST_REMOTE_PASS, gitCredentials: true },
     );
   } catch (error) {
     throw new WorkspaceRefusedError(

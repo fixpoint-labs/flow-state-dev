@@ -76,7 +76,14 @@ export type RunActionOptions<
   actionName: TActionName;
   input: unknown;
   userId: string;
-  sessionId?: string;
+  /**
+   * The session the run lands in. **Required**: every run names its session,
+   * and its request record names it from the first write. A run that belongs
+   * to no conversation passes `oneOffSessionId()` from
+   * `@flow-state-dev/core/helpers`. Missing at run time (an untyped caller),
+   * `runAction` throws `SessionRequiredError` before anything is written.
+   */
+  sessionId: string;
   // FIX-1442.
   /**
    * The organization this run belongs to. **Required**.

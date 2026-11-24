@@ -16,6 +16,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { createInboundTransportHost, createInMemoryStores, type DispatchEnvelope, type FlowRunner } from "../../src/host";
 import { createFlowRegistry, defaultBodyUserIdPrincipalResolver } from "../../src";
 import { createMockModelResolver } from "@flow-state-dev/testing";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function setup() {
   const ran: string[] = [];
@@ -48,6 +49,7 @@ function setup() {
   const carried = handler({ name: "dynamic-run", inputSchema: z.object({}).passthrough(), execute: () => (ran.push("dynamic"), { ok: true }) });
   const fire = (core?: { block: unknown }) =>
     host.dispatch({
+      sessionId: oneOffSessionId(),
       source: "scheduled",
       flowKind: "digest",
       action: core === undefined ? "run" : "dynamic-run",

@@ -39,12 +39,15 @@ describe("a coding run's brief", () => {
     expect(codingBrief({ ...run, branch: "" } as PromptRunContext, {})).toContain("Work in /work/row-1.\n");
   });
 
-  it("asks for a report that names what changed, what was checked and what could not be", () => {
+  it("asks for a report that names what changed, what was checked and what could not be, under the headings the review reads", () => {
     const brief = codingBrief(run, {});
     const report = brief.slice(brief.indexOf("# Your report"));
-    expect(report).toMatch(/what you changed/);
-    expect(report).toMatch(/each command .* with its result/);
-    expect(report).toMatch(/what you could not check, and why/);
+    expect(report).toContain("## What changed");
+    expect(report).toContain("## Checks");
+    expect(report).toContain("## Worth knowing");
+    expect(report).toMatch(/each command you ran with its result/);
+    expect(report).toMatch(/each check you could not do and why/);
+    expect(report).toMatch(/`not done:`/);
   });
 
   it("leaves the report out for a run whose last message is the answer a person reads", () => {

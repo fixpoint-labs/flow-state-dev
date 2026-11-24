@@ -48,6 +48,7 @@ import { parseResourceWriteState } from "./normalize-resource-state";
 import { ownerWriteRefusal } from "./owner-private";
 import { countInstances } from "../context/resource-registry";
 import { isProjectedResourceCollection } from "./internal";
+import { WRITE_SESSION_PREFIX, isWriteSessionId } from "./write-session-id";
 import {
   addressCellId,
   entryStorageKey,
@@ -61,13 +62,7 @@ import {
 /** The default write flow's kind and instance id. */
 export const DEFAULT_WRITE_FLOW = "fsd-default-write";
 
-/** Every write session id starts with this; a client may not name one. */
-export const WRITE_SESSION_PREFIX = "fsd-write.";
-
-/** Whether `id` (bare, or tenant-namespaced as `tenant:id`) is a write session's. */
-export function isWriteSessionId(id: string): boolean {
-  return id.startsWith(WRITE_SESSION_PREFIX) || id.includes(`:${WRITE_SESSION_PREFIX}`);
-}
+export { WRITE_SESSION_PREFIX, isWriteSessionId };
 
 /** Marks the server's own resource send on a dispatch envelope; a symbol, so no request input carries it. */
 const SERVER_RESOURCE_SEND = Symbol.for("@flow-state-dev/engine/serverResourceSend");

@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { continueRequest, createFlowRegistry, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { recordRequestStop } from "../src/execution/record-request-stop";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 describe("a Discard that lands after a Continue was admitted", () => {
   it("ends the turn: the action does not run and the request stays aborted", async () => {
@@ -23,7 +24,7 @@ describe("a Discard that lands after a Continue was admitted", () => {
     registry.register(flow as never);
     const stores = createInMemoryStores();
 
-    const first = await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "respond", input: {}, userId: "u1", stores, runtimeConfig: {} });
+    const first = await runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "respond", input: {}, userId: "u1", stores, runtimeConfig: {} });
     const requestId = first.requestId!;
     const done = (await stores.request.get(requestId))!;
     await stores.request.set(requestId, { ...done, status: "interrupted", interruptedAt: Date.now(), result: undefined }, "any");

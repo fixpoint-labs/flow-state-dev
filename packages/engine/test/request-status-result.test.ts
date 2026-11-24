@@ -17,6 +17,7 @@ import { createInMemoryStores } from "../src/host";
 import { createFlowRegistry } from "../src/registry/flow-registry";
 import { handleGetRequestStatus } from "../src/routes/request-status-routes";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 const computeFlow = defineFlow({
   kind: "compute",
@@ -40,7 +41,7 @@ describe("status route: the stored result, by request id", () => {
       const sent = await fetcher("http://x.invalid/api/flows/compute/actions/square", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: "u1", input: { n: 7 } })
+        body: JSON.stringify({ sessionId: oneOffSessionId(), userId: "u1", input: { n: 7 } })
       });
       expect(sent.status).toBeLessThan(300);
       const body = (await sent.json()) as { request?: { id: string }; requestId?: string };

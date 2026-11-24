@@ -383,6 +383,63 @@ describe("a run that already has its branch is handed back, never fetched or mov
   });
 });
 
+describe("the base branch's tip after a run started: what a review diffs against", () => {
+  it("fetches the base's upstream as it is now, into the run's own objects", async () => {
+    const place = await provision("main");
+    const pushed = upstream.commit("main", "merged.txt", "a teammate's merge");
+
+    const tip = await host().baseTip!({ cwd: place.cwd, baseRef: "main" });
+
+    expect(tip).toBe(pushed);
+    // The run's checkout can read it, so a diff against it needs no fetch of its own.
+    expect(git(place.cwd, "cat-file", "-t", pushed)).toBe("commit");
+  });
+
+  it("fetches a remote-tracking base named directly", async () => {
+    const place = await provision("origin/main");
+    const pushed = upstream.commit("main", "merged.txt", "a teammate's merge");
+
+    expect(await host().baseTip!({ cwd: place.cwd, baseRef: "origin/main" })).toBe(pushed);
+  });
+
+  it("never answers a local ref a run can move, nor a tracking ref a run moved", async () => {
+    // The run shares the repository's refs: pointing `main` (or its tracking
+    // ref) at its own work would make its work the base, and hide it.
+    const place = await provision("main");
+    git(place.cwd, "commit", "-q", "--allow-empty", "-m", "the run's change");
+    const runHead = git(place.cwd, "rev-parse", "HEAD");
+    git(repo, "update-ref", "refs/heads/main", runHead);
+    git(repo, "update-ref", "refs/remotes/origin/main", runHead);
+
+    const tip = await host().baseTip!({ cwd: place.cwd, baseRef: "main" });
+
+    expect(tip).toBe(upstream.rev("main"));
+    expect(tip).not.toBe(runHead);
+  });
+
+  it("answers none for a base named only as HEAD: whichever branch the repository is on now, which can be switched mid-run", async () => {
+    // Someone switches the repository to a branch with the run's work on it:
+    // resolved now, that branch's upstream would be the base, and hide the work.
+    const place = await provision("main");
+    upstream.commit("main", "merged.txt", "a teammate's merge");
+    expect(await host().baseTip!({ cwd: place.cwd, baseRef: "HEAD" })).toBeUndefined();
+    expect(await host().baseTip!({ cwd: place.cwd, baseRef: null })).toBeUndefined();
+    // Nor any other spelling git resolves to the branch it is on.
+    expect(await host().baseTip!({ cwd: place.cwd, baseRef: "@" })).toBeUndefined();
+  });
+
+  it("answers none for a base with no upstream, an upstream it can't fetch, or a checkout it doesn't list", async () => {
+    git(repo, "branch", "-q", "solo");
+    const place = await provision("solo");
+    expect(await host().baseTip!({ cwd: place.cwd, baseRef: "solo" })).toBeUndefined();
+
+    rmSync(upstream.bare, { recursive: true, force: true });
+    expect(await host().baseTip!({ cwd: place.cwd, baseRef: "main" })).toBeUndefined();
+
+    expect(await host().baseTip!({ cwd: tempDir("elsewhere"), baseRef: "main" })).toBeUndefined();
+  });
+});
+
 describe("two runs on one checkout at once", () => {
   it("both start", async () => {
     const pushed = upstream.commit("main", "merged.txt", "a teammate's merge");

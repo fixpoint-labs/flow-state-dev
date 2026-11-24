@@ -17,6 +17,7 @@ import type { DurabilityProvider } from "../src/durability/types";
 import type { StoreRegistry } from "../src/stores/types";
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { ResumeContext } from "@flow-state-dev/core/types";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 
 function createDurableStores() {
   const stores = createInMemoryStores();
@@ -110,6 +111,7 @@ describe("ctx.suspend() — initial suspension", () => {
     const { stores, provider } = createDurableStores();
 
     const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
@@ -140,7 +142,7 @@ describe("ctx.suspend() — initial suspension", () => {
     })();
     const { stores, provider } = createDurableStores();
 
-    const result = await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "ask", input: {}, userId: "u1", stores, runtimeConfig: { durabilityProvider: provider } });
+    const result = await runAction({ sessionId: oneOffSessionId(), orgId: DEFAULT_ORG_ID, flow, actionName: "ask", input: {}, userId: "u1", stores, runtimeConfig: { durabilityProvider: provider } });
 
     const suspItem = result.items.find((i) => i.type === "suspension") as any;
     expect(suspItem).toMatchObject({ title: "Deploy failed", message: "It failed twice.\n\n- Retry it?" });
@@ -170,6 +172,7 @@ describe("ctx.suspend() — initial suspension", () => {
     const { stores, provider } = createDurableStores();
 
     const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
@@ -317,6 +320,7 @@ describe("resume after suspension", () => {
 
     // Phase 1: suspend
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
@@ -382,6 +386,7 @@ describe("suspension without durability provider", () => {
     const stores = createInMemoryStores();
 
     const result = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
@@ -564,6 +569,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
@@ -637,6 +643,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -696,6 +703,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -746,6 +754,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -788,6 +797,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+      sessionId: oneOffSessionId(),
       orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -844,6 +854,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -915,6 +926,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -973,6 +985,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1034,6 +1047,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
@@ -1086,6 +1100,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
@@ -1148,6 +1163,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1215,6 +1231,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1296,6 +1313,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1334,6 +1352,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
@@ -1390,6 +1409,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
@@ -1413,6 +1433,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     await expect(
       runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "ask",
@@ -1458,6 +1479,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1488,6 +1510,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     await expect(
       runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
@@ -1533,6 +1556,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
@@ -1608,6 +1632,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "transfer",
@@ -1657,6 +1682,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",
@@ -1711,6 +1737,7 @@ describe("same-request continuation (FIX-811)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    sessionId: oneOffSessionId(),
     orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "ask",

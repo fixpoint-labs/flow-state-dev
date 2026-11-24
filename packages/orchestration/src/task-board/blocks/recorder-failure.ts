@@ -69,8 +69,11 @@ export const TASK_BOARD_RECORDER_FAILURE_DATA_TYPE =
  */
 export type RecorderWriteVerdict = "committed" | "undetermined";
 
-/** Which of the two recorders hit this. */
-export type RecorderKind = "complete" | "fail";
+/**
+ * Which recorder hit this: a completion, a failure, or the cancel the claim
+ * gate writes when a person stopped the request working the task.
+ */
+export type RecorderKind = "complete" | "fail" | "cancel";
 
 /** The report's payload, as it appears on the emitted item's `value`. */
 export interface RecorderFailureReport {

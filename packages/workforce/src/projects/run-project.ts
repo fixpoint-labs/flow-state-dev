@@ -98,7 +98,7 @@ export async function runProjectOf(ctx: BlockContext): Promise<RunProject | RunS
     return otherProject(named, own) ?? fromProject(ctx, own);
   }
   // The project the held task was filed in (FIX-2161), kept on its row.
-  // The board's filing check (FIX-2333, `assertProjectFor`) asks the same
+  // The board's filing check (FIX-2333, FIX-2894: `inputLookup`'s `hasProject`) asks the same
   // order before a row exists: a change here belongs there too.
   const stamped = filedProjectOf(held);
   if (stamped !== undefined) {

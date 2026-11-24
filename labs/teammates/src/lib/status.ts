@@ -3,7 +3,8 @@
  * state only. First, anything it needs from you: an approval it asked for and
  * you haven't answered, or a task of its that waits on you. Then it is
  * answering in its conversation (a running request), a coding task it
- * started is running (the board's row), a coding task of its just ended (for
+ * started is running (its task holds a live lease), a coding task of
+ * its waits on its pull request, a coding task of its just ended (for
  * two minutes after), it sent a message and waits for the reply (the message
  * log), or it is idle. Nothing is guessed: with no request, no running task
  * and no open message, it is idle.
@@ -15,7 +16,8 @@ import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useAppClient, useConversation, useTasks } from "../app";
 import { knownToolVerbs } from "../components/flow-state/tool-grouping";
 import { stepOf } from "../components/flow-state/conversation-lines";
-import { activeCoding, attemptStartedAt, holdOf, taskStatus, workerOf } from "./task";
+import { activeCoding, attemptStartedAt, holdOf, runsNow, taskStatus, waitsOnPullRequest, workerOf } from "./task";
+import type { BotStatus } from "./looks";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom, useTalk } from "./talk";
 import { age, useNow } from "./use-watch";
@@ -34,8 +36,8 @@ export interface StatusInputs {
 /** How long a coding task's ending stays on the line: long enough for a glance; the panel keeps it after. */
 export const ENDING_SHOWN_MS = 2 * 60_000;
 
-/** An approval's tone: the attention colour, you must act. A task's tone is `taskPresentation`'s. */
-const NEEDS_OK = "text-attention";
+/** An approval's tone: plain readable text; the highlighter is drawn as a fill behind the words, never as their colour. A task's tone is `taskPresentation`'s. */
+const NEEDS_OK = "text-text-2";
 /** The tone of a line that only reports (replying, idle), not a task's state or something you owe. */
 export const PLAIN = "text-muted-foreground";
 
@@ -45,6 +47,8 @@ export interface Status {
   tone: string;
   /** It asks you to act: an approval, or a task waiting on you. */
   needsYou: boolean;
+  /** How its bot shows it: what the status line says, as a state (`lib/looks`). */
+  state: BotStatus;
 }
 
 const upperFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -88,37 +92,43 @@ export function freshEndings(tasks: readonly CodingBoardTask[], now: number, isC
 /**
  * The status line, in plain words, and its tone: "Needs your OK: …",
  * "Waiting on you: …", "Replying to you", "Replying to researcher",
- * "Running coding task: X", "Running 3 tasks · X" (X the newest), "Coding task finished: X", "Coding task
+ * "Running coding task: X", "Running 3 tasks · X" (X the newest; only while a
+ * run holds its lease), "Waiting on its pull request: X", "Coding task
+ * finished: X", "Coding task
  * failed: X", "Messaging writer", or "Idle".
  */
 export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: string) => string, isCoding: (id: string) => boolean): Status {
   const { activity, lines, talk, tasks, now } = inputs;
   const need = needsOf(inputs)[0];
-  if (need?.kind === "approval") return { text: `Needs your OK: ${need.text}`, tone: NEEDS_OK, needsYou: true };
+  if (need?.kind === "approval") return { text: `Needs your OK: ${need.text}`, tone: NEEDS_OK, needsYou: true, state: "needs" };
   if (need?.kind === "task") {
     const state = taskPresentation(need.task);
-    return { text: `${upperFirst(state.word)}: ${need.text}`, tone: state.tone, needsYou: true };
+    return { text: `${upperFirst(state.word)}: ${need.text}`, tone: state.tone, needsYou: true, state: "needs" };
   }
-  const plain = (text: string): Status => ({ text, tone: PLAIN, needsYou: false });
+  const plain = (text: string, state: BotStatus): Status => ({ text, tone: PLAIN, needsYou: false, state });
   if (activity?.running) {
     // What it is answering: the last line it was given, yours or another worker's.
     const given = [...lines].reverse().find((line) => line.kind === "user" || (line.kind === "data" && line.item.dataType === RECEIVED_MESSAGE_DATA_TYPE));
     const from = given?.kind === "data" ? (given.item.value as { from?: string })?.from : undefined;
-    return plain(from !== undefined ? `Replying to ${nameOf(from)}` : "Replying to you");
+    return plain(from !== undefined ? `Replying to ${nameOf(from)}` : "Replying to you", "running");
   }
-  // The newest running task names the line: an old one left running must not hide the one you just started. An idle one (a pull request open) isn't running.
-  const coding = activeCoding(tasks, isCoding).sort((a, b) => (attemptStartedAt(b) ?? 0) - (attemptStartedAt(a) ?? 0));
-  if (coding.length === 1) return plain(`Running coding task: ${coding[0]!.title}`);
-  if (coding.length > 1) return plain(`Running ${coding.length} tasks · ${coding[0]!.title}`);
+  // The newest running task names the line: an old one left running must not hide the one you just started.
+  // Running only while a run holds its lease: an idle one (a pull request open) or one kept open with no run on it claims nothing.
+  const coding = activeCoding(tasks, isCoding).filter((t) => runsNow(t, now)).sort((a, b) => (attemptStartedAt(b) ?? 0) - (attemptStartedAt(a) ?? 0));
+  if (coding.length === 1) return plain(`Running coding task: ${coding[0]!.title}`, "running");
+  if (coding.length > 1) return plain(`Running ${coding.length} tasks · ${coding[0]!.title}`, "running");
+  const merging = tasks.find((t) => waitsOnPullRequest(t) && isCoding(workerOf(t)));
+  if (merging) return plain(`Waiting on its pull request: ${merging.title}`, "queued");
   const ended = freshEndings(tasks, now, isCoding)[0];
   if (ended) {
     const state = taskPresentation(ended);
-    return { text: `Coding task ${ended.status === "errored" ? state.word : "finished"}: ${ended.title}`, tone: state.tone, needsYou: false };
+    // A failed task leaves the bot idle (no done smile); the words and their red tone say it failed.
+    return { text: `Coding task ${ended.status === "errored" ? state.word : "finished"}: ${ended.title}`, tone: state.tone, needsYou: false, state: ended.status === "errored" ? "idle" : "done" };
   }
   const waiting = owedRepliesFrom(worker, [...talk]);
-  if (waiting.length > 0) return plain(`Messaging ${waiting.map(nameOf).join(", ")}`);
-  if (activity === undefined) return plain("");
-  return plain(activity.lastActiveAt > 0 ? `Idle · ${age(activity.lastActiveAt, now)}` : "Idle");
+  if (waiting.length > 0) return plain(`Messaging ${waiting.map(nameOf).join(", ")}`, "queued");
+  if (activity === undefined) return plain("", "idle");
+  return plain(activity.lastActiveAt > 0 ? `Idle · ${age(activity.lastActiveAt, now)}` : "Idle", "idle");
 }
 
 /**
@@ -139,8 +149,8 @@ export function answeringStep(lines: readonly ItemLine[]): Status | undefined {
     const item = last.items[i]!;
     if (item.type !== "tool_output") continue;
     const step = stepOf(item as ToolOutputItem, last.ended === true);
-    if (step.state === "waiting") return { text: "waiting on you", tone: NEEDS_OK, needsYou: true };
-    if (step.state === "running") return { text: knownToolVerbs(step.tool)?.present ?? "using a tool", tone: PLAIN, needsYou: false };
+    if (step.state === "waiting") return { text: "waiting on you", tone: NEEDS_OK, needsYou: true, state: "needs" };
+    if (step.state === "running") return { text: knownToolVerbs(step.tool)?.present ?? "using a tool", tone: PLAIN, needsYou: false, state: "running" };
   }
   return undefined;
 }

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { CheckIcon, ClockIcon, TerminalIcon } from "lucide-react";
+import { ClockIcon, TerminalIcon } from "lucide-react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
 import { useTasks } from "../app";
@@ -10,7 +10,7 @@ import { clearMark, useCleared } from "../lib/cleared";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import { STALE_CLASS } from "./flow-state/connection-banner";
-import { costAmount, tokenCount } from "./flow-state/spend";
+import { costAmount, tokenCount, tokenTotal } from "./flow-state/spend";
 import { taskSignal } from "./flow-state/task-signals";
 import { reasonLine, type Popup } from "./Popups";
 import { taskLabel, taskLine } from "./TaskCard";
@@ -22,7 +22,7 @@ import { taskLabel, taskLine } from "./TaskCard";
  */
 const NEWEST_SHOWN = 5;
 
-/** The panel's status filters, in tile order. Each tile is a tab: the only way to pick which tasks show. */
+/** The panel's status filters, in tab order. Each is a tab: the only way to pick which tasks show. */
 const FILTERS = [
   { status: "running", label: "Running" },
   { status: "idle", label: "Idle" },
@@ -30,14 +30,6 @@ const FILTERS = [
   { status: "done", label: "Done" },
 ] as const;
 type Filter = (typeof FILTERS)[number]["status"];
-
-/** Each filter's marker, labelled by its tile's word: a green dot, a grey ring, a red square, a check. */
-const MARKER: Record<Filter, string> = {
-  running: "size-1.5 rounded-full bg-success",
-  idle: "size-2 rounded-full border border-text-3",
-  failed: "size-1.5 rounded-[1px] bg-danger",
-  done: "size-3 text-text-3",
-};
 
 /** What an empty tab says. */
 const EMPTY: Record<Filter, string> = { running: "No running tasks.", idle: "No idle tasks.", failed: "No failed tasks.", done: "Nothing done yet." };
@@ -88,8 +80,8 @@ function groupTasks(tasks: readonly CodingBoardTask[], cleared: ReadonlySet<stri
 
 /**
  * The right pane: the selected teammate's tasks. Its heading gives the total.
- * Under it, four count tiles, *Running*, *Idle*, *Failed* and *Done*, which
- * are the panel's tabs: the selected one lists its tasks as cards, newest first
+ * Under it, a segmented bar of four counted tabs, *Running*, *Idle*, *Failed* and *Done*, which
+ * pick which tasks show: the selected one lists its tasks as cards, newest first
  * (running ones waiting on you first). *Failed* and *Done* show their newest
  * five, with *Show all* / *Show fewer*. *Failed* has *Clear*, which moves its
  * tasks to *Done* in this browser; the tasks themselves are unchanged. *Done*
@@ -139,7 +131,7 @@ export function TeammatePanel({
 
   const shown = CAPPED.has(filter) && !showAll ? groups[filter].slice(0, NEWEST_SHOWN) : groups[filter];
 
-  // Arrow keys move between the tiles, as a tab list's do; the selection follows focus.
+  // Arrow keys move between the tabs, as a tab list's do; the selection follows focus.
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
     if (step === 0) return;
@@ -161,7 +153,7 @@ export function TeammatePanel({
     const long = isLongRunning(t, now);
     const start = attemptStartedAt(t);
     const elapsed = elapsedOf(t, start, now, signal);
-    const tokens = t.spend == null || (t.spend.inputTokens === null && t.spend.outputTokens === null) ? undefined : tokenCount((t.spend.inputTokens ?? 0) + (t.spend.outputTokens ?? 0));
+    const tokens = tokenTotal(t.spend);
     const meta = [runs.harness, runs.model, tokens].filter((x): x is string => x !== undefined);
     const words = cardWords(t, signal?.kind === "quiet" ? signal.text : undefined);
     return (
@@ -173,8 +165,8 @@ export function TeammatePanel({
           data-task={status}
           onClick={() => onOpen({ kind: "task", sessionId, taskId: t.id })}
           className={cn(
-            "flex w-full flex-col gap-2 rounded-md border border-border bg-surface px-3 py-2.5 text-left transition-colors hover:border-border-strong hover:bg-surface-raised focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
-            t.id === openTask && "border-border-strong bg-surface-raised",
+            "flex w-full flex-col gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-left shadow-(--shadow-card) transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-ring",
+            t.id === openTask && "border-brand",
             // A stale feed greys the whole card: STALE_CLASS only reaches descendants.
             stale && STALE_CLASS,
           )}
@@ -184,14 +176,14 @@ export function TeammatePanel({
               {coding ? t.title : line}
             </span>
             {elapsed === undefined ? null : (
-              <span className={cn("shrink-0 pt-px font-mono text-xs tabular-nums", long ? "text-warning-text" : active ? "text-success-text" : "text-text-3")} data-elapsed>
+              <span className={cn("shrink-0 pt-px font-mono text-xs tabular-nums", active && signal?.kind !== "idle" ? "text-brand" : "text-text-3")} data-elapsed>
                 {elapsed}
               </span>
             )}
           </span>
           {active && signal?.kind === "working" && !long ? (
             <span aria-hidden className="block h-0.5 overflow-hidden rounded-full bg-border" data-progress>
-              <span className="block h-full w-1/3 animate-pulse rounded-full bg-success" />
+              <span className="block h-full w-1/3 animate-pulse rounded-full bg-brand" />
             </span>
           ) : null}
           <span className="flex min-w-0 items-center gap-2 text-xs text-text-3">
@@ -199,12 +191,12 @@ export function TeammatePanel({
             {meta.length > 0 ? <span className="min-w-0 truncate font-mono">{meta.join(" · ")}</span> : null}
             <span className="ml-auto flex shrink-0 items-center gap-2">
               {words === undefined ? null : (
-                <span className={cn("max-w-[14rem] truncate", words.tone, stale && STALE_CLASS)} data-status title={words.text}>
+                <span className={cn("max-w-[14rem] truncate rounded-full px-1.5 py-px", words.pill, stale && STALE_CLASS)} data-status title={words.text}>
                   {words.text}
                 </span>
               )}
               {long ? (
-                <span className="rounded-sm border border-warning-line bg-warning-soft px-1.5 py-px text-warning-text" data-long-running>
+                <span className="rounded-full bg-muted px-1.5 py-px text-text-2" data-long-running>
                   Long-running
                 </span>
               ) : null}
@@ -220,9 +212,9 @@ export function TeammatePanel({
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-4">
         <section aria-labelledby="tasks-heading" className="flex flex-col gap-3">
           <h2 id="tasks-heading" className="text-sm font-semibold">
-            Tasks <span className="font-normal text-text-3 tabular-nums">{tasks.length}</span>
+            Tasks <span className="font-mono font-normal text-text-3 tabular-nums">{tasks.length}</span>
           </h2>
-          <div role="tablist" aria-label="Task status" className="grid grid-cols-4 gap-1.5" onKeyDown={onTabKey}>
+          <div role="tablist" aria-label="Task status" className="grid grid-cols-4 gap-0.5 rounded-lg bg-muted p-0.5" onKeyDown={onTabKey}>
             {FILTERS.map(({ status, label }) => {
               const selected = filter === status;
               return (
@@ -239,15 +231,12 @@ export function TeammatePanel({
                   tabIndex={selected ? 0 : -1}
                   onClick={() => setFilter(status)}
                   className={cn(
-                    "flex min-w-0 flex-col items-start gap-1 rounded-md border px-2 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
-                    selected ? "border-border-strong bg-surface-raised" : "border-border bg-transparent hover:bg-surface",
+                    "flex min-w-0 items-center justify-center gap-1.5 rounded-md px-1.5 py-1.5 text-xs whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+                    selected ? "bg-card font-medium text-brand shadow-(--shadow-card)" : "text-text-2 hover:text-foreground",
                   )}
                 >
-                  <span className="text-xl leading-none font-semibold tabular-nums">{groups[status].length}</span>
-                  <span className="flex min-w-0 max-w-full items-center gap-1 text-xs whitespace-nowrap text-text-2">
-                    {status === "done" ? <CheckIcon aria-hidden strokeWidth={2.5} className={cn("shrink-0", MARKER.done)} /> : <span aria-hidden className={cn("shrink-0", MARKER[status])} />}
-                    {label}
-                  </span>
+                  {label}
+                  <span className="font-mono tabular-nums">{groups[status].length}</span>
                 </button>
               );
             })}
@@ -288,16 +277,16 @@ export function TeammatePanel({
           <h2 id="routines-heading" className="text-sm font-semibold">
             Routines
           </h2>
-          <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-border-strong p-3">
+          <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-border-strong p-3">
             <p className="flex items-start gap-2.5 text-xs text-text-2">
-              <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-sm bg-surface text-text-3">
+              <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-md bg-muted text-text-3">
                 <ClockIcon className="size-3.5" />
               </span>
               Schedule a routine for {name}.
             </p>
             {onNewRoutine === undefined ? null : (
-              <button type="button" onClick={onNewRoutine} className="rounded-sm border border-border-strong px-3 py-1 text-xs font-medium hover:bg-surface-raised">
-                New routine
+              <button type="button" onClick={onNewRoutine} aria-label="New routine" className="rounded-md border border-border-strong px-3 py-1 text-xs font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring">
+                + New routine
               </button>
             )}
           </div>
@@ -307,7 +296,7 @@ export function TeammatePanel({
   );
 }
 
-const PANEL_BUTTON = "w-fit rounded-sm border border-border px-2 py-0.5 font-mono text-xs tracking-widest uppercase hover:bg-accent disabled:opacity-40";
+const PANEL_BUTTON = "w-fit rounded-md border border-border-strong px-2.5 py-1 text-xs font-medium hover:bg-accent disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-ring";
 
 /**
  * Put a file's teammate the user edited back as the file has it: their copy
@@ -345,6 +334,8 @@ export function ResetButton({ name, onReset }: { name: string; onReset: () => Pr
 /** A card's time: an active task's clock on this attempt; an idle one's time since it last moved; an ended one's age, as its signal reads it. */
 function elapsedOf(task: CodingBoardTask, start: number | undefined, now: number, signal: ReturnType<typeof taskSignal>): string | undefined {
   if (isIdle(task)) return task.updatedAt == null ? undefined : elapsedText(now - task.updatedAt);
+  // A running task no run holds (parked, owing a turn) shows how long it has been idle, never a running clock.
+  if (isActive(task) && signal?.kind === "idle") return signal.text;
   if (isActive(task)) return start === undefined ? undefined : elapsedText(now - start);
   return signal?.kind === "ended" ? signal.text : undefined;
 }
@@ -355,16 +346,16 @@ function elapsedOf(task: CodingBoardTask, start: number | undefined, now: number
  * on (*PR open*), how long a run has been quiet, a failed or cancelled task's reason. A running task whose run
  * answers says nothing more: its clock and bar say it.
  */
-function cardWords(task: CodingBoardTask, quiet: string | undefined): { text: string; tone: string } | undefined {
+function cardWords(task: CodingBoardTask, quiet: string | undefined): { text: string; pill: string } | undefined {
   const status = taskStatus(task);
   if (holdOf(task) || isIdle(task)) {
-    const { word, tone } = taskPresentation(task);
-    return { text: word, tone };
+    const { word, pill } = taskPresentation(task);
+    return { text: word, pill };
   }
-  if (status === "running") return quiet === undefined ? undefined : { text: quiet, tone: taskPresentation(task, "quiet").tone };
+  if (status === "running") return quiet === undefined ? undefined : { text: quiet, pill: taskPresentation(task, "quiet").pill };
   if (status === "failed" || status === "cancelled") {
     const reason = reasonLine(task);
-    return { text: reason ? `${status} · ${reason}` : status, tone: taskPresentation(task).tone };
+    return { text: reason ? `${status} · ${reason}` : status, pill: taskPresentation(task).pill };
   }
   return undefined;
 }

@@ -77,14 +77,6 @@ export type CreateExecutionContextOptions<
   actionName: string;
   requestId: string;
   userId?: string;
-  sessionId?: string;
-  // FIX-2623.
-  /**
-   * Build the context with no session at all, for a user or org view: no
-   * session is loaded, made or stored, no session resource is installed, and
-   * `ctx.session` refuses with `NoSessionError`. The org is the run's own.
-   */
-  noSession?: boolean;
   // FIX-2725 D1.
   /**
    * The scope of the view this run is, which decides the session reads it may
@@ -193,7 +185,29 @@ export type CreateExecutionContextOptions<
    * which is the correct answer when no caller derived one.
    */
   effectiveRuntimeConfig?: RuntimeConfig;
-};
+} & CreateExecutionContextSession;
+
+/**
+ * The session a context is built for. A run names its session (required: the
+ * request record names it from the first write, and nothing here makes one
+ * up); only a view runs with none.
+ */
+export type CreateExecutionContextSession =
+  | {
+      /** The session the run lands in, born on the run's first write when it has no row. */
+      sessionId: string;
+      noSession?: false;
+    }
+  | {
+      sessionId?: undefined;
+      // FIX-2623.
+      /**
+       * Build the context with no session at all, for a user or org view: no
+       * session is loaded, made or stored, no session resource is installed, and
+       * `ctx.session` refuses with `NoSessionError`. The org is the run's own.
+       */
+      noSession: true;
+    };
 
 // FIX-999.
 /**

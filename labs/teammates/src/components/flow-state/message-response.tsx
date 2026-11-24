@@ -29,8 +29,9 @@ export const MessageResponse = memo(
     <Streamdown
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-        // Streamdown's inline code has a fixed corner; this one follows --radius-sm.
-        "[&_code]:rounded-sm",
+        // Streamdown's inline code has a fixed corner; this one follows --radius-sm. Its `bg-muted` is the
+        // card's own colour in this theme, so the chip takes the raised surface to show.
+        "[&_code]:rounded-sm [&_code]:bg-surface-raised",
         className
       )}
       plugins={streamdownPlugins}

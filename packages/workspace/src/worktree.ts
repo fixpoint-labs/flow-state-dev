@@ -35,6 +35,7 @@
  */
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { HOST_GIT_PASS } from "./child-env";
 import { CHECKOUT_CLEANUP_TIMEOUT_MS, run } from "./exec";
 import { WorkspaceRefusedError } from "./refused";
 import { identityFromCommonDir } from "./repository";
@@ -72,6 +73,27 @@ export interface IgnoredDirectory {
  */
 export const NO_HOOKS: readonly string[] = ["-c", "core.hooksPath=/dev/null"];
 
+/**
+ * The `-c` settings every call that reaches a remote runs under, in an empty
+ * repository of its own: no hooks, no askpass, no fsmonitor, ssh as itself,
+ * only the judged `scheme`, and only the person's own credential `helpers`
+ * (read at start, from outside any repository) after an empty one clears the
+ * rest. These calls hold the host's credentials, so nothing in config that
+ * starts a program is obeyed.
+ */
+export function remoteCallConfig(scheme: string, helpers: ReadonlyArray<readonly [string, string]>): string[] {
+  return [
+    "-c", "core.sshCommand=ssh",
+    "-c", "core.askPass=",
+    ...NO_HOOKS,
+    "-c", "core.fsmonitor=false",
+    "-c", "protocol.allow=never",
+    "-c", `protocol.${scheme}.allow=always`,
+    "-c", "credential.helper=",
+    ...helpers.flatMap(([key, value]) => ["-c", `${key}=${value}`]),
+  ];
+}
+
 /** One worktree to provision. */
 export interface WorktreeRequest {
   /** The repository worktrees are cut from, and where branches live. */
@@ -86,7 +108,7 @@ export interface WorktreeRequest {
   root: string;
   /** The run's own branch. */
   branch: string;
-  /** Git's environment, laid over the process's own. */
+  /** Variables to set for git, over the host's git settings (`HOST_GIT_PASS`). */
   env?: Record<string, string>;
   /** When the whole provision must be finished by, on `now`'s clock. */
   deadline: number;
@@ -266,6 +288,7 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
       cwd,
       timeoutMs,
       ...(request.env !== undefined ? { env: request.env } : {}),
+      pass: HOST_GIT_PASS,
     });
     return stdout.trim();
   };

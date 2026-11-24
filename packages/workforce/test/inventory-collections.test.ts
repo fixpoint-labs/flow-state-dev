@@ -17,6 +17,7 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { runAction } from "@flow-state-dev/engine";
+import { oneOffSessionId } from "@flow-state-dev/core/helpers";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { z } from "zod";
@@ -120,6 +121,7 @@ async function write(
     actionName: "write",
     input: SEED,
     userId: USER,
+    sessionId: oneOffSessionId(),
     stores: ctx.stores,
     runtimeConfig: {} as never,
     ...opts
@@ -135,6 +137,7 @@ async function read(
     actionName: "read",
     input: {},
     userId: USER,
+    sessionId: oneOffSessionId(),
     stores: ctx.stores,
     runtimeConfig: {} as never,
     ...opts
