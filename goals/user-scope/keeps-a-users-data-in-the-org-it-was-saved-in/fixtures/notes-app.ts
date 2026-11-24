@@ -12,6 +12,8 @@ export const FLOW_ID = "notes-app";
 
 const markerRow = z.object({ marker: z.string() });
 
+const userStateSchema = z.object({ marker: z.string().nullable().default(null) });
+
 const resources = {
   /** User-scoped, shared with every flow in the org. */
   notes: defineResourceCollection({
@@ -44,25 +46,27 @@ const save = handler({
   inputSchema: saveInput,
   outputSchema: z.object({ ok: z.boolean() }),
   resources,
+  userStateSchema,
   execute: async (input, ctx) => {
-    await (ctx.resources.notes as unknown as ResourceCollectionRef).create("n1", { marker: input.shared });
-    await (ctx.resources.scratch as unknown as ResourceCollectionRef).create("s1", { marker: input.isolated });
+    await ctx.resources.notes.create("n1", { marker: input.shared });
+    await ctx.resources.scratch.create("s1", { marker: input.isolated });
     await ctx.user.patchState({ marker: input.state });
     return { ok: true };
   },
 });
 
-const markersOf = async (ref: unknown): Promise<string[]> =>
-  (await (ref as ResourceCollectionRef).list()).map((row) => String((row.state as { marker: string }).marker));
+const markersOf = async (ref: ResourceCollectionRef<z.infer<typeof markerRow>>): Promise<string[]> =>
+  (await ref.list()).map((row) => row.state.marker);
 
 const read = handler({
   name: "read",
   inputSchema: z.object({}),
   outputSchema: z.object({ ok: z.boolean() }),
   resources,
+  userStateSchema,
   execute: async (_input, ctx) => {
-    await (ctx.resources.seen as unknown as ResourceCollectionRef).create("run", {
-      state: (ctx.user.state as { marker: string | null }).marker ?? null,
+    await ctx.resources.seen.create("run", {
+      state: ctx.user.state.marker,
       shared: await markersOf(ctx.resources.notes),
       isolated: await markersOf(ctx.resources.scratch),
     });
@@ -86,7 +90,7 @@ export const notesApp = defineFlow({
   kind: FLOW_ID,
   resources,
   user: {
-    stateSchema: z.object({ marker: z.string().nullable().default(null) }),
+    stateSchema: userStateSchema,
     client: { expose: ["marker"] },
   },
   actions: {
