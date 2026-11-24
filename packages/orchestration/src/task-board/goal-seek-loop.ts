@@ -233,11 +233,25 @@ export function mapToVerdict<TSource>(
 // State + verdict validation schemas
 // ---------------------------------------------------------------------------
 
+/** Verdict validation — requires `reason` (mapped sources get a default via
+ *  `mapToVerdict`; an inline judge must return a complete `Verdict`). */
+const verdictSchema = z.discriminatedUnion("decision", [
+  z.object({ decision: z.literal("done"), reason: z.string() }).passthrough(),
+  z.object({ decision: z.literal("continue"), reason: z.string() }).passthrough(),
+  z
+    .object({
+      decision: z.literal("replan"),
+      reason: z.string(),
+      tasks: z.array(z.unknown()).optional(),
+    })
+    .passthrough(),
+]);
+
 /** The loop's own bookkeeping — `goalSeekLoop`-prefixed to avoid caller
  *  collision when merged into the one loop-owner container. */
 const goalSeekLoopStateSchema = z.object({
   goalSeekLoopDrains: z.number().default(0),
-  goalSeekLoopVerdict: z.unknown().nullable().default(null),
+  goalSeekLoopVerdict: verdictSchema.nullable().default(null),
   goalSeekLoopDrainResult: z.unknown().nullable().default(null),
   /** Whether the last drain left a task waiting on a person: the pass ends without a judge. */
   goalSeekLoopWaiting: z.boolean().default(false),
@@ -253,31 +267,12 @@ const WAITING_ON_A_USER = "waiting-on-a-user";
 /** The termination reason of a pass a task waiting on an event outside the board ended, with none waiting on a person. */
 const WAITING_ON_AN_EVENT = "waiting-on-an-event";
 
-/** Whether the loop's last drain left a task waiting on a person. */
-const waitingNow = (_input: unknown, ctx: { sequencer?: { state: unknown } }): boolean =>
-  (ctx.sequencer?.state as { goalSeekLoopWaiting?: boolean } | undefined)?.goalSeekLoopWaiting === true;
+/** Transparent drain steps read these flags from their nearest stateful loop. */
+const owedNow = (_input: unknown, ctx: BlockContext): boolean =>
+  ctx.sequencer?.state.goalSeekLoopOwed === true;
 
-/** Whether the loop's last drain left a task owing a turn an answer earned, with none waiting on a person. */
-const owedNow = (_input: unknown, ctx: { sequencer?: { state: unknown } }): boolean =>
-  (ctx.sequencer?.state as { goalSeekLoopOwed?: boolean } | undefined)?.goalSeekLoopOwed === true;
-
-/** Whether the pass must not judge: a task waits on a person, or still owes a turn when the owed-turn drains ran out. */
-const unfinishedNow = (input: unknown, ctx: { sequencer?: { state: unknown } }): boolean =>
-  waitingNow(input, ctx) || owedNow(input, ctx);
-
-/** Verdict validation — requires `reason` (mapped sources get a default via
- *  `mapToVerdict`; an inline judge must return a complete `Verdict`). */
-const verdictSchema = z.discriminatedUnion("decision", [
-  z.object({ decision: z.literal("done"), reason: z.string() }).passthrough(),
-  z.object({ decision: z.literal("continue"), reason: z.string() }).passthrough(),
-  z
-    .object({
-      decision: z.literal("replan"),
-      reason: z.string(),
-      tasks: z.array(z.unknown()).optional(),
-    })
-    .passthrough(),
-]);
+const unfinishedNow = (_input: unknown, ctx: BlockContext): boolean =>
+  ctx.sequencer?.state.goalSeekLoopWaiting === true || ctx.sequencer?.state.goalSeekLoopOwed === true;
 
 function mergeStateSchema(extra: ZodTypeAny | undefined, name: string): ZodTypeAny {
   if (extra === undefined) return goalSeekLoopStateSchema;
@@ -366,7 +361,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     name: `${name}-gsl-note-waiting`,
     inputSchema: z.unknown(),
     uses: [board.capability],
-    sequencerStateSchema: merged,
+    sequencerStateSchema: goalSeekLoopStateSchema,
     execute: async (_input, ctx) => {
       const ref = await resolveBoardRef(ctx, boardCapName);
       const rows = ref.list();
@@ -377,7 +372,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
         goalSeekLoopWaiting: waiting,
         goalSeekLoopWaitingOn: waitingOnWho,
         goalSeekLoopOwed: !waiting && rows.some(owesTurn),
-      } as any);
+      });
     },
   });
 
@@ -385,11 +380,11 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   const waitingVerdict = handler({
     name: `${name}-gsl-waiting-verdict`,
     inputSchema: z.unknown(),
-    sequencerStateSchema: merged,
+    sequencerStateSchema: goalSeekLoopStateSchema,
     execute: (_input, ctx): Verdict => ({
       decision: "done",
       reason:
-        (ctx.sequencer?.state as { goalSeekLoopWaitingOn?: string | null } | undefined)?.goalSeekLoopWaitingOn === "system"
+        ctx.sequencer!.state.goalSeekLoopWaitingOn === "system"
           ? WAITING_ON_AN_EVENT
           : WAITING_ON_A_USER,
     }),
@@ -398,12 +393,11 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   const incrementDrainCount = handler({
     name: `${name}-gsl-increment-drains`,
     inputSchema: z.unknown(),
-    sequencerStateSchema: merged,
+    sequencerStateSchema: goalSeekLoopStateSchema,
     execute: async (_input, ctx) => {
       if (unfinishedNow(undefined, ctx)) return;
-      const next =
-        ((ctx.sequencer!.state as { goalSeekLoopDrains?: number }).goalSeekLoopDrains ?? 0) + 1;
-      await ctx.sequencer!.patchState({ goalSeekLoopDrains: next } as any);
+      const next = ctx.sequencer!.state.goalSeekLoopDrains + 1;
+      await ctx.sequencer!.patchState({ goalSeekLoopDrains: next });
     },
   });
 
@@ -414,11 +408,11 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     name: `${name}-gsl-stash-projection`,
     inputSchema: z.unknown(),
     uses: [board.capability],
-    sequencerStateSchema: merged,
+    sequencerStateSchema: goalSeekLoopStateSchema,
     execute: async (_input, ctx) => {
       const ref = await resolveBoardRef(ctx, boardCapName);
       const projection = projectCollection(ref);
-      await ctx.sequencer!.patchState({ goalSeekLoopDrainResult: projection } as any);
+      await ctx.sequencer!.patchState({ goalSeekLoopDrainResult: projection });
     },
   });
 
@@ -475,10 +469,10 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   const judgeErrorRescue = handler({
     name: `${name}-gsl-judge-error`,
     inputSchema: z.unknown(),
-    sequencerStateSchema: merged,
+    sequencerStateSchema: goalSeekLoopStateSchema,
     execute: async (_error, ctx) => {
       const verdict: Verdict = { decision: "done", reason: "judge-error" };
-      await ctx.sequencer!.patchState({ goalSeekLoopVerdict: verdict } as any);
+      await ctx.sequencer!.patchState({ goalSeekLoopVerdict: verdict });
       return verdict;
     },
   });
@@ -501,16 +495,15 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   const coerceAtCap = handler({
     name: `${name}-gsl-coerce-cap`,
     inputSchema: z.unknown(),
-    sequencerStateSchema: merged,
+    sequencerStateSchema: goalSeekLoopStateSchema,
     execute: async (input, ctx) => {
       const verdict = input as Verdict;
-      const drains =
-        (ctx.sequencer!.state as { goalSeekLoopDrains?: number }).goalSeekLoopDrains ?? 0;
+      const drains = ctx.sequencer!.state.goalSeekLoopDrains;
       const coerced: Verdict =
         drains >= maxIterations && verdict.decision !== "done"
           ? { decision: "done", reason: "max-iterations" }
           : verdict;
-      await ctx.sequencer!.patchState({ goalSeekLoopVerdict: coerced } as any);
+      await ctx.sequencer!.patchState({ goalSeekLoopVerdict: coerced });
       return coerced;
     },
   });
@@ -535,14 +528,10 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   const emitTermination = handler({
     name: `${name}-gsl-emit-termination`,
     inputSchema: z.unknown(),
-    sequencerStateSchema: merged,
+    sequencerStateSchema: goalSeekLoopStateSchema,
     execute: async (_input, ctx) => {
-      const state = ctx.sequencer!.state as {
-        goalSeekLoopDrains?: number;
-        goalSeekLoopVerdict?: Verdict | null;
-      };
-      const iterations = state.goalSeekLoopDrains ?? 0;
-      const reason = state.goalSeekLoopVerdict?.reason ?? "converged";
+      const { goalSeekLoopDrains: iterations, goalSeekLoopVerdict } = ctx.sequencer!.state;
+      const reason = goalSeekLoopVerdict?.reason ?? "converged";
       // A typed observability record, NOT a rendered UI element. It reaches
       // no client and no model; it is on the request's items for tooling and
       // the goalSeekLoop tests.
@@ -557,10 +546,8 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   const projectBoard = handler({
     name: `${name}-gsl-project`,
     inputSchema: z.unknown(),
-    sequencerStateSchema: merged,
-    execute: async (_input, ctx) =>
-      (ctx.sequencer!.state as { goalSeekLoopDrainResult?: unknown }).goalSeekLoopDrainResult ??
-      null,
+    sequencerStateSchema: goalSeekLoopStateSchema,
+    execute: (_input, ctx) => ctx.sequencer!.state.goalSeekLoopDrainResult,
   });
 
   // ---- Assemble the pipeline ----------------------------------------------
@@ -596,7 +583,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   pipeline = pipeline
     .tap(stashDrainProjection)
     .stepIf(unfinishedNow, waitingVerdict)
-    .stepIf((input: unknown, ctx: { sequencer?: { state: unknown } }) => !unfinishedNow(input, ctx), judgeStep)
+    .stepIf((input: unknown, ctx: BlockContext) => !unfinishedNow(input, ctx), judgeStep)
     .step(coerceAtCap);
   if (wrappedReplanner !== undefined) {
     pipeline = pipeline.stepIf(
@@ -636,7 +623,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     .step(projectBoard);
 
   // Nothing is final while a task waits on a person or owes a turn.
-  if (finalize !== undefined) pipeline = pipeline.stepIf((input: unknown, ctx: { sequencer?: { state: unknown } }) => !unfinishedNow(input, ctx), finalize);
+  if (finalize !== undefined) pipeline = pipeline.stepIf((input: unknown, ctx: BlockContext) => !unfinishedNow(input, ctx), finalize);
 
   return pipeline as SequencerDefinition<any, any>;
 }

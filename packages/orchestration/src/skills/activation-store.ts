@@ -22,9 +22,10 @@
  * addressing modes stay in one place.
  */
 
-import type { BlockContext, ScopeStateOps } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   pushActiveSkill,
+  readActiveSkills,
   type ActiveSkillEntry,
 } from "./active-skill-state";
 
@@ -43,10 +44,14 @@ export type ActivationLocation =
   | { kind: "block" }
   | { kind: "explicit"; scope: ExplicitActivationScope; field: string };
 
-function readFieldEntries(state: unknown, field: string): ActiveSkillEntry[] {
-  if (state === null || typeof state !== "object") return [];
-  const value = (state as Record<string, unknown>)[field];
-  return Array.isArray(value) ? (value as ActiveSkillEntry[]) : [];
+function scopeHandle(ctx: BlockContext, scope: ExplicitActivationScope) {
+  switch (scope) {
+    case "request":
+    case "session":
+    case "user":
+    case "org":
+      return ctx[scope];
+  }
 }
 
 /**
@@ -60,38 +65,9 @@ export function readActivations(
   location: ActivationLocation,
 ): ActiveSkillEntry[] {
   if (location.kind === "block") {
-    return readFieldEntries(ctx.self?.state, BLOCK_STATE_FIELD);
+    return readActiveSkills(ctx.self?.state, BLOCK_STATE_FIELD);
   }
-  const scopeState = scopeStateSnapshot(ctx, location.scope);
-  return readFieldEntries(scopeState, location.field);
-}
-
-/** The mutation surface for a scope, as exposed on the block context. */
-type MutableScope = Partial<ScopeStateOps<Record<string, unknown>>> & {
-  state?: unknown;
-};
-
-function scopeHandle(
-  ctx: BlockContext,
-  scope: ExplicitActivationScope,
-): MutableScope | undefined {
-  switch (scope) {
-    case "request":
-      return ctx.request as unknown as MutableScope;
-    case "session":
-      return ctx.session as unknown as MutableScope;
-    case "user":
-      return ctx.user as unknown as MutableScope;
-    case "org":
-      return ctx.org as unknown as MutableScope | undefined;
-  }
-}
-
-function scopeStateSnapshot(
-  ctx: BlockContext,
-  scope: ExplicitActivationScope,
-): unknown {
-  return scopeHandle(ctx, scope)?.state;
+  return readActiveSkills(scopeHandle(ctx, location.scope)?.state, location.field);
 }
 
 // FIX-914.
@@ -119,7 +95,7 @@ export async function appendActivation(
     }
     await parent.atomicState((current) => ({
       [BLOCK_STATE_FIELD]: pushActiveSkill(
-        readFieldEntries(current, BLOCK_STATE_FIELD),
+        readActiveSkills(current, BLOCK_STATE_FIELD),
         entry,
       ),
     }));
@@ -134,7 +110,7 @@ export async function appendActivation(
   }
   const field = location.field;
   await handle.atomicState((current) => ({
-    [field]: pushActiveSkill(readFieldEntries(current, field), entry),
+    [field]: pushActiveSkill(readActiveSkills(current, field), entry),
   }));
 }
 

@@ -23,6 +23,13 @@ describe("readActiveSkills", () => {
     expect(readActiveSkills({})).toEqual([]);
     expect(readActiveSkills({ activeSkills: "not an array" })).toEqual([]);
   });
+  it("preserves stored entries in the binding's selected field", () => {
+    const stored = [{ name: "", mode: "fork" }, { name: "legacy" }];
+    const state = { activeSkills: [entry("other")], selected: stored };
+    expect(readActiveSkills(state, "selected")).toBe(stored);
+    expect(readActiveSkills(state, "missing")).toEqual([]);
+    expect(readActiveSkills({ selected: null }, "selected")).toEqual([]);
+  });
   it("returns the array when present", () => {
     expect(readActiveSkills({ activeSkills: [entry("foo")] })).toEqual([
       entry("foo"),

@@ -15,10 +15,7 @@ import { z } from "zod";
 import { generator, handler, sequencer } from "@flow-state-dev/core";
 import { resolveSkillsCollection } from "./partition";
 import { listOfferedSkills } from "./skill-catalog";
-import {
-  skillActivatorStateSchema,
-  matchedSkillSchema,
-} from "./skill-activation-types";
+import { skillActivatorStateSchema } from "./skill-activation-types";
 
 // FIX-311.
 /** Default confidence threshold matching the classifier gate. */
@@ -91,7 +88,7 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
         skillSection,
       ].join("\n");
     },
-    user: (input) => (input as { message: string }).message,
+    user: (input) => input.message,
   });
 
   const apply = handler({
@@ -109,25 +106,17 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
 
       const filteredSkills = input.activeSkills
         .filter((s) => validNames.has(s.name) && s.confidence >= threshold)
-        .map((s) =>
-          matchedSkillSchema.parse({
-            name: s.name,
-            input: s.input ?? "",
-            source: "classifier" as const,
-            confidence: s.confidence,
-          }),
-        );
+        .map((s) => ({ ...s, source: "classifier" as const }));
 
       const aggregateConfidence =
         filteredSkills.length === 0
           ? 0
-          : filteredSkills.reduce((acc, s) => acc + (s.confidence ?? 0), 0) /
+          : filteredSkills.reduce((acc, s) => acc + s.confidence, 0) /
             filteredSkills.length;
 
-      const existingSkills = ctx.sequencer?.state.skills ?? [];
       await ctx.sequencer!.patchState({
         resolved: true,
-        skills: [...existingSkills, ...filteredSkills],
+        skills: [...ctx.sequencer!.state.skills, ...filteredSkills],
         classifierConfidence: aggregateConfidence,
       });
       return { accepted: true };
@@ -135,6 +124,6 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
   });
 
   return sequencer({ name: "skill-classifier-tier", inputSchema })
-    .step((input) => ({ message: (input as { message: string }).message }), classifier)
+    .step((input) => ({ message: input.message }), classifier)
     .tap(apply);
 }
