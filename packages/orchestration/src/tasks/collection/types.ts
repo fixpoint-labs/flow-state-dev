@@ -166,7 +166,14 @@ export type TaskWriteDeclineReason =
   | "dependency-ended"
   // FIX-2383, FIX-948.
   /** A retry on a board whose `maxTotalRetries` is spent. */
-  | "retry-budget";
+  | "retry-budget"
+  // FIX-2894.
+  /**
+   * A settings edit fenced on a revision (`TaskSettingsPatch.ifRevision`) of a
+   * row another write has moved past: what the edit was decided on is no
+   * longer the row. Read it again and decide again.
+   */
+  | "revision-moved";
 
 // FIX-951; FIX-976; BP-030.
 /**

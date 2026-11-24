@@ -68,7 +68,7 @@ Every write that puts input on a task passes one filing check, and the claim par
       work: workerTaskEntry({
         name: "triage-work",
         turn: triageTurn,
-+       input: taskInput(triageInput, {
++       inputSchema: taskInputSchema(triageInput, {
 +         serverOwned: ["requestedBy"],
 +         fill: ({ ctx }) => ({ requestedBy: ctx.user!.identity.userId }),
 +         project: "required",
@@ -88,7 +88,7 @@ Every write that puts input on a task passes one filing check, and the claim par
 ```
 
 **Docs:** update `delegating-work.md` with a *What a delegate takes* section (the declaration,
-the refusal, `listDelegates`'s `input`, and the rule that a `check`-only rule goes in the
+the refusal, `listDelegates`'s `inputSchema`, and the rule that a `check`-only rule goes in the
 field's description), update `projects.md` where it names `needsProject`, and
 update the workforce README's `workerTaskEntry`, `workerFlow` and `listDelegates` rows. The
 glossary gains *Task input* in the implementation PR. All through the changeset; the pages
@@ -217,7 +217,7 @@ field's `.describe()` text too, so a model reads it in `listDelegates` before it
 on-call rule below is the one in `severity`'s description above.
 
 ```ts
-input: taskInput(triageInput, {
+inputSchema: taskInputSchema(triageInput, {
   serverOwned: ["requestedBy"],
   fill: ({ ctx }) => ({ requestedBy: ctx.user!.identity.userId }),
   // An old key, refused by name rather than dropped or translated.
@@ -268,7 +268,7 @@ FIX-2878's `checkMode` writes the default `mode` into a task that names none. Th
 The coder flow fills these hooks with FIX-2878's rules, which this issue does not define:
 
 ```ts
-input: taskInput(codingTaskInputSchema, {
+inputSchema: taskInputSchema(codingTaskInputSchema, {
   serverOwned: CODING_SERVER_OWNED, // FIX-2878's: harness, model, plan, their marker, doneWhen, workspace
   refuse: refuseLegacyMarker, // FIX-2878: a sent harnessFeature → legacy_marker
   stored: readLegacy,         // FIX-2878: a stored harnessFeature → mode and issue
@@ -400,17 +400,17 @@ checks, so a task whose project came from its conversation is not refused at its
 ```jsonc
 { "delegates": [
   { "worker": "ops.triager", "description": "Triages incidents", "takes": "tasks",
-    "input": { "schema": { "type": "object", "additionalProperties": false, "required": ["ticket"],
+    "inputSchema": { "jsonSchema": { "type": "object", "additionalProperties": false, "required": ["ticket"],
                            "properties": { "ticket": { "type": "string", "pattern": "^ENG-\\d+$" },
                                            "severity": { "type": "string", "enum": ["low", "high"], "default": "low",
                                                          "description": "\"high\" only for a worker that is on call; any other worker refuses it" } },
                            "$schema": "http://json-schema.org/draft-07/schema#" },
                "project": "required" } },
-  { "worker": "ops.helper", "description": null, "takes": "tasks", "input": null }
+  { "worker": "ops.helper", "description": null, "takes": "tasks", "inputSchema": null }
 ] }
 ```
 
-`requestedBy` is not shown: a filer never writes it ([D3](DECISIONS.md#d3)). `input: null` is a
+`requestedBy` is not shown: a filer never writes it ([D3](DECISIONS.md#d3)). `inputSchema: null` is a
 flow that declares nothing. The schema is JSON Schema draft-07, fully inlined: no `$ref` and no
 `definitions`, so a model reads it in one piece. The on-call rule reaches the model through
 `severity`'s description, before any refusal.
@@ -445,10 +445,10 @@ at "meta.seenAt", a Date becomes a string. Store plain JSON values. Nothing was 
 ```
 
 ```ts
-workerTaskEntry({ name: "triage-work", turn, input: taskInput(z.object({ n: z.string().transform(Number) })) });
+workerTaskEntry({ name: "triage-work", turn, inputSchema: taskInputSchema(z.object({ n: z.string().transform(Number) })) });
 //   → Error: workerTaskEntry "triage-work": a task input may not use .transform (at "n"). It is
 //     stored as JSON and parsed again at claim, so it must parse the same after a JSON round trip.
-workerTaskEntry({ name: "triage-work", turn, input: taskInput(z.object({ due: z.date() })) });
+workerTaskEntry({ name: "triage-work", turn, inputSchema: taskInputSchema(z.object({ due: z.date() })) });
 //   → Error: workerTaskEntry "triage-work": a task input may not use z.date (at "due"). It is
 //     stored as JSON and parsed again at claim, so it must parse the same after a JSON round trip.
 //     Use an ISO string: z.string().datetime().
@@ -466,22 +466,22 @@ workerTaskEntry({ name: "triage-work", turn, input: taskInput(z.object({ due: z.
 
 | Already here | What this does with it |
 |---|---|
-| **Whatever checks a task's input** (mechanism `task`): `createTask`'s `z.record` (shape only); `assertProjectFor` (one rule); each reader's own parse (`harnessTaskInputSchema`, `namesProject`, FIX-2282's namespaced marker). Searched `inputSchema`, `input:`, `parse(`, `taskInput` across `packages/`. This is the first declaration a filing is checked against | **Replaces** the per-reader parses for a declared flow: the block is handed parsed input. Fixed boards keep theirs |
+| **Whatever checks a task's input** (mechanism `task`): `createTask`'s `z.record` (shape only); `assertProjectFor` (one rule); each reader's own parse (`harnessTaskInputSchema`, `namesProject`, FIX-2282's namespaced marker). Searched `inputSchema`, `input:`, `parse(`, `taskInputSchema` across `packages/`. This is the first declaration a filing is checked against | **Replaces** the per-reader parses for a declared flow: the block is handed parsed input. Fixed boards keep theirs |
 | Layer-1 `taskBoard`'s `TInput` (compile time) | **Leaves alone.** A roster is runtime files, so a static per-assignee type isn't possible (FIX-1788) |
 | `serverOwned` on session state (`withSessionFields`, engine `session-birth`) | **Builds on** the concept and the name: one term, a task-input counterpart ([ER-9](../../epics/FIX-2876/DECISIONS.md#who-owns-what)) |
 | `holdsFiling`, a server hook read on every filing | **Builds on** its shape: a per-filing server hook the board calls, never a field a caller sets |
 | `needsProject` (hire, `workerFlow`, the board's option) and `assertProjectFor` (FIX-2333) | **Removed**, no alias. The requirement is `project` on the declaration, checked in the same order |
-| `listDelegates`' `takes` | **Extends** each delegate row with `input` |
+| `listDelegates`' `takes` | **Extends** each delegate row with `inputSchema` |
 | Epic [ER-9](../../epics/FIX-2876/DECISIONS.md#who-owns-what) and sketch §1 | **Built.** The sketch's `dropped` folds into `serverOwned` ([Decided, not asked](DECISIONS.md#decided-not-asked)) |
 | The issue's "no backwards compatibility" | **Superseded** by [D1](DECISIONS.md#d1): a flow reads its old shape (BP-030) |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| `taskInput(schema, { serverOwned, fill, refuse, check, stored, project })` and `workerTaskEntry({ input })` | `task` · `createTask`'s record schema; `needsProject` | **Composed:** the record schema stays the tool's shape; the declaration is read off the flow, replacing a per-concern hire option |
+| `taskInputSchema(schema, { serverOwned, fill, refuse, check, stored, project })` and `workerTaskEntry({ inputSchema })` | `task` · `createTask`'s record schema; `needsProject` | **Composed:** the record schema stays the tool's shape; the declaration is read off the flow, replacing a per-concern hire option |
 | One filing check on every write path, raw handles included, written by compare-and-set on the row's revision | `assertProjectFor`; the collection's versioned writes | **Extends** both: the same convergence point, more rules, more writers, and the revision the guarded writes already carry |
 | A `filledFor` stamp (flow and declaration fingerprint) on each row the board filled | The board's server-written row metadata (`FILED_PROJECT`, `FILED_HOP`) | **Extends**: one more server-written key, which a caller's metadata can't set |
 | A claim parse in `workerTaskEntry` | The entry's envelope parse | **Extends** the existing sequencer by one step |
-| `input` on a `listDelegates` row | `takes` | **Extends** the row |
+| `inputSchema` on a `listDelegates` row | `takes` | **Extends** the row |
 
 | The debt | |
 |---|---|

@@ -27,23 +27,16 @@
  *
  * A line typed in a task's session talks to that run's coding session (the
  * door), and a delivered message wakes it the same way.
- *
- * **The default coder.** With a `defaultHarness`, a coding task a model files
- * from outside any coding run (a user's conversation, or a session that no
- * coding run opened) goes to the coding worker whose `harness:` is the
- * default, else one that names none, whatever worker the model named
- * ({@link defaultCoderAssignee}). Text naming a coder is not a pick: a user
- * picks one by assigning the task on the board.
  */
 import { defineFlow, handler, router, sequencer } from "@flow-state-dev/core";
 import type { PullRequestFollower } from "@flow-state-dev/core/harness";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/internal";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
   filingConversationBoard,
+  taskInputSchema,
   messageReceivedEntry,
   messageReceivedSchema,
   projectChecks,
@@ -56,10 +49,8 @@ import {
   workerMessagesResources,
   workerTaskEntry,
   type MessageReceived,
-  type NoPickAssignee,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
-import { readRosterEntries } from "@flow-state-dev/workforce/internal";
 import { GIT_TIMEOUT_MS, run as exec, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { codingBrief } from "../coding-brief";
@@ -205,30 +196,6 @@ export function codingDrainBudgetMs(
   });
 }
 
-// FIX-2877 D2; BP-031. Interim: FIX-2878's run settings retire it.
-/**
- * Who takes a coding task a model files from outside any coding run: among
- * the filer's own delegates, the coding worker whose `harness:` is
- * `defaultHarness`, else one whose file names no harness (which runs on the
- * default). Read from the roster as it stands, never from anything the model
- * wrote. With neither among its delegates, the filing is refused, saying why.
- */
-function defaultCoderAssignee(defaultHarness: string): NoPickAssignee {
-  return async (ctx, installation, delegates) => {
-    // Only the filer's own delegates: a coder elsewhere on the roster is one this conversation can't hand a task to.
-    const coders = (await readRosterEntries(ctx, installation)).filter((entry) => entry.flow === CODER_FLOW && delegates.has(entry.id));
-    const harnessOf = (entry: (typeof coders)[number]) => (typeof entry.settings.harness === "string" ? entry.settings.harness : undefined);
-    const worker = coders.find((entry) => harnessOf(entry) === defaultHarness) ?? coders.find((entry) => harnessOf(entry) === undefined);
-    if (worker === undefined) {
-      throw new TaskWriteRefusedError(
-        "no_default_coder",
-        `a coding task runs on this app's default coder, "${defaultHarness}", and no coding worker this conversation hands tasks to runs it. Nothing was filed.`,
-      );
-    }
-    return worker.id;
-  };
-}
-
 /**
  * The coding worker flow over `harnesses`, as a `workerFlow(…)` entry for
  * workforce's `workerFlows` slot.
@@ -370,17 +337,14 @@ export function coderWorkerFlow(
             work: workerTaskEntry({
               name: `${CODER_FLOW}-work`,
               block: byHarness(`${CODER_FLOW}-by-harness`, taskWorkerInputSchema.passthrough(), (b) => b.manager, true),
+              // A task for a coder works in a project's files: one filed with none to work in is refused at filing (FIX-2894).
+              ...(options.project === true ? { inputSchema: taskInputSchema(z.record(z.string(), z.unknown()), { project: "required" }) } : {}),
             }),
           },
         },
       } as never);
     },
     // Each coding worker's `harness:` rides on its roster row, so a task line can name it.
-    {
-      roles: ["contributor"],
-      showSettings: ["harness"],
-      needsProject: options.project === true,
-      ...(options.defaultHarness === undefined ? {} : { noPickAssignee: defaultCoderAssignee(options.defaultHarness) }),
-    },
+    { roles: ["contributor"], showSettings: ["harness"] },
   );
 }

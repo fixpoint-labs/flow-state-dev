@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 445">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="200" height="104"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">LONG-LIVED PROCESS</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="70">Railway, Docker</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="92">serve, or fsdev serve</text>
+<rect class="dash" fill="none" stroke="#1b1a15" stroke-width="1.4" stroke-dasharray="5 4" x="252" y="24" width="300" height="104"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="266" y="46">THE RUN</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="266" y="72">the run and its stream</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="266" y="94">a closed tab does not end it</text>
+<rect fill="url(#hatch)" x="576" y="24" width="316" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="576" y1="34.5" x2="892" y2="34.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="576" y="24" width="316" height="104"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="590" y="56">THE STORE · ON THE HOST</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="590" y="78">SQLite on a volume, or Postgres</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="590" y="102">memory too, until the process stops</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="144" width="200" height="104"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="166">SERVERLESS FUNCTION</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="190">Vercel, Lambda</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="212">one function per request</text>
+<rect class="dash" fill="none" stroke="#1b1a15" stroke-width="1.4" stroke-dasharray="5 4" x="252" y="144" width="300" height="104"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="266" y="166">ONE FUNCTION CALL</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="266" y="192">the run, if it fits</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="266" y="214">cut off at the platform's limit</text>
+<rect fill="url(#hatch)" x="576" y="144" width="316" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="576" y1="154.5" x2="892" y2="154.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="576" y="144" width="316" height="104"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="590" y="176">THE STORE · OFF THE HOST</text>
+<rect class="hl" fill="#e8f551" x="584" y="183" width="300" height="22"/>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="590" y="198">Postgres over the network</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="590" y="222">no memory or disk lasts between calls</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="264" width="200" height="104"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="286">QUEUE AND WORKER</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="310">BullMQ</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="332">web host, worker process</text>
+<rect class="dash" fill="none" stroke="#1b1a15" stroke-width="1.4" stroke-dasharray="5 4" x="252" y="264" width="300" height="104"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="266" y="286">THE JOB'S RUN</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="266" y="312">in the worker process</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="266" y="334">the web request returned at once</text>
+<rect fill="url(#hatch)" x="576" y="264" width="316" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="576" y1="274.5" x2="892" y2="274.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="576" y="264" width="316" height="104"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="590" y="296">THE STORE AND THE JOB</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="590" y="318">Redis holds the job</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="590" y="336">Postgres holds the rest</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="590" y="356">both processes reach the same store</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="392" x2="920" y2="392"/>
+<g id="key">
+<line class="dash" fill="none" stroke="#1b1a15" stroke-width="1.4" stroke-dasharray="5 4" x1="28" y1="419" x2="54" y2="419"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="423">LASTS ONE ACTION RUN</text>
+<rect fill="url(#hatch)" x="244" y="413" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="244" y="413" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="278" y="423">OUTLIVES THE REQUEST</text>
+<rect class="hl" fill="#e8f551" x="460" y="413" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="494" y="423">THE STORE OFF THE HOST</text>
+</g>
+</svg>

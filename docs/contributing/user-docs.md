@@ -319,7 +319,10 @@ src/
 - **Examples do real work.** A block that would read data reads it: from a resource the block
   declares when that is one line (`await ctx.resources.orders.getOptional(input.orderId)`),
   otherwise from a stand-in in `src/lib/` that the page imports and does not show
-  (`findOrder(orderId)`). Never return an invented value such as `` `Order ${id} has shipped.` ``.
+  (`findOrder(orderId, ctx.session.identity)`). Never return an invented value such as
+  `` `Order ${id} has shipped.` ``. A stand-in that reads or changes a person's data takes the caller from
+  the block's resolved identity (`ctx.session.identity`) and refuses a record the caller may not
+  see (`findOrder` returns nothing; `refundOrder` throws). It never trusts an id from input alone.
   Everything an example declares (a resource, a state field, a tool, a setting) has a visible use
   in one of the page's examples, or is cut. Reuse the stand-in names other pages use: `findOrder`,
   `refundOrder`, `draftReplyFor`, `queueForHuman`, `findTicket`.

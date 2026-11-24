@@ -35,6 +35,8 @@ Written by `docs-writer` (sonnet), 3281 words. Scenario: A support app with thre
 - After the final fact-check fix, page sha256 a3dafb0fbf95: exit 0.
 - After the loop (PR review, Greptile): a failed evaluator skips the apply step, which runs last, so earlier activations stay in `activeState`; to carry on with no skill the rescue block clears that field (packages/orchestration/src/skills/skill-activator.ts:212-242; apply-skill-activation.ts:88-92). The `WORKER.md` link now points at `#settings-of-the-agent-flow`, since the skills section it named was folded into that table. check-docs-page and lint-brand pass. 3289 words. Page sha256 1857a0774998.
 
+- After the Reference rows moved from K-42 landed (and the fact-check corrections below): check-docs-page and brand lint pass; no TypeScript example changed. 3393 words. Page sha256 6ad173f765b7.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 8b346ede5600, and the 35 Reference row(s) pass 6 moved.
@@ -51,6 +53,8 @@ Final fact check of the page as it closed, sha256 3e0e632169ef: 2 untrue, fixed 
 - Seeding "never overwrites an edit" (Stored skills section, the paragraph under the table). Untrue: Seeding can overwrite an edited copy. For a name already recorded as seeded, `needsResed` re-seeds the skill when the stored `contextMode` is set and is not `inline`, or when the source SKILL.md declares a `context` that differs from the stored `contextMode`. A holder who removed the `context: inline` line, or changed the stored mode, has the copy replaced by the source the next time the process seeds. "Never puts back a skill a holder deleted" is true, because a missing manifest returns false. (packages/orchestration/src/skills/seeding.ts:100-125 (needsResed), called at seeding.ts:70)
 - Folder rules table: "A child that is not a folder | Skipped, no error". Untrue: The symlink check runs before the directory check, so a child that is a symlink to a file is not skipped. It is reported as the error `Symlinked skill folder "<name>" — ignored for safety`, even when `include` or `exclude` would have left it out. Only a real non-directory entry, such as a regular file, is skipped silently. (packages/orchestration/src/skills/read-directory.ts:73-86)
 - Re-run after the review edit: each finding was checked against the code by a read-only reviewer before the fix, and the fix re-read the cited lines. No untrue claim remains open.
+
+- Re-run on the rows moved from K-42: every added or changed line checked against packages/ by a read-only code reader. Untrue or imprecise claims corrected on the page before commit: a generator with no `itemVisibility` counts as `{ client: true, history: true }` (`packages/core/src/capability/types.ts:286-294`, `packages/core/src/blocks/internal/resolve-capabilities.ts:45-53`); `supervisor` marks only its default reviewer (`packages/patterns/src/supervisor/index.ts:164,233`); a skill added to the source is copied the next time seeding runs (`packages/orchestration/src/skills/seeding.ts:24-80`). No untrue claim remains open.
 
 ## 6 · Depth pass
 

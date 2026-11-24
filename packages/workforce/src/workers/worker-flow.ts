@@ -20,28 +20,8 @@
  * );
  * ```
  */
-import type { BlockContext } from "@flow-state-dev/core/types";
 import type { WorkerInstallation } from "./installation";
 import type { WorkerRole } from "../worker-roles";
-
-// FIX-2877 D2.
-/**
- * Who takes a task a model files for one of a flow's workers from outside
- * that flow's work: the worker id the server writes as its assignee, in place
- * of the one the model named, chosen from `delegates`, the filer's own
- * task-taking delegates (worker id to flow). Resolves to `undefined` to keep
- * the model's. Throws `TaskWriteRefusedError` to refuse the filing, saying why.
- * An answer outside `delegates` is refused.
- *
- * "Outside" is a filing from a session that doesn't run on the flow and wasn't
- * opened by a task one filed. A user's own move on the board (an action,
- * such as a re-file onto a worker they chose) is never rewritten.
- */
-export type NoPickAssignee = (
-  ctx: BlockContext,
-  installation: WorkerInstallation,
-  delegates: ReadonlyMap<string, string>
-) => Promise<string | undefined>;
 
 const BUILDER = Symbol.for("flow-state-dev/workforce/worker-flow");
 
@@ -59,10 +39,6 @@ export interface WorkerFlowBuilder {
   readonly roles: readonly WorkerRole[] | undefined;
   /** The flow's settings a user may see on the roster; empty when it names none. */
   readonly showSettings: readonly string[];
-  /** Whether the flow's tasks work in a project's files, so a task filed with none is refused. */
-  readonly needsProject: boolean;
-  /** Who takes a task a model files for one of its workers from outside its work; `undefined` when the model's assignee stands. */
-  readonly noPickAssignee: NoPickAssignee | undefined;
   /** Settings the flow no longer takes: a stored worker that set one reads without it, and a hire or an edit naming one is refused. */
   readonly retiredSettings: readonly string[];
 }
@@ -77,37 +53,36 @@ export interface WorkerFlowBuilder {
  *   `manager` (runs its delegation board on `dispatch`, from
  *   `defineSessionBoard`). The hire checks each role's entries, and refuses a
  *   role's piece on a flow that doesn't declare it. `showSettings` names the
- *   flow's settings a user may see on the roster. `needsProject` says its
- *   tasks work in a project's files, as a coding run does: a task for one of
- *   its workers filed with no project is refused at filing (`no_project`).
- *   `noPickAssignee` decides who takes a task a model files for one of its
- *   workers from outside its work ({@link NoPickAssignee}). `retiredSettings`
- *   names settings it no longer takes: a stored worker that set one reads
- *   without it, and a hire or an edit naming one is refused.
+ *   flow's settings a user may see on the roster. `retiredSettings` names
+ *   settings it no longer takes: a stored worker that set one reads without
+ *   it, and a hire or an edit naming one is refused. Whether its tasks need a
+ *   project is its `work` entry's `inputSchema` (`taskInputSchema(schema, { project })`).
  * @returns An entry for `createWorkerInstallation({ workerFlows })`, and for
  *   the `workerFlows` map `fsdev gen` writes.
  */
 export function workerFlow(
   build: (installation: WorkerInstallation) => unknown,
-  options: {
-    standardOnly?: boolean;
-    roles?: readonly WorkerRole[];
-    showSettings?: readonly string[];
-    needsProject?: boolean;
-    noPickAssignee?: NoPickAssignee;
-    retiredSettings?: readonly string[];
-  } = {}
+  options: { standardOnly?: boolean; roles?: readonly WorkerRole[]; showSettings?: readonly string[]; retiredSettings?: readonly string[] } = {}
 ): WorkerFlowBuilder {
+  // FIX-2894; BP-030: a removed option is refused by name, never ignored.
+  if (Object.hasOwn(options, "needsProject")) throw needsProjectRemoved("workerFlow(...)");
   return {
     [BUILDER]: true,
     build,
     standardOnly: options.standardOnly === true,
     roles: options.roles === undefined ? undefined : [...options.roles],
     showSettings: [...(options.showSettings ?? [])],
-    needsProject: options.needsProject === true,
-    noPickAssignee: options.noPickAssignee,
     retiredSettings: [...(options.retiredSettings ?? [])]
   };
+}
+
+// FIX-2894.
+/** The refusal for the removed `needsProject` option: the requirement moved onto the flow's `work` entry. */
+export function needsProjectRemoved(where: string): Error {
+  return new Error(
+    `${where}: \`needsProject\` is gone. Declare it on the flow's work entry: ` +
+      `workerTaskEntry({ ..., inputSchema: taskInputSchema(schema, { project: "required" }) }).`
+  );
 }
 
 /** Whether a `workerFlows` entry is a {@link workerFlow} builder. */

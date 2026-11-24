@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { acquireLock, releaseLock } from "../src/lock";
 import { withoutCredential } from "../src/remotes";
-import { pinFetchSettings } from "../src/repository";
+import { pinFetchSettings, readCredentialHelpers } from "../src/repository";
 import { createRemote, git, tempDir } from "./git-fixtures";
 
 const TOKEN = "ghp_secretsecretsecret";
@@ -120,5 +120,36 @@ describe("withoutCredential", () => {
     expect(withoutCredential("ssh://git@github.com/a/b.git")).toBe("ssh://git@github.com/a/b.git");
     expect(withoutCredential("git@github.com:a/b.git")).toBe("git@github.com:a/b.git");
     expect(withoutCredential("https://github.com/a/b.git")).toBe("https://github.com/a/b.git");
+  });
+});
+
+describe("the credential helpers a remote call replays", () => {
+  it("are the person's own as they apply in the clone, a global includeIf gitdir one included, and never the clone's own", () => {
+    const dir = tempDir("helpers");
+    const clone = join(dir, ".clones", "acme.git");
+    git(dir, "init", "-q", "--bare", clone);
+    // The person's global config, with a helper that applies only inside clones.
+    const conditional = join(dir, "clones.inc");
+    writeFileSync(conditional, "[credential]\n\thelper = person-conditional\n");
+    const global = join(dir, "global.cfg");
+    writeFileSync(global, `[credential]\n\thelper = person-plain\n[includeIf "gitdir:${join(dir, ".clones")}/"]\n\tpath = ${conditional}\n`);
+    vi.stubEnv("GIT_CONFIG_GLOBAL", global);
+    // What a run can write into the clone's shared config: a helper, and an include that adds one.
+    const planted = join(dir, "planted.inc");
+    writeFileSync(planted, "[credential]\n\thelper = planted-include\n");
+    git(clone, "config", "credential.helper", "planted-local");
+    git(clone, "config", "include.path", planted);
+    try {
+      const helpers = readCredentialHelpers(clone).map(([, value]) => value);
+
+      expect(helpers).toContain("person-plain");
+      expect(helpers).toContain("person-conditional");
+      expect(helpers).not.toContain("planted-local");
+      expect(helpers).not.toContain("planted-include");
+      // Read from outside the clone, the conditional one doesn't apply: why it is read in the clone.
+      expect(readCredentialHelpers(dir).map(([, value]) => value)).not.toContain("person-conditional");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

@@ -1,73 +1,17 @@
 # @flow-state-dev/contracts
 
-The zero-dependency shared layer at the bottom of the framework spine.
+The zero-dependency layer under `@flow-state-dev/core`: the item taxonomy and a few pure helpers. `core` re-exports every name, so an app imports them from `@flow-state-dev/core` and reads their reference there. Install this package directly only where `core`'s dependencies are too heavy, such as a browser bundle.
 
-`core` is the full authoring runtime — it carries heavy dependencies (zod,
-picomatch, liquidjs, gray-matter, cron-parser). Browser packages and the wider
-block-authoring ecosystem need the item taxonomy and a handful of pure helpers,
-but not that weight. `contracts` is that minimal, dependency-free foundation.
+```bash
+pnpm add @flow-state-dev/contracts
+```
 
-## The zero-dependency invariant
+```ts
+import { cloneValue, deepEqual } from "@flow-state-dev/contracts/helpers";
 
-This package declares **no** `dependencies` and imports nothing outside its own
-relative module graph. That is the whole point: any consumer can value-import
-it without pulling the authoring runtime into a browser bundle. The invariant is
-machine-checked by `test/contracts-zero-dep.spec.ts` (empty `dependencies` +
-a no-non-relative-import scan over `src/`), so it cannot silently regress.
+const draft = cloneValue(saved);
+draft.title = "Renamed";
+deepEqual(draft, saved); // false
+```
 
-## What it exports
-
-- **Item taxonomy** (`@flow-state-dev/contracts/items`) — the `OutputItem`
-  union and its members, the `RuntimeItem` union (`OutputItem` plus trace
-  rows), `Content` parts, stream-event types, and the pure
-  resolution helpers: `resolveItemVisibility`, `collapseToCanonicalLog`,
-  `resolveBlockValue` / `buildItemLookup` / `inlineBlockValue` /
-  `isBlockValue` / `structureBlockValue`, task-attribution and predicate
-  helpers.
-- **Internal item surface** (`@flow-state-dev/contracts/items/internal`) —
-  `RuntimeItem` (also exported from `@flow-state-dev/contracts/items`),
-  `BlockValueInternal`, `refBlockValue`,
-  `resolveBlockValueInternal`, and `parseBlockInstanceId`.
-- **Block-instance-id helpers** (`@flow-state-dev/contracts/block-instance-id`)
-  — deterministic `buildBlockInstanceId` / `parseBlockInstanceId` and the
-  `blockPath*` segment builders.
-- **Pure helpers** (`@flow-state-dev/contracts/helpers`) — `deepEqual` /
-  `looseDeepEqual`, `cloneValue` (structural deep copy), `mapLimit`
-  (bounded-concurrency map), `toError` (unknown-throw coercion), the
-  string-case utilities `camelToKebab` / `normalizeTagName`,
-  `isWindowsReservedName`, and the resource-state version rule every
-  `ResourceStateStore` adapter shares: `assertSetExpectedVersion` and
-  `assertDeleteExpectedVersion` refuse a version the verb can't act on by
-  throwing a `TypeError`, and `resourceStateConflict` builds the conflict a
-  losing write returns. A custom adapter calls these rather than restating
-  them. Re-exported from `@flow-state-dev/core/helpers`.
-- **Pure leaf types** — `ModelIdentity`, `SuspensionReason`,
-  `SuspensionStatus`, `RequestStatus`.
-- **Agent discovery** (`@flow-state-dev/contracts/types/manifest`) — the shared
-  record an agent plans against, `ManifestEntry` (`{ id, kind, purpose,
-  contract? }`), the `ManifestSource` type that projects one domain's existing
-  reader into those entries, and the pinned domain names `MANIFEST_DOMAINS` /
-  `ManifestDomain` / `isManifestDomain`. It lives here because `core`,
-  `orchestration` and `workforce` each project into it and none of them should
-  depend on another to agree on the record. `ManifestSource` is generic over
-  its context type, since this layer knows nothing of `BlockContext`; `core`
-  binds it.
-- **Change notices** (`@flow-state-dev/contracts/types/change-notice`) — the
-  kinds a change notice names (`ChangeKind`: `items`, `request`, `run`,
-  `state`, `resource`, `resync`) and the wire topic a client watches: `topic.session(id)`,
-  `topic.user()` and `topic.org()`, each with an optional `{ resource }`. A
-  wire topic names no user, org or tenant id; the server fills those from the
-  caller it verified. Client and engine share it, so it lives here.
-
-The package barrel (`@flow-state-dev/contracts`) re-exports the item taxonomy,
-the block-instance-id helpers, the suspension leaf types, the manifest
-entry/source surface, and the change-notice kinds and wire topics.
-
-## Who depends on it
-
-`core`, `client`, `react`, and `ui` all depend on `contracts`. **`core`
-re-exports every symbol from its original path** (`@flow-state-dev/core`,
-`@flow-state-dev/core/items`, `@flow-state-dev/core/items/internal`, the leaf
-types), so importing these from `core` is unchanged for end users — the
-declaration simply lives here now. Browser packages value-import the canonical
-helpers directly from `contracts` instead of hand-mirroring them.
+Reference: [the `core` section of the Flow State API reference](https://flow-state.dev/docs/reference/api/core).

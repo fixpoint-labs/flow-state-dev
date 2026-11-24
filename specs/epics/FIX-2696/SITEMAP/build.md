@@ -177,8 +177,7 @@ Steps: a Node server · the store · environment · deploy. Questions: What star
 **B-10 · Deploy with Docker** · `build/deploy/docker` · recipe · 650 words
 Steps: the Dockerfile · the store volume · run it. Questions: What must the image contain? · What do you mount? Example: the Dockerfile. Source: `guides/deploying-with-docker` (keep).
 
-**B-11 · Deploy to AWS Lambda** · `build/deploy/aws-lambda` · recipe · 600 words
-Steps: the handler · streaming · the store · deploy. Questions: What limits a streamed reply on Lambda? · Which store? Example: the Lambda handler. Source: `guides/deploying-to-aws-lambda` (keep).
+**B-11 · Deploy to AWS Lambda** · Cut (FIX-2909): the Lambda path has never run on a real AWS account, so the docs do not offer it. `@flow-state-dev/node/aws-lambda` stays in the code, undocumented. Its source guide is removed; do not plan a page for it.
 
 ### Start a flow from outside
 

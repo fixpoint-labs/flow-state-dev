@@ -12,7 +12,7 @@
  * same files without making one (`./source-read`), and can run the
  * operator's setup command in each checkout it makes (`./setup`). Every git process
  * the package starts goes through `./exec` (a project's check commands too,
- * `./checkout-commands`), and the git that cuts and hands
+ * `./checkout-commands`), each with an allowlisted environment (`./child-env`), and the git that cuts and hands
  * back a run's worktree lives in `./worktree`.
  *
  * See `projection.ts` for why the baseline exists and what it costs to get

@@ -639,8 +639,8 @@ describe("judgment (V7)", () => {
     await post(host, id, "who are your delegates?");
     const { all } = await host.items(id);
     const read = all.find((item: any) => item.type === "tool_output" && item.blockName === "listDelegates");
-    // The records as the session holds them, each with what it does and takes, which are read, never stored.
-    expect(read.output.delegates.map(({ takes: _takes, description: _description, ...record }: any) => record)).toEqual(
+    // The records as the session holds them, each with what it does, takes and the input schema it takes, which are read, never stored.
+    expect(read.output.delegates.map(({ takes: _takes, description: _description, inputSchema: _inputSchema, ...record }: any) => record)).toEqual(
       (await host.sessionState(id)).delegates
     );
     // Never in its prompt: the turn's system text names no delegate. Two
