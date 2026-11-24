@@ -38,6 +38,7 @@ import { createWorkerInstallation, type WorkerInstallation } from "../src/worker
 import { defineWorkerRosterFlow } from "../src/workers/roster-flow";
 import type { SessionFields } from "../src/workers/session-fields";
 import { ROSTER_FLOW } from "../src/workers/keys";
+import { registerInstallationDoors } from "../src/workers/register";
 
 export const ORG = "acme";
 export const OTHER_ORG = "beta";
@@ -155,6 +156,8 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
       Object.entries(more).map(([name, flow]) => [name, flowOf(flow)({ id: name }) as unknown as FlowInstance])
     )
   };
+  // No hire here: the flows are registered by hand, so their doors are named by hand (FIX-2894).
+  registerInstallationDoors(installation);
   const state = createFlowState({
     flows: Object.values(instances),
     stores: { default: { primary: stores } },

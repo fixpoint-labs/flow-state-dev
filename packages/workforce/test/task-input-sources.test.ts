@@ -73,7 +73,7 @@ describe("the installation a task's input check resolves", { timeout: 60_000 }, 
       const door = entry.conversationTaskDoorOf(a.installation.workerFlows().tasker!.flow)!;
       // What a second installation built with A's prebuilt flow registers: the same door, its own source.
       b.installation.workerFlows();
-      ledger.registerTaskDoor(door, ledger.taskInputSourceOf(b.installation)!);
+      ledger.registerTaskDoor(door, ledger.taskInputSourceOf(b.installation)!, "tasker");
       const session = {};
       expect(ledger.noteSourceOfDoor(session, door)).toBeUndefined();
       expect(ledger.sourceOfSession(session)).toBeUndefined();
@@ -98,7 +98,7 @@ describe("the installation a task's input check resolves", { timeout: 60_000 }, 
       const door = entry.conversationTaskDoorOf(a.installation.workerFlows().tasker!.flow)!;
       const sourceA = ledger.taskInputSourceOf(a.installation)!;
       const sourceB = ledger.taskInputSourceOf(b.installation)!;
-      ledger.registerTaskDoor(door, sourceB);
+      ledger.registerTaskDoor(door, sourceB, "tasker");
       // What `resolveWorker` notes on the session: its own installation.
       const pinned = {};
       ledger.noteTaskInputSource(pinned, sourceA);

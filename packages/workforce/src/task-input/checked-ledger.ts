@@ -202,6 +202,8 @@ const byInstallation = new WeakMap<object, TaskInputSource>();
  * names it; two or more (a prebuilt flow given to both) name none on their own.
  */
 const byDoor = new WeakMap<object, Set<WeakRef<TaskInputSource>>>();
+/** The flow each installation registered a door under: the flow whose `work` entry it is. */
+const doorFlows = new WeakMap<object, WeakMap<TaskInputSource, string>>();
 
 /** The installations still alive that registered `door`, pruning the dropped ones. */
 function registrantsOf(door: object): TaskInputSource[] {
@@ -222,7 +224,10 @@ export function registerTaskInputSource(source: TaskInputSource, installation: o
 }
 
 /** Register `door`, the `from` of one of an installation's flows' `work` entries, as that installation's. */
-export function registerTaskDoor(door: object, source: TaskInputSource): void {
+export function registerTaskDoor(door: object, source: TaskInputSource, flow: string): void {
+  let flows = doorFlows.get(door);
+  if (flows === undefined) doorFlows.set(door, (flows = new WeakMap()));
+  flows.set(source, flow);
   if (registrantsOf(door).includes(source)) return;
   const known = byDoor.get(door);
   if (known === undefined) byDoor.set(door, new Set([new WeakRef(source)]));
@@ -252,6 +257,11 @@ export function noteSourceOfDoor(session: object, door: object): TaskInputSource
   // already noted, server-side and by installation, and only if it registered this door.
   const pinned = bySession.get(session);
   return pinned !== undefined && sources.includes(pinned) ? pinned : undefined;
+}
+
+/** The flow `door` is the `work` entry of, in `source`: the flow a claim behind it runs on. */
+export function flowOfDoor(door: object, source: TaskInputSource): string | undefined {
+  return doorFlows.get(door)?.get(source);
 }
 
 /** The source the running request's session was noted with; none when it was noted with none. */

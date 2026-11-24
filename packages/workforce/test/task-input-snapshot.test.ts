@@ -11,7 +11,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { taskInput } from "../src/task-input/declaration";
 import { checkFiledInput, type InputLookup } from "../src/task-input/checked-ledger";
-import { checkFiling } from "../src/task-input/filing-check";
+import { checkFiling, claimInput, FILLED_FOR } from "../src/task-input/filing-check";
 
 const ctx = {} as BlockContext;
 
@@ -46,6 +46,46 @@ describe("one check, one worker record", () => {
     const checked = await checkFiledInput(lookup, ctx, "ops.x", { ticket: "ENG-1", severity: "high" });
     expect(checked?.filledFor).toEqual({ flow: "triage", declaration: triage.fingerprint });
     expect(reads).toBe(1);
+  });
+});
+
+describe("at claim, the running entry is the authority", () => {
+  const decl = taskInput(z.object({ ticket: z.string(), by: z.string() }).strict(), {
+    serverOwned: ["by"],
+    fill: ({ worker }) => ({ by: String(worker.config.name) })
+  });
+  const stale = { assignee: "ops.x", input: { ticket: "ENG-1" }, metadata: {} };
+
+  // Codex P1: the refill read the roster again, after the session was verified, and filled from the record it moved to.
+  it("fails the attempt when the worker, read once at claim, has moved off the running entry's flow, and never fills from it", async () => {
+    const fills: unknown[] = [];
+    const watched = taskInput(z.object({ ticket: z.string(), by: z.string() }).strict(), {
+      serverOwned: ["by"],
+      fill: ({ worker }) => {
+        fills.push(worker.config);
+        return { by: String(worker.config.name) };
+      }
+    });
+    await expect(
+      claimInput({ ctx, declaration: watched, runningFlow: "triage", recordedFlow: "triage", task: stale, worker: { id: "ops.x", flow: "intake", config: { name: "B" } } })
+    ).rejects.toMatchObject({ code: "input_refused", message: expect.stringMatching(/now runs on flow "intake"\. Nothing ran\.$/) });
+    expect(fills).toEqual([]);
+    // On the running flow, it fills from that one read.
+    expect(
+      await claimInput({ ctx, declaration: watched, runningFlow: "triage", recordedFlow: "triage", task: stale, worker: { id: "ops.x", flow: "triage", config: { name: "A" } } })
+    ).toEqual({ ticket: "ENG-1", by: "A" });
+  });
+
+  // Codex P1: the session's state said A while B's entry ran, and an identical fingerprint let B trust A's stamp.
+  it("fails the attempt when the flow the hand-over recorded isn't the running entry's, whatever the stamp says", async () => {
+    const stamped = { assignee: "ops.x", input: { ticket: "ENG-1", by: "A" }, metadata: { [FILLED_FOR]: { flow: "triage", declaration: decl.fingerprint } } };
+    await expect(
+      claimInput({ ctx, declaration: decl, runningFlow: "intake", recordedFlow: "triage", task: stamped, worker: { id: "ops.x", flow: "intake", config: {} } })
+    ).rejects.toMatchObject({ code: "input_refused", message: expect.stringContaining('handed over for flow "triage", and this is flow "intake"') });
+  });
+
+  it("fails the attempt when the worker can't be read at claim", async () => {
+    await expect(claimInput({ ctx, declaration: decl, runningFlow: "triage", task: stale, worker: undefined })).rejects.toMatchObject({ code: "input_refused" });
   });
 });
 

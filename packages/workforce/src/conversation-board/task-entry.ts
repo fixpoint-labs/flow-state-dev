@@ -70,7 +70,7 @@ import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor, markTaskInput } from "../worker-task-entry";
 import { isTaskInputDeclaration, notObjectMessage, unstableMessage, type TaskInputDeclaration, type TaskInputRecord } from "../task-input/declaration";
 import { claimInput } from "../task-input/filing-check";
-import { checkedLedger, noteSourceOfDoor } from "../task-input/checked-ledger";
+import { checkedLedger, flowOfDoor, noteSourceOfDoor } from "../task-input/checked-ledger";
 import { filingWorkstreamOf } from "./filing-session";
 import { filingProjectStampOf } from "./held-task";
 import { namesProject, SET_THE_FILERS_PROJECT } from "../projects/run-project";
@@ -357,29 +357,23 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     if (stored === undefined) {
       throw new Error(`input_refused: task "${task.taskId}" isn't on the board its claim names, so its input can't be read. Nothing ran.`);
     }
-    const state = (ctx.session.state ?? {}) as Record<string, unknown>;
-    const assignee = stored.assignee ?? "";
-    const named = state[TASK_FLOW_STATE_KEY];
-    const flow = typeof named === "string" ? named : (await source?.workerOf(ctx, assignee))?.flow;
-    if (flow === undefined) {
-      throw new Error(`input_refused: the flow task "${task.taskId}" runs on can't be read, so its input can't be checked. Nothing ran.`);
+    // At claim, the running entry is the authority: the flow is the one this `work` entry belongs to, and the
+    // flow the hand-over recorded and the worker, read once here, must both name it, or nothing runs.
+    const runningFlow = source === undefined ? undefined : flowOfDoor(from, source);
+    if (source === undefined || runningFlow === undefined) {
+      throw new Error(`input_refused: the flow this entry runs task "${task.taskId}" for can't be read, so its input can't be checked. Nothing ran.`);
     }
+    const recorded = ((ctx.session.state ?? {}) as Record<string, unknown>)[TASK_FLOW_STATE_KEY];
+    const assignee = stored.assignee ?? "";
+    const read = assignee === "" ? undefined : await source.workerOf(ctx, assignee);
     try {
       const input = await claimInput({
         ctx,
         declaration,
-        flow,
+        runningFlow,
+        ...(typeof recorded === "string" ? { recordedFlow: recorded } : {}),
         task: stored,
-        worker: async () => {
-          const worker = source === undefined ? undefined : await source.workerOf(ctx, assignee);
-          if (worker === undefined) {
-            throw new TaskWriteRefusedError(
-              "input_refused",
-              `"${assignee}" can't be read now, so task "${task.taskId}"'s server-owned input can't be filled again. Nothing ran.`
-            );
-          }
-          return { id: assignee, config: worker.config };
-        }
+        worker: read === undefined ? undefined : { id: assignee, flow: read.flow, config: read.config }
       });
       return { ...task, input };
     } catch (error) {

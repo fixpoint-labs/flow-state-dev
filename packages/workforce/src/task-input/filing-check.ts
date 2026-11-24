@@ -154,28 +154,49 @@ export async function checkFiling(run: FilingCheck): Promise<CheckedInput> {
   return { input: checked, filledFor: { flow, declaration: declaration.fingerprint } };
 }
 
-/** What the claim parses a stored task with. */
+/**
+ * What the claim parses a stored task with. **At claim, the running entry is
+ * the authority:** the flow is the one whose `work` entry is executing, and
+ * every other fact must name that same flow.
+ */
 export interface ClaimInput {
   readonly ctx: BlockContext;
+  /** The running entry's declaration. */
   readonly declaration: TaskInputDeclaration;
-  /** The flow the claim runs on. */
-  readonly flow: string;
+  /** The flow whose `work` entry is executing: the one fact a roster move mid-flight can't change. */
+  readonly runningFlow: string;
+  /** The flow the hand-over recorded for this task session (`taskFlow`), when it recorded one. */
+  readonly recordedFlow?: string;
   /** The task as stored. */
   readonly task: Pick<Task, "input" | "metadata" | "assignee">;
-  /** The task's worker, for a re-fill; asked only when the stamp is stale and the flow fills. */
-  readonly worker: () => Promise<TaskInputWorker>;
+  /** The task's worker, read once for this claim; `undefined` when it can't be read now. */
+  readonly worker: CheckedWorker | undefined;
 }
 
 /**
- * The input the worker block is handed: the stored task through `stored`, its
- * server-owned values filled again (`at: "claim"`) unless its stamp names
- * this flow and declaration, then parsed. Only the schema and the stamp are
- * checked here: `check` and the project requirement are the filing's.
+ * The input the worker block is handed. The claim runs only where everything
+ * names the running entry's flow: the flow the hand-over recorded, and the
+ * worker as read once for this claim; anything else fails the attempt. Then
+ * the stored task through `stored`, its server-owned values filled again
+ * (`at: "claim"`, from that one worker read, never a new one) unless its stamp
+ * names this flow and declaration, and parsed. Only the schema and the stamp
+ * are checked here: `check` and the project requirement are the filing's.
  *
- * @throws TaskWriteRefusedError `input_refused`, naming the field, ending `Nothing ran.`
+ * @throws TaskWriteRefusedError `input_refused`, naming what didn't fit, ending `Nothing ran.`
  */
 export async function claimInput(run: ClaimInput): Promise<TaskInputRecord> {
-  const { declaration, flow, task } = run;
+  const { declaration, runningFlow: flow, task, worker } = run;
+  if (run.recordedFlow !== undefined && run.recordedFlow !== flow) {
+    throw notRunnable(flow, `the task was handed over for flow "${run.recordedFlow}", and this is flow "${flow}"'s entry`);
+  }
+  if (worker === undefined || worker.id !== task.assignee || worker.flow !== flow) {
+    throw notRunnable(
+      flow,
+      worker === undefined || worker.id !== task.assignee
+        ? `its worker "${task.assignee ?? ""}" can't be read now`
+        : `its worker "${worker.id}" now runs on flow "${worker.flow}"`
+    );
+  }
   const raw = asRecord(task.input ?? {});
   if (raw === undefined) throw notRunnable(flow, "the input is not an object");
   const read = declaration.stored === undefined ? raw : declaration.stored(raw);
@@ -183,11 +204,10 @@ export async function claimInput(run: ClaimInput): Promise<TaskInputRecord> {
   if (!stampMatches(task, flow, declaration) && declaration.serverOwned.length > 0) {
     const owned = new Set(declaration.serverOwned);
     const filerFields = Object.fromEntries(Object.entries(read).filter(([name]) => !owned.has(name)));
-    const assignee = task.assignee ?? "";
     const filled =
       declaration.fill === undefined
         ? {}
-        : pick(await declaration.fill({ ctx: run.ctx, at: "claim", assignee, worker: await run.worker(), flow }), owned);
+        : pick(await declaration.fill({ ctx: run.ctx, at: "claim", assignee: worker.id, worker: { id: worker.id, config: worker.config }, flow }), owned);
     input = { ...filerFields, ...filled };
   }
   const parsed = declaration.schema.safeParse(input);

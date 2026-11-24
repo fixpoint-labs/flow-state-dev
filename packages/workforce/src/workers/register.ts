@@ -146,14 +146,25 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
   copies.push(roster() as unknown as FlowInstance);
   // Only a hire that succeeded names its flows' doors (FIX-2894): a refused one,
   // which may share a prebuilt flow with a live installation, never takes its door.
-  const source = taskInputSourceOf(installation);
-  if (source !== undefined) {
-    for (const { flow } of Object.values(installation.workerFlows())) {
-      const door = conversationTaskDoorOf(flow);
-      if (door !== undefined) registerTaskDoor(door, source);
-    }
-  }
+  registerInstallationDoors(installation);
   return copies;
+}
+
+// FIX-2894.
+/**
+ * Name each of `installation`'s flows' `work` doors as its own, under the
+ * flow's name, so a claim behind one knows the flow it runs on and reads what
+ * its tasks take. The last step of a hire that succeeded; a host that
+ * registers its worker flows without {@link hireWorkforce} calls it once they
+ * are built. A door never named fails every declared claim closed.
+ */
+export function registerInstallationDoors(installation: WorkerInstallation): void {
+  const source = taskInputSourceOf(installation);
+  if (source === undefined) return;
+  for (const [name, { flow }] of Object.entries(installation.workerFlows())) {
+    const door = conversationTaskDoorOf(flow);
+    if (door !== undefined) registerTaskDoor(door, source, name);
+  }
 }
 
 /**
