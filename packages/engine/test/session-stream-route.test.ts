@@ -248,11 +248,61 @@ describe("the stream shows what the snapshot shows (V2)", () => {
 
     const snapshot = await snapshotPairs(router, "&item_types=message,status");
     // The type filter stands in for the visibility rule, as it always has on
-    // the snapshot: a named type is shown even when its stamp would hide it.
+    // the snapshot: a named type is shown even when its stamp would hide it,
+    // while trace observability is on (as it is outside production).
     expect(snapshot).toEqual(
       [`${REQ_A}/m_hidden`, `${REQ_A}/m_rerun`, `${REQ_A}/status`, `${REQ_B}/m_b`].sort()
     );
     expect(await streamedPairs(router, "&item_types=message,status")).toEqual(snapshot);
+  });
+
+  // `item_types` is the caller's to write, so naming a type must not open what
+  // the client view hides unless trace observability is on (off in production
+  // unless `FSDEV_TRACE_OBSERVABILITY=true`).
+  describe("naming a client-hidden type in production", () => {
+    const savedEnv = { ...process.env };
+    let warn: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      process.env.NODE_ENV = "production";
+      warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    });
+    afterEach(() => {
+      process.env = { ...savedEnv };
+      warn.mockRestore();
+    });
+
+    const query = "&item_types=message,status,block_trace";
+
+    it("with observability off, filters by type among client-visible items only", async () => {
+      delete process.env.FSDEV_TRACE_OBSERVABILITY;
+      const built = buildRouter();
+      router = built.router;
+      await seedSession(built.stores);
+
+      const snapshot = await snapshotPairs(router, query);
+      expect(snapshot).toEqual([`${REQ_A}/m_rerun`, `${REQ_A}/status`, `${REQ_B}/m_b`].sort());
+      expect(await streamedPairs(router, query)).toEqual(snapshot);
+    });
+
+    it("with observability on, a named type is shown whatever its visibility, as before", async () => {
+      process.env.FSDEV_TRACE_OBSERVABILITY = "true";
+      const built = buildRouter();
+      router = built.router;
+      await seedSession(built.stores);
+
+      const snapshot = await snapshotPairs(router, query);
+      expect(snapshot).toEqual(
+        [
+          `${REQ_A}/m_hidden`,
+          `${REQ_A}/m_rerun`,
+          `${REQ_A}/status`,
+          `${REQ_A}/t2`,
+          `${REQ_B}/m_b`,
+          `${REQ_B}/t_b`
+        ].sort()
+      );
+      expect(await streamedPairs(router, query)).toEqual(snapshot);
+    });
   });
 });
 

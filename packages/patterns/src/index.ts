@@ -10,7 +10,6 @@ export type {
 export {
   planAndExecute,
   planAndExecuteInputSchema,
-  createSynthesize,
 } from "./plan-and-execute";
 
 export type {
