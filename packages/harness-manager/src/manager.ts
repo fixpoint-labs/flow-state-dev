@@ -2777,6 +2777,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           ? { name: keyed, ...(mode.formerName === undefined ? {} : { formerName: assertSafeSegment("mode", mode.formerName) }) }
           : { name: keyed },
         input.taskId,
+        // BP-030: before the key folded, the payload's own spelling was the key.
+        segment,
       );
       const phaseName = found.segment;
       const topic = found.topic;

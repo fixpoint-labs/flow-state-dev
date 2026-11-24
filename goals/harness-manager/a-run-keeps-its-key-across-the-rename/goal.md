@@ -21,7 +21,7 @@
 
 **Controls:** a scratch patch applied as the code loads, printed by the run, and refused when it never reached the code.
 
-- `GOAL_CONTROL=no-legacy-key`: `readModeRunRecord` never reads the former key (`packages/harness-manager/src/run-record.ts`). Must fail **`resume:session`**: the resumed task starts a fresh run on a new branch.
+- `GOAL_CONTROL=no-legacy-key`: `readModeRunRecord` reads no older key, neither the former name nor a payload's own spelling (`packages/harness-manager/src/run-record.ts`). Must fail **`resume:session`**: the resumed task starts a fresh run on a new branch.
 - `GOAL_CONTROL=former-name-refused`: the manager's row identity check takes only the mode's name, not its former name (`packages/harness-manager/src/manager.ts`). Must fail **`fixed:resume`**: the row filed as `code` is refused and never runs.
 
 ## Verdict log
@@ -31,3 +31,4 @@
 | 2026-11-23 | fix/fix-2877-p1 (working tree) | n/a | FAIL (control, as required) | `no-legacy-key`: `resume:session` (handed no session), `resume:checkout` (a new `t1-default-…` checkout), `resume:finished-there`, `resume:nothing-new` |
 | 2026-11-23 | fix/fix-2877-p1 (working tree, after review) | n/a | PASS | All legs, the new `fixed` leg too: a fixed-board row filed as `code` resumed on its session and finished under `feature-board/FIX-1/code` |
 | 2026-11-23 | fix/fix-2877-p1 (working tree, after review) | n/a | FAIL (each control, as required) | `no-legacy-key`: `resume:session`. `former-name-refused`: `fixed:resume` (no run, the row pending), `fixed:finished-there` |
+| 2026-11-24 | fix/fix-2877-p1 (working tree, spelled-key read) | n/a | PASS, and each control FAILs as required | All legs PASS. `no-legacy-key` (re-pointed at the older-key loop) fails `resume:session`; `former-name-refused` fails `fixed:resume` |

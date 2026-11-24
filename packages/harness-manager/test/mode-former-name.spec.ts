@@ -156,4 +156,31 @@ describe("the former-name read is the task's own", () => {
     expect(lab.seen[0]?.resume).toBe("sess_kept");
     expect(await lab.record(runTopic(FIXED_BOARD, "FIX-1", "DEFAULT"))).toBeNull();
   }, 60_000);
+
+  // BP-030: before the key folded, a payload's own spelling was the key, so a
+  // run filed as `CODE` was stored at `…/CODE`. It is still found there, and
+  // finishes there, when it is this task's.
+  it("a run stored under the payload's own spelling, before the key folded, is found there", async () => {
+    const id = "fix-1--code";
+    const lab = claimHost({ mode: "fixed", modeName: "default", formerName: "code" });
+    await lab.seed({ ledgerId: FIXED_BOARD, id, goal: "the feature", input: { issue: "FIX-1", phase: "CODE" }, maxAttempts: 2 });
+    await lab.putRecord(runTopic(FIXED_BOARD, "FIX-1", "CODE"), { taskId: id, sessionId: "sess_spelled", outcome: "failed" });
+    const { result } = await lab.runAttempt(FIXED_BOARD, id);
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    expect(lab.seen[0]?.resume).toBe("sess_spelled");
+    expect((await lab.record(runTopic(FIXED_BOARD, "FIX-1", "CODE")))?.outcome).toBe("succeeded");
+    expect(await lab.record(runTopic(FIXED_BOARD, "FIX-1", "code"))).toBeNull();
+  }, 60_000);
+
+  it("a record under that spelling that names another task is not adopted", async () => {
+    const id = "fix-1--code";
+    const lab = claimHost({ mode: "fixed", modeName: "default", formerName: "code" });
+    await lab.seed({ ledgerId: FIXED_BOARD, id, goal: "the feature", input: { issue: "FIX-1", phase: "CODE" }, maxAttempts: 2 });
+    await lab.putRecord(runTopic(FIXED_BOARD, "FIX-1", "CODE"), { taskId: "another-task", sessionId: "sess_other", outcome: "failed" });
+    const { result } = await lab.runAttempt(FIXED_BOARD, id);
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+    expect(lab.seen[0]?.resume).toBeNull();
+    expect((await lab.record(runTopic(FIXED_BOARD, "FIX-1", "CODE")))?.sessionId).toBe("sess_other");
+    expect((await lab.record(runTopic(FIXED_BOARD, "FIX-1", "code")))?.taskId).toBe(id);
+  }, 60_000);
 });

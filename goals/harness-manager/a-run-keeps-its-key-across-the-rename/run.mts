@@ -56,8 +56,8 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; must: string[] }> = {
     patches: [
       {
         module: RUN_RECORD,
-        from: String.raw`  if \(record !== undefined \|\| mode\.formerName === undefined \|\| mode\.formerName === mode\.name\) \{`,
-        to: "  if (true) {",
+        from: String.raw`  for \(const older of \[spelled, mode\.formerName\]\) \{`,
+        to: "  for (const older of [] as (string | undefined)[]) {",
       },
     ],
   },
