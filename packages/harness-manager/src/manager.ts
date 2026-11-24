@@ -196,6 +196,7 @@ import {
   acquireCheckout,
   assertBranchPrefix,
   branchFor,
+  checkoutLeaseFromState,
   freeRunLocation,
   locationFor,
   hostForConfig,
@@ -1445,16 +1446,12 @@ function taskPayload(
  * {@link managerStateSchema} are handed them.
  */
 type ManagerState = z.infer<typeof managerStateSchema>;
+type RunRecordIdentityState = Pick<ManagerState, "taskId" | "attempt" | "topic" | "ticket" | "claim">;
 type ManagerContext = Omit<BlockContext, "sequencer"> & { sequencer?: StateRef<ManagerState> };
-
-/** Harness and step callbacks run inside the manager but expose an untyped sequencer. */
-function managerCallbackContext(ctx: BlockContext): ManagerContext {
-  return ctx as ManagerContext;
-}
 
 /** The attempt identity every run-record write is fenced against. */
 function identityFrom(
-  state: ManagerState | undefined,
+  state: RunRecordIdentityState | undefined,
   boardCollectionId: string,
 ): AttemptIdentity {
   if (state?.topic == null || state.taskId == null || state.attempt == null) {
@@ -1628,11 +1625,11 @@ function followingRun(ctx: Pick<ManagerContext, "sequencer">): FollowingRun {
 }
 
 /** Read the manager's state, or throw rather than derive a wrong directory. */
-function managerState(state: ManagerState | undefined): ManagerState {
-  if (state?.workspacePath == null) {
+function managerState<TState extends Record<string, unknown>>(state: TState | undefined): TState & { workspacePath: string } {
+  if (typeof state?.workspacePath !== "string") {
     throw new Error("[harness-manager] the manager's sequencer state has no checkout on it.");
   }
-  return state;
+  return state as TState & { workspacePath: string };
 }
 
 /**
@@ -2314,7 +2311,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    */
   const identityOf = (
     ctx: BlockContext,
-    state: ManagerState | undefined,
+    state: RunRecordIdentityState | undefined,
   ): AttemptIdentity => {
     const claim = state?.claim ?? null;
     const base = identityFrom(state, claim?.collectionId ?? boardCollectionId!);
@@ -2940,11 +2937,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * row. Never throws: a failed read is a status note.
    */
   const recordRunCheckout = async (ctx: ManagerContext): Promise<string | null> => {
-    const raw = ctx.sequencer?.state;
+    const state = ctx.sequencer?.state;
     const worktrees = worktreesOf(ctx);
-    if (raw?.workspacePath == null || raw.branch == null || worktrees === undefined || host.recordCheckout === undefined) return null;
+    if (state?.workspacePath == null || state.branch == null || worktrees === undefined || host.recordCheckout === undefined) return null;
     try {
-      const state = managerState(raw);
       const place = placeFor(
         locationFor(
           {
@@ -3008,7 +3004,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         trackerIssue: state.trackerIssue ?? null,
         mode: state.phase!,
         attempt: input.attempts,
-        workspacePath: state.workspacePath!,
+        workspacePath: state.workspacePath,
         branch: state.branch!,
         ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
         ctx,
@@ -3024,7 +3020,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // The prompt is the only place this path is named, which is what makes
         // the ask FORCED rather than spontaneous — the harness offers no seam
         // for a question to leave through (see `./ask`).
-        askMarkerPath: askMarkerPath(state.workspacePath!, input.attempts, state.run!),
+        askMarkerPath: askMarkerPath(state.workspacePath, input.attempts, state.run!),
       };
 
       // **Bounded for the same reason the completion check is.** This await
@@ -3057,7 +3053,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // provisioned tree: it creates the parent directory and locks beside the
       // checkout.
       const lease = await acquireCheckout(
-        state.workspacePath!,
+        state.workspacePath,
         `${input.taskId}#${input.attempts}`,
         ownership,
         Date.now,
@@ -3254,12 +3250,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       let resolvedCut: Promise<string | null> | undefined;
       const settleCut = (): Promise<string | null> =>
         (resolvedCut ??=
-          state.filesOnly === true || host.baseTip === undefined || state.workspacePath == null
+          state.filesOnly === true || host.baseTip === undefined
             ? Promise.resolve(state.baseCommit ?? null)
             : Promise.resolve()
-                .then(() => host.baseTip!({ cwd: state.workspacePath!, baseRef: state.baseRef }))
+                .then(() => host.baseTip!({ cwd: state.workspacePath, baseRef: state.baseRef }))
                 .then(
-                  (tip) => effectiveCut(state.workspacePath!, state.baseCommit ?? null, tip ?? null),
+                  (tip) => effectiveCut(state.workspacePath, state.baseCommit ?? null, tip ?? null),
                   () => state.baseCommit ?? null,
                 ));
 
@@ -3293,12 +3289,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // Read once here, so the review's prompt and data come from state alone.
         const diff: RunDiff | null =
           reviewChanges && settle === "complete" && state.filesOnly !== true && commits.verified && commits.count > 0
-            ? (read ?? (await readRunDiff(state.workspacePath!, state.baseRef, await settleCut())))
+            ? (read ?? (await readRunDiff(state.workspacePath, state.baseRef, await settleCut())))
             : null;
         // This round's commits, apart from the branch's earlier ones (FIX-2782): only when the round began past the base.
         const round: RunCommits | null =
           diff !== null && state.roundStart != null && state.roundStart !== state.baseCommit
-            ? await readRunCommits(state.workspacePath!, state.baseRef, await settleCut(), { since: state.roundStart })
+            ? await readRunCommits(state.workspacePath, state.baseRef, await settleCut(), { since: state.roundStart })
             : null;
         // The cut this settle read against, on every settle, so a file's patch read later reads as the review's files and the judge's did.
         await fenced(writeRunRecord(ctx, identity, { effectiveCut: await settleCut() }), "the cut the run was read against was recorded");
@@ -3309,7 +3305,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const commitsOf = (): Promise<RunCommits> =>
         state.filesOnly === true
           ? Promise.resolve({ count: 0, subjects: [], verified: true })
-          : settleCut().then((cut) => readRunCommits(state.workspacePath!, state.baseRef, cut));
+          : settleCut().then((cut) => readRunCommits(state.workspacePath, state.baseRef, cut));
 
       // Everything the run reported goes on the row before anything is decided,
       // so a failed attempt's row is as complete as a successful one's.
@@ -3346,7 +3342,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // next turn, so an earlier run's question file is still on disk, and a
       // fixed path makes a run that quietly did nothing look exactly like a run
       // that asked.
-      const question = await readAskMarker(state.workspacePath!, identity.attempt, state.run!);
+      const question = await readAskMarker(state.workspacePath, identity.attempt, state.run!);
       // Why the phase's check said not done, when it said (`ModeDoneVerdict.reason`).
       let notDoneReason: string | undefined;
 
@@ -3380,7 +3376,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         const doneBoundMs = runMode.doneWhen.timeoutMs ?? NETWORK_CALL_TIMEOUT_MS;
         const doneStarted = Date.now();
         const doneLease = await acquireCheckout(
-          state.workspacePath!,
+          state.workspacePath,
           `${identity.taskId}#${identity.attempt}`,
           ownership,
           Date.now,
@@ -3401,7 +3397,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           // A task deleted and filed again under the same id can be on the same attempt and turn.
           (identity.incarnationId !== undefined && rowNow.incarnationId != null && rowNow.incarnationId !== identity.incarnationId)
         ) {
-          releaseLeaseFromState(ctx);
+          releaseCheckout(checkoutLeaseFromState(ctx.sequencer?.state));
           throw new HarnessAttemptSuperseded(`its completion check started (the task is ${rowNow?.status ?? "gone"})`);
         }
         // **Stopped before the lease goes.** `withDeadline` rejects on time
@@ -3417,7 +3413,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             trackerIssue: state.trackerIssue ?? null,
             mode: state.phase!,
             attempt: identity.attempt,
-            workspacePath: state.workspacePath!,
+            workspacePath: state.workspacePath,
             branch: state.branch!,
             // **Crossed as reported, and compared on by nothing here.** This
             // block's own input schema reads `outcome` as a plain string
@@ -3445,7 +3441,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           await Promise.race([checking.then(() => undefined, () => undefined), sleepFor(DONE_STOP_GRACE_MS, undefined, { ref: false })]);
           throw error;
         } finally {
-          releaseLeaseFromState(ctx);
+          releaseCheckout(checkoutLeaseFromState(ctx.sequencer?.state));
         }
         const verdict = readVerdict(doneAnswer);
         // **The checks it ran go on the run record, whatever the verdict**, so
@@ -3482,7 +3478,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           // The judge reads what the commits changed, read once and kept for the review too.
           const diff =
             judged && state.filesOnly !== true && commits.verified
-              ? await readRunDiff(state.workspacePath!, state.baseRef, await settleCut())
+              ? await readRunDiff(state.workspacePath, state.baseRef, await settleCut())
               : null;
           const judgeInput = judged
             ? {
@@ -3579,7 +3575,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // Idempotent: the release is token-guarded, so the harness path's
       // `onSettled` having already released makes this a no-op, and it can
       // never remove a replacement's lock.
-      releaseLeaseFromState(ctx);
+      releaseCheckout(checkoutLeaseFromState(ctx.sequencer?.state));
 
       // **A failed run keeps what it wrote.** Saved after the lease is let go:
       // the save touches only the run's kept files, never the checkout. A
@@ -3640,9 +3636,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    */
   const askAboutToolCall: HarnessToolApprovalHook = (request, ctx) => {
     const requestId = ctx.request.identity.id;
-    const state = managerState(managerCallbackContext(ctx).sequencer?.state);
-    const call = heldToolCallOf(request, state.workspacePath!);
-    const grants = state.approvals?.grants ?? [];
+    const state = managerState(ctx.sequencer?.state);
+    const call = heldToolCallOf(request, state.workspacePath);
+    const approvals = state.approvals as ManagerState["approvals"];
+    const grants = approvals?.grants ?? [];
     const spent = spentGrants.get(requestId) ?? new Set<number>();
     const granted = grants.findIndex((grant, at) => !spent.has(at) && grantMatches(grant, call));
     if (granted >= 0) {
@@ -3687,21 +3684,23 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const harnessBlock = harness({
     // The run edits ITS checkout, and the record of what it touched is keyed
     // there too.
-    cwd: (ctx) => managerState(managerCallbackContext(ctx).sequencer?.state).workspacePath!,
+    cwd: (ctx) => managerState(ctx.sequencer?.state).workspacePath,
     // Which session this attempt continues. `null` on attempt 1, and on every
     // attempt after one whose harness named no session — a resume the vendor
     // refused, above all — so a dead id is not re-sent forever.
-    resume: (ctx) => managerCallbackContext(ctx).sequencer?.state.previousSessionId ?? null,
+    resume: ({ sequencer }) => {
+      const sessionId = sequencer?.state.previousSessionId;
+      return typeof sessionId === "string" ? sessionId : null;
+    },
     // **Fenced like every other write.** A refusal here means a replacement
     // holds the row, and recording this attempt's session onto it would hand
     // the replacement's next attempt a conversation that belongs to a run
     // nobody is waiting on. Stopping is also the right answer for the run
     // itself: it is mid-stream in paid model work on a row it no longer owns.
     onSession: async (sessionId, ctx) => {
+      const state = ctx.sequencer?.state as RunRecordIdentityState | undefined;
       await fenced(
-        writeRunRecord(ctx, identityOf(ctx, managerCallbackContext(ctx).sequencer?.state), {
-          sessionId,
-        }),
+        writeRunRecord(ctx, identityOf(ctx, state), { sessionId }),
         "the harness named its session",
       );
     },
@@ -3726,10 +3725,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       harnessStops.heard(ctx);
       const now = Date.now();
       if (now - (lockRefreshedAt.get(requestId) ?? 0) < LOCK_REFRESH_MS) return;
-      const state = managerCallbackContext(ctx).sequencer?.state;
-      if (state?.lockPath == null || state.leaseToken == null) return;
+      const lease = checkoutLeaseFromState(ctx.sequencer?.state);
+      if (lease === undefined) return;
       lockRefreshedAt.set(requestId, now);
-      refreshCheckout({ lockPath: state.lockPath, token: state.leaseToken });
+      refreshCheckout(lease);
     },
     // The step's notes, throttled, onto the task's `statusNote`.
     onActivity: (activity, ctx) => {
@@ -3822,7 +3821,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const readTaskPullRequests = (ctx: ManagerContext, prs: readonly TaskPullRequest[]) => {
     const path = managerState(ctx.sequencer?.state).workspacePath;
     return readPullRequestStates(ctx, prs, {
-      cwd: path != null && existsSync(path) ? path : process.cwd(),
+      cwd: existsSync(path) ? path : process.cwd(),
       timeoutMs: NETWORK_CALL_TIMEOUT_MS,
     });
   };
@@ -4094,7 +4093,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // The ways this host can land this run, as the host says (`landWays`): none where landing
       // can't work, and then the review offers the plain accept. Asked once, so a replay offers the same.
       const probe = async (): Promise<LandHow[]> =>
-        host.land === undefined || host.landWays === undefined || decision.output.branch === null || state.workspacePath == null || state.branch == null
+        host.land === undefined || host.landWays === undefined || decision.output.branch === null || state.branch == null
           ? []
           : await host.landWays({ cwd: state.workspacePath, branch: state.branch, baseRef: state.baseRef }).catch(() => []);
       const ways: LandHow[] = ctx.runOnce === undefined ? await probe() : await ctx.runOnce(`review:lands:${state.steerSteps ?? 0}`, probe);
@@ -4108,7 +4107,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const probeOpen = async (): Promise<Probed> => {
         if (host.existingPullRequest === undefined || !ways.includes("pull-request")) return { open: null, unread: null, notOurs: null };
         try {
-          const target = { cwd: state.workspacePath!, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit };
+          const target = { cwd: state.workspacePath, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit };
           const open = await host.existingPullRequest(target);
           if (open === null) return { open: null, unread: null, notOurs: null };
           const link = pullRequestRefFromUrl(open.url);
@@ -4376,7 +4375,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    */
   const landOnce = async (
     ctx: BlockContext,
-    state: ManagerState,
+    state: ManagerState & { workspacePath: string },
     decision: NonNullable<ManagerState["decided"]>,
     read: HarnessJudgeVerdict | null,
     how: LandHow,
@@ -4388,7 +4387,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         if (host.land === undefined) throw new WorkspaceRefusedError("land-unsupported", "this host can't push or merge a run's branch");
         // The base commit lets the host land the branch the checkout is on when
         // the run moved its work off its own (FIX-2658).
-        const target = { cwd: state.workspacePath!, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit };
+        const target = { cwd: state.workspacePath, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit };
         const landed =
           how === "merge"
             ? await host.land(target, { kind: "merge" })
@@ -4583,7 +4582,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // path forwards into the query's abort controller. The row's watch
       // (a steer's stop, or the task's end) composes in beside it.
       abortSignal: (callbackCtx) => {
-        const ctx = managerCallbackContext(callbackCtx);
+        // Step callbacks expose generic sequencer state. These watchers run inside the manager.
+        const ctx = callbackCtx as ManagerContext;
         // Before the harness starts recording, so a pull request it opens is followed mid-turn.
         followRecordedPullRequests(ctx, onPullRequestRecorded, followingRun(ctx));
         // A run that goes silent is stopped; one that keeps working runs on
@@ -4603,7 +4603,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         lockRefreshedAt.delete(ctx.request.identity.id);
         stopWatching(ctx);
         stopProgressNotes(ctx);
-        releaseLeaseFromState(managerCallbackContext(ctx));
+        releaseCheckout(checkoutLeaseFromState(ctx.sequencer?.state));
       },
     })
     .rescue([
@@ -4681,13 +4681,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     if (steers.length === 0 && !stopped) return undefined;
     // The steers this take wrote, as lines in the run's session from their senders.
     await showTakenSteers(ctx, take.taken);
-    const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
+    const lease = await acquireCheckout(state.workspacePath, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
     await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session, steerSteps: loop });
     // A step after the verdict for a review's "Ask for changes" starts a new round where the reviewed one
     // ended (FIX-2782), so the next review sets the revision's commits apart from the ones already reviewed.
     // A mid-run steer step before the next review doesn't, or the revision's own earlier commits would drop out.
     if (afterDecide && state.decided?.reviewed === "revise" && state.filesOnly !== true) {
-      await ctx.sequencer!.patchState({ roundStart: await headCommit(state.workspacePath!) });
+      await ctx.sequencer!.patchState({ roundStart: await headCommit(state.workspacePath) });
     }
     // A turn's save points let a place with kept files go (`saveKeptFiles`):
     // the step a steer that came during the verdict adds works in it again,
@@ -4792,7 +4792,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       });
 
       state = managerState(ctx.sequencer?.state);
-      const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
+      const lease = await acquireCheckout(state.workspacePath, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
       await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session });
       if (state.place == null) await ctx.sequencer!.patchState({ place: await provisionRunPlace(ctx) });
       return { prompt: outcome.prompt, again: true };
@@ -5181,33 +5181,5 @@ const STALE_AFTER_STOP =
 /** The prompt of a step after a stop whose steers another read took. */
 const CONTINUE_AFTER_STOP =
   "You were stopped while you were working. The checkout keeps everything you wrote. Carry on from where you were.";
-
-/**
- * **The one convergence point: release the checkout from state alone.**
- *
- * Called from both exits — the harness step's `onSettled` and the chain's
- * rescue — and neither of them passes anything but a context. That is what
- * forces the lease to be a value: `onSettled` is synchronous and gets only a
- * context, so a live handle had nowhere to live except a process-wide map, and
- * the map existed only because a completion hook could not reach the run that
- * took the lock.
- *
- * It reads `(lockPath, token)` off the run's own state and nothing else. **A
- * second release path that read anything else is the defect this shape
- * removes, coming back** — so if a third exit ever needs to release, it calls
- * this.
- *
- * Idempotent: `releaseCheckout` removes a lock only when the token still
- * matches, so a second call after the first succeeded finds nothing of ours and
- * does nothing.
- *
- * No module-level state remains, so two managers in one process cannot touch
- * each other's lock by construction rather than by keying a table correctly.
- */
-function releaseLeaseFromState(ctx: Pick<ManagerContext, "sequencer">): void {
-  const state = ctx.sequencer?.state;
-  if (state?.lockPath == null || state.leaseToken == null) return;
-  releaseCheckout({ lockPath: state.lockPath, token: state.leaseToken });
-}
 
 export { RUNS };
