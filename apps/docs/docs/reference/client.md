@@ -18,13 +18,14 @@ The examples use a support desk: a `support` flow with a `reply` action, called 
 |---|---|
 | What must `createClient` be given? | A non-empty `userId`, and either a `baseUrl` or a `fetcher`. Missing either, it throws at construction a `ClientHttpError` of `status: 0`: `userId is required`, or `createClient requires baseUrl, or a fetcher`. |
 | What goes in `baseUrl` on the page's own origin? | `""`, or leave it off under a `FlowProvider`. A Next.js `basePath` such as `"/portal"` goes here. The server's mount never does. See [`baseUrl` by situation](#baseurl-by-situation). |
-| Where do credentials and a tenant go? | In the `fetcher`. There is no header, token, tenant or timeout option. |
+| Where do credentials and a tenant go? | In the `fetcher`. There is no header, token or tenant option. |
+| What happens to a send the server never answers? | It rejects after 30 seconds with a `ClientHttpError` of `status: 0`. Change the limit with `sendTimeoutMs`. See [Send time limit](#send-time-limit). |
 | Which hooks can override `apiPath` or `fetcher`? | None, except `useVoice`, which takes its own `apiPath`. See [What each hook takes](#what-each-hook-takes-over-the-providers). |
 | What does a hook use with no `userId` anywhere? | `"devuser"`, except `useAction`, which throws. |
 
 ## `createClient` options
 
-`createClient(options: CreateClientOptions): Client`. There are no other options.
+`createClient(options: CreateClientOptions): Client`. These are all its options.
 
 | Option | Type | Default | Meaning |
 |---|---|---|---|
@@ -32,6 +33,7 @@ The examples use a support desk: a `support` flow with a `reply` action, called 
 | `baseUrl` | `string` | none | Where the server answers, such as `"http://localhost:3000"`; `""` for the page's own origin. Put in front of every route as given, minus one trailing `/`. Required without a `fetcher`. |
 | `apiPath` | `string` | `"/api/flows"` | Where the server mounts the flow API, after `baseUrl`. Replaces the leading `/api/flows` of every route. A missing leading `/` is added, one trailing `/` is dropped, and `""` mounts the routes at the root (`/support/actions/reply`). |
 | `fetcher` | `ClientFetch` | the global `fetch` | The fetch every call and stream goes through: `(input: RequestInfo \| URL, init?: RequestInit) => Promise<Response>`. |
+| `sendTimeoutMs` | `number` | `30_000` | How long `flow().send` waits for the server's answer to start, in milliseconds. `0` waits for ever. See [Send time limit](#send-time-limit). |
 
 ```ts title="src/lib/desk-client.ts"
 import { createClient } from "@flow-state-dev/client";
@@ -47,6 +49,17 @@ export async function reply(userId: string, text: string) {
 ```
 
 A client does not choose the flow: `fsd.flow(address)` names it on each call.
+
+### Send time limit
+
+A send that gets no answer within `sendTimeoutMs` is aborted and rejects with a `ClientHttpError` of `status: 0`, message `The server didn't answer the send within 30 seconds.`, with the limit you set in place of 30. To wait ten seconds, add `sendTimeoutMs: 10_000` to the options in `deskClient`.
+
+| Case | What happens |
+|---|---|
+| The answer starts in time | The send resolves as usual. A streamed send that has started is never cut off, however long it runs. |
+| No answer in time, plain or `{ stream: true }` | The request is aborted and the send rejects with the status-`0` error above. |
+| `sendTimeoutMs: 0` | No limit. |
+| Under `FlowProvider` | The provider has no `sendTimeoutMs`. A client a hook builds from the provider's settings has the 30-second default. |
 
 ### The fetcher
 
@@ -307,7 +320,7 @@ One read is in flight and at most one waits. A burst runs the read once more aft
 
 ## Limits
 
-- `createClient` has no option for headers, tokens, timeouts, retries or a tenant.
+- `createClient` has no option for headers, tokens, retries or a tenant. Its only time limit is `sendTimeoutMs`, on the start of a send's answer.
 - A client is bound to one user.
 - A hook cannot override `apiPath` or `fetcher`, except that `useVoice` takes its own `apiPath`.
 - `baseUrl` cannot carry the server's mount.

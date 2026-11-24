@@ -18,6 +18,7 @@ import { reply } from "./blocks/reply";
 
 export const supportFlow = defineFlow({
   kind: "support",
+  description: "Answers customer questions for one region.",
   cardinality: "collection",
   configSchema: z.object({ region: z.string() }),
   actions: {
@@ -32,6 +33,7 @@ export const supportFlow = defineFlow({
     stateSchema: z.object({ replyCount: z.number().default(0) }),
     client: { expose: ["replyCount"] },
     historyWindow: { turns: 20 },
+    label: ({ state }) => `${String(state.replyCount)} replies`,
   },
   user: {
     stateSchema: z.object({ plan: z.string().default("free") }),
@@ -99,6 +101,7 @@ export const auditReply = handler({
 | Field | Type | Default | What it does |
 |---|---|---|---|
 | `kind` | `string` | required | The definition's id. A singleton's instance id is its kind. An instance option `kind` overrides it for that instance. |
+| `description` | `string` | none | One sentence on what the flow is for. Display only. It goes out on the flow list as `FlowListEntry.description`. See [Naming a flow and its sessions](#naming-a-flow-and-its-sessions). |
 | `cardinality` | `"singleton" \| "collection"` | `"singleton"` | How many copies the flow runs as. See [Running several copies](#running-several-copies-of-one-flow). Definition only. |
 | `configSchema` | Zod object | none | The settings a copy is created with. Definition only. |
 | `actions` | `Record<string, entry>` | required | The entries a caller can name over HTTP, MCP and voice. An entry is a bare block or `{ block, ...fields }`. `{}` is accepted. See [Action fields](#action-fields). |
@@ -224,6 +227,19 @@ A `dispatcher()` with no `flowKind` resolves on its own flow's `internal.actions
 | `cas` | `{ maxRetries?, baseDelayMs? }` | `3` retries, `10` ms | Retry budget for session writes that collide. The same option exists on `user` and `org`, not on `request`. |
 | `createCheck` | `(input) => { ok: true } \| { ok: false, message, status? }` | none | Runs before a session of this flow is written, on every path that creates one. See [Creating a session](#creating-a-session). |
 | `serverOwned` | `string[]` | none | Session-state fields only the flow's own code writes. A create that carries a value for one is refused `400` with `{ error: "Session state field \"<field>\" is written only by flow \"<kind>\"; a caller cannot set it.", field }`. State a dispatching block names for its child session is not caller state and is not refused. |
+| `label` | `({ id, state }) => string \| undefined` | none | What a reader calls a session that has no title. See [Naming a flow and its sessions](#naming-a-flow-and-its-sessions). |
+
+### Naming a flow and its sessions
+
+A flow list and a session list read by name when the flow gives one. `description` says what the flow is for, and `session.label` names each session. The support flow at the top of the page names each session by its reply count.
+
+| Rule | Detail |
+|---|---|
+| What `label` receives | `{ id, state }`. `state` holds only the fields a client can read: the ones `client.expose` names and every top-level `.readonly()` field, with the schema's defaults applied. |
+| When it runs | On every read of a session, the listing and the single read. It goes out as `SessionSummary.label`. Return `undefined` to name nothing. |
+| A label that throws | That session goes out with no label, and the server logs one warning for the flow kind. |
+| What it is not | Display only. A label is never an address. |
+| `FlowNavigator` from `@flow-state-dev/react` | A session line reads its title, else its `label`, else its id. An id the framework made is shortened to its prefix and last six characters, such as `sess_…3df102`. The flow line's tooltip is the flow's `description`, and an empty session list shows it. The DevTool's flow tree reads the same way. |
 
 ### Client exposure
 

@@ -1,7 +1,7 @@
 ---
 title: Schedules
 type: reference
-description: "The fields of a schedule, the endpoint every fire is sent to, what runs the tick, how a missed tick is handled, the schedule index, and whose run a fired schedule is."
+description: "The fields of a schedule, where its fires run, the endpoint every fire is sent to, what runs the tick, how a missed tick is handled, the schedule index, and whose run a fired schedule is."
 ---
 
 # Schedules
@@ -59,6 +59,7 @@ Declared in `schedules.static`, keyed by id. The id is lowercase letters, digits
 | `principal` | `{ userId, orgId? }`. Who the run is for. See [Who a scheduled run belongs to](#who-a-scheduled-run-belongs-to). |
 | `timezone` | IANA zone. `"UTC"` when omitted. An unknown zone throws. |
 | `onOverlap` | `"skip"` (default) or `"allow"`. Any other value throws. See [`onOverlap`](#onoverlap). |
+| `session` | `"per-fire"` (default) or `"per-schedule"`. Any other value throws. See [Where a fire runs](#where-a-fire-runs). |
 | `description` | Free text, shown in the listing. |
 | `enabled` | Default `true`. A disabled schedule is not ticked, appears in the listing with `enabled: false`, and its dispatch answers `404 schedule_not_found`. |
 
@@ -67,6 +68,8 @@ A static schedule also takes the action fields `durable`, `tokenBudget`, `concur
 ### A stored schedule
 
 A stored schedule lives in a collection made with `defineScheduleCollection`. A block cannot be stored, so the schedule names one with `kind`, and the `blocks` map you give `createResourceCollectionScheduleResolver` turns the `kind` into a block. A `kind` with no entry in `blocks` resolves to nothing and answers `404`.
+
+A row has no `session` field. `createResourceCollectionScheduleResolver({ collection, blocks, session })` sets it for every row the resolver resolves, so a row written through a client cannot choose where its fires run.
 
 | Field | Rule |
 | --- | --- |
@@ -108,6 +111,25 @@ Check the cron before writing it: it must have five fields, and `parseNextFireAt
 | `index` | The [schedule index](#the-schedule-index) the tick reads. Without it, the tick fires no stored schedule. |
 
 Static entries are validated when the flow is defined. `resolve` is not run then.
+
+## Where a fire runs
+
+| `session` | Each fire runs in |
+| --- | --- |
+| `"per-fire"` (default) | A one-off session of its own. |
+| `"per-schedule"` | One session kept for the schedule, created by its first fire. One session exists per schedule id, per user and organization the fire runs as, and per flow instance. The flow's `session.retention` caps its history: see [Flows](./flows.md#retention). |
+
+To keep every fire of `morning-digest` in one session with a week of history, add `session: "per-schedule"` to the schedule and `session: { retention: { maxAge: "7d" } }` to the `digest` flow.
+
+A schedule's session is the scheduled dispatch's own:
+
+| Who | What happens |
+| --- | --- |
+| The user the fires run as | Can list the session, read it and read its requests. |
+| Any caller, the owner included | Creating a session with its id, or sending an action to it, answers `400 reserved-session-id`. Retrying, continuing or resuming a request in it answers `404`, and its requests list with `retryable: false`. |
+| A block in a fire | A stop (`ctx.suspend`) fails the fire. A wait is refused with `wait_unavailable`. A schedule whose fires stop or wait keeps `"per-fire"`. |
+
+A fire that `onOverlap: "skip"` skips never reaches the session.
 
 ## The dispatch endpoint
 
@@ -277,7 +299,7 @@ The table is `schedule_index`, with columns `cell`, `key`, `user_id`, `org_id`, 
 - **The organization is fixed when the row is created.** `create` records the creating run's organization, and the schedule fires into it, not into the organization of whatever run is ticking. A write that names another organization is refused. An update from a run in a different organization than the one stored takes the schedule out of the index.
 - **A user in another organization cannot reach the row.** The row lives in the user's data for one organization.
 - **Edits and deletes take effect on the next tick.** A delete removes the stored schedule and its index entry together. A fire already under way when you delete the schedule can run once more. If it does not, it answers `404 schedule_not_found` and is dropped. `enabled: false` pauses a schedule without deleting it.
-- **Each fire is a fresh run.** A static schedule with `durable` set recovers after a crash. A stored schedule has no `durable` field, and its run is lost if the process running it crashes.
+- **Each fire is a new run**, in a one-off session or in the schedule's own session: see [Where a fire runs](#where-a-fire-runs). A static schedule with `durable` set recovers after a crash. A stored schedule has no `durable` field, and its run is lost if the process running it crashes.
 
 ### What is stored, and who sees it
 
@@ -287,6 +309,7 @@ The table is `schedule_index`, with columns `cell`, `key`, `user_id`, `org_id`, 
 | Index row | Mirrors one stored row. Only the tick reads it | No client | The `schedule_index` table of the index you passed | One per active stored schedule. None for a disabled row or an unparseable cron |
 | Fired record | The endpoint, for the principal the run belongs to | No client, unless the flow declares a collection over `scheduled-fires/**` | That principal's user data, key `scheduled-fires/<flowKind>/<scheduleId>` | One per schedule, holding the latest time that fired |
 | Last-tick record and tick lease | The engine | No one | The app's store | One of each per app |
+| Schedule session (`"per-schedule"` only) | The user the fires run as | That user, who can list and read it. Only the scheduled dispatch creates it or runs in it | The app's session store | One per schedule id per user and organization per flow instance |
 | Static schedule | The flow's author | Anyone your `resolvePrincipal` lets call the listing | The flow's source | One per key in `schedules.static` |
 
 ## Limits

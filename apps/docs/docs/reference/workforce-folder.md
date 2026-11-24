@@ -157,6 +157,9 @@ A document's ref comes from where its file sits. It is the accessor a block read
 | `teams/<team>/resources/<name>.md` | `teams/<team>/<name>` |
 | `org/workers/<worker>/resources/<name>.md` | `workers/<worker>/<name>` |
 | `teams/<team>/workers/<worker>/resources/<name>.md` | `teams/<team>/workers/<worker>/<name>` |
+| `teams/<team>/references/<name>.md` | `teams/<team>/<name>` |
+| `org/workers/<worker>/references/<name>.md` | `workers/<worker>/<name>` |
+| `teams/<team>/workers/<worker>/references/<name>.md` | `teams/<team>/workers/<worker>/<name>` |
 
 ### Who reaches a reference
 

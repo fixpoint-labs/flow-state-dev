@@ -19,6 +19,7 @@ Workforce supplies the reads that answer those, and a few React components that 
 - **A task list for any conversation**, from `taskListViewRef`.
 - **`BoardColumns` and `BoardList`**, which draw a board of every conversation, by status or as one list.
 - **`FlowNavigator`**, from `@flow-state-dev/react`, which lists sessions and marks the ones waiting on the user.
+- **`createWorkforceClient` and `useSessionFeed`**, for a chat screen of your own over one worker.
 
 Every read returns the signed-in user's rows, never another user's. If Alice at your company hires a `refund-checker`, it is in her roster and not in Bob's.
 
@@ -89,6 +90,116 @@ export function ConversationTasks({ sessionId }: { sessionId: string }) {
 ```
 
 A task waiting on a user keeps its status and gains a `holds` entry, which is where a screen finds a worker that is waiting. The list redraws whenever a task on that board changes. Task statuses, holds and `delegateAnswerOf`, which picks a delegate's answer out of the conversation's messages, are in the [Reference](../../reference/ui-components.md).
+
+### A chat with a worker
+
+A chat screen of your own needs two pieces. `createWorkforceClient`, from `@flow-state-dev/workforce/browser`, makes the calls: open a session, send, stop, retry. `useSessionFeed`, from `@flow-state-dev/react`, follows one session live. The workforce client finds the worker's flow from the roster and the session, so its calls name only the worker and the session.
+
+Here a user chats with `support.help`, the coordinator from [Coordinators](./coordinators.md).
+
+```ts title="src/lib/help-chat.ts"
+import type { WorkforceClient } from "@flow-state-dev/workforce/browser";
+
+export async function openHelpChat(workforce: WorkforceClient) {
+  const session = await workforce.startSession("support.help");
+  return session.id;
+}
+
+export async function sendWithFiles(workforce: WorkforceClient, sessionId: string, message: string, files: File[]) {
+  const attachments = await Promise.all(
+    files.map((file) => workforce.upload("support.help", { data: file, mediaType: file.type, filename: file.name })),
+  );
+  return workforce.send(sessionId, message, { attachments });
+}
+```
+
+`startSession` opens a new conversation beside the user's others, each time it is called. Give it `{ fields }` to write the app's session fields as it opens; a field the server refuses rejects the call, naming it. `upload` sends one file through the worker's flow and returns the reference `attachments` takes, so a first line can carry files before any session exists. `send` resolves to `{ requestId }` as soon as the server takes the line, before the turn ends.
+
+```tsx title="src/app/chat/help-chat.tsx"
+"use client";
+import { useMemo, useState } from "react";
+import type { Client } from "@flow-state-dev/client";
+import { useSessionFeed } from "@flow-state-dev/react";
+import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+import { sendWithFiles } from "../../lib/help-chat";
+
+export function HelpChat({ fsd, sessionId }: { fsd: Client; sessionId: string }) {
+  const workforce = useMemo(() => createWorkforceClient(fsd), [fsd]);
+  const feed = useSessionFeed(sessionId, { client: fsd, itemTypes: ["message"] });
+  const [draft, setDraft] = useState("");
+
+  if (feed?.items === undefined) return <p>Loading the conversation…</p>;
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void sendWithFiles(workforce, sessionId, draft, []);
+        setDraft("");
+      }}
+    >
+      <ul aria-busy={feed.state !== "live"}>
+        {feed.items.map((item) => (
+          <li key={item.id}>
+            {item.type === "message"
+              ? item.content.map((part) => (part.type === "output_text" ? part.text : "")).join("")
+              : null}
+          </li>
+        ))}
+      </ul>
+      <input value={draft} onChange={(event) => setDraft(event.target.value)} />
+      <button type="submit">Send</button>
+      <button type="button" onClick={() => void workforce.stopTurns(sessionId)}>
+        Stop
+      </button>
+    </form>
+  );
+}
+```
+
+`items` is `undefined` until the session's history has loaded, and `[]` for a session with nothing in it, so the screen can tell "loading" from "empty". `state` says how far the feed can be trusted: `connecting`, `live`, `reconnecting`, `lapsed` or `stopped`. Keep one workforce client per screen, as the `useMemo` does: Stop knows which lines this client sent. The form sends through `sendWithFiles`, the helper above, with no files; a screen with a file picker passes the chosen ones.
+
+To show an answer as it is written, send with `{ stream: true }`. The call resolves to the streamed `Response`, and `feed.followResponse(response)` draws it. For a long conversation, `hasEarlier` and `loadEarlier()` page back through older items.
+
+#### Stopping and retrying
+
+| Call | What it does |
+| --- | --- |
+| `stopTurns(sessionId)` | Stops every turn running when it reads them, and resolves to the ids it stopped. A line this client sends after pressing Stop runs on. A turn another tab starts after that read may run; press Stop again. |
+| `stopRun(sessionId, requestId)` | Stops one run, by the id `send` returned. A run that already ended is no failure. If an answer resumed the run before the stop reached it, the call rejects: stop it again. |
+| `retryTurn(sessionId, requestId)` | Runs that turn again. |
+
+#### Changing delegates
+
+A coordinator's conversation keeps its own list of delegates. `addDelegate(sessionId, worker, note?)` and `removeDelegate(sessionId, worker)` change it. A worker that is not on the user's roster, takes no tasks or is already listed is refused with the coordinator's reason, and nothing changes. The list is a view, so a screen watches it:
+
+```tsx title="src/app/chat/help-delegates.tsx"
+"use client";
+import { useView } from "@flow-state-dev/react";
+import { delegatesViewRef, type WorkforceClient } from "@flow-state-dev/workforce/browser";
+
+const delegatesView = delegatesViewRef("coordinator");
+
+export function HelpDelegates({ workforce, sessionId }: { workforce: WorkforceClient; sessionId: string }) {
+  const { value } = useView(delegatesView, {}, { sessionId });
+  return (
+    <div>
+      <ul>
+        {(value?.delegates ?? []).map((delegate) => (
+          <li key={`${delegate.worker}:${delegate.target ?? ""}`}>
+            {delegate.worker}: {delegate.description ?? "no description"}
+            <button onClick={() => void workforce.removeDelegate(sessionId, delegate.worker)}>Remove</button>
+          </li>
+        ))}
+      </ul>
+      <button onClick={() => void workforce.addDelegate(sessionId, "support.billing", "Invoices and refunds")}>
+        Add billing
+      </button>
+    </div>
+  );
+}
+```
+
+The list redraws on every change, including one the coordinator makes with its own tools. Reading it changes nothing in the conversation.
 
 ### A board
 
