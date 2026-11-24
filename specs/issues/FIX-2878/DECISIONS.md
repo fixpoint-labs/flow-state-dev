@@ -204,6 +204,21 @@ It comes down to who hears it: claim-only turns a refusal into a failed task lat
   *phase*: "phase" stays free for a future board idea (plan, implement, review as stages of a
   task). The entries land in the implementation PR, with the code that coins them.
 
+## Taken over from FIX-2877
+
+- **The coder flow chooses a task's mode from a server-written field, never from `input`**
+  (owner decision on [#5630](https://github.com/fixpoint-labs/flow-state-dev/pull/5630)'s
+  security review, keeping the interim). FIX-2877's kit sends a task carrying `harnessFeature`
+  in its model-written `input` to the `implement` mode (`modeOfTask` in
+  `packages/harness-manager/src/kit/coder-modes.ts`), as Shift Manager's own coder did on
+  `main`. A test there pins this on purpose. This issue replaces it: the mode a run takes is the
+  checked mode this issue's filing check writes (or a `sealed` field), read on every route
+  (the work entry, a steer, the door). **Must-do:** flip FIX-2877's pinning test in
+  `packages/harness-manager/test/coder-modes.spec.ts`, so that a task whose `harnessFeature` is
+  only on `input`, with no server-written mode, runs the app's `defaultMode`, not `implement`.
+  A stored row's marker still runs as implement only through the legacy read above, which
+  writes the frozen mode at its first claim.
+
 ## Considered and dropped
 
 | Option | Why it lost |
