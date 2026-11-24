@@ -107,6 +107,25 @@ describe("the board store's assignee on a model's turn", () => {
     }
   });
 
+  it("files nothing from a batch whose later row the gate refuses: every row is decided and checked before any is written", async () => {
+    const { host, open, turn } = boot(() => "eng.writer");
+    try {
+      const conv = await open();
+      const [out] = await turn(conv, [
+        (ref) =>
+          ref.createTasks([
+            { goal: "Write the notes", assignee: "eng.tasker", held: true },
+            // eng.helper is on the roster, not one of scripter's delegates.
+            { goal: "Help out", assignee: "eng.helper", held: true }
+          ])
+      ]);
+      expect(out?.error).toMatch(/"eng\.helper", which is not one of this conversation's delegates/);
+      expect(await host.rows("alice")).toEqual([]);
+    } finally {
+      await host.dispose();
+    }
+  });
+
   it("gates the assignee a workstream's target fills in, at the ledger write, like any other", async () => {
     // The batch names a target and no assignee; the target fills in its lead, eng.tasker. The rule answers eng.writer.
     const asked: string[] = [];

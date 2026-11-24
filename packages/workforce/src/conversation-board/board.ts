@@ -1382,7 +1382,31 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
      * A follow-up stays with its root's worker; an action keeps the caller's
      * pick.
      */
-    const storedAssignee = async (assignee: string, slot = ""): Promise<string> => (byTurn ? gatedAssignee(ctx, assignee, slot) : assignee);
+    const decide = async (assignee: string, slot: string): Promise<string> => (byTurn ? gatedAssignee(ctx, assignee, slot) : assignee);
+    /**
+     * A new row through the one pipeline, nothing written: fill (the caller's
+     * worker, else the conversation's one delegate), decide (the gate, under
+     * `slot` of the call), derive and validate on the decided worker (the
+     * filing checks, the workstream's target and its session, the project).
+     * A follow-up keeps its root's worker and placement.
+     */
+    const decidedTask = async <T extends TaskInit>(init: T, slot: string, filedWith?: ReadonlyMap<string, TaskInit & { id: string }>): Promise<T> => {
+      const filled = init.assignee ?? (init.followUpOf === undefined ? await soleDelegate() : undefined);
+      const decided = filled === undefined || init.followUpOf !== undefined ? filled : await decide(filled, slot);
+      const task = (decided === undefined ? init : { ...init, assignee: decided }) as T;
+      checkFiling(task, filedWith);
+      const targeted = (await withTarget(task)) as T;
+      await assertProjectFor(targeted);
+      return targeted;
+    };
+    /** An edit's or a reassign's worker through the same pipeline: decide, then validate it as a reassign. */
+    const decidedReassign = async (id: string, asked: string, slot: string): Promise<string> => {
+      if (self !== undefined && asked === self) throw filedApart(id);
+      const assignee = await decide(asked, slot);
+      if (self !== undefined && assignee === self) throw filedApart(id);
+      await assertReassignable(id, assignee);
+      return assignee;
+    };
     /** The conversation's only task-taking delegate, which a row filed with no assignee goes to; none with none or several. */
     const soleDelegate = async (): Promise<string | undefined> => {
       return soleTaskDelegate(await options.delegates(ctx));
@@ -1409,25 +1433,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (owner !== undefined) await refuseIfParentCancelled(ctx, owner, conversationLedgerAt);
     };
     /** Add one checked row under its chain reservation. */
-    const fileReserved = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }, slot = ""): Promise<Task> => {
+    const fileReserved = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }): Promise<Task> => {
       const { id, markAdded } = reserved;
-      let assignee = init.assignee;
-      if (assignee === undefined) {
-        // An unassigned task goes to the conversation's only delegate; with
-        // none or several it waits on the board until it is assigned.
-        assignee = soleTaskDelegate(await options.delegates(ctx));
-      }
-      // The gate, on the row's final worker, whoever filled it in. A worker
-      // it moves the row to is checked as the filed one was.
-      if (assignee !== undefined && init.followUpOf === undefined) {
-        const gated = await storedAssignee(assignee, slot);
-        if (gated !== assignee) {
-          if (self !== undefined && gated === self) throw stepFromItsOwnTurn(self);
-          assertTargetFits((await reach(ctx)).records, gated, init.target, "filed");
-          await assertProjectFor({ ...init, assignee: gated });
-          assignee = gated;
-        }
-      }
+      // The worker `decidedTask` decided; a row with none waits on the board until it is assigned.
+      const assignee = init.assignee;
       // In a task session, the row is a piece of the task it was filed for:
       // server-written, so the task's cascade reaches only its own pieces.
       const owner = await pieceOwnerOf(ctx);
@@ -1473,15 +1482,17 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // A caller never writes the session a target resolved to.
       const { targetSessionId: _resolved, ...asked } = filing;
       const init = heldAsTurnSays(ctx, asked);
-      checkFiling(init);
       // On a turn routing a message, a filing whose result goes to the
-      // conversation is a routed task: its layer attaches the message.
+      // conversation is a routed task: its layer attaches the message, and
+      // runs the same pipeline on the worker it routes to (`routedAssignee`).
       // One at a time: a batch on such a turn files plain tasks.
-      if (init.resultTo === "conversation" && options.routes?.routing(ctx) === true) return writeTaskLine(ctx, await options.routes.file(ctx, init));
-      const targeted = await withTarget(init);
-      await assertProjectFor(targeted);
+      if (init.resultTo === "conversation" && options.routes?.routing(ctx) === true) {
+        checkFiling(init);
+        return writeTaskLine(ctx, await options.routes.file(ctx, init));
+      }
+      const task = await decidedTask(init, "");
       await refuseUnderCancelledTask();
-      return writeTaskLine(ctx, await fileReserved(targeted, await reserveFiling(ctx, ref, partition, targeted, true)));
+      return writeTaskLine(ctx, await fileReserved(task, await reserveFiling(ctx, ref, partition, task, true)));
     };
     /**
      * The options a write on this board presents: a claim the running
@@ -1608,13 +1619,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // startable starts the board.
       async patchSettings(id, asked) {
         if (self !== undefined && asked.assignee === self) throw filedApart(id);
-        // A model's edit that moves the task stores the server's assignee for it,
-        // checked then as a reassign is: never the worker itself, and the row's workstream rule.
-        const moved = asked.assignee === undefined || asked.assignee === null ? undefined : await storedAssignee(asked.assignee, `:edit[${id}]`);
-        if (moved !== undefined) {
-          if (self !== undefined && moved === self) throw filedApart(id);
-          await assertReassignable(id, moved);
-        }
+        // An edit that moves the task goes through the pipeline as a reassign does.
+        const moved = asked.assignee === undefined || asked.assignee === null ? undefined : await decidedReassign(id, asked.assignee, `:edit[${id}]`);
         const patch = moved === undefined ? asked : { ...asked, assignee: moved };
         const metadata = patch.metadata === undefined ? undefined : (callerMetadata(patch.metadata) ?? {});
         await owePass(ctx);
@@ -1636,15 +1642,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // A caller never writes the session a target resolved to.
         const unresolved: Array<TaskInit & { id: string }> = [];
         for (const { targetSessionId: _resolved, ...init } of inits) {
-          // Each row's worker is gated at its write (`fileReserved`), under its own slot of the call.
           unresolved.push({ ...heldAsTurnSays(ctx, init), id: init.id ?? newTaskId() });
         }
         const ordered = dependencyOrder(unresolved);
         const filedWith = new Map(ordered.map((init) => [init.id, init]));
-        for (const init of ordered) checkFiling(init, filedWith);
+        // Every row through the pipeline, each under its own slot of the call, before any is written.
         const batch: Array<TaskInit & { id: string }> = [];
-        for (const init of ordered) batch.push({ ...(await withTarget(init)), id: init.id });
-        for (const init of batch) await assertProjectFor(init);
+        for (const init of ordered) batch.push(await decidedTask(init, `:batch[${init.id}]`, filedWith));
         // As stored now, so one another request ended is refused before reserveFiling (FIX-2114).
         // A backing with no `refresh` must serve `get` committed across requests.
         const filed = new Set(batch.map((init) => init.id));
@@ -1656,15 +1660,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         const reserved: Array<{ id: string; markAdded: () => Promise<void> }> = [];
         for (const init of batch) reserved.push(await reserveFiling(ctx, ref, partition, init, true));
         const added: Task[] = [];
-        for (const [i, init] of batch.entries()) added.push(await fileReserved(init, reserved[i]!, `:batch[${i}]`));
+        for (const [i, init] of batch.entries()) added.push(await fileReserved(init, reserved[i]!));
         return added;
       },
       async setAssignee(id, asked) {
-        if (self !== undefined && asked === self) throw filedApart(id);
-        // A model's reassign stores the server's assignee for it, then checks it as any reassign.
-        const assignee = await storedAssignee(asked, `:assign[${id}]`);
-        if (self !== undefined && assignee === self) throw filedApart(id);
-        await assertReassignable(id, assignee);
+        const assignee = await decidedReassign(id, asked, `:assign[${id}]`);
         await owePass(ctx);
         const outcome = await ref.setAssignee(id, assignee);
         // `unchanged` too: an assign retried after a lost wake starts the row.
@@ -2162,11 +2162,21 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const metadata = { ...callerMetadata(filing.metadata), ...heldMarker(options.holdsFiling, ctx, filing), [FILED_HOP]: heldFromFiling(filing) ? freshHopMark(ctx) : turnHopMark(ctx), [FILED_PROJECT]: stamp };
     const input = ownProjectIn(filing.input, own);
     const { metadata: _metadata, input: _input, ...rest } = heldAsTurnSays(ctx, filing);
-    // A routed task's worker passes the same gate as any model's filing (FIX-2877 D2).
-    const routedTo = rest.assignee === undefined || rest.followUpOf !== undefined ? rest.assignee : await gatedAssignee(ctx, rest.assignee, `:routed[${filing.id}]`);
+    // The routing decided its worker before it derived the placement and the
+    // brief (`routedAssignee`, FIX-2877 D2); here that decision is validated:
+    // a worker the gate would still move is refused by name, never stored
+    // with another worker's placement.
+    if (rest.assignee !== undefined && rest.followUpOf === undefined) {
+      const decided = await serverAssignee(ctx, rest.assignee);
+      if (decided !== rest.assignee) {
+        throw new TaskWriteRefusedError(
+          "routed_assignee_moved",
+          `the task is routed to "${rest.assignee}", and this conversation's tasks for it go to "${decided}". Route it to "${decided}". Nothing was filed.`
+        );
+      }
+    }
     const init: TaskInit & { id: string } = {
       ...rest,
-      ...(routedTo === undefined ? {} : { assignee: routedTo }),
       metadata,
       ...(input !== undefined ? { input } : {})
     };
@@ -2212,6 +2222,14 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       }
     }),
     fileRouted,
+    // FIX-2877 D2.
+    /**
+     * The worker a routed message goes to: the server's assignee for the
+     * routing's pick, decided once per routing (`slot`), before the routing
+     * derives its placement and brief from it. Refuses a worker outside the
+     * session's delegates.
+     */
+    routedAssignee: (ctx: BlockContext, worker: string, slot: string) => gatedAssignee(ctx, worker, slot),
     files,
     tools,
     // FIX-2076 D1, D2.

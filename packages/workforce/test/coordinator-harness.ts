@@ -24,6 +24,7 @@
  * without one it reports none; the judgment turn by its generator's block name
  * (`coordinator-judgment`), from the script a test hands in.
  */
+import type { NoPickAssignee } from "../src/workers/worker-flow";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, createInProcessFetch, inMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
@@ -201,6 +202,8 @@ export type HostOptions = {
   historyWindow?: number;
   /** The default history summary's scripted model (`earlier-turns`). Omitted, a fold has no script and fails. */
   summary?: MockGeneratorInstance;
+  /** More of the `helper` flow's registration: who takes a model's task for one of its workers (FIX-2877 D2). */
+  registration?: { helper?: { noPickAssignee?: NoPickAssignee } };
 };
 
 /** `flow` with its session's history window set to `turns`, or as it is when `turns` is unset. */
@@ -230,7 +233,7 @@ export function bootHost(options: HostOptions = {}) {
     ...(options.roundDeadlineMs === undefined ? {} : { roundDeadlineMs: options.roundDeadlineMs })
   });
   flows = {
-    helper: { flow: helper, roles: ["contributor"] },
+    helper: { flow: helper, roles: ["contributor"], ...(options.registration?.helper ?? {}) },
     quiet,
     tasker: { flow: tasker, roles: ["contributor"] },
     allround: { flow: allround, roles: ["contributor"] },

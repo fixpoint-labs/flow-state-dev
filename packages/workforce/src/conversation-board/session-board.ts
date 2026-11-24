@@ -270,6 +270,9 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     // FIX-2083.
     /** File a routed task and start it: the write under a coordinator's one filing step. */
     fileRouted: board.fileRouted,
+    // FIX-2877 D2.
+    /** The worker a routed message goes to, decided before its placement. */
+    routedAssignee: board.routedAssignee,
     /** The task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. A manager's. */
     actions: managerActions,
     // FIX-2623.

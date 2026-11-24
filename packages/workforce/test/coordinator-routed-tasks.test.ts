@@ -201,6 +201,17 @@ describe("the judgment turn's filing on a turn routing a message", () => {
     expect((await lines(host, id)).filter((m: any) => m.agentName === "eng.em")).toHaveLength(1);
   });
 
+  it("routes a message to the server's assignee when it moves the pick, so the placement, brief and record are that worker's (FIX-2877 D2)", async () => {
+    // desk's best fit picks eng.em; the helper flow's rule sends its tasks to eng.coder.
+    const host = bootHost({ registration: { helper: { noPickAssignee: async () => "eng.coder" } } });
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "Draft it [route:eng.em]");
+    expect(host.heard.map((h) => h.worker)).toEqual(["eng.coder"]);
+    expect((await host.routedRows("alice")).map((task) => task.assignee)).toEqual(["eng.coder"]);
+    const { records } = await host.items(id);
+    expect(records).toEqual([expect.objectContaining({ delegates: [{ worker: "eng.coder", outcome: "delivered" }] })]);
+  });
+
   it("refuses maxAttempts: 3 on such a task, naming FIX-2080's rule, and files nothing", async () => {
     const { host, outputs } = await toolSaid({
       goal: "Draft it",
