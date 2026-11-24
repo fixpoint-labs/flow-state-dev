@@ -111,6 +111,8 @@ export interface TaskInputDeclaration<T extends TaskInputRecord = TaskInputRecor
   readonly fingerprint: string;
   /** The first step in the schema that can break the JSON round trip, which `workerTaskEntry` refuses; absent when none. */
   readonly unstable?: { readonly step: string; readonly path: string };
+  /** What the schema is when it isn't an object schema (`z.object` or `z.record`, refined or not), which `workerTaskEntry` refuses; absent for an object. */
+  readonly notObject?: string;
 }
 
 /** The declaration a worker flow's `work` entry carries, or `undefined` for a flow that declares none. */
@@ -138,6 +140,7 @@ export function taskInput<T extends TaskInputRecord>(
   options: TaskInputOptions<T> = {}
 ): TaskInputDeclaration<T> {
   const unstable = jsonUnstableStep(schema as ZodTypeAny);
+  const notObject = notAnObject(schema as ZodTypeAny);
   const serverOwned = Object.freeze([...new Set(options.serverOwned ?? [])]);
   const project = options.project ?? "optional";
   const full = inlinedJsonSchema(schema as ZodTypeAny);
@@ -152,8 +155,29 @@ export function taskInput<T extends TaskInputRecord>(
     project,
     filerSchema: Object.freeze(withoutFields(full, serverOwned)),
     fingerprint: fingerprintOf(JSON.stringify({ schema: full, serverOwned: [...serverOwned].sort(), project })),
-    ...(unstable === undefined ? {} : { unstable })
+    ...(unstable === undefined ? {} : { unstable }),
+    ...(notObject === undefined ? {} : { notObject })
   });
+}
+
+/**
+ * What `schema` is when it isn't an object schema, or `undefined` for one: a
+ * task's input is one object, whose top-level fields the filer's view drops
+ * by name. A union or an intersection would keep them under `anyOf` or
+ * `allOf`, so a server-owned field would show.
+ */
+function notAnObject(schema: ZodTypeAny): string | undefined {
+  let inner = schema;
+  // `.refine` (and `.superRefine`) wrap the object, and keep it one.
+  while ((inner._def as { typeName?: string }).typeName === "ZodEffects") inner = (inner._def as { schema: ZodTypeAny }).schema;
+  const typeName = (inner._def as { typeName?: string }).typeName ?? "";
+  if (typeName === "ZodObject" || typeName === "ZodRecord") return undefined;
+  return `z.${typeName.replace(/^Zod/, "").replace(/^./, (c) => c.toLowerCase())}`;
+}
+
+/** The refusal for a schema that isn't an object, after the entry's name. */
+export function notObjectMessage(kind: string): string {
+  return `a task input is an object schema (z.object or z.record), and this is a ${kind}. Its top-level fields are what a filer writes and what the server owns.`;
 }
 
 /** The refusal's text, after the entry's name. */

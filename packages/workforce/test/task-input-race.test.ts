@@ -48,12 +48,13 @@ const triage = taskInput(z.object({ ticket: z.string(), requestedBy: z.string() 
 /** A lookup where ops.triager is on "triage" and ops.helper on an open flow; `during` runs inside each check. */
 function lookupWith(during: () => Promise<void>): InputLookup {
   return {
-    flowOf: async (assignee) => (assignee === "ops.triager" ? "triage" : assignee === "ops.helper" ? "agent" : undefined),
-    declarationOf: (flow) => (flow === "triage" ? triage : undefined),
-    workerOf: async (assignee) => {
+    worker: async (assignee) => {
+      const flow = assignee === "ops.triager" ? "triage" : assignee === "ops.helper" ? "agent" : undefined;
+      // The competing write lands after this check has read the worker.
       await during();
-      return { id: assignee, config: {} };
+      return flow === undefined ? undefined : { id: assignee, flow, config: {} };
     },
+    declarationOf: (flow) => (flow === "triage" ? triage : undefined),
     hasProject: async () => true,
     noProject: () => "no project"
   };

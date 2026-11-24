@@ -25,17 +25,18 @@
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { TaskWriteRefusedError, type Task, type TaskCollectionRef, type TaskInit, type TaskSettingsPatch, type TaskWriteOutcome } from "@flow-state-dev/orchestration/tasks";
-import type { TaskInputDeclaration, TaskInputRecord, TaskInputWorker } from "./declaration";
-import { checkFiling, FILLED_FOR, filledForOf, stampMatches, type CheckedInput } from "./filing-check";
+import type { TaskInputDeclaration, TaskInputRecord } from "./declaration";
+import { checkFiling, FILLED_FOR, filledForOf, stampMatches, type CheckedInput, type CheckedWorker } from "./filing-check";
 
 /** What the check reads about workers and flows, bound to one request. */
 export interface InputLookup {
-  /** The flow `assignee` runs on now, or `undefined` when it names no worker this filer reaches. */
-  flowOf(assignee: string): Promise<string | undefined>;
+  /**
+   * `assignee`, read once: its flow and configuration from one read of its
+   * record, or `undefined` when it names no worker this filer reaches now.
+   */
+  worker(assignee: string): Promise<CheckedWorker | undefined>;
   /** The declaration flow `flow`'s `work` entry carries, or `undefined` for a flow that declares none. */
   declarationOf(flow: string): TaskInputDeclaration | undefined;
-  /** The worker, as the hooks are handed it. */
-  workerOf(assignee: string): Promise<TaskInputWorker | undefined>;
   /** Whether a task with `input` has a project to work in, for a declaration that requires one. */
   hasProject(input: TaskInputRecord): Promise<boolean>;
   /** The `no_project` refusal for `assignee`. */
@@ -48,18 +49,16 @@ export interface InputLookup {
  * The filing check for a task for `assignee` with `sent` as its input, on a
  * filing (no kept values), or `undefined` when its flow declares nothing.
  */
-export async function checkFiledInput(lookup: InputLookup, ctx: BlockContext, assignee: string, sent: unknown, flowOverride?: string): Promise<CheckedInput | undefined> {
-  const flow = flowOverride ?? (await lookup.flowOf(assignee));
+export async function checkFiledInput(lookup: InputLookup, ctx: BlockContext, assignee: string, sent: unknown): Promise<CheckedInput | undefined> {
+  const worker = await lookup.worker(assignee);
   // A worker whose flow can't be read now is no open flow: what it takes is unknown, so nothing is filed.
-  if (flow === undefined) throw unresolved(assignee);
-  const declaration = lookup.declarationOf(flow);
+  if (worker === undefined) throw unresolved(assignee);
+  const declaration = lookup.declarationOf(worker.flow);
   if (declaration === undefined) return undefined;
   return checkFiling({
     ctx,
     declaration,
-    flow,
-    assignee,
-    worker: await workerFor(lookup, assignee),
+    worker,
     sent,
     ...(lookup.rewrite === undefined ? {} : { rewrite: (input: TaskInputRecord) => lookup.rewrite!(input) }),
     hasProject: (input) => lookup.hasProject(input),
@@ -145,11 +144,12 @@ export async function checkedPatch(
 async function decidedPatch(lookup: InputLookup, ctx: BlockContext, task: Task, patch: TaskSettingsPatch): Promise<TaskSettingsPatch> {
   const ifRevision = task.revision ?? 0;
   const assignee = patch.assignee ?? task.assignee;
-  const flow = assignee === undefined ? undefined : await lookup.flowOf(assignee);
+  // The worker is read once; its flow, declaration and configuration all come from that read.
+  const worker = assignee === undefined ? undefined : await lookup.worker(assignee);
   // A worker whose flow can't be read now (removed, fired) is no open flow: the edit can't be checked, so it is refused.
-  if (assignee !== undefined && flow === undefined) throw unresolved(assignee);
-  const declaration = flow === undefined ? undefined : lookup.declarationOf(flow);
-  if (assignee === undefined || flow === undefined || declaration === undefined) {
+  if (assignee !== undefined && worker === undefined) throw unresolved(assignee);
+  const declaration = worker === undefined ? undefined : lookup.declarationOf(worker.flow);
+  if (worker === undefined || declaration === undefined) {
     // An unassigned task, or one on a flow that declares nothing: unchecked, as
     // before, and nothing it carries counts (spec, "updateTask"): an unchecked
     // write clears the stamp, so the next move onto a declared flow, or its
@@ -159,20 +159,19 @@ async function decidedPatch(lookup: InputLookup, ctx: BlockContext, task: Task, 
   }
   // An edit within the flow the task was filled for keeps its server-owned
   // values, read through `stored`; anything else is a filing for this flow (D2).
-  const priorFlow = task.assignee === undefined ? undefined : task.assignee === assignee ? flow : await lookup.flowOf(task.assignee);
-  const edit = priorFlow === flow && stampMatches(task, flow, declaration);
+  const priorFlow = task.assignee === undefined ? undefined : task.assignee === worker.id ? worker.flow : (await lookup.worker(task.assignee))?.flow;
+  const edit = priorFlow === worker.flow && stampMatches(task, worker.flow, declaration);
   const kept = edit ? keptValues(declaration, task.input) : undefined;
   const checked = await checkFiling({
     ctx,
     declaration,
-    flow,
-    assignee,
-    worker: await workerFor(lookup, assignee),
-    sent: patch.input ?? task.input,
+    worker,
+    // Only a missing input reads as none: an edit sending `null` sends it.
+    sent: patch.input !== undefined ? patch.input : task.input,
     ...(kept === undefined ? {} : { kept }),
     ...(lookup.rewrite === undefined ? {} : { rewrite: (input: TaskInputRecord) => lookup.rewrite!(input) }),
     hasProject: (input) => lookup.hasProject(input),
-    noProject: () => lookup.noProject(assignee)
+    noProject: () => lookup.noProject(worker.id)
   });
   return { ...patch, input: checked.input, metadata: { ...(patch.metadata ?? {}), [FILLED_FOR]: checked.filledFor }, ifRevision };
 }
@@ -184,9 +183,6 @@ function keptValues(declaration: TaskInputDeclaration, stored: unknown): TaskInp
   return Object.fromEntries(declaration.serverOwned.filter((name) => Object.hasOwn(read, name)).map((name) => [name, read[name]]));
 }
 
-async function workerFor(lookup: InputLookup, assignee: string): Promise<TaskInputWorker> {
-  return (await lookup.workerOf(assignee)) ?? { id: assignee, config: {} };
-}
 
 /**
  * Where a raw handle reads workers and declarations: one per installation,
@@ -271,12 +267,11 @@ function sourceFor(ctx: BlockContext): TaskInputSource | undefined {
 /** A lookup over `source`, bound to `ctx`, with the project rule the raw handles read. */
 function sourceLookup(ctx: BlockContext, source: TaskInputSource, project: { has: (input: TaskInputRecord) => Promise<boolean>; refusal: (assignee: string) => string }): InputLookup {
   return {
-    flowOf: async (assignee) => (await source.workerOf(ctx, assignee))?.flow,
-    declarationOf: (flow) => source.declarationOf(flow),
-    workerOf: async (assignee) => {
+    worker: async (assignee) => {
       const worker = await source.workerOf(ctx, assignee);
-      return worker === undefined ? undefined : { id: assignee, config: worker.config };
+      return worker === undefined ? undefined : { id: assignee, flow: worker.flow, config: worker.config };
     },
+    declarationOf: (flow) => source.declarationOf(flow),
     hasProject: project.has,
     noProject: project.refusal
   };

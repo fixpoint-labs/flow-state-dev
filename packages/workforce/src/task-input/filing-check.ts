@@ -58,15 +58,23 @@ export function stampMatches(task: Pick<Task, "metadata"> | undefined, flow: str
   return stamp !== undefined && stamp.flow === flow && stamp.declaration === declaration.fingerprint;
 }
 
+/**
+ * The worker a task is checked for, read once: its id, the flow it runs on and
+ * its configuration, all from one read of its record. The declaration a check
+ * runs against, the hooks' context and the stamp all come from this one value,
+ * so a record that changes between two reads can't mix two answers.
+ */
+export interface CheckedWorker extends TaskInputWorker {
+  readonly flow: string;
+}
+
 /** What one filing check is run on. */
 export interface FilingCheck {
   readonly ctx: BlockContext;
+  /** The declaration `worker.flow` carries. */
   readonly declaration: TaskInputDeclaration;
-  /** The flow the task is for. */
-  readonly flow: string;
-  /** The worker the task is for. */
-  readonly assignee: string;
-  readonly worker: TaskInputWorker;
+  /** The worker the task is for, read once. */
+  readonly worker: CheckedWorker;
   /** What the filer sent as the task's input (on a move with no new input, what the row carries). */
   readonly sent: unknown;
   /**
@@ -99,23 +107,30 @@ const NOTHING_FILED = "Nothing was filed.";
  *   `no_project`, or a code the flow's own `refuse` or `check` throws.
  */
 export async function checkFiling(run: FilingCheck): Promise<CheckedInput> {
-  const { declaration, flow, assignee } = run;
-  const hooks = { ctx: run.ctx, assignee, worker: run.worker, flow };
-  const sent = asRecord(run.sent ?? {});
+  const { declaration } = run;
+  const { id: assignee, flow, config } = run.worker;
+  const hooks = { ctx: run.ctx, assignee, worker: { id: assignee, config }, flow };
+  // Only a missing input reads as none: `null` is an input, and the schema decides it.
+  const sent = asRecord(run.sent === undefined ? {} : run.sent);
   if (sent === undefined) throw misfit(assignee, flow, "the input is not an object");
   await declaration.refuse?.(sent, hooks);
   const owned = new Set(declaration.serverOwned);
   const filerFields = Object.fromEntries(Object.entries(sent).filter(([name]) => !owned.has(name)));
-  const serverValues = pick(run.kept ?? (await fillFor(run, "filing")), owned);
+  const serverValues = pick(run.kept ?? ((await declaration.fill?.({ ...hooks, at: "filing" })) ?? {}), owned);
   const rewritten = run.rewrite === undefined ? { ...filerFields, ...serverValues } : run.rewrite({ ...filerFields, ...serverValues });
   const parsed = parseOrRefuse(declaration, rewritten, assignee, flow);
   // The baseline: a deep, independent copy of each server-owned value, taken
   // before `check`, which is handed its own copy too, so nothing it does to a
   // server-owned value, in place or not, is ever stored.
-  const baseline = clone(pick(parsed, owned));
+  const uncopied = (what: string) =>
+    new TaskWriteRefusedError(
+      "input_refused",
+      `this task's input for "${assignee}" (flow "${flow}") can't be copied: ${what}. Store plain JSON values. ${NOTHING_FILED}`
+    );
+  const baseline = clone(pick(parsed, owned), uncopied);
   let checked = parsed;
   if (declaration.check !== undefined) {
-    const returned = await declaration.check(clone(parsed), hooks);
+    const returned = await declaration.check(clone(parsed, uncopied), hooks);
     checked = parseOrRefuse(declaration, returned, assignee, flow);
     for (const name of owned) {
       if (!sameValue(Object.hasOwn(checked, name) ? checked[name] : undefined, Object.hasOwn(baseline, name) ? baseline[name] : undefined)) {
@@ -178,12 +193,6 @@ export async function claimInput(run: ClaimInput): Promise<TaskInputRecord> {
   const parsed = declaration.schema.safeParse(input);
   if (!parsed.success) throw notRunnable(flow, issueText(parsed.error.issues[0]));
   return parsed.data;
-}
-
-/** The filler's server-owned values for a filing. */
-async function fillFor(run: FilingCheck, at: "filing" | "claim"): Promise<TaskInputRecord> {
-  if (run.declaration.fill === undefined) return {};
-  return (await run.declaration.fill({ ctx: run.ctx, at, assignee: run.assignee, worker: run.worker, flow: run.flow })) ?? {};
 }
 
 function parseOrRefuse(declaration: TaskInputDeclaration, value: unknown, assignee: string, flow: string): TaskInputRecord {
@@ -296,12 +305,13 @@ function sameValue(a: unknown, b: unknown): boolean {
   }
 }
 
-/** A deep, independent copy; a value with no structured copy (a function) is left as is, and the round trip refuses it. */
-function clone<T>(value: T): T {
+/** A deep, independent copy; a value with no structured copy (a function) refuses the filing. */
+function clone<T>(value: T, refuse: (what: string) => Error): T {
   try {
     return structuredClone(value);
-  } catch {
-    return value;
+  } catch (error) {
+    // Never an alias: a hook handed the original could change the baseline it is compared with.
+    throw refuse(error instanceof Error ? error.message : String(error));
   }
 }
 

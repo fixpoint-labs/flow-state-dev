@@ -585,6 +585,25 @@ describe("a stamp nothing checked is never trusted", () => {
   });
 });
 
+describe("a null input", () => {
+  // Codex P2: `input: null` was read as no input, so an edit kept the old input unchecked.
+  it("is checked as the input sent, and refused, through the raw handle", async () => {
+    host = boot();
+    const { id, partition } = await conversation(host);
+    const target = await file(host, id, { assignee: "ops.triager", goal: "g", input: { ticket: "ENG-17" }, held: true });
+    raw.writes.push(
+      ((tasks: any) => tasks.patchSettings(target.taskId, { input: null })) as never,
+      ((tasks: any) => tasks.createTask({ assignee: "ops.triager", goal: "null input", input: null })) as never
+    );
+    await file(host, id, { assignee: "ops.raw", goal: "send a null input", input: {} });
+    await host.settled();
+    expect(raw.outcomes[0]).toMatch(/^input_refused: .*the input is not an object/);
+    expect(raw.outcomes[1]).toMatch(/^input_refused: .*the input is not an object/);
+    expect((await host.row("jane", partition, target.taskId!))?.input).toMatchObject({ ticket: "ENG-17" });
+    expect((await tasksOf(host)).some((task) => task.goal === "null input")).toBe(false);
+  });
+});
+
 describe("an unassigned filing's worker", () => {
   // Codex P1: the default worker was read once for the check and again for the
   // store, so a roster change between them stored B with A's checked values.
@@ -722,6 +741,21 @@ describe("the declaration, when the flow is built", () => {
     expect(build(z.object({ n: z.number().catch(0) }))).toThrow(".catch");
     // `.refine`, `.default` and `.describe` keep the round trip.
     expect(build(z.object({ n: z.number().refine((v) => v > 0).default(1).describe("n") }))).not.toThrow();
+  });
+
+  // Codex P2: a union or intersection keeps its fields under anyOf/allOf, where
+  // the filer's view can't drop the server-owned ones, so only an object is taken.
+  it("refuses a schema that isn't an object (z.object or z.record), naming the entry", () => {
+    const build = (schema: z.ZodTypeAny) => () =>
+      workerTaskEntry({ name: "triage-work", turn: handler({ name: "t", inputSchema: z.unknown(), execute: () => "" }), input: taskInput(schema as never) });
+    const a = z.object({ ticket: z.string(), requestedBy: z.string() });
+    const b = z.object({ issue: z.string(), requestedBy: z.string() });
+    expect(build(z.union([a, b]))).toThrow('workerTaskEntry "triage-work": a task input is an object schema (z.object or z.record), and this is a z.union.');
+    expect(build(z.intersection(a, b))).toThrow("this is a z.intersection");
+    expect(build(z.string())).toThrow("this is a z.string");
+    // An object, a record, and either refined, are objects.
+    expect(build(a.refine(() => true))).not.toThrow();
+    expect(build(z.record(z.string(), z.unknown()))).not.toThrow();
   });
 
   it("refuses the removed needsProject option by name", () => {

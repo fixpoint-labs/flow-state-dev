@@ -68,7 +68,7 @@ import { sessionIdOfFiling } from "./filing-session";
 import { conversationEndRules } from "./task-admission";
 import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor, markTaskInput } from "../worker-task-entry";
-import { isTaskInputDeclaration, unstableMessage, type TaskInputDeclaration, type TaskInputRecord } from "../task-input/declaration";
+import { isTaskInputDeclaration, notObjectMessage, unstableMessage, type TaskInputDeclaration, type TaskInputRecord } from "../task-input/declaration";
 import { claimInput } from "../task-input/filing-check";
 import { checkedLedger, noteSourceOfDoor } from "../task-input/checked-ledger";
 import { filingWorkstreamOf } from "./filing-session";
@@ -318,6 +318,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   if (declaration !== undefined && !isTaskInputDeclaration(declaration)) {
     throw new Error(`workerTaskEntry "${name}": \`input\` is built with taskInput(schema, { ... }).`);
   }
+  if (declaration?.notObject !== undefined) throw new Error(`workerTaskEntry "${name}": ${notObjectMessage(declaration.notObject)}`);
   if (declaration?.unstable !== undefined) {
     throw new Error(`workerTaskEntry "${name}": ${unstableMessage(declaration.unstable.step, declaration.unstable.path)}`);
   }

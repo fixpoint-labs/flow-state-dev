@@ -178,10 +178,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     chainLimit: () => taskChainLimitOf(options.installation),
     // What each delegate's flow takes, read off its `work` entry per call (FIX-2894), its project requirement included (FIX-2333).
     taskInputOf: (flow) => taskInputSourceOf(options.installation)?.declarationOf(flow),
-    workerOf: async (ctx, id) => {
-      const worker = await taskInputSourceOf(options.installation)?.workerOf(ctx, id);
-      return worker === undefined ? undefined : { id, config: worker.config };
-    },
+    workerOf: async (ctx, id) => taskInputSourceOf(options.installation)?.workerOf(ctx, id),
     // The app's session fields go down every hand-over with the filing project.
     sessionFields: options.installation.sessionFields,
     // The messages the session sent that haven't landed (FIX-2240): the pass sends them again.

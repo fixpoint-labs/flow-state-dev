@@ -174,7 +174,7 @@ import { owedReports, sendLegacyReports } from "./report-owed";
 import { filedProjectOf, filingProjectStampOf, isStamped, pieceOwnerOf } from "./held-task";
 import { PLAN_LEDGER_ID, STEP_ATTEMPTS, definePlanning, isAnsweringTurn, isSteppingTurn, planLedgerAt, planLedgerResources } from "./plan";
 import { verifiedWorkerOf } from "../workers/verified-worker";
-import type { TaskInputDeclaration, TaskInputRecord, TaskInputWorker } from "../task-input/declaration";
+import type { TaskInputDeclaration, TaskInputRecord } from "../task-input/declaration";
 import { FILLED_FOR, type CheckedInput } from "../task-input/filing-check";
 import { checkedPatch, checkFiledInput, withRootWorker, type InputLookup } from "../task-input/checked-ledger";
 
@@ -219,8 +219,12 @@ export interface ConversationBoardOptions {
    * flow's tasks take any object, unchecked.
    */
   taskInputOf?: (flowKind: string) => TaskInputDeclaration | undefined;
-  /** The worker a task is for, as a flow's task-input hooks are handed it. Omitted, its id with no configuration. */
-  workerOf?: (ctx: BlockContext, workerId: string) => Promise<TaskInputWorker | undefined>;
+  /**
+   * The worker a task is for, read once from its record: the flow it runs on and
+   * its declared configuration, as a flow's task-input hooks are handed it.
+   * Omitted, its flow as this session's delegates have it, with no configuration.
+   */
+  workerOf?: (ctx: BlockContext, workerId: string) => Promise<{ readonly flow: string; readonly config: Readonly<Record<string, unknown>> } | undefined>;
   /**
    * The app's session fields (the installation's `sessionFields`): each
    * hand-over carries the filer's values down to the session it opens, beside
@@ -990,11 +994,20 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     ctx: BlockContext,
     ref: TaskCollectionRef,
     subject: Pick<TaskInit, "target" | "followUpOf"> & { readonly task?: Task },
-    own?: ProjectAddressRef
+    own?: ProjectAddressRef,
+    self?: string
   ): InputLookup => ({
-    flowOf: async (assignee) => (await reach(ctx)).available.get(assignee),
+    // One snapshot of the worker: a delegate of this session now, on the flow its record names. A step's worker is
+    // the session's own, on this flow. A record whose flow isn't the one the session's delegates have is moving
+    // under the check: it resolves to nothing, so the write is refused rather than checked against two answers.
+    worker: async (assignee) => {
+      const delegateFlow = assignee === self ? options.flowKind : (await reach(ctx)).available.get(assignee);
+      if (delegateFlow === undefined) return undefined;
+      const record = await options.workerOf?.(ctx, assignee);
+      if (record !== undefined && record.flow !== delegateFlow) return undefined;
+      return { id: assignee, flow: delegateFlow, config: record?.config ?? {} };
+    },
     declarationOf: (flow) => options.taskInputOf?.(flow),
-    workerOf: async (assignee) => options.workerOf?.(ctx, assignee),
     hasProject: async (input) => {
       if (subject.target !== undefined) return true;
       // A follow-up runs where its root ran, with its worker and its target (`withFollowUpPlacement`).
@@ -1017,11 +1030,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * root's worker): its checked input and stamp, or `undefined` for a task
    * that waits unassigned or is for a flow that declares nothing.
    */
-  const checkInitInput = async (ctx: BlockContext, ref: TaskCollectionRef, init: TaskInit, assignee: string | undefined, flow?: string): Promise<CheckedInput | undefined> => {
+  const checkInitInput = async (ctx: BlockContext, ref: TaskCollectionRef, init: TaskInit, assignee: string | undefined, self?: string): Promise<CheckedInput | undefined> => {
     if (assignee === undefined) return undefined;
     const root = init.followUpOf === undefined ? undefined : ref.get(init.followUpOf);
     const { own } = await filedProjectFor(ctx, root);
-    return checkFiledInput(inputLookup(ctx, ref, init, own), ctx, assignee, init.input, flow);
+    return checkFiledInput(inputLookup(ctx, ref, init, own, self), ctx, assignee, init.input);
   };
 
   // FIX-2082 D2.
@@ -1722,7 +1735,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // FIX-2894.
     /** A step filed `session: "new"`, checked as a filing for the worker's own flow; an inline step stays open. */
     const newSessionStepInput = async (init: TaskInit): Promise<CheckedInput | undefined> =>
-      init.session === "new" ? checkInitInput(ctx, plan, init, self, options.flowKind) : undefined;
+      init.session === "new" ? checkInitInput(ctx, plan, init, self, self) : undefined;
     /** Add one checked step under its chain reservation. */
     const fileReservedStep = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }, checked?: CheckedInput): Promise<Task> => {
       const { id, markAdded } = reserved;
@@ -1907,7 +1920,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // A step in a session of its own runs through the worker's own `work` entry: its input is checked against the worker's own flow (FIX-2894).
         const step = plan.get(id);
         if (step?.session !== "new" || patch.input === undefined) return plan.patchSettings(id, edit);
-        const lookup = { ...inputLookup(ctx, plan, { target: step.target, followUpOf: step.followUpOf, task: step }), flowOf: async (worker: string) => (worker === self ? options.flowKind : undefined) };
+        const lookup = inputLookup(ctx, plan, { target: step.target, followUpOf: step.followUpOf, task: step }, undefined, self);
         return checkedPatch(lookup, ctx, plan, id, edit, (i, p) => plan.patchSettings(i, p));
       },
     };
