@@ -1112,7 +1112,9 @@ export type HarnessReviewAnswer = z.infer<typeof harnessReviewAnswerSchema>;
  */
 const decisionSchema = harnessJudgeInputSchema.nullable();
 
+// Persisted manager runs already require a nonnegative count. Session turns have historically accepted any integer.
 const managerApprovalSchema = toolApprovalStateSchema.extend({ steps: z.number().int().nonnegative().default(0) });
+const EMPTY_APPROVALS = managerApprovalSchema.parse({});
 
 /**
  * The manager's per-run values.
@@ -4728,7 +4730,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const spent = spentGrants.get(requestId);
       heldCalls.delete(requestId);
       spentGrants.delete(requestId);
-      const approvals = managerState(ctx.sequencer?.state).approvals ?? managerApprovalSchema.parse({});
+      const approvals = managerState(ctx.sequencer?.state).approvals ?? EMPTY_APPROVALS;
       const grants = approvals.grants.filter((_, at) => spent?.has(at) !== true);
       if (held === undefined && grants.length === approvals.grants.length) return value;
       await ctx.sequencer!.patchState({ approvals: { ...approvals, grants, pending: held ?? null } });

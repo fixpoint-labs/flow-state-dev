@@ -317,6 +317,8 @@ export const harnessSessionStateSchema = z.object({
 /** A harness session's state, as a page reads it from `clientData.session`. */
 export type HarnessSessionState = z.infer<typeof harnessSessionStateSchema>;
 
+const sessionHandler = handler.withDefaults({ sessionStateSchema: harnessSessionStateSchema });
+
 type SessionContext = BlockContext<Record<string, unknown>, HarnessSessionState>;
 
 /** Who a session belongs to, as the framework names it. Never read from the request body. */
@@ -869,18 +871,16 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     await writeTurnHead(ctx).catch(() => undefined);
     throw ended;
   };
-  const recordFailure = handler({
+  const recordFailure = sessionHandler({
     name: "record-turn-failure",
-    sessionStateSchema: harnessSessionStateSchema,
     execute: async (error: Error, ctx): Promise<unknown> => recordTurnFailure(error, ctx),
   });
   // A harness can also report a run it saw end in failure as a result, not a
   // throw. That turn is recorded as failed too, so the page shows its error
   // rather than a continued conversation. The binding is left as it was, so
   // the next turn still continues the same conversation.
-  const recordFailedOutcome = handler({
+  const recordFailedOutcome = sessionHandler({
     name: "record-failed-outcome",
-    sessionStateSchema: harnessSessionStateSchema,
     execute: async (handle: HarnessRunHandle, ctx): Promise<void> => {
       const requestId = ctx.request.identity.id;
       // A harness that answered past its deadline rather than failing ended on its own.
@@ -917,9 +917,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // branch, added where the record lacks them. Its own timeout, not the turn's
   // abort signal, so a stopped turn is checked too. A missing or signed-out
   // `gh` is a note, never a failed turn.
-  const branchPullRequests = handler({
+  const branchPullRequests = sessionHandler({
     name: "branch-pull-requests",
-    sessionStateSchema: harnessSessionStateSchema,
     resources: { [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection },
     execute: async (_input: unknown, ctx): Promise<void> => {
       const requestId = ctx.request.identity.id;
@@ -1014,9 +1013,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     if (head === null) return;
     await ctx.session.atomicState((state) => withTurn(state, requestId, (record) => ({ ...record, head })));
   }
-  const recordTurnHead = handler({
+  const recordTurnHead = sessionHandler({
     name: "record-turn-head",
-    sessionStateSchema: harnessSessionStateSchema,
     execute: async (_input: unknown, ctx): Promise<void> => writeTurnHead(ctx),
   });
   // When the harness step returns: what the turn spent, on its record. The
@@ -1026,9 +1024,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // a page that refreshes on that end reads it. A turn that threw records it
   // in `recordFailure`'s write instead. A failed write is a note, never a
   // failed turn.
-  const turnSpend = handler({
+  const turnSpend = sessionHandler({
     name: "turn-spend",
-    sessionStateSchema: harnessSessionStateSchema,
     execute: async (_handle: HarnessRunHandle, ctx): Promise<void> => {
       const requestId = ctx.request.identity.id;
       try {
@@ -1043,9 +1040,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // which the engine ends before any of the turn's own steps run again. Its
   // record ends here, stopped, with what its runs spent and where its changes
   // end. Every other turn ended its record inside the turn.
-  const endUnendedTurn = handler({
+  const endUnendedTurn = sessionHandler({
     name: "end-unended-turn",
-    sessionStateSchema: harnessSessionStateSchema,
     execute: async (_input: unknown, ctx): Promise<void> => {
       const requestId = ctx.request.identity.id;
       const record = ctx.session.state.turns?.[requestId];
@@ -1061,9 +1057,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // What one turn's commits changed, between the commits its record keeps. A
   // read: answered in the response and stored nowhere, so an opened patch
   // never lands in the session's log.
-  const changes = handler({
+  const changes = sessionHandler({
     name: "turn-changes",
-    sessionStateSchema: harnessSessionStateSchema,
     inputSchema: harnessTurnChangesInputSchema,
     outputSchema: runChangesSchema,
     execute: async (input, ctx) => {
@@ -1084,9 +1079,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   });
   // When a turn the harness finished ends: the host's checks, on the turn's
   // record. Reported, not a failure: a red check leaves the turn as it ended.
-  const verifyTurn = handler({
+  const verifyTurn = sessionHandler({
     name: "verify-turn",
-    sessionStateSchema: harnessSessionStateSchema,
     execute: async (handle: HarnessRunHandle, ctx): Promise<void> => {
       const verify = options.verify;
       if (verify === undefined || handle.outcome !== "finished" || ctx.signal.aborted) return;
@@ -1101,9 +1095,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   });
   // The session's worktree, removed through the host's one removal path. A
   // turn holds the session while it runs, so this is refused then (`reject`).
-  const removeWorktree = handler({
+  const removeWorktree = sessionHandler({
     name: "remove-worktree",
-    sessionStateSchema: harnessSessionStateSchema,
     inputSchema: z.object({ deleteBranch: z.boolean().default(false), force: z.boolean().default(false) }),
     execute: async (input, ctx): Promise<{ removed: true; branchDeleted: boolean }> => {
       const state = ctx.session.state;
@@ -1135,9 +1128,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   const withBrief =
     specOptions === undefined && checksInBrief === undefined
       ? undefined
-      : handler({
+      : sessionHandler({
           name: "turn-brief",
-          sessionStateSchema: harnessSessionStateSchema,
           inputSchema: z.object({ prompt: z.string().min(1) }),
           execute: async (input, ctx): Promise<{ prompt: string }> => {
             const state = ctx.session.state;
@@ -1281,6 +1273,7 @@ type TurnDeadlines = RunStops;
  * request, so its grants end with it.
  */
 const turnApprovalsSchema = z.object({ approvals: toolApprovalStateSchema.nullable().default(null) });
+const EMPTY_APPROVALS = toolApprovalStateSchema.parse({});
 
 /** What a harness step stopped for an approval hands on, in place of a handle. */
 const STOPPED_FOR_APPROVAL = "harness-session:stopped-for-approval";
@@ -1324,7 +1317,9 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
     ask: ((request, ctx) => {
       const requestId = ctx.request.identity.id;
       const call = heldToolCallOf(request, workspace.locate(workPlaceOf(kind, ctx)));
-      const grants = (ctx.sequencer?.state as z.infer<typeof turnApprovalsSchema> | undefined)?.approvals?.grants ?? [];
+      // Harness feeds expose generic sequencer state. This feed runs inside the turn that declares turnApprovalsSchema.
+      const state = ctx.sequencer?.state as z.infer<typeof turnApprovalsSchema> | undefined;
+      const grants = state?.approvals?.grants ?? [];
       const spent = spentGrants.get(requestId) ?? new Set<number>();
       const granted = grants.findIndex((grant, at) => !spent.has(at) && grantMatches(grant, call));
       if (granted >= 0) {
@@ -1386,9 +1381,8 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
       // Refused while another turn waits on an approval: the wait gives back
       // the session's turn slot, so `concurrency: "defer"` no longer holds this
       // one back, and it would run in the checkout and conversation that turn resumes.
-      const oneTurnAtATime = handler({
+      const oneTurnAtATime = sessionHandler({
         name: `${kind}-one-turn-at-a-time`,
-        sessionStateSchema: harnessSessionStateSchema,
         execute: async (_input: unknown, ctx) => {
           const requestId = ctx.request.identity.id;
           const waiting = Object.entries(ctx.session.state.turns ?? {}).some(
@@ -1418,9 +1412,8 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
         })
         .rescue([
           {
-            block: handler({
+            block: sessionHandler({
               name: `${kind}-stopped-for-approval`,
-              sessionStateSchema: harnessSessionStateSchema,
               inputSchema: z.unknown(),
               outputSchema: z.unknown(),
               execute: async (error: unknown, ctx) => {
@@ -1437,9 +1430,8 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
       // Its own step, before the wait: a resume runs the waiting step's code
       // again from the state its earlier steps left, so the held call must be
       // on that state before the step that waits starts.
-      const heldCallStep = handler({
+      const heldCallStep = sessionHandler({
         name: `${kind}-tool-held`,
-        sessionStateSchema: harnessSessionStateSchema,
         inputSchema: z.unknown(),
         outputSchema: z.unknown(),
         sequencerStateSchema: turnApprovalsSchema,
@@ -1449,7 +1441,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
           const spent = spentGrants.get(requestId);
           heldCalls.delete(requestId);
           spentGrants.delete(requestId);
-          const approvals = ctx.sequencer?.state.approvals ?? toolApprovalStateSchema.parse({});
+          const approvals = ctx.sequencer?.state.approvals ?? EMPTY_APPROVALS;
           const grants = approvals.grants.filter((_, at) => spent?.has(at) !== true);
           if (held === undefined && grants.length === approvals.grants.length) return value;
           if (held !== undefined) {
@@ -1465,9 +1457,8 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
       // The wait, and what its answer means: a yes leaves a grant and a no
       // tells the conversation; either resumes the conversation the turn
       // confirmed. A cancel ends the turn.
-      const approvalStep = handler({
+      const approvalStep = sessionHandler({
         name: `${kind}-tool-approval`,
-        sessionStateSchema: harnessSessionStateSchema,
         inputSchema: z.unknown(),
         outputSchema: z.unknown(),
         sequencerStateSchema: turnApprovalsSchema,

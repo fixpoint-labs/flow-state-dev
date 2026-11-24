@@ -809,7 +809,8 @@ interface ReadableCollection {
 
 /**
  * A block or harness callback that holds the run-record collection. The
- * collection resolver narrows its resource registry to the operations it uses.
+ * resolver takes only the registry so a harness feed can write records
+ * without casting its callback context to the full BlockContext.
  */
 export interface CollectionHoldingContext {
   resources?: unknown;
