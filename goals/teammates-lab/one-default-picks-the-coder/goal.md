@@ -8,8 +8,8 @@
 
 **Signal:** `fsdev dev --app @flow-state-dev/teammates` on a fresh store over a git checkout holding one commit, driven over HTTP, the coders on the scripted harness (`GOAL_HARNESS=stub`), once with `TEAMMATES_HARNESS=codex` and once with `claude-code`.
 
-- *default*: every coding task Lead starts from the ask is on the worker whose `harness:` is the default (`teammates.codex`, `teammates.claude-code`), and the first one's run session's coder (`coder` flow, `harness` action) answers that harness. Lead may start more than one: the scripted run changes no README, and Lead's prompt tells it to course-correct. Each is graded.
-- *planted*: with the default on `codex`, the planted ask's tasks are on `teammates.codex` too.
+- *default*: Lead starts at least one coding task (a task on a coding worker) from the ask, every one is on the worker whose `harness:` is the default (`teammates.codex`, `teammates.claude-code`), and the first one's run session's coder (`coder` flow, `harness` action) answers that harness. Lead may start more than one: the scripted run changes no README, and Lead's prompt tells it to course-correct. Each is graded. A task Lead hands researcher is not a coding task and isn't graded.
+- *planted*: with the default on `codex`, the planted ask, asked first in a fresh conversation, starts coding tasks only on `teammates.codex` too.
 - *board*: a task filed on `teammates.cursor` through the board's `createTask_tasks` action stays there and runs on `cursor`.
 - *no-own-harness*: hiring a teammate with `settings: { harness: "cursor" }` is refused, saying the setting is no longer taken, and nothing joins the roster.
 
@@ -32,3 +32,5 @@ Each run passes all four (*planted* on `codex` only; *board* and *no-own-harness
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-24 | e74debec + the grader's two fixes, pre-commit | openai/gpt-6-luna (Lead), scripted coders | PASS (3 of 3 per default) | codex: planted 6/6, 9/9, 15/15 and default 5/5, 6/6, 5/5 coding tasks on `teammates.codex`, each first run on `codex`. claude-code: 12/12, 8/8, 4/4 on `teammates.claude-code`. *board*: on `teammates.cursor`, ran `cursor`. *no-own-harness*: refused, "no longer takes" |
+| 2026-11-24 | e74debec, the grader before its fixes | same | control `model-assignee`: FAIL as required on 5 of 6 runs by the current grader | Lead's own assignee spread over all three coders: codex runs 1–3 FAIL *default* and *planted* (planted on `teammates.cursor`, first run `cursor`); claude-code runs 1–2 FAIL (tasks on `teammates.codex` and `teammates.cursor`). claude-code run 3 put every coding task on `teammates.claude-code` by chance: it failed only on a researcher task, which the current grader no longer counts |

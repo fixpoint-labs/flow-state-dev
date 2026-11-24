@@ -154,7 +154,9 @@ await runGoal(async (failures, tell) => {
         const grade = async (signal: string, line: string) => {
           const before = new Set((await rows(me, flow, session.id)).map((r) => r.id));
           await say(me, flow, session.id, line);
-          const filed = (await rows(me, flow, session.id)).filter((r) => !before.has(r.id));
+          // A coding task is one on a coding worker: Lead may also ask researcher to look first.
+          const coders = new Set(Object.values(fixture.coders));
+          const filed = (await rows(me, flow, session.id)).filter((r) => !before.has(r.id) && r.assignee !== undefined && coders.has(r.assignee));
           if (filed.length === 0) {
             fail(`${signal}: Lead started no coding task`);
             return `${signal} no task`;
@@ -166,8 +168,9 @@ await runGoal(async (failures, tell) => {
           return `${signal} ${filed.length - off.length} of ${filed.length} on ${expected}, first ran ${ran}`;
         };
 
-        const read: string[] = [await grade("default", fixture.asks[randomInt(0, fixture.asks.length)]!)];
-        if (harness === "codex") read.push(await grade("planted", fixture.planted.ask));
+        // The planted ask first, on a conversation with no earlier coding task to follow up instead.
+        const read: string[] = harness === "codex" ? [await grade("planted", fixture.planted.ask)] : [];
+        read.push(await grade("default", fixture.asks[randomInt(0, fixture.asks.length)]!));
 
         // *board* and *no-own-harness*: once per default, on its first run.
         if (n === 1) {
