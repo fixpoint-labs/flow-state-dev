@@ -36,7 +36,7 @@ import { dispatcher, generator, handler, sequencer } from "@flow-state-dev/core"
 import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
-import type { TaskWorker, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
+import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { userStateSchema } from "../../../shared/schemas";
 import { coalesceKitchenSinkModel } from "../../../../../lib/models";
@@ -181,269 +181,260 @@ export function alreadyReportedTaskIds(
   ]);
 }
 
-/** Build the background pipeline and its worker entry around the same board. */
-export function createBackgroundWorkPipeline() {
-  /**
-   * The dispatched worker.
-   *
-   * Deliberately bare — no capabilities, no context bundle, no history. It runs
-   * in a child session whose session state and conversation are not the parent's,
-   * so anything it read from them would be empty rather than wrong, and a
-   * dispatched entry may not declare `sessionStateSchema` at all (`defineFlow`
-   * refuses one: rows sharing a child session under a `per-worker` or `key`
-   * policy would corrupt each other's state silently).
-   */
-  const briefWorker = generator({
-    name: "background-brief",
-    userStateSchema: userStateSchema.pick({ selectedModel: true }),
-    model: (_input, ctx) => coalesceKitchenSinkModel(ctx.user?.state.selectedModel),
-    // The substrate's own worker-input shape, which is what `TaskWorker` is
-    // typed against. `input.input` is `unknown` there by design — the board
-    // carries heterogeneous payloads — so the parse below is reading an
-    // untyped value, not re-checking a typed one.
-    inputSchema: taskWorkerInputSchema,
-    outputSchema: z.string(),
-    prompt:
-      "You are writing a short briefing that someone will read later, away from the " +
-      "conversation that asked for it. Give the answer in at most six sentences, " +
-      "plain markdown, no preamble and no offer to help further.",
-    user: (input: TaskWorkerInput) => {
-      const payload = briefRequestSchema.safeParse(input.input);
-      return payload.success ? payload.data.request : input.goal;
-    },
-    // Without this a generator auto-emits nothing, and the child session's own
-    // history would hold block traces and no answer. `history: true` because
-    // these items ARE the child session's conversation — they never reach the
-    // parent's, which is a different session.
-    itemVisibility: { client: true, history: true },
-  });
+/**
+ * The dispatched worker.
+ *
+ * Deliberately bare — no capabilities, no context bundle, no history. It runs
+ * in a child session whose session state and conversation are not the parent's,
+ * so anything it read from them would be empty rather than wrong, and a
+ * dispatched entry may not declare `sessionStateSchema` at all (`defineFlow`
+ * refuses one: rows sharing a child session under a `per-worker` or `key`
+ * policy would corrupt each other's state silently).
+ */
+const briefWorker = generator({
+  name: "background-brief",
+  userStateSchema: userStateSchema.pick({ selectedModel: true }),
+  model: (_input, ctx) => coalesceKitchenSinkModel(ctx.user?.state.selectedModel),
+  // The substrate's own worker-input shape, which is what `TaskWorker` is
+  // typed against. `input.input` is `unknown` there by design — the board
+  // carries heterogeneous payloads — so the parse below is reading an
+  // untyped value, not re-checking a typed one.
+  inputSchema: taskWorkerInputSchema,
+  outputSchema: z.string(),
+  prompt:
+    "You are writing a short briefing that someone will read later, away from the " +
+    "conversation that asked for it. Give the answer in at most six sentences, " +
+    "plain markdown, no preamble and no offer to help further.",
+  user: (input: TaskWorkerInput) => {
+    const payload = briefRequestSchema.safeParse(input.input);
+    return payload.success ? payload.data.request : input.goal;
+  },
+  // Without this a generator auto-emits nothing, and the child session's own
+  // history would hold block traces and no answer. `history: true` because
+  // these items ARE the child session's conversation — they never reach the
+  // parent's, which is a different session.
+  itemVisibility: { client: true, history: true },
+});
 
-  const board = taskBoard({
-    name: "background-work",
-    boardId: BOARD_ID,
-    mode: "delegation",
-    collection: backgroundWorkLedger,
-    // Not the default (`"skip"`), and deliberately. `onError` decides what a
-    // worker failure does to the run executing it — and for a dispatched worker
-    // that run is the **child session's**, not the drain's. Under `"skip"` a
-    // worker that throws leaves the task `errored` while its child request
-    // still completes, so the panel renders the row green while the next turn
-    // reports the same work as failed: two surfaces disagreeing about one
-    // event, which is the defect this demo is supposed to help people avoid.
-    //
-    // `"skip"` exists so one failing task does not abandon its siblings. This
-    // board has a single worker and one task per turn, so there is no sibling
-    // for a failure to be skipped in favour of — the policy buys nothing here
-    // and costs the honest status.
-    onError: "fail",
-    workers: {
-      // The assignee is a dispatcher: it dispatches each row to the flow's
-      // `brief` task entry (`briefWorker`, declared below) instead of running
-      // anything in the drain. Keyed on the task's `metadata.topic`: two
-      // requests on one topic land in the same child session and continue its
-      // history, which is the point of the topic (see `routingTopicFor`). A
-      // row with no topic gets a child of its own.
-      [ASSIGNEE]: dispatcher<TaskWorkerInput>({
-        name: "background-work-dispatch",
-        action: ASSIGNEE,
-        session: {
-          key: (task) =>
-            typeof task.metadata?.topic === "string" ? task.metadata.topic : task.taskId,
-        },
+const board = taskBoard({
+  name: "background-work",
+  boardId: BOARD_ID,
+  mode: "delegation",
+  collection: backgroundWorkLedger,
+  // Not the default (`"skip"`), and deliberately. `onError` decides what a
+  // worker failure does to the run executing it — and for a dispatched worker
+  // that run is the **child session's**, not the drain's. Under `"skip"` a
+  // worker that throws leaves the task `errored` while its child request
+  // still completes, so the panel renders the row green while the next turn
+  // reports the same work as failed: two surfaces disagreeing about one
+  // event, which is the defect this demo is supposed to help people avoid.
+  //
+  // `"skip"` exists so one failing task does not abandon its siblings. This
+  // board has a single worker and one task per turn, so there is no sibling
+  // for a failure to be skipped in favour of — the policy buys nothing here
+  // and costs the honest status.
+  onError: "fail",
+  workers: {
+    // The assignee is a dispatcher: it dispatches each row to the flow's
+    // `brief` task entry (`briefWorker`, declared below) instead of running
+    // anything in the drain. Keyed on the task's `metadata.topic`: two
+    // requests on one topic land in the same child session and continue its
+    // history, which is the point of the topic (see `routingTopicFor`). A
+    // row with no topic gets a child of its own.
+    [ASSIGNEE]: dispatcher<TaskWorkerInput>({
+      name: "background-work-dispatch",
+      action: ASSIGNEE,
+      session: {
+        key: (task) =>
+          typeof task.metadata?.topic === "string" ? task.metadata.topic : task.taskId,
+      },
+    }),
+  },
+});
+
+/** File this turn's message as a durable row for the board to dispatch. */
+const fileSideChainTask = handler({
+  name: "file-background-task",
+  inputSchema: z.object({ message: z.string() }),
+  uses: [board.capability],
+  execute: async (input, ctx) => {
+    const topic = routingTopicFor(input.message);
+    await ctx.cap["background-work"].createTask({
+      goal: input.message,
+      // Display only. The full `topic` below is the routing identity.
+      title: labelFor(topic),
+      assignee: ASSIGNEE,
+      input: { request: input.message },
+      // `metadata.topic` is what the spawn seeds the child session's routing
+      // with — the value hashed into the child session id. Full, never
+      // truncated; see `routingTopicFor`.
+      metadata: { topic },
+    });
+    ctx.emit.status(`Filed background work: ${labelFor(topic)}`);
+  },
+});
+
+/**
+ * The turn's reply: what was just filed, plus anything that has landed since.
+ *
+ * Reads the ledger rather than the drain's output, because the rows a
+ * *previous* turn dispatched are the interesting ones — this turn's own row is
+ * still `in_progress` by construction.
+ */
+const reportBackgroundWork = handler({
+  name: "report-background-work",
+  inputSchema: z.object({ message: z.string() }),
+  outputSchema: z.string(),
+  // "Which rows this conversation has already told the user about" is
+  // CONVERSATION state, not task state, and putting it in the right place is
+  // what keeps it out of the transcript.
+  //
+  // It lived on the task's `metadata` first, written with `patchMetadata`.
+  // That emits a client-visible `task-change` carrying the WHOLE row —
+  // `output` included — which the parent's `<TaskPlan />` then rendered
+  // inline. So the acknowledgement that a result had been delivered
+  // *republished that result into the transcript*, beside the explicit "Back
+  // from the background" message: precisely the folding-back-in this demo
+  // exists to argue against. Nothing about a delivery belongs to the task,
+  // and once it is held here the board publishes no completed row at all —
+  // the settle happens in the child, whose stream is its own.
+  sessionStateSchema: reportAcknowledgementSchema,
+  uses: [board.capability],
+  execute: async (input, ctx) => {
+    // One ref for several reads — the accessor sugar re-hydrates the durable
+    // collection per call, so `tasks()` once is the documented shape.
+    const ledger = await ctx.cap["background-work"].tasks();
+    const handles = await ledger.list();
+    const alreadyReported = alreadyReportedTaskIds(ctx.session.state);
+    const rows = handles.map(
+      (task): ReportedTask => ({
+        id: task.id,
+        goal: task.goal,
+        status: task.status,
+        output: task.output,
+        reported: alreadyReported.has(task.id),
       }),
-    },
-  });
+    );
 
-  /** File this turn's message as a durable row for the board to dispatch. */
-  const fileSideChainTask = handler({
-    name: "file-background-task",
-    inputSchema: z.object({ message: z.string() }),
-    uses: [board.capability],
-    execute: async (input, ctx) => {
-      const topic = routingTopicFor(input.message);
-      await ctx.cap["background-work"].createTask({
-        goal: input.message,
-        // Display only. The full `topic` below is the routing identity.
-        title: labelFor(topic),
-        assignee: ASSIGNEE,
-        input: { request: input.message },
-        // `metadata.topic` is what the spawn seeds the child session's routing
-        // with — the value hashed into the child session id. Full, never
-        // truncated; see `routingTopicFor`.
-        metadata: { topic },
-      });
-      ctx.emit.status(`Filed background work: ${labelFor(topic)}`);
-    },
-  });
+    // Terminal rows this conversation has ALREADY told the user about are not
+    // news. The ledger is durable and `list()` returns all of it, so without
+    // this every later turn re-reports every finished job and the reply grows
+    // with the whole session's history. `== null` rather than a truthiness
+    // check: a row filed before this marker existed has no key at all
+    // (BP-030), and it is marked below after being reported once.
+    const finished = rows.filter((row) => row.status === "completed" && !row.reported);
+    const running = rows.filter(
+      (row) => row.status === "pending" || row.status === "in_progress",
+    );
+    // A row that never reached a child session — the spawn was refused, or the
+    // worker threw. Reported by name: saying "filed as background work" over
+    // a row that failed inside this very turn is the one thing this reply
+    // must not do.
+    const broken = rows.filter(
+      (row) =>
+        (row.status === "errored" || row.status === "cancelled") && !row.reported,
+    );
 
-  /**
-   * The turn's reply: what was just filed, plus anything that has landed since.
-   *
-   * Reads the ledger rather than the drain's output, because the rows a
-   * *previous* turn dispatched are the interesting ones — this turn's own row is
-   * still `in_progress` by construction.
-   */
-  const reportBackgroundWork = handler({
-    name: "report-background-work",
-    inputSchema: z.object({ message: z.string() }),
-    outputSchema: z.string(),
-    // "Which rows this conversation has already told the user about" is
-    // CONVERSATION state, not task state, and putting it in the right place is
-    // what keeps it out of the transcript.
+    // This turn's own row. Matched on goal and taken newest-first, because
+    // asking the same question twice is a legitimate second row on the board.
+    const filed = handles
+      .filter((task) => task.goal === input.message)
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
+    // A spawn refused at dispatch settles the row `errored` inside THIS turn.
+    // Leading with "it runs in its own child session" over a row that never
+    // reached one, and then appending "did not run" below, hands the user two
+    // contradictory instructions in a single message.
+    const filedFailed =
+      filed !== undefined &&
+      (filed.status === "errored" || filed.status === "cancelled");
+
+    const label = labelFor(routingTopicFor(input.message));
+    const parts = [
+      filedFailed
+        ? `**${label}** could not be handed to a child session — it was refused before it ` +
+          `started (${filed.status}), so nothing is running for it. The Background work ` +
+          `panel will not show a row for this one.`
+        : // Deliberately does NOT invite another turn. "Ask me again in a
+          // moment" is a status check, and a status check on this style is
+          // not free: the next turn files ANOTHER job and drains again
+          // before it reports, so checking on work creates work and bills a
+          // model call for the privilege. The panel is the right surface —
+          // it is the whole point that background work lives outside the
+          // conversation — and finished work still arrives on the next real
+          // reply on its own, which is stated as a fact rather than as an
+          // instruction to go and trigger one.
+          `Filed **${label}** as background work. It runs in its own ` +
+          `child session, so this turn is done. Watch it in the Background work panel ` +
+          `beside this conversation, which has its own refresh — and anything that has ` +
+          `finished will come back with my next reply.`,
+    ];
+
+    if (running.length > 1) {
+      parts.push(`Still running: ${running.length} items.`);
+    }
+
+    for (const row of finished) {
+      parts.push(`---\n\n**Back from the background:** ${row.goal}\n\n${renderOutput(row.output)}`);
+    }
+
+    for (const row of broken) {
+      // The just-filed row, when it failed, is already the lead. Saying it
+      // again below the fold reads as two separate failures.
+      if (filedFailed && row.id === filed.id) continue;
+      parts.push(`---\n\n**Background work did not run:** ${row.goal} (${row.status}).`);
+    }
+
+    const reply = parts.join("\n\n");
+    // Every other style ends in a generator, and a generator is what emits the
+    // assistant message. This one answers without a model, so the message is
+    // emitted here — otherwise the turn returns a string nothing renders.
     //
-    // It lived on the task's `metadata` first, written with `patchMetadata`.
-    // That emits a client-visible `task-change` carrying the WHOLE row —
-    // `output` included — which the parent's `<TaskPlan />` then rendered
-    // inline. So the acknowledgement that a result had been delivered
-    // *republished that result into the transcript*, beside the explicit "Back
-    // from the background" message: precisely the folding-back-in this demo
-    // exists to argue against. Nothing about a delivery belongs to the task,
-    // and once it is held here the board publishes no completed row at all —
-    // the settle happens in the child, whose stream is its own.
-    sessionStateSchema: reportAcknowledgementSchema,
-    uses: [board.capability],
-    execute: async (input, ctx) => {
-      // One ref for several reads — the accessor sugar re-hydrates the durable
-      // collection per call, so `tasks()` once is the documented shape.
-      const ledger = await ctx.cap["background-work"].tasks();
-      const handles = await ledger.list();
-      const alreadyReported = alreadyReportedTaskIds(ctx.session.state);
-      const rows = handles.map(
-        (task): ReportedTask => ({
-          id: task.id,
-          goal: task.goal,
-          status: task.status,
-          output: task.output,
-          reported: alreadyReported.has(task.id),
-        }),
-      );
+    // **Emit BEFORE marking, never after.** `reportedAtMs` is an
+    // acknowledgement that the user has been told, so it must not become
+    // durable until the telling has actually happened. Marking first and
+    // emitting second means a `patchMetadata` that throws part-way leaves
+    // earlier rows marked delivered while the reply never went out — those
+    // results are then filtered from every later turn and the user never sees
+    // work that completed fine. Silent and permanent. This way round the
+    // worst case is a row marked late or not at all, which repeats a report
+    // next turn: visible, harmless, and self-correcting.
+    ctx.emit.message(reply);
 
-      // Terminal rows this conversation has ALREADY told the user about are not
-      // news. The ledger is durable and `list()` returns all of it, so without
-      // this every later turn re-reports every finished job and the reply grows
-      // with the whole session's history. `== null` rather than a truthiness
-      // check: a row filed before this marker existed has no key at all
-      // (BP-030), and it is marked below after being reported once.
-      const finished = rows.filter((row) => row.status === "completed" && !row.reported);
-      const running = rows.filter(
-        (row) => row.status === "pending" || row.status === "in_progress",
-      );
-      // A row that never reached a child session — the spawn was refused, or the
-      // worker threw. Reported by name: saying "filed as background work" over
-      // a row that failed inside this very turn is the one thing this reply
-      // must not do.
-      const broken = rows.filter(
-        (row) =>
-          (row.status === "errored" || row.status === "cancelled") && !row.reported,
-      );
-
-      // This turn's own row. Matched on goal and taken newest-first, because
-      // asking the same question twice is a legitimate second row on the board.
-      const filed = handles
-        .filter((task) => task.goal === input.message)
-        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
-      // A spawn refused at dispatch settles the row `errored` inside THIS turn.
-      // Leading with "it runs in its own child session" over a row that never
-      // reached one, and then appending "did not run" below, hands the user two
-      // contradictory instructions in a single message.
-      const filedFailed =
-        filed !== undefined &&
-        (filed.status === "errored" || filed.status === "cancelled");
-
-      const label = labelFor(routingTopicFor(input.message));
-      const parts = [
-        filedFailed
-          ? `**${label}** could not be handed to a child session — it was refused before it ` +
-            `started (${filed.status}), so nothing is running for it. The Background work ` +
-            `panel will not show a row for this one.`
-          : // Deliberately does NOT invite another turn. "Ask me again in a
-            // moment" is a status check, and a status check on this style is
-            // not free: the next turn files ANOTHER job and drains again
-            // before it reports, so checking on work creates work and bills a
-            // model call for the privilege. The panel is the right surface —
-            // it is the whole point that background work lives outside the
-            // conversation — and finished work still arrives on the next real
-            // reply on its own, which is stated as a fact rather than as an
-            // instruction to go and trigger one.
-            `Filed **${label}** as background work. It runs in its own ` +
-            `child session, so this turn is done. Watch it in the Background work panel ` +
-            `beside this conversation, which has its own refresh — and anything that has ` +
-            `finished will come back with my next reply.`,
-      ];
-
-      if (running.length > 1) {
-        parts.push(`Still running: ${running.length} items.`);
+    // Now record what was just delivered — one session-state write, after
+    // the reply is out. Same ordering rule as before and for the same
+    // reason: this is an acknowledgement that the user has been told, so it
+    // must not become durable before the telling happened. Contained,
+    // because the reply is already delivered and a failed write must not
+    // fail the turn on top of it; the cost of losing it is a repeat report
+    // next turn, which is visible and self-correcting.
+    const delivered = [...finished, ...broken].map((row) => row.id);
+    if (delivered.length > 0) {
+      try {
+        await ctx.session.patchState({
+          reportedSideChainTaskIds: [...alreadyReported, ...delivered],
+        });
+      } catch {
+        ctx.emit.status("Could not record what was reported; it may repeat.");
       }
+    }
 
-      for (const row of finished) {
-        parts.push(`---\n\n**Back from the background:** ${row.goal}\n\n${renderOutput(row.output)}`);
-      }
+    return reply;
+  },
+});
 
-      for (const row of broken) {
-        // The just-filed row, when it failed, is already the lead. Saying it
-        // again below the fold reads as two separate failures.
-        if (filedFailed && row.id === filed.id) continue;
-        parts.push(`---\n\n**Background work did not run:** ${row.goal} (${row.status}).`);
-      }
+export const backgroundWork = sequencer({
+  name: "background-work-thinking",
+  inputSchema: z.object({ message: z.string() }),
+  outputSchema: z.string(),
+})
+  .tap(fileSideChainTask)
+  // The drain claims the row, hands it to a child session, and returns with the
+  // row still open. `.tap` keeps the turn's message as the running value so
+  // the report below reads its own input rather than the drain's bookkeeping.
+  .tap(board.drain)
+  .step(reportBackgroundWork);
 
-      const reply = parts.join("\n\n");
-      // Every other style ends in a generator, and a generator is what emits the
-      // assistant message. This one answers without a model, so the message is
-      // emitted here — otherwise the turn returns a string nothing renders.
-      //
-      // **Emit BEFORE marking, never after.** `reportedAtMs` is an
-      // acknowledgement that the user has been told, so it must not become
-      // durable until the telling has actually happened. Marking first and
-      // emitting second means a `patchMetadata` that throws part-way leaves
-      // earlier rows marked delivered while the reply never went out — those
-      // results are then filtered from every later turn and the user never sees
-      // work that completed fine. Silent and permanent. This way round the
-      // worst case is a row marked late or not at all, which repeats a report
-      // next turn: visible, harmless, and self-correcting.
-      ctx.emit.message(reply);
-
-      // Now record what was just delivered — one session-state write, after
-      // the reply is out. Same ordering rule as before and for the same
-      // reason: this is an acknowledgement that the user has been told, so it
-      // must not become durable before the telling happened. Contained,
-      // because the reply is already delivered and a failed write must not
-      // fail the turn on top of it; the cost of losing it is a repeat report
-      // next turn, which is visible and self-correcting.
-      const delivered = [...finished, ...broken].map((row) => row.id);
-      if (delivered.length > 0) {
-        try {
-          await ctx.session.patchState({
-            reportedSideChainTaskIds: [...alreadyReported, ...delivered],
-          });
-        } catch {
-          ctx.emit.status("Could not record what was reported; it may repeat.");
-        }
-      }
-
-      return reply;
-    },
-  });
-
-  const pipeline = sequencer({
-    name: "background-work-thinking",
-    inputSchema: z.object({ message: z.string() }),
-    outputSchema: z.string(),
-  })
-    .tap(fileSideChainTask)
-    // The drain claims the row, hands it to a child session, and returns with the
-    // row still open. `.tap` keeps the turn's message as the running value so
-    // the report below reads its own input rather than the drain's bookkeeping.
-    .tap(board.drain)
-    .step(reportBackgroundWork);
-
-  // The task entry rides along so the flow can declare it under
-  // `task: { actions }`: the block that runs in the child session for each row
-  // the assignee dispatches. `defineFlow` puts it behind the board's claim gate,
-  // and refuses the flow if the dispatch is reachable and the entry is not
-  // declared. Cast: a registry is heterogeneous, so `TaskWorker` fixes its
-  // output at `unknown` while this worker settles a `string` — the same
-  // narrowing `task-queue-demo` takes.
-  return Object.assign(pipeline, {
-    taskEntries: { [ASSIGNEE]: { block: briefWorker as unknown as TaskWorker } },
-  });
-}
+/** The child-session worker registered under the flow's task actions. */
+export const backgroundWorkTasks = {
+  [ASSIGNEE]: { block: briefWorker },
+};

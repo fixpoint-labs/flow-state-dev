@@ -2,12 +2,7 @@
 import { router } from "@flow-state-dev/core";
 import { inputSchema, sessionStateSchema } from "../../shared/schemas";
 import { assistantGenerator } from "../assistant/assistant";
-import { createBackgroundWorkPipeline } from "./pipelines/background-work";
-
-const backgroundWork = createBackgroundWorkPipeline();
-
-/** The dispatched worker registered under the flow's task actions. */
-export const backgroundWorkTasks = backgroundWork.taskEntries;
+import { backgroundWork } from "./pipelines/background-work";
 
 export const thinkingStyleRouter = router({
   name: "thinking-style-router",
@@ -20,4 +15,4 @@ export const thinkingStyleRouter = router({
       : assistantGenerator,
 });
 
-export { backgroundWorkSettled } from "./pipelines/background-work";
+export { backgroundWorkSettled, backgroundWorkTasks } from "./pipelines/background-work";
