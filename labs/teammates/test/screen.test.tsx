@@ -948,6 +948,16 @@ describe("the teammates screen", () => {
     expect(edits()).toEqual([{ id: "tester", name: "QA Bot", instructions: "Answer in one sentence." }]);
     await waitFor(() => expect(within(conversation()).getByRole("heading", { name: "QA Bot" })).toBeTruthy());
     expect(workerRow("QA Bot")).not.toBeNull();
+
+    // Its look is picked in the same form: a bot face and a color, saved as its icon and color, and drawn everywhere.
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));
+    const look = screen.getByRole("form", { name: "Edit QA Bot" });
+    fireEvent.click(within(within(look).getByRole("radiogroup", { name: "Face for QA Bot" })).getByRole("radio", { name: "sprocket" }));
+    fireEvent.click(within(within(look).getByRole("radiogroup", { name: "Color for QA Bot" })).getByRole("radio", { name: "rose" }));
+    await act(async () => fireEvent.click(within(look).getByRole("button", { name: "Save" })));
+    expect(edits().at(-1)).toEqual({ id: "tester", settingsPatch: { icon: "sprocket", color: "rose" } });
+    await waitFor(() => expect(workerRow("QA Bot").querySelector<HTMLElement>("[data-avatar]")!.dataset).toMatchObject({ face: "sprocket", avatar: "rose" }));
+    expect(conversation().querySelector<HTMLElement>("[data-bot-figure]")!.dataset).toMatchObject({ face: "sprocket", avatar: "rose" });
     expect(screen.getByLabelText("Message QA Bot")).toBeTruthy();
     // A teammate you hired has no file to go back to.
     fireEvent.click(within(conversation()).getByRole("button", { name: "Edit teammate" }));

@@ -64,6 +64,23 @@ describe("the model and default harness fields", () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ settingsPatch: { harness: "claude-code" } }));
   });
 
+  it("picks the teammate's look, a bot face and a color, and saves only what changed as its icon and color", async () => {
+    const onSave = vi.fn(async () => {});
+    render(<EditForm name="Lead" choices={CHOICES} current={{ model: "openai/gpt-6-luna", icon: "pip", color: "amber" }} onSave={onSave} onCancel={() => {}} />);
+    const faces = screen.getByRole("radiogroup", { name: "Face for Lead" });
+    const colors = screen.getByRole("radiogroup", { name: "Color for Lead" });
+    expect(screen.getAllByRole("radio").length).toBe(6 + 8);
+    expect(faces.querySelector("[aria-checked=true]")?.getAttribute("aria-label")).toBe("pip");
+    // Every face is drawn in the color picked, so the pick is seen as it will look.
+    fireEvent.click(screen.getByRole("radio", { name: "teal" }));
+    expect([...faces.querySelectorAll("[data-avatar]")].map((a) => a.getAttribute("data-avatar"))).toEqual(Array(6).fill("teal"));
+    fireEvent.click(screen.getByRole("radio", { name: "hex" }));
+    expect(screen.getByRole("radio", { name: "hex" }).getAttribute("aria-checked")).toBe("true");
+    expect(colors.querySelector("[aria-checked=true]")?.getAttribute("aria-label")).toBe("teal");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ settingsPatch: { icon: "hex", color: "teal" } }));
+  });
+
   it("still shows a teammate's own model the lab's list doesn't name", () => {
     render(<EditForm name="Lead" choices={CHOICES} current={{ model: "openai/gpt-6-sol" }} onSave={vi.fn()} onCancel={() => {}} />);
     expect((screen.getByLabelText("Model for Lead") as HTMLSelectElement).value).toBe("openai/gpt-6-sol");

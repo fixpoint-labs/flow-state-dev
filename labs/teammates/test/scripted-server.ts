@@ -470,9 +470,11 @@ export function scriptedServer(options: ScriptedOptions = {}): ScriptedServer {
     return { id, flow: "agent" };
   };
   // As the workforce's edit: a file's teammate becomes the user's copy, under the same id; a null name clears it.
-  const edit = ({ id, name }: { id: string; name?: string | null }) => {
+  const edit = ({ id, name, settingsPatch }: { id: string; name?: string | null; settingsPatch?: { icon?: string; color?: string; harness?: string } }) => {
     const w = worker(id);
     if (name !== undefined) w.teammate = { ...w.teammate, name: name === null ? id.slice(id.lastIndexOf(".") + 1) : name };
+    // The look and default harness the form changed, as the roster's settings patch merges them.
+    if (settingsPatch !== undefined) w.teammate = { ...w.teammate, ...settingsPatch };
     if (!w.teammate.own) w.teammate = { ...w.teammate, edited: true };
     notify();
     return { id, flow: "agent" };

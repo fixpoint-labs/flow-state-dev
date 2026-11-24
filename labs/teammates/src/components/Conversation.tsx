@@ -281,7 +281,7 @@ export function Conversation({
         <EditForm
           name={displayName(worker)}
           choices={{ models: context?.models, harnesses }}
-          current={{ model: settingOf(worker, "model") ?? context?.model, harness: settingOf(worker, "harness") ?? context?.harness }}
+          current={{ model: settingOf(worker, "model") ?? context?.model, harness: settingOf(worker, "harness") ?? context?.harness, icon: lookOf(worker.id).face, color: lookOf(worker.id).color }}
           onSave={async (edit) => {
             await workforce.edit({ id: worker.id, ...edit });
             setPanel(undefined);
