@@ -41,8 +41,9 @@ which the `WORKER.md` files name) and the board's `coder` assignee key.
 4. the prompt carries all four held-out tokens, the run's `cwd` is the checkout the framework itself
    derives for this row on the board it sits on (and that derivation is injective over its
    components), and the row settles `completed` *(BR-10, BR-11, BR-13)*;
-5. a hand-off naming an instance no seat minted errors the row by that id (it is not one the EM's
-   session hands to), and provisions nothing *(BR-7)*;
+5. a filing naming an instance no seat minted is refused by that id (a task's input is checked
+   against the worker it is for, and that worker can't be read), leaves no row on the board, and
+   provisions nothing *(BR-7)*;
 6. a run that finishes cleanly and leaves no commit is retried with its reason in the next
    prompt, and the row errors once the retry budget is spent *(BR-14)*;
 7. a `boards/` folder added to the tree changes nothing the loader produces, and the app's start
@@ -124,3 +125,5 @@ is the sibling goal.
 | 2026-11-13 | `claude/fix-2627-impl-e-b4`, on the merge of `-e` at `4e8aeba6e` | n/a | FAIL (expected) | `GOAL_CONTROL=stopped-at-limit`: `the row settled "errored" after a run that finished cleanly; wanted "completed" — the run stopped at its limit` |
 | 2026-11-13 | claude/fix-2627-impl-f | n/a | PASS | On the workforce kit (claude/fix-2627-impl-f, batches merged): every leg passed. |
 | 2026-11-13 | claude/fix-2627-impl-f | n/a | FAIL (control `drop-own-skill`, expected) | On its own leg again, not at start: `eng.coder: holds skills ["commit-style"], wanted exactly ["commit-style","branch-naming"]`. The Lab's copy of the tree now removes the `skills/` folder the control empties, which the kit refused. |
+| 2026-11-24 | main `b23ce2d7f6` | n/a | FAIL | Leg (e): `the row never left \`in_progress\` inside 60000ms (last status: absent)`. Since FIX-2894 the filing check refuses a filing for a worker it can't read, so the row the leg waited on is never written. |
+| 2026-11-24 | main `b23ce2d7f6` + FIX-2921 | n/a | PASS | Leg (e) grades the refusal at filing: refused by id, `Nothing was filed.`, no row on the board, nothing provisioned. Red state checked by hand (no `GOAL_CONTROL` replays it): with `checkFiledInput` letting an unread worker through, the leg fails on "a filing for an unminted instance was accepted" and the row left on the board. All five controls FAIL at their named legs. |
