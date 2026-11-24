@@ -35,7 +35,7 @@ describe("the answering line's step", () => {
   });
 
   it("says a call parked on you waits on you, in the attention tone, and keeps unknown tool names private", () => {
-    expect(answeringStep(steps(parked("read", "r1", "readProjectSource")))).toEqual({ text: "waiting on you", tone: "text-attention", needsYou: true, state: "needs" });
+    expect(answeringStep(steps(parked("read", "r1", "readProjectSource")))).toEqual({ text: "waiting on you", tone: "text-text-2", needsYou: true, state: "needs" });
     expect(said(steps(call("x", "r1", "private-token", {}, "in_progress")))).toBe("using a tool");
   });
 
@@ -65,7 +65,9 @@ describe("the answering line's step", () => {
 
     act(() => show({ ...initial, lines: steps(parked("read", "r1", "readProjectSource")) }));
     expect(line()?.textContent).toBe("Lead · waiting on you…");
-    expect(line()?.className).toContain("text-attention");
+    // The highlighter is the fill behind the words, never their colour: yellow-green text is unreadable on Paper.
+    expect(line()?.className).toContain("bg-attention");
+    expect(line()?.className).toContain("text-attention-foreground");
     act(() => connect("lapsed"));
     expect(line()?.textContent).toBe("Lead is answering…");
     expect(line()?.className).toContain(STALE_CLASS);

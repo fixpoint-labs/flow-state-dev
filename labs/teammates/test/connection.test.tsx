@@ -32,6 +32,24 @@ const headerStatus = () => document.querySelector<HTMLElement>("[data-header-sta
 const rowStatus = (name: string) => document.querySelector<HTMLElement>(`[data-worker="${name}"] [data-status]`)!;
 
 describe("the server going away", () => {
+  it("draws the header's bot and its status pill in one state on a lost feed: idle, not a stale running", async () => {
+    const lab = scriptedServer({ speed: 0.05 });
+    render(<ScriptedProvider server={lab}><App /></ScriptedProvider>);
+    const box = await screen.findByLabelText("Message Lead", undefined, FIRST_DRAW);
+    const release = lab.holdNextTurn("teammates.chief-of-staff");
+    await act(async () => {
+      fireEvent.change(box, { target: { value: "Outline the post." } });
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    const bot = () => document.querySelector<HTMLElement>("[data-bot-figure]")!.dataset.state;
+    await waitFor(() => expect([headerStatus().dataset.state, bot()]).toEqual(["running", "running"]), { interval: 5 });
+
+    act(() => lab.setConnection("lapsed"));
+    expect([headerStatus().dataset.state, bot()]).toEqual(["idle", "idle"]);
+    expect(headerStatus().className).toContain(STALE);
+    act(() => release());
+  });
+
   it("shows the bar and greys status only once a retry has failed, and clears both when the feed is live again", async () => {
     const lab = scriptedServer({ speed: 0.05 });
     render(<ScriptedProvider server={lab}><App /></ScriptedProvider>);

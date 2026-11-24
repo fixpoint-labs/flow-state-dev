@@ -34,7 +34,7 @@ const status = (over: Partial<StatusInputs>) => statusOf("writer", inputs(over),
 
 describe("the status line puts what needs you first", () => {
   it("an approval you haven't answered, even while the teammate is answering", () => {
-    expect(status({ lines: [approval()], activity: { running: true, lastActiveAt: NOW } as StatusInputs["activity"] })).toEqual({ text: "Needs your OK: Publish the draft?", tone: "text-attention", needsYou: true, state: "needs" });
+    expect(status({ lines: [approval()], activity: { running: true, lastActiveAt: NOW } as StatusInputs["activity"] })).toEqual({ text: "Needs your OK: Publish the draft?", tone: "text-text-2", needsYou: true, state: "needs" });
     // Answered, it needs nothing.
     expect(status({ lines: [approval("approved")] }).needsYou).toBe(false);
   });

@@ -190,10 +190,12 @@ export function Conversation({
   const markAt = mark ? lines.findIndex((line) => line.id === mark.firstVerbatimLineId) : -1;
   // The first drawn line of each day, and its day's label.
   const days = useMemo(() => dayBreaks(drawn), [drawn]);
+  // A lost feed may be out of date: the bot and the pill both drop to idle, the words stay, dimmed.
+  const shown = stale ? "idle" : status.state;
   return (
     <main aria-label="Conversation" className="flex h-full min-h-0 min-w-0 flex-col">
       <header className="flex items-start gap-4 border-b border-border px-6 pt-4 pb-3">
-        <BotFigure look={lookOf(worker.id)} state={stale ? "idle" : status.state} />
+        <BotFigure look={lookOf(worker.id)} state={shown} />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex min-w-0 items-center gap-2.5">
             <h1 className="truncate text-lg leading-7 font-semibold">{displayName(worker)}</h1>
@@ -201,12 +203,12 @@ export function Conversation({
             {(
               <span
                 hidden={status.text === ""}
-                className={cn("inline-flex min-w-0 shrink items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", PILL[status.state], stale && STALE_CLASS)}
+                className={cn("inline-flex min-w-0 shrink items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", PILL[shown], stale && STALE_CLASS)}
                 data-header-status
-                data-state={status.state}
+                data-state={shown}
                 title={status.text}
               >
-                <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", DOT[status.state])} />
+                <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", DOT[shown])} />
                 <span className="truncate">{status.text}</span>
               </span>
             )}
@@ -354,7 +356,7 @@ export function Conversation({
               </Fragment>
             ))}
             {answering ? (
-              <div role="status" data-chat-activity className={cn("w-fit rounded-lg border border-border bg-card px-3 py-2 text-xs", step?.tone ?? "text-muted-foreground", stale && STALE_CLASS)}>
+              <div role="status" data-chat-activity className={cn("w-fit rounded-lg border px-3 py-2 text-xs", step?.needsYou && !stale ? "border-transparent bg-attention text-attention-foreground" : cn("border-border bg-card", step?.tone ?? "text-muted-foreground"), stale && STALE_CLASS)}>
                 {step === undefined ? `${displayName(worker)} is answering…` : `${displayName(worker)} · ${step.text}…`}
               </div>
             ) : null}
