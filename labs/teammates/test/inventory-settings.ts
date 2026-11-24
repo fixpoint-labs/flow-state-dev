@@ -16,7 +16,8 @@ export const teammates: AppInventory = {
   readModel: ["src/app/"],
   /**
    * The types the screen computes itself, by the module that exports them:
-   * where you are (`Address`), a teammate's look, what the screen works out
+   * where you are (`Address`), a teammate's look and its bot's state, the
+   * page's theme, what the screen works out
    * from several reads (its status line, what it needs from you, what it
    * alerts on, a task's word), and a conversation drawn from its stored
    * items. A type that left the allowlist for this list names its reason
@@ -38,8 +39,9 @@ export const teammates: AppInventory = {
       { name: "AppConnection", reason: "The page's own base path and fetch, which `fsdev dev` serves it with, for reading a line's files outside the client; no server read." },
     ],
     "src/lib/attention.ts": ["Alert", "TeammateAttention"],
-    "src/lib/looks.ts": ["TeammateColor", "Look"],
+    "src/lib/looks.ts": ["TeammateColor", "BotFace", "BotStatus", "Look"],
     "src/lib/status.ts": ["StatusInputs", "Status", "Need"],
     "src/lib/task-presentation.ts": ["TaskPresentation"],
+    "src/lib/theme.ts": ["Theme"],
   },
 };
