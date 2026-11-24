@@ -148,6 +148,21 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     }
   };
 
+  // BP-030.
+  /** The settings `flow` retired: a stored row reads without them, and a write naming one is refused. */
+  const retiredOn = (flow: string): readonly string[] => installation.workerFlows()[flow]?.retiredSettings ?? [];
+  const refuseRetired = (id: string, flow: string, settings: Record<string, unknown> | undefined): void => {
+    const named = Object.keys(settings ?? {}).filter((key) => retiredOn(flow).includes(key));
+    if (named.length > 0) {
+      throw new Error(
+        `Worker "${id}" sets ${named.map((key) => `"${key}"`).join(", ")}, which flow "${flow}" no longer takes. Leave it out. Nothing was written.`
+      );
+    }
+  };
+  /** `settings` without the ones `flow` retired. */
+  const withoutRetired = (flow: string, settings: Record<string, unknown>): Record<string, unknown> =>
+    Object.fromEntries(Object.entries(settings).filter(([key]) => !retiredOn(flow).includes(key)));
+
   const check = (id: string, row: WorkerResourceState): void => {
     const problems = installation.configurationProblems(id, row);
     if (problems.length > 0) {
@@ -189,6 +204,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
         skills: input.skills ?? [],
         settings: input.settings ?? {}
       });
+      refuseRetired(input.id, row.flow, input.settings);
       check(input.id, row);
       await write(ctx, input.id, row);
       return { id: input.id, flow: row.flow };
@@ -234,7 +250,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
       if (fileFlow !== undefined && input.flow !== undefined && input.flow !== fileFlow) {
         throw new Error(`"${input.id}" runs on "${fileFlow}", as its file declares, so its flow can't be changed. Nothing was written.`);
       }
-      const next: WorkerResourceState = {
+      const edited: WorkerResourceState = {
         ...current,
         ...(input.name !== undefined ? { name: textOrNull(input.name) } : {}),
         ...(input.flow !== undefined ? { flow: input.flow } : {}),
@@ -244,6 +260,9 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
         ...(input.settings !== undefined ? { settings: input.settings } : {}),
         ...(input.settingsPatch !== undefined ? { settings: { ...current.settings, ...input.settingsPatch } } : {})
       };
+      refuseRetired(input.id, edited.flow, { ...input.settings, ...input.settingsPatch });
+      // A setting stored before its flow retired it goes with this write.
+      const next: WorkerResourceState = { ...edited, settings: withoutRetired(edited.flow, edited.settings) };
       check(input.id, next);
       await roster(ctx).create(input.id, next as unknown as JsonObject, {
         replace: true

@@ -140,7 +140,7 @@ export const harnesses = defineKit({
     const readiness = readinessOf(filled);
     return {
       [workforce.slots.workerFlows]: { [CODER_FLOW]: coderWorkerFlow(config, filled, (id) => readiness.refusal(id)) },
-      [workforce.slots.uses]: [harnessReadinessCapability(readiness)],
+      [workforce.slots.uses]: [harnessReadinessCapability(readiness, config.defaultHarness)],
       // FIX-2725 D2: built on workforce's installation, so the coding board
       // reads the roster for a task's `harness:`.
       [workforce.slots.flows]: {

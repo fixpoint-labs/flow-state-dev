@@ -43,6 +43,23 @@ It comes down to run settings: on the shared flow they arrive once; a fork needs
 <a name="d2"></a>
 ## D2 · With no coder picked, outside a coding run, the server puts a coding task on the default coder
 
+> **Moved to FIX-2878** (owner's call, 2026-11-24, on [#5633](https://github.com/fixpoint-labs/flow-state-dev/pull/5633)).
+> This issue ships no server-written assignee. FIX-2878 makes the decision once, at FIX-2894's
+> filing check, which is now on `main`. Its [Taken over from FIX-2877](../FIX-2878/DECISIONS.md#taken-over-from-fix-2877)
+> must-do names every path.
+>
+> **Why it moved:**
+>
+> - **Eight paths.** Built at the board's writes, the rewrite had to cover eight filing paths:
+>   create, batch, `updateTask`/`patchSettings`, `setAssignee`, the sole-delegate fill,
+>   `withTarget`, routed and judged. Review kept finding a path around each version of the gate.
+> - **The round cap.** #5633 neared the twelve-round PR-feedback cap.
+> - **A single gate.** FIX-2894's filing check is the one place every filing passes, so the
+>   decision belongs there, beside FIX-2878's filler.
+>
+> **Here, until then:** Lead starts coding work on the default coder's agent, which the kit's
+> context names, unless the user names another. The decision below is FIX-2878's to build.
+
 | | |
 |---|---|
 | **Instead of** | Lead choosing the worker: today its prompt names `teammates.cursor` and the client keeps a copy; the first draft had Lead read the default from the kit's context and map it to a worker by the roster's `harness`. Also weighed: a fourth coding worker with no `harness:`, which would run on the default |
