@@ -330,6 +330,16 @@ export interface AssigneeRoster {
    * {@link soleAssignee}, or refuses it ({@link ownerForUnassigned}).
    */
   readonly claimsUnassigned?: boolean;
+  // FIX-2877 D2.
+  /**
+   * The worker a model's task naming `assignee` is filed for, when the board
+   * decides that rather than the model; the same `assignee` otherwise. Asked
+   * after the assignee is checked and before the same-work check, so that
+   * check reads the worker the row will have. Never asked for an action, a
+   * caller's own move. May throw `TaskWriteRefusedError` to refuse the filing.
+   * Optional: absent, the model's assignee stands.
+   */
+  assigneeFor?(assignee: string): Promise<string>;
 }
 
 // FIX-1794 T1.
@@ -1360,11 +1370,31 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     // "board full" to a caller whose real problem is the assignee, which it
     // would then still hit after fixing it. `checkAssignee` is a pure
     // pre-flight, so running it first costs nothing.
+    // The roster this call read, kept for the server-assignee decision below: one read per call.
+    let read: AssigneeRoster | undefined;
     const bad =
       assignee === undefined
         ? undefined
-        : await decideOnce(ctx, memoize, "assignee", async () => checkAssignee(assignee, await rosterFor(roster, ctx)) ?? null);
+        : await decideOnce(ctx, memoize, "assignee", async () => checkAssignee(assignee, (read = await rosterFor(roster, ctx))) ?? null);
     if (bad) return bad;
+    // A model's task goes to the worker the board decides for it, when it
+    // decides one (FIX-2877 D2): before the same-work check below, so that
+    // check reads the row's worker. Decided once per call, so a replay files
+    // where the first call did. An action is a caller's own pick.
+    if (assignee !== undefined && followUp === undefined && !claimless) {
+      const named = assignee;
+      const decided = await decideOnce(ctx, memoize, "server-assignee", async () => {
+        const source = read ?? (await rosterFor(roster, ctx));
+        try {
+          return { assignee: source?.assigneeFor === undefined ? named : await source.assigneeFor(named) };
+        } catch (err) {
+          if (err instanceof TaskWriteRefusedError) return refusedError(err);
+          throw err;
+        }
+      });
+      if ("error" in decided) return decided;
+      assignee = decided.assignee;
+    }
     // A model's task with no assignee is filed only where something will take
     // it (FIX-2735): decided once per call, since the roster can change
     // between a call and its replay. An action is a person's or an app's

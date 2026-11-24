@@ -213,7 +213,7 @@ export function codingDrainBudgetMs(
  * roster as it stands, never from anything the model wrote. With
  * neither, the filing is refused, saying why.
  */
-export function defaultCoderAssignee(defaultHarness: string): NoPickAssignee {
+function defaultCoderAssignee(defaultHarness: string): NoPickAssignee {
   return async (ctx, installation) => {
     const coders = (await readRosterEntries(ctx, installation)).filter((entry) => entry.flow === CODER_FLOW);
     const harnessOf = (entry: (typeof coders)[number]) => (typeof entry.settings.harness === "string" ? entry.settings.harness : undefined);

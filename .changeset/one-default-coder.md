@@ -1,6 +1,7 @@
 ---
 "@flow-state-dev/harness-manager": minor
 "@flow-state-dev/workforce": minor
+"@flow-state-dev/orchestration": minor
 ---
 
 The harness kit's `defaultHarness` now picks the coder a coordinator's coding task runs on (FIX-2877).
@@ -9,5 +10,6 @@ The harness kit's `defaultHarness` now picks the coder a coordinator's coding ta
 - **The default in context.** The readiness rows the kit puts in a coordinator's context now name the default coder under them, so the coordinator can say which coder took a task. `harnessReadinessCapability(readiness, defaultHarness?)` takes it as a second argument.
 - **Workforce: `noPickAssignee`.** A worker flow registration (`workerFlow(build, { noPickAssignee })`, or the `{ flow, noPickAssignee }` entry) can name who takes a task a model files for one of its workers from outside the flow's work. The harness kit's `coder` flow uses it.
 - **Workforce: `retiredSettings`.** A worker flow registration, and the kit's `agent` config, can retire a setting: a worker stored with it reads without it and keeps running, and a hire or an edit that names it is refused by name, with nothing written. An edit of such a worker drops it from what is stored.
+- **Orchestration: `AssigneeRoster.assigneeFor`.** A roster can name the worker a model's task goes to in place of the one it named. `createTask` asks it after the assignee check and before the same-work check, so a duplicate is caught on the worker the row will have. It is never asked for an action.
 
 Docs: packages/harness-manager/README.md (the harness kit's `defaultHarness`, and the readiness capability's new argument) and packages/workforce/README.md (the two registration options)

@@ -284,7 +284,7 @@ export const READINESS_GUIDANCE =
  * coder a coding task filed from a conversation runs on, whichever coding
  * worker it names, so the coordinator can say which one took it.
  */
-export function defaultCoderLine(label: string): string {
+function defaultCoderLine(label: string): string {
   return `${label} is this app's default coder: a coding task you start here runs on ${label}, whichever coding worker you name. Say so when you start one.`;
 }
 

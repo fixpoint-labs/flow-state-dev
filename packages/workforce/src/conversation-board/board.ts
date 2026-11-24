@@ -391,9 +391,14 @@ function ownProjectIn(input: unknown, own: ProjectAddressRef | undefined): unkno
   return { ...input, project: own };
 }
 
-/** A roster over the session's task-taking delegates, naming why each other one can't take a task. */
-function rosterOf(delegates: TaskDelegates): AssigneeRoster {
+/**
+ * A roster over the session's task-taking delegates, naming why each other one
+ * can't take a task. `assigneeFor` is the server's assignee for a model's
+ * filing, when the board decides one.
+ */
+function rosterOf(delegates: TaskDelegates, assigneeFor?: (assignee: string) => Promise<string>): AssigneeRoster {
   return {
+    ...(assigneeFor === undefined ? {} : { assigneeFor }),
     has: (name) => delegates.available.has(name),
     describe: () => {
       const available = [...delegates.available.keys()];
@@ -418,6 +423,8 @@ export function withSelf(roster: AssigneeRoster, self: string): AssigneeRoster {
     has: (name) => name === self || roster.has(name),
     describe: () => `${roster.describe()}. Yourself ("${self}"): a step you work next, in this request`,
     ...(roster.soleAssignee === undefined ? {} : { soleAssignee: roster.soleAssignee }),
+    // The worker itself is never rewritten: its filing is its own step.
+    ...(roster.assigneeFor === undefined ? {} : { assigneeFor: async (name: string) => (name === self ? name : roster.assigneeFor!(name)) }),
     // What the board does with a task naming nobody is the board's, so a turn keeps it (FIX-2735).
     ...(roster.claimsUnassigned === undefined ? {} : { claimsUnassigned: roster.claimsUnassigned })
   };
@@ -954,8 +961,25 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    */
   const reach = (ctx: BlockContext): Promise<TaskDelegates> => options.delegates(ctx);
 
+  // FIX-2877 D2; BP-031.
+  /**
+   * The worker a model's filing naming `assignee` goes to: the one the
+   * assignee's flow names as its no-pick assignee, when the filing is made
+   * from outside that flow's work, else `assignee`. Outside is a session that
+   * doesn't run on the flow and wasn't opened by a task a session on it filed,
+   * both read from server-written state. The task tools ask it before their
+   * same-work check, so that check reads the worker the row will have.
+   */
+  const serverAssignee = async (ctx: BlockContext, assignee: string): Promise<string> => {
+    if (options.noPickAssignee === undefined) return assignee;
+    const flow = (await reach(ctx)).available.get(assignee);
+    if (flow === undefined || flow === options.flowKind) return assignee;
+    if (((ctx.session.state ?? {}) as Record<string, unknown>)[FILING_FLOW_STATE_KEY] === flow) return assignee;
+    return (await options.noPickAssignee(flow, ctx)) ?? assignee;
+  };
+
   /** The roster the task tools and actions check an assignee against: the delegates. */
-  const roster: AssigneeRosterSource = async (ctx) => rosterOf(await reach(ctx));
+  const roster: AssigneeRosterSource = async (ctx) => rosterOf(await reach(ctx), (assignee) => serverAssignee(ctx, assignee));
 
   // FIX-1802 D1.
   /**
@@ -1312,21 +1336,16 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         `"${assignee}" works in a project's files, and this conversation has no project for it to work in. Nothing was filed. ${SET_THE_FILERS_PROJECT}`
       );
     };
-    // FIX-2877 D2; BP-031.
+    // FIX-2877 D2.
     /**
-     * A model's filing for a worker whose flow decides its no-pick assignee,
-     * made from outside that flow's work, goes to the worker the flow names,
-     * whatever the model wrote. Outside is a session that doesn't run on the
-     * flow and wasn't opened by a task a session on it filed: both read from
-     * server-written state. A follow-up stays with its root's worker.
+     * A batch a model files goes to the server's assignee for each row
+     * (`serverAssignee`). A single filing has it already: the task tools ask
+     * before their same-work check. A follow-up stays with its root's worker.
      */
     const withServerAssignee = async <T extends TaskInit>(init: T): Promise<T> => {
-      if (!byTurn || options.noPickAssignee === undefined || init.assignee === undefined || init.followUpOf !== undefined) return init;
-      const flow = (await reach(ctx)).available.get(init.assignee);
-      if (flow === undefined || flow === options.flowKind) return init;
-      if (((ctx.session.state ?? {}) as Record<string, unknown>)[FILING_FLOW_STATE_KEY] === flow) return init;
-      const assignee = await options.noPickAssignee(flow, ctx);
-      return assignee === undefined ? init : { ...init, assignee };
+      if (!byTurn || init.assignee === undefined || init.followUpOf !== undefined) return init;
+      const assignee = await serverAssignee(ctx, init.assignee);
+      return assignee === init.assignee ? init : { ...init, assignee };
     };
     /** The conversation's only task-taking delegate, which a row filed with no assignee goes to; none with none or several. */
     const soleDelegate = async (): Promise<string | undefined> => {
@@ -1406,7 +1425,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const createTask: TaskCollectionRef["createTask"] = async (filing) => {
       // A caller never writes the session a target resolved to.
       const { targetSessionId: _resolved, ...asked } = filing;
-      const init = heldAsTurnSays(ctx, await withServerAssignee(asked));
+      // The task tools asked for its server assignee before their same-work check.
+      const init = heldAsTurnSays(ctx, asked);
       checkFiling(init);
       // On a turn routing a message, a filing whose result goes to the
       // conversation is a routed task: its layer attaches the message.

@@ -50,6 +50,27 @@ describe("a model's task for a worker whose flow names its no-pick assignee", ()
     }
   });
 
+  it("checks for the same open work on the worker it goes to, not the one the model named", async () => {
+    // The same work twice, both naming eng.tasker; both go to eng.writer, so the second is the first again.
+    const judgment = mockGenerator({
+      script: [
+        { toolCalls: [{ toolCallId: "c1", toolName: "createTask", args: { goal: "Write the notes", assignee: "eng.tasker", held: true } }] },
+        { toolCalls: [{ toolCallId: "c2", toolName: "createTask", args: { goal: "Write the notes", assignee: "eng.tasker", held: true } }] },
+        { text: "Filed it." }
+      ]
+    });
+    const host = bootBoardHost({ judgment, registration: { tasker: { noPickAssignee: async () => "eng.writer" } } });
+    try {
+      const conv = await ask(host, "pm");
+      expect((await host.rows("alice")).map((task) => [task.goal, task.assignee])).toEqual([["Write the notes", "eng.writer"]]);
+      const items = (await host.requestsOf(conv)).flatMap((request) => (request as { items?: Array<{ type: string; output?: { ok?: boolean; error?: string } }> }).items ?? []);
+      const answers = items.filter((item) => item.type === "tool_output").map((item) => item.output);
+      expect(answers.find((answer) => answer?.ok === false)?.error).toMatch(/^already_open: .* is this same work for eng\.writer/);
+    } finally {
+      await host.dispose();
+    }
+  });
+
   it("keeps the model's worker when the flow names none (control: the rule, not the model, moved it)", async () => {
     const host = bootBoardHost({ judgment: filing("eng.tasker") });
     try {

@@ -7,11 +7,12 @@
  * real model, the coders on the scripted harness (`GOAL_HARNESS=stub`). See
  * goal.md for the contract.
  *
- * - *default*: for each default, the stored task's assignee is the worker
- *   whose `harness:` is the default, and its run session's coder answers that
- *   harness.
- * - *planted*: on `codex`, an ask whose message and README say
- *   `Coding harness: Cursor` still lands on the Codex worker.
+ * - *named*: an ask that tells Lead to file on `teammates.cursor`, which Lead
+ *   does in its own tool call (checked, so the input holds), still lands on
+ *   the default's worker and runs on the default. On `codex` the ask and the
+ *   README also say `Coding harness: Cursor` (*planted*).
+ * - *default*: for each default, a held-out ask's tasks are on the worker
+ *   whose `harness:` is the default, and the run's coder answers that harness.
  * - *board*: a task a person files on the Cursor worker through the board stays
  *   there, and runs on Cursor.
  * - *no-own-harness*: a hire that sets a `harness` is refused, and nothing joins
@@ -19,7 +20,7 @@
  *
  * Control (same command): `GOAL_CONTROL=model-assignee` patches the server's
  * no-pick assignee out of the harness kit, so Lead's own assignee stands:
- * *default* and *planted* must FAIL.
+ * *named* must FAIL on every run, since Lead itself names `teammates.cursor`.
  *
  * Run: pnpm tsx goals/teammates-lab/one-default-picks-the-coder/run.mts
  */
@@ -41,14 +42,15 @@ import {
   stopProcessGroup,
   type ModulePatch,
 } from "../../lib/index.mts";
-import { sleep, startTeammates, type Fsd } from "../lab.mts";
+import { itemsOf, sleep, startTeammates, type Fsd } from "../lab.mts";
 
 const fixture = loadFixture<{
   lead: string;
   coders: Record<string, string>;
   defaults: string[];
   asks: string[];
-  planted: { ask: string; readme: string };
+  named: string;
+  planted: { line: string; readme: string };
   board: { title: string; goal: string };
 }>(import.meta.url);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -151,9 +153,26 @@ await runGoal(async (failures, tell) => {
          * scripted run changes no README, so Lead may follow up with more
          * tasks (its prompt says to course-correct): each one is graded.
          */
-        const grade = async (signal: string, line: string) => {
+        const grade = async (signal: string, line: string, modelNames?: string) => {
           const before = new Set((await rows(me, flow, session.id)).map((r) => r.id));
+          const seen = (await itemsOf(me, session.id)).length;
           await say(me, flow, session.id, line);
+          // The input holds only if Lead's own tool call named that worker: the store is graded against it.
+          let named = "";
+          if (modelNames !== undefined) {
+            const calls = (await itemsOf(me, session.id))
+              .slice(seen)
+              .filter((item) => item.type === "tool_output" && item.blockName === "createTask")
+              .map((item) => {
+                try {
+                  return String(JSON.parse((item as { toolCall?: { arguments?: string } }).toolCall?.arguments ?? "{}").assignee ?? "");
+                } catch {
+                  return "";
+                }
+              });
+            if (calls[0] !== modelNames) fail(`${signal}: input didn't hold: Lead's first createTask named ${JSON.stringify(calls[0] ?? null)}, not ${modelNames}`);
+            named = `, Lead named ${calls[0] ?? "none"}`;
+          }
           // A coding task is one on a coding worker: Lead may also ask researcher to look first.
           const coders = new Set(Object.values(fixture.coders));
           const filed = (await rows(me, flow, session.id)).filter((r) => !before.has(r.id) && r.assignee !== undefined && coders.has(r.assignee));
@@ -165,11 +184,15 @@ await runGoal(async (failures, tell) => {
           if (off.length > 0) fail(`${signal}: ${off.length} of ${filed.length} tasks are not on ${expected}: ${JSON.stringify(off.map((r) => [r.title, r.assignee]))}`);
           const ran = await runHarness(me, flow, session.id, filed[0]!.id);
           if (ran !== harness) fail(`${signal}: the first task's run resolved harness ${ran}, not ${harness}`);
-          return `${signal} ${filed.length - off.length} of ${filed.length} on ${expected}, first ran ${ran}`;
+          return `${signal} ${filed.length - off.length} of ${filed.length} on ${expected}, first ran ${ran}${named}`;
         };
 
-        // The planted ask first, on a conversation with no earlier coding task to follow up instead.
-        const read: string[] = harness === "codex" ? [await grade("planted", fixture.planted.ask)] : [];
+        // The named ask first, on a conversation with no earlier coding task to follow up instead.
+        const read: string[] = [
+          harness === "codex"
+            ? await grade("named+planted", `${fixture.named}${fixture.planted.line}`, fixture.coders.cursor)
+            : await grade("named", fixture.named, fixture.coders.cursor),
+        ];
         read.push(await grade("default", fixture.asks[randomInt(0, fixture.asks.length)]!));
 
         // *board* and *no-own-harness*: once per default, on its first run.
