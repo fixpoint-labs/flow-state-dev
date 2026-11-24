@@ -7,13 +7,17 @@
  * its flow's schema the same way and shows on the roster at once. What the
  * tool adds in front of that write:
  *
+ * - **Only on the user's own turn.** A turn a delivered event, a worker's
+ *   message, a routine or a task started can't hire: text read there could
+ *   ask for one. The same mark gates the standing-rule tools.
  * - **Checks before asking.** The id is new (not a standard worker's, not
  *   already on the roster), the model is one of the app's listed models and
  *   can run on this server's keys, the tools are names the worker's flow
  *   knows, and nothing given looks like a credential. A refusal says why and
  *   asks nothing.
- * - **The user's approval.** A stock `user_approval` names the id, the role,
- *   the model and the tools; reject throws out of the tool before the write.
+ * - **The user's approval.** A stock `user_approval` shows the whole hire: the
+ *   id, the role, the model, the tools and the instructions it will keep;
+ *   reject throws out of the tool before the write.
  *   Without durable execution there is nobody to ask, so it refuses.
  *
  * A model reaches a provider through the key the server already holds in its
@@ -27,11 +31,12 @@
  *   hireWorkers: [tool]
  * ```
  */
-import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
+import { containsSecret, defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { describeModelRoute } from "@flow-state-dev/core/models";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { AGENT_FLOW } from "../agent-worker-flow";
+import { AGENT_DEFAULT_MODEL, AGENT_FLOW } from "../agent-worker-flow";
+import { isUserTurn } from "../standing-rules/user-turn";
 import { createWorkerHireBlocks } from "./hire-blocks";
 import { problemsClause, type WorkerInstallation } from "./installation";
 import { WORKERS_RESOURCE } from "./keys";
@@ -44,7 +49,11 @@ const HIRE_WORKER_TOOL = "hireWorker";
 
 /** What {@link hireWorkersCapability} is built with: the kit's `hire` config. */
 export interface HireWorkersOptions {
-  /** The models a hired worker may run on, as model strings (`openai/gpt-6-luna`, `openrouter:nvidia/…`). Omitted: the agent flow's model alone. */
+  /**
+   * The models a hired worker may run on, as model strings (`openai/gpt-6-luna`, `openrouter:nvidia/…`).
+   * Omitted: the agent flow's model alone. Each must also have a key or gateway in the environment
+   * (`describeModelRoute`): a key the app hands its model resolver in code isn't seen here.
+   */
   models?: readonly string[];
   /** The catalog tools a hire gets when the call names none. Omitted: none. */
   tools?: readonly string[];
@@ -61,7 +70,7 @@ const hireWorkerInputSchema = z
       .describe("The new teammate's id, its address for messages and tasks: lowercase, such as `analyst`."),
     name: z.string().min(1).max(60).optional().describe("The name the user reads it by. Omitted, its id."),
     description: z.string().min(1).max(200).describe("One line on what it does, which tells the team when to ask it."),
-    instructions: z.string().min(1).max(20_000).describe("Its guidance: how it works and what it answers."),
+    instructions: z.string().min(1).max(4_000).describe("Its guidance: how it works and what it answers. The user reads all of it before approving."),
     provider: z.string().min(1).describe("The model's provider or route, such as `openai` or `openrouter`."),
     model: z.string().min(1).describe("The model id at that provider, such as `gpt-6-luna`."),
     tools: z
@@ -91,16 +100,16 @@ const answerSchema = z.union([
   z.object({ hired: z.literal(false), reason: z.string() })
 ]);
 
-/** Credential shapes the common providers issue. A field carrying one is refused, not echoed. */
-const KEY_SHAPED = /\b(?:sk|pk|rk|gsk|xai|nvapi|ghp|gho|github_pat)[-_][A-Za-z0-9_-]{12,}|\bAIza[0-9A-Za-z_-]{20,}/;
-
 /** The listed model `provider` and `model` name: `provider/model`, else the named route `provider:model`. */
 const listedModel = (models: readonly string[], provider: string, model: string): string | undefined =>
   [`${provider}/${model}`, `${provider}:${model}`].find((candidate) => models.includes(candidate));
 
-/** `hireWorker` over `installation`, as a capability with one preset, `tool`. */
-export function hireWorkersCapability(installation: WorkerInstallation, options: HireWorkersOptions = {}) {
-  const models = options.models ?? [];
+/**
+ * `hireWorker` over `installation`, as a capability with one preset, `tool`.
+ * `agentModel` is the agent flow's model, the default model list.
+ */
+export function hireWorkersCapability(installation: WorkerInstallation, options: HireWorkersOptions = {}, agentModel: string = AGENT_DEFAULT_MODEL) {
+  const models = options.models ?? [agentModel];
   const defaultTools = [...(options.tools ?? [])];
   const { hire } = createWorkerHireBlocks(installation);
 
@@ -111,11 +120,14 @@ export function hireWorkersCapability(installation: WorkerInstallation, options:
     resources: { ...installation.resources },
     execute: async (input: HireWorkerInput, ctx: BlockContext) => {
       const refuse = (reason: string) => ({ hired: false as const, reason: `${reason} Nothing was hired.` });
-      if (Object.values(input).some((value) => KEY_SHAPED.test(Array.isArray(value) ? value.join(" ") : String(value)))) {
-        return refuse("Something in the hire looks like an API key. Never pass a key: the server reads it from its environment variable, such as NVIDIA_API_KEY.");
+      if (!isUserTurn(ctx)) return refuse("A teammate is hired only on a turn the user's own message started; this one can't hire.");
+      if (Object.values(input).some((value) => containsSecret(Array.isArray(value) ? value.join(" ") : String(value)))) {
+        return refuse("Something in the hire looks like an API key. Never pass a key: the server reads it from its environment variable, such as <PROVIDER>_API_KEY.");
       }
       if (ctx.suspend === undefined) return refuse("This server can't ask the user to confirm, and a hire needs their yes.");
-      const standard = installation.standardWorkers().find((worker) => worker.id === input.id || worker.id.endsWith(`.${input.id}`));
+      // Looser than the roster's own check on purpose: a bare `researcher` beside `teammates.researcher`
+      // would leave the model two teammates it addresses by the same name.
+      const standard = installation.standardWorker(input.id) ?? installation.standardWorkers().find((worker) => worker.id.endsWith(`.${input.id}`));
       if (standard !== undefined) return refuse(`"${input.id}" is taken: ${standard.id} is already on the team. Pick another id.`);
       const roster = (ctx.resources as Record<string, unknown>)[WORKERS_RESOURCE] as ResourceCollectionRef;
       if ((await roster.getOptional(input.id)) !== undefined) return refuse(`"${input.id}" is already on the roster. Pick another id.`);
@@ -136,7 +148,7 @@ export function hireWorkersCapability(installation: WorkerInstallation, options:
     }
   });
 
-  // The user approves the exact hire. Reject throws out of the tool before the write.
+  // The user approves the whole hire, instructions included. Reject throws out of the tool before the write.
   const approve = handler({
     name: "workforce-hire-worker-approve",
     inputSchema: checkedSchema,
@@ -144,27 +156,20 @@ export function hireWorkersCapability(installation: WorkerInstallation, options:
     execute: async (hiring: Checked, ctx: BlockContext) => {
       await ctx.suspend!({
         reason: "user_approval",
-        message: `Hire ${hiring.name ?? hiring.id} (${hiring.id}): ${hiring.description} It runs on ${hiring.model}, with ${hiring.tools.length === 0 ? "no tools" : `tools ${hiring.tools.join(", ")}`}.`,
-        data: { id: hiring.id, model: hiring.model, tools: hiring.tools },
+        message:
+          `Hire ${hiring.name ?? hiring.id} (${hiring.id}): ${hiring.description} It runs on ${hiring.model}, with ${hiring.tools.length === 0 ? "no tools" : `tools ${hiring.tools.join(", ")}`}.` +
+          `\n\nIts instructions:\n${hiring.instructions}`,
+        data: { id: hiring.id, model: hiring.model, tools: hiring.tools, instructions: hiring.instructions },
         allow: ["approve", "reject"]
       });
     }
   });
 
-  const hired = handler({
-    name: "workforce-hire-worker-hired",
-    inputSchema: z.object({ id: z.string(), flow: z.string() }),
-    outputSchema: answerSchema,
-    execute: async ({ id }, ctx: BlockContext) => {
-      const hiring = checkedSchema.parse(ctx.sequencer?.input);
-      return { hired: true as const, id, model: hiring.model, tools: hiring.tools };
-    }
-  });
-
-  // Stateful, so `hired`'s `ctx.sequencer.input` is the checked hire.
-  const approved = sequencer({ name: "workforce-hire-worker-approved", inputSchema: checkedSchema, outputSchema: answerSchema, stateSchema: z.object({}) })
+  // The roster's `hire` is a tap, so the checked hire carries through to the answer. An id taken
+  // while the user decided makes the roster's write throw, writing nothing.
+  const approved = sequencer({ name: "workforce-hire-worker-approved", inputSchema: checkedSchema, outputSchema: answerSchema })
     .tap(approve)
-    .step(
+    .tap(
       (hiring: Checked) => ({
         id: hiring.id,
         ...(hiring.name === undefined ? {} : { name: hiring.name }),
@@ -174,7 +179,7 @@ export function hireWorkersCapability(installation: WorkerInstallation, options:
       }),
       hire
     )
-    .step(hired);
+    .map((hiring: Checked) => ({ hired: true as const, id: hiring.id, model: hiring.model, tools: hiring.tools }));
 
   const tool = sequencer({
     name: HIRE_WORKER_TOOL,

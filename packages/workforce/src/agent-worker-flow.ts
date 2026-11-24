@@ -131,7 +131,7 @@ export const AGENT_FLOW = "agent";
  * model. `createSkillActivator` establishes the same form with
  * `"intent/utility"`.
  */
-const DEFAULT_MODEL = "intent/chat";
+export const AGENT_DEFAULT_MODEL = "intent/chat";
 
 /**
  * How many model steps a worker's turn may take when the app sets no
@@ -273,7 +273,7 @@ export interface AgentWorkerFlowOptions {
   catalog?: ToolCatalog;
   /** Skills seeded into the library every worker on this flow reads. */
   skills?: InitialSkill[];
-  /** Default model for workers that name none. Defaults to {@link DEFAULT_MODEL}. */
+  /** Default model for workers that name none. Defaults to {@link AGENT_DEFAULT_MODEL}. */
   model?: string;
   /**
    * The app's own settings a worker on this flow may set in its file, beside
@@ -465,7 +465,7 @@ function settingsSchema(
   const appSkillNames = new Set((options.skills ?? []).map((skill) => skill.name));
 
   const builtIn = workerConfigSchema().extend({
-    model: z.string().default(options.model ?? DEFAULT_MODEL),
+    model: z.string().default(options.model ?? AGENT_DEFAULT_MODEL),
 
     /**
      * Tools this worker may use, by catalog key — the whole grant when the

@@ -232,10 +232,7 @@ function installWorkforce(
       ...modules.capabilities,
       consultSessionsCapability(installation, config.consult ?? {}),
       createRoutinesCapability(installation),
-      hireWorkersCapability(installation, {
-        ...(typeof config.agent?.model === "string" ? { models: [config.agent.model] } : {}),
-        ...config.hire,
-      }),
+      hireWorkersCapability(installation, config.hire, config.agent?.model),
     ] as CapabilityRef[];
 
   const builtIn: Record<string, WorkerFlowEntry> = {};
