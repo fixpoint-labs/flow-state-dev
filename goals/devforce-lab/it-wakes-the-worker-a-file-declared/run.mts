@@ -620,14 +620,22 @@ await runGoal(async (failures) => {
       const filed = await missing.lab.file(fixture.coordinatorSeat, filing);
       if (filed.error === undefined) {
         note(`a filing for an unminted instance was accepted, wanted it refused`);
-      } else if (!filed.error.includes(`"${fixture.unknownSeat}"`) || !filed.error.includes("Nothing was filed")) {
-        note(`the refusal does not name the id it could not file for: ${filed.error}`);
+      } else {
+        // The code, not the sentence: any other refusal (`no_project`, a misfit)
+        // also names the id and ends "Nothing was filed".
+        if (filed.code !== "input_unchecked") {
+          note(`the filing was refused as "${filed.code}", wanted "input_unchecked" (an unreadable worker): ${filed.error}`);
+        }
+        if (!filed.error.includes(`"${fixture.unknownSeat}"`)) {
+          note(`the refusal does not name the id it could not file for: ${filed.error}`);
+        }
       }
       const drained = await missing.lab.drain(fixture.coordinatorSeat);
       if (drained.error !== undefined) note(`the drain after a refused filing failed: ${drained.error}`);
-      const row = await missing.lab.featureRow(fixture.row.issue);
-      if (row !== undefined) {
-        note(`a refused filing left row "${row.id}" on the board, status "${row.status}"`);
+      // The lab is fresh, so any row at all was written by this filing.
+      const rows = Object.values(await missing.lab.rows());
+      if (rows.length !== 0) {
+        note(`a refused filing left ${rows.length} row(s) on the board: ${JSON.stringify(rows.map((r) => [r.id, r.status]))}`);
       }
       if (missing.runs.length !== 0) {
         note(`a checkout was provisioned for a hand-off that could not be delivered`);

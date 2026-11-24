@@ -711,7 +711,7 @@ export interface Lab {
   file(
     workerId: string,
     input: { issue: string; goal: string; maxAttempts?: number; project?: { visibility: "shared" | "private"; id: string } },
-  ): Promise<{ output?: unknown; error?: string }>;
+  ): Promise<{ output?: unknown; error?: string; code?: string }>;
   /**
    * Run the EM worker's own session's board through its action, then wait
    * until no row on it is pending or in progress: a filing starts the board
@@ -1549,7 +1549,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     actionName: string,
     input: unknown,
     userId: string = LAB_USER_ID,
-  ): Promise<{ output?: unknown; error?: string }> => {
+  ): Promise<{ output?: unknown; error?: string; code?: string }> => {
     try {
       const result = (await runAction({
         flow,
@@ -1563,12 +1563,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       } as never)) as { output?: unknown; error?: unknown };
       return result.error === undefined
         ? { output: result.output }
-        : { error: messageOf(result.error) };
+        : refusalOf(result.error);
     } catch (error) {
       // A refusal the substrate throws rather than returns. Returned like any
       // other refusal, so a leg that expects one grades its wording instead of
       // taking the run down.
-      return { error: messageOf(error) };
+      return refusalOf(error);
     }
   };
 
@@ -1628,7 +1628,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     workerId: string,
     actionName: string,
     input: unknown,
-  ): Promise<{ output?: unknown; error?: string }> => {
+  ): Promise<{ output?: unknown; error?: string; code?: string }> => {
     const flow = copiesByWorker[workerId];
     if (flow === undefined) throw new Error(`no worker "${workerId}" is declared`);
     try {
@@ -1996,6 +1996,19 @@ function reporterHost(
       );
     },
   };
+}
+
+/**
+ * A failed action's message, and the refusal's own code when it carries one:
+ * a block's `TaskWriteRefusedError` arrives as the cause of the flow's error,
+ * so the code a leg grades is the cause's, not the wrapper's `execution_error`.
+ */
+function refusalOf(error: unknown): { error: string; code?: string } {
+  const cause = typeof error === "object" && error !== null ? (error as { cause?: unknown }).cause : undefined;
+  const code = [cause, error]
+    .map((at) => (typeof at === "object" && at !== null ? (at as { code?: unknown }).code : undefined))
+    .find((at): at is string => typeof at === "string");
+  return { error: messageOf(error), ...(code === undefined ? {} : { code }) };
 }
 
 function messageOf(error: unknown): string {
