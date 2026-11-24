@@ -715,21 +715,36 @@ export async function readRunRecord(
  * when that key is absent and the mode names a `formerName`, under the former
  * key. The segment it was found under is the run's from then on; nothing is
  * copied to the new key. Found under neither, it is a new run, keyed by `name`.
+ *
+ * `spelled` is the segment as the task itself spelled it, when that differs
+ * from `name` (its folded form). Before the key folded, that spelling was the
+ * key, so it is read after `name` and before the former key.
+ *
+ * Every key but `name` is this task's only: a record there that names another
+ * task (`taskId`) is another row's run, so it counts as absent and the task
+ * opens a new run under `name`. A record that names no task is read as the
+ * task's. Pass the reading task's id whenever it is known.
  */
 export async function readModeRunRecord(
   ctx: CollectionHoldingContext,
   epic: string,
   issue: string,
   mode: { readonly name: string; readonly formerName?: string },
+  taskId?: string,
+  spelled?: string,
 ): Promise<{ segment: string; topic: string; record: RunRecordState | undefined }> {
   const topic = runTopic(epic, issue, mode.name);
   const record = await readRunRecord(ctx, topic);
-  if (record !== undefined || mode.formerName === undefined || mode.formerName === mode.name) {
-    return { segment: mode.name, topic, record };
+  const fresh = { segment: mode.name, topic, record };
+  if (record !== undefined) return fresh;
+  for (const older of [spelled, mode.formerName]) {
+    if (older === undefined || older === mode.name) continue;
+    const olderTopic = runTopic(epic, issue, older);
+    const found = await readRunRecord(ctx, olderTopic);
+    const anotherTasks = taskId !== undefined && found?.taskId != null && found.taskId !== taskId;
+    if (found !== undefined && !anotherTasks) return { segment: older, topic: olderTopic, record: found };
   }
-  const formerTopic = runTopic(epic, issue, mode.formerName);
-  const former = await readRunRecord(ctx, formerTopic);
-  return former === undefined ? { segment: mode.name, topic, record } : { segment: mode.formerName, topic: formerTopic, record: former };
+  return fresh;
 }
 
 /**

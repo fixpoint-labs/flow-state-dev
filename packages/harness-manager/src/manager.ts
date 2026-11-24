@@ -2673,7 +2673,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const segment = payload?.phase ?? mode.name;
       const issue = payload === undefined || claim !== null ? taskIssueSegment(input.taskId) : payload.issue;
       if (payload !== undefined) {
-        assertFeatureRowIdentity(input.taskId, payload.issue, segment, mode.name, claim === null);
+        assertFeatureRowIdentity(input.taskId, payload.issue, segment, mode, claim === null);
       }
       // The issue the task is for, when it names one. On a board read from
       // the claim it also leads the branch (see `branchFor`), checked as an
@@ -2759,7 +2759,27 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // rename is found there, and finishes there: the segment it was found
       // under keys its branch, checkout and every later write. Nothing is
       // copied to the new key.
-      const found = await readModeRunRecord(ctx, epic, issue, segment === mode.name ? mode : { name: segment });
+      // A payload naming the mode's own name reads it with its fallback; one
+      // naming its former name (a row filed before the rename) is read, and
+      // finishes, under that segment, as its derived id and branch already are.
+      //
+      // **The key is folded as the checkout and the task id are**, so `DEFAULT`
+      // and `default`, which are one task, one checkout and one branch, are one
+      // run record too. And the former key is read for this task only: a
+      // record there of another row (another payload of the same issue) is not
+      // this run, and is never adopted.
+      const keyed = assertSafeSegment("mode", segment);
+      const found = await readModeRunRecord(
+        ctx,
+        epic,
+        issue,
+        sameSegment(segment, mode.name)
+          ? { name: keyed, ...(mode.formerName === undefined ? {} : { formerName: assertSafeSegment("mode", mode.formerName) }) }
+          : { name: keyed },
+        input.taskId,
+        // BP-030: before the key folded, the payload's own spelling was the key.
+        segment,
+      );
       const phaseName = found.segment;
       const topic = found.topic;
 
@@ -4900,7 +4920,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 }
 
 /**
- * A feature row's identity checks: the row's phase is the manager's, and, on a
+ * A feature row's identity checks: the row's segment is the manager's mode, by
+ * its name or its former name (a row filed before the rename), and, on a
  * fixed board, its id is the one its `{ issue, phase }` payload derives. A row
  * with no payload (a task a conversation filed) has neither to check. A row on
  * a board read from the claim is keyed by its own task id, so it has no
@@ -4910,9 +4931,10 @@ function assertFeatureRowIdentity(
   taskId: string,
   issue: string,
   phaseName: string,
-  configuredPhase: string,
+  mode: Pick<ModeSpec, "name" | "formerName">,
   fixedBoard: boolean,
 ): void {
+  const configuredPhase = mode.name;
   // **A manager runs exactly one phase, and it must be the one on the row.**
   // Without this the caller's phase names the checkout, the branch and the
   // run record while the CONFIGURED phase supplies the prompt and the
@@ -4932,7 +4954,8 @@ function assertFeatureRowIdentity(
   // different and refused, after `wake` had claimed the row and charged it.
   // Once per wake, until a valid task's budget was gone, for a mismatch its
   // own identity says does not exist.
-  if (!sameSegment(phaseName, configuredPhase)) {
+  // BP-030: a row filed under the mode's former name is the same mode.
+  if (!sameSegment(phaseName, configuredPhase) && !(mode.formerName !== undefined && sameSegment(phaseName, mode.formerName))) {
     throw new HarnessAttemptFailed(
       `[harness-manager] task ${taskId} is a "${phaseName}" task on a manager ` +
         `configured for "${configuredPhase}". Refusing rather than running ` +
