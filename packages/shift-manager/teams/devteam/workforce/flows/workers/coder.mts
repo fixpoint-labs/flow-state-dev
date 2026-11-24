@@ -100,7 +100,7 @@ import {
   projectWorkspaceCapability,
   startOwedSteerTurn,
   steerTurnEntry,
-  taskInput,
+  taskInputSchema,
   workerMessagesResources,
   workerTaskEntry,
   type MessageReceived,
@@ -442,7 +442,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
         work: workerTaskEntry({
           name: `${CODER_FLOW}-work`,
           block: byTask,
-          ...(options.project === undefined ? {} : { input: taskInput(z.record(z.string(), z.unknown()), { project: options.project }) }),
+          ...(options.project === undefined ? {} : { inputSchema: taskInputSchema(z.record(z.string(), z.unknown()), { project: options.project }) }),
         }),
       },
     },

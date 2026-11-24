@@ -52,6 +52,7 @@ import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, TaskDispatchInput } from "@flow-state-dev/core/types";
 import { currentWorkerClaim, taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
+  type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskWorkerInput
@@ -68,11 +69,11 @@ import { sessionIdOfFiling } from "./filing-session";
 import { conversationEndRules } from "./task-admission";
 import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor, markTaskInput } from "../worker-task-entry";
-import { isTaskInputDeclaration, notObjectMessage, unstableMessage, type TaskInputDeclaration, type TaskInputRecord } from "../task-input/declaration";
-import { claimInput } from "../task-input/filing-check";
+import { isTaskInputSchema, notObjectMessage, unstableMessage, type TaskInputSchema, type TaskInputRecord } from "../task-input/declaration";
+import { assertClaimAuthority, claimInput } from "../task-input/filing-check";
 import { checkedLedger, flowOfDoor, noteSourceOfDoor } from "../task-input/checked-ledger";
 import { filingWorkstreamOf } from "./filing-session";
-import { filingProjectStampOf } from "./held-task";
+import { filedProjectOf, filingProjectStampOf, isStamped } from "./held-task";
 import { namesProject, SET_THE_FILERS_PROJECT } from "../projects/run-project";
 import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/tasks";
 import { noteRoutedLines } from "../coordinator/routed-brief";
@@ -134,12 +135,12 @@ export type WorkerTaskEntryOptions = {
   readonly name: string;
   // FIX-2894.
   /**
-   * What the flow's tasks take (`taskInput(schema, { ... })`): every write
+   * What the flow's tasks take (`taskInputSchema(schema, { ... })`): every write
    * that files a task for one of its workers is checked against it, the claim
    * parses the stored row again, and the worker block is handed the parsed
    * input. Omitted, its tasks take any object, unchecked.
    */
-  readonly input?: TaskInputDeclaration<any>;
+  readonly inputSchema?: TaskInputSchema<any>;
 } & (
   | {
       /** The flow's turn for one message: `{ message }` in, the answer out. The task's answer is its result. */
@@ -205,8 +206,13 @@ export async function conversationLedgers(
 function checkedHandle(ctx: BlockContext, ref: TaskCollectionRef | undefined): TaskCollectionRef | undefined {
   if (ref === undefined) return undefined;
   return checkedLedger(ctx, ref, {
-    has: async (input: TaskInputRecord) =>
-      filingWorkstreamOf(ctx.session.state) !== undefined || (await filingProjectStampOf(ctx)) !== null || namesProject(input),
+    // The stored task the write is about counts first (the task an edit changes, a follow-up's root), as the
+    // guarded board reads it; only a write about none reads this session's own project.
+    has: async (input: TaskInputRecord, anchor?: Task) => {
+      if (anchor?.target !== undefined) return true;
+      if (anchor !== undefined && isStamped(anchor)) return filedProjectOf(anchor) !== undefined || namesProject(input);
+      return filingWorkstreamOf(ctx.session.state) !== undefined || (await filingProjectStampOf(ctx)) !== null || namesProject(input);
+    },
     refusal: (assignee: string) =>
       `"${assignee}" works in a project's files, and this conversation has no project for it to work in. Nothing was filed. ${SET_THE_FILERS_PROJECT}`
   });
@@ -314,9 +320,9 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   if (options.turn === undefined && options.block === undefined) {
     throw new Error(`workerTaskEntry "${name}": give \`turn\` or \`block\`, the block that does the task's work.`);
   }
-  const declaration = options.input;
-  if (declaration !== undefined && !isTaskInputDeclaration(declaration)) {
-    throw new Error(`workerTaskEntry "${name}": \`input\` is built with taskInput(schema, { ... }).`);
+  const declaration = options.inputSchema;
+  if (declaration !== undefined && !isTaskInputSchema(declaration)) {
+    throw new Error(`workerTaskEntry "${name}": \`inputSchema\` is built with taskInputSchema(schema, { ... }).`);
   }
   if (declaration?.notObject !== undefined) throw new Error(`workerTaskEntry "${name}": ${notObjectMessage(declaration.notObject)}`);
   if (declaration?.unstable !== undefined) {
@@ -339,7 +345,8 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
 
   // FIX-2894.
   /**
-   * The claim checks the input again: the row as stored, read through the
+   * The claim holds every entry to its own flow (the running entry is the
+   * authority), then checks the input again: the row as stored, read through the
    * ledger the gate verified (never the dispatch's payload), mapped by the
    * flow's `stored`, its server-owned values filled again when its stamp
    * names another flow or declaration, then parsed. The task is handed on
@@ -350,31 +357,36 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
    */
   const checkAtClaim = async (task: TaskWorkerInput, ctx: BlockContext): Promise<TaskWorkerInput> => {
     const source = noteSourceOfDoor(ctx.session as object, from);
-    if (declaration === undefined) return task;
     const claim = currentWorkerClaim(ctx);
-    const ledger = claim === undefined ? undefined : await conversationLedgers(claim.collectionId, ctx, claim.partition, claim.taskId);
+    // A request resumed after its task's claim ended (the task was cancelled while it waited on the user) holds
+    // no claim: nothing is claimed here, so there is nothing to hold to a flow, and the turn only winds down.
+    if (claim === undefined) return task;
+    const ledger = await conversationLedgers(claim.collectionId, ctx, claim.partition, claim.taskId);
     const stored = ledger?.get(task.taskId);
     if (stored === undefined) {
       throw new Error(`input_refused: task "${task.taskId}" isn't on the board its claim names, so its input can't be read. Nothing ran.`);
     }
-    // At claim, the running entry is the authority: the flow is the one this `work` entry belongs to, and the
-    // flow the hand-over recorded and the worker, read once here, must both name it, or nothing runs.
+    // At claim, the running entry is the authority, for every entry, one that declares its input or not: the flow
+    // is the one this `work` entry belongs to, and the flow the hand-over recorded and the worker, read once
+    // here, must both name it, or nothing runs.
     const runningFlow = source === undefined ? undefined : flowOfDoor(from, source);
     if (source === undefined || runningFlow === undefined) {
-      throw new Error(`input_refused: the flow this entry runs task "${task.taskId}" for can't be read, so its input can't be checked. Nothing ran.`);
+      throw new Error(`input_refused: the flow this entry runs task "${task.taskId}" for can't be read, so its worker can't be checked. Nothing ran.`);
     }
     const recorded = ((ctx.session.state ?? {}) as Record<string, unknown>)[TASK_FLOW_STATE_KEY];
     const assignee = stored.assignee ?? "";
     const read = assignee === "" ? undefined : await source.workerOf(ctx, assignee);
+    const facts = {
+      runningFlow,
+      ...(typeof recorded === "string" ? { recordedFlow: recorded } : {}),
+      task: stored,
+      worker: read === undefined ? undefined : { id: assignee, flow: read.flow, config: read.config }
+    };
     try {
-      const input = await claimInput({
-        ctx,
-        declaration,
-        runningFlow,
-        ...(typeof recorded === "string" ? { recordedFlow: recorded } : {}),
-        task: stored,
-        worker: read === undefined ? undefined : { id: assignee, flow: read.flow, config: read.config }
-      });
+      assertClaimAuthority(facts);
+      // An entry that declares nothing takes its task as filed, once the claim's facts hold.
+      if (declaration === undefined) return task;
+      const input = await claimInput({ ctx, declaration, ...facts });
       return { ...task, input };
     } catch (error) {
       if (error instanceof TaskWriteRefusedError) throw new Error(`${error.code}: ${error.message}`);

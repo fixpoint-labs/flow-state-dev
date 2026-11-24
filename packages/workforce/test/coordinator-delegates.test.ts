@@ -154,9 +154,9 @@ describe("a conversation's delegates (V2)", () => {
     expect(standard.error, messageOf(standard.error)).toBeUndefined();
     const listed = await host.act("alice", id, "listDelegates", {});
     expect(listed.output.delegates).toEqual([
-      { worker: "eng.em", description: "Plans and staffs engineering work.", takes: "tasks", input: null },
-      { worker: "licenses", note: "license questions", description: "Audits licenses.", takes: "tasks", input: null },
-      { worker: "eng.coder", description: "Writes code.", takes: "tasks", input: null }
+      { worker: "eng.em", description: "Plans and staffs engineering work.", takes: "tasks", inputSchema: null },
+      { worker: "licenses", note: "license questions", description: "Audits licenses.", takes: "tasks", inputSchema: null },
+      { worker: "eng.coder", description: "Writes code.", takes: "tasks", inputSchema: null }
     ]);
     expect(listed.output.max).toBe(25);
   });
@@ -189,11 +189,11 @@ describe("a conversation's delegates (V2)", () => {
 
     const listed = await host.act("alice", id, "listDelegates", {});
     expect(listed.output.delegates).toEqual([
-      { worker: "eng.em", description: "Plans and staffs engineering work.", takes: "tasks", input: null },
-      { worker: "eng.builder", description: "Builds what a task names.", takes: "tasks", input: null },
-      { worker: "eng.lead", description: "Leads engineering work.", takes: "tasks", input: null },
+      { worker: "eng.em", description: "Plans and staffs engineering work.", takes: "tasks", inputSchema: null },
+      { worker: "eng.builder", description: "Builds what a task names.", takes: "tasks", inputSchema: null },
+      { worker: "eng.lead", description: "Leads engineering work.", takes: "tasks", inputSchema: null },
       // Fired: no roster row to read a description from.
-      { worker: "temp", description: null, takes: "nothing", input: null }
+      { worker: "temp", description: null, takes: "nothing", inputSchema: null }
     ]);
 
     const turn = await host.act("alice", id, "respond", { message: "hand this to each of them" });
@@ -393,8 +393,8 @@ describe("the coordinator's own delegate tools (V2, BR-32, FIX-2081 rule 13)", (
     const results = await toolResults(host, id);
     expect(results.addDelegate[0]).toEqual({ refused: 'No worker "bobs-helper" on your roster.' });
     expect(results.listDelegates[0].delegates).toEqual([
-      { worker: "eng.em", description: "Plans and staffs engineering work.", takes: "tasks", input: null },
-      { worker: "eng.coder", note: "the build", description: "Writes code.", takes: "tasks", input: null }
+      { worker: "eng.em", description: "Plans and staffs engineering work.", takes: "tasks", inputSchema: null },
+      { worker: "eng.coder", note: "the build", description: "Writes code.", takes: "tasks", inputSchema: null }
     ]);
     expect((await host.sessionState(id)).delegates.map((d: any) => d.worker)).toEqual(["eng.em", "eng.coder"]);
   });

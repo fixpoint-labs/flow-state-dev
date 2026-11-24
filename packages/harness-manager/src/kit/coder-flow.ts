@@ -36,7 +36,7 @@ import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
   filingConversationBoard,
-  taskInput,
+  taskInputSchema,
   messageReceivedEntry,
   messageReceivedSchema,
   projectChecks,
@@ -331,7 +331,7 @@ export function coderWorkerFlow(
               name: `${CODER_FLOW}-work`,
               block: byHarness(`${CODER_FLOW}-by-harness`, taskWorkerInputSchema.passthrough(), (b) => b.manager, true),
               // A task for a coder works in a project's files: one filed with none to work in is refused at filing (FIX-2894).
-              ...(options.project === true ? { input: taskInput(z.record(z.string(), z.unknown()), { project: "required" }) } : {}),
+              ...(options.project === true ? { inputSchema: taskInputSchema(z.record(z.string(), z.unknown()), { project: "required" }) } : {}),
             }),
           },
         },

@@ -29,7 +29,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/tasks";
-import { defineSessionBoard, filingConversationBoard, taskInput, workerConfigSchema, workerFlow, type WorkerManifest } from "../src";
+import { defineSessionBoard, filingConversationBoard, taskInputSchema, workerConfigSchema, workerFlow, type WorkerManifest } from "../src";
 import { workerTaskEntry, type WorkerTaskBlockInput } from "../src/conversation-board/task-entry";
 import { conversationLedgerResources } from "../src/conversation-board/ledger";
 import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
@@ -63,7 +63,7 @@ const triageSchema = z
   })
   .strict();
 
-const triage = taskInput(triageSchema, {
+const triage = taskInputSchema(triageSchema, {
   // `doneWhen` lies outside the schema: a server-owned name there is only dropped.
   serverOwned: ["requestedBy", "audit", "doneWhen"],
   fill: ({ ctx, at }) => ({ requestedBy: `u_${userOf(ctx)}`, audit: { by: at } }),
@@ -95,13 +95,13 @@ const triage = taskInput(triageSchema, {
   }
 });
 
-const intake = taskInput(z.object({ ticket: z.string(), queue: z.string().default("main"), requestedBy: z.string() }).strict(), {
+const intake = taskInputSchema(z.object({ ticket: z.string(), queue: z.string().default("main"), requestedBy: z.string() }).strict(), {
   serverOwned: ["requestedBy"],
   fill: ({ ctx }) => ({ requestedBy: `intake:${userOf(ctx)}` })
 });
 
 /** A worker flow whose `work` entry declares `input`, recording what its block is handed. */
-function declaredFlow(installation: WorkerInstallation, flowName: string, input: ReturnType<typeof taskInput<any>>) {
+function declaredFlow(installation: WorkerInstallation, flowName: string, input: ReturnType<typeof taskInputSchema<any>>) {
   const block = handler({
     name: `${flowName}-block`,
     inputSchema: z.unknown(),
@@ -120,7 +120,7 @@ function declaredFlow(installation: WorkerInstallation, flowName: string, input:
     resources: { ...installation.resources, ...conversationLedgerResources, ...workerMessagesResources },
     actions: { respond: { inputSchema: z.object({ message: z.string() }), block: door, userMessage: (i: { message: string }) => i.message } },
     internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: flowName, hears: "task-sessions" }) } },
-    task: { actions: { work: workerTaskEntry({ name: `${flowName}-work`, block, input }) } }
+    task: { actions: { work: workerTaskEntry({ name: `${flowName}-work`, block, inputSchema: input }) } }
   } as never);
 }
 
@@ -199,7 +199,7 @@ function plannerFlow(installation: WorkerInstallation) {
     request: { onStarted: resolveWorker },
     actions: { respond: { inputSchema: z.object({ message: z.string() }), block: planned, userMessage: (i: { message: string }) => i.message }, ...board.actions },
     internal: { actions: board.entries(planned) },
-    task: { actions: { work: workerTaskEntry({ name: "planner-work", turn: planned, input: triage }) } }
+    task: { actions: { work: workerTaskEntry({ name: "planner-work", turn: planned, inputSchema: triage }) } }
   } as never);
 }
 
@@ -283,7 +283,7 @@ function boot(): Host {
       rawfiler: { flow: rawFlow(installation), roles: ["contributor"] },
       planner: { flow: plannerFlow(installation), roles: ["contributor", "manager"] },
       projtaker: {
-        flow: declaredFlow(installation, "projtaker", taskInput(z.record(z.string(), z.unknown()), { project: "required" })),
+        flow: declaredFlow(installation, "projtaker", taskInputSchema(z.record(z.string(), z.unknown()), { project: "required" })),
         roles: ["contributor"]
       }
     })
@@ -585,6 +585,24 @@ describe("a stamp nothing checked is never trusted", () => {
   });
 });
 
+describe("the project a raw-handle edit is checked for", () => {
+  // Greptile: the raw handle read the running session's project, not the edited task's.
+  it("is the edited task's own: an edit from a session with no project keeps a task that has one", async () => {
+    host = boot();
+    const { id, partition } = await conversation(host);
+    const named = { project: { visibility: "private", id: "storefront" } };
+    const filed = await file(host, id, { assignee: "ops.proj", goal: "in a project", input: named, held: true });
+    expect(filed).toMatchObject({ ok: true });
+    const task = (await host.row("jane", partition, filed.taskId!))!;
+    await host.writeRow("jane", partition, { ...task, metadata: { ...task.metadata, filedInProject: "private/storefront" } });
+    raw.writes.push(((tasks: any) => tasks.patchSettings(filed.taskId, { input: {} })) as never);
+    await file(host, id, { assignee: "ops.raw", goal: "edit a project's task through the raw handle", input: {} });
+    await host.settled();
+    expect(raw.outcomes).toEqual(["ok"]);
+    expect((await host.row("jane", partition, filed.taskId!))?.input).toEqual({});
+  });
+});
+
 describe("a null input", () => {
   // Codex P2: `input: null` was read as no input, so an edit kept the old input unchecked.
   it("is checked as the input sent, and refused, through the raw handle", async () => {
@@ -714,18 +732,18 @@ describe("what listDelegates shows", () => {
   it("shows each delegate's input as inlined draft-07 JSON Schema without its server-owned fields, and null for an open flow (D3)", async () => {
     host = boot();
     const { id } = await conversation(host);
-    const listed = (await host.act("jane", id, "listDelegates", {}, "filer")).output as { delegates: Array<{ worker: string; input: any }> };
-    const byWorker = Object.fromEntries(listed.delegates.map((stored) => [stored.worker, stored.input]));
+    const listed = (await host.act("jane", id, "listDelegates", {}, "filer")).output as { delegates: Array<{ worker: string; inputSchema: any }> };
+    const byWorker = Object.fromEntries(listed.delegates.map((stored) => [stored.worker, stored.inputSchema]));
     expect(byWorker["ops.helper"]).toBeNull();
     const shown = byWorker["ops.triager"];
     expect(shown.project).toBe("optional");
-    expect(shown.schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
-    expect(Object.keys(shown.schema.properties).sort()).toEqual(["meta", "severity", "ticket"]);
-    expect(shown.schema.required).toEqual(["ticket"]);
-    expect(shown.schema.additionalProperties).toBe(false);
-    expect(shown.schema.properties.ticket).toEqual({ type: "string", pattern: "^ENG-\\d+$" });
-    expect(shown.schema.properties.severity).toMatchObject({ enum: ["low", "high"], default: "low", description: expect.stringContaining("on call") });
-    expect(JSON.stringify(shown.schema)).not.toMatch(/\$ref|definitions/);
+    expect(shown.jsonSchema.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    expect(Object.keys(shown.jsonSchema.properties).sort()).toEqual(["meta", "severity", "ticket"]);
+    expect(shown.jsonSchema.required).toEqual(["ticket"]);
+    expect(shown.jsonSchema.additionalProperties).toBe(false);
+    expect(shown.jsonSchema.properties.ticket).toEqual({ type: "string", pattern: "^ENG-\\d+$" });
+    expect(shown.jsonSchema.properties.severity).toMatchObject({ enum: ["low", "high"], default: "low", description: expect.stringContaining("on call") });
+    expect(JSON.stringify(shown.jsonSchema)).not.toMatch(/\$ref|definitions/);
     expect(byWorker["ops.proj"].project).toBe("required");
   });
 });
@@ -733,7 +751,7 @@ describe("what listDelegates shows", () => {
 describe("the declaration, when the flow is built", () => {
   it("refuses a schema the JSON round trip can break, naming the entry, the step and where", () => {
     const build = (schema: z.ZodTypeAny) => () =>
-      workerTaskEntry({ name: "triage-work", turn: handler({ name: "t", inputSchema: z.unknown(), execute: () => "" }), input: taskInput(schema as never) });
+      workerTaskEntry({ name: "triage-work", turn: handler({ name: "t", inputSchema: z.unknown(), execute: () => "" }), inputSchema: taskInputSchema(schema as never) });
     expect(build(z.object({ n: z.string().transform(Number) }))).toThrow('workerTaskEntry "triage-work": a task input may not use .transform (at "n").');
     expect(build(z.object({ due: z.date() }))).toThrow("Use an ISO string: z.string().datetime().");
     expect(build(z.object({ n: z.coerce.number() }))).toThrow("z.coerce.number");
@@ -747,7 +765,7 @@ describe("the declaration, when the flow is built", () => {
   // the filer's view can't drop the server-owned ones, so only an object is taken.
   it("refuses a schema that isn't an object (z.object or z.record), naming the entry", () => {
     const build = (schema: z.ZodTypeAny) => () =>
-      workerTaskEntry({ name: "triage-work", turn: handler({ name: "t", inputSchema: z.unknown(), execute: () => "" }), input: taskInput(schema as never) });
+      workerTaskEntry({ name: "triage-work", turn: handler({ name: "t", inputSchema: z.unknown(), execute: () => "" }), inputSchema: taskInputSchema(schema as never) });
     const a = z.object({ ticket: z.string(), requestedBy: z.string() });
     const b = z.object({ issue: z.string(), requestedBy: z.string() });
     expect(build(z.union([a, b]))).toThrow('workerTaskEntry "triage-work": a task input is an object schema (z.object or z.record), and this is a z.union.');

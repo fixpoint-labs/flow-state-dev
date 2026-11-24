@@ -71,11 +71,11 @@ export { sessionIdOfFiling } from "./conversation-board/filing-session";
 // carries, checked at every filing and again at claim. Its hooks refuse with
 // `TaskWriteRefusedError`, from `@flow-state-dev/orchestration/tasks`.
 export {
-  taskInput,
+  taskInputSchema,
   type TaskInputCheckContext,
-  type TaskInputDeclaration,
+  type TaskInputSchema,
   type TaskInputFillContext,
-  type TaskInputOptions,
+  type TaskInputSchemaOptions,
   type TaskInputRecord,
   type TaskInputWorker
 } from "./task-input/declaration";

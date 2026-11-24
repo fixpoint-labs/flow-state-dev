@@ -218,14 +218,14 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     expect(listed.error).toBeUndefined();
     // What each one does (its WORKER.md description) and takes: both flows take a conversation's
     // tasks (FIX-1866, FIX-2083). What the Shift Coordinator picks a routed task and a filing by.
-    // On this projects workspace a coding task needs a project, which the coder's input says (FIX-2894).
+    // On this projects workspace a coding task needs a project, which the coder's input schema says (FIX-2894).
     expect(listed.output.delegates).toEqual([
-      { worker: "eng.em", description: EM_DESCRIPTION, takes: "tasks", input: null },
+      { worker: "eng.em", description: EM_DESCRIPTION, takes: "tasks", inputSchema: null },
       {
         worker: "eng.coder",
         description: "Does the work a filed row names, in a checkout of its own.",
         takes: "tasks",
-        input: { project: "required", schema: { $schema: "http://json-schema.org/draft-07/schema#", type: "object", additionalProperties: {} } },
+        inputSchema: { project: "required", jsonSchema: { $schema: "http://json-schema.org/draft-07/schema#", type: "object", additionalProperties: {} } },
       },
     ]);
     // The agent flow refuses it: a session names the flow its worker runs on.

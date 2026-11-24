@@ -23,7 +23,7 @@
 
 **Controls:**
 
-- `GOAL_CONTROL=hide-shape`: `listDelegates` shows `input: null` for every delegate (`delegates/worker-delegates.ts`), applied as the process loads (`goals/lib/module-patch.mts`). **`discover:first-filing-fits`** must fail (at most 1 of 5).
+- `GOAL_CONTROL=hide-shape`: `listDelegates` shows `inputSchema: null` for every delegate (`delegates/worker-delegates.ts`), applied as the process loads (`goals/lib/module-patch.mts`). **`discover:first-filing-fits`** must fail (at most 1 of 5).
 - The suite's controls are scratch patches to the source, each run against the two test files and reverted; vitest does not load through the goals' module-patch hook, so they are not `GOAL_CONTROL`s here. Each must fail the tests named: `filing-only` (only `createTask` checks) and `raw-handle-bypass` fail Refuse; `trust-filer`, `check-rewrites-owned` fail Own; `trust-stale-declaration` fails Stamp; `no-cas` fails Race; `build-time-only` fails Round trip; `move-unchecked` fails Move; `trust-stored` fails Claim. Their results are in the verdict log.
 
 ## Verdict log

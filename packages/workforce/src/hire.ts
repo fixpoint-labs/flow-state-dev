@@ -122,7 +122,7 @@ const builtInAgentWorkerFlow = defineAgentWorkerFlow() as unknown as AnyFlowType
  * the server. Omitted, none shows.
  *
  * Whether the flow's tasks need a project, and what else they take, is the
- * flow's own: its `work` entry's `input` (`taskInput(schema, { project })`).
+ * flow's own: its `work` entry's `inputSchema` (`taskInputSchema(schema, { project })`).
  */
 export type WorkerFlowEntry =
   | AnyFlowType

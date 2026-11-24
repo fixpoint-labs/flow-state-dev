@@ -1,7 +1,7 @@
 // FIX-2894; epic FIX-2876 ER-9.
 /**
  * What a worker flow's tasks take: the declaration a flow's `work` entry
- * carries (`workerTaskEntry({ input: taskInput(schema, { ... }) })`), read by
+ * carries (`workerTaskEntry({ inputSchema: taskInputSchema(schema, { ... }) })`), read by
  * the board at every write that puts input on a task, by the `work` entry at
  * the claim, and by `listDelegates`.
  *
@@ -15,7 +15,7 @@
  *   schema: such a name is only dropped.
  * - **The hooks** (`refuse`, `fill`, `check`, `stored`) are the flow's; the
  *   board calls them and reads no field they name.
- * - **The filer's view** ({@link TaskInputDeclaration.filerSchema}) is the
+ * - **The filer's view** ({@link TaskInputSchema.filerSchema}) is the
  *   schema as JSON Schema draft-07, fully inlined, less the server-owned
  *   fields: what `listDelegates` shows a model.
  * - **The fingerprint** names the declaration (its JSON Schema, its
@@ -60,8 +60,8 @@ export interface TaskInputFillContext extends TaskInputCheckContext {
 /** A task's input as stored or sent: a plain object. */
 export type TaskInputRecord = Record<string, unknown>;
 
-/** The options of {@link taskInput}. */
-export interface TaskInputOptions<T extends TaskInputRecord> {
+/** The options of {@link taskInputSchema}. */
+export interface TaskInputSchemaOptions<T extends TaskInputRecord> {
   /** The fields only the server writes: a filer's value is dropped, and `fill` writes them. */
   readonly serverOwned?: readonly string[];
   /** The server-owned values for this task. Anything else it returns is ignored. */
@@ -94,16 +94,16 @@ export interface TaskInputOptions<T extends TaskInputRecord> {
 
 const DECLARATION = Symbol.for("@flow-state-dev/workforce/task-input");
 
-/** A flow's task-input declaration: built by {@link taskInput}. */
-export interface TaskInputDeclaration<T extends TaskInputRecord = TaskInputRecord> {
+/** A flow's task-input declaration: built by {@link taskInputSchema}. */
+export interface TaskInputSchema<T extends TaskInputRecord = TaskInputRecord> {
   readonly [DECLARATION]: true;
   /** The schema the worker block is handed the input parsed by. */
   readonly schema: z.ZodType<T, z.ZodTypeDef, unknown>;
   readonly serverOwned: readonly string[];
-  readonly fill: TaskInputOptions<T>["fill"];
-  readonly refuse: TaskInputOptions<T>["refuse"];
-  readonly check: TaskInputOptions<T>["check"];
-  readonly stored: TaskInputOptions<T>["stored"];
+  readonly fill: TaskInputSchemaOptions<T>["fill"];
+  readonly refuse: TaskInputSchemaOptions<T>["refuse"];
+  readonly check: TaskInputSchemaOptions<T>["check"];
+  readonly stored: TaskInputSchemaOptions<T>["stored"];
   readonly project: "required" | "optional";
   /** What a filer may write, as JSON Schema draft-07, fully inlined: the schema less its server-owned fields. */
   readonly filerSchema: Readonly<Record<string, unknown>>;
@@ -116,29 +116,29 @@ export interface TaskInputDeclaration<T extends TaskInputRecord = TaskInputRecor
 }
 
 /** The declaration a worker flow's `work` entry carries, or `undefined` for a flow that declares none. */
-export function declarationOfFlow(flow: unknown): TaskInputDeclaration | undefined {
+export function declarationOfFlow(flow: unknown): TaskInputSchema | undefined {
   const declared = taskInputOf(flow);
-  return isTaskInputDeclaration(declared) ? declared : undefined;
+  return isTaskInputSchema(declared) ? declared : undefined;
 }
 
-/** Whether `value` is a declaration {@link taskInput} built. */
-export function isTaskInputDeclaration(value: unknown): value is TaskInputDeclaration {
+/** Whether `value` is a declaration {@link taskInputSchema} built. */
+export function isTaskInputSchema(value: unknown): value is TaskInputSchema {
   return typeof value === "object" && value !== null && (value as Record<symbol, unknown>)[DECLARATION] === true;
 }
 
 /**
  * Declare what a worker flow's tasks take, for its `work` entry:
- * `workerTaskEntry({ name, turn, input: taskInput(schema, { ... }) })`.
+ * `workerTaskEntry({ name, turn, inputSchema: taskInputSchema(schema, { ... }) })`.
  *
  * @param schema An object schema whose parse survives a JSON round trip. One
  *   that uses a step that can break it (`.transform`, `.preprocess`, `.pipe`,
  *   `.catch`, `z.coerce.*`, `z.date`, `z.bigint`, `z.map`, `z.set`) is
  *   refused by `workerTaskEntry`, which names its entry, the step and where.
  */
-export function taskInput<T extends TaskInputRecord>(
+export function taskInputSchema<T extends TaskInputRecord>(
   schema: z.ZodType<T, z.ZodTypeDef, unknown>,
-  options: TaskInputOptions<T> = {}
-): TaskInputDeclaration<T> {
+  options: TaskInputSchemaOptions<T> = {}
+): TaskInputSchema<T> {
   const unstable = jsonUnstableStep(schema as ZodTypeAny);
   const notObject = notAnObject(schema as ZodTypeAny);
   const serverOwned = Object.freeze([...new Set(options.serverOwned ?? [])]);
@@ -154,7 +154,7 @@ export function taskInput<T extends TaskInputRecord>(
     stored: options.stored,
     project,
     filerSchema: Object.freeze(withoutFields(full, serverOwned)),
-    fingerprint: fingerprintOf(JSON.stringify({ schema: full, serverOwned: [...serverOwned].sort(), project })),
+    fingerprint: declarationFingerprint(JSON.stringify({ schema: full, serverOwned: [...serverOwned].sort(), project })),
     ...(unstable === undefined ? {} : { unstable }),
     ...(notObject === undefined ? {} : { notObject })
   });
@@ -205,7 +205,7 @@ function withoutFields(schema: Record<string, unknown>, fields: readonly string[
 }
 
 /** A short, stable hash of `text` (cyrb53): names a declaration, guards nothing. */
-function fingerprintOf(text: string): string {
+function declarationFingerprint(text: string): string {
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
   for (let i = 0; i < text.length; i++) {

@@ -174,9 +174,10 @@ import { owedReports, sendLegacyReports } from "./report-owed";
 import { filedProjectOf, filingProjectStampOf, isStamped, pieceOwnerOf } from "./held-task";
 import { PLAN_LEDGER_ID, STEP_ATTEMPTS, definePlanning, isAnsweringTurn, isSteppingTurn, planLedgerAt, planLedgerResources } from "./plan";
 import { verifiedWorkerOf } from "../workers/verified-worker";
-import type { TaskInputDeclaration, TaskInputRecord } from "../task-input/declaration";
+import type { TaskInputSchema, TaskInputRecord } from "../task-input/declaration";
 import { FILLED_FOR, type CheckedInput } from "../task-input/filing-check";
 import { checkedPatch, checkFiledInput, withRootWorker, type InputLookup } from "../task-input/checked-ledger";
+import { handoverFlowReader } from "./handover-flow";
 
 /**
  * How many attempts a filed task gets: a failure with one left runs the task
@@ -218,7 +219,7 @@ export interface ConversationBoardOptions {
    * anything is reserved or written. Omitted, or `undefined` for a flow, the
    * flow's tasks take any object, unchecked.
    */
-  taskInputOf?: (flowKind: string) => TaskInputDeclaration | undefined;
+  taskInputOf?: (flowKind: string) => TaskInputSchema | undefined;
   /**
    * The worker a task is for, read once from its record: the flow it runs on and
    * its declared configuration, as a flow's task-input hooks are handed it.
@@ -913,7 +914,7 @@ function hasPastDue(rows: readonly Task[], now: number): boolean {
 // FIX-2894.
 /** Told to a filing turn whose delegates include ones whose flows declare what their tasks take, by name. */
 const declaredInputLine = (workers: readonly string[]): string =>
-  `Before you file a task for ${workers.map((worker) => JSON.stringify(worker)).join(", ")}, call listDelegates first and read that delegate's \`input\`: ` +
+  `Before you file a task for ${workers.map((worker) => JSON.stringify(worker)).join(", ")}, call listDelegates first and read that delegate's \`inputSchema\`: ` +
   "a JSON Schema of the fields its tasks take. Send the task's `input` in exactly that shape, using the field descriptions to choose each value. " +
   "A task that doesn't fit is refused, naming the field.";
 
@@ -1133,6 +1134,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   // session, keyed by the task alone: a reassign would then re-enter a session
   // named for the first worker, and run as it. Keying by the worker too keeps
   // one session to one task and one worker, which is the rule's own reason.
+  const handedFlowOf = handoverFlowReader(reach);
   const address: DispatchAddress = {
     type: "task",
     // Every row, a routed task's included, goes to `work`.
@@ -1165,11 +1167,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // pieces, a roster worker) fired, removed or moved to a flow that takes
     // no tasks since the filing is refused here, with the claim held, so the
     // task fails and the conversation hears it.
+    // One read of the delegates per hand-over gives both the flow dispatched to and the flow the session opened
+    // is born naming (`state` below), so the two can't disagree (FIX-2894).
     flowKind: async (task, ctx) => {
-      const reachable = await reach(ctx);
-      const flow = reachable.available.get(task.assignee);
+      const { flow, unavailable } = await handedFlowOf(ctx, task.taskId, task.assignee);
       if (flow !== undefined) return flow;
-      const why = reachable.unavailable.get(task.assignee) ?? "it isn't one of this session's delegates";
+      const why = unavailable ?? "it isn't one of this session's delegates";
       throw new Error(`Task "${task.taskId}" wasn't handed to "${task.assignee}": ${why}.`);
     },
     // The task session is born naming its worker, the task, the session
@@ -1184,7 +1187,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // session, by id, is never created.
     state: async (task, ctx) => {
       const partition = await filingSessionIdOf(ctx.session);
-      const flow = (await reach(ctx)).available.get(task.assignee);
+      const { flow } = await handedFlowOf(ctx, task.taskId, task.assignee);
       // The delegate's ongoing session for the conversation works no one
       // task (FIX-2080): born naming its worker, the worker, conversation and
       // flow that filed into it, and no task or task-chain place. It counts

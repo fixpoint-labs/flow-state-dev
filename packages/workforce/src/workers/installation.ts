@@ -85,7 +85,8 @@ import { WORKER_USAGE_RESOURCE, workerSpendHook, workerUsageCollection } from ".
 import { routineResourcesOf, type RoutineResources } from "../routines/routine-resources";
 import { routineSeedOf } from "../routines/routines-options";
 import { withSessionFields, type SessionFields } from "./session-fields";
-import { noteTaskInputSource, registerTaskInputSource, type TaskInputSource } from "../task-input/checked-ledger";
+import { noteTaskInputSource, registerTaskDoor, registerTaskInputSource, type TaskInputSource } from "../task-input/checked-ledger";
+import { conversationTaskDoorOf } from "../worker-task-entry";
 import { declarationOfFlow } from "../task-input/declaration";
 
 export { verifiedWorkerOf } from "./verified-worker";
@@ -495,15 +496,25 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
   const taskInputSource: TaskInputSource = {
     declarationOf: (flow) => (Object.hasOwn(workerFlows(), flow) ? declarationOfFlow(workerFlows()[flow]!.flow) : undefined),
     workerOf: async (ctx, id) => {
-      const found = lookupWorker(id, (await workerCollection(ctx as WorkerTurnContext, "taskInput").getOptional(id))?.state);
+      const found = lookupWorker(id, (await workerCollection(ctx as WorkerTurnContext, "taskInputSchema").getOptional(id))?.state);
       if (found.found === "own") return { flow: found.flow, config: declaredOf(found.row) };
       if (found.found === "standard") return { flow: found.flow, config: found.manifest.declared };
       return undefined;
     }
   };
   let resolvedFlows: Record<string, ResolvedWorkerFlow> | undefined;
-  const workerFlows = (): Record<string, ResolvedWorkerFlow> =>
-    (resolvedFlows ??= resolveWorkerFlows(workerFlowsOption()));
+  const workerFlows = (): Record<string, ResolvedWorkerFlow> => {
+    if (resolvedFlows === undefined) {
+      resolvedFlows = resolveWorkerFlows(workerFlowsOption());
+      // Each flow's `work` door names this installation and the flow, so a claim behind it knows the flow it
+      // runs on (FIX-2894). A hire that is refused gives them up (`hireWorkforce`).
+      for (const [name, { flow }] of Object.entries(resolvedFlows)) {
+        const door = conversationTaskDoorOf(flow);
+        if (door !== undefined) registerTaskDoor(door, taskInputSource, name);
+      }
+    }
+    return resolvedFlows;
+  };
 
   // The settings a user sees on a worker's roster row: the ones its flow's
   // registration names, read when a row is, since the flows are read lazily.

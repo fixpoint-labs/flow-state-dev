@@ -24,7 +24,7 @@ import { setRoutineSeed, setRoutinesReach } from "../routines/routines-options";
 import { assertPollCadence } from "../subscriptions/poll";
 import { defineScheduledWork } from "../schedules/scheduled-work";
 import type { WorkerInstallation } from "./installation";
-import { registerTaskDoor, taskInputSourceOf } from "../task-input/checked-ledger";
+import { taskInputSourceOf, unregisterTaskDoor } from "../task-input/checked-ledger";
 import { conversationTaskDoorOf } from "../worker-task-entry";
 import { defineWorkerRosterFlow } from "./roster-flow";
 import { standardWorkerFlow, workerDisplayName } from "./standard-workers";
@@ -82,6 +82,17 @@ export interface HireWorkforceOptions {
  *   and nothing is registered: a short roster that still runs is the failure.
  */
 export function hireWorkforce(installation: WorkerInstallation, options: HireWorkforceOptions = {}): FlowInstance[] {
+  try {
+    return hire(installation, options);
+  } catch (error) {
+    // A refused hire gives up its flows' doors (FIX-2894): one that shares a prebuilt flow with a live
+    // installation never takes that door from it.
+    unregisterInstallationDoors(installation);
+    throw error;
+  }
+}
+
+function hire(installation: WorkerInstallation, options: HireWorkforceOptions): FlowInstance[] {
   if (options.taskChainLimit !== undefined) setTaskChainLimit(installation, options.taskChainLimit);
   if (options.messages !== undefined) setMessageLimits(installation, options.messages);
   const poll = options.routines?.poll;
@@ -144,26 +155,22 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
     { resources: routines.resources, schedules: scheduled.schedules, seed: routines.seed, view: routines.view }
   );
   copies.push(roster() as unknown as FlowInstance);
-  // Only a hire that succeeded names its flows' doors (FIX-2894): a refused one,
-  // which may share a prebuilt flow with a live installation, never takes its door.
-  registerInstallationDoors(installation);
   return copies;
 }
 
-// FIX-2894.
-/**
- * Name each of `installation`'s flows' `work` doors as its own, under the
- * flow's name, so a claim behind one knows the flow it runs on and reads what
- * its tasks take. The last step of a hire that succeeded; a host that
- * registers its worker flows without {@link hireWorkforce} calls it once they
- * are built. A door never named fails every declared claim closed.
- */
-export function registerInstallationDoors(installation: WorkerInstallation): void {
+/** Give up `installation`'s claim on each of its flows' `work` doors, which its flows' resolution made. */
+function unregisterInstallationDoors(installation: WorkerInstallation): void {
   const source = taskInputSourceOf(installation);
   if (source === undefined) return;
-  for (const [name, { flow }] of Object.entries(installation.workerFlows())) {
+  let flows: ReturnType<WorkerInstallation["workerFlows"]>;
+  try {
+    flows = installation.workerFlows();
+  } catch {
+    return;
+  }
+  for (const { flow } of Object.values(flows)) {
     const door = conversationTaskDoorOf(flow);
-    if (door !== undefined) registerTaskDoor(door, source, name);
+    if (door !== undefined) unregisterTaskDoor(door, source);
   }
 }
 

@@ -450,9 +450,9 @@ export const ENTRIES = [
     ],
   },
   {
-    term: "Task input",
+    term: "Task input schema",
     means:
-      "What a worker flow's tasks take, declared on its `work` entry (`workerTaskEntry({ input: taskInput(schema, { serverOwned, fill, refuse, check, stored, project }) })`): checked at every write that files a task for one of its workers or moves one onto it, parsed again at claim, and shown to a filer by `listDelegates` as JSON Schema without its server-owned fields. A server-owned field is dropped from what a filer sends and written by the flow's `fill`, never refused. A flow that declares none takes any object.",
+      "What a worker flow's tasks take, declared on its `work` entry (`workerTaskEntry({ inputSchema: taskInputSchema(schema, { serverOwned, fill, refuse, check, stored, project }) })`): checked at every write that files a task for one of its workers or moves one onto it, parsed again at claim, and shown to a filer by `listDelegates` as `inputSchema` (JSON Schema, without its server-owned fields). Called an input schema, never an input: a task's `input` is the value it is checked against. A server-owned field is dropped from what a filer sends and written by the flow's `fill`, never refused. A flow that declares none takes any object.",
     decision: "FIX-2894 (epic FIX-2876 ER-9); its `project` replaces the removed `needsProject` hire option",
     retires: [],
   },

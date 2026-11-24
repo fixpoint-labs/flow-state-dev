@@ -145,7 +145,7 @@ describe("DevTeam's triage coordinator", () => {
         worker: "eng.em",
         description: "Files each feature as a task for the coder, and keeps the workstream it leads current; never does the work itself.",
         takes: "tasks",
-        input: null,
+        inputSchema: null,
       },
     ]);
   });

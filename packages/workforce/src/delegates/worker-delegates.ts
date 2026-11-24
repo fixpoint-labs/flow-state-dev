@@ -99,31 +99,31 @@ const delegateListOutputSchema = z.object({
 
 // FIX-2894 D3.
 /**
- * What a delegate's tasks take, as `listDelegates` shows it: the input a
+ * What a delegate's tasks take, as `listDelegates` shows it (`inputSchema`): the input a
  * filer may write, as JSON Schema draft-07, fully inlined, without the fields
  * only the server writes, and whether a task needs a project. `null` for a
  * delegate whose flow declares nothing, which takes any object.
  */
-const delegateInputSchema = z
-  .object({ schema: z.record(z.unknown()), project: z.enum(["required", "optional"]) })
+const delegateInputShape = z
+  .object({ jsonSchema: z.record(z.unknown()), project: z.enum(["required", "optional"]) })
   .nullable();
 
 /**
  * What `listDelegates` answers: the list, each delegate with what it does (its
- * worker's description, or null), what it takes now, and the input its tasks
- * take, read and never stored.
+ * worker's description, or null), what it takes now, and the input schema its
+ * tasks take, read and never stored.
  */
 const delegateReadOutputSchema = delegateListOutputSchema.extend({
   delegates: z.array(
-    delegateRecordSchema.extend({ description: z.string().nullable(), takes: z.enum(DELEGATE_TAKES), input: delegateInputSchema })
+    delegateRecordSchema.extend({ description: z.string().nullable(), takes: z.enum(DELEGATE_TAKES), inputSchema: delegateInputShape })
   )
 });
 
-/** A delegate's `input`, as {@link delegateInputSchema} shows it, for a worker on flow `flowKind`. */
-function delegateInputOf(installation: WorkerInstallation, flowKind: string): z.infer<typeof delegateInputSchema> {
+/** A delegate's `inputSchema`, as {@link delegateInputShape} shows it, for a worker on flow `flowKind`. */
+function delegateInputSchemaOf(installation: WorkerInstallation, flowKind: string): z.infer<typeof delegateInputShape> {
   const flows = installation.workerFlows();
   const declaration = Object.hasOwn(flows, flowKind) ? declarationOfFlow(flows[flowKind]!.flow) : undefined;
-  return declaration === undefined ? null : { schema: { ...declaration.filerSchema }, project: declaration.project };
+  return declaration === undefined ? null : { jsonSchema: { ...declaration.filerSchema }, project: declaration.project };
 }
 
 /** A session's delegates, and the session's `filingSessionId`. */
@@ -259,7 +259,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
    * no task) takes nothing, with no description.
    */
   const described = async (ctx: BlockContext, listed: ReturnType<typeof listOutput>) => {
-    const delegates: Array<DelegateRecord & { description: string | null; takes: DelegateTakes; input: z.infer<typeof delegateInputSchema> }> = [];
+    const delegates: Array<DelegateRecord & { description: string | null; takes: DelegateTakes; inputSchema: z.infer<typeof delegateInputShape> }> = [];
     for (const record of listed.delegates) {
       const checked = await check(ctx, record.worker, "add");
       delegates.push(
@@ -268,9 +268,9 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
               ...record,
               description: checked.worker.description,
               takes: flowTakes(installation, checked.worker.flow),
-              input: delegateInputOf(installation, checked.worker.flow)
+              inputSchema: delegateInputSchemaOf(installation, checked.worker.flow)
             }
-          : { ...record, description: null, takes: "nothing", input: null }
+          : { ...record, description: null, takes: "nothing", inputSchema: null }
       );
     }
     return { ...listed, delegates };

@@ -26,7 +26,7 @@ import { deepEqual, isPlainObject } from "@flow-state-dev/contracts/helpers/deep
 import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/tasks";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import type { ZodIssue } from "zod";
-import type { TaskInputDeclaration, TaskInputRecord, TaskInputWorker } from "./declaration";
+import type { TaskInputSchema, TaskInputRecord, TaskInputWorker } from "./declaration";
 
 // FIX-2894; BP-030.
 /**
@@ -53,7 +53,7 @@ export function filledForOf(task: Pick<Task, "metadata"> | undefined): FilledFor
 }
 
 /** Whether the row was filled for `flow` under `declaration`, so its stored server-owned values stand. */
-export function stampMatches(task: Pick<Task, "metadata"> | undefined, flow: string, declaration: TaskInputDeclaration): boolean {
+export function stampMatches(task: Pick<Task, "metadata"> | undefined, flow: string, declaration: TaskInputSchema): boolean {
   const stamp = filledForOf(task);
   return stamp !== undefined && stamp.flow === flow && stamp.declaration === declaration.fingerprint;
 }
@@ -72,7 +72,7 @@ export interface CheckedWorker extends TaskInputWorker {
 export interface FilingCheck {
   readonly ctx: BlockContext;
   /** The declaration `worker.flow` carries. */
-  readonly declaration: TaskInputDeclaration;
+  readonly declaration: TaskInputSchema;
   /** The worker the task is for, read once. */
   readonly worker: CheckedWorker;
   /** What the filer sent as the task's input (on a move with no new input, what the row carries). */
@@ -154,6 +154,34 @@ export async function checkFiling(run: FilingCheck): Promise<CheckedInput> {
   return { input: checked, filledFor: { flow, declaration: declaration.fingerprint } };
 }
 
+/** The facts every claim is held to, declared flow or not. */
+export type ClaimAuthority = Pick<ClaimInput, "runningFlow" | "recordedFlow" | "worker"> & { readonly task: Pick<Task, "assignee"> };
+
+/**
+ * **At claim, the running entry is the authority**, for every `work` entry,
+ * one that declares its input or not: the flow the hand-over recorded and
+ * the worker, read once for this claim, must both name the running entry's
+ * flow, or the attempt fails and nothing runs.
+ *
+ * @returns The worker as read, for the rest of the claim to use.
+ * @throws TaskWriteRefusedError `input_refused`, ending `Nothing ran.`
+ */
+export function assertClaimAuthority(run: ClaimAuthority): CheckedWorker {
+  const { runningFlow: flow, task, worker } = run;
+  if (run.recordedFlow !== undefined && run.recordedFlow !== flow) {
+    throw notRunnable(flow, `the task was handed over for flow "${run.recordedFlow}", and this is flow "${flow}"'s entry`);
+  }
+  if (worker === undefined || worker.id !== task.assignee || worker.flow !== flow) {
+    throw notRunnable(
+      flow,
+      worker === undefined || worker.id !== task.assignee
+        ? `its worker "${task.assignee ?? ""}" can't be read now`
+        : `its worker "${worker.id}" now runs on flow "${worker.flow}"`
+    );
+  }
+  return worker;
+}
+
 /**
  * What the claim parses a stored task with. **At claim, the running entry is
  * the authority:** the flow is the one whose `work` entry is executing, and
@@ -162,7 +190,7 @@ export async function checkFiling(run: FilingCheck): Promise<CheckedInput> {
 export interface ClaimInput {
   readonly ctx: BlockContext;
   /** The running entry's declaration. */
-  readonly declaration: TaskInputDeclaration;
+  readonly declaration: TaskInputSchema;
   /** The flow whose `work` entry is executing: the one fact a roster move mid-flight can't change. */
   readonly runningFlow: string;
   /** The flow the hand-over recorded for this task session (`taskFlow`), when it recorded one. */
@@ -185,19 +213,10 @@ export interface ClaimInput {
  * @throws TaskWriteRefusedError `input_refused`, naming what didn't fit, ending `Nothing ran.`
  */
 export async function claimInput(run: ClaimInput): Promise<TaskInputRecord> {
-  const { declaration, runningFlow: flow, task, worker } = run;
-  if (run.recordedFlow !== undefined && run.recordedFlow !== flow) {
-    throw notRunnable(flow, `the task was handed over for flow "${run.recordedFlow}", and this is flow "${flow}"'s entry`);
-  }
-  if (worker === undefined || worker.id !== task.assignee || worker.flow !== flow) {
-    throw notRunnable(
-      flow,
-      worker === undefined || worker.id !== task.assignee
-        ? `its worker "${task.assignee ?? ""}" can't be read now`
-        : `its worker "${worker.id}" now runs on flow "${worker.flow}"`
-    );
-  }
-  const raw = asRecord(task.input ?? {});
+  const { declaration, runningFlow: flow, task } = run;
+  const worker = assertClaimAuthority(run);
+  // Only a missing input reads as none: a stored `null` fails the attempt, as a filing refuses one.
+  const raw = asRecord(task.input === undefined ? {} : task.input);
   if (raw === undefined) throw notRunnable(flow, "the input is not an object");
   const read = declaration.stored === undefined ? raw : declaration.stored(raw);
   let input = read;
@@ -215,7 +234,7 @@ export async function claimInput(run: ClaimInput): Promise<TaskInputRecord> {
   return parsed.data;
 }
 
-function parseOrRefuse(declaration: TaskInputDeclaration, value: unknown, assignee: string, flow: string): TaskInputRecord {
+function parseOrRefuse(declaration: TaskInputSchema, value: unknown, assignee: string, flow: string): TaskInputRecord {
   const parsed = declaration.schema.safeParse(value);
   if (!parsed.success) throw misfit(assignee, flow, issueText(parsed.error.issues[0]));
   return parsed.data;
@@ -255,7 +274,7 @@ function issueText(issue: ZodIssue | undefined): string {
  * JSON, parsed back and through the schema again, it must equal what was
  * checked. Names the first value that changes and how.
  */
-function assertSurvivesStorage(declaration: TaskInputDeclaration, value: TaskInputRecord, assignee: string, flow: string): void {
+function assertSurvivesStorage(declaration: TaskInputSchema, value: TaskInputRecord, assignee: string, flow: string): void {
   const unstored = (what: string) =>
     new TaskWriteRefusedError(
       "input_refused",

@@ -20,7 +20,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import {
   defineSessionBoard,
   messageReceivedEntry,
-  taskInput,
+  taskInputSchema,
   workerConfigSchema,
   workerFlow,
   workerMessagesResources,
@@ -69,10 +69,10 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[]; asserti
     assertions: ["discover:first-filing-fits"],
     patches: [
       {
-        // listDelegates shows no delegate's input: a model files from a guess.
+        // listDelegates shows no delegate's input schema: a model files from a guess.
         module: "packages/workforce/src/delegates/worker-delegates.ts",
-        from: String.raw`return declaration === undefined \? null : \{ schema:`,
-        to: "return declaration === undefined || true ? null : { schema:"
+        from: String.raw`return declaration === undefined \? null : \{ jsonSchema:`,
+        to: "return declaration === undefined || true ? null : { jsonSchema:"
       }
     ]
   }
@@ -157,7 +157,7 @@ function startHost(db: string) {
           work: workerTaskEntry({
             name: "task-fits-triage-work",
             block,
-            input: taskInput(triageInput, {
+            inputSchema: taskInputSchema(triageInput, {
               serverOwned: ["requestedBy"],
               fill: ({ ctx }) => ({ requestedBy: `u:${(ctx as { user?: { identity?: { userId?: string } } }).user?.identity?.userId ?? ""}` })
             })

@@ -52,7 +52,7 @@ export interface WorkerFlowBuilder {
  *   `defineSessionBoard`). The hire checks each role's entries, and refuses a
  *   role's piece on a flow that doesn't declare it. `showSettings` names the
  *   flow's settings a user may see on the roster. Whether its tasks need a
- *   project is its `work` entry's `input` (`taskInput(schema, { project })`).
+ *   project is its `work` entry's `inputSchema` (`taskInputSchema(schema, { project })`).
  * @returns An entry for `createWorkerInstallation({ workerFlows })`, and for
  *   the `workerFlows` map `fsdev gen` writes.
  */
@@ -76,7 +76,7 @@ export function workerFlow(
 export function needsProjectRemoved(where: string): Error {
   return new Error(
     `${where}: \`needsProject\` is gone. Declare it on the flow's work entry: ` +
-      `workerTaskEntry({ ..., input: taskInput(schema, { project: "required" }) }).`
+      `workerTaskEntry({ ..., inputSchema: taskInputSchema(schema, { project: "required" }) }).`
   );
 }
 

@@ -11,7 +11,7 @@ import { createStateBackedTaskCollection } from "@flow-state-dev/orchestration/i
 import type { TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { taskInput } from "../src/task-input/declaration";
+import { taskInputSchema } from "../src/task-input/declaration";
 import { checkedPatch, type InputLookup } from "../src/task-input/checked-ledger";
 import { FILLED_FOR } from "../src/task-input/filing-check";
 
@@ -40,7 +40,7 @@ function atomicState() {
   };
 }
 
-const triage = taskInput(z.object({ ticket: z.string(), requestedBy: z.string() }).strict(), {
+const triage = taskInputSchema(z.object({ ticket: z.string(), requestedBy: z.string() }).strict(), {
   serverOwned: ["requestedBy"],
   fill: () => ({ requestedBy: "u_jane" })
 });
@@ -65,6 +65,21 @@ async function board(): Promise<TaskCollectionRef> {
 }
 
 const ctx = {} as BlockContext;
+
+describe("a caller's own revision fence", () => {
+  // Greptile: the check's own fence overwrote a caller's, so a stale edit landed.
+  it("is kept: an edit fenced on a revision the task has moved past is declined revision-moved, never retried onto the new one", async () => {
+    const tasks = await board();
+    await tasks.createTask({ id: "t", goal: "g", assignee: "ops.triager", input: { ticket: "ENG-1", requestedBy: "u_jane" } });
+    const stale = tasks.get("t")!.revision ?? 0;
+    await tasks.patchSettings("t", { goal: "moved on" });
+    const outcome = await checkedPatch(lookupWith(async () => undefined), ctx, tasks, "t", { input: { ticket: "ENG-2" }, ifRevision: stale }, (id, patch) =>
+      tasks.patchSettings(id, patch)
+    );
+    expect(outcome).toMatchObject({ outcome: "declined", reason: "revision-moved" });
+    expect(tasks.get("t")?.input).toEqual({ ticket: "ENG-1", requestedBy: "u_jane" });
+  });
+});
 
 describe("two edits of one row at once", () => {
   it("re-runs the loser's whole check on the row the winner wrote: a move to an open flow is stored as sent", async () => {

@@ -41,7 +41,7 @@ import {
 } from "../src/index";
 import { claimedTask } from "../src/conversation-board/held-task";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
-import { taskInput } from "../src/task-input/declaration";
+import { taskInputSchema } from "../src/task-input/declaration";
 import type { WorkerManifest } from "../src/manifest";
 import { PROJECT_ENTRY_RESOURCES } from "../src/projects/project-address";
 import type { WorkerInstallation } from "../src/workers/installation";
@@ -111,7 +111,7 @@ function takerFlow(installation: WorkerInstallation, asked: Asked[], source: Run
         work: workerTaskEntry({
           name: "taker-task",
           turn,
-          ...(project === undefined ? {} : { input: taskInput(z.record(z.string(), z.unknown()), { project }) })
+          ...(project === undefined ? {} : { inputSchema: taskInputSchema(z.record(z.string(), z.unknown()), { project }) })
         })
       }
     }
