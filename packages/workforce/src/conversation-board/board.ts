@@ -984,6 +984,29 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     if (!available.has(chosen)) throw notADelegate(chosen);
     return chosen;
   };
+  // FIX-2877 D2.
+  /**
+   * The gate at the ledger write: the server's assignee for a model's write,
+   * decided once per call. It is recorded under the key the task tools record
+   * their own decision with (`slot` tells apart the writes one call makes), so
+   * a replay stores the worker the same-work check read. A refusal is recorded
+   * too, and thrown again.
+   */
+  const gatedAssignee = async (ctx: BlockContext, assignee: string, slot: string): Promise<string> => {
+    const call = toolCallOf(ctx);
+    if (call === undefined || ctx.runOnce === undefined) return serverAssignee(ctx, assignee);
+    const recorded = (await ctx.runOnce(`fsd.decide.server-assignee:${call.logicalId}${slot}`, async () => {
+      try {
+        return { assignee: await serverAssignee(ctx, assignee) };
+      } catch (err) {
+        if (err instanceof TaskWriteRefusedError) return { ok: false as const, error: `${err.code}: ${err.message}` };
+        throw err;
+      }
+    })) as { assignee: string } | { ok: false; error: string };
+    if ("assignee" in recorded) return recorded.assignee;
+    const [code, ...message] = recorded.error.split(": ");
+    throw new TaskWriteRefusedError(code!, message.join(": "));
+  };
   /** The refusal for a model's assignee that isn't one of this session's delegates. */
   const notADelegate = (assignee: string) =>
     new TaskWriteRefusedError("unknown_assignee", `the task would go to "${assignee}", which is not one of this conversation's delegates. Nothing was written.`);
@@ -1348,40 +1371,18 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     };
     // FIX-2877 D2.
     /**
-     * The one choke point for a model's assignee: on a model's turn, every
-     * write that sets or changes one (a filing, a batch, an edit, a reassign,
-     * the conversation's one delegate filling a row with none) stores the
-     * server's assignee for it (`serverAssignee`), which refuses a worker
-     * outside this session's delegates. Idempotent: the server's assignee maps
-     * to itself, so a filing the task tools already asked about (they ask
-     * before their same-work check) is unchanged. An action keeps the
-     * caller's pick.
+     * The one gate for a model's assignee, run at the ledger writes on a
+     * model's turn: a new row's final assignee (`fileReserved`, whoever filled
+     * it: the caller, a workstream's target, or the conversation's one
+     * delegate), an edit and a reassign. It stores the server's assignee
+     * (`gatedAssignee`), which refuses a worker outside this session's
+     * delegates; the worker it stores then gets the checks the write's own
+     * worker got. Idempotent, and decided once per call, so a filing the task
+     * tools already asked about (before their same-work check) is unchanged.
+     * A follow-up stays with its root's worker; an action keeps the caller's
+     * pick.
      */
-    // Decided once per call: under the key the task tools record their own
-    // decision with, so a replay stores the worker the same-work check read.
-    // `slot` tells apart the writes one call makes (a batch's rows, an edit).
-    const storedAssignee = async (assignee: string, slot = ""): Promise<string> => {
-      if (!byTurn) return assignee;
-      const call = toolCallOf(ctx);
-      if (call === undefined || ctx.runOnce === undefined) return serverAssignee(ctx, assignee);
-      const recorded = (await ctx.runOnce(`fsd.decide.server-assignee:${call.logicalId}${slot}`, async () => {
-        try {
-          return { assignee: await serverAssignee(ctx, assignee) };
-        } catch (err) {
-          if (err instanceof TaskWriteRefusedError) return { ok: false as const, error: `${err.code}: ${err.message}` };
-          throw err;
-        }
-      })) as { assignee: string } | { ok: false; error: string };
-      if ("assignee" in recorded) return recorded.assignee;
-      const [code, ...message] = recorded.error.split(": ");
-      throw new TaskWriteRefusedError(code!, message.join(": "));
-    };
-    /** `init` with its stored assignee; a follow-up stays with its root's worker. */
-    const withServerAssignee = async <T extends TaskInit>(init: T, slot = ""): Promise<T> => {
-      if (init.assignee === undefined || init.followUpOf !== undefined) return init;
-      const assignee = await storedAssignee(init.assignee, slot);
-      return assignee === init.assignee ? init : { ...init, assignee };
-    };
+    const storedAssignee = async (assignee: string, slot = ""): Promise<string> => (byTurn ? gatedAssignee(ctx, assignee, slot) : assignee);
     /** The conversation's only task-taking delegate, which a row filed with no assignee goes to; none with none or several. */
     const soleDelegate = async (): Promise<string | undefined> => {
       return soleTaskDelegate(await options.delegates(ctx));
@@ -1413,10 +1414,19 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       let assignee = init.assignee;
       if (assignee === undefined) {
         // An unassigned task goes to the conversation's only delegate; with
-        // none or several it waits on the board until it is assigned. A
-        // follow-up takes its root's worker.
+        // none or several it waits on the board until it is assigned.
         assignee = soleTaskDelegate(await options.delegates(ctx));
-        if (assignee !== undefined && init.followUpOf === undefined) assignee = await storedAssignee(assignee, slot);
+      }
+      // The gate, on the row's final worker, whoever filled it in. A worker
+      // it moves the row to is checked as the filed one was.
+      if (assignee !== undefined && init.followUpOf === undefined) {
+        const gated = await storedAssignee(assignee, slot);
+        if (gated !== assignee) {
+          if (self !== undefined && gated === self) throw stepFromItsOwnTurn(self);
+          assertTargetFits((await reach(ctx)).records, gated, init.target, "filed");
+          await assertProjectFor({ ...init, assignee: gated });
+          assignee = gated;
+        }
       }
       // In a task session, the row is a piece of the task it was filed for:
       // server-written, so the task's cascade reaches only its own pieces.
@@ -1462,7 +1472,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const createTask: TaskCollectionRef["createTask"] = async (filing) => {
       // A caller never writes the session a target resolved to.
       const { targetSessionId: _resolved, ...asked } = filing;
-      const init = heldAsTurnSays(ctx, await withServerAssignee(asked));
+      const init = heldAsTurnSays(ctx, asked);
       checkFiling(init);
       // On a turn routing a message, a filing whose result goes to the
       // conversation is a routed task: its layer attaches the message.
@@ -1625,9 +1635,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         assertIdsFree(inits, (id) => ref.get(id));
         // A caller never writes the session a target resolved to.
         const unresolved: Array<TaskInit & { id: string }> = [];
-        for (const [i, { targetSessionId: _resolved, ...init }] of inits.entries()) {
-          // The same decision `checkNewTask` asks for a single filing, which a batch skips; idempotent, since a moved assignee maps to itself.
-          unresolved.push({ ...heldAsTurnSays(ctx, await withServerAssignee(init, `:batch[${i}]`)), id: init.id ?? newTaskId() });
+        for (const { targetSessionId: _resolved, ...init } of inits) {
+          // Each row's worker is gated at its write (`fileReserved`), under its own slot of the call.
+          unresolved.push({ ...heldAsTurnSays(ctx, init), id: init.id ?? newTaskId() });
         }
         const ordered = dependencyOrder(unresolved);
         const filedWith = new Map(ordered.map((init) => [init.id, init]));
@@ -2152,8 +2162,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const metadata = { ...callerMetadata(filing.metadata), ...heldMarker(options.holdsFiling, ctx, filing), [FILED_HOP]: heldFromFiling(filing) ? freshHopMark(ctx) : turnHopMark(ctx), [FILED_PROJECT]: stamp };
     const input = ownProjectIn(filing.input, own);
     const { metadata: _metadata, input: _input, ...rest } = heldAsTurnSays(ctx, filing);
+    // A routed task's worker passes the same gate as any model's filing (FIX-2877 D2).
+    const routedTo = rest.assignee === undefined || rest.followUpOf !== undefined ? rest.assignee : await gatedAssignee(ctx, rest.assignee, `:routed[${filing.id}]`);
     const init: TaskInit & { id: string } = {
       ...rest,
+      ...(routedTo === undefined ? {} : { assignee: routedTo }),
       metadata,
       ...(input !== undefined ? { input } : {})
     };

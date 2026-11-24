@@ -5,8 +5,17 @@
  * fixture flow whose turn runs the writes a test hands it, so each path is hit
  * directly: a batch, an edit on a workstream's row, and a call whose decision
  * was already recorded. Read back from the stored rows.
+ *
+ * A workstream's session is resolved here as found (`resolveWorkstreamTarget`
+ * stubbed), so a filing naming a target reaches the ledger write without a
+ * project host behind it.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../src/projects/project-coordinator", async (actual) => ({
+  ...(await actual<typeof import("../src/projects/project-coordinator")>()),
+  resolveWorkstreamTarget: async () => ({ sessionId: "sess_workstream" })
+}));
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
@@ -92,6 +101,33 @@ describe("the board store's assignee on a model's turn", () => {
       // eng.helper is on the roster, but scripter doesn't hand it tasks.
       const [out] = await turn(conv, [(ref) => ref.createTasks([{ goal: "Write the notes", assignee: "eng.helper", held: true }])]);
       expect(out?.error).toMatch(/"eng\.helper", which is not one of this conversation's delegates/);
+      expect(await host.rows("alice")).toEqual([]);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("gates the assignee a workstream's target fills in, at the ledger write, like any other", async () => {
+    // The batch names a target and no assignee; the target fills in its lead, eng.tasker. The rule answers eng.writer.
+    const asked: string[] = [];
+    const { host, open, turn } = boot(() => {
+      asked.push("asked");
+      return "eng.writer";
+    });
+    try {
+      const conv = await open();
+      const stored = await host.session(conv);
+      const store = (await host.state.getRuntime()).stores.session;
+      // eng.tasker leads ws-billing and is this conversation's only delegate, so the target fills it in.
+      await store.set(
+        conv,
+        { ...stored, state: { ...stored.state, delegates: [{ worker: "eng.tasker", target: "ws-billing" }] }, version: stored.version + 1, updatedAt: Date.now() } as never,
+        "any"
+      );
+      const [out] = await turn(conv, [(ref) => ref.createTasks([{ goal: "Bill it", target: "ws-billing", held: true }])]);
+      // The rule was asked, and its worker isn't one of this conversation's delegates: refused, nothing stored.
+      expect(asked.length).toBeGreaterThan(0);
+      expect(out?.error).toMatch(/"eng\.writer", which is not one of this conversation's delegates/);
       expect(await host.rows("alice")).toEqual([]);
     } finally {
       await host.dispose();
