@@ -121,13 +121,18 @@ interface PublishedShape {
  * assertion below requires the silent set to *equal* this list, so a gap that
  * gets fixed fails until it is removed, and a new gap fails on arrival.
  *
- * Empty, and that is the honest answer rather than a clean bill of health.
- * Every path the published surface declares is read by something today, and
- * {@link KNOWN_UNRESOLVABLE_REFS} one level up is empty too. The list stays
- * because the next gap needs somewhere to be recorded the moment it arrives,
- * and because an empty one is what makes the equality assertion say "none".
+ * Two entries, both one gap: the kit accepts `.mts` and `.cts` code files, and
+ * `fsdev gen` registers only `.ts` and `.tsx`, so such a file starts the app,
+ * is in no generated map and is reported by nothing. Every other path the
+ * published surface declares is read by something today, and
+ * {@link KNOWN_UNRESOLVABLE_REFS} one level up is empty. When the gap closes,
+ * the equality assertion fails until these rows are struck.
  */
-const KNOWN_SILENT_GAPS: ReadonlyArray<{ shape: string; owner: string }> = [];
+// Owner of both rows below: FIX-2914.
+const KNOWN_SILENT_GAPS: ReadonlyArray<{ shape: string; owner: string }> = [
+  { shape: "flows/workers/<kind>.mts", owner: "fsdev gen leaves .mts/.cts out silently" },
+  { shape: "teams/<team>/resources/<name>.cts", owner: "fsdev gen leaves .mts/.cts out silently" },
+];
 
 /**
  * The ref-table row that publishes an org worker's document address. Cited
@@ -136,7 +141,7 @@ const KNOWN_SILENT_GAPS: ReadonlyArray<{ shape: string; owner: string }> = [];
  * citations must not be able to drift apart.
  */
 const ORG_WORKER_DOC_REF_ROW =
-  "| `<root>/org/workers/build/resources/runbook.md` | `workers/build/runbook` |";
+  "| `org/workers/<worker>/resources/<name>.md` | `workers/<worker>/<name>` |";
 
 /**
  * Where the convention publishes that a worker's documents get an address
@@ -146,12 +151,13 @@ const ORG_WORKER_DOC_REF_ROW =
  */
 const WORKER_REFS_RESOLVE: ReadonlyArray<{ file: string; quote: string }> = [
   {
-    file: "apps/docs/docs/workforce/documents-on-disk.md",
+    file: "apps/docs/docs/reference/workforce-folder.md",
     quote: ORG_WORKER_DOC_REF_ROW,
   },
   {
-    file: "packages/workforce/README.md",
-    quote: "| `<root>/org/workers/<worker>/<slot>/<name>.md` | `workers/<worker>/<name>` |",
+    file: "apps/docs/docs/reference/workforce-folder.md",
+    quote:
+      "| `teams/<team>/workers/<worker>/resources/<name>.md` | `teams/<team>/workers/<worker>/<name>` |",
   },
 ];
 
@@ -177,13 +183,24 @@ const KNOWN_UNRESOLVABLE_REFS: ReadonlyArray<{ worker: string; owner: string }> 
  * plus the files named below**. A page published somewhere else is not scanned
  * and this suite will not say so.
  */
-const PUBLISHED_DIRECTORIES: readonly string[] = [
-  "apps/docs/docs/workforce",
-  "apps/docs/docs/skills",
-];
+const PUBLISHED_DIRECTORIES: readonly string[] = ["apps/docs/docs/catalog/workforce"];
 
-/** Published surface that is not a page under {@link PUBLISHED_DIRECTORIES}. */
-const PUBLISHED_EXTRA_FILES: readonly string[] = ["packages/workforce/README.md"];
+/**
+ * Published surface that is not a page under {@link PUBLISHED_DIRECTORIES}.
+ *
+ * The reference pages are named one by one rather than their directory read:
+ * `reference/` documents the whole framework, and its other pages spell an
+ * app's own `flows/<name>/` folders, which are not workforce-tree paths.
+ */
+const PUBLISHED_EXTRA_FILES: readonly string[] = [
+  "apps/docs/docs/reference/workforce-folder.md",
+  "apps/docs/docs/reference/worker-md.md",
+  "apps/docs/docs/reference/skill-md.md",
+  "apps/docs/docs/reference/workforce.md",
+  "apps/docs/docs/catalog/skills.md",
+  "apps/docs/docs/concepts/workers.md",
+  "packages/workforce/README.md",
+];
 
 /** Every file the extraction reads, resolved when the check runs rather than listed. */
 async function publishedFiles(): Promise<string[]> {
@@ -392,11 +409,11 @@ function extensionsDeclaredIn(text: string): Set<string> {
 const PROSE_PUBLISHED: ReadonlyArray<{ shape: string; why: string }> = [
   {
     shape: "org/resources/<name>.ts",
-    why: "published by 'A capability lives at the organization level or in a team.' — the pages spell only a team's `resources/` in their trees",
+    why: "published by 'A capability is a `.ts` file in the `resources/` folder of the org or of a team' — the pages spell only a team's `resources/` in their trees",
   },
   {
     shape: "org/workers/<worker>/resources/<name>.ts",
-    why: "published by 'A plain resource there is fine…' — the sentence covers a worker's folder at either level",
+    why: "published by 'In one worker's own `resources/` folder the file is typed as a resource only…' — the sentence covers a worker's folder at either level",
   },
   {
     shape: "teams/<team>/workers/<worker>/resources/<name>.ts",
@@ -404,11 +421,66 @@ const PROSE_PUBLISHED: ReadonlyArray<{ shape: string; why: string }> = [
   },
   {
     shape: "flows/workers/<kind>.tsx",
-    why: "published by 'Every `.ts` and `.tsx` file…' — the pages spell only the `.ts` form in their trees",
+    why: "published by '`fsdev gen` registers every `.ts` and `.tsx` file…' — the pages spell only the `.ts` form in their paths",
   },
   {
     shape: "teams/<team>/resources/<name>.tsx",
     why: "the same sentence, for the module walk's own extension list",
+  },
+  {
+    shape: "flows/workers/<kind>.mts",
+    why: "published by 'The kit accepts `.mts` and `.cts` in the same places.' — no page spells either in a path",
+  },
+  {
+    shape: "teams/<team>/resources/<name>.cts",
+    why: "the same sentence, for the module walk",
+  },
+  // The Workforce folder reference spells the levels below as `<level>/…`
+  // ("A level is one of four places: …") and as folder rows in its "who
+  // reaches / holds" tables, neither of which the extraction reads as a path.
+  {
+    shape: "org/workers/<worker>/references/<name>.md",
+    why: "published by the reach-table row '| `org/workers/<worker>/references/` | That org worker |'",
+  },
+  {
+    shape: "teams/<team>/workers/<worker>/references/<name>.md",
+    why: "published by the reach-table row '| `teams/<team>/workers/<worker>/references/` | That worker |'",
+  },
+  {
+    shape: "org/skills/<skill>/SKILL.md",
+    why: "published by the skills-table row '| `org/skills/` | Every worker |'",
+  },
+  {
+    shape: "teams/<team>/workers/<worker>/skills/<skill>/SKILL.md",
+    why: "published by the skills-table row for `teams/<team>/workers/<worker>/skills/`",
+  },
+  {
+    shape: "org/packages/<package>/PACKAGE.md",
+    why: "published by the holding-table row '| `org/packages/<name>/` | Any worker, …'",
+  },
+  {
+    shape: "org/workers/<worker>/packages/<package>/PACKAGE.md",
+    why: "published by the holding-table row for a worker's own `packages/<name>/` folder",
+  },
+  {
+    shape: "teams/<team>/workers/<worker>/packages/<package>/PACKAGE.md",
+    why: "the same holding-table row, at the team-worker level",
+  },
+  {
+    shape: "org/packages/<package>/blocks/<name>.ts",
+    why: "published by '`<level>/packages/<name>/PACKAGE.md` and `<level>/packages/<name>/blocks/<block>.ts`'",
+  },
+  {
+    shape: "teams/<team>/packages/<package>/blocks/<name>.ts",
+    why: "the same `<level>` row, at the team level",
+  },
+  {
+    shape: "org/workers/<worker>/packages/<package>/blocks/<name>.ts",
+    why: "the same `<level>` row, at the org-worker level",
+  },
+  {
+    shape: "teams/<team>/workers/<worker>/packages/<package>/blocks/<name>.ts",
+    why: "the same `<level>` row, at the team-worker level",
   },
 ];
 
@@ -419,10 +491,11 @@ const PROSE_PUBLISHED: ReadonlyArray<{ shape: string; why: string }> = [
 const NOT_AN_EXTENSION: ReadonlyArray<{ token: string; why: string }> = [
   { token: ".tap", why: "the `.tap()` step method, written in backticks beside `.md` and `.ts`" },
   { token: ".lock", why: "git's reserved ref suffix, named where the board-name rule reserves `lock` — no file the walk reads" },
+  { token: ".git", why: "a folder name, given in the skills reference as one that breaks the skill naming rule — no file the walk reads" },
 ];
 
 /** The page that publishes the package convention. */
-const PACKAGES_PAGE = "apps/docs/docs/workforce/packages-on-disk.md";
+const PACKAGES_PAGE = "apps/docs/docs/reference/workforce-folder.md";
 
 /** Write one instance of every published shape into the fixture tree. */
 async function writeAllPublishedShapes(root: string): Promise<void> {
@@ -446,8 +519,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/workers/<worker>/WORKER.md",
     publishedIn: {
-      file: "apps/docs/docs/workforce/overview.md",
-      quote: "A worker on a team lives at `teams/<team>/workers/<name>/WORKER.md`",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "| `teams/<team>/workers/<worker>/WORKER.md` | The standard worker `<team>.<worker>`. |",
     },
     write: (root) => writeFile(root, "teams/alpha/workers/lead/WORKER.md", doc("A lead.")),
     accountedFor: (out) =>
@@ -456,9 +530,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "org/workers/<worker>/WORKER.md",
     publishedIn: {
-      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      file: "apps/docs/docs/reference/workforce-folder.md",
       quote:
-        "`org/workers/<name>/` is a worker slot like a team's, so a folder there with no `WORKER.md` is reported.",
+        "| `org/workers/<worker>/WORKER.md` | The standard worker `<worker>`, with no team. |",
     },
     write: (root) => writeFile(root, "org/workers/shift-coordinator/WORKER.md", doc("The Shift Coordinator.")),
     accountedFor: (out) => out.workers.includes("shift-coordinator") || out.reported.includes("org/workers/shift-coordinator"),
@@ -466,9 +540,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/TEAM.md",
     publishedIn: {
-      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      file: "apps/docs/docs/reference/workforce-folder.md",
       quote:
-        "A `TEAM.md` at the top of a team's folder describes the team and holds the instructions every",
+        "| `teams/<team>/TEAM.md` | The team's description, and the instructions every worker on the team is told. |",
     },
     write: (root) =>
       writeFile(
@@ -482,8 +556,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "org/references/<name>.md",
     publishedIn: {
-      file: "apps/docs/docs/workforce/documents-on-disk.md",
-      quote: "| `<root>/org/references/code-of-conduct.md` | `code-of-conduct` |",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "| `org/resources/<name>.md` or `org/references/<name>.md` | `<name>` |",
     },
     write: (root) => writeFile(root, "org/references/coc.md", doc("A code of conduct.")),
     accountedFor: (out) =>
@@ -492,8 +567,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/references/<name>.md",
     publishedIn: {
-      file: "packages/workforce/README.md",
-      quote: "| `<root>/teams/<teamId>/<slot>/<name>.md` | `teams/<teamId>/<name>` |",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "| `teams/<team>/references/` | Every worker on that team |",
     },
     write: (root) => writeFile(root, "teams/alpha/references/handbook.md", doc("A handbook.")),
     accountedFor: (out) =>
@@ -503,9 +579,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/workers/<worker>/references/<name>.md",
     publishedIn: {
-      file: "apps/docs/docs/workforce/documents-on-disk.md",
+      file: "apps/docs/docs/reference/workforce-folder.md",
       quote:
-        "| `<root>/teams/engineering/workers/ada/references/runbook.md` | `teams/engineering/workers/ada/runbook` |",
+        "| `teams/<team>/workers/<worker>/references/` | That worker |",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/workers/lead/references/runbook.md", doc("A runbook.")),
@@ -520,8 +596,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     // exactly the sort this suite must not let go unnoticed.
     shape: "org/workers/<worker>/references/<name>.md",
     publishedIn: {
-      file: "packages/workforce/README.md",
-      quote: "| `<root>/org/workers/<worker>/<slot>/<name>.md` | `workers/<worker>/<name>` |",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "| `org/workers/<worker>/references/` | That org worker |",
     },
     write: (root) => writeFile(root, "org/workers/build/references/playbook.md", doc("A playbook.")),
     accountedFor: (out) =>
@@ -531,8 +608,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/resources/<name>.md",
     publishedIn: {
-      file: "apps/docs/docs/workforce/documents-on-disk.md",
-      quote: "| `<root>/teams/engineering/resources/scratch.md` | `teams/engineering/scratch` |",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "| `teams/<team>/resources/<name>.md` | `teams/<team>/<name>` |",
     },
     write: (root) => writeFile(root, "teams/alpha/resources/handbook.md", doc("A handbook.")),
     accountedFor: (out) =>
@@ -542,9 +620,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/workers/<worker>/resources/<name>.md",
     publishedIn: {
-      file: "packages/workforce/README.md",
+      file: "apps/docs/docs/reference/workforce-folder.md",
       quote:
-        "| `<root>/teams/<teamId>/workers/<worker>/<slot>/<name>.md` | `teams/<teamId>/workers/<worker>/<name>` |",
+        "| `teams/<team>/workers/<worker>/resources/<name>.md` | `teams/<team>/workers/<worker>/<name>` |",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/workers/lead/resources/runbook.md", doc("A runbook.")),
@@ -555,8 +633,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/skills/<skill>/SKILL.md",
     publishedIn: {
-      file: "apps/docs/docs/skills/overview.md",
-      quote: "workforce/teams/pentest/skills/port-scan/SKILL.md",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "| `teams/<team>/skills/` | Every worker on that team |",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/skills/regression/SKILL.md", skillDoc("regression")),
@@ -567,8 +646,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/workers/<worker>/skills/<skill>/SKILL.md",
     publishedIn: {
-      file: "apps/docs/docs/skills/overview.md",
-      quote: "workforce/teams/pentest/workers/recon/skills/sweep/SKILL.md",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "| `teams/<team>/workers/<worker>/skills/` or `org/workers/<worker>/skills/` | That worker |",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/workers/lead/skills/sweep/SKILL.md", skillDoc("sweep")),
@@ -579,8 +659,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "org/resources/<name>.md",
     publishedIn: {
-      file: "packages/workforce/README.md",
-      quote: "| `<root>/org/<slot>/<name>.md` | `<name>` |",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "| `org/resources/<name>.md` or `org/references/<name>.md` | `<name>` |",
     },
     write: (root) =>
       writeFile(root, "org/resources/code-of-conduct.md", doc("How we behave.")),
@@ -591,8 +672,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "org/skills/<skill>/SKILL.md",
     publishedIn: {
-      file: "apps/docs/docs/skills/overview.md",
-      quote: "workforce/org/skills/triage/SKILL.md",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "| `org/skills/` | Every worker |",
     },
     write: (root) =>
       writeFile(root, "org/skills/house-style/SKILL.md", skillDoc("house-style")),
@@ -603,7 +685,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "org/workers/<worker>/resources/<name>.md",
     publishedIn: {
-      file: "apps/docs/docs/workforce/documents-on-disk.md",
+      file: "apps/docs/docs/reference/workforce-folder.md",
       quote: ORG_WORKER_DOC_REF_ROW,
     },
     // Beside its WORKER.md, as in the docs tree: the folder is the `build` worker.
@@ -618,8 +700,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/resources/<name>.ts",
     publishedIn: {
-      file: "apps/docs/docs/workforce/capabilities-on-disk.md",
-      quote: "research.ts      ← a capability",
+      file: "apps/docs/docs/catalog/workforce/the-workforce-folder.md",
+      quote:
+        "resources/research.ts       a capability",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/resources/research.ts", "export default {};\n"),
@@ -630,8 +713,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "org/resources/<name>.ts",
     publishedIn: {
-      file: "apps/docs/docs/workforce/capabilities-on-disk.md",
-      quote: "A capability lives at the organization level or in a team.",
+      file: "apps/docs/docs/catalog/workforce/the-workforce-folder.md",
+      quote:
+        "A capability is a `.ts` file in the `resources/` folder of the org or of a team",
     },
     write: (root) => writeFile(root, "org/resources/house.ts", "export default {};\n"),
     accountedFor: (out) =>
@@ -656,8 +740,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/workers/<worker>/resources/<name>.ts",
     publishedIn: {
-      file: "apps/docs/docs/workforce/capabilities-on-disk.md",
-      quote: "A plain resource there is fine, and works like a document at that path.",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "In one worker's own `resources/` folder the file is typed as a resource only",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/workers/lead/resources/helper.ts", "export default {};\n"),
@@ -668,8 +753,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "org/workers/<worker>/resources/<name>.ts",
     publishedIn: {
-      file: "apps/docs/docs/workforce/capabilities-on-disk.md",
-      quote: "A plain resource there is fine, and works like a document at that path.",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "In one worker's own `resources/` folder the file is typed as a resource only",
     },
     write: (root) =>
       writeFile(root, "org/workers/build/resources/helper.ts", "export default {};\n"),
@@ -680,8 +766,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "flows/workers/<kind>.ts",
     publishedIn: {
-      file: "apps/docs/docs/workforce/code-on-disk.md",
-      quote: "request-triage.ts       ← a worker flow",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "| `flows/workers/<name>.ts` or `.tsx` | A worker flow, named by a `WORKER.md`'s `flow:` setting. |",
     },
     write: (root) =>
       writeFile(root, "flows/workers/request-triage.ts", "export default {};\n"),
@@ -692,8 +779,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "blocks/<name>.ts",
     publishedIn: {
-      file: "apps/docs/docs/workforce/code-on-disk.md",
-      quote: "triage.ts                 ← a block any worker may name",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "| `blocks/<name>.ts` or `.tsx` | A block every worker may name in `tools:`. |",
     },
     write: (root) => writeFile(root, "blocks/triage.ts", "export default {};\n"),
     accountedFor: (out) =>
@@ -702,8 +790,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/blocks/<name>.ts",
     publishedIn: {
-      file: "apps/docs/docs/workforce/code-on-disk.md",
-      quote: "| `workforce/teams/<team>/blocks/` | every worker on that team |",
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote:
+        "| `teams/<team>/blocks/<name>.ts` | A block every worker on the team may name. |",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/blocks/build-status.ts", "export default {};\n"),
@@ -718,9 +807,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/workers/<worker>/blocks/<name>.ts",
     publishedIn: {
-      file: "apps/docs/docs/workforce/code-on-disk.md",
+      file: "apps/docs/docs/reference/workforce-folder.md",
       quote:
-        "| `workforce/teams/<team>/workers/<worker>/blocks/` | that one worker |",
+        "| `teams/<team>/workers/<worker>/blocks/<name>.ts` | A block one worker may name. |",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/workers/lead/blocks/page-oncall.ts", "export default {};\n"),
@@ -735,7 +824,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "org/packages/<package>/PACKAGE.md",
     publishedIn: {
       file: PACKAGES_PAGE,
-      quote: "`workforce/org/packages/<name>/PACKAGE.md`",
+      quote:
+        "| `org/packages/<name>/` | Any worker, once its `packages:` line names it. |",
     },
     write: (root) => writeFile(root, "org/packages/house/PACKAGE.md", doc("House style.")),
     accountedFor: (out) =>
@@ -747,7 +837,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "org/packages/<package>/blocks/<name>.ts",
     publishedIn: {
       file: PACKAGES_PAGE,
-      quote: "`workforce/org/packages/<name>/blocks/<block>.ts`",
+      quote:
+        "`<level>/packages/<name>/PACKAGE.md` and `<level>/packages/<name>/blocks/<block>.ts`",
     },
     write: (root) => writeFile(root, "org/packages/house/blocks/cite.ts", "export default {};\n"),
     accountedFor: (out) =>
@@ -758,7 +849,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "teams/<team>/packages/<package>/PACKAGE.md",
     publishedIn: {
       file: PACKAGES_PAGE,
-      quote: "`workforce/teams/<team>/packages/<name>/PACKAGE.md`",
+      quote:
+        "| `teams/<team>/packages/<name>/` | A worker on that team, once its `packages:` line names it. |",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/packages/escalation/PACKAGE.md", doc("Escalation.")),
@@ -771,7 +863,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "teams/<team>/packages/<package>/blocks/<name>.ts",
     publishedIn: {
       file: PACKAGES_PAGE,
-      quote: "`workforce/teams/<team>/packages/<name>/blocks/<block>.ts`",
+      quote:
+        "`<level>/packages/<name>/PACKAGE.md` and `<level>/packages/<name>/blocks/<block>.ts`",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/packages/escalation/blocks/page-oncall.ts", "export default {};\n"),
@@ -783,7 +876,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "teams/<team>/workers/<worker>/packages/<package>/PACKAGE.md",
     publishedIn: {
       file: PACKAGES_PAGE,
-      quote: "`workforce/teams/<team>/workers/<worker>/packages/<name>/PACKAGE.md`",
+      quote:
+        "| `teams/<team>/workers/<worker>/packages/<name>/` or `org/workers/<worker>/packages/<name>/` | That worker, with no line in its file. |",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/workers/lead/packages/refunds/PACKAGE.md", doc("Refunds.")),
@@ -796,7 +890,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "teams/<team>/workers/<worker>/packages/<package>/blocks/<name>.ts",
     publishedIn: {
       file: PACKAGES_PAGE,
-      quote: "`workforce/teams/<team>/workers/<worker>/packages/<name>/blocks/<block>.ts`",
+      quote:
+        "`<level>/packages/<name>/PACKAGE.md` and `<level>/packages/<name>/blocks/<block>.ts`",
     },
     write: (root) =>
       writeFile(
@@ -812,7 +907,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "org/workers/<worker>/packages/<package>/PACKAGE.md",
     publishedIn: {
       file: PACKAGES_PAGE,
-      quote: "`workforce/org/workers/<worker>/packages/<name>/PACKAGE.md`",
+      quote:
+        "| `teams/<team>/workers/<worker>/packages/<name>/` or `org/workers/<worker>/packages/<name>/` | That worker, with no line in its file. |",
     },
     write: (root) =>
       writeFile(root, "org/workers/build/packages/kit/PACKAGE.md", doc("A kit.")),
@@ -825,7 +921,8 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "org/workers/<worker>/packages/<package>/blocks/<name>.ts",
     publishedIn: {
       file: PACKAGES_PAGE,
-      quote: "`workforce/org/workers/<worker>/packages/<name>/blocks/<block>.ts`",
+      quote:
+        "`<level>/packages/<name>/PACKAGE.md` and `<level>/packages/<name>/blocks/<block>.ts`",
     },
     write: (root) =>
       writeFile(root, "org/workers/build/packages/kit/blocks/tool.ts", "export default {};\n"),
@@ -846,8 +943,9 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "flows/workers/<kind>.tsx",
     publishedIn: {
-      file: "apps/docs/docs/workforce/code-on-disk.md",
-      quote: "Every `.ts` and `.tsx` file in one of the code folders is a declaration",
+      file: "apps/docs/docs/catalog/workforce/the-workforce-folder.md",
+      quote:
+        "`fsdev gen` registers every `.ts` and `.tsx` file in `flows/workers/`, a `blocks/` folder or a `resources/` folder",
     },
     write: (root) => writeFile(root, "flows/workers/intake.tsx", "export default {};\n"),
     accountedFor: (out) =>
@@ -856,14 +954,39 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/resources/<name>.tsx",
     publishedIn: {
-      file: "apps/docs/docs/workforce/code-on-disk.md",
-      quote: "Every `.ts` and `.tsx` file in one of the code folders is a declaration",
+      file: "apps/docs/docs/catalog/workforce/the-workforce-folder.md",
+      quote:
+        "`fsdev gen` registers every `.ts` and `.tsx` file in `flows/workers/`, a `blocks/` folder or a `resources/` folder",
     },
     write: (root) =>
       writeFile(root, "teams/alpha/resources/panel.tsx", "export default {};\n"),
     accountedFor: (out) =>
       out.resourceModules.includes("teams/alpha/panel") ||
       out.reported.includes("teams/alpha/resources/panel.tsx"),
+  },
+  // `.mts` and `.cts`, published in one sentence the way `.tsx` is. One row per
+  // extension, and one per walk between them: the code-folder walk takes
+  // `.mts`, the resource-module walk `.cts`.
+  {
+    shape: "flows/workers/<kind>.mts",
+    publishedIn: {
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote: "The kit accepts `.mts` and `.cts` in the same places.",
+    },
+    write: (root) => writeFile(root, "flows/workers/digest.mts", "export default {};\n"),
+    accountedFor: (out) =>
+      out.code.includes("worker:digest") || out.reported.includes("flows/workers/digest.mts"),
+  },
+  {
+    shape: "teams/<team>/resources/<name>.cts",
+    publishedIn: {
+      file: "apps/docs/docs/reference/workforce-folder.md",
+      quote: "The kit accepts `.mts` and `.cts` in the same places.",
+    },
+    write: (root) => writeFile(root, "teams/alpha/resources/ledger.cts", "module.exports = {};\n"),
+    accountedFor: (out) =>
+      out.resourceModules.includes("teams/alpha/ledger") ||
+      out.reported.includes("teams/alpha/resources/ledger.cts"),
   },
 ];
 
@@ -1129,9 +1252,9 @@ describe("the published workforce-tree surface", () => {
 
     const out = await readEverything(root);
 
-    // The published example names a worker that exists: the docs tree gives
-    // `org/workers/build/` its WORKER.md, so its runbook's ref resolves to a
-    // loaded worker, not merely to a reported folder.
+    // The fixture tree gives `org/workers/build/` its WORKER.md (see the
+    // `org/workers/<worker>/resources/<name>.md` row), so the ref of the document
+    // beside it resolves to a loaded worker, not merely to a reported folder.
     expect(out.workers).toContain("build");
 
     // The class policy, applied to an address instead of a path: a ref that
