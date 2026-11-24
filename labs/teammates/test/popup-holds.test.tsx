@@ -190,7 +190,7 @@ describe("a coding task's popup answers what its run waits on you for", () => {
 
     const review = await within(popup).findByRole("region", { name: "Your review" }, { timeout: 3000 });
     belowFeed(review);
-    expect(status()).toBe("Needs review");
+    expect(status()).toBe("Needs your review");
     // The review leads the body, before the steps it was given over.
     const verdict = within(popup).getByRole("region", { name: "Verdict" });
     expect(verdict.compareDocumentPosition(feedOf()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
