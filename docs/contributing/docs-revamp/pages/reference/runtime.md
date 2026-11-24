@@ -277,7 +277,7 @@ export const approveRefund = handler({
   inputSchema: z.object({ orderId: z.string(), amount: z.number() }),
   execute: async (input, ctx) => {
     if (input.amount > ctx.settings.refunds.autoApproveUpTo) return { refunded: false };
-    await refundOrder(input.orderId);
+    await refundOrder(input.orderId, ctx.session.identity);
     return { refunded: true };
   },
 });

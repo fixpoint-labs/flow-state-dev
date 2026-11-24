@@ -116,7 +116,7 @@ const lookUpOrder = handler({
   name: "look-up-order",
   inputSchema: z.object({ orderId: z.string() }),
   outputSchema: z.object({ status: z.string() }),
-  execute: async (input) => ({ status: (await findOrder(input.orderId))?.status ?? "not found" }),
+  execute: async (input, ctx) => ({ status: (await findOrder(input.orderId, ctx.session.identity))?.status ?? "not found" }),
 });
 
 const lookUpPlan = handler({
