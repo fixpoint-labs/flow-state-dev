@@ -271,6 +271,8 @@ describe("a hold snapshots the working tree through a temporary index (BR-1–BR
     const refs = git(place.repo!.clone, "for-each-ref");
     const remoteRefs = git(remote.bare, "for-each-ref");
     const status = git(place.cwd, "status", "--porcelain");
+    // Only the checkpoint's processes: the provision's fetch sets refs in a scratch repository of its own.
+    spawned.mockClear();
 
     await host.checkpoint(place);
 
